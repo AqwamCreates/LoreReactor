@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useEffect } from 'react';
 import { useSessionStore } from '../hooks/useSessionStore';
-import { defaultContextLength } from '../defaults';
+import { defaultContextLength } from '../dictionaries/defaults';
 
 interface ChatStatisticsBarProps {
     maximumNumberOfTokens: number;

@@ -6,10 +6,11 @@ import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storage/serverStorage';
 import { getEffectiveTools, getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
-import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString, generalStartString, generalEndString } from '../stringList';
+import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString, generalStartString, generalEndString } from '../dictionaries/stringList';
 import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
 import { getCurrentLocation } from './locationLogic';
-import { defaultInputStrategy } from '../defaults';
+import { defaultInputStrategy } from '../dictionaries/defaults';
+import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { generateLocationVisitSummary } from '../services/ChatMessageSummarizationEngine';
 
 const TOOL_INSTRUCTION_MAP: Record<tool, string> = {
@@ -253,7 +254,10 @@ function isPromptBlockCharacterBound(block: PromptBlock, currentCharacterId: str
 }
 
 function isBuiltInBlockType(value: string): value is PromptBlockType {
-    return (defaultInputStrategy as string[]).includes(value) || value === 'Tool Instructions';
+    return (defaultInputStrategy as string[]).includes(value)
+        || value === 'Model Chat Template'
+        || value === 'Model Instruction Template'
+        || value === 'Model Chat-Instruction Template';
 }
 
 const getImageBase64 = async (url: string): Promise<string | null> => {

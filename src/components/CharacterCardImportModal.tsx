@@ -6,7 +6,7 @@ import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExte
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getSkipProbabilityValueFromText, getChatImpatienceSensitivityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText, getMaximumActionStaminaValueFromText } from '../hooks/chatTraitsDetection';
 import { uploadCharacterImage } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
-import { defaultCharacterTools } from '../defaults';
+import { defaultCharacterTools } from '../dictionaries/defaults';
 import '../main.css';
 
 interface CharacterCardImportModalProps {

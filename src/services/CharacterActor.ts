@@ -8,7 +8,7 @@ import { getEffectiveTools } from '../hooks/characterLogic';
 import { sentimentEngine } from './SentimentAnalysisEngine';
 import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEngine';
 import { ToolInvocationParser } from './ToolInvocationParser';
-import { defaultBudgetData } from '../defaults';
+import { defaultBudgetData } from '../dictionaries/defaults';
 import { executeTools } from './ToolExecutor';
 import { StreamingAccumulator } from './StreamingAccumulator';
 

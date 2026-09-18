@@ -23,7 +23,7 @@ import { DataExportModal } from './DataExportModal';
 import { DataManagerModal } from './DataManagerModal';
 import { AlternateTimelinesModal } from './AlternateTimelinesModal';
 import { renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext } from './renderHelpers';
-import { cloudBackends } from '../languageModelInformation';
+import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useSessionStore } from '../hooks/useSessionStore';
 import { useMemo, useState, useEffect } from 'react';
 

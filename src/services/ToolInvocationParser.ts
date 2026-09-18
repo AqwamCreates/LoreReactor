@@ -1,6 +1,6 @@
 // src/services/ToolInvocationParser.ts
 
-import { toolStartSring, toolEndString } from "../stringList";
+import { toolStartSring, toolEndString } from "../dictionaries/stringList";
 
 const characterAgnosticTools = ['pick', 'date', 'coin', 'dice', 'random', 'rng', 'move', 'lookup', 'map', 'audio', 'note', 'inventory'] // Audio is here because you can make noises from footsteps and stuff like that.
 

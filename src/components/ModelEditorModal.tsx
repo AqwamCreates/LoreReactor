@@ -3,7 +3,8 @@ import { useState, useEffect, useRef } from 'react';
 import type { backend, cloudBackend, LanguageModel, StopPattern } from '../types';
 import { useVramUseEstimation } from '../hooks/useVramUseEstimation';
 import { v4 as uuidv4 } from 'uuid';
-import { backends, cloudBackends } from '../languageModelInformation';
+import { backends, cloudBackends } from '../dictionaries/languageModelInformation';
+import { getChatTemplateOptions, getInstructionTemplateOptions } from '../dictionaries/modelTemplates';
 import '../main.css';
 
 interface ModelEditorModalProps {
@@ -78,40 +79,6 @@ const SPEC_TYPE_OPTIONS = [
     { value: 'none', label: 'None' },
     { value: 'draft-mtp', label: 'Draft MTP' },
     { value: 'ngram-mod', label: 'N-Gram Mod' },
-];
-
-const CHAT_TEMPLATE_OPTIONS = [
-    { value: '', label: 'None' },
-    { value: 'chatml', label: 'ChatML' },
-    { value: 'llama3', label: 'Llama 3' },
-    { value: 'mistral', label: 'Mistral / Llama 2' },
-    { value: 'gemma', label: 'Gemma' },
-    { value: 'phi3', label: 'Phi-3' },
-    { value: 'qwen2', label: 'Qwen2' },
-    { value: 'command-r', label: 'Command-R' },
-    { value: 'deepseek', label: 'DeepSeek' },
-    { value: 'yi', label: 'Yi' },
-    { value: 'stablelm', label: 'StableLM' },
-    { value: 'openchat', label: 'OpenChat' },
-    { value: 'vicuna', label: 'Vicuna' },
-    { value: 'alpaca', label: 'Alpaca' },
-];
-
-const INSTRUCTION_TEMPLATE_OPTIONS = [
-    { value: '', label: 'None' },
-    { value: 'alpaca', label: 'Alpaca' },
-    { value: 'chatml', label: 'ChatML' },
-    { value: 'llama3', label: 'Llama 3' },
-    { value: 'mistral', label: 'Mistral / Llama 2' },
-    { value: 'gemma', label: 'Gemma' },
-    { value: 'phi3', label: 'Phi-3' },
-    { value: 'qwen2', label: 'Qwen2' },
-    { value: 'command-r', label: 'Command-R' },
-    { value: 'deepseek', label: 'DeepSeek' },
-    { value: 'yi', label: 'Yi' },
-    { value: 'stablelm', label: 'StableLM' },
-    { value: 'openchat', label: 'OpenChat' },
-    { value: 'vicuna', label: 'Vicuna' },
 ];
 
 // ─── Backend capability flags ───────────────────────────────────────
@@ -664,13 +631,13 @@ export function ModelEditorModal({
                             <div>
                                 <label className="editor-label editor-label-small">Instruction Template</label>
                                 <select value={instructionTemplate} onChange={(e) => setInstructionTemplate(e.target.value)} className="editor-select">
-                                    {INSTRUCTION_TEMPLATE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                    {getInstructionTemplateOptions().map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                                 </select>
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Chat Template</label>
                                 <select value={chatTemplate} onChange={(e) => setChatTemplate(e.target.value)} className="editor-select">
-                                    {CHAT_TEMPLATE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                    {getChatTemplateOptions().map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                                 </select>
                             </div>
                         </div>

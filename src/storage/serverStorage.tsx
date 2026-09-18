@@ -18,7 +18,7 @@ import {
     browserListDirectory, isServerAvailable,
 } from './browserStorage';
 
-import { defaultActions, defaultSampler, defaultCharacterTools, defaultInputStrategy } from '../defaults';
+import { defaultActions, defaultSampler, defaultCharacterTools, defaultInputStrategy } from '../dictionaries/defaults';
 
 // =============================================================================
 // CONFIGURATION & CONSTANTS

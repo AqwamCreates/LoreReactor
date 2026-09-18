@@ -1,5 +1,5 @@
 // src/defaults.ts
-import type { BudgetData, BudgetStrategy, InterjectableAction, LanguageModel, PromptBlockType, Sampler, textType, tool } from './types';
+import type { BudgetData, BudgetStrategy, InterjectableAction, LanguageModel, PromptBlockType, Sampler, textType, tool } from '../types';
 
 export const DEFAULT_BUDGET_RESET_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 

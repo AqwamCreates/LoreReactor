@@ -1,5 +1,5 @@
 // src/services/aiRecommendationSchema.ts
-import { defaultInputStrategy } from '../defaults';
+import { defaultInputStrategy } from '../dictionaries/defaults';
 import type { EntityType } from './aiRecommendationTypes';
 
 const REGEX_TRIGGER_SCHEMA = `[{"trigger": "string (regex without delimiters)", "context": "'global' | 'local' | 'previous'", "target": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator'"}]`;

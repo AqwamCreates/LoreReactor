@@ -3,7 +3,7 @@ import { useState, useMemo, type CSSProperties } from 'react';
 import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, Sampler } from '../types';
 import { SliderInput } from './SliderInput';
 import '../main.css';
-import { defaultInputStrategy, defaultProfileTools } from '../defaults';
+import { defaultInputStrategy, defaultProfileTools } from '../dictionaries/defaults';
 
 interface ProfileEditorModalProps {
     isOpen: boolean;
@@ -74,7 +74,7 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
     ];
 }
 
-const ALL_BUILT_IN_BLOCK_TYPES = [...defaultInputStrategy, 'Model Instruction Template', 'Model Chat Template']
+const ALL_BUILT_IN_BLOCK_TYPES = [...defaultInputStrategy, 'Model Instruction Template', 'Model Chat Template', 'Model Chat-Instruction Template']
 
 function isBuiltInBlockType(value: string): value is PromptBlockType {
     return (ALL_BUILT_IN_BLOCK_TYPES as string[]).includes(value);

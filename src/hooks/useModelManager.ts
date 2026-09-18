@@ -4,7 +4,7 @@ import type { cloudBackend, LanguageModel } from '../types';
 import { loadAllRawModels, saveRawModel, deleteRawModel } from '../storage/serverStorage';
 import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../configurations';
-import { cloudBackends } from '../languageModelInformation';
+import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { buildModelLoadArguments } from './modelLoadArguments';
 import { useSessionStore } from './useSessionStore';
 

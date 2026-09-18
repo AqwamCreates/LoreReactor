@@ -4,7 +4,7 @@ import type { Character, InteractionData, Memory } from '../types';
 import { saveRawCharacter } from '../storage/serverStorage';
 import { getEffectiveEnableMemoryWriting } from './characterLogic';
 import { generateCharacterMemory } from '../services/ChatMessageSummarizationEngine';
-import { memoryWriteTrigger } from '../stringList';
+import { memoryWriteTrigger } from '../dictionaries/stringList';
 import { v4 as uuidv4 } from 'uuid';
 import { useSessionStore } from './useSessionStore';
 

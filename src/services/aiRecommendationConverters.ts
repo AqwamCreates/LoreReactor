@@ -3,7 +3,7 @@ import type { Character, Context, Location, AudioTrack, Sampler, Profile, Prompt
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './aiRecommendationTypes';
 import type { GeneratedOutput } from './aiRecommendationTypes';
-import { defaultCharacterTools, defaultProfileTools , defaultNarrateTexts } from '../defaults'
+import { defaultCharacterTools, defaultProfileTools , defaultNarrateTexts } from '../dictionaries/defaults'
 
 function ensureId(obj: Record<string, unknown>): string {
     return (typeof obj.id === 'string' && obj.id.length > 0) ? obj.id : uuidv4();

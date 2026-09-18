@@ -1,7 +1,7 @@
 // src/components/renderHelpers.tsx
 import type React from 'react';
 import type { LanguageModel, BudgetStrategy, Profile, RawInteractionData, cloudBackend } from '../types';
-import { cloudBackends } from '../languageModelInformation';
+import { cloudBackends } from '../dictionaries/languageModelInformation';
 
 export function getRenderSubTextForTriStates(value: number, text: string): React.ReactNode {
     if (value === 0) return null;

@@ -29,7 +29,7 @@ import { buildModelLoadArguments } from '../hooks/modelLoadArguments';
 import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatMessageText } from '../utilities/textFormatter';
-import { cloudBackends } from '../languageModelInformation';
+import { cloudBackends } from '../dictionaries/languageModelInformation';
 import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, cloudBackend } from '../types';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
@@ -56,7 +56,7 @@ import { LadderView } from './views/LadderView';
 import { CinematicView } from './views/CinematicView';
 import { VisualNovelView } from './views/VisualNovelView';
 import type { ViewModeProps } from './views/types';
-import { defaultContextLength } from '../defaults';
+import { defaultContextLength } from '../dictionaries/defaults';
 
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
 const STORAGE_KEY_BUDGET_STRATEGY = 'loreReactor_selectedBudgetStrategyId';

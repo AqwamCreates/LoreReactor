@@ -10,8 +10,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { CharacterAdvancedSettingsEditorModal } from './CharacterAdvancedSettingsEditorModal';
 import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
 import { CharacterImageEditorModal } from './CharacterImageEditorModal';
+import { getInstructionTemplateOptions, getChatTemplateOptions } from '../dictionaries/modelTemplates';
 import '../main.css';
-import { defaultCharacterTools } from '../defaults';
+import { defaultCharacterTools } from '../dictionaries/defaults';
 
 // ─── Defaults ───────────────────────────────────────────────────────
 const DEFAULT_INITIATIVE_WEIGHT = 1.2;
@@ -120,6 +121,9 @@ function CharacterEditorModalInner({
 
     const [doNotInjectCharacterImage, setDoNotInjectCharacterImage] = useState<boolean>(existingCharacter?.doNotInjectCharacterImage ?? false);
 
+    const [chatTemplateOverride, setChatTemplateOverride] = useState<string>(existingCharacter?.chatTemplateOverride || '');
+    const [instructionTemplateOverride, setInstructionTemplateOverride] = useState<string>(existingCharacter?.instructionTemplateOverride || '');
+
     const [numberOfMessagesToDisableThinkPromptStr, setNumberOfMessagesToDisableThinkPromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableThinkPrompt ?? DEFAULT_DISABLE_THINK_PROMPT));
     const [numberOfMessagesToDisableMetaThinkInstructionsStr, setNumberOfMessagesToDisableMetaThinkInstructionsStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableMetaThinkInstructions ?? DEFAULT_DISABLE_META_THINK));
     const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableDialoguePrompt ?? DEFAULT_DISABLE_DIALOGUE_PROMPT));
@@ -142,8 +146,6 @@ function CharacterEditorModalInner({
         iw: null, cp: null, ms: null,
     });
 
-    // Token counts start as null (unknown). They get populated by user edits
-    // or by the initial computation triggered after engine context is set.
     const [tokenCounts, setTokenCounts] = useState<TokenCounts>({
         systemPrompt: null, thinkPrompt: null, appearancePrompt: null, dialoguePrompt: null, starterPrompt: null,
     });
@@ -170,7 +172,6 @@ function CharacterEditorModalInner({
         }, 500);
     }, []);
 
-    // Cleanup timeouts on unmount. Capture ref value locally to satisfy compiler.
     useEffect(() => {
         const timeouts = tokenCountTimeoutsRef.current;
         return () => {
@@ -178,17 +179,12 @@ function CharacterEditorModalInner({
         };
     }, []);
 
-    // Set engine context on mount and trigger initial token counts.
-    // Uses requestAnimationFrame to defer token counting out of the
-    // synchronous effect body, avoiding the cascading render warning.
     useEffect(() => {
         if (selectedModel) {
             tokenEngine.setRunningModels(runningModels ?? {});
             tokenEngine.setContext(selectedModel);
         }
 
-        // Defer initial token counts to next frame so they execute
-        // outside the synchronous effect body.
         const rafId = requestAnimationFrame(() => {
             const fields: Array<{ key: keyof TokenCounts; text: string }> = [
                 { key: 'systemPrompt', text: existingCharacter?.systemPrompt || '' },
@@ -286,6 +282,7 @@ function CharacterEditorModalInner({
         setNameSensitivityStr('-1');
         setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
         setMaximumActionStaminaStr('-1');
+        setChatTemplateOverride(''); setInstructionTemplateOverride('');
         setSelectedStopPatternIds([]); setDoNotInjectCharacterImage(false);
         setNumberOfMessagesToDisableThinkPromptStr(String(DEFAULT_DISABLE_THINK_PROMPT));
         setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(DEFAULT_DISABLE_META_THINK));
@@ -424,6 +421,8 @@ function CharacterEditorModalInner({
             memoryRetentionWeight: finalMRW, contextSensitivity: finalCRS,
             maximumActionStamina: finalMAS,
             doNotInjectCharacterImage: doNotInjectCharacterImage || undefined,
+            chatTemplateOverride: chatTemplateOverride || undefined,
+            instructionTemplateOverride: instructionTemplateOverride || undefined,
             numberOfMessagesToDisableThinkPrompt: Number.isNaN(rawDisableThink) ? DEFAULT_DISABLE_THINK_PROMPT : Math.max(0, rawDisableThink),
             numberOfMessagesToDisableMetaThinkInstructions: Number.isNaN(rawDisableMeta) ? DEFAULT_DISABLE_META_THINK : Math.max(0, rawDisableMeta),
             numberOfMessagesToDisableDialoguePrompt: Number.isNaN(rawDisableDialogue) ? DEFAULT_DISABLE_DIALOGUE_PROMPT : Math.max(0, rawDisableDialogue),
@@ -517,6 +516,27 @@ function CharacterEditorModalInner({
                                         {!isLoadingSamplers && allSamplers.length === 0 && <option>No samplers available</option>}
                                         {!isLoadingSamplers && allSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
                                     </select>
+
+                                    <div className="editor-section">
+                                        <span className="editor-section-title">Template Overrides</span>
+                                        <div style={{ fontSize: '0.6rem', opacity: 0.6, marginBottom: '8px' }}>
+                                            Override the model's default templates for this character. Leave as None to use the model's configured template. Chat-Instruct mode is composed automatically when both overrides are set.
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Chat Template Override</label>
+                                                <select value={chatTemplateOverride} onChange={(e) => setChatTemplateOverride(e.target.value)} className="editor-select" disabled={isUploading}>
+                                                    {getChatTemplateOptions().map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Instruction Template Override</label>
+                                                <select value={instructionTemplateOverride} onChange={(e) => setInstructionTemplateOverride(e.target.value)} className="editor-select" disabled={isUploading}>
+                                                    {getInstructionTemplateOptions().map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
 
                                     <div className="editor-section">
                                         <label className="editor-checkbox-label">

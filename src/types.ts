@@ -500,7 +500,8 @@ export type PromptBlockType =
   | 'Tool Instructions'
   | 'Text Injection'
   | 'Model Chat Template'
-  | 'Model Instruction Template';
+  | 'Model Instruction Template'
+  | 'Model Chat-Instruction Template'
 
 export interface PromptBlock extends ObjectData {
   textContent: string

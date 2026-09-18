@@ -3,7 +3,7 @@ import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, 
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders, getUniversalMessageFilterFlags } from '../hooks/chatLogic';
-import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, turnStartString, turnEndString } from '../stringList';
+import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, turnStartString, turnEndString } from '../dictionaries/stringList';
 import { buildRequestBody } from '../hooks/genericRequestBuilderLogic';
 
 const startOfMemoryLine = `${contextStartString}The Start Of My Memory${contextEndString}`;

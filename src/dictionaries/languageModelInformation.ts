@@ -1,4 +1,4 @@
-import type { cloudBackend, localBackend } from "./types";
+import type { cloudBackend, localBackend } from "../types";
 
 export const localBackends: localBackend[] = [
     'Llama.cpp', 'Transformers', 'ExLlamaV3', 'ExLlamaV3 HF', 'ExLlamaV2', 'TensorRT-LLM', 'Ollama'
