@@ -74,7 +74,7 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
     ];
 }
 
-const ALL_BUILT_IN_BLOCK_TYPES = [...defaultInputStrategy, 'Model Chat Template', 'Model Instruction Template']
+const ALL_BUILT_IN_BLOCK_TYPES = [...defaultInputStrategy, 'Model Instruction Template', 'Model Chat Template']
 
 function isBuiltInBlockType(value: string): value is PromptBlockType {
     return (ALL_BUILT_IN_BLOCK_TYPES as string[]).includes(value);
