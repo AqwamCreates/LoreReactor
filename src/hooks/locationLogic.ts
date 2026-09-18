@@ -1,8 +1,8 @@
 // src/hooks/locationLogic.ts
 import type { Character, InteractionData, Location } from '../types';
+import { initializeClothingWearingStatuses } from './characterLogic';
 import { findPreviousMessage } from './chatLogic';
 import { v4 as uuidv4 } from 'uuid';
-
 
 /**
  * Get the current location index for a character from their last interaction entry.
@@ -295,7 +295,7 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
                         id: uuidv4(),
                         character: { ...fallback },
                         locationIndex,
-                        characterClothingWearingStatuses: {},
+                        characterClothingWearingStatuses: initializeClothingWearingStatuses(fallback),
                         characterLockedLocations: {},
                         parentInteractionMessageId: null,
                         firstCreatedTimestamp: now,
@@ -321,6 +321,7 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
                     id: uuidv4(),
                     character: { ...picked },
                     locationIndex,
+                    characterClothingWearingStatuses: initializeClothingWearingStatuses(picked),
                     characterLockedLocations: {},
                     parentInteractionMessageId: null,
                     firstCreatedTimestamp: now,

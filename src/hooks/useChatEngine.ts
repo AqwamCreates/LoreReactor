@@ -7,7 +7,8 @@ import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngi
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { saveRawInteractionData } from '../storage/serverStorage';
 import { findPreviousMessage, updatePartialMessageInInteractionData } from './chatLogic';
-import { getCurrentLocationIndex } from './locationLogic';
+import { getCurrentLocationIndex, getReachableLocations, sampleReachableLocationByWeight } from './locationLogic';
+import { initializeClothingWearingStatuses } from './characterLogic';
 import { v4 as uuidv4 } from 'uuid';
 import { loadPendingToolActions } from '../services/ToolExecutor';
 
@@ -78,9 +79,47 @@ export function useChatEngine(deps: EngineDependencies) {
                     break;
                 }
                 case 'kick': {
-                    updatedData = { ...updatedData, participants: updatedData.participants.filter(p => p.id !== action.payload.characterId) };
-                    changed = true;
-                    addToast(`👢 ${action.payload.characterName} was kicked from the session.`, 'info');
+                    // Kick moves the character to a reachable adjacent location from their current location.
+                    const kickedChar = updatedData.participants.find(p => p.id === action.payload.characterId);
+                    if (kickedChar) {
+                        const kickedPrevMsg = findPreviousMessage(updatedData, kickedChar.id);
+                        const kickedCurrentLocIdx = getCurrentLocationIndex(updatedData, kickedChar);
+                        const prevClothingStatuses = (kickedPrevMsg as ChatMessage)?.characterClothingWearingStatuses ?? initializeClothingWearingStatuses(kickedChar);
+
+                        let destinationLocIdx: number | undefined = undefined;
+
+                        if (kickedCurrentLocIdx !== undefined && updatedData.locations && updatedData.locations.length > 0) {
+                            // Find reachable locations from the kicked character's current location
+                            const reachable = getReachableLocations(updatedData.locations, kickedCurrentLocIdx);
+                            // Exclude the current location itself — they're being kicked OUT
+                            const excludingCurrent = reachable.filter(r => r.originalIndex !== kickedCurrentLocIdx);
+                            if (excludingCurrent.length > 0) {
+                                destinationLocIdx = sampleReachableLocationByWeight(excludingCurrent, kickedChar);
+                            }
+                        }
+
+                        // If no reachable location found, fall back to undefined (no location)
+                        const kickMsg = {
+                            messageType: 'interaction' as const,
+                            id: uuidv4(),
+                            character: { ...kickedChar },
+                            locationIndex: destinationLocIdx,
+                            characterClothingWearingStatuses: prevClothingStatuses,
+                            characterLockedLocations: {},
+                            parentInteractionMessageId: updatedData.interactionHistory[updatedData.interactionHistory.length - 1]?.id ?? null,
+                            firstCreatedTimestamp: Date.now(),
+                            lastUpdatedTimestamp: Date.now(),
+                        };
+                        updatedData = { ...updatedData, interactionHistory: [...updatedData.interactionHistory, kickMsg] };
+                        changed = true;
+
+                        if (destinationLocIdx !== undefined) {
+                            const destName = updatedData.locations?.[destinationLocIdx]?.name || 'unknown location';
+                            addToast(`👢 ${action.payload.characterName} was kicked to ${destName}.`, 'info');
+                        } else {
+                            addToast(`👢 ${action.payload.characterName} was kicked out with nowhere to go.`, 'info');
+                        }
+                    }
                     break;
                 }
                 case 'invite': {
@@ -88,9 +127,14 @@ export function useChatEngine(deps: EngineDependencies) {
                     if (currentLocIdx !== undefined) {
                         const invitedChar = updatedData.participants.find(p => p.id === action.payload.characterId);
                         if (invitedChar) {
+                            const invitedPrevMsg = findPreviousMessage(updatedData, invitedChar.id);
+                            const prevClothingStatuses = (invitedPrevMsg as ChatMessage)?.characterClothingWearingStatuses ?? initializeClothingWearingStatuses(invitedChar);
+
                             const inviteMsg = {
                                 messageType: 'interaction' as const, id: uuidv4(), character: { ...invitedChar },
-                                locationIndex: currentLocIdx, characterLockedLocations: {},
+                                locationIndex: currentLocIdx,
+                                characterClothingWearingStatuses: prevClothingStatuses,
+                                characterLockedLocations: {},
                                 parentInteractionMessageId: updatedData.interactionHistory[updatedData.interactionHistory.length - 1]?.id ?? null,
                                 firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
                             };

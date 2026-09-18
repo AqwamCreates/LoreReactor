@@ -333,3 +333,15 @@ export function getNameMentionCount(character: Character, interactionData: Inter
 
     return mentionCount;
 }
+
+export function initializeClothingWearingStatuses(character: Character): Record<string, boolean> {
+    const clothings = character.clothings;
+    if (!clothings || clothings.length === 0) return {};
+
+    const statuses: Record<string, boolean> = {};
+    for (const clothing of clothings) {
+        const probability = clothing.initialWearingProbability ?? 1;
+        statuses[clothing.id] = probability >= 1 ? true : probability <= 0 ? false : Math.random() < probability;
+    }
+    return statuses;
+}
