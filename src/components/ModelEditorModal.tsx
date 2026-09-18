@@ -217,8 +217,8 @@ export function ModelEditorModal({
 
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
 
-    const [chatTemplate, setChatTemplate] = useState<string>('');
     const [instructionTemplate, setInstructionTemplate] = useState<string>('');
+    const [chatTemplate, setChatTemplate] = useState<string>('');
 
     const modelFileRef = useRef<HTMLInputElement>(null);
     const mmprojFileRef = useRef<HTMLInputElement>(null);
@@ -662,15 +662,15 @@ export function ModelEditorModal({
                         </div>
                         <div className="editor-row">
                             <div>
-                                <label className="editor-label editor-label-small">Chat Template</label>
-                                <select value={chatTemplate} onChange={(e) => setChatTemplate(e.target.value)} className="editor-select">
-                                    {CHAT_TEMPLATE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                </select>
-                            </div>
-                            <div>
                                 <label className="editor-label editor-label-small">Instruction Template</label>
                                 <select value={instructionTemplate} onChange={(e) => setInstructionTemplate(e.target.value)} className="editor-select">
                                     {INSTRUCTION_TEMPLATE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="editor-label editor-label-small">Chat Template</label>
+                                <select value={chatTemplate} onChange={(e) => setChatTemplate(e.target.value)} className="editor-select">
+                                    {CHAT_TEMPLATE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                                 </select>
                             </div>
                         </div>
