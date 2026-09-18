@@ -4,7 +4,7 @@ import { loadRawBudgetData, saveRawBudgetData } from '../storage/serverStorage';
 import { prepareRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
-import { getEffectiveTools } from '../hooks/characterLogic';
+import { getEffectiveTools, initializeClothingWearingStatuses } from '../hooks/characterLogic';
 import { sentimentEngine } from './SentimentAnalysisEngine';
 import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEngine';
 import { ToolInvocationParser } from './ToolInvocationParser';
@@ -164,7 +164,7 @@ export class CharacterActor {
         // both the prompt build and the message creation. We call prepareRequestBody
         // once here just for the clothing statuses; the actual streaming calls below
         // will call it again with potentially updated state after tool processing.
-        let resolvedClothingStatuses: Record<string, boolean> = {};
+        let resolvedClothingStatuses: Record<string, boolean> = initializeClothingWearingStatuses(character);
         if (!isResuming) {
             const probeModelId = strat
                 ? ((await getBudgetStrategyEngine().selectModelForRequest({ prompt: '' }))?.modelId || '')
@@ -173,7 +173,7 @@ export class CharacterActor {
                 try {
                     const probeResult = await prepareRequestBody(data, character, '', allPromptBlocks, probeModelId, protagonistFileBase64s);
                     resolvedClothingStatuses = probeResult.characterClothingWearingStatuses;
-                } catch { /* non-critical, fall back to empty */ }
+                } catch { /* non-critical, keep initializeClothingWearingStatuses fallback */ }
             }
         }
 

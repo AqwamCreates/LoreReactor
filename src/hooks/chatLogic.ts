@@ -3,7 +3,7 @@ import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlo
 import { detectName } from './nameDetection';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storage/serverStorage';
-import { getEffectiveMaximumChatStamina } from './characterLogic';
+import { getEffectiveMaximumChatStamina, initializeClothingWearingStatuses } from './characterLogic';
 import { generalStartString, generalEndString } from '../dictionaries/stringList';
 import { buildPrompt, getParticipantTag } from './promptLogic';
 
@@ -311,9 +311,9 @@ export function createChatMessage(
         locationIndex = detectLocationFromText(textContent, interactionData.locations);
     }
 
-    // Carry forward clothing wearing statuses from previous message or use provided override
-    const prevClothingStatuses = (previousMessage as ChatMessage)?.characterClothingWearingStatuses ?? {};
-    const clothingWearingStatuses = options?.clothingWearingStatuses ?? prevClothingStatuses;
+    // Carry forward clothing wearing statuses from previous message, use provided override, or initialize from character definition
+    const prevClothingStatuses = (previousMessage as ChatMessage)?.characterClothingWearingStatuses;
+    const clothingWearingStatuses = options?.clothingWearingStatuses ?? prevClothingStatuses ?? initializeClothingWearingStatuses(character);
 
     return {
         id,

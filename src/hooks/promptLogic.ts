@@ -1458,14 +1458,7 @@ export async function buildPrompt(
     const enabledToolNames = (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
 
     if (enabledToolNames.length > 0) {
-        toolInstructions.push(`${generalStartString}I must use the tools that I can use during my response. To use a tool, I write ${toolStartSring} followed by the tool type and arguments, then close with ${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results.${generalEndString}`);
-
-        toolInstructions.push(`${generalStartString}Tool invocation markers are completely invisible to the user and I will keep it that way unless requested otherwise by the user.${generalEndString}`);
-
-        for (const toolName of enabledToolNames) {
-            const instruction = TOOL_INSTRUCTION_MAP[toolName];
-            if (instruction) toolInstructions.push(instruction);
-        }
+        toolInstructions.push(`${generalStartString}I understand that I can access the tools by calling the ${toolStartSring} marker followed by the tool name and arguments, then closing with ${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results. Tool invocation markers are completely invisible to the user. Writing a tool name without arguments returns usage instructions for that tool. Available tools: ${enabledToolNames.join(', ')}.${generalEndString}`);
     }
 
     const fatigueLines: string[] = [];

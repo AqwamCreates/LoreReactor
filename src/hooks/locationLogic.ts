@@ -26,17 +26,24 @@ export function getCurrentLocation(interactionData: InteractionData, character: 
     return locations[currentLocationIndex];
 }
 
-export function getCoLocatedParticipantCount(interactionData: InteractionData, character: Character): number {
+/**
+ * Get all co-located participants at the same location as the given character.
+ * Excludes the character themselves.
+ */
+export function getCoLocatedParticipants(interactionData: InteractionData, character: Character): Character[] {
     const locationIndex = getCurrentLocationIndex(interactionData, character);
+    if (locationIndex === undefined) return [];
 
-    const participants = interactionData.participants;
+    return interactionData.participants.filter(p => {
+        if (p.id === character.id) return false;
+        const pLocIdx = getCurrentLocationIndex(interactionData, p);
+        return pLocIdx === locationIndex;
+    });
+}
 
-    let count = 0;
-    for (const P of participants) {
-        const participantLocationIndex = getCurrentLocationIndex(interactionData, P);
-        if (participantLocationIndex === locationIndex) count++;
-    }
-
+export function getCoLocatedParticipantCount(interactionData: InteractionData, character: Character): number {
+    const participants = getCoLocatedParticipants(interactionData, character);
+    const count = participants.length;
     return count;
 }
 
@@ -54,7 +61,6 @@ export function findLocationByRegex(locations: Location[], text: string, charact
         const triggers = loc.regularExpressionActivationTriggers;
         if (!triggers || triggers.length === 0) continue;
 
-        // Check character bindings — only match if character is bound or no bindings exist
         if (loc.characterBindings && loc.characterBindings.length > 0 && !loc.characterBindings.includes(character.id)) {
             continue;
         }
@@ -122,20 +128,13 @@ export function getReachableLocations(
     return locations
         .map((loc, i) => ({ location: loc, originalIndex: i }))
         .filter(({ location }) => {
-            // No bindings = always reachable
             if (!location.locationBindings || location.locationBindings.length === 0) return true;
-
-            // No current location = fallback to unrestricted
             if (!currentLocation) return true;
-
-            // Check if current location is in bindings
             if (!location.locationBindings.includes(currentLocation.id)) return false;
 
-            // Check conditional regex trigger for this specific binding
             const conditionalRegex = location.locationBindingRegularExpressionTriggers?.[currentLocation.id];
-            if (!conditionalRegex || !conditionalRegex.trim()) return true; // Unconditional binding
+            if (!conditionalRegex || !conditionalRegex.trim()) return true;
 
-            // Conditional binding — must match message text
             if (!messageText) return false;
             try {
                 const regex = new RegExp(conditionalRegex, 'i');
@@ -194,12 +193,10 @@ export function sampleInitialLocationForCharacter(locations: Location[], charact
     for (let i = 0; i < locations.length; i++) {
         const loc = locations[i];
 
-        // Exclude locations bound to specific characters that don't include this one
         if (loc.characterBindings && loc.characterBindings.length > 0 && !loc.characterBindings.includes(character.id)) {
             continue;
         }
 
-        // Use character-specific weight if defined, otherwise global weight
         const charWeight = loc.characterWeights?.[character.id];
         const weight = charWeight !== undefined ? charWeight : loc.globalWeight;
 
@@ -231,7 +228,6 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
     const locations = interactionData.locations;
     if (!locations || locations.length === 0) return interactionData;
 
-    // Collect all participant IDs
     const allParticipantIds = new Set<string>();
     allParticipantIds.add(interactionData.protagonist.id);
     for (const p of interactionData.participants) allParticipantIds.add(p.id);
@@ -240,7 +236,6 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
     const now = Date.now();
     let changed = false;
 
-    // Phase 1: Patch existing entries that have undefined locationIndex
     const noHistoryAtAll: Character[] = [];
     for (const id of allParticipantIds) {
         const character = id === interactionData.protagonist.id
@@ -251,14 +246,12 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
         const lastMsg = findPreviousMessage(interactionData, character.id);
 
         if (!lastMsg) {
-            // No previous message at all — goes to sampling pool
             noHistoryAtAll.push(character);
             continue;
         }
 
         if (lastMsg.locationIndex !== undefined) continue;
 
-        // Has a previous message but no locationIndex — assign and patch in place
         const locationIndex = sampleInitialLocationForCharacter(locations, character);
         if (locationIndex === undefined) continue;
 
@@ -271,7 +264,6 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
         }
     }
 
-    // Phase 2: Sample remaining characters (no history at all) by initiative weight
     if (noHistoryAtAll.length > 0) {
         const remaining = [...noHistoryAtAll];
         while (remaining.length > 0) {
@@ -286,7 +278,6 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
             }
 
             if (pool.length === 0 || totalWeight <= 0) {
-                // Fallback: take first remaining
                 const fallback = remaining.shift()!;
                 const locationIndex = sampleInitialLocationForCharacter(locations, fallback);
                 if (locationIndex !== undefined) {
