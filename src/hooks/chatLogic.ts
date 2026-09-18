@@ -315,6 +315,9 @@ export function createChatMessage(
     const prevClothingStatuses = (previousMessage as ChatMessage)?.characterClothingWearingStatuses;
     const clothingWearingStatuses = options?.clothingWearingStatuses ?? prevClothingStatuses ?? initializeClothingWearingStatuses(character);
 
+    // Carry forward locked locations from previous message
+    const prevLockedLocations = previousMessage?.characterLockedLocations ?? {};
+
     return {
         id,
         messageType: 'chat',
@@ -327,7 +330,7 @@ export function createChatMessage(
         locationIndex,
         isPartial,
         characterClothingWearingStatuses: clothingWearingStatuses,
-        characterLockedLocations: {},
+        characterLockedLocations: { ...prevLockedLocations },
         modelTextContentSummaries: {},
         modelInteractionTextContentSummaries: {},
         kvCacheTextContentPaths: {},

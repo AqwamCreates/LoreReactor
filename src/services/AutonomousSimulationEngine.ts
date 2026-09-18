@@ -1,7 +1,7 @@
 // src/services/AutonomousSimulationEngine.ts
 import type { Character, InteractionData, HistoryMessage, ChatMessage, InteractionMessage } from '../types';
 import { getEffectiveChatProbability, getEffectiveChatImpatienceSensitivity, generateChatStaminaForInteractionData, generateActionStaminaForInteractionData, consumeChatStaminaForMessage, consumeActionStaminaForMessage } from '../hooks/characterLogic';
-import { getCurrentLocationIndex, findLocationByRegex, getReachableLocations, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
+import { getCurrentLocationIndex, findLocationByRegex, getReachableLocationsByCharacter, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { saveRawInteractionData } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -39,6 +39,7 @@ function createSilentInteraction(
     previousChatStamina: number | undefined,
     previousActionStamina: number | undefined,
     clothingWearingStatuses: Record<string, boolean>,
+    lockedLocations: Record<string, string[]>,
     parentId: string | null | undefined,
 ): InteractionMessage {
     const now = Date.now();
@@ -50,7 +51,7 @@ function createSilentInteraction(
         remainingActionStamina: previousActionStamina,
         locationIndex,
         characterClothingWearingStatuses: clothingWearingStatuses,
-        characterLockedLocations: {},
+        characterLockedLocations: { ...lockedLocations },
         parentInteractionMessageId: parentId ?? null,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
@@ -308,8 +309,9 @@ export class AutonomousSimulationEngine {
                 const prevChatStamina = previousMessage?.remainingChatStamina;
                 const prevActionStamina = previousMessage?.remainingActionStamina;
                 const prevClothingStatuses = (previousMessage as ChatMessage)?.characterClothingWearingStatuses ?? {};
+                const prevLockedLocations = previousMessage?.characterLockedLocations ?? {};
 
-                const reachable = getReachableLocations(workingData.locations, moverLoc!, triggeringMessageText);
+                const reachable = getReachableLocationsByCharacter(workingData, mover, triggeringMessageText);
                 const newLoc = sampleReachableLocationByWeight(reachable, mover);
 
                 if (newLoc !== undefined && newLoc !== moverLoc) {
@@ -326,6 +328,7 @@ export class AutonomousSimulationEngine {
                         prevChatStamina,
                         postRegenMsg?.remainingActionStamina ?? prevActionStamina,
                         prevClothingStatuses,
+                        prevLockedLocations,
                         lastParentId,
                     );
                     workingData.interactionHistory.push(silent);

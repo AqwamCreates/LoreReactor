@@ -298,7 +298,7 @@ export interface BaseMessage {
   characterExpression?: string;
   inventory?: Inventory,
   characterClothingWearingStatuses: Record<string, boolean>
-  characterLockedLocations: Record<string, string[]>
+  characterLockedLocations: Record<string, string[]> // Location Ids -> An array of character Ids.
   parentInteractionMessageId?: string | null;
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;

@@ -5,7 +5,7 @@ import { fetchLinkContent, buildSearchUrl } from '../services/linkFetcher';
 import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage } from '../types';
 import { findPreviousMessage } from '../hooks/chatLogic';
 import { getAudioEngine } from './AudioEngine';
-import { getCurrentLocationIndex, getReachableLocations, getCoLocatedParticipants } from '../hooks/locationLogic';
+import { getCurrentLocationIndex, getReachableLocationsByCharacter, isCharacterLockedFromLocation, getCoLocatedParticipants } from '../hooks/locationLogic';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface ToolResult {
@@ -317,8 +317,10 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
     const isAdjacent = currentLocation.locationBindings.includes(targetLocation.id) || targetLocation.locationBindings.includes(currentLocation.id);
     if (!isAdjacent) return { toolType: 'move', args, content: `[Error: "${targetLocation.name}" is not adjacent. Use teleport for non-adjacent movement.]`, displayReplacement: `[Error: Not adjacent]` };
 
-    const locks = loadLocationLocks(nextMessage.inventory);
-    if (locks[targetLocation.id]) return { toolType: 'move', args, content: `[Error: "${targetLocation.name}" is locked. Use key unlock first.]`, displayReplacement: `[Error: Location locked]` };
+    // Check lock state from characterLockedLocations instead of inventory
+    if (isCharacterLockedFromLocation(interactionData, nextMessage.character.id, targetLocation.id)) {
+        return { toolType: 'move', args, content: `[Error: "${targetLocation.name}" is locked for you. Use key unlock first.]`, displayReplacement: `[Error: Location locked]` };
+    }
 
     nextMessage.locationIndex = locations.findIndex(l => l.id === targetLocation.id);
     return { toolType: 'move', args, content: `Moved to "${targetLocation.name}" (${targetLocation.id}).`, displayReplacement: `[🚶 Moved to "${targetLocation.name}"]` };
@@ -365,10 +367,6 @@ function loadStopwatches(inventory: Inventory | undefined): StopwatchEntry[] {
 }
 function saveStopwatches(inventory: Inventory, stopwatches: StopwatchEntry[]): void {
     if (stopwatches.length === 0) delete inventory['__stopwatches__']; else inventory['__stopwatches__'] = JSON.stringify(stopwatches);
-}
-function loadLocationLocks(inventory: Inventory | undefined): Record<string, boolean> {
-    if (!inventory || typeof inventory['__location_locks__'] !== 'string') return {};
-    try { return JSON.parse(inventory['__location_locks__'] as string); } catch { return {}; }
 }
 
 // ─── Timer ──────────────────────────────────────────────────────────
@@ -696,13 +694,14 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
     const subcommand = parts[0]?.toLowerCase();
 
     if (subcommand === 'locations') {
-        const kicker = nextMessage.character, locations = interactionData.locations || [];
-        const currentLocIdx = getCurrentLocationIndex(interactionData, kicker);
-        const currentLocId = currentLocIdx !== undefined ? locations[currentLocIdx]?.id : undefined;
-        const lastMsg = findPreviousMessage(interactionData, kicker.id);
-        let locks: Record<string, boolean> = {};
-        if (lastMsg?.inventory && typeof lastMsg.inventory['__location_locks__'] === 'string') { try { locks = JSON.parse(lastMsg.inventory['__location_locks__'] as string); } catch {} }
-        const reachable = getReachableLocations(locations, currentLocIdx).filter(({ location }) => !(currentLocId && location.id === currentLocId) && !locks[location.id]);
+        const kicker = nextMessage.character;
+        // Use getReachableLocationsByCharacter which filters out locked locations
+        const reachable = getReachableLocationsByCharacter(interactionData, kicker)
+            .filter(({ location }) => {
+                const kickerLocIdx = getCurrentLocationIndex(interactionData, kicker);
+                const kickerLocId = kickerLocIdx !== undefined ? interactionData.locations?.[kickerLocIdx]?.id : undefined;
+                return !(kickerLocId && location.id === kickerLocId);
+            });
         if (reachable.length === 0) return { toolType: 'kick', args, content: 'No reachable locations.', displayReplacement: '[👢 No kickable locations]' };
         return { toolType: 'kick', args, content: reachable.map(({ location }) => `${location.name} (${location.id})`).join('\n'), displayReplacement: `[👢 ${reachable.length} location(s)]` };
     }
@@ -722,23 +721,23 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
     const targetLocIdx = getCurrentLocationIndex(interactionData, targetChar);
     if (kickerLocIdx !== targetLocIdx) return { toolType: 'kick', args, content: '[Error: Target not co-located.]', displayReplacement: `[Error: Not co-located]` };
 
-    const locations = interactionData.locations || [];
-    const currentLocId = kickerLocIdx !== undefined ? locations[kickerLocIdx]?.id : undefined;
-    const lastMsg = findPreviousMessage(interactionData, kicker.id);
-    let locks: Record<string, boolean> = {};
-    if (lastMsg?.inventory && typeof lastMsg.inventory['__location_locks__'] === 'string') { try { locks = JSON.parse(lastMsg.inventory['__location_locks__'] as string); } catch {} }
-    const kickable = getReachableLocations(locations, kickerLocIdx).filter(({ location }) => !(currentLocId && location.id === currentLocId) && !locks[location.id]);
+    // Use getReachableLocationsByCharacter which filters out locked locations
+    const kickable = getReachableLocationsByCharacter(interactionData, kicker)
+        .filter(({ location }) => {
+            const kickerLocId = kickerLocIdx !== undefined ? interactionData.locations?.[kickerLocIdx]?.id : undefined;
+            return !(kickerLocId && location.id === kickerLocId);
+        });
 
     let destIndex: number | undefined, destName: string, destId: string;
     if (targetLocationId) {
-        const destLoc = locations.find(l => l.id === targetLocationId);
+        const destLoc = interactionData.locations?.find(l => l.id === targetLocationId);
         if (!destLoc) return { toolType: 'kick', args, content: `[Error: Location "${targetLocationId}" not found.]`, displayReplacement: `[Error: Location not found]` };
         if (!kickable.some(({ location }) => location.id === targetLocationId)) return { toolType: 'kick', args, content: '[Error: Destination not reachable or locked.]', displayReplacement: `[Error: Not reachable]` };
-        destIndex = locations.findIndex(l => l.id === targetLocationId); destName = destLoc.name; destId = destLoc.id;
+        destIndex = interactionData.locations?.findIndex(l => l.id === targetLocationId); destName = destLoc.name; destId = destLoc.id;
     } else {
         if (kickable.length === 0) return { toolType: 'kick', args, content: '[Error: No reachable destinations.]', displayReplacement: `[Error: No destinations]` };
         const pick = kickable[Math.floor(Math.random() * kickable.length)];
-        destIndex = pick.originalIndex; destName = pick.location.name; destId = pick.location.id;
+        destIndex = pick.locationIndex; destName = pick.location.name; destId = pick.location.id;
     }
 
     appendPendingAction(nextMessage, { type: 'kick', payload: { characterId: targetChar.id, characterName: targetChar.name, destinationLocationIndex: String(destIndex), destinationLocationName: destName, destinationLocationId: destId } });
@@ -770,32 +769,64 @@ function executeTeleport(args: string, nextMessage: BaseMessage, interactionData
 function executeKey(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
-        return helpResult('key', args, 'key lock <location_id> | key unlock <location_id>');
+        return helpResult('key', args, 'key lock <location_id> [character_id] | key unlock <location_id> [character_id]');
     }
     const parts = trimmed.split(/\s+/);
     const subcommand = parts[0]?.toLowerCase();
-    const locationId = parts.slice(1).join(' ').trim();
-    if (!locationId) return { toolType: 'key', args, content: `[Error: Usage: key ${subcommand || 'lock'} <location_id>]`, displayReplacement: `[Error: Missing location_id]` };
+    const locationId = parts[1]?.trim();
+    const targetCharId = parts.length > 2 ? parts.slice(2).join(' ').trim() : undefined;
+
+    if (!locationId) return { toolType: 'key', args, content: `[Error: Usage: key ${subcommand || 'lock'} <location_id> [character_id]]`, displayReplacement: `[Error: Missing location_id]` };
     if (subcommand !== 'lock' && subcommand !== 'unlock') return { toolType: 'key', args, content: `[Error: Use lock or unlock.]`, displayReplacement: `[Error: Use lock or unlock]` };
 
     const locations = interactionData.locations || [];
     const targetLocation = locations.find(l => l.id === locationId);
     if (!targetLocation) return { toolType: 'key', args, content: `[Error: Location "${locationId}" not found.]`, displayReplacement: `[Error: Not found]` };
 
-    const inventory = nextMessage.inventory ? { ...nextMessage.inventory } : {};
-    const locks = loadLocationLocks(inventory);
+    // Determine which characters to lock/unlock
+    const charsToModify: string[] = targetCharId
+        ? [targetCharId]
+        : interactionData.participants.map(p => p.id);
+
+    // Carry forward existing locks and modify
+    const lockedLocations = nextMessage.characterLockedLocations
+        ? { ...nextMessage.characterLockedLocations }
+        : {};
 
     if (subcommand === 'lock') {
-        locks[targetLocation.id] = true; inventory['__location_locks__'] = JSON.stringify(locks); nextMessage.inventory = inventory;
-        return { toolType: 'key', args, content: `Locked "${targetLocation.name}".`, displayReplacement: `[🔒 Locked "${targetLocation.name}"]` };
+        const existing = lockedLocations[locationId] ? [...lockedLocations[locationId]] : [];
+        for (const charId of charsToModify) {
+            if (!existing.includes(charId)) existing.push(charId);
+        }
+        lockedLocations[locationId] = existing;
+        nextMessage.characterLockedLocations = lockedLocations;
+
+        const desc = targetCharId ? `Locked "${targetLocation.name}" for character ${targetCharId}.` : `Locked "${targetLocation.name}" for all characters.`;
+        return { toolType: 'key', args, content: desc, displayReplacement: `[🔒 Locked "${targetLocation.name}"]` };
     }
 
-    if (!locks[targetLocation.id]) return { toolType: 'key', args, content: `Not locked.`, displayReplacement: `[🔓 Not locked]` };
-    delete locks[targetLocation.id];
-    if (Object.keys(locks).length === 0) delete inventory['__location_locks__']; else inventory['__location_locks__'] = JSON.stringify(locks);
-    nextMessage.inventory = inventory;
-    return { toolType: 'key', args, content: `Unlocked "${targetLocation.name}".`, displayReplacement: `[🔓 Unlocked "${targetLocation.name}"]` };
+    // unlock
+    if (!lockedLocations[locationId] || lockedLocations[locationId].length === 0) {
+        return { toolType: 'key', args, content: `"${targetLocation.name}" is not locked.`, displayReplacement: `[🔓 Not locked]` };
+    }
 
+    if (targetCharId) {
+        // Remove specific character
+        lockedLocations[locationId] = lockedLocations[locationId].filter(id => id !== targetCharId);
+    } else {
+        // Clear all characters
+        delete lockedLocations[locationId];
+    }
+
+    // Clean up empty arrays
+    if (lockedLocations[locationId] && lockedLocations[locationId].length === 0) {
+        delete lockedLocations[locationId];
+    }
+
+    nextMessage.characterLockedLocations = lockedLocations;
+
+    const desc = targetCharId ? `Unlocked "${targetLocation.name}" for character ${targetCharId}.` : `Unlocked "${targetLocation.name}" for all characters.`;
+    return { toolType: 'key', args, content: desc, displayReplacement: `[🔓 Unlocked "${targetLocation.name}"]` };
 }
 
 // ─── Clothing ───────────────────────────────────────────────────────
@@ -1001,11 +1032,14 @@ export function processPendingToolActions(
                 const kickedChar = updatedData.participants.find(p => p.id === action.payload.characterId);
                 if (kickedChar) {
                     const destLocIdx = action.payload.destinationLocationIndex !== undefined ? parseInt(action.payload.destinationLocationIndex, 10) : undefined;
+                    // Carry forward locked locations from kicked character's previous message
+                    const prevKickedMsg = findPrevMsg(updatedData, kickedChar.id);
+                    const prevLockedLocations = prevKickedMsg?.characterLockedLocations ?? {};
                     const kickMsg = {
                         messageType: 'interaction' as const, id: uuidv4(), character: { ...kickedChar },
                         locationIndex: destLocIdx,
-                        characterClothingWearingStatuses: (findPrevMsg(updatedData, kickedChar.id) as ChatMessage)?.characterClothingWearingStatuses ?? {},
-                        characterLockedLocations: {},
+                        characterClothingWearingStatuses: (prevKickedMsg as ChatMessage)?.characterClothingWearingStatuses ?? {},
+                        characterLockedLocations: { ...prevLockedLocations },
                         parentInteractionMessageId: updatedData.interactionHistory[updatedData.interactionHistory.length - 1]?.id ?? null,
                         firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
                     };
@@ -1020,11 +1054,14 @@ export function processPendingToolActions(
                 if (invitedChar) {
                     let currentLocIdx: number | undefined;
                     for (let i = updatedData.interactionHistory.length - 1; i >= 0; i--) { if (updatedData.interactionHistory[i].locationIndex !== undefined) { currentLocIdx = updatedData.interactionHistory[i].locationIndex; break; } }
+                    // Carry forward locked locations from invited character's previous message
+                    const prevInvitedMsg = findPrevMsg(updatedData, invitedChar.id);
+                    const prevLockedLocations = prevInvitedMsg?.characterLockedLocations ?? {};
                     const inviteMsg = {
                         messageType: 'interaction' as const, id: uuidv4(), character: { ...invitedChar },
                         locationIndex: currentLocIdx,
-                        characterClothingWearingStatuses: (findPrevMsg(updatedData, invitedChar.id) as ChatMessage)?.characterClothingWearingStatuses ?? {},
-                        characterLockedLocations: {},
+                        characterClothingWearingStatuses: (prevInvitedMsg as ChatMessage)?.characterClothingWearingStatuses ?? {},
+                        characterLockedLocations: { ...prevLockedLocations },
                         parentInteractionMessageId: updatedData.interactionHistory[updatedData.interactionHistory.length - 1]?.id ?? null,
                         firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
                     };
