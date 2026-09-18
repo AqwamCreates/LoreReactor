@@ -255,13 +255,13 @@ function App() {
             for (const m of activeStrategy.localModels) {
                 if (m.contextLength > max) max = m.contextLength;
             }
-            return max || 1048576;
+            return max || 16384;
         }
         if (selectedModelId) {
             const m = allModels.find(x => x.id === selectedModelId);
-            return m?.contextLength || 1048576;
+            return m?.contextLength || 16384;
         }
-        return 1048576;
+        return 16384;
     }, [activeStrategy, selectedModelId, allModels]);
 
     const loadLocalModelForBudgetStrategyEngine = useCallback(async (modelId: string): Promise<number | null> => {
