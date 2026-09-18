@@ -2,7 +2,7 @@
 
 import type { ToolInvocation } from '../services/ToolInvocationParser';
 import { fetchLinkContent, buildSearchUrl } from '../services/linkFetcher';
-import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage } from '../types';
+import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension } from '../types';
 import { findPreviousMessage } from '../hooks/chatLogic';
 import { getAudioEngine } from './AudioEngine';
 import { getCurrentLocationIndex, getReachableLocationsByCharacter, isCharacterLockedFromLocation, getCoLocatedParticipants } from '../hooks/locationLogic';
@@ -17,10 +17,17 @@ export interface ToolResult {
 
 export interface ToolExecutionContext {
     allCharacters?: Character[];
-    allProfiles?: Profile[];
+    allContexts?: Context[];
     allLocations?: Location[];
     allAudioTracks?: AudioTrack[];
-    allContexts?: Context[];
+    allPromptBlocks?: PromptBlock[];
+    allStopPatterns?: StopPattern[];
+    allSamplers?: Sampler[];
+    allBudgetStrategies?: BudgetStrategy[];
+    allProfiles?: Profile[];
+    allWorlds?: World[];
+    allMemories?: Memory[];
+    allExtensions?: Extension[];
     addToast?: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -317,7 +324,6 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
     const isAdjacent = currentLocation.locationBindings.includes(targetLocation.id) || targetLocation.locationBindings.includes(currentLocation.id);
     if (!isAdjacent) return { toolType: 'move', args, content: `[Error: "${targetLocation.name}" is not adjacent. Use teleport for non-adjacent movement.]`, displayReplacement: `[Error: Not adjacent]` };
 
-    // Check lock state from characterLockedLocations instead of inventory
     if (isCharacterLockedFromLocation(interactionData, nextMessage.character.id, targetLocation.id)) {
         return { toolType: 'move', args, content: `[Error: "${targetLocation.name}" is locked for you. Use key unlock first.]`, displayReplacement: `[Error: Location locked]` };
     }
@@ -695,7 +701,6 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
 
     if (subcommand === 'locations') {
         const kicker = nextMessage.character;
-        // Use getReachableLocationsByCharacter which filters out locked locations
         const reachable = getReachableLocationsByCharacter(interactionData, kicker)
             .filter(({ location }) => {
                 const kickerLocIdx = getCurrentLocationIndex(interactionData, kicker);
@@ -721,7 +726,6 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
     const targetLocIdx = getCurrentLocationIndex(interactionData, targetChar);
     if (kickerLocIdx !== targetLocIdx) return { toolType: 'kick', args, content: '[Error: Target not co-located.]', displayReplacement: `[Error: Not co-located]` };
 
-    // Use getReachableLocationsByCharacter which filters out locked locations
     const kickable = getReachableLocationsByCharacter(interactionData, kicker)
         .filter(({ location }) => {
             const kickerLocId = kickerLocIdx !== undefined ? interactionData.locations?.[kickerLocIdx]?.id : undefined;
@@ -783,12 +787,10 @@ function executeKey(args: string, nextMessage: BaseMessage, interactionData: Int
     const targetLocation = locations.find(l => l.id === locationId);
     if (!targetLocation) return { toolType: 'key', args, content: `[Error: Location "${locationId}" not found.]`, displayReplacement: `[Error: Not found]` };
 
-    // Determine which characters to lock/unlock
     const charsToModify: string[] = targetCharId
         ? [targetCharId]
         : interactionData.participants.map(p => p.id);
 
-    // Carry forward existing locks and modify
     const lockedLocations = nextMessage.characterLockedLocations
         ? { ...nextMessage.characterLockedLocations }
         : {};
@@ -805,20 +807,16 @@ function executeKey(args: string, nextMessage: BaseMessage, interactionData: Int
         return { toolType: 'key', args, content: desc, displayReplacement: `[🔒 Locked "${targetLocation.name}"]` };
     }
 
-    // unlock
     if (!lockedLocations[locationId] || lockedLocations[locationId].length === 0) {
         return { toolType: 'key', args, content: `"${targetLocation.name}" is not locked.`, displayReplacement: `[🔓 Not locked]` };
     }
 
     if (targetCharId) {
-        // Remove specific character
         lockedLocations[locationId] = lockedLocations[locationId].filter(id => id !== targetCharId);
     } else {
-        // Clear all characters
         delete lockedLocations[locationId];
     }
 
-    // Clean up empty arrays
     if (lockedLocations[locationId] && lockedLocations[locationId].length === 0) {
         delete lockedLocations[locationId];
     }
@@ -943,16 +941,17 @@ function executeAdministrator(args: string, nextMessage: BaseMessage, interactio
 
 // ─── Creator ────────────────────────────────────────────────────────
 
+const VALID_ENTITY_TYPES = ['character', 'context', 'location', 'audio_track', 'prompt_block', 'stop_pattern', 'sampler', 'budget_strategy', 'profile', 'world', 'memory', 'extension'];
+
 function executeCreator(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
-        return helpResult('creator', args, 'creator <entity_type> <name> — types: character, context, location, audio_track, profile');
+        return helpResult('creator', args, `creator <entity_type> <name> — types: ${VALID_ENTITY_TYPES.join(', ')}`);
     }
     const parts = trimmed.split(/\s+/);
     const entityType = parts[0]?.toLowerCase(), entityName = parts.slice(1).join(' ');
     if (!entityName) return { toolType: 'creator', args, content: `[Error: Usage: creator ${entityType || '<type>'} <name>]`, displayReplacement: `[Error: Missing name]` };
-    const validTypes = ['character', 'context', 'location', 'audio_track', 'profile'];
-    if (!validTypes.includes(entityType)) return { toolType: 'creator', args, content: `[Error: Unknown type "${entityType}"]`, displayReplacement: `[Error: Unknown type]` };
+    if (!VALID_ENTITY_TYPES.includes(entityType)) return { toolType: 'creator', args, content: `[Error: Unknown type "${entityType}". Valid: ${VALID_ENTITY_TYPES.join(', ')}]`, displayReplacement: `[Error: Unknown type]` };
     appendPendingAction(nextMessage, { type: 'creator', payload: { entityType, entityName } });
     context?.addToast?.(`Creator: ${entityType} "${entityName}" initiated.`, 'info');
     return { toolType: 'creator', args, content: `Creation: ${entityType} "${entityName}".`, displayReplacement: `[🛠️ ${entityType}: "${entityName}"]` };
@@ -963,21 +962,88 @@ function executeCreator(args: string, nextMessage: BaseMessage, _interactionData
 function executeDestroyer(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
-        return helpResult('destroyer', args, 'destroyer <entity_type> <entity_id> — types: character, context, location, audio_track, profile');
+        return helpResult('destroyer', args, `destroyer <entity_type> <entity_id> — types: ${VALID_ENTITY_TYPES.join(', ')}`);
     }
     const parts = trimmed.split(/\s+/);
     const entityType = parts[0]?.toLowerCase(), entityId = parts.slice(1).join(' ').trim();
     if (!entityId) return { toolType: 'destroyer', args, content: `[Error: Usage: destroyer ${entityType || '<type>'} <entity_id>]`, displayReplacement: `[Error: Missing entity_id]` };
-    const validTypes = ['character', 'context', 'location', 'audio_track', 'profile'];
-    if (!validTypes.includes(entityType)) return { toolType: 'destroyer', args, content: `[Error: Unknown type "${entityType}"]`, displayReplacement: `[Error: Unknown type]` };
+    if (!VALID_ENTITY_TYPES.includes(entityType)) return { toolType: 'destroyer', args, content: `[Error: Unknown type "${entityType}". Valid: ${VALID_ENTITY_TYPES.join(', ')}]`, displayReplacement: `[Error: Unknown type]` };
 
     let targetName = entityId;
     switch (entityType) {
-        case 'character': { const t = (context?.allCharacters || []).find(c => c.id === entityId); if (!t) return { toolType: 'destroyer', args, content: `[Error: Not found]`, displayReplacement: `[💀 Not found]` }; if (t.id === interactionData.protagonist?.id) return { toolType: 'destroyer', args, content: '[Error: Cannot destroy protagonist.]', displayReplacement: `[💀 Cannot destroy protagonist]` }; targetName = t.name; break; }
-        case 'context': { const t = (context?.allContexts || interactionData.contexts || []).find(c => c.id === entityId); if (!t) return { toolType: 'destroyer', args, content: `[Error: Not found]`, displayReplacement: `[💀 Not found]` }; targetName = t.name; break; }
-        case 'location': { const t = (context?.allLocations || interactionData.locations || []).find(l => l.id === entityId); if (!t) return { toolType: 'destroyer', args, content: `[Error: Not found]`, displayReplacement: `[💀 Not found]` }; targetName = t.name; break; }
-        case 'audio_track': { const t = (context?.allAudioTracks || interactionData.audioTracks || []).find(t => t.id === entityId); if (!t) return { toolType: 'destroyer', args, content: `[Error: Not found]`, displayReplacement: `[💀 Not found]` }; targetName = t.name; break; }
-        case 'profile': { const t = (context?.allProfiles || []).find(p => p.id === entityId); if (!t) return { toolType: 'destroyer', args, content: `[Error: Not found]`, displayReplacement: `[💀 Not found]` }; targetName = t.name; break; }
+        case 'character': {
+            const t = (context?.allCharacters || []).find(c => c.id === entityId);
+            if (!t) return { toolType: 'destroyer', args, content: `[Error: Character ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` };
+            if (t.id === interactionData.protagonist?.id) return { toolType: 'destroyer', args, content: '[Error: Cannot destroy protagonist.]', displayReplacement: `[💀 Cannot destroy protagonist]` };
+            targetName = t.name;
+            break;
+        }
+        case 'context': {
+            const t = (context?.allContexts || interactionData.contexts || []).find(c => c.id === entityId);
+            if (!t) return { toolType: 'destroyer', args, content: `[Error: Context ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` };
+            targetName = t.name;
+            break;
+        }
+        case 'location': {
+            const t = (context?.allLocations || interactionData.locations || []).find(l => l.id === entityId);
+            if (!t) return { toolType: 'destroyer', args, content: `[Error: Location ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` };
+            targetName = t.name;
+            break;
+        }
+        case 'audio_track': {
+            const t = (context?.allAudioTracks || interactionData.audioTracks || []).find(a => a.id === entityId);
+            if (!t) return { toolType: 'destroyer', args, content: `[Error: Audio track ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` };
+            targetName = t.name;
+            break;
+        }
+        case 'prompt_block': {
+            const t = (context?.allPromptBlocks || []).find(p => p.id === entityId);
+            if (!t) return { toolType: 'destroyer', args, content: `[Error: Prompt block ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` };
+            targetName = t.name;
+            break;
+        }
+        case 'stop_pattern': {
+            const t = (context?.allStopPatterns || []).find(s => s.id === entityId);
+            if (!t) return { toolType: 'destroyer', args, content: `[Error: Stop pattern ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` };
+            targetName = t.name;
+            break;
+        }
+        case 'sampler': {
+            const t = (context?.allSamplers || []).find(s => s.id === entityId);
+            if (!t) return { toolType: 'destroyer', args, content: `[Error: Sampler ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` };
+            targetName = t.name;
+            break;
+        }
+        case 'budget_strategy': {
+            const t = (context?.allBudgetStrategies || []).find(b => b.id === entityId);
+            if (!t) return { toolType: 'destroyer', args, content: `[Error: Budget strategy ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` };
+            targetName = t.name;
+            break;
+        }
+        case 'profile': {
+            const t = (context?.allProfiles || []).find(p => p.id === entityId);
+            if (!t) return { toolType: 'destroyer', args, content: `[Error: Profile ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` };
+            targetName = t.name;
+            break;
+        }
+        case 'world': {
+            const t = (context?.allWorlds || []).find(w => w.id === entityId);
+            if (!t) return { toolType: 'destroyer', args, content: `[Error: World ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` };
+            targetName = t.name;
+            break;
+        }
+        case 'memory': {
+            const t = (context?.allMemories || []).find(m => m.id === entityId);
+            if (!t) return { toolType: 'destroyer', args, content: `[Error: Memory ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` };
+            targetName = t.name;
+            break;
+        }
+        case 'extension': {
+            const t = (context?.allExtensions || []).find(e => e.id === entityId);
+            if (!t) return { toolType: 'destroyer', args, content: `[Error: Extension ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` };
+            targetName = t.name;
+            break;
+        }
     }
 
     appendPendingAction(nextMessage, { type: 'destroyer', payload: { entityType, entityId, entityName: targetName } });
@@ -1032,7 +1098,6 @@ export function processPendingToolActions(
                 const kickedChar = updatedData.participants.find(p => p.id === action.payload.characterId);
                 if (kickedChar) {
                     const destLocIdx = action.payload.destinationLocationIndex !== undefined ? parseInt(action.payload.destinationLocationIndex, 10) : undefined;
-                    // Carry forward locked locations from kicked character's previous message
                     const prevKickedMsg = findPrevMsg(updatedData, kickedChar.id);
                     const prevLockedLocations = prevKickedMsg?.characterLockedLocations ?? {};
                     const kickMsg = {
@@ -1054,7 +1119,6 @@ export function processPendingToolActions(
                 if (invitedChar) {
                     let currentLocIdx: number | undefined;
                     for (let i = updatedData.interactionHistory.length - 1; i >= 0; i--) { if (updatedData.interactionHistory[i].locationIndex !== undefined) { currentLocIdx = updatedData.interactionHistory[i].locationIndex; break; } }
-                    // Carry forward locked locations from invited character's previous message
                     const prevInvitedMsg = findPrevMsg(updatedData, invitedChar.id);
                     const prevLockedLocations = prevInvitedMsg?.characterLockedLocations ?? {};
                     const inviteMsg = {
