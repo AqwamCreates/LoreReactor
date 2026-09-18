@@ -16,8 +16,9 @@ import {
     computeMovementCost,
 } from '../hooks/dynamicCharacterLogic';
 import { findPreviousMessage } from '../hooks/chatLogic';
+import type { HandleServerResponseResult } from '../hooks/useChatEngine';
 
-type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal, onToken: (t: string) => void) => Promise<InteractionData | null>
+type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal, onToken: (t: string) => void) => Promise<HandleServerResponseResult | null>
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
     return msg.messageType === 'chat';
@@ -55,7 +56,7 @@ export async function runTurnSequence(
     onSpeakerChange?: (char: Character | null) => void,
     onTokenStream?: (text: string) => void,
     onMessageSaved?: (data: InteractionData) => void
-): Promise<InteractionData> {
+): Promise<{ interactionData: InteractionData; isCompleted: boolean } | null> {
 
     const profile = currentInteractionData.Profile;
     let workingData = { ...currentInteractionData, interactionHistory: [...currentInteractionData.interactionHistory] };
@@ -67,6 +68,7 @@ export async function runTurnSequence(
 
     const spokenThisSequence = new Set<string>();
     const actedThisSequence = new Set<string>();
+    let sequenceCompleted = true;
 
     while (!abortController.signal.aborted) {
         const allAI = workingData.participants.filter(p => p.id !== workingData.protagonist.id);
@@ -142,14 +144,23 @@ export async function runTurnSequence(
 
             if (onSpeakerChange) onSpeakerChange(speaker);
 
-            const resultData = await executor(
+            const result = await executor(
                 workingData,
                 speaker,
                 abortController.signal,
                 onTokenStream || (() => {})
             );
 
-            if (!resultData) break;
+            if (!result) {
+                sequenceCompleted = false;
+                break;
+            }
+
+            if (!result.isCompleted) {
+                sequenceCompleted = false;
+            }
+
+            const resultData = result.interactionData;
 
             // Post-speech: consume stamina, resolve location
             const newLastEntry = resultData.interactionHistory[resultData.interactionHistory.length - 1];
@@ -184,6 +195,9 @@ export async function runTurnSequence(
             } catch (error) {
                 console.error("Failed to save intermediate message:", error);
             }
+
+            // If the last generation was incomplete, stop the sequence so caller can auto-resume
+            if (!sequenceCompleted) break;
         } else {
             // ─── ACTION PATH ───
             const actionEligible = remaining.filter(p => {
@@ -281,5 +295,5 @@ export async function runTurnSequence(
         }
     }
 
-    return workingData;
+    return { interactionData: workingData, isCompleted: sequenceCompleted };
 }

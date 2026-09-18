@@ -249,7 +249,7 @@ export class BudgetStrategyEngine {
         requestBody: Record<string, unknown>,
         abortController: AbortController,
         callbacks?: StreamCallbacks,
-    ): Promise<string> {
+    ): Promise<StreamResult> {
         this._lastCacheMiss = false;
 
         const failedOnlineIds = new Set<string>();
@@ -379,7 +379,7 @@ export class BudgetStrategyEngine {
                     console.warn(`Model ${selectedModel.name} returned censorship refusal — returning text as-is.`);
                 }
 
-                return fullOutput;
+                return {text: fullOutput, isCompleted: result.isCompleted};
             } catch (e) {
                 if (abortController.signal.aborted) throw e;
 
@@ -481,7 +481,7 @@ export class BudgetStrategyEngine {
                         console.warn(`Fallback model ${selectedModel.name} returned censorship refusal — returning text as-is.`);
                     }
 
-                    return fullOutput;
+                    return {text: fullOutput, isCompleted: result.isCompleted};
                 } catch (e) {
                     if (abortController.signal.aborted) throw e;
 
@@ -576,7 +576,7 @@ export class BudgetStrategyEngine {
                     }
 
                     console.info(`[BudgetEngine] Using free model ${freeModel.name} — budget exhausted or all paid models failed.`);
-                    return fullOutput;
+                    return {text: fullOutput, isCompleted: result.isCompleted};
                 } catch (e) {
                     if (abortController.signal.aborted) throw e;
 
@@ -592,13 +592,13 @@ export class BudgetStrategyEngine {
 
         // Return whatever partial text we accumulated instead of throwing
         if (accumulatedPartialText.trim()) {
-            return accumulatedPartialText;
+            return {text: accumulatedPartialText, isCompleted: false};
         }
 
         // All pools exhausted — return empty string instead of throwing
         // This allows the caller to handle the empty response gracefully
         console.warn('[BudgetEngine] All models exhausted. Returning empty response.');
-        return '';
+        return {text: "", isCompleted: false};
     }
 
     // ─── Non-Streaming Completion ────────────────────────────────────

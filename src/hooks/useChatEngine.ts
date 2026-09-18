@@ -12,6 +12,11 @@ import { useMemoryTrigger } from './useMemoryTrigger';
 const characterActor = new CharacterActor();
 const autonomousEngine = new AutonomousSimulationEngine();
 
+export interface HandleServerResponseResult {
+    interactionData: InteractionData;
+    isCompleted: boolean;
+}
+
 interface EngineDependencies {
     getState: () => any;
     setInteractionData: (d: InteractionData) => void;
@@ -40,7 +45,7 @@ export function useChatEngine(deps: EngineDependencies) {
         strategyOverride?: BudgetStrategy | null,
         existingCharacterText?: string,
         allPromptBlocks?: PromptBlock[],
-    ): Promise<InteractionData | null> => {
+    ): Promise<HandleServerResponseResult | null> => {
         const selectedModel = getState().selectedModel;
         const runningModels = getState().runningModels;
         const activeStrategy = getState().activeStrategy;
@@ -112,20 +117,20 @@ export function useChatEngine(deps: EngineDependencies) {
             await processMemoryTrigger(result.rawText, character, effectiveData);
         }
         
-        return effectiveData;
+        return { interactionData: effectiveData, isCompleted: result.isCompleted };
     }, [getState, setStreamingState, setStats, setCurrentCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast, processMemoryTrigger]);
 
     const runTurn = useCallback(async (
         initialData: InteractionData,
         signal: AbortController,
         promptBlocks?: PromptBlock[]
-    ) => {
+    ): Promise<{ interactionData: InteractionData; isCompleted: boolean }> => {
         const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken: (t: string) => void) => {
             setStreamingState(c, '');
             return handleServerResponse(d, c, s, onToken, undefined, '', promptBlocks);
         };
 
-        const finalData = await runTurnSequence(
+        const result = await runTurnSequence(
             initialData, 
             executor, 
             signal, 
@@ -134,12 +139,12 @@ export function useChatEngine(deps: EngineDependencies) {
             (data) => setInteractionData(data)
         );
 
-        if (finalData) {
-            await saveRawInteractionData(finalData);
-            setInteractionData(finalData);
-            return finalData;
+        if (result) {
+            await saveRawInteractionData(result.interactionData);
+            setInteractionData(result.interactionData);
+            return result;
         }
-        return initialData;
+        return { interactionData: initialData, isCompleted: true };
     }, [handleServerResponse, setStreamingState, setInteractionData]);
 
     const startAutonomousMode = useCallback((

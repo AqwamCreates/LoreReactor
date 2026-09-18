@@ -77,6 +77,32 @@ function finalizeMessageById(
     return { ...data, interactionHistory: history, lastUpdatedTimestamp: Date.now() };
 }
 
+/**
+ * Find the last AI chat message and mark it as partial for resumption.
+ * Returns the updated data and the message ID, or null if no suitable message found.
+ */
+function markLastAIMessageAsPartial(
+    data: InteractionData,
+    protagonistId: string,
+): { data: InteractionData; messageId: string } | null {
+    const history = [...data.interactionHistory];
+    for (let i = history.length - 1; i >= 0; i--) {
+        const msg = history[i];
+        if (msg.messageType === 'chat' && msg.character.id !== protagonistId) {
+            history[i] = {
+                ...msg,
+                isPartial: true,
+                lastUpdatedTimestamp: Date.now(),
+            } as ChatMessage;
+            return {
+                data: { ...data, interactionHistory: history, lastUpdatedTimestamp: Date.now() },
+                messageId: msg.id,
+            };
+        }
+    }
+    return null;
+}
+
 export function useChatSession(allCharacters: Character[]) {
     const { addToast } = useToast();
 
@@ -210,6 +236,20 @@ export function useChatSession(allCharacters: Character[]) {
         return addMessageToInteractionData(base, chatMessage);
     }, []);
 
+    // Auto-resume helper: marks last AI message as partial and triggers resumeGeneration
+    const autoResumeOnCutoff = useCallback((data: InteractionData, protagonistId: string, allPromptBlocks?: PromptBlock[]) => {
+        const marked = markLastAIMessageAsPartial(data, protagonistId);
+        if (!marked) return;
+
+        setInteractionData(marked.data);
+        saveRawInteractionData(marked.data);
+
+        // Use setTimeout to avoid re-entrancy issues with the current callback stack
+        setTimeout(() => {
+            resumeGeneration(marked.messageId, allPromptBlocks);
+        }, 0);
+    }, [setInteractionData]);
+
     const sendMessage = useCallback(async (text: string, files?: File[], allPromptBlocks?: PromptBlock[]) => {
         const currentState = getState();
         if (!currentState.interactionData || !currentState.currentCharacter || (!text.trim() && (!files || !files.length))) return;
@@ -245,7 +285,8 @@ export function useChatSession(allCharacters: Character[]) {
             setInteractionData(td);
             await saveRawInteractionData(td);
 
-            const ud = await chatEngine.runTurn(td, ctrl, allPromptBlocks);
+            const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks);
+            const ud = turnResult.interactionData;
 
             if (pendingPartialRef.current) {
                 const fd = await applyPendingPartial(ud, currentState.currentCharacter.id);
@@ -260,6 +301,12 @@ export function useChatSession(allCharacters: Character[]) {
 
                 await saveRawInteractionData(finalized);
                 setInteractionData(finalized);
+
+                // Auto-resume if model cut off mid-generation
+                if (!turnResult.isCompleted && !wasStoppedRef.current) {
+                    autoResumeOnCutoff(finalized, currentState.currentCharacter.id, allPromptBlocks);
+                    return;
+                }
 
                 runSummarization({
                     data: finalized,
@@ -286,7 +333,7 @@ export function useChatSession(allCharacters: Character[]) {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             releaseLock();
         }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters]);
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters, autoResumeOnCutoff]);
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character) => {
         const currentState = getState();
@@ -309,7 +356,8 @@ export function useChatSession(allCharacters: Character[]) {
             setInteractionData(td);
             await saveRawInteractionData(td);
 
-            const ud = await chatEngine.runTurn(td, ctrl);
+            const turnResult = await chatEngine.runTurn(td, ctrl);
+            const ud = turnResult.interactionData;
 
             if (pendingPartialRef.current) {
                 const fd = await applyPendingPartial(ud, currentState.interactionData.protagonist?.id ?? '');
@@ -323,6 +371,12 @@ export function useChatSession(allCharacters: Character[]) {
                 const finalized = finalizeLastAIMessage(processed, currentState.interactionData.protagonist?.id ?? '', wasStoppedRef.current);
                 await saveRawInteractionData(finalized);
                 setInteractionData(finalized);
+
+                // Auto-resume if model cut off mid-generation
+                if (!turnResult.isCompleted && !wasStoppedRef.current) {
+                    autoResumeOnCutoff(finalized, currentState.interactionData.protagonist?.id ?? '');
+                    return;
+                }
 
                 runSummarization({ data: finalized, setData: setInteractionData, addToast });
 
@@ -345,7 +399,7 @@ export function useChatSession(allCharacters: Character[]) {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             releaseLock();
         }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters]);
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters, autoResumeOnCutoff]);
 
     const stopGeneration = useCallback(() => {
         wasStoppedRef.current = true;
@@ -435,7 +489,7 @@ export function useChatSession(allCharacters: Character[]) {
             );
             if (!result) return;
 
-            const finalized = finalizeMessageById(result, messageId, wasStoppedRef.current);
+            const finalized = finalizeMessageById(result.interactionData, messageId, wasStoppedRef.current);
 
             setState({
                 interactionData: finalized,
@@ -447,6 +501,19 @@ export function useChatSession(allCharacters: Character[]) {
 
             resumingMessageIdRef.current = null;
             resumingExistingTextRef.current = '';
+
+            // Auto-resume if model cut off again during resume
+            if (!result.isCompleted && !wasStoppedRef.current) {
+                setTimeout(() => {
+                    const reMarked = markLastAIMessageAsPartial(finalized, currentInteractionData.protagonist?.id ?? '');
+                    if (reMarked) {
+                        setInteractionData(reMarked.data);
+                        saveRawInteractionData(reMarked.data);
+                        resumeGeneration(reMarked.messageId, allPromptBlocks);
+                    }
+                }, 0);
+                return;
+            }
 
             const finalMsg = finalized.interactionHistory.find(m => m.id === messageId);
             const finalText = finalMsg && finalMsg.messageType === 'chat' ? finalMsg.textContent : '';
@@ -463,7 +530,7 @@ export function useChatSession(allCharacters: Character[]) {
             resumingExistingTextRef.current = '';
             releaseLock();
         }
-    }, [getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine, throttledSetStreamingText, ui, setStreamingState, setStats]);
+    }, [getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine, throttledSetStreamingText, ui, setStreamingState, setStats, setInteractionData]);
 
     const regenerateFromMessage = useCallback(async (messageId: string, type: 'ai' | 'user', allPromptBlocks?: PromptBlock[]) => {
         const currentInteractionData = getState().interactionData;
@@ -508,7 +575,8 @@ export function useChatSession(allCharacters: Character[]) {
         const preCount = td.interactionHistory.length;
 
         try {
-            const ud = await chatEngine.runTurn(td, ctrl, allPromptBlocks);
+            const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks);
+            const ud = turnResult.interactionData;
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, protagonistId); await saveRawInteractionData(fd); setInteractionData(fd); return; }
 
             if (ud.interactionHistory.length > preCount) {
@@ -517,6 +585,12 @@ export function useChatSession(allCharacters: Character[]) {
 
                 await saveRawInteractionData(finalized);
                 setInteractionData(finalized);
+
+                // Auto-resume if model cut off mid-generation
+                if (!turnResult.isCompleted && !wasStoppedRef.current) {
+                    autoResumeOnCutoff(finalized, protagonistId, allPromptBlocks);
+                    return;
+                }
 
                 runSummarization({
                     data: finalized,
@@ -532,7 +606,7 @@ export function useChatSession(allCharacters: Character[]) {
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Regen failed:', e); addToast(`Regen error: ${(e as Error).message}`, 'error'); } }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setInteractionData, setStreamingState, setStats, allCharacters]);
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setInteractionData, setStreamingState, setStats, allCharacters, autoResumeOnCutoff]);
 
     const startNewChat = useCallback((char: Character) => {
         const c = createNewInteractionData(char);

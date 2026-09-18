@@ -30,6 +30,7 @@ export interface TurnResult {
     expression: string | null;
     rawText: string;
     displayText: string;
+    isCompleted: boolean;
 }
 
 export interface TurnError {
@@ -153,6 +154,7 @@ export class CharacterActor {
         let latestTtft = 0;
         let latestExpression: string | null = null;
         let previousExpression: string | null = null;
+        let lastIsCompleted = true;
 
         // Only create a new message for non-resume turns.
         // During resume, the partial message already exists in history and is
@@ -256,7 +258,9 @@ export class CharacterActor {
                     const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, activeModelId, protagonistFileBase64s);
 
                     const cb = callbacks ? createStreamCallbacks(streamToolParser, accumulator) : undefined;
-                    rawText = await bse.generateStream(body, { signal } as AbortController, cb);
+                    const streamResult = await bse.generateStream(body, { signal } as AbortController, cb);
+                    rawText = streamResult.text;
+                    lastIsCompleted = streamResult.isCompleted;
 
                     // Capture cache miss and request count from budget engine
                     statsDelta.numberOfRequests++;
@@ -320,6 +324,7 @@ export class CharacterActor {
                             statsDelta.costWithoutCacheMisses += cr.potentialMaxCost;
                         },
                     });
+                    lastIsCompleted = result.isCompleted;
                     return result.text;
                 };
 
@@ -387,6 +392,7 @@ export class CharacterActor {
                     expression: latestExpression,
                     rawText: rawText,
                     displayText,
+                    isCompleted: lastIsCompleted,
                 },
             };
         } catch (error) {
