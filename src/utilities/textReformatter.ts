@@ -208,7 +208,7 @@ export function applyConversions(
     const replacements: { start: number; end: number; replacement: string }[] = [];
 
     for (const seg of segments) {
-        const target = conversions[seg.category];
+        const target = conversions[seg.category] ?? seg.category;
 
         if (target === seg.category) continue;
 
