@@ -2,7 +2,7 @@
 
 import type { ToolInvocation } from '../services/ToolInvocationParser';
 import { fetchLinkContent, buildSearchUrl } from '../services/linkFetcher';
-import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, tool } from '../types';
+import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, tool, Clothing } from '../types';
 import { findPreviousMessage } from '../hooks/chatLogic';
 import { getAudioEngine } from './AudioEngine';
 import { v4 as uuidv4 } from 'uuid';
@@ -69,8 +69,8 @@ const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, int
     "invite": executeInvite,
     "kick": executeKick,
     "teleport": executeTeleport,
-    "lock": executeLock,
-    "unlock": executeUnlock,
+    "key": executeKey,
+    "clothing": executeClothing,
     "summon": executeSummon,
     "narrate": executeNarrate,
     "inspect": executeInspect,
@@ -387,7 +387,7 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
     const trimmed = args.trim();
 
     if (!trimmed) {
-        const errorContent = '[Error: Usage: move <location name>. Moves to an adjacent location via normal movement cost.]';
+        const errorContent = '[Error: Usage: move <location_id>. Moves to an adjacent location via normal movement cost.]';
         return { toolType: 'move', args, content: errorContent, displayReplacement: errorContent };
     }
 
@@ -411,11 +411,11 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
     }
 
     const currentLocation = locations[currentLocationIndex];
-    const targetName = trimmed.toLowerCase();
-    const targetLocation = locations.find(l => l.name.toLowerCase() === targetName);
+    const targetId = trimmed.trim();
+    const targetLocation = locations.find(l => l.id === targetId);
 
     if (!targetLocation) {
-        const errorContent = `[Error: Location "${trimmed}" not found.]`;
+        const errorContent = `[Error: Location ID "${targetId}" not found.]`;
         return { toolType: 'move', args, content: errorContent, displayReplacement: errorContent };
     }
 
@@ -440,7 +440,7 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
     // Check if target location is locked
     const locks = loadLocationLocks(nextMessage.inventory);
     if (locks[targetLocation.id]) {
-        const errorContent = `[Error: "${targetLocation.name}" is locked. Use unlock first.]`;
+        const errorContent = `[Error: "${targetLocation.name}" is locked. Use key unlock first.]`;
         return { toolType: 'move', args, content: errorContent, displayReplacement: errorContent };
     }
 
@@ -932,7 +932,7 @@ function executeMap(args: string, _nextMessage: BaseMessage, interactionData: In
     const trimmed = args.trim();
 
     if (!trimmed) {
-        const errorContent = '[Error: Empty map query. Use "map <location name>" for distance from current location, or "map <loc1> to <loc2>" for distance between two locations.]';
+        const errorContent = '[Error: Empty map query. Use "map <location_id>" for distance from current location, or "map <loc1_id> to <loc2_id>" for distance between two locations.]';
         return { toolType: 'map', args, content: errorContent, displayReplacement: errorContent };
     }
 
@@ -942,12 +942,13 @@ function executeMap(args: string, _nextMessage: BaseMessage, interactionData: In
         return { toolType: 'map', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    const toMatch = trimmed.match(/^(.+?)\s+to\s+(.+)$/i);
-    let fromLoc, toLoc;
+    const toMatch = trimmed.match(/^(\S+)\s+to\s+(\S+)$/i);
+    let fromLoc: Location | undefined;
+    let toLoc: Location | undefined;
 
     if (toMatch) {
-        fromLoc = locations.find(l => l.name.toLowerCase() === toMatch[1].trim().toLowerCase());
-        toLoc = locations.find(l => l.name.toLowerCase() === toMatch[2].trim().toLowerCase());
+        fromLoc = locations.find(l => l.id === toMatch[1].trim());
+        toLoc = locations.find(l => l.id === toMatch[2].trim());
     } else {
         let currentLocationIndex: number | undefined;
         for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
@@ -959,16 +960,16 @@ function executeMap(args: string, _nextMessage: BaseMessage, interactionData: In
         if (currentLocationIndex !== undefined) {
             fromLoc = locations[currentLocationIndex];
         }
-        toLoc = locations.find(l => l.name.toLowerCase() === trimmed.toLowerCase());
+        toLoc = locations.find(l => l.id === trimmed.trim());
     }
 
     if (!toLoc) {
-        const errorContent = `[Error: Location "${trimmed}" not found.]`;
+        const errorContent = `[Error: Location ID "${trimmed.trim()}" not found.]`;
         return { toolType: 'map', args, content: errorContent, displayReplacement: errorContent };
     }
 
     if (!fromLoc) {
-        const errorContent = '[Error: No current location set. Use "map <loc1> to <loc2>" format instead.]';
+        const errorContent = '[Error: No current location set. Use "map <loc1_id> to <loc2_id>" format instead.]';
         return { toolType: 'map', args, content: errorContent, displayReplacement: errorContent };
     }
 
@@ -1014,16 +1015,16 @@ function executeAudio(args: string, nextMessage: BaseMessage, interactionData: I
     const trimmed = args.trim();
 
     if (!trimmed) {
-        const errorContent = '[Error: Empty audio command. Use "audio play <track name>" or "audio stop <track name>"]';
+        const errorContent = '[Error: Empty audio command. Use "audio play <track_id>" or "audio stop <track_id>"]';
         return { toolType: 'audio', args, content: errorContent, displayReplacement: errorContent };
     }
 
     const parts = trimmed.split(/\s+/);
     const subcommand = parts[0]?.toLowerCase();
-    const trackName = parts.slice(1).join(' ');
+    const trackId = parts.slice(1).join(' ').trim();
 
-    if (!trackName) {
-        const errorContent = `[Error: Usage: audio ${subcommand || 'play'} <track name>]`;
+    if (!trackId) {
+        const errorContent = `[Error: Usage: audio ${subcommand || 'play'} <track_id>]`;
         return { toolType: 'audio', args, content: errorContent, displayReplacement: errorContent };
     }
 
@@ -1032,20 +1033,20 @@ function executeAudio(args: string, nextMessage: BaseMessage, interactionData: I
         return { toolType: 'audio', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    const track = interactionData.audioTracks?.find(t => t.name.toLowerCase() === trackName.toLowerCase());
+    const track = interactionData.audioTracks?.find(t => t.id === trackId);
     if (!track) {
-        const errorContent = `[Error: Audio track "${trackName}" not found]`;
+        const errorContent = `[Error: Audio track ID "${trackId}" not found]`;
         return { toolType: 'audio', args, content: errorContent, displayReplacement: errorContent };
     }
 
     if (!track.playableByParticipants) {
-        const errorContent = `[Error: Track "${trackName}" cannot be controlled by participants]`;
+        const errorContent = `[Error: Track "${track.name}" cannot be controlled by participants]`;
         return { toolType: 'audio', args, content: errorContent, displayReplacement: errorContent };
     }
 
     if (track.characterBindings && track.characterBindings.length > 0) {
         if (!track.characterBindings.includes(nextMessage.character.id)) {
-            const errorContent = `[Error: Track "${trackName}" is not bound to this character]`;
+            const errorContent = `[Error: Track "${track.name}" is not bound to this character]`;
             return { toolType: 'audio', args, content: errorContent, displayReplacement: errorContent };
         }
     }
@@ -1059,12 +1060,12 @@ function executeAudio(args: string, nextMessage: BaseMessage, interactionData: I
             }
         }
         if (currentLocationIndex === undefined) {
-            const errorContent = `[Error: No active location for track "${trackName}"]`;
+            const errorContent = `[Error: No active location for track "${track.name}"]`;
             return { toolType: 'audio', args, content: errorContent, displayReplacement: errorContent };
         }
         const currentLocation = interactionData.locations?.[currentLocationIndex];
         if (!currentLocation || !track.locationBindings.includes(currentLocation.id)) {
-            const errorContent = `[Error: Track "${trackName}" is not bound to current location]`;
+            const errorContent = `[Error: Track "${track.name}" is not bound to current location]`;
             return { toolType: 'audio', args, content: errorContent, displayReplacement: errorContent };
         }
     }
@@ -1073,7 +1074,7 @@ function executeAudio(args: string, nextMessage: BaseMessage, interactionData: I
         const activeContextIds = new Set(interactionData.contexts?.map(c => c.id) ?? []);
         const hasMatchingContext = track.contextBindings.some(ctxId => activeContextIds.has(ctxId));
         if (!hasMatchingContext) {
-            const errorContent = `[Error: Track "${trackName}" has no matching active context]`;
+            const errorContent = `[Error: Track "${track.name}" has no matching active context]`;
             return { toolType: 'audio', args, content: errorContent, displayReplacement: errorContent };
         }
     }
@@ -1084,16 +1085,16 @@ function executeAudio(args: string, nextMessage: BaseMessage, interactionData: I
         return {
             toolType: 'audio',
             args,
-            content: `Playing "${trackName}"`,
-            displayReplacement: `[🔊 Playing "${trackName}"]`,
+            content: `Playing "${track.name}"`,
+            displayReplacement: `[🔊 Playing "${track.name}"]`,
         };
     } else {
         audioEngine.stopTrack(track.id);
         return {
             toolType: 'audio',
             args,
-            content: `Stopped "${trackName}"`,
-            displayReplacement: `[🔇 Stopped "${trackName}"]`,
+            content: `Stopped "${track.name}"`,
+            displayReplacement: `[🔇 Stopped "${track.name}"]`,
         };
     }
 }
@@ -1295,16 +1296,16 @@ function executeInvite(args: string, nextMessage: BaseMessage, interactionData: 
     const trimmed = args.trim();
 
     if (!trimmed) {
-        const errorContent = '[Error: Usage: invite <character name>. Invites an existing participant to the current location.]';
+        const errorContent = '[Error: Usage: invite <character_id>. Invites an existing participant to the current location.]';
         return { toolType: 'invite', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    const targetName = trimmed.toLowerCase();
+    const targetId = trimmed.trim();
     const allChars = context?.allCharacters || interactionData.participants || [];
-    const targetChar = allChars.find(c => c.name.toLowerCase() === targetName);
+    const targetChar = allChars.find(c => c.id === targetId);
 
     if (!targetChar) {
-        const errorContent = `[Error: Character "${trimmed}" not found.]`;
+        const errorContent = `[Error: Character ID "${targetId}" not found.]`;
         return { toolType: 'invite', args, content: errorContent, displayReplacement: errorContent };
     }
 
@@ -1319,7 +1320,6 @@ function executeInvite(args: string, nextMessage: BaseMessage, interactionData: 
         return { toolType: 'invite', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    // Store pending action for caller to execute
     appendPendingAction(nextMessage, {
         type: 'invite',
         payload: { characterId: targetChar.id, characterName: targetChar.name },
@@ -1339,16 +1339,16 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
     const trimmed = args.trim();
 
     if (!trimmed) {
-        const errorContent = '[Error: Usage: kick <character name>. Removes a participant from the current location.]';
+        const errorContent = '[Error: Usage: kick <character_id>. Removes a participant from the current location.]';
         return { toolType: 'kick', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    const targetName = trimmed.toLowerCase();
+    const targetId = trimmed.trim();
     const allChars = context?.allCharacters || interactionData.participants || [];
-    const targetChar = allChars.find(c => c.name.toLowerCase() === targetName);
+    const targetChar = allChars.find(c => c.id === targetId);
 
     if (!targetChar) {
-        const errorContent = `[Error: Character "${trimmed}" not found.]`;
+        const errorContent = `[Error: Character ID "${targetId}" not found.]`;
         return { toolType: 'kick', args, content: errorContent, displayReplacement: errorContent };
     }
 
@@ -1358,7 +1358,6 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
         return { toolType: 'kick', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    // Store pending action for caller to execute
     appendPendingAction(nextMessage, {
         type: 'kick',
         payload: { characterId: targetChar.id, characterName: targetChar.name },
@@ -1378,7 +1377,7 @@ function executeTeleport(args: string, nextMessage: BaseMessage, interactionData
     const trimmed = args.trim();
 
     if (!trimmed) {
-        const errorContent = '[Error: Usage: teleport <location name>. Instantly moves to any location regardless of adjacency.]';
+        const errorContent = '[Error: Usage: teleport <location_id>. Instantly moves to any location regardless of adjacency.]';
         return { toolType: 'teleport', args, content: errorContent, displayReplacement: errorContent };
     }
 
@@ -1388,11 +1387,11 @@ function executeTeleport(args: string, nextMessage: BaseMessage, interactionData
         return { toolType: 'teleport', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    const targetName = trimmed.toLowerCase();
-    const targetLocation = locations.find(l => l.name.toLowerCase() === targetName);
+    const targetId = trimmed.trim();
+    const targetLocation = locations.find(l => l.id === targetId);
 
     if (!targetLocation) {
-        const errorContent = `[Error: Location "${trimmed}" not found.]`;
+        const errorContent = `[Error: Location ID "${targetId}" not found.]`;
         return { toolType: 'teleport', args, content: errorContent, displayReplacement: errorContent };
     }
 
@@ -1405,7 +1404,7 @@ function executeTeleport(args: string, nextMessage: BaseMessage, interactionData
         }
     }
 
-    if (targetLocation.name.toLowerCase() === currentLocationName.toLowerCase()) {
+    if (targetLocation.id === (interactionData.locations?.[interactionData.interactionHistory.findLastIndex?.(m => m.locationIndex !== undefined) ?? -1]?.id)) {
         return {
             toolType: 'teleport',
             args,
@@ -1425,84 +1424,180 @@ function executeTeleport(args: string, nextMessage: BaseMessage, interactionData
     };
 }
 
-// ─── Lock ───────────────────────────────────────────────────────────
+// ─── Key (Lock/Unlock) ──────────────────────────────────────────────
 
-function executeLock(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeKey(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
     const trimmed = args.trim();
 
     if (!trimmed) {
-        const errorContent = '[Error: Usage: lock <location name>. Locks a location, preventing entry via binding triggers until unlocked.]';
-        return { toolType: 'lock', args, content: errorContent, displayReplacement: errorContent };
+        const errorContent = '[Error: Usage: key lock <location_id> OR key unlock <location_id>]';
+        return { toolType: 'key', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    const parts = trimmed.split(/\s+/);
+    const subcommand = parts[0]?.toLowerCase();
+    const locationId = parts.slice(1).join(' ').trim();
+
+    if (!locationId) {
+        const errorContent = `[Error: Usage: key ${subcommand || 'lock'} <location_id>]`;
+        return { toolType: 'key', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    if (subcommand !== 'lock' && subcommand !== 'unlock') {
+        const errorContent = `[Error: Unknown key command "${subcommand}". Use lock or unlock.]`;
+        return { toolType: 'key', args, content: errorContent, displayReplacement: errorContent };
     }
 
     const locations = interactionData.locations || [];
-    const targetName = trimmed.toLowerCase();
-    const targetLocation = locations.find(l => l.name.toLowerCase() === targetName);
+    const targetLocation = locations.find(l => l.id === locationId);
 
     if (!targetLocation) {
-        const errorContent = `[Error: Location "${trimmed}" not found.]`;
-        return { toolType: 'lock', args, content: errorContent, displayReplacement: errorContent };
-    }
-
-    const inventory = nextMessage.inventory ? { ...nextMessage.inventory } : {};
-    const locks = loadLocationLocks(inventory);
-    locks[targetLocation.id] = true;
-    inventory['__location_locks__'] = JSON.stringify(locks);
-    nextMessage.inventory = inventory;
-
-    return {
-        toolType: 'lock',
-        args,
-        content: `Locked "${targetLocation.name}". Entry via binding triggers is now blocked.`,
-        displayReplacement: `[🔒 Locked "${targetLocation.name}"]`,
-    };
-}
-
-// ─── Unlock ─────────────────────────────────────────────────────────
-
-function executeUnlock(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
-    const trimmed = args.trim();
-
-    if (!trimmed) {
-        const errorContent = '[Error: Usage: unlock <location name>. Unlocks a previously locked location, restoring access via binding triggers.]';
-        return { toolType: 'unlock', args, content: errorContent, displayReplacement: errorContent };
-    }
-
-    const locations = interactionData.locations || [];
-    const targetName = trimmed.toLowerCase();
-    const targetLocation = locations.find(l => l.name.toLowerCase() === targetName);
-
-    if (!targetLocation) {
-        const errorContent = `[Error: Location "${trimmed}" not found.]`;
-        return { toolType: 'unlock', args, content: errorContent, displayReplacement: errorContent };
+        const errorContent = `[Error: Location ID "${locationId}" not found.]`;
+        return { toolType: 'key', args, content: errorContent, displayReplacement: errorContent };
     }
 
     const inventory = nextMessage.inventory ? { ...nextMessage.inventory } : {};
     const locks = loadLocationLocks(inventory);
 
-    if (!locks[targetLocation.id]) {
+    if (subcommand === 'lock') {
+        locks[targetLocation.id] = true;
+        inventory['__location_locks__'] = JSON.stringify(locks);
+        nextMessage.inventory = inventory;
+
         return {
-            toolType: 'unlock',
+            toolType: 'key',
             args,
-            content: `"${targetLocation.name}" is not locked.`,
-            displayReplacement: `[🔓 "${targetLocation.name}" is not locked]`,
+            content: `Locked "${targetLocation.name}". Entry via binding triggers is now blocked.`,
+            displayReplacement: `[🔒 Locked "${targetLocation.name}"]`,
+        };
+    } else {
+        // unlock
+        if (!locks[targetLocation.id]) {
+            return {
+                toolType: 'key',
+                args,
+                content: `"${targetLocation.name}" is not locked.`,
+                displayReplacement: `[🔓 "${targetLocation.name}" is not locked]`,
+            };
+        }
+
+        delete locks[targetLocation.id];
+        if (Object.keys(locks).length === 0) {
+            delete inventory['__location_locks__'];
+        } else {
+            inventory['__location_locks__'] = JSON.stringify(locks);
+        }
+        nextMessage.inventory = inventory;
+
+        return {
+            toolType: 'key',
+            args,
+            content: `Unlocked "${targetLocation.name}". Access via binding triggers restored.`,
+            displayReplacement: `[🔓 Unlocked "${targetLocation.name}"]`,
         };
     }
+}
 
-    delete locks[targetLocation.id];
-    if (Object.keys(locks).length === 0) {
-        delete inventory['__location_locks__'];
-    } else {
-        inventory['__location_locks__'] = JSON.stringify(locks);
+// ─── Clothing ───────────────────────────────────────────────────────
+
+function executeClothing(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
+    const trimmed = args.trim();
+
+    if (!trimmed) {
+        const errorContent = '[Error: Usage: clothing <character_id> put on <clothing_id> OR clothing <character_id> take off <clothing_id>]';
+        return { toolType: 'clothing', args, content: errorContent, displayReplacement: errorContent };
     }
-    nextMessage.inventory = inventory;
 
-    return {
-        toolType: 'unlock',
-        args,
-        content: `Unlocked "${targetLocation.name}". Access via binding triggers restored.`,
-        displayReplacement: `[🔓 Unlocked "${targetLocation.name}"]`,
-    };
+    // Parse: "<character_id> put on <clothing_id>" or "<character_id> take off <clothing_id>"
+    const putOnMatch = trimmed.match(/^(\S+)\s+put\s+on\s+(\S+)$/i);
+    const takeOffMatch = trimmed.match(/^(\S+)\s+take\s+off\s+(\S+)$/i);
+
+    let charId: string;
+    let clothingId: string;
+    let action: 'put_on' | 'take_off';
+
+    if (putOnMatch) {
+        charId = putOnMatch[1].trim();
+        clothingId = putOnMatch[2].trim();
+        action = 'put_on';
+    } else if (takeOffMatch) {
+        charId = takeOffMatch[1].trim();
+        clothingId = takeOffMatch[2].trim();
+        action = 'take_off';
+    } else {
+        const errorContent = `[Error: Invalid clothing command "${trimmed}". Use "clothing <character_id> put on <clothing_id>" or "clothing <character_id> take off <clothing_id>".]`;
+        return { toolType: 'clothing', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    // Find target character by ID
+    const allChars = context?.allCharacters || interactionData.participants || [];
+    const targetChar = allChars.find(c => c.id === charId);
+
+    if (!targetChar) {
+        const errorContent = `[Error: Character ID "${charId}" not found.]`;
+        return { toolType: 'clothing', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    // Find clothing item by ID in character's wardrobe
+    const clothingItem = targetChar.clothings?.find(c => c.id === clothingId);
+
+    if (!clothingItem) {
+        const availableItems = targetChar.clothings?.map(c => `${c.name} (${c.id})`).join(', ') || 'none';
+        const errorContent = `[Error: Clothing ID "${clothingId}" not found in ${targetChar.name}'s wardrobe. Available: ${availableItems}]`;
+        return { toolType: 'clothing', args, content: errorContent, displayReplacement: errorContent };
+    }
+
+    // Get or create wearing status on the next message
+    const wearingStatuses = nextMessage.characterClothingWearingStatuses
+        ? { ...nextMessage.characterClothingWearingStatuses }
+        : {};
+
+    if (action === 'put_on') {
+        if (wearingStatuses[clothingItem.id] === true) {
+            return {
+                toolType: 'clothing',
+                args,
+                content: `${targetChar.name} is already wearing "${clothingItem.name}".`,
+                displayReplacement: `[👕 ${targetChar.name} already wearing "${clothingItem.name}"]`,
+            };
+        }
+
+        wearingStatuses[clothingItem.id] = true;
+
+        // Apply clothing bindings: hide items this clothing covers
+        for (const boundId of clothingItem.clothingBindings) {
+            wearingStatuses[boundId] = false;
+        }
+
+        nextMessage.characterClothingWearingStatuses = wearingStatuses;
+
+        return {
+            toolType: 'clothing',
+            args,
+            content: `${targetChar.name} put on "${clothingItem.name}".`,
+            displayReplacement: `[👕 ${targetChar.name} put on "${clothingItem.name}"]`,
+        };
+    } else {
+        // take_off
+        if (wearingStatuses[clothingItem.id] !== true) {
+            return {
+                toolType: 'clothing',
+                args,
+                content: `${targetChar.name} is not wearing "${clothingItem.name}".`,
+                displayReplacement: `[👕 ${targetChar.name} not wearing "${clothingItem.name}"]`,
+            };
+        }
+
+        wearingStatuses[clothingItem.id] = false;
+        nextMessage.characterClothingWearingStatuses = wearingStatuses;
+
+        return {
+            toolType: 'clothing',
+            args,
+            content: `${targetChar.name} took off "${clothingItem.name}".`,
+            displayReplacement: `[👕 ${targetChar.name} took off "${clothingItem.name}"]`,
+        };
+    }
 }
 
 // ─── Summon ─────────────────────────────────────────────────────────
@@ -1511,16 +1606,16 @@ function executeSummon(args: string, nextMessage: BaseMessage, interactionData: 
     const trimmed = args.trim();
 
     if (!trimmed) {
-        const errorContent = '[Error: Usage: summon <character name>. Adds a non-participant character to the current interaction session.]';
+        const errorContent = '[Error: Usage: summon <character_id>. Adds a non-participant character to the current interaction session.]';
         return { toolType: 'summon', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    const targetName = trimmed.toLowerCase();
+    const targetId = trimmed.trim();
     const allChars = context?.allCharacters || [];
-    const targetChar = allChars.find(c => c.name.toLowerCase() === targetName);
+    const targetChar = allChars.find(c => c.id === targetId);
 
     if (!targetChar) {
-        const errorContent = `[Error: Character "${trimmed}" not found in character list.]`;
+        const errorContent = `[Error: Character ID "${targetId}" does not exist. The character must be created before it can be summoned.]`;
         return { toolType: 'summon', args, content: errorContent, displayReplacement: errorContent };
     }
 
@@ -1530,7 +1625,6 @@ function executeSummon(args: string, nextMessage: BaseMessage, interactionData: 
         return { toolType: 'summon', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    // Store pending action for caller to execute (adding participant requires session-level mutation)
     appendPendingAction(nextMessage, {
         type: 'summon',
         payload: { characterId: targetChar.id, characterName: targetChar.name },
@@ -1568,16 +1662,16 @@ function executeInspect(args: string, _nextMessage: BaseMessage, interactionData
     const trimmed = args.trim();
 
     if (!trimmed) {
-        const errorContent = '[Error: Usage: inspect <character name>. Examines another character\'s visible state.]';
+        const errorContent = '[Error: Usage: inspect <character_id>. Examines another character\'s visible state.]';
         return { toolType: 'inspect', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    const targetName = trimmed.toLowerCase();
+    const targetId = trimmed.trim();
     const allChars = context?.allCharacters || interactionData.participants || [];
-    const targetChar = allChars.find(c => c.name.toLowerCase() === targetName);
+    const targetChar = allChars.find(c => c.id === targetId);
 
     if (!targetChar) {
-        const errorContent = `[Error: Character "${trimmed}" not found.]`;
+        const errorContent = `[Error: Character ID "${targetId}" not found.]`;
         return { toolType: 'inspect', args, content: errorContent, displayReplacement: errorContent };
     }
 
@@ -1609,12 +1703,28 @@ function executeInspect(args: string, _nextMessage: BaseMessage, interactionData
         }
     }
 
-    const content = `${targetChar.name}: Location: ${targetLocationName}, Expression: ${lastExpression}, Items: ${itemCount}`;
+    // Gather currently worn clothing
+    let wornClothing: string[] = [];
+    for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
+        const msg = interactionData.interactionHistory[i];
+        if (msg.character.id === targetChar.id && msg.characterClothingWearingStatuses) {
+            const statuses = msg.characterClothingWearingStatuses;
+            for (const clothing of targetChar.clothings || []) {
+                if (statuses[clothing.id] === true) {
+                    wornClothing.push(clothing.name);
+                }
+            }
+            break;
+        }
+    }
+
+    const wornStr = wornClothing.length > 0 ? wornClothing.join(', ') : 'nothing notable';
+    const content = `${targetChar.name}: Location: ${targetLocationName}, Expression: ${lastExpression}, Wearing: ${wornStr}, Items: ${itemCount}`;
     return {
         toolType: 'inspect',
         args,
         content,
-        displayReplacement: `[🔍 ${targetChar.name}: 📍${targetLocationName}, 😊${lastExpression}, 📦${itemCount} items]`,
+        displayReplacement: `[🔍 ${targetChar.name}: 📍${targetLocationName}, 😊${lastExpression}, 👕${wornClothing.length} worn, 📦${itemCount} items]`,
     };
 }
 
@@ -1720,16 +1830,16 @@ function executeDestroyer(args: string, nextMessage: BaseMessage, interactionDat
     const trimmed = args.trim();
 
     if (!trimmed) {
-        const errorContent = '[Error: Usage: destroyer <entity_type> <name_or_id>. Entity types: character, context, location, audio_track, profile.]';
+        const errorContent = '[Error: Usage: destroyer <entity_type> <entity_id>. Entity types: character, context, location, audio_track, profile.]';
         return { toolType: 'destroyer', args, content: errorContent, displayReplacement: errorContent };
     }
 
     const parts = trimmed.split(/\s+/);
     const entityType = parts[0]?.toLowerCase();
-    const entityIdentifier = parts.slice(1).join(' ');
+    const entityId = parts.slice(1).join(' ').trim();
 
-    if (!entityIdentifier) {
-        const errorContent = `[Error: Usage: destroyer ${entityType || '<entity_type>'} <name_or_id>]`;
+    if (!entityId) {
+        const errorContent = `[Error: Usage: destroyer ${entityType || '<entity_type>'} <entity_id>]`;
         return { toolType: 'destroyer', args, content: errorContent, displayReplacement: errorContent };
     }
 
@@ -1739,15 +1849,13 @@ function executeDestroyer(args: string, nextMessage: BaseMessage, interactionDat
         return { toolType: 'destroyer', args, content: errorContent, displayReplacement: errorContent };
     }
 
-    const identifierLower = entityIdentifier.toLowerCase();
-
-    // Validate target exists
-    let targetName = entityIdentifier;
+    // Validate target exists by ID
+    let targetName = entityId;
     switch (entityType) {
         case 'character': {
-            const target = (context?.allCharacters || []).find(c => c.name.toLowerCase() === identifierLower || c.id === entityIdentifier);
+            const target = (context?.allCharacters || []).find(c => c.id === entityId);
             if (!target) {
-                return { toolType: 'destroyer', args, content: `[Error: Character "${entityIdentifier}" not found.]`, displayReplacement: `[💀 Not found: "${entityIdentifier}"]` };
+                return { toolType: 'destroyer', args, content: `[Error: Character ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found: "${entityId}"]` };
             }
             if (target.id === interactionData.protagonist?.id) {
                 return { toolType: 'destroyer', args, content: '[Error: Cannot destroy the protagonist.]', displayReplacement: `[💀 Cannot destroy protagonist]` };
@@ -1756,33 +1864,33 @@ function executeDestroyer(args: string, nextMessage: BaseMessage, interactionDat
             break;
         }
         case 'context': {
-            const target = (context?.allContexts || interactionData.contexts || []).find(c => c.name.toLowerCase() === identifierLower || c.id === entityIdentifier);
+            const target = (context?.allContexts || interactionData.contexts || []).find(c => c.id === entityId);
             if (!target) {
-                return { toolType: 'destroyer', args, content: `[Error: Context "${entityIdentifier}" not found.]`, displayReplacement: `[💀 Not found: "${entityIdentifier}"]` };
+                return { toolType: 'destroyer', args, content: `[Error: Context ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found: "${entityId}"]` };
             }
             targetName = target.name;
             break;
         }
         case 'location': {
-            const target = (context?.allLocations || interactionData.locations || []).find(l => l.name.toLowerCase() === identifierLower || l.id === entityIdentifier);
+            const target = (context?.allLocations || interactionData.locations || []).find(l => l.id === entityId);
             if (!target) {
-                return { toolType: 'destroyer', args, content: `[Error: Location "${entityIdentifier}" not found.]`, displayReplacement: `[💀 Not found: "${entityIdentifier}"]` };
+                return { toolType: 'destroyer', args, content: `[Error: Location ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found: "${entityId}"]` };
             }
             targetName = target.name;
             break;
         }
         case 'audio_track': {
-            const target = (context?.allAudioTracks || interactionData.audioTracks || []).find(t => t.name.toLowerCase() === identifierLower || t.id === entityIdentifier);
+            const target = (context?.allAudioTracks || interactionData.audioTracks || []).find(t => t.id === entityId);
             if (!target) {
-                return { toolType: 'destroyer', args, content: `[Error: Audio track "${entityIdentifier}" not found.]`, displayReplacement: `[💀 Not found: "${entityIdentifier}"]` };
+                return { toolType: 'destroyer', args, content: `[Error: Audio track ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found: "${entityId}"]` };
             }
             targetName = target.name;
             break;
         }
         case 'profile': {
-            const target = (context?.allProfiles || []).find(p => p.name.toLowerCase() === identifierLower || p.id === entityIdentifier);
+            const target = (context?.allProfiles || []).find(p => p.id === entityId);
             if (!target) {
-                return { toolType: 'destroyer', args, content: `[Error: Profile "${entityIdentifier}" not found.]`, displayReplacement: `[💀 Not found: "${entityIdentifier}"]` };
+                return { toolType: 'destroyer', args, content: `[Error: Profile ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found: "${entityId}"]` };
             }
             targetName = target.name;
             break;
@@ -1791,7 +1899,7 @@ function executeDestroyer(args: string, nextMessage: BaseMessage, interactionDat
 
     appendPendingAction(nextMessage, {
         type: 'destroyer',
-        payload: { entityType, entityId: entityIdentifier, entityName: targetName },
+        payload: { entityType, entityId, entityName: targetName },
     });
 
     context?.addToast?.(`Destroyer: ${entityType} "${targetName}" deletion initiated.`, 'info');
@@ -1806,11 +1914,12 @@ function executeDestroyer(args: string, nextMessage: BaseMessage, interactionDat
 /**
  * Processes pending tool actions stored in the last AI message's inventory.
  * Returns the updated InteractionData with mutations applied.
- * NOTE: This is now a pure function. It does not call setInteractionData or addToast.
+ * NOTE: This is a pure function. It does not call setInteractionData or addToast.
  * The caller (useChatSession) must apply the returned data and handle toasts.
  */
 export function processPendingToolActions(
     data: InteractionData,
+    allCharacters: Character[],
     options?: {
         onToast?: (msg: string, type: 'success' | 'error' | 'info') => void;
     }
@@ -1826,18 +1935,17 @@ export function processPendingToolActions(
     }
     if (!lastAiCharId) return data;
 
-    // Helper to find previous message (duplicated here to avoid circular deps, or import from a shared util)
-    const findPreviousMessage = (d: InteractionData, charId: string) => {
+    const findPrevMsg = (d: InteractionData, charId: string) => {
         for (let i = d.interactionHistory.length - 1; i >= 0; i--) {
             if (d.interactionHistory[i].character.id === charId) return d.interactionHistory[i];
         }
         return null;
     };
 
-    const charLastMsg = findPreviousMessage(data, lastAiCharId);
+    const charLastMsg = findPrevMsg(data, lastAiCharId);
     if (!charLastMsg || charLastMsg.messageType !== 'chat') return data;
     const targetMsg = charLastMsg as ChatMessage;
-    
+
     const actions = loadPendingToolActions(targetMsg.inventory);
     if (actions.length === 0) return data;
 
@@ -1852,38 +1960,20 @@ export function processPendingToolActions(
             case 'summon': {
                 const charId = action.payload.characterId;
                 const alreadyParticipant = updatedData.participants.some(p => p.id === charId);
-                if (!alreadyParticipant) {
-                    const placeholder: Character = {
-                        id: charId,
-                        name: action.payload.characterName || 'Unknown',
-                        images: {},
-                        initiativeWeight: 1,
-                        chatProbability: 0.5,
-                        maximumChatStamina: 4,
-                        nameSensitivity: 1,
-                        chatImpatienceSensitivity: 0,
-                        skipProbability: 0,
-                        memoryRetentionWeight: 1,
-                        contextSensitivity: 1,
-                        maximumActionStamina: 5,
-                        tools: {} as Record<tool, boolean>,
-                        enableMemoryWriting: false,
-                        enableMemoryReading: false,
-                        memories: {},
-                        numberOfMessagesToDisableThinkPrompt: 0,
-                        numberOfMessagesToDisableMetaThinkInstructions: 0,
-                        numberOfMessagesToDisableDialoguePrompt: 0,
-                        numberOfMessagesToDisableStarterPrompt: 0,
-                        firstCreatedTimestamp: Date.now(),
-                        lastUpdatedTimestamp: Date.now(),
-                    };
-                    updatedData = {
-                        ...updatedData,
-                        participants: [...updatedData.participants, placeholder],
-                    };
-                    changed = true;
-                    options?.onToast?.(`✨ ${action.payload.characterName} joined the session.`, 'info');
+                if (alreadyParticipant) break;
+
+                const realCharacter = allCharacters.find(c => c.id === charId);
+                if (!realCharacter) {
+                    options?.onToast?.(`⚠️ Cannot summon "${action.payload.characterName}": character does not exist.`, 'error');
+                    break;
                 }
+
+                updatedData = {
+                    ...updatedData,
+                    participants: [...updatedData.participants, { ...realCharacter }],
+                };
+                changed = true;
+                options?.onToast?.(`✨ ${realCharacter.name} joined the session.`, 'info');
                 break;
             }
             case 'kick': {
@@ -1897,17 +1987,21 @@ export function processPendingToolActions(
                 break;
             }
             case 'invite': {
-                // Simplified location logic for pure function context
-                // In a real refactor, you'd pass the current location index or resolve it differently
                 const invitedChar = updatedData.participants.find(p => p.id === action.payload.characterId);
                 if (invitedChar) {
-                     // Defaulting to protagonist location or 0 if unknown in this pure context
-                    const currentLocIdx = 0; 
+                    let currentLocIdx: number | undefined;
+                    for (let i = updatedData.interactionHistory.length - 1; i >= 0; i--) {
+                        if (updatedData.interactionHistory[i].locationIndex !== undefined) {
+                            currentLocIdx = updatedData.interactionHistory[i].locationIndex;
+                            break;
+                        }
+                    }
                     const inviteMsg = {
                         messageType: 'interaction' as const,
                         id: uuidv4(),
                         character: { ...invitedChar },
                         locationIndex: currentLocIdx,
+                        characterClothingWearingStatuses: {},
                         characterLockedLocations: {},
                         parentInteractionMessageId: updatedData.interactionHistory[updatedData.interactionHistory.length - 1]?.id ?? null,
                         firstCreatedTimestamp: Date.now(),
@@ -1922,23 +2016,22 @@ export function processPendingToolActions(
                 }
                 break;
             }
-            // ... handle other cases (administrator, creator, destroyer) similarly ...
-             case 'administrator_move_protagonist': {
-                 options?.onToast?.(`🔧 Protagonist transfer to "${action.payload.chatId}" requested.`, 'info');
-                 break;
-             }
-             case 'administrator_switch_model': {
-                 options?.onToast?.(`🔧 Model switch to "${action.payload.modelName}" requested.`, 'info');
-                 break;
-             }
-             case 'creator': {
-                 options?.onToast?.(`🛠️ ${action.payload.entityType} "${action.payload.entityName}" creation requested.`, 'info');
-                 break;
-             }
-             case 'destroyer': {
-                 options?.onToast?.(`💀 ${action.payload.entityType} "${action.payload.entityName}" deletion requested.`, 'info');
-                 break;
-             }
+            case 'administrator_move_protagonist': {
+                options?.onToast?.(`🔧 Protagonist transfer to "${action.payload.chatId}" requested.`, 'info');
+                break;
+            }
+            case 'administrator_switch_model': {
+                options?.onToast?.(`🔧 Model switch to "${action.payload.modelName}" requested.`, 'info');
+                break;
+            }
+            case 'creator': {
+                options?.onToast?.(`🛠️ ${action.payload.entityType} "${action.payload.entityName}" creation requested.`, 'info');
+                break;
+            }
+            case 'destroyer': {
+                options?.onToast?.(`💀 ${action.payload.entityType} "${action.payload.entityName}" deletion requested.`, 'info');
+                break;
+            }
         }
     }
 
@@ -1948,13 +2041,13 @@ export function processPendingToolActions(
     const cleanedHistory = [...updatedData.interactionHistory];
     const cleanedMsg = { ...cleanedHistory[targetMsgIdx] } as ChatMessage;
     const cleanedInventory = cleanedMsg.inventory ? { ...cleanedMsg.inventory } : {};
-    delete cleanedInventory['pending_tool_actions']; // Note: key matches ToolExecutor save/load
+    delete cleanedInventory['__pending_tool_actions__'];
     if (Object.keys(cleanedInventory).length === 0) {
         delete cleanedMsg.inventory;
     } else {
         cleanedMsg.inventory = cleanedInventory;
     }
     cleanedHistory[targetMsgIdx] = cleanedMsg;
-    
+
     return { ...updatedData, interactionHistory: cleanedHistory, lastUpdatedTimestamp: Date.now() };
 }

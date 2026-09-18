@@ -213,7 +213,7 @@ export interface RawMemory extends RawData {
   interactionDataId: string;
 }
 
-export type tool = "pick" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "invite" | "kick" | "teleport" | "lock" | "unlock" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"
+export type tool = "pick" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "invite" | "kick" | "teleport" | "key" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"
 
 export interface Clothing extends ObjectData {
     regularExpressionActivationTriggers?: RegularExpressionTrigger[];
@@ -297,7 +297,7 @@ export interface BaseMessage {
   locationIndex?: number;
   characterExpression?: string;
   inventory?: Inventory,
-  characterClothingWearingStatus: Record<string, boolean>
+  characterClothingWearingStatuses: Record<string, boolean>
   characterLockedLocations: Record<string, string[]>
   parentInteractionMessageId?: string | null;
   firstCreatedTimestamp: number;

@@ -4,7 +4,7 @@ import type { backend, cloudBackend, LanguageModel, StopPattern } from '../types
 import { useVramUseEstimation } from '../hooks/useVramUseEstimation';
 import { v4 as uuidv4 } from 'uuid';
 import { backends, cloudBackends } from '../dictionaries/languageModelInformation';
-import { getChatTemplateOptions, getInstructionTemplateOptions } from '../dictionaries/modelTemplates';
+import { getChatTemplateOptions, getInstructionTemplateOptions, autoDetectTemplate, getModelTemplate } from '../dictionaries/modelTemplates';
 import '../main.css';
 
 interface ModelEditorModalProps {
@@ -210,6 +210,11 @@ export function ModelEditorModal({
     const supportsLlamaMemory = LLAMA_MEMORY_BACKENDS.has(selectedBackend);
     const supportsVRAM = VRAM_SUPPORTED_BACKENDS.has(selectedBackend);
 
+    // Auto-detect templates when model name/path changes and template is set to 'auto'
+    const detectedTemplateKey = (instructionTemplate === 'auto' || chatTemplate === 'auto')
+        ? autoDetectTemplate(name || modelPath)
+        : '';
+
     useEffect(() => {
         if (isOpen) {
             const timer = window.setTimeout(() => {
@@ -399,6 +404,17 @@ export function ModelEditorModal({
         if (selectedStopPatternIds.length > 0) params.stop_pattern_ids = selectedStopPatternIds;
         if (apiKey.trim()) params.api_key = apiKey.trim();
 
+        // Resolve 'auto' template selections to actual detected template keys
+        const resolvedInstructionTemplate = instructionTemplate === 'auto'
+            ? (detectedTemplateKey || undefined)
+            : (instructionTemplate || undefined);
+        const resolvedChatTemplate = chatTemplate === 'auto'
+            ? (() => {
+                const tmpl = detectedTemplateKey ? getModelTemplate(detectedTemplateKey) : null;
+                return tmpl?.chatTemplate ? detectedTemplateKey : undefined;
+            })()
+            : (chatTemplate || undefined);
+
         const now = Date.now();
         return {
             id: isNewClone ? uuidv4() : (existingModel?.id || uuidv4()),
@@ -411,8 +427,8 @@ export function ModelEditorModal({
             lora: loraPath.trim() || undefined,
             apiKey: apiKey.trim() || undefined,
             parameters: Object.keys(params).length > 0 ? params : undefined,
-            chatTemplate: chatTemplate || undefined,
-            instructionTemplate: instructionTemplate || undefined,
+            chatTemplate: resolvedChatTemplate,
+            instructionTemplate: resolvedInstructionTemplate,
             cacheHitCostPerOneMillionOfTokens: inputCacheHitCostPerMillion,
             cacheMissCostPerOneMillionOfTokens: inputCacheMissCostPerMillion,
             outputGenerationCostPerOneMillionOfTokens: outputGenerationCostPerMillion,
@@ -447,6 +463,9 @@ export function ModelEditorModal({
     const cacheTypes = getCacheTypes(selectedBackend || "");
     const displayVRAM = isEstimating ? '...' : (vramError ? 'Unknown' : estimatedVRAM);
     const getStopPatternById = (id: string) => allStopPatterns.find(sp => sp.id === id);
+
+    // Compute detected template info for display hints
+    const detectedTmpl = detectedTemplateKey ? getModelTemplate(detectedTemplateKey) : null;
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -625,7 +644,7 @@ export function ModelEditorModal({
                     <div className="editor-section">
                         <span className="editor-section-title">Chat & Instruction Templates</span>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
-                            Select the formatting template this model was trained with. Used when "Model Chat Template" or "Model Instruction Template" is added to a profile's input strategy. "None" uses the engine default.
+                            Select the formatting template this model was trained with. Used when "Model Chat Template" or "Model Instruction Template" is added to a profile's input strategy. "Auto" detects from the model name. "None" uses the engine default.
                         </div>
                         <div className="editor-row">
                             <div>
@@ -633,12 +652,22 @@ export function ModelEditorModal({
                                 <select value={instructionTemplate} onChange={(e) => setInstructionTemplate(e.target.value)} className="editor-select">
                                     {getInstructionTemplateOptions().map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                                 </select>
+                                {instructionTemplate === 'auto' && (
+                                    <div style={{ fontSize: '0.6rem', marginTop: '4px', color: detectedTmpl?.instructionTemplate ? 'var(--accent)' : 'rgba(255,255,255,0.4)' }}>
+                                        {detectedTmpl?.instructionTemplate ? `✓ Detected: ${detectedTmpl.label}` : '⚠ No match found — will fall back to None'}
+                                    </div>
+                                )}
                             </div>
                             <div>
                                 <label className="editor-label editor-label-small">Chat Template</label>
                                 <select value={chatTemplate} onChange={(e) => setChatTemplate(e.target.value)} className="editor-select">
                                     {getChatTemplateOptions().map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                                 </select>
+                                {chatTemplate === 'auto' && (
+                                    <div style={{ fontSize: '0.6rem', marginTop: '4px', color: detectedTmpl?.chatTemplate ? 'var(--accent)' : 'rgba(255,255,255,0.4)' }}>
+                                        {detectedTmpl?.chatTemplate ? `✓ Detected: ${detectedTmpl.label}` : '⚠ No chat template match — will fall back to None'}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

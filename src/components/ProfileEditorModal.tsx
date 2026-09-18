@@ -36,9 +36,9 @@ const TOOL_LABELS: Record<tool, string> = {
     pick: 'Random Pick', date: 'Current Date & Time', coin: 'Coin Flip', dice: 'Roll Dice',
     random: 'Random Number', rng: 'RNG Table', move: 'Move', timer: 'Timer',
     stopwatch: 'Stopwatch', calculator: 'Calculator', web: 'Web Search', lookup: 'Look Up',
-    map: 'Map', audio: 'Audio', note: 'Note', inventory: 'Inventory',
+    map: 'Map', audio: 'Audio', clothing: 'Clothing', note: 'Note', inventory: 'Inventory',
     invite: 'Invite Participant', kick: 'Kick Participant', teleport: 'Teleport',
-    lock: 'Lock Location', unlock: 'Unlock Location', summon: 'Summon Character',
+    key: 'Key', summon: 'Summon Character',
     narrate: 'Narrate', inspect: 'Inspect', administrator: 'Administrator',
     creator: 'Creator', destroyer: 'Destroyer',
 };

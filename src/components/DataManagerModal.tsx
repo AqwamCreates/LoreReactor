@@ -115,7 +115,8 @@ function isEntityHollow(
                 && !(c.images && Object.keys(c.images).length > 0)
                 && !c.voice?.trim()
                 && !(c.memories && Object.values(c.memories).some(arr => arr.length > 0))
-                && !(c.tools && Object.values(c.tools).some(v => v));
+                && !(c.tools && Object.values(c.tools).some(v => v))
+                && !(c.clothings && c.clothings.length > 0);
         }
         case 'context': {
             const c = entity as Context;
@@ -441,6 +442,15 @@ export function DataManagerModal({
                 for (const [key, memArr] of Object.entries(c.memories)) {
                     for (const mem of memArr) {
                         if (mem.id && !memoryIdSet.has(mem.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: `References missing memory in group "${key}"`, refType: 'Memory', refId: mem.id });
+                    }
+                }
+            }
+            // Validate clothing bindings (internal references within same character)
+            if (c.clothings && c.clothings.length > 0) {
+                const clothingIdSet = new Set(c.clothings.map(cl => cl.id));
+                for (const clothing of c.clothings) {
+                    for (const boundId of (clothing.clothingBindings || [])) {
+                        if (!clothingIdSet.has(boundId)) issues.push({ entityType: 'Character', entityName: c.name, issue: `Clothing "${clothing.name}" references missing clothing binding`, refType: 'Clothing', refId: boundId });
                     }
                 }
             }

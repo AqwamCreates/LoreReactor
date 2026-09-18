@@ -1,3 +1,5 @@
+// src/dictionaries/stringLists.ts
+
 export const contextStartString = "{";
 export const contextEndString = "}";
 export const turnStartString = "{";

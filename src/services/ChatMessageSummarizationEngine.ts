@@ -2,7 +2,7 @@
 import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders, getUniversalMessageFilterFlags } from '../hooks/chatLogic';
+import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders, getUniversalMessageFilterFlags } from '../hooks/promptLogic';
 import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, turnStartString, turnEndString } from '../dictionaries/stringList';
 import { buildRequestBody } from '../hooks/genericRequestBuilderLogic';
 

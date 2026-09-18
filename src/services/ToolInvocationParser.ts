@@ -2,9 +2,9 @@
 
 import { toolStartSring, toolEndString } from "../dictionaries/stringList";
 
-const characterAgnosticTools = ['pick', 'date', 'coin', 'dice', 'random', 'rng', 'move', 'lookup', 'map', 'audio', 'note', 'inventory'] // Audio is here because you can make noises from footsteps and stuff like that.
+const characterAgnosticTools = ['pick', 'date', 'coin', 'dice', 'random', 'rng', 'move', 'lookup', 'map', 'audio', 'clothing', 'note', 'inventory'] // Audio is here because you can make noises from footsteps and stuff like that.
 
-const characterSpecificTools = ['timer', 'stopwatch', 'calculator', 'web', 'invite', 'kick', 'teleport' , 'lock' , 'unlock', 'summon', 'narrate'] // These tools allows express characters' traits like intelligence and curiosity. Therefore, these would have their own activation and deactivation settings.
+const characterSpecificTools = ['timer', 'stopwatch', 'calculator', 'web', 'invite', 'kick', 'teleport' , 'key', 'summon', 'narrate'] // These tools allows express characters' traits like intelligence and curiosity. Therefore, these would have their own activation and deactivation settings.
 
 const metaTools = ['inspect', 'administrator', 'creator', 'destroyer']
 

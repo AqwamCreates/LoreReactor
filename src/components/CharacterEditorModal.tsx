@@ -1,611 +1,504 @@
-// src/components/CharacterEditorModal.tsx
-import type React from 'react';
-import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Character, Sampler, LanguageModel, Memory, Clothing, tool } from '../types';
-import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from '../storage/serverStorage';
-import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getChatImpatienceSensitivityValueFromText, getSkipProbabilityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText, getMaximumActionStaminaValueFromText } from '../hooks/chatTraitsDetection';
-import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExtended } from '../services/characterCardParser';
+// src/hooks/chatLogic.ts
+import type { Character, InteractionData, HistoryMessage, ChatMessage, Context, PromptBlock, Location, RegularExpressionTrigger } from '../types';
+import { detectName } from './nameDetection';
 import { v4 as uuidv4 } from 'uuid';
-import { CharacterAdvancedSettingsEditorModal } from './CharacterAdvancedSettingsEditorModal';
-import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
-import { CharacterImageEditorModal } from './CharacterImageEditorModal';
-import { CharacterClothingEditorModal } from './CharacterClothingEditorModal';
-import '../main.css';
-import { defaultCharacterTools } from '../dictionaries/defaults';
+import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storage/serverStorage';
+import { getEffectiveMaximumChatStamina } from './characterLogic';
+import { turnStartString, turnEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, generalStartString, generalEndString } from '../dictionaries/stringList';
+import { buildPromptAndStopPatterns, getParticipantTag } from './promptLogic';
 
-// ─── Defaults ───────────────────────────────────────────────────────
-const DEFAULT_INITIATIVE_WEIGHT = 1.2;
-const DEFAULT_CHAT_PROBABILITY = 0.5;
-const DEFAULT_MAXIMUM_CHAT_STAMINA = 4;
-const DEFAULT_NAME_SENSITIVITY = 1;
-const DEFAULT_CHAT_IMPATIENCE_SENSITIVITY = 0;
-const DEFAULT_SKIP_PROBABILITY = 0;
-const DEFAULT_MEMORY_RETENTION_WEIGHT = 1;
-const DEFAULT_CONTEXT_SENSITIVITY = 1;
-const DEFAULT_MAXIMUM_ACTION_STAMINA = 5;
-const DEFAULT_DISABLE_THINK_PROMPT = 1;
-const DEFAULT_DISABLE_META_THINK = 1;
-const DEFAULT_DISABLE_DIALOGUE_PROMPT = 1;
-const DEFAULT_DISABLE_STARTER_PROMPT = 1;
-const MAX_VOICE_FILE_SIZE = 5 * 1024 * 1024;
-
-const tokenEngine = getLanguageModelEngine();
-
-interface TokenCounts {
-    systemPrompt: number | null;
-    thinkPrompt: number | null;
-    appearancePrompt: number | null;
-    dialoguePrompt: number | null;
-    starterPrompt: number | null;
+export function findPreviousMessage(interactionData: InteractionData, characterId: string): HistoryMessage | null {
+    const interactionHistory = interactionData.interactionHistory;
+    for (let i = interactionHistory.length - 1; i >= 0; i--) {
+        if (interactionHistory[i].character.id === characterId) return interactionHistory[i];
+    }
+    return null;
 }
 
-interface CharacterEditorModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    onSave: (character: Character) => void;
-    existingCharacter?: Character | null;
-    allSamplers: Sampler[];
-    isLoadingSamplers?: boolean;
-    selectedModel?: LanguageModel | null;
-    runningModels?: Record<string, any>;
-    chatNameMap?: Map<string, string>;
-}
-
-export function CharacterEditorModal({
-    isOpen, onClose, onSave, existingCharacter,
-    allSamplers, isLoadingSamplers = false,
-    selectedModel, runningModels,
-    chatNameMap,
-}: CharacterEditorModalProps) {
-    if (!isOpen) return null;
-
-    const modalKey = `char-${existingCharacter?.id ?? 'new'}`;
-
-    return (
-        <CharacterEditorModalInner
-            key={modalKey}
-            onClose={onClose}
-            onSave={onSave}
-            existingCharacter={existingCharacter}
-            allSamplers={allSamplers}
-            isLoadingSamplers={isLoadingSamplers}
-            selectedModel={selectedModel}
-            runningModels={runningModels}
-            chatNameMap={chatNameMap}
-        />
-    );
-}
-
-function CharacterEditorModalInner({
-    onClose, onSave, existingCharacter,
-    allSamplers, isLoadingSamplers = false,
-    selectedModel, runningModels,
-    chatNameMap,
-}: Omit<CharacterEditorModalProps, 'isOpen'>) {
-    const [name, setName] = useState(existingCharacter?.name || '');
-    const [description, setDescription] = useState(existingCharacter?.description || '');
-    const [systemPrompt, setSystemPrompt] = useState(existingCharacter?.systemPrompt || '');
-    const [thinkPrompt, setThinkPrompt] = useState(existingCharacter?.thinkPrompt || '');
-    const [appearancePrompt, setAppearancePrompt] = useState(existingCharacter?.appearancePrompt || '');
-    const [dialoguePrompt, setDialoguePrompt] = useState(existingCharacter?.dialoguePrompt || '');
-    const [starterPrompt, setStarterPrompt] = useState(existingCharacter?.starterPrompt || '');
-    const [firstMessage, setFirstMessage] = useState('');
-    const [imageFile, setImageFile] = useState<File | null>(null);
-    const [imagePreview, setImagePreview] = useState<string | null>(() => {
-        if (existingCharacter) {
-            const imgs = existingCharacter.images ?? {};
-            const neutralFilename = imgs.neutral;
-            return neutralFilename ? getCharacterImageUrl(existingCharacter.id, neutralFilename) : null;
-        }
+export const getImageBase64 = async (url: string): Promise<string | null> => {
+    try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    } catch (error) {
+        console.error(`Failed to convert image: ${url}`, error);
         return null;
-    });
-    const [selectedSamplerId, setSelectedSamplerId] = useState<string>(existingCharacter?.sampler?.id || (allSamplers[0]?.id || ''));
-    const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>(existingCharacter?.sampler?.stopPatterns.map(sp => sp.id) || []);
-    const [isUploading, setIsUploading] = useState(false);
-    const [submitError, setSubmitError] = useState<string | null>(null);
+    }
+};
 
-    const [initiativeWeightStr, setInitiativeWeightStr] = useState<string>(String(existingCharacter?.initiativeWeight ?? -1));
-    const [chatProbabilityStr, setChatProbabilityStr] = useState<string>(String(existingCharacter?.chatProbability ?? -1));
-    const [maximumChatStaminaStr, setMaximumChatStaminaStr] = useState<string>(String(existingCharacter?.maximumChatStamina ?? -1));
-    const [nameSensitivityStr, setNameSensitivityStr] = useState<string>(String(existingCharacter?.nameSensitivity ?? -1));
-    const [chatImpatienceSensitivityStr, setChatImpatienceSensitivityStr] = useState<string>(String(existingCharacter?.chatImpatienceSensitivity ?? -1));
-    const [skipProbabilityStr, setSkipProbabilityStr] = useState<string>(String(existingCharacter?.skipProbability ?? -1));
-    const [memoryRetentionWeightStr, setMemoryRetentionWeightStr] = useState<string>(String(existingCharacter?.memoryRetentionWeight ?? -1));
-    const [contextSensitivityStr, setContextSensitivityStr] = useState<string>(String(existingCharacter?.contextSensitivity ?? -1));
-    const [maximumActionStaminaStr, setMaximumActionStaminaStr] = useState<string>(String(existingCharacter?.maximumActionStamina ?? -1));
-
-    const [voiceFile, setVoiceFile] = useState<File | null>(null);
-    const [voiceName, setVoiceName] = useState<string>(existingCharacter?.voice || '');
-    const [existingVoiceName, setExistingVoiceName] = useState<string>(existingCharacter?.voice || '');
-
-    const [doNotInjectCharacterImage, setDoNotInjectCharacterImage] = useState<boolean>(existingCharacter?.doNotInjectCharacterImage ?? false);
-
-    const [numberOfMessagesToDisableThinkPromptStr, setNumberOfMessagesToDisableThinkPromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableThinkPrompt ?? DEFAULT_DISABLE_THINK_PROMPT));
-    const [numberOfMessagesToDisableMetaThinkInstructionsStr, setNumberOfMessagesToDisableMetaThinkInstructionsStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableMetaThinkInstructions ?? DEFAULT_DISABLE_META_THINK));
-    const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableDialoguePrompt ?? DEFAULT_DISABLE_DIALOGUE_PROMPT));
-    const [numberOfMessagesToDisableStarterPromptStr, setNumberOfMessagesToDisableStarterPromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableStarterPrompt ?? DEFAULT_DISABLE_STARTER_PROMPT));
-
-    const [tools, setTools] = useState<Record<tool, boolean>>(existingCharacter?.tools ?? { ...defaultCharacterTools });
-    const [enableMemoryWriting, setEnableMemoryWriting] = useState<boolean>(existingCharacter?.enableMemoryWriting ?? false);
-    const [enableMemoryReading, setEnableMemoryReading] = useState<boolean>(existingCharacter?.enableMemoryReading ?? false);
-
-    const [memories, setMemories] = useState<Record<string, Memory[]>>(existingCharacter?.memories ?? {});
-    const [clothings, setClothings] = useState<Clothing[]>(existingCharacter?.clothings ?? []);
-
-    const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
-    const [showMemoryManager, setShowMemoryManager] = useState(false);
-    const [showImageEditor, setShowImageEditor] = useState(false);
-    const [showClothingEditor, setShowClothingEditor] = useState(false);
-    const [emotionImages, setEmotionImages] = useState<Record<string, string>>(existingCharacter?.images ?? {});
-
-    const [pendingCharacterId] = useState<string | null>(existingCharacter ? null : uuidv4());
-
-    const [autoDetected, setAutoDetected] = useState<{ iw: number | null; cp: number | null; ms: number | null }>({
-        iw: null, cp: null, ms: null,
-    });
-
-    const [tokenCounts, setTokenCounts] = useState<TokenCounts>({
-        systemPrompt: null, thinkPrompt: null, appearancePrompt: null, dialoguePrompt: null, starterPrompt: null,
-    });
-    const [countingField, setCountingField] = useState<keyof TokenCounts | null>(null);
-
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const cardImportRef = useRef<HTMLInputElement>(null);
-    const voiceInputRef = useRef<HTMLInputElement>(null);
-    const tokenCountTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-
-    const handleToolToggle = useCallback((toolName: tool) => {
-        setTools(prev => ({ ...prev, [toolName]: !prev[toolName] }));
-    }, []);
-
-    const countFieldTokens = useCallback(async (field: keyof TokenCounts, text: string) => {
-        if (!text.trim()) { setTokenCounts(prev => ({ ...prev, [field]: 0 })); return; }
-        const timeouts = tokenCountTimeoutsRef.current;
-        if (timeouts[field]) clearTimeout(timeouts[field]);
-        timeouts[field] = setTimeout(async () => {
-            setCountingField(field);
-            const count = await tokenEngine.countTokens(text);
-            setTokenCounts(prev => ({ ...prev, [field]: count }));
-            setCountingField(prev => prev === field ? null : prev);
-        }, 500);
-    }, []);
-
-    useEffect(() => {
-        const timeouts = tokenCountTimeoutsRef.current;
-        return () => {
-            Object.values(timeouts).forEach(clearTimeout);
-        };
-    }, []);
-
-    useEffect(() => {
-        if (selectedModel) {
-            tokenEngine.setRunningModels(runningModels ?? {});
-            tokenEngine.setContext(selectedModel);
+function detectLocationFromText(text: string, locations: Location[]): number | undefined {
+    for (let i = 0; i < locations.length; i++) {
+        const location = locations[i];
+        const triggers = location.regularExpressionActivationTriggers;
+        if (!triggers || triggers.length === 0) continue;
+        for (const trigger of triggers) {
+            if (!trigger.trigger.trim()) continue;
+            try {
+                const regex = new RegExp(trigger.trigger, 'i');
+                if (regex.test(text)) return i;
+            } catch { /* invalid regex, skip */ }
         }
+    }
+    return undefined;
+}
 
-        const rafId = requestAnimationFrame(() => {
-            const fields: Array<{ key: keyof TokenCounts; text: string }> = [
-                { key: 'systemPrompt', text: existingCharacter?.systemPrompt || '' },
-                { key: 'thinkPrompt', text: existingCharacter?.thinkPrompt || '' },
-                { key: 'appearancePrompt', text: existingCharacter?.appearancePrompt || '' },
-                { key: 'dialoguePrompt', text: existingCharacter?.dialoguePrompt || '' },
-                { key: 'starterPrompt', text: existingCharacter?.starterPrompt || '' },
-            ];
+/**
+ * Compiles regex patterns from trigger arrays for sequential message filtering.
+ * Returns compiled regex arrays, skipping invalid patterns.
+ */
+export function compileTriggerRegexes(triggers: RegularExpressionTrigger[] | undefined): RegExp[] {
+    if (!triggers || triggers.length === 0) return [];
+    const regexes: RegExp[] = [];
+    for (const t of triggers) {
+        if (!t.trigger.trim()) continue;
+        try { regexes.push(new RegExp(t.trigger)); } catch { /* skip invalid */ }
+    }
+    return regexes;
+}
 
-            for (const { key, text } of fields) {
-                if (text.trim()) {
-                    tokenEngine.countTokens(text).then(count => {
-                        setTokenCounts(prev => ({ ...prev, [key]: count }));
-                    });
-                } else {
-                    setTokenCounts(prev => ({ ...prev, [key]: 0 }));
+export async function prepareRequestBody(
+    interactionData: InteractionData,
+    character: Character,
+    existingCharacterText: string,
+    allPromptBlocks: PromptBlock[],
+    modelId: string,
+    protagonistFileBase64s?: string[],
+): Promise<{ body: Record<string, unknown>; fetchErrors: string[] }> {
+    const sampler = character.sampler;
+
+    const { prompt, stops, contextImages, locationImages, promptBlockImages, fetchErrors } = await buildPromptAndStopPatterns(interactionData, character, existingCharacterText, allPromptBlocks, modelId);
+
+    const profile = interactionData.Profile;
+
+    const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection;
+
+    const filesBase64: { data: string; id: number }[] = [];
+
+    let imageIdCounter = 1;
+
+    let initialPrompt = "";
+
+    if (!forceNoCharacterImageInjection) {
+
+        let isCharacterImageInjected = false;
+
+        if (!character.doNotInjectCharacterImage) {
+            const characterMessage = findPreviousMessage(interactionData, character.id);
+            const characterExpression = characterMessage?.characterExpression;
+            const characterImagePath = await getCharacterImageUrlWithFallBack(character.id, characterExpression);
+
+            if (characterImagePath) {
+                const characterImageBase64 = await getImageBase64(characterImagePath);
+
+                if (characterImageBase64) {
+                    const rawData = characterImageBase64.includes(',') ? characterImageBase64.split(',')[1] : characterImageBase64;
+                    filesBase64.push({ data: rawData, id: imageIdCounter++ });
+                    initialPrompt = `${generalStartString}I understand that the first image is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${generalEndString}`;
+                    isCharacterImageInjected = true;
                 }
             }
+        }
+
+        const protagonist = interactionData.protagonist;
+        if (protagonist && !protagonist.doNotInjectCharacterImage) {
+            const protagonistMessage = findPreviousMessage(interactionData, protagonist.id);
+            const protagonistExpression = protagonistMessage?.characterExpression;
+            const protagonistImagePath = await getCharacterImageUrlWithFallBack(protagonist.id, protagonistExpression);
+
+            if (protagonistImagePath) {
+                const protagonistImageBase64 = await getImageBase64(protagonistImagePath);
+
+                if (protagonistImageBase64) {
+                    const rawData = protagonistImageBase64.includes(',') ? protagonistImageBase64.split(',')[1] : protagonistImageBase64;
+                    let protagonistString = getParticipantTag(protagonist, interactionData.participants);
+                    if (protagonistMessage?.isNameRevealed) {
+                        protagonistString = `${protagonistString} (${protagonist.name})`;
+                    }
+                    filesBase64.push({ data: rawData, id: imageIdCounter++ });
+                    const protagonistImagePositionText = isCharacterImageInjected ? "second" : "first";
+                    initialPrompt = `${initialPrompt}${generalStartString}I understand that the ${protagonistImagePositionText} image is the appearance of ${protagonistString}.${generalEndString}`;
+                }
+            }
+        }
+
+        if (protagonistFileBase64s && protagonistFileBase64s.length > 0) {
+            for (let i = 0; i < protagonistFileBase64s.length; i++) {
+                const rawData = protagonistFileBase64s[i].includes(',') ? protagonistFileBase64s[i].split(',')[1] : protagonistFileBase64s[i];
+                filesBase64.push({ data: rawData, id: imageIdCounter++ });
+            }
+        }
+    }
+
+    if (!profile?.forceNoContextImageInjection && contextImages.length > 0) {
+        const contextImagePromises = contextImages.map(async (filename) => {
+            try {
+                const imageUrl = getContextImageUrl(filename);
+                if (!imageUrl) return null;
+                const response = await fetch(imageUrl);
+                if (!response.ok) return null;
+                const blob = await response.blob();
+                const base64 = await new Promise<string>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.readAsDataURL(blob);
+                });
+                const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
+                return { data: rawData, id: imageIdCounter++ };
+            } catch (e) {
+                console.warn(`Failed to load context image ${filename}`, e);
+                return null;
+            }
         });
+        const resolvedContextImages = (await Promise.all(contextImagePromises)).filter(img => img !== null);
+        filesBase64.push(...resolvedContextImages);
+    }
 
-        return () => cancelAnimationFrame(rafId);
-    }, [selectedModel, runningModels, existingCharacter]);
-
-    const handleSystemPromptBlur = () => {
-        const currentIW = Number.parseFloat(initiativeWeightStr);
-        const currentCP = Number.parseFloat(chatProbabilityStr);
-        const currentMS = Number.parseFloat(maximumChatStaminaStr);
-        const currentNS = Number.parseFloat(nameSensitivityStr);
-        const currentCIS = Number.parseFloat(chatImpatienceSensitivityStr);
-        const currentSP = Number.parseFloat(skipProbabilityStr);
-        const currentMRW = Number.parseFloat(memoryRetentionWeightStr);
-        const currentCRS = Number.parseFloat(contextSensitivityStr);
-        const currentMAS = Number.parseFloat(maximumActionStaminaStr);
-
-        const iwIsAuto = currentIW === -1;
-        const cpIsAuto = currentCP === -1;
-        const msIsAuto = currentMS === -1;
-        const nsIsAuto = currentNS === -1;
-        const cisIsAuto = currentCIS === -1;
-        const spIsAuto = currentSP === -1;
-        const mrwIsAuto = currentMRW === -1;
-        const crsIsAuto = currentCRS === -1;
-        const masIsAuto = currentMAS === -1;
-
-        if (!iwIsAuto && !cpIsAuto && !msIsAuto && !nsIsAuto && !cisIsAuto && !spIsAuto && !mrwIsAuto && !crsIsAuto && !masIsAuto) return;
-
-        const combinedText = `${name} ${description} ${systemPrompt}`;
-        const newDetected = { ...autoDetected };
-
-        if (iwIsAuto) { const v = getInitiativeWeightValueFromText(combinedText); setInitiativeWeightStr(String(v)); newDetected.iw = v; }
-        if (cpIsAuto) { const v = getChatProbabilityValue(combinedText); setChatProbabilityStr(String(v)); newDetected.cp = v; }
-        if (msIsAuto) { const v = getMaximumChatStaminaValueFromText(combinedText); setMaximumChatStaminaStr(String(Math.round(v))); newDetected.ms = Math.round(v); }
-        if (nsIsAuto) { const v = getNameSensitivityValueFromText(combinedText); setNameSensitivityStr(String(v)); }
-        if (cisIsAuto) { const v = getChatImpatienceSensitivityValueFromText(combinedText); setChatImpatienceSensitivityStr(String(v)); }
-        if (spIsAuto) { const v = getSkipProbabilityValueFromText(combinedText); setSkipProbabilityStr(String(v)); }
-        if (mrwIsAuto) { const v = getMemoryRetentionWeightValueFromText(combinedText); setMemoryRetentionWeightStr(String(v)); }
-        if (crsIsAuto) { const v = getContextSensitivityValueFromText(combinedText); setContextSensitivityStr(String(v)); }
-        if (masIsAuto) { const v = getMaximumActionStaminaValueFromText(combinedText); setMaximumActionStaminaStr(String(Math.round(v))); }
-
-        setAutoDetected(newDetected);
-    };
-
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files?.[0]) { setImageFile(e.target.files[0]); setImagePreview(URL.createObjectURL(e.target.files[0])); } };
-    const handleRemoveImage = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        setImageFile(null); setImagePreview(null);
-        setEmotionImages(prev => { const { ...next } = prev; return next; });
-        if (fileInputRef.current) fileInputRef.current.value = '';
-    };
-    const handleVoiceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files?.[0]) {
-            const file = e.target.files[0];
-            if (file.size > MAX_VOICE_FILE_SIZE) { setSubmitError(`Voice file too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 5MB.`); e.target.value = ''; return; }
-            setVoiceFile(file); setVoiceName(file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_')); setSubmitError(null);
-        }
-    };
-    const handleRemoveVoice = () => { setVoiceFile(null); setVoiceName(''); setExistingVoiceName(''); if (voiceInputRef.current) voiceInputRef.current.value = ''; };
-
-    const handleCardImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]; if (!file) return; e.target.value = '';
-        const card = await parseCharacterCard(file);
-        if (!card) { setSubmitError("Not a valid character card PNG."); return; }
-        const fields = mapCardToEditorFields(card);
-        setName(fields.name);
-        setDescription(fields.description);
-        setSystemPrompt(fields.systemPrompt);
-        setThinkPrompt('');
-        setAppearancePrompt(fields.appearancePrompt);
-        setDialoguePrompt(fields.dialoguePrompt);
-        setStarterPrompt(fields.starterPrompt || '');
-        setFirstMessage(fields.firstMessage);
-        setImageFile(file); setImagePreview(URL.createObjectURL(file));
-        setAutoDetected({ iw: null, cp: null, ms: null });
-        setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1');
-        setNameSensitivityStr('-1');
-        setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
-        setMaximumActionStaminaStr('-1');
-        setSelectedStopPatternIds([]); setDoNotInjectCharacterImage(false);
-        setNumberOfMessagesToDisableThinkPromptStr(String(DEFAULT_DISABLE_THINK_PROMPT));
-        setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(DEFAULT_DISABLE_META_THINK));
-        setNumberOfMessagesToDisableDialoguePromptStr(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
-        setNumberOfMessagesToDisableStarterPromptStr(String(DEFAULT_DISABLE_STARTER_PROMPT));
-        setTools({ ...defaultCharacterTools });
-        setEnableMemoryWriting(false); setEnableMemoryReading(false);
-        setMemories({});
-        setClothings([]);
-        countFieldTokens('systemPrompt', fields.systemPrompt);
-        countFieldTokens('thinkPrompt', '');
-        countFieldTokens('appearancePrompt', fields.appearancePrompt);
-        countFieldTokens('dialoguePrompt', fields.dialoguePrompt);
-        countFieldTokens('starterPrompt', fields.starterPrompt || '');
-        setSubmitError(null);
-        const extended = card as ParsedCharacterCardExtended;
-        if (extended.emotionImages && Object.keys(extended.emotionImages).length > 0) {
-            setEmotionImages(prev => ({ ...prev, ...extended.emotionImages }));
-        }
-    };
-
-    const handleStopPatternToggle = (id: string) => {
-        setSelectedStopPatternIds(prev => prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]);
-    };
-
-    const buildCharacterFromForm = async (isNewClone: boolean): Promise<Character | null> => {
-        setSubmitError(null);
-        if (!name.trim()) { setSubmitError("Name is required!"); return null; }
-
-        const targetCharacterId = isNewClone ? uuidv4() : (existingCharacter?.id || pendingCharacterId || uuidv4());
-
-        let finalImages: Record<string, string> = isNewClone ? {} : { ...(existingCharacter?.images ?? {}) };
-        finalImages = { ...finalImages, ...emotionImages };
-
-        if (imageFile) {
-            setIsUploading(true);
-            try { finalImages.neutral = await uploadCharacterImage(targetCharacterId, imageFile); }
-            catch { setSubmitError("Failed to upload image."); setIsUploading(false); return null; }
-            setIsUploading(false);
-        }
-
-        let finalVoiceFilename: string | undefined = isNewClone ? undefined : existingCharacter?.voice;
-        if (voiceFile) {
-            setIsUploading(true);
-            try { finalVoiceFilename = await uploadCharacterVoice(voiceFile); }
-            catch { setSubmitError("Failed to upload voice."); setIsUploading(false); return null; }
-            setIsUploading(false);
-        } else if (!isNewClone && voiceName === '' && existingVoiceName !== '') { finalVoiceFilename = undefined; }
-
-        const rawIW = Number.parseFloat(initiativeWeightStr);
-        const rawCP = Number.parseFloat(chatProbabilityStr);
-        const rawMS = Number.parseFloat(maximumChatStaminaStr);
-        const rawNS = Number.parseFloat(nameSensitivityStr);
-        const rawCIS = Number.parseFloat(chatImpatienceSensitivityStr);
-        const rawSP = Number.parseFloat(skipProbabilityStr);
-        const rawMRW = Number.parseFloat(memoryRetentionWeightStr);
-        const rawCRS = Number.parseFloat(contextSensitivityStr);
-        const rawMAS = Number.parseFloat(maximumActionStaminaStr);
-        const rawDisableThink = Number.parseInt(numberOfMessagesToDisableThinkPromptStr);
-        const rawDisableMeta = Number.parseInt(numberOfMessagesToDisableMetaThinkInstructionsStr);
-        const rawDisableDialogue = Number.parseInt(numberOfMessagesToDisableDialoguePromptStr);
-        const rawDisableStarter = Number.parseInt(numberOfMessagesToDisableStarterPromptStr);
-
-        const iwValid = !Number.isNaN(rawIW) && rawIW >= 0;
-        const cpValid = !Number.isNaN(rawCP) && rawCP >= 0;
-        const msValid = !Number.isNaN(rawMS) && rawMS >= 0;
-        const nsValid = !Number.isNaN(rawNS) && rawNS >= 0;
-        const cisValid = !Number.isNaN(rawCIS) && rawCIS >= 0;
-        const spValid = !Number.isNaN(rawSP) && rawSP >= 0;
-        const mrwValid = !Number.isNaN(rawMRW) && rawMRW >= 0;
-        const crsValid = !Number.isNaN(rawCRS) && rawCRS >= 0;
-        const masValid = !Number.isNaN(rawMAS) && rawMAS >= 0;
-
-        let finalIW: number;
-        let finalCP: number;
-        let finalMS: number;
-        let finalNS: number;
-        let finalCIS: number;
-        let finalSP: number;
-        let finalMRW: number;
-        let finalCRS: number;
-        let finalMAS: number;
-
-        if (existingCharacter && !isNewClone) {
-            finalIW = iwValid ? rawIW : (existingCharacter.initiativeWeight ?? -1);
-            finalCP = cpValid ? rawCP : (existingCharacter.chatProbability ?? -1);
-            finalMS = msValid ? Math.round(rawMS) : (existingCharacter.maximumChatStamina ?? -1);
-            finalNS = nsValid ? rawNS : (existingCharacter.nameSensitivity ?? DEFAULT_NAME_SENSITIVITY);
-            finalCIS = cisValid ? rawCIS : (existingCharacter.chatImpatienceSensitivity ?? DEFAULT_CHAT_IMPATIENCE_SENSITIVITY);
-            finalSP = spValid ? rawSP : (existingCharacter.skipProbability ?? DEFAULT_SKIP_PROBABILITY);
-            finalMRW = mrwValid ? rawMRW : (existingCharacter.memoryRetentionWeight ?? DEFAULT_MEMORY_RETENTION_WEIGHT);
-            finalCRS = crsValid ? rawCRS : (existingCharacter.contextSensitivity ?? DEFAULT_CONTEXT_SENSITIVITY);
-            finalMAS = masValid ? Math.round(rawMAS) : (existingCharacter.maximumActionStamina ?? DEFAULT_MAXIMUM_ACTION_STAMINA);
-            if (finalIW === -1 && finalCP === -1 && finalMS === -1) {
-                const t = `${name} ${description} ${systemPrompt}`;
-                finalIW = getInitiativeWeightValueFromText(t);
-                finalCP = getChatProbabilityValue(t);
-                finalMS = Math.round(getMaximumChatStaminaValueFromText(t));
+    if (!profile?.forceNoContextImageInjection && locationImages.length > 0) {
+        const locationImagePromises = locationImages.map(async (filename) => {
+            try {
+                const imageUrl = getLocationImageUrl(filename);
+                if (!imageUrl) return null;
+                const response = await fetch(imageUrl);
+                if (!response.ok) return null;
+                const blob = await response.blob();
+                const base64 = await new Promise<string>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.readAsDataURL(blob);
+                });
+                const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
+                return { data: rawData, id: imageIdCounter++ };
+            } catch (e) {
+                console.warn(`Failed to load location image ${filename}`, e);
+                return null;
             }
-        } else {
-            finalIW = iwValid ? rawIW : DEFAULT_INITIATIVE_WEIGHT;
-            finalCP = cpValid ? rawCP : DEFAULT_CHAT_PROBABILITY;
-            finalMS = msValid ? Math.round(rawMS) : DEFAULT_MAXIMUM_CHAT_STAMINA;
-            finalNS = nsValid ? rawNS : DEFAULT_NAME_SENSITIVITY;
-            finalSP = spValid ? rawSP : DEFAULT_SKIP_PROBABILITY;
-            finalCIS = cisValid ? rawCIS : DEFAULT_CHAT_IMPATIENCE_SENSITIVITY;
-            finalMRW = mrwValid ? rawMRW : DEFAULT_MEMORY_RETENTION_WEIGHT;
-            finalCRS = crsValid ? rawCRS : DEFAULT_CONTEXT_SENSITIVITY;
-            finalMAS = masValid ? Math.round(rawMAS) : DEFAULT_MAXIMUM_ACTION_STAMINA;
-            if (rawIW === -1 && rawCP === -1 && rawMS === -1) {
-                const t = `${name} ${description} ${systemPrompt}`;
-                const dIW = getInitiativeWeightValueFromText(t);
-                const dCP = getChatProbabilityValue(t);
-                const dMS = getMaximumChatStaminaValueFromText(t);
-                if (dIW >= 0) finalIW = dIW;
-                if (dCP >= 0) finalCP = dCP;
-                if (dMS >= 0) finalMS = Math.round(dMS);
+        });
+        const resolvedLocationImages = (await Promise.all(locationImagePromises)).filter(img => img !== null);
+        filesBase64.push(...resolvedLocationImages);
+    }
+
+    if (!profile?.forceNoContextImageInjection && promptBlockImages.length > 0) {
+        const promptBlockImagePromises = promptBlockImages.map(async (filename) => {
+            try {
+                const imageUrl = getPromptBlockImageUrl(filename);
+                if (!imageUrl) return null;
+                const response = await fetch(imageUrl);
+                if (!response.ok) return null;
+                const blob = await response.blob();
+                const base64 = await new Promise<string>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.readAsDataURL(blob);
+                });
+                const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
+                return { data: rawData, id: imageIdCounter++ };
+            } catch (e) {
+                console.warn(`Failed to load prompt block image ${filename}`, e);
+                return null;
             }
-        }
+        });
+        const resolvedPromptBlockImages = (await Promise.all(promptBlockImagePromises)).filter(img => img !== null);
+        filesBase64.push(...resolvedPromptBlockImages);
+    }
 
-        const baseSampler = allSamplers.find(s => s.id === selectedSamplerId);
-        const finalSampler = baseSampler ? { ...baseSampler, stopPatterns: baseSampler.stopPatterns.filter(sp => selectedStopPatternIds.includes(sp.id)) } : undefined;
-
-        const now = Date.now();
-        return {
-            id: targetCharacterId,
-            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
-            description, systemPrompt,
-            thinkPrompt: thinkPrompt.trim() || undefined,
-            appearancePrompt: appearancePrompt.trim() || undefined,
-            dialoguePrompt: dialoguePrompt.trim() || undefined,
-            starterPrompt: starterPrompt.trim() || undefined,
-            images: finalImages,
-            voice: finalVoiceFilename, sampler: finalSampler,
-            initiativeWeight: finalIW, chatProbability: finalCP, maximumChatStamina: finalMS,
-            nameSensitivity: finalNS, chatImpatienceSensitivity: finalCIS, skipProbability: finalSP,
-            memoryRetentionWeight: finalMRW, contextSensitivity: finalCRS,
-            maximumActionStamina: finalMAS,
-            doNotInjectCharacterImage: doNotInjectCharacterImage || undefined,
-            numberOfMessagesToDisableThinkPrompt: Number.isNaN(rawDisableThink) ? DEFAULT_DISABLE_THINK_PROMPT : Math.max(0, rawDisableThink),
-            numberOfMessagesToDisableMetaThinkInstructions: Number.isNaN(rawDisableMeta) ? DEFAULT_DISABLE_META_THINK : Math.max(0, rawDisableMeta),
-            numberOfMessagesToDisableDialoguePrompt: Number.isNaN(rawDisableDialogue) ? DEFAULT_DISABLE_DIALOGUE_PROMPT : Math.max(0, rawDisableDialogue),
-            numberOfMessagesToDisableStarterPrompt: Number.isNaN(rawDisableStarter) ? DEFAULT_DISABLE_STARTER_PROMPT : Math.max(0, rawDisableStarter),
-            tools: { ...tools },
-            enableMemoryWriting,
-            enableMemoryReading,
-            clothings,
-            memories,
-            firstCreatedTimestamp: isNewClone ? now : (existingCharacter?.firstCreatedTimestamp || now),
-            lastUpdatedTimestamp: now,
-        };
-    };
-
-    const handleSubmit = async () => { const c = await buildCharacterFromForm(false); if (!c) return; onSave(c); onClose(); };
-    const handleClone = async () => { const c = await buildCharacterFromForm(true); if (!c) return; onSave(c); onClose(); };
-
-    const renderTokenCount = (field: keyof TokenCounts) => {
-        const count = tokenCounts[field];
-        const displayCount = count ?? 0;
-        return <div className={`editor-token-count ${countingField === field ? 'counting' : ''}`}>{`~${displayCount.toLocaleString()} token(s)`}</div>;
-    };
-    const hasVoice = !!voiceFile || !!existingVoiceName;
-    const effectiveCharacterId = existingCharacter?.id || pendingCharacterId || '';
-    const memoryCount = Object.values(memories).reduce((sum, arr) => sum + arr.length, 0);
-
-    return (
-        <>
-            <div className="modal-overlay" onClick={onClose}>
-                <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
-                    <div className="modal-header">
-                        <h2>{existingCharacter ? 'Edit Character' : 'Create New Character'}</h2>
-                        <div className="editor-modal-actions">
-                            <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
-                            {existingCharacter && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
-                            {!existingCharacter && (<>
-                                <button type="button" className="editor-button editor-button-import" onClick={() => cardImportRef.current?.click()} disabled={isUploading}>Import</button>
-                                <input ref={cardImportRef} type="file" accept="image/png" hidden onChange={handleCardImport} disabled={isUploading} />
-                            </>)}
-                            <button type="button" className="editor-button editor-button-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Uploading...' : 'Save'}</button>
-                        </div>
-                    </div>
-
-                    <div className="modal-body editor-modal-body">
-                        {submitError && <div className="editor-error-message editor-error-centered">{submitError}</div>}
-
-                        <div className="editor-modal-columns">
-                            {/* LEFT COLUMN */}
-                            <div className="editor-left-column">
-                                <div className="editor-image-upload-container">
-                                    <div className={`editor-image-square editor-image-portrait ${imagePreview ? 'active solid' : 'dashed'}`}
-                                        style={{ cursor: isUploading ? 'wait' : 'pointer', opacity: isUploading ? 0.7 : 1 }}
-                                        onClick={() => !isUploading && fileInputRef.current?.click()}>
-                                        {imagePreview ? (<><img src={imagePreview} alt="Character" />{!isUploading && <div className="editor-image-hover-overlay"><button type="button" onClick={handleRemoveImage} className="editor-image-remove-button-large" title="Remove Picture">🗑️</button></div>}</>) : (<div className="editor-image-placeholder">{isUploading ? '⏳' : '📷'}</div>)}
-                                    </div>
-                                    <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleImageChange} disabled={isUploading} />
-                                </div>
-
-                                <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowImageEditor(true)} disabled={isUploading} style={{ width: '100%', marginTop: '6px', fontSize: '0.75rem' }}>
-                                    More Images ({Object.keys(emotionImages).length})
-                                </button>
-
-                                <textarea value={name} onChange={(e) => setName(e.target.value)} className="editor-textarea editor-textarea-name" placeholder="Name *" disabled={isUploading} />
-                                <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea editor-textarea-description" placeholder="Description" disabled={isUploading} />
-                                <textarea value={firstMessage} onChange={(e) => setFirstMessage(e.target.value)} className="editor-textarea editor-textarea-first-message" placeholder="First message" disabled={isUploading} />
-
-                                <div className="editor-section editor-voice-section">
-                                    <span className="editor-section-title">Voice</span>
-                                    <div className="editor-voice-hint">Used for reading character's text. Maximum 5MB.</div>
-                                    {hasVoice ? (
-                                        <div className="editor-voice-chip"><span className="editor-voice-chip-name">🎙️ {voiceFile ? voiceFile.name : existingVoiceName}</span><button type="button" onClick={handleRemoveVoice} disabled={isUploading} className="editor-voice-remove-button" title="Remove voice">×</button></div>
-                                    ) : (
-                                        <button type="button" onClick={() => !isUploading && voiceInputRef.current?.click()} disabled={isUploading} className={`toolbar-button editor-voice-upload-button ${isUploading ? 'uploading' : ''}`}>{isUploading ? 'Uploading...' : '🎙️ Upload Voice Sample'}</button>
-                                    )}
-                                    <input ref={voiceInputRef} type="file" accept="audio/*,.wav,.mp3,.flac,.ogg" hidden onChange={handleVoiceChange} disabled={isUploading} />
-                                </div>
-                            </div>
-
-                            {/* RIGHT COLUMN */}
-                            <div className="editor-right-column">
-                                <div className="editor-field-wrapper-full">
-                                    <textarea value={systemPrompt} onChange={(e) => { setSystemPrompt(e.target.value); countFieldTokens('systemPrompt', e.target.value); }} onBlur={handleSystemPromptBlur} className="editor-textarea editor-textarea-system" placeholder="System prompt" disabled={isUploading} />
-                                    {renderTokenCount('systemPrompt')}
-                                </div>
-                                <div className="editor-field-wrapper"><textarea value={thinkPrompt} onChange={(e) => { setThinkPrompt(e.target.value); countFieldTokens('thinkPrompt', e.target.value); }} className="editor-textarea editor-textarea-think" placeholder="Think Prompt" disabled={isUploading} />{renderTokenCount('thinkPrompt')}</div>
-                                <div className="editor-field-wrapper"><textarea value={appearancePrompt} onChange={(e) => { setAppearancePrompt(e.target.value); countFieldTokens('appearancePrompt', e.target.value); }} className="editor-textarea editor-textarea-appearance" placeholder="Appearance Prompt" disabled={isUploading} />{renderTokenCount('appearancePrompt')}</div>
-                                <div className="editor-field-wrapper"><textarea value={dialoguePrompt} onChange={(e) => { setDialoguePrompt(e.target.value); countFieldTokens('dialoguePrompt', e.target.value); }} className="editor-textarea editor-textarea-dialogue" placeholder="Dialogue Examples" disabled={isUploading} />{renderTokenCount('dialoguePrompt')}</div>
-                                <div className="editor-field-wrapper"><textarea value={starterPrompt} onChange={(e) => { setStarterPrompt(e.target.value); countFieldTokens('starterPrompt', e.target.value); }} className="editor-textarea editor-textarea-starter" placeholder="Starter Prompt" disabled={isUploading} />{renderTokenCount('starterPrompt')}</div>
-
-                                <div className="editor-bottom-section">
-                                    <select value={selectedSamplerId} onChange={(e) => setSelectedSamplerId(e.target.value)} className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingSamplers || isUploading}>
-                                        {isLoadingSamplers && <option>Loading samplers...</option>}
-                                        {!isLoadingSamplers && allSamplers.length === 0 && <option>No samplers available</option>}
-                                        {!isLoadingSamplers && allSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
-                                    </select>
-
-                                    <div className="editor-section">
-                                        <label className="editor-checkbox-label">
-                                            <input type="checkbox" checked={doNotInjectCharacterImage} onChange={(e) => setDoNotInjectCharacterImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
-                                            <span>Do Not Inject Character Image</span>
-                                        </label>
-                                    </div>
-
-                                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowAdvancedSettings(true)} disabled={isUploading} style={{ flex: 1 }}>Advanced Settings</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowClothingEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Clothing ({clothings.length})</button>
-                                    </div>
-
-                                    <div style={{ marginTop: '8px' }}>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading} style={{ width: '100%' }}>Memory ({memoryCount})</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <CharacterAdvancedSettingsEditorModal
-                isOpen={showAdvancedSettings}
-                onClose={() => setShowAdvancedSettings(false)}
-                initiativeWeightStr={initiativeWeightStr}
-                chatProbabilityStr={chatProbabilityStr}
-                maximumChatStaminaStr={maximumChatStaminaStr}
-                nameSensitivityStr={nameSensitivityStr}
-                chatImpatienceSensitivityStr={chatImpatienceSensitivityStr}
-                skipProbabilityStr={skipProbabilityStr}
-                memoryRetentionWeightStr={memoryRetentionWeightStr}
-                contextSensitivityStr={contextSensitivityStr}
-                maximumActionStaminaStr={maximumActionStaminaStr}
-                numberOfMessagesToDisableThinkPromptStr={numberOfMessagesToDisableThinkPromptStr}
-                numberOfMessagesToDisableMetaThinkInstructionsStr={numberOfMessagesToDisableMetaThinkInstructionsStr}
-                numberOfMessagesToDisableDialoguePromptStr={numberOfMessagesToDisableDialoguePromptStr}
-                numberOfMessagesToDisableStarterPromptStr={numberOfMessagesToDisableStarterPromptStr}
-                tools={tools}
-                enableMemoryWriting={enableMemoryWriting}
-                enableMemoryReading={enableMemoryReading}
-                selectedStopPatternIds={selectedStopPatternIds}
-                allSamplers={allSamplers}
-                isUploading={isUploading}
-                onInitiativeWeightChange={setInitiativeWeightStr}
-                onChatProbabilityChange={setChatProbabilityStr}
-                onMaximumChatStaminaChange={setMaximumChatStaminaStr}
-                onNameSensitivityChange={setNameSensitivityStr}
-                onChatImpatienceSensitivityChange={setChatImpatienceSensitivityStr}
-                onSkipProbabilityChange={setSkipProbabilityStr}
-                onMemoryRetentionWeightChange={setMemoryRetentionWeightStr}
-                onContextSensitivityChange={setContextSensitivityStr}
-                onMaximumActionStaminaChange={setMaximumActionStaminaStr}
-                onDisableThinkChange={setNumberOfMessagesToDisableThinkPromptStr}
-                onDisableMetaChange={setNumberOfMessagesToDisableMetaThinkInstructionsStr}
-                onDisableDialogueChange={setNumberOfMessagesToDisableDialoguePromptStr}
-                onDisableStarterChange={setNumberOfMessagesToDisableStarterPromptStr}
-                onToolToggle={handleToolToggle}
-                onEnableMemoryWritingChange={setEnableMemoryWriting}
-                onEnableMemoryReadingChange={setEnableMemoryReading}
-                onStopPatternToggle={handleStopPatternToggle}
-            />
-
-            <CharacterMemoryEditorModal
-                isOpen={showMemoryManager}
-                onClose={() => setShowMemoryManager(false)}
-                character={existingCharacter || null}
-                onSaveMemories={setMemories}
-                chatNameMap={chatNameMap}
-            />
-
-            <CharacterImageEditorModal
-                isOpen={showImageEditor}
-                onClose={() => setShowImageEditor(false)}
-                characterId={effectiveCharacterId}
-                images={emotionImages}
-                onSave={(updatedImages) => {
-                    setEmotionImages(updatedImages);
-                    const neutral = updatedImages.neutral;
-                    if (neutral) { setImagePreview(getCharacterImageUrl(effectiveCharacterId, neutral)); setImageFile(null); }
-                    else if (!imageFile) { setImagePreview(null); }
-                }}
-            />
-
-            <CharacterClothingEditorModal
-                isOpen={showClothingEditor}
-                onClose={() => setShowClothingEditor(false)}
-                clothings={clothings}
-                onSaveClothings={setClothings}
-            />
-        </>
+    const lastUserMsg = [...interactionData.interactionHistory].reverse().find(
+        (m): m is ChatMessage => m.character.id === interactionData.protagonist.id && m.messageType === 'chat'
     );
+
+    if (lastUserMsg?.files?.length) {
+        for (const fileBase64 of lastUserMsg.files) {
+            const rawData = fileBase64.includes(',') ? fileBase64.split(',')[1] : fileBase64;
+            filesBase64.push({ data: rawData, id: imageIdCounter++ });
+        }
+    }
+
+    const fullPrompt = `${initialPrompt}${prompt}`;
+
+    const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
+
+    const finalStops = [
+        ...(Array.isArray(paramStops) ? paramStops : []),
+        ...stops,
+    ];
+
+    const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
+
+    const body: Record<string, unknown> = {
+        ...otherParams,
+        prompt: fullPrompt,
+        n_predict: sampler?.maximumNumberOfTokens ?? 512,
+        stream: true,
+        stop: uniqueStops,
+    };
+
+    if (filesBase64.length > 0) body.image_data = filesBase64;
+
+    return { body, fetchErrors };
+}
+
+export function convertIdsToDisplayNames(text: string, interactionData: InteractionData): string {
+    const profile = interactionData.Profile;
+    const stripThinkTokens = profile?.stripThinkTokens ?? false;
+
+    let result = text;
+
+    if (stripThinkTokens) {
+        result = result.replace(/[\s\S]*?<\/think>/g, '');
+        result = result.replace(/<\|channel>[\s\S]*?<channel\|>/g, '');
+        result = result.replace(/\n\s*\n\s*\n/g, '\n\n');
+    }
+
+    result = result.replace(/<memory>\}/g, '');
+    result = result.replace(/<memory>[\s\S]*?\}/g, '');
+
+    interactionData.participants.forEach((p, i) => {
+        const id = `Character ${i + 1}`;
+        const isRevealed = interactionData.interactionHistory.some(m => m.character.id === p.id && m.isNameRevealed);
+        if (isRevealed) result = result.replace(new RegExp(`\\b${id}\\b`, 'g'), p.name);
+    });
+    return result;
+}
+
+export function createNewInteractionData(character: Character): InteractionData {
+    const now = Date.now();
+    return {
+        id: uuidv4(),
+        name: "Untitled Chat",
+        protagonist: character,
+        participants: [character],
+        contexts: [],
+        locations: [],
+        audioTracks: [],
+        interactionHistory: [],
+        numberOfMessages: 0,
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+        parentInteractionDataId: null,
+        parentInteractionMessageId: null,
+    };
+}
+
+export function createChatMessage(
+    interactionData: InteractionData,
+    character: Character,
+    textContent: string,
+    options?: { isPartial?: boolean; locationIndex?: number; files?: string[] }
+): ChatMessage {
+    const previousMessage = findPreviousMessage(interactionData, character.id);
+    const wasRevealed = previousMessage?.isNameRevealed ?? false;
+    const isNameRevealed = wasRevealed || detectName(interactionData, character, textContent);
+    const effectiveMaximumChatStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
+    const effectiveMaximumActionStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
+    const remainingChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaximumChatStamina;
+    const remainingActionStamina = previousMessage?.remainingActionStamina ?? effectiveMaximumActionStamina;
+    const lastMessageId = interactionData.interactionHistory.length > 0 ? interactionData.interactionHistory[interactionData.interactionHistory.length - 1].id : null;
+    const now = Date.now();
+
+    const id = uuidv4();
+
+    const files = options?.files ?? [];
+    
+    const isProtagonist = character.id === interactionData.protagonist?.id;
+    const isPartial = options?.isPartial ?? !isProtagonist;
+
+    let locationIndex = options?.locationIndex;
+    if (locationIndex === undefined && interactionData.locations && interactionData.locations.length > 0) {
+        locationIndex = detectLocationFromText(textContent, interactionData.locations);
+    }
+
+    return {
+        id,
+        messageType: 'chat',
+        character: { ...character },
+        textContent,
+        files,
+        remainingChatStamina,
+        remainingActionStamina,
+        isNameRevealed,
+        locationIndex,
+        isPartial,
+        characterClothingWearingStatus: {},
+        characterLockedLocations: {},
+        modelTextContentSummaries: {},
+        modelInteractionTextContentSummaries: {},
+        kvCacheTextContentPaths: {},
+        kvCacheTextContentSummaryPaths: {},
+        kvCacheInteractionTextContentSummaries: {},
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+        parentInteractionMessageId: lastMessageId,
+    } as ChatMessage;
+}
+
+export function addMessageToInteractionData(interactionData: InteractionData, newInteractionMessage: HistoryMessage): InteractionData {
+    return {
+        ...interactionData,
+        interactionHistory: [...interactionData.interactionHistory, newInteractionMessage],
+        numberOfMessages: (interactionData.numberOfMessages ?? interactionData.interactionHistory.length) + 1,
+        lastUpdatedTimestamp: Date.now()
+    };
+}
+
+export function editInteractionMessageInInteractionData(interactionData: InteractionData, messageId: string, newText: string): InteractionData {
+    const { interactionHistory } = interactionData;
+    const index = interactionHistory.findIndex(m => m.id === messageId);
+    if (index === -1) return interactionData;
+    return {
+        ...interactionData,
+        interactionHistory: interactionHistory.map((message, idx) => {
+            if (idx === index && message.messageType === 'chat') {
+                return {
+                    ...message,
+                    textContent: newText,
+                    kvCacheTextContentPaths: {},
+                    kvCacheTextContentSummaryPaths: {},
+                    kvCacheInteractionTextContentSummaries: {},
+                };
+            }
+            if (idx > index && message.messageType === 'chat') {
+                return {
+                    ...message,
+                    kvCacheTextContentPaths: {},
+                    kvCacheTextContentSummaryPaths: {},
+                    kvCacheInteractionTextContentSummaries: {},
+                };
+            }
+            return message;
+        })
+    };
+}
+
+export function updatePartialMessageInInteractionData(
+    interactionData: InteractionData,
+    characterId: string,
+    newText: string,
+    characterExpression?: string,
+): InteractionData {
+    const history = [...interactionData.interactionHistory];
+    for (let i = history.length - 1; i >= 0; i--) {
+        const m = history[i];
+        if (m.character.id === characterId && m.messageType === 'chat' && (m as ChatMessage).isPartial) {
+            history[i] = {
+                ...m,
+                textContent: newText,
+                characterExpression: characterExpression ?? (m as ChatMessage).characterExpression,
+                lastUpdatedTimestamp: Date.now(),
+            } as ChatMessage;
+            return { ...interactionData, interactionHistory: history, lastUpdatedTimestamp: Date.now() };
+        }
+    }
+    return interactionData;
+}
+
+export function deleteInteractionMessage(interactionData: InteractionData, messageId: string): { newHistory: HistoryMessage[]; invalidatedIds: string[] } {
+    const interactionHistory = interactionData.interactionHistory;
+    const targetIndex = interactionHistory.findIndex(m => m.id === messageId);
+    if (targetIndex === -1) return { newHistory: interactionHistory, invalidatedIds: [] };
+    const newHistory = interactionHistory.filter(m => m.id !== messageId);
+    const finalHistory = newHistory.map((message, idx) => {
+        if (idx >= targetIndex && message.messageType === 'chat') {
+            return {
+                ...message,
+                kvCacheTextContentPaths: {},
+                kvCacheTextContentSummaryPaths: {},
+                kvCacheInteractionTextContentSummaries: {},
+            };
+        }
+        return message;
+    });
+    return { newHistory: finalHistory, invalidatedIds: [messageId] };
+}
+
+export function branchInteractionMessage(interactionData: InteractionData, branchPointMessageId: string): InteractionData {
+    const branchIndex = interactionData.interactionHistory.findIndex(m => m.id === branchPointMessageId);
+    if (branchIndex === -1) throw new Error('Branch point message not found');
+    const currentTimestamp = Date.now();
+    const branchedHistory = interactionData.interactionHistory.slice(0, branchIndex + 1);
+    return {
+        id: uuidv4(),
+        name: `${interactionData.name} [#${branchIndex + 1}]`,
+        protagonist: interactionData.protagonist,
+        participants: interactionData.participants,
+        contexts: interactionData.contexts,
+        locations: interactionData.locations,
+        audioTracks: interactionData.audioTracks,
+        interactionHistory: branchedHistory,
+        numberOfMessages: branchedHistory.length,
+        firstCreatedTimestamp: currentTimestamp,
+        lastUpdatedTimestamp: currentTimestamp,
+        Profile: interactionData.Profile,
+        parentInteractionDataId: interactionData.id,
+        parentInteractionMessageId: branchPointMessageId,
+    };
+}
+
+function applyFilterTriggersUniversal(
+    chatMessages: ChatMessage[],
+    excluded: boolean[],
+    activationTriggers: RegularExpressionTrigger[] | undefined,
+    deactivationTriggers: RegularExpressionTrigger[] | undefined,
+): void {
+    const activationRegexes = compileTriggerRegexes(activationTriggers);
+    if (activationRegexes.length === 0) return;
+    const deactivationRegexes = compileTriggerRegexes(deactivationTriggers);
+
+    let including = false;
+    for (let i = 0; i < chatMessages.length; i++) {
+        const msg = chatMessages[i];
+        if (including) {
+            if (deactivationRegexes.some(r => r.test(msg.textContent))) return;
+        } else {
+            if (activationRegexes.some(r => r.test(msg.textContent))) {
+                including = true;
+            } else {
+                excluded[i] = true;
+            }
+        }
+    }
+}
+
+export function getUniversalMessageFilterFlags(
+    chatMessages: ChatMessage[],
+    contexts: Context[],
+    locations: Location[],
+    promptBlocks: PromptBlock[],
+): boolean[] {
+    const excluded = new Array(chatMessages.length).fill(false);
+
+    for (const context of contexts) {
+        if (context.characterBindings && context.characterBindings.length > 0) continue;
+        applyFilterTriggersUniversal(
+            chatMessages,
+            excluded,
+            context.messageFilterRegularExpressionActivationTriggers,
+            context.messageFilterRegularExpressionDeactivationTriggers,
+        );
+    }
+
+    for (const location of locations) {
+        if (location.characterBindings && location.characterBindings.length > 0) continue;
+        applyFilterTriggersUniversal(
+            chatMessages,
+            excluded,
+            location.messageFilterRegularExpressionActivationTriggers,
+            location.messageFilterRegularExpressionDeactivationTriggers,
+        );
+    }
+
+    for (const block of promptBlocks) {
+        if (block.characterBindings && block.characterBindings.length > 0) continue;
+        applyFilterTriggersUniversal(
+            chatMessages,
+            excluded,
+            block.messageFilterRegularExpressionActivationTriggers,
+            block.messageFilterRegularExpressionDeactivationTriggers,
+        );
+    }
+
+    return excluded;
 }

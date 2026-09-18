@@ -1,4 +1,4 @@
-// src/modelTemplates.ts
+// src/dictionaries/modelTemplates.ts
 
 export interface ModelTemplate {
     key: string;
@@ -9,7 +9,7 @@ export interface ModelTemplate {
     chatTemplate?: string;
     /** Whether this template supports a native system role (vs folding into first user message). */
     supportsSystemRole: boolean;
-    /** Model families that use this template. */
+    /** Model families that use this template. Used for auto-detection only, not shown in UI. */
     modelFamilies: string[];
 }
 
@@ -196,20 +196,45 @@ export function getModelTemplate(key: string): ModelTemplate | undefined {
     return MODEL_TEMPLATES.find(t => t.key === key);
 }
 
-/** Get dropdown options for instruction template selector */
+/**
+ * Auto-detect the best matching template for a given model name/path.
+ * Matches against modelFamilies using case-insensitive substring search.
+ * Returns the template key, or empty string if no match found.
+ */
+export function autoDetectTemplate(modelNameOrPath: string): string {
+    if (!modelNameOrPath || !modelNameOrPath.trim()) return '';
+
+    const normalized = modelNameOrPath.toLowerCase();
+
+    // Check each template's model families — first match wins
+    // Templates are ordered by specificity (newer/more specific first)
+    for (const template of MODEL_TEMPLATES) {
+        for (const family of template.modelFamilies) {
+            if (normalized.includes(family.toLowerCase())) {
+                return template.key;
+            }
+        }
+    }
+
+    return '';
+}
+
+/** Get dropdown options for instruction template selector. Includes Auto as first option. */
 export function getInstructionTemplateOptions(): { value: string; label: string }[] {
     return [
         { value: '', label: 'None' },
+        { value: 'auto', label: 'Auto (detect from model name)' },
         ...MODEL_TEMPLATES
             .filter(t => t.instructionTemplate)
             .map(t => ({ value: t.key, label: t.label })),
     ];
 }
 
-/** Get dropdown options for chat template selector */
+/** Get dropdown options for chat template selector. Includes Auto as first option. */
 export function getChatTemplateOptions(): { value: string; label: string }[] {
     return [
         { value: '', label: 'None' },
+        { value: 'auto', label: 'Auto (detect from model name)' },
         ...MODEL_TEMPLATES
             .filter(t => t.chatTemplate)
             .map(t => ({ value: t.key, label: t.label })),

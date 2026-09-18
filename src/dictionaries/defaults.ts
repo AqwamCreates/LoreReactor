@@ -1,9 +1,68 @@
-// src/defaults.ts
-import type { BudgetData, BudgetStrategy, InterjectableAction, LanguageModel, PromptBlockType, Sampler, textType, tool } from '../types';
+// src/dictionaries/defaults.ts
+import type { BudgetData, BudgetStrategy, Character, InterjectableAction, LanguageModel, PromptBlockType, Sampler, textType, tool } from '../types';
 
 export const DEFAULT_BUDGET_RESET_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 const now = Date.now()
+
+export const defaultCharacterTools: Record<tool, boolean> = {
+    pick: true,
+    date: false,
+    coin: true,
+    dice: true,
+    random: true,
+    rng: false,
+    move: true,
+    timer: false,
+    stopwatch: false,
+    calculator: false,
+    web: false,
+    lookup: false,
+    map: false,
+    audio: false,
+    note: false,
+    clothing: false,
+    inventory: false,
+    invite: false,
+    kick: false,
+    teleport: false,
+    key: false,
+    summon: false,
+    narrate: false,
+    inspect: false,
+    administrator: false,
+    creator: false,
+    destroyer: false,
+};
+
+export const defaultCharacter: Character = {
+
+    id: '',
+    name: 'Default Character',
+    description: '',
+    images: {},
+    initiativeWeight: 1,
+    chatProbability: 0.5,
+    maximumChatStamina: 4,
+    nameSensitivity: 1,
+    chatImpatienceSensitivity: 0,
+    skipProbability: 0,
+    memoryRetentionWeight: 1,
+    contextSensitivity: 1,
+    maximumActionStamina: 5,
+    numberOfMessagesToDisableThinkPrompt: 1,
+    numberOfMessagesToDisableMetaThinkInstructions: 1,
+    numberOfMessagesToDisableDialoguePrompt: 1,
+    numberOfMessagesToDisableStarterPrompt: 1,
+    tools: { ...defaultCharacterTools },
+    enableMemoryWriting: false,
+    enableMemoryReading: false,
+    clothings: [],
+    memories: {},
+    firstCreatedTimestamp: now,
+    lastUpdatedTimestamp: now,
+
+}
 
 export const defaultSampler: Sampler = {
     id: "default-sampler",
@@ -72,41 +131,11 @@ export const defaultInputStrategy: PromptBlockType[] = [
     'Fatigue Information', 'Starter Prompt', 'Tool Instructions', 'Text Injection',
 ];
 
-export const defaultCharacterTools: Record<tool, boolean> = {
-    pick: true,
-    date: false,
-    coin: true,
-    dice: true,
-    random: true,
-    rng: false,
-    move: true,
-    timer: false,
-    stopwatch: false,
-    calculator: false,
-    web: false,
-    lookup: false,
-    map: false,
-    audio: false,
-    note: false,
-    inventory: false,
-    invite: false,
-    kick: false,
-    teleport: false,
-    lock: false,
-    unlock: false,
-    summon: false,
-    narrate: false,
-    inspect: false,
-    administrator: false,
-    creator: false,
-    destroyer: false,
-};
-
 export const defaultProfileTools: Record<tool, number> = {
     pick: 0, date: 0, coin: 0, dice: 0, random: 0, rng: 0,
     move: 0, timer: 0, stopwatch: 0, calculator: 0, web: 0, lookup: 0,
-    map: 0, audio: 0, note: 0, inventory: 0,
-    invite: 0, kick: 0, teleport: 0, lock: 0, unlock: 0,
+    map: 0, audio: 0, clothing: 0, note: 0, inventory: 0,
+    invite: 0, kick: 0, teleport: 0, key: 0,
     summon: 0, narrate: 0, inspect: 0,
     administrator: 0, creator: 0, destroyer: 0,
 };

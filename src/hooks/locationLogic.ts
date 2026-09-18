@@ -295,6 +295,7 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
                         id: uuidv4(),
                         character: { ...fallback },
                         locationIndex,
+                        characterClothingWearingStatuses: {},
                         characterLockedLocations: {},
                         parentInteractionMessageId: null,
                         firstCreatedTimestamp: now,

@@ -159,7 +159,25 @@ export class CharacterActor {
         // updated incrementally by useChatEngine's onDisplayText callback.
         // Message lifecycle (creation, finalization) is owned by the session layer.
         const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
-        const aiMessage = isResuming ? null : createChatMessage(data, character, '');
+
+        // Resolve clothing wearing statuses upfront so they're available for
+        // both the prompt build and the message creation. We call prepareRequestBody
+        // once here just for the clothing statuses; the actual streaming calls below
+        // will call it again with potentially updated state after tool processing.
+        let resolvedClothingStatuses: Record<string, boolean> = {};
+        if (!isResuming) {
+            const probeModelId = strat
+                ? ((await getBudgetStrategyEngine().selectModelForRequest({ prompt: '' }))?.modelId || '')
+                : (selectedModel?.id || '');
+            if (probeModelId) {
+                try {
+                    const probeResult = await prepareRequestBody(data, character, '', allPromptBlocks, probeModelId, protagonistFileBase64s);
+                    resolvedClothingStatuses = probeResult.characterClothingWearingStatuses;
+                } catch { /* non-critical, fall back to empty */ }
+            }
+        }
+
+        const aiMessage = isResuming ? null : createChatMessage(data, character, '', { clothingWearingStatuses: resolvedClothingStatuses });
 
         try {
             let rawText: string;
@@ -202,10 +220,6 @@ export class CharacterActor {
 
             if (strat) {
                 // ─── Budget Strategy Path ────────────────────────────
-                // loadLocalModel is already injected into BudgetStrategyEngine
-                // by App.tsx via loadLocalModelForBudgetStrategyEngine.
-                // No need to duplicate it here.
-
                 const bse = getBudgetStrategyEngine();
                 bse.setStrategy(strat);
                 bse.setRunningModels(runningModels);
@@ -350,18 +364,9 @@ export class CharacterActor {
             const finalDisplayText = accumulatedDisplayText || rawText;
             const displayText = convertIdsToDisplayNames(finalDisplayText, data);
 
-            // No post-stream sentiment analysis here.
-            // The streaming onToken callback already captured latestExpression
-            // incrementally per-chunk. Re-analyzing the full text would be redundant.
-
             let updatedData: InteractionData;
 
             if (isResuming) {
-                // Resume mode: message lifecycle is owned by the session layer.
-                // useChatEngine.onDisplayText already updated the partial message
-                // incrementally during streaming. useChatSession.resumeGeneration
-                // will finalize it (set isPartial: false) after this returns.
-                // We return data unchanged — no message mutation here.
                 updatedData = data;
             } else {
                 // Normal mode: finalize the pre-created message and add to history

@@ -18,7 +18,7 @@ import {
     browserListDirectory, isServerAvailable,
 } from './browserStorage';
 
-import { defaultActions, defaultSampler, defaultCharacterTools, defaultInputStrategy } from '../dictionaries/defaults';
+import { defaultActions, defaultSampler, defaultCharacterTools, defaultInputStrategy, defaultCharacter } from '../dictionaries/defaults';
 
 // =============================================================================
 // CONFIGURATION & CONSTANTS
@@ -569,32 +569,11 @@ export const deleteRawSampler = samplerRepo.remove;
 // CHARACTER REPOSITORY
 // =============================================================================
 
-function createDeletedCharacterStub(id: string, now: number): Character {
-    return {
-        id,
-        name: '[Deleted Character]',
-        description: 'This character has been deleted.',
-        images: {},
-        initiativeWeight: 1,
-        chatProbability: 0.5,
-        maximumChatStamina: 4,
-        nameSensitivity: 1,
-        chatImpatienceSensitivity: 0,
-        skipProbability: 0,
-        memoryRetentionWeight: 1,
-        contextSensitivity: 1,
-        maximumActionStamina: 5,
-        numberOfMessagesToDisableThinkPrompt: 1,
-        numberOfMessagesToDisableMetaThinkInstructions: 1,
-        numberOfMessagesToDisableDialoguePrompt: 1,
-        numberOfMessagesToDisableStarterPrompt: 1,
-        tools: { ...defaultCharacterTools },
-        enableMemoryWriting: false,
-        enableMemoryReading: false,
-        memories: {},
-        firstCreatedTimestamp: now,
-        lastUpdatedTimestamp: now,
-    };
+function createDeletedCharacterStub(id: string): Character {
+    const deletedCharacter = { ...defaultCharacter}
+    deletedCharacter.id = id
+    deletedCharacter.name = 'Deleted Character'
+    return deletedCharacter;
 }
 
 const characterRepo = createRepository<Character, RawCharacter>({
@@ -978,16 +957,14 @@ async function buildInteractionDataShell(
   profileMap: Map<string, Profile>,
   audioTrackMap?: Map<string, AudioTrack>,
 ): Promise<InteractionData | null> {
-
-  const now = Date.now();
   
   let protagonist = charMap.get(rawInteractionData.protagonistId);
   if (!protagonist) {
-    protagonist = createDeletedCharacterStub(rawInteractionData.protagonistId, now);
+    protagonist = createDeletedCharacterStub(rawInteractionData.protagonistId);
   }
 
   const participants = rawInteractionData.participantIds
-    .map(pid => charMap.get(pid) ?? createDeletedCharacterStub(pid, now));
+    .map(pid => charMap.get(pid) ?? createDeletedCharacterStub(pid));
     
   if (!participants.find(p => p.id === protagonist.id)) {
     participants.push(protagonist);

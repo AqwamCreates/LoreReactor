@@ -67,7 +67,7 @@ export function useChatEngine(deps: EngineDependencies) {
                             nameSensitivity: 1, chatImpatienceSensitivity: 0, skipProbability: 0,
                             memoryRetentionWeight: 1, contextSensitivity: 1, maximumActionStamina: 5,
                             tools: {} as Record<string, boolean>, enableMemoryWriting: false, enableMemoryReading: false,
-                            memories: {}, numberOfMessagesToDisableThinkPrompt: 0, numberOfMessagesToDisableMetaThinkInstructions: 0,
+                            clothings: [], memories: {}, numberOfMessagesToDisableThinkPrompt: 0, numberOfMessagesToDisableMetaThinkInstructions: 0,
                             numberOfMessagesToDisableDialoguePrompt: 0, numberOfMessagesToDisableStarterPrompt: 0,
                             firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
                         };
