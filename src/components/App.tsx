@@ -56,6 +56,7 @@ import { LadderView } from './views/LadderView';
 import { CinematicView } from './views/CinematicView';
 import { VisualNovelView } from './views/VisualNovelView';
 import type { ViewModeProps } from './views/types';
+import { defaultContextLength } from '../defaults';
 
 const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
 const STORAGE_KEY_BUDGET_STRATEGY = 'loreReactor_selectedBudgetStrategyId';
@@ -255,13 +256,13 @@ function App() {
             for (const m of activeStrategy.localModels) {
                 if (m.contextLength > max) max = m.contextLength;
             }
-            return max || 16384;
+            return max || defaultContextLength;
         }
         if (selectedModelId) {
             const m = allModels.find(x => x.id === selectedModelId);
-            return m?.contextLength || 16384;
+            return m?.contextLength || defaultContextLength;
         }
-        return 16384;
+        return defaultContextLength;
     }, [activeStrategy, selectedModelId, allModels]);
 
     const loadLocalModelForBudgetStrategyEngine = useCallback(async (modelId: string): Promise<number | null> => {

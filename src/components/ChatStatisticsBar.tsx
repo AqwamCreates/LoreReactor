@@ -2,6 +2,7 @@
 import type React from 'react';
 import { useState, useEffect } from 'react';
 import { useSessionStore } from '../hooks/useSessionStore';
+import { defaultContextLength } from '../defaults';
 
 interface ChatStatisticsBarProps {
     maximumNumberOfTokens: number;
@@ -30,7 +31,7 @@ function formatSessionDuration(ms: number): string {
 }
 
 export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
-    maximumNumberOfTokens = 1048576,
+    maximumNumberOfTokens = defaultContextLength,
     maximumNumberOfContextTokens = 0,
     maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens = 0,
     numberOfMessages = 0,
