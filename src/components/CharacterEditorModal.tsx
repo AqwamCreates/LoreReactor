@@ -1,7 +1,7 @@
 // src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Character, Sampler, LanguageModel, Memory, Clothing, tool } from '../types';
+import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacterInjection, tool } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from '../storage/serverStorage';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getChatImpatienceSensitivityValueFromText, getSkipProbabilityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText, getMaximumActionStaminaValueFromText } from '../hooks/chatTraitsDetection';
@@ -11,6 +11,7 @@ import { CharacterAdvancedSettingsEditorModal } from './CharacterAdvancedSetting
 import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
 import { CharacterImageEditorModal } from './CharacterImageEditorModal';
 import { CharacterClothingEditorModal } from './CharacterClothingEditorModal';
+import { CharacterTextCharacterInjectionEditorModal } from './CharacterTextCharacterInjectionEditorModal';
 import '../main.css';
 import { defaultCharacterTools } from '../dictionaries/defaults';
 
@@ -132,11 +133,13 @@ function CharacterEditorModalInner({
 
     const [memories, setMemories] = useState<Record<string, Memory[]>>(existingCharacter?.memories ?? {});
     const [clothings, setClothings] = useState<Clothing[]>(existingCharacter?.clothings ?? []);
+    const [textCharacterInjections, setTextCharacterInjections] = useState<TextCharacterInjection[]>(existingCharacter?.textCharacterInjections ?? []);
 
     const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
     const [showMemoryManager, setShowMemoryManager] = useState(false);
     const [showImageEditor, setShowImageEditor] = useState(false);
     const [showClothingEditor, setShowClothingEditor] = useState(false);
+    const [showTextInjectionEditor, setShowTextInjectionEditor] = useState(false);
     const [emotionImages, setEmotionImages] = useState<Record<string, string>>(existingCharacter?.images ?? {});
 
     const [pendingCharacterId] = useState<string | null>(existingCharacter ? null : uuidv4());
@@ -290,6 +293,7 @@ function CharacterEditorModalInner({
         setEnableMemoryWriting(false); setEnableMemoryReading(false);
         setMemories({});
         setClothings([]);
+        setTextCharacterInjections([]);
         countFieldTokens('systemPrompt', fields.systemPrompt);
         countFieldTokens('thinkPrompt', '');
         countFieldTokens('appearancePrompt', fields.appearancePrompt);
@@ -428,6 +432,7 @@ function CharacterEditorModalInner({
             enableMemoryWriting,
             enableMemoryReading,
             clothings,
+            textCharacterInjections,
             memories,
             firstCreatedTimestamp: isNewClone ? now : (existingCharacter?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
@@ -528,8 +533,9 @@ function CharacterEditorModalInner({
                                         <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowClothingEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Clothing ({clothings.length})</button>
                                     </div>
 
-                                    <div style={{ marginTop: '8px' }}>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading} style={{ width: '100%' }}>Memory ({memoryCount})</button>
+                                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowTextInjectionEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Text Injection ({textCharacterInjections.length})</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading} style={{ flex: 1 }}>Memory ({memoryCount})</button>
                                     </div>
                                 </div>
                             </div>
@@ -537,6 +543,19 @@ function CharacterEditorModalInner({
                     </div>
                 </div>
             </div>
+
+            <CharacterImageEditorModal
+                isOpen={showImageEditor}
+                onClose={() => setShowImageEditor(false)}
+                characterId={effectiveCharacterId}
+                images={emotionImages}
+                onSave={(updatedImages) => {
+                    setEmotionImages(updatedImages);
+                    const neutral = updatedImages.neutral;
+                    if (neutral) { setImagePreview(getCharacterImageUrl(effectiveCharacterId, neutral)); setImageFile(null); }
+                    else if (!imageFile) { setImagePreview(null); }
+                }}
+            />
 
             <CharacterAdvancedSettingsEditorModal
                 isOpen={showAdvancedSettings}
@@ -579,32 +598,26 @@ function CharacterEditorModalInner({
                 onStopPatternToggle={handleStopPatternToggle}
             />
 
+            <CharacterClothingEditorModal
+                isOpen={showClothingEditor}
+                onClose={() => setShowClothingEditor(false)}
+                clothings={clothings}
+                onSaveClothings={setClothings}
+            />
+
+            <CharacterTextCharacterInjectionEditorModal
+                isOpen={showTextInjectionEditor}
+                onClose={() => setShowTextInjectionEditor(false)}
+                injections={textCharacterInjections}
+                onSaveInjections={setTextCharacterInjections}
+            />
+
             <CharacterMemoryEditorModal
                 isOpen={showMemoryManager}
                 onClose={() => setShowMemoryManager(false)}
                 character={existingCharacter || null}
                 onSaveMemories={setMemories}
                 chatNameMap={chatNameMap}
-            />
-
-            <CharacterImageEditorModal
-                isOpen={showImageEditor}
-                onClose={() => setShowImageEditor(false)}
-                characterId={effectiveCharacterId}
-                images={emotionImages}
-                onSave={(updatedImages) => {
-                    setEmotionImages(updatedImages);
-                    const neutral = updatedImages.neutral;
-                    if (neutral) { setImagePreview(getCharacterImageUrl(effectiveCharacterId, neutral)); setImageFile(null); }
-                    else if (!imageFile) { setImagePreview(null); }
-                }}
-            />
-
-            <CharacterClothingEditorModal
-                isOpen={showClothingEditor}
-                onClose={() => setShowClothingEditor(false)}
-                clothings={clothings}
-                onSaveClothings={setClothings}
             />
         </>
     );

@@ -1,8 +1,7 @@
-// src/components/CharacterClothingEditorModal.tsx
+// src/components/CharacterTextCharacterInjectionEditorModal.tsx
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import type { Clothing } from '../types';
+import type { TextCharacterInjection } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
 import {
     ReactFlow,
     Background,
@@ -21,57 +20,29 @@ import {
 import '@xyflow/react/dist/style.css';
 import '../main.css';
 
-interface CharacterClothingEditorModalProps {
+interface CharacterTextCharacterInjectionEditorModalProps {
     isOpen: boolean;
     onClose: () => void;
-    clothings: Clothing[];
-    onSaveClothings: (clothings: Clothing[]) => void;
+    injections: TextCharacterInjection[];
+    onSaveInjections: (injections: TextCharacterInjection[]) => void;
 }
 
-// ─── Custom Clothing Node ────────────────────────────────────────────
+// ─── Custom Injection Node ──────────────────────────────────────────
 
-interface ClothingNodeData extends Record<string, unknown> {
+interface InjectionNodeData extends Record<string, unknown> {
     name: string;
-    description: string;
-    initialWearingProbability: number;
-    hasActivationTriggers: boolean;
-    hasDeactivationTriggers: boolean;
+    characterCount: number;
+    hasWeights: boolean;
     bindingCount: number;
 }
 
-function ClothingNode({ data }: NodeProps<Node<ClothingNodeData>>) {
-    const { name, description, initialWearingProbability, hasActivationTriggers, hasDeactivationTriggers, bindingCount } = data;
+function InjectionNode({ data }: NodeProps<Node<InjectionNodeData>>) {
+    const { name, characterCount, hasWeights, bindingCount } = data;
 
-    const canBePutOn = hasActivationTriggers;
-    const alwaysWornAtStart = initialWearingProbability >= 1;
-    const neverWornAtStart = initialWearingProbability <= 0;
-
-    let borderColor: string;
-    let bgColor: string;
-    let textColor: string;
-    let glowColor: string;
-
-    if (alwaysWornAtStart) {
-        borderColor = '#4ade80';
-        bgColor = 'rgba(74, 222, 128, 0.12)';
-        textColor = '#4ade80';
-        glowColor = 'rgba(74, 222, 128, 0.25)';
-    } else if (canBePutOn) {
-        borderColor = '#60a5fa';
-        bgColor = 'rgba(96, 165, 250, 0.1)';
-        textColor = '#93c5fd';
-        glowColor = 'rgba(96, 165, 250, 0.2)';
-    } else if (neverWornAtStart) {
-        borderColor = 'rgba(255, 255, 255, 0.1)';
-        bgColor = 'rgba(255, 255, 255, 0.02)';
-        textColor = 'rgba(255, 255, 255, 0.35)';
-        glowColor = 'none';
-    } else {
-        borderColor = 'rgba(168, 85, 247, 0.5)';
-        bgColor = 'rgba(168, 85, 247, 0.08)';
-        textColor = '#c084fc';
-        glowColor = 'rgba(168, 85, 247, 0.15)';
-    }
+    const borderColor = characterCount > 0 ? '#60a5fa' : 'rgba(255, 255, 255, 0.1)';
+    const bgColor = characterCount > 0 ? 'rgba(96, 165, 250, 0.1)' : 'rgba(255, 255, 255, 0.02)';
+    const textColor = characterCount > 0 ? '#93c5fd' : 'rgba(255, 255, 255, 0.35)';
+    const glowColor = characterCount > 0 ? 'rgba(96, 165, 250, 0.2)' : 'none';
 
     return (
         <div style={{
@@ -99,41 +70,25 @@ function ClothingNode({ data }: NodeProps<Node<ClothingNodeData>>) {
                 {name || '(Unnamed)'}
             </div>
 
-            {description && (
-                <div style={{ fontSize: '0.55rem', opacity: 0.6, color: 'var(--text-h, #fff)', lineHeight: 1.3, marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {description}
-                </div>
-            )}
-
             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                {alwaysWornAtStart && !canBePutOn && (
-                    <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(74, 222, 128, 0.2)', borderRadius: '3px', color: '#4ade80' }}>
-                        Always Worn
-                    </span>
-                )}
-                {!alwaysWornAtStart && !neverWornAtStart && !canBePutOn && (
-                    <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(168, 85, 247, 0.2)', borderRadius: '3px', color: '#c084fc' }}>
-                        {Math.round(initialWearingProbability * 100)}% Start Chance
-                    </span>
-                )}
-                {neverWornAtStart && !canBePutOn && (
-                    <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '3px', color: 'rgba(255,255,255,0.4)' }}>
-                        Wardrobe Only
-                    </span>
-                )}
-                {canBePutOn && (
+                {characterCount > 0 && (
                     <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(96, 165, 250, 0.2)', borderRadius: '3px', color: '#93c5fd' }}>
-                        Can Put On ({Math.round(initialWearingProbability * 100)}%)
+                        {characterCount} char{characterCount !== 1 ? 's' : ''}
                     </span>
                 )}
-                {hasDeactivationTriggers && (
-                    <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(245, 158, 11, 0.2)', borderRadius: '3px', color: '#fbbf24' }}>
-                        Removable
+                {hasWeights && (
+                    <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(168, 85, 247, 0.2)', borderRadius: '3px', color: '#c084fc' }}>
+                        Weighted
                     </span>
                 )}
                 {bindingCount > 0 && (
                     <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(245, 158, 11, 0.15)', borderRadius: '3px', color: '#fbbf24' }}>
-                        Covers {bindingCount}
+                        Chains → {bindingCount}
+                    </span>
+                )}
+                {characterCount === 0 && !hasWeights && bindingCount === 0 && (
+                    <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '3px', color: 'rgba(255,255,255,0.4)' }}>
+                        Empty
                     </span>
                 )}
             </div>
@@ -141,34 +96,32 @@ function ClothingNode({ data }: NodeProps<Node<ClothingNodeData>>) {
     );
 }
 
-const nodeTypes = { clothingNode: ClothingNode };
+const nodeTypes = { injectionNode: InjectionNode };
 
 // ─── Component ───────────────────────────────────────────────────────
 
-export function CharacterClothingEditorModal({
+export function CharacterTextCharacterInjectionEditorModal({
     isOpen,
     onClose,
-    clothings,
-    onSaveClothings,
-}: CharacterClothingEditorModalProps) {
-    const [items, setItems] = useState<Clothing[]>(() => clothings.length > 0 ? [...clothings] : []);
+    injections,
+    onSaveInjections,
+}: CharacterTextCharacterInjectionEditorModalProps) {
+    const [items, setItems] = useState<TextCharacterInjection[]>(() => injections.length > 0 ? [...injections] : []);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
-    const buildNodeData = (item: Clothing): ClothingNodeData => ({
+    const buildNodeData = (item: TextCharacterInjection): InjectionNodeData => ({
         name: item.name,
-        description: item.description || '',
-        initialWearingProbability: item.initialWearingProbability ?? 1,
-        hasActivationTriggers: (item.regularExpressionActivationTriggers?.length ?? 0) > 0,
-        hasDeactivationTriggers: (item.regularExpressionDeactivationTriggers?.length ?? 0) > 0,
-        bindingCount: item.clothingBindings.length,
+        characterCount: item.textCharacters?.length ?? 0,
+        hasWeights: Object.keys(item.textCharacterWeights ?? {}).length > 0,
+        bindingCount: item.textCharacterInjectionBindings?.length ?? 0,
     });
 
     const initialNodes = useMemo(() => {
         const cols = Math.ceil(Math.sqrt(Math.max(items.length, 1)));
         return items.map((item, idx) => ({
             id: item.id,
-            type: 'clothingNode' as const,
+            type: 'injectionNode' as const,
             position: { x: (idx % cols) * 220 + 50, y: Math.floor(idx / cols) * 180 + 50 },
             data: buildNodeData(item),
         }));
@@ -178,7 +131,7 @@ export function CharacterClothingEditorModal({
         const edges: Edge[] = [];
         let edgeIdx = 0;
         for (const item of items) {
-            for (const boundId of item.clothingBindings) {
+            for (const boundId of (item.textCharacterInjectionBindings ?? [])) {
                 if (items.some(i => i.id === boundId)) {
                     edges.push({
                         id: `e-${edgeIdx++}`,
@@ -210,8 +163,9 @@ export function CharacterClothingEditorModal({
         if (!connection.source || !connection.target) return;
         setItems(prev => prev.map(item => {
             if (item.id !== connection.source) return item;
-            if (item.clothingBindings.includes(connection.target!)) return item;
-            return { ...item, clothingBindings: [...item.clothingBindings, connection.target!], lastUpdatedTimestamp: Date.now() };
+            const bindings = item.textCharacterInjectionBindings ?? [];
+            if (bindings.includes(connection.target!)) return item;
+            return { ...item, textCharacterInjectionBindings: [...bindings, connection.target!], lastUpdatedTimestamp: Date.now() };
         }));
         setEdges(prev => addEdge({
             ...connection,
@@ -225,18 +179,23 @@ export function CharacterClothingEditorModal({
     const onEdgeRemove = useCallback((edge: Edge) => {
         setItems(prev => prev.map(item => {
             if (item.id !== edge.source) return item;
-            return { ...item, clothingBindings: item.clothingBindings.filter(b => b !== edge.target), lastUpdatedTimestamp: Date.now() };
+            return {
+                ...item,
+                textCharacterInjectionBindings: (item.textCharacterInjectionBindings ?? []).filter(b => b !== edge.target),
+                lastUpdatedTimestamp: Date.now(),
+            };
         }));
     }, [setItems]);
 
     const handleAdd = useCallback(() => {
         const now = Date.now();
-        const newItem: Clothing = {
+        const newItem: TextCharacterInjection = {
             id: uuidv4(),
             name: '',
             description: '',
-            initialWearingProbability: 1,
-            clothingBindings: [],
+            textCharacters: [],
+            textCharacterWeights: {},
+            textCharacterInjectionBindings: [],
             firstCreatedTimestamp: now,
             lastUpdatedTimestamp: now,
         };
@@ -247,7 +206,7 @@ export function CharacterClothingEditorModal({
         const cols = Math.ceil(Math.sqrt(idx + 1));
         setNodes(prev => [...prev, {
             id: newItem.id,
-            type: 'clothingNode',
+            type: 'injectionNode',
             position: { x: (idx % cols) * 220 + 50, y: Math.floor(idx / cols) * 180 + 50 },
             data: buildNodeData(newItem),
         }]);
@@ -260,7 +219,7 @@ export function CharacterClothingEditorModal({
         if (selectedId === id) setSelectedId(null);
     }, [selectedId, setNodes, setEdges]);
 
-    const updateField = useCallback(<K extends keyof Clothing>(id: string, field: K, value: Clothing[K]) => {
+    const updateField = useCallback(<K extends keyof TextCharacterInjection>(id: string, field: K, value: TextCharacterInjection[K]) => {
         setItems(prev => prev.map(item =>
             item.id === id ? { ...item, [field]: value, lastUpdatedTimestamp: Date.now() } : item
         ));
@@ -268,9 +227,61 @@ export function CharacterClothingEditorModal({
 
     const handleSave = useCallback(() => {
         const validItems = items.filter(item => item.name.trim().length > 0);
-        onSaveClothings(validItems);
+        onSaveInjections(validItems);
         onClose();
-    }, [items, onSaveClothings, onClose]);
+    }, [items, onSaveInjections, onClose]);
+
+    // ─── Character pool editing helpers ─────────────────────────────
+
+    const handleAddCharacter = useCallback(() => {
+        if (!selectedId) return;
+        setItems(prev => prev.map(item => {
+            if (item.id !== selectedId) return item;
+            const chars = [...(item.textCharacters ?? []), ''];
+            return { ...item, textCharacters: chars, lastUpdatedTimestamp: Date.now() };
+        }));
+    }, [selectedId]);
+
+    const handleRemoveCharacter = useCallback((index: number) => {
+        if (!selectedId) return;
+        setItems(prev => prev.map(item => {
+            if (item.id !== selectedId) return item;
+            const chars = [...(item.textCharacters ?? [])];
+            chars.splice(index, 1);
+            const oldWeights = item.textCharacterWeights ?? {};
+            const newWeights: Record<number, number> = {};
+            for (const [k, v] of Object.entries(oldWeights)) {
+                const idx = Number(k);
+                if (idx < index) newWeights[idx] = v;
+                else if (idx > index) newWeights[idx - 1] = v;
+            }
+            return { ...item, textCharacters: chars, textCharacterWeights: newWeights, lastUpdatedTimestamp: Date.now() };
+        }));
+    }, [selectedId]);
+
+    const handleUpdateCharacter = useCallback((index: number, value: string) => {
+        if (!selectedId) return;
+        setItems(prev => prev.map(item => {
+            if (item.id !== selectedId) return item;
+            const chars = [...(item.textCharacters ?? [])];
+            chars[index] = value;
+            return { ...item, textCharacters: chars, lastUpdatedTimestamp: Date.now() };
+        }));
+    }, [selectedId]);
+
+    const handleWeightChange = useCallback((index: number, value: number) => {
+        if (!selectedId) return;
+        setItems(prev => prev.map(item => {
+            if (item.id !== selectedId) return item;
+            const weights = { ...(item.textCharacterWeights ?? {}) };
+            if (value <= 0) {
+                delete weights[index];
+            } else {
+                weights[index] = value;
+            }
+            return { ...item, textCharacterWeights: weights, lastUpdatedTimestamp: Date.now() };
+        }));
+    }, [selectedId]);
 
     if (!isOpen) return null;
 
@@ -280,7 +291,7 @@ export function CharacterClothingEditorModal({
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px', maxHeight: '90vh' }}>
                 <div className="modal-header">
-                    <h2>Clothing</h2>
+                    <h2>Text Character Injection</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Cancel</button>
                         <button type="button" className="editor-button editor-button-save" onClick={handleSave}>Save</button>
@@ -291,7 +302,7 @@ export function CharacterClothingEditorModal({
                     {/* Graph */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div style={{ fontSize: '0.6rem', opacity: 0.6 }}>
-                            Drag between nodes to create "covers" connections. Click a node to edit. Green = always worn. Blue = can be put on. Purple = start chance only. Grey = wardrobe only. Orange arrows = covers.
+                            Drag between nodes to create chaining connections. Click a node to edit. Blue = has characters. Orange arrows = chains to next injection. Randomized prefix characters are prepended to bypass provider input filters.
                         </div>
                         <div ref={reactFlowWrapper} style={{ height: '300px', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
                             <ReactFlow
@@ -320,13 +331,13 @@ export function CharacterClothingEditorModal({
                             </ReactFlow>
                         </div>
                         <button type="button" className="editor-button editor-button-import" onClick={handleAdd} style={{ width: '100%' }}>
-                            + Add Clothing
+                            + Add Injection
                         </button>
                     </div>
 
                     {/* Node List */}
                     <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
-                        <label className="editor-label editor-label-small">All Clothing ({items.length})</label>
+                        <label className="editor-label editor-label-small">All Injections ({items.length})</label>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '120px', overflowY: 'auto' }}>
                             {items.map(item => (
                                 <div
@@ -358,19 +369,14 @@ export function CharacterClothingEditorModal({
                                         {item.name || '(Unnamed)'}
                                     </span>
                                     <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                                        {item.initialWearingProbability >= 1 && (
-                                            <span style={{ fontSize: '0.55rem', padding: '1px 4px', background: 'rgba(74, 222, 128, 0.2)', borderRadius: '3px', color: '#4ade80' }}>
-                                                Always
-                                            </span>
-                                        )}
-                                        {(item.regularExpressionActivationTriggers?.length ?? 0) > 0 && (
+                                        {(item.textCharacters?.length ?? 0) > 0 && (
                                             <span style={{ fontSize: '0.55rem', padding: '1px 4px', background: 'rgba(96, 165, 250, 0.2)', borderRadius: '3px', color: '#93c5fd' }}>
-                                                Trigger
+                                                {item.textCharacters!.length}
                                             </span>
                                         )}
-                                        {item.clothingBindings.length > 0 && (
+                                        {(item.textCharacterInjectionBindings?.length ?? 0) > 0 && (
                                             <span style={{ fontSize: '0.55rem', padding: '1px 4px', background: 'rgba(245, 158, 11, 0.15)', borderRadius: '3px', color: '#fbbf24' }}>
-                                                Covers {item.clothingBindings.length}
+                                                →{item.textCharacterInjectionBindings!.length}
                                             </span>
                                         )}
                                     </div>
@@ -378,7 +384,7 @@ export function CharacterClothingEditorModal({
                             ))}
                             {items.length === 0 && (
                                 <div style={{ fontSize: '0.65rem', opacity: 0.4, fontStyle: 'italic', padding: '8px 0', textAlign: 'center' }}>
-                                    No clothing yet. Click "+ Add Clothing" above.
+                                    No injections yet. Click "+ Add Injection" above.
                                 </div>
                             )}
                         </div>
@@ -387,12 +393,12 @@ export function CharacterClothingEditorModal({
                     {/* Editor Panel */}
                     {!selectedItem ? (
                         <div style={{ textAlign: 'center', padding: '20px 0', opacity: 0.5, fontStyle: 'italic', fontSize: '0.75rem' }}>
-                            Select a clothing node to edit, or add a new one.
+                            Select an injection node to edit, or add a new one.
                         </div>
                     ) : (
                         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Edit Clothing</span>
+                                <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Edit Injection</span>
                                 <button
                                     type="button"
                                     onClick={() => handleRemove(selectedItem.id)}
@@ -409,7 +415,7 @@ export function CharacterClothingEditorModal({
                                     value={selectedItem.name}
                                     onChange={(e) => updateField(selectedItem.id, 'name', e.target.value)}
                                     className="editor-input"
-                                    placeholder="e.g., Black Trench Coat"
+                                    placeholder="e.g., Alphanumeric Prefix"
                                 />
                             </div>
 
@@ -419,55 +425,74 @@ export function CharacterClothingEditorModal({
                                     value={selectedItem.description || ''}
                                     onChange={(e) => updateField(selectedItem.id, 'description', e.target.value || undefined)}
                                     className="editor-textarea"
-                                    placeholder="Visual description shown in appearance prompt when worn"
-                                    rows={3}
+                                    placeholder="What this injection does (display only)"
+                                    rows={2}
                                 />
                             </div>
 
+                            {/* Character Pool */}
                             <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
-                                <label className="editor-label editor-label-small">Initial Wearing Probability</label>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="1"
-                                        step="0.05"
-                                        value={selectedItem.initialWearingProbability ?? 1}
-                                        onChange={(e) => updateField(selectedItem.id, 'initialWearingProbability', Number(e.target.value))}
-                                        style={{ flex: 1 }}
-                                    />
-                                    <span style={{ fontSize: '0.7rem', minWidth: '40px', textAlign: 'right' }}>
-                                        {Math.round((selectedItem.initialWearingProbability ?? 1) * 100)}%
-                                    </span>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                    <label className="editor-label editor-label-small">Character Pool ({selectedItem.textCharacters?.length ?? 0})</label>
+                                    <button
+                                        type="button"
+                                        onClick={handleAddCharacter}
+                                        className="toolbar-button"
+                                        title="Add character to pool"
+                                        style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                                    >+</button>
                                 </div>
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Likelihood of being worn when this character joins a session. 100% = always worn at start. 0% = never worn at start.
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>
+                                    Characters randomly selected from this pool are prepended to the text injection. Set weights below to bias selection.
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '200px', overflowY: 'auto' }}>
+                                    {(selectedItem.textCharacters ?? []).map((char, idx) => {
+                                        const weight = selectedItem.textCharacterWeights?.[idx] ?? 0;
+                                        return (
+                                            <div key={idx} style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                                <input
+                                                    type="text"
+                                                    value={char}
+                                                    onChange={(e) => handleUpdateCharacter(idx, e.target.value)}
+                                                    className="editor-input"
+                                                    placeholder={`Char ${idx + 1}`}
+                                                    style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }}
+                                                />
+                                                <input
+                                                    type="number"
+                                                    value={weight}
+                                                    onChange={(e) => handleWeightChange(idx, Number(e.target.value))}
+                                                    className="editor-input"
+                                                    placeholder="Wt"
+                                                    min="0"
+                                                    step="1"
+                                                    style={{ width: '50px', fontSize: '0.7rem', padding: '4px 6px' }}
+                                                    title="Selection weight (0 = uniform)"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveCharacter(idx)}
+                                                    className="toolbar-button"
+                                                    title="Remove"
+                                                    style={{ width: '20px', height: '20px', fontSize: '0.7rem', color: '#ff4444', padding: 0 }}
+                                                >×</button>
+                                            </div>
+                                        );
+                                    })}
+                                    {(selectedItem.textCharacters ?? []).length === 0 && (
+                                        <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', padding: '4px 0' }}>
+                                            No characters in pool. Click + to add.
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
-                            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
-                                <RegularExpressionTriggerEditor
-                                    label="Wearing Activation"
-                                    description="Character puts this on during conversation when any trigger matches. Without triggers, initial wearing probability is the only way this gets worn."
-                                    triggers={selectedItem.regularExpressionActivationTriggers ?? []}
-                                    onChange={(triggers) => updateField(selectedItem.id, 'regularExpressionActivationTriggers', triggers.length > 0 ? triggers : undefined)}
-                                />
-                            </div>
-
-                            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
-                                <RegularExpressionTriggerEditor
-                                    label="Wearing Deactivation"
-                                    description="Character takes this off during conversation when any trigger matches. Without triggers, initial wearing probability is the only way this gets off."
-                                    triggers={selectedItem.regularExpressionDeactivationTriggers ?? []}
-                                    onChange={(triggers) => updateField(selectedItem.id, 'regularExpressionDeactivationTriggers', triggers.length > 0 ? triggers : undefined)}
-                                />
-                            </div>
-
-                            {selectedItem.clothingBindings.length > 0 && (
+                            {/* Chain Bindings Display */}
+                            {(selectedItem.textCharacterInjectionBindings?.length ?? 0) > 0 && (
                                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
-                                    <label className="editor-label editor-label-small">Covers ({selectedItem.clothingBindings.length})</label>
+                                    <label className="editor-label editor-label-small">Chains To ({selectedItem.textCharacterInjectionBindings!.length})</label>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                        {selectedItem.clothingBindings.map(boundId => {
+                                        {selectedItem.textCharacterInjectionBindings!.map(boundId => {
                                             const boundItem = items.find(i => i.id === boundId);
                                             return (
                                                 <span key={boundId} style={{
@@ -481,7 +506,7 @@ export function CharacterClothingEditorModal({
                                         })}
                                     </div>
                                     <div style={{ fontSize: '0.5rem', opacity: 0.4, marginTop: '4px' }}>
-                                        Right-click an orange arrow in the graph to remove a connection.
+                                        Right-click an orange arrow in the graph to remove a chain.
                                     </div>
                                 </div>
                             )}

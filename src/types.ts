@@ -222,6 +222,14 @@ export interface Clothing extends ObjectData {
     clothingBindings: string[] // IDs of clothing items this one hides when worn.
 }
 
+export interface TextCharacterInjection extends ObjectData {
+
+  textCharacters: string[];
+  textCharacterWeights: Record<number, number>; // Positional index -> weight value.
+  textCharacterInjectionBindings: string[]; // Next IDs to go to once this text is generated.
+
+}
+
 export interface Character extends ObjectData {
   images: Record<string, string>;
   voice?: string;
@@ -250,6 +258,7 @@ export interface Character extends ObjectData {
   enableMemoryWriting: boolean;
   enableMemoryReading: boolean;
   clothings: Clothing[];
+  textCharacterInjections: TextCharacterInjection[],
   memories: Record<string, Memory[]>;
 }
 
@@ -281,6 +290,7 @@ export interface RawCharacter extends RawData {
   enableMemoryWriting: boolean;
   enableMemoryReading: boolean;
   clothings: Clothing[];
+  textCharacterInjections: TextCharacterInjection[],
   memories: Record<string, string[]>;
 }
 
@@ -594,6 +604,7 @@ export interface RawProfile extends RawData {
   volume: number;
   forceNameReveal: boolean;
   enableCharacterExpression: boolean;
+  randomizeTextCharacterInjection: boolean;
   forceNoCharacterImageInjection: boolean;
   forceNoContextImageInjection: boolean;
   forceNoLocationImageInjection: boolean;
