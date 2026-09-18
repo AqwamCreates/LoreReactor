@@ -1510,11 +1510,76 @@ export async function buildPromptAndStopPatterns(
         }
     }
 
+    const effectiveChatTemplateKey = activeModel?.chatTemplate;
+    const effectiveInstructionTemplateKey = activeModel?.instructionTemplate;
+    const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
+    const resolvedInstructionTemplate = effectiveInstructionTemplateKey ? getModelTemplate(effectiveInstructionTemplateKey) : undefined;
+
     const promptLines: string[] = [];
     const usedBuiltInTypes = new Set<string>();
 
     for (const entry of inputStrategy) {
-        if (isBuiltInBlockType(entry)) {
+        if (entry === 'Model Instruction Template') {
+            if (resolvedInstructionTemplate?.instructionTemplate) {
+                const assembledSoFar = promptLines.join('\n');
+                const wrapped = resolvedInstructionTemplate.instructionTemplate
+                    .replace(/\{instruction\}/g, assembledSoFar)
+                    .replace(/\{input\}/g, '')
+                    .replace(/\{system\}/g, systemPrompt || '');
+                promptLines.length = 0;
+                promptLines.push(wrapped);
+            }
+            usedBuiltInTypes.add(entry);
+        } else if (entry === 'Model Chat Template') {
+            if (resolvedChatTemplate?.chatTemplate) {
+                const chatHistoryForTemplate = interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
+                for (const msg of chatHistoryForTemplate) {
+                    const role = msg.character.id === protagonist.id ? 'user' : 'assistant';
+                    const content = replacePlaceholders(
+                        selectModelSummary(msg, modelId),
+                        characterParticipantTag, characterName,
+                        protagonistParticipantTag, contextProtagonistName,
+                    );
+                    const wrapped = resolvedChatTemplate.chatTemplate
+                        .replace(/\{role\}/gi, role)
+                        .replace(/\{content\}/g, content);
+                    promptLines.push(wrapped);
+                }
+                const genPrompt = resolvedChatTemplate.chatTemplate
+                    .replace(/\{role\}/gi, 'assistant')
+                    .replace(/\{content\}/g, '');
+                promptLines.push(genPrompt);
+            }
+            usedBuiltInTypes.add(entry);
+        } else if (entry === 'Model Chat-Instruction Template') {
+            if (resolvedInstructionTemplate?.instructionTemplate && resolvedChatTemplate?.chatTemplate) {
+                const assembledSoFar = promptLines.join('\n');
+                const instructionWrapped = resolvedInstructionTemplate.instructionTemplate
+                    .replace(/\{instruction\}/g, `Continue the chat dialogue below. Write a single reply for the character "${characterName}".\n\n${assembledSoFar}`)
+                    .replace(/\{input\}/g, '')
+                    .replace(/\{system\}/g, systemPrompt || '');
+                promptLines.length = 0;
+                promptLines.push(instructionWrapped);
+                const chatHistoryForTemplate = interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
+                for (const msg of chatHistoryForTemplate) {
+                    const role = msg.character.id === protagonist.id ? 'user' : 'assistant';
+                    const content = replacePlaceholders(
+                        selectModelSummary(msg, modelId),
+                        characterParticipantTag, characterName,
+                        protagonistParticipantTag, contextProtagonistName,
+                    );
+                    const wrapped = resolvedChatTemplate.chatTemplate
+                        .replace(/\{role\}/gi, role)
+                        .replace(/\{content\}/g, content);
+                    promptLines.push(wrapped);
+                }
+                const genPrompt = resolvedChatTemplate.chatTemplate
+                    .replace(/\{role\}/gi, 'assistant')
+                    .replace(/\{content\}/g, '');
+                promptLines.push(genPrompt);
+            }
+            usedBuiltInTypes.add(entry);
+        } else if (isBuiltInBlockType(entry)) {
             const lines = blockMap[entry];
             if (lines && lines.length > 0) {
                 promptLines.push(...lines);
