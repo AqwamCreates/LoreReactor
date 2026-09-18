@@ -1,4 +1,4 @@
-// src/utilities/textFormatter.tsx
+// src/utilities/textDisplayFormatter.tsx
 import React from 'react';
 
 const LEFT_DOUBLE_QUOTE = '\u201C'; // "
@@ -28,7 +28,7 @@ function renderWithLineBreaks(text: string, className: string, startKey: number)
  * - Normal text → default white
  * - Newlines are always preserved as <br />
  */
-export function formatMessageText(text: string): React.ReactNode {
+export function formatDisplayMessageText(text: string): React.ReactNode {
     if (!text) return null;
 
     const elements: React.ReactNode[] = [];

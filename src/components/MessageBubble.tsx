@@ -46,7 +46,7 @@ interface MessageBubbleProps {
     onTouchEnd: (e: React.TouchEvent) => void;
     onTouchMove: (e: React.TouchEvent) => void;
     suppressNextClickRef: React.MutableRefObject<boolean>;
-        editTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
+    editTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
     setEditDraft: (text: string) => void;
     onNavigateToBranchSource: () => void;
 }

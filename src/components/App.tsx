@@ -28,7 +28,7 @@ import { getBudgetStrategyEngine, initializeBudgetStrategyEngine } from '../serv
 import { buildModelLoadArguments } from '../hooks/modelLoadArguments';
 import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
-import { formatMessageText } from '../utilities/textFormatter';
+import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, cloudBackend } from '../types';
 import { useChatRestoration } from '../hooks/useChatRestoration';
@@ -246,7 +246,7 @@ function App() {
 
     const formattedStreamingText = useMemo(() => {
         if (!streamingText) return null;
-        return formatMessageText(streamingText);
+        return formatDisplayMessageText(streamingText);
     }, [streamingText]);
 
     const isModelLoading = useMemo(() => {

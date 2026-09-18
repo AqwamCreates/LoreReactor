@@ -1,9 +1,9 @@
 // src/components/MemoizedMessageText.tsx
 import React from 'react';
-import { formatMessageText } from '../utilities/textFormatter';
+import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
 
 // LRU cache for formatted message output
-const CACHE_MAX_SIZE = 200;
+const CACHE_MAX_SIZE = 300;
 const formatCache = new Map<string, React.ReactNode>();
 
 function getCachedFormat(text: string): React.ReactNode {
@@ -15,7 +15,7 @@ function getCachedFormat(text: string): React.ReactNode {
         return cached;
     }
 
-    const result = formatMessageText(text);
+    const result = formatDisplayMessageText(text);
     formatCache.set(text, result);
 
     // Evict oldest entries when over capacity
