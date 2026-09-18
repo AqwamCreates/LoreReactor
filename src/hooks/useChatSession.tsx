@@ -13,7 +13,6 @@ import { saveRawInteractionData, loadRawBudgetData } from '../storage/serverStor
 import { useThrottledStream } from './useThrottledStream';
 import { useCharacterResponseLock } from './useCharacterResponseLock';
 import { useAmbientNarration } from './useAmbientNarration';
-import { useMemoryTrigger } from './useMemoryTrigger';
 import { useSessionStore } from './useSessionStore';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -63,12 +62,11 @@ function finalizeMessageById(
 
     const history = data.interactionHistory.map(m => {
         if (m.id === messageId && m.messageType === 'chat') {
-            const cleanText = sanitizeStreamedText(m.textContent);
+            const textContent = m.textContent;
             const wasRevealed = m.isNameRevealed ?? false;
-            const isNameRevealed = wasRevealed || detectName(data, m.character, cleanText);
+            const isNameRevealed = wasRevealed || detectName(data, m.character, textContent);
             return {
                 ...m,
-                textContent: cleanText,
                 isPartial: false,
                 isNameRevealed,
                 lastUpdatedTimestamp: Date.now(),
@@ -79,7 +77,7 @@ function finalizeMessageById(
     return { ...data, interactionHistory: history, lastUpdatedTimestamp: Date.now() };
 }
 
-export function useChatSession() {
+export function useChatSession(allCharacters: Character[]) {
     const { addToast } = useToast();
 
     const state = useChatState();
@@ -104,8 +102,6 @@ export function useChatSession() {
 
     const ui = useChatUI(state.interactionData, state.isLoading, state.streamingText, isAtBottomRef);
 
-    const { processMemoryTrigger } = useMemoryTrigger();
-
     const chatEngine = useChatEngine({
         getState,
         setInteractionData,
@@ -115,7 +111,6 @@ export function useChatSession() {
         setCurrentCharacterExpression,
         setLastSelectedModelId,
         addToast,
-        processMemoryTrigger,
     });
 
     const { throttledSetStreamingText, setStreamingText, streamingTextRef, resetStream } = useThrottledStream();
@@ -201,17 +196,16 @@ export function useChatSession() {
         if (h.length > 0 && h[h.length - 1].character.id !== protagonistId) {
             const lastMsg = h[h.length - 1];
             if (lastMsg.messageType === 'chat') {
-                const cleanText = sanitizeStreamedText(dt);
                 const ph = [...h];
                 ph[ph.length - 1] = {
                     ...lastMsg,
-                    textContent: cleanText,
+                    textContent: dt,
                     isPartial: true,
                 };
                 return { ...base, interactionHistory: ph, lastUpdatedTimestamp: Date.now() };
             }
         }
-        const chatMessage = createChatMessage(base, p.character, sanitizeStreamedText(dt), { isPartial: true });
+        const chatMessage = createChatMessage(base, p.character, dt, { isPartial: true });
         chatMessage.isNameRevealed = false;
         return addMessageToInteractionData(base, chatMessage);
     }, []);
@@ -261,7 +255,6 @@ export function useChatSession() {
             }
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
-                const allCharacters = getState().allCharacters ?? [];
                 const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
                 const finalized = finalizeLastAIMessage(processed, currentState.currentCharacter.id, wasStoppedRef.current);
 
@@ -293,7 +286,7 @@ export function useChatSession() {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             releaseLock();
         }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData]);
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters]);
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character) => {
         const currentState = getState();
@@ -326,7 +319,6 @@ export function useChatSession() {
             }
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
-                const allCharacters = getState().allCharacters ?? [];
                 const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
                 const finalized = finalizeLastAIMessage(processed, currentState.interactionData.protagonist?.id ?? '', wasStoppedRef.current);
                 await saveRawInteractionData(finalized);
@@ -353,7 +345,7 @@ export function useChatSession() {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             releaseLock();
         }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData]);
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters]);
 
     const stopGeneration = useCallback(() => {
         wasStoppedRef.current = true;
@@ -368,13 +360,13 @@ export function useChatSession() {
             const idx = currentData.interactionHistory.findIndex(m => m.id === resumeId);
             if (idx !== -1) {
                 const targetMsg = currentData.interactionHistory[idx] as ChatMessage;
-                const cleanText = sanitizeStreamedText(targetMsg.textContent);
-                const paragraphs = (cleanText.match(/\n\n/g) || []).length + 1;
+                const textContent = targetMsg.textContent;
+                const paragraphs = (textContent.match(/\n\n/g) || []).length + 1;
 
                 const withPartial = [...currentData.interactionHistory];
                 withPartial[idx] = {
                     ...targetMsg,
-                    textContent: cleanText,
+                    textContent,
                     isPartial: true,
                     lastUpdatedTimestamp: Date.now()
                 } as ChatMessage;
@@ -396,7 +388,7 @@ export function useChatSession() {
         } else {
             const t = streamingTextRef.current;
             const c = getState().streamingCharacter;
-            pendingPartialRef.current = (t?.trim() && c) ? { text: sanitizeStreamedText(t), character: c } : null;
+            pendingPartialRef.current = (t?.trim() && c) ? { text: t, character: c } : null;
             setState({
                 streamingCharacter: null,
                 streamingText: '',
@@ -520,7 +512,6 @@ export function useChatSession() {
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, protagonistId); await saveRawInteractionData(fd); setInteractionData(fd); return; }
 
             if (ud.interactionHistory.length > preCount) {
-                const allCharacters = getState().allCharacters ?? [];
                 const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
                 const finalized = finalizeLastAIMessage(processed, protagonistId, wasStoppedRef.current);
 
@@ -541,7 +532,7 @@ export function useChatSession() {
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Regen failed:', e); addToast(`Regen error: ${(e as Error).message}`, 'error'); } }
         finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setInteractionData, setStreamingState, setStats]);
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setInteractionData, setStreamingState, setStats, allCharacters]);
 
     const startNewChat = useCallback((char: Character) => {
         const c = createNewInteractionData(char);

@@ -7,7 +7,7 @@ import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngi
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { saveRawInteractionData } from '../storage/serverStorage';
 import { updatePartialMessageInInteractionData } from './chatLogic';
-import { processPendingToolActions } from '../services/ToolExecutor';
+import { useMemoryTrigger } from './useMemoryTrigger';
 
 const characterActor = new CharacterActor();
 const autonomousEngine = new AutonomousSimulationEngine();
@@ -21,15 +21,16 @@ interface EngineDependencies {
     setCurrentCharacterExpression: (e: string) => void;
     setLastSelectedModelId: (id: string | null) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
-    processMemoryTrigger: (rawText: string, character: Character, data: InteractionData) => Promise<void>;
 }
 
 export function useChatEngine(deps: EngineDependencies) {
     const { 
         getState, setInteractionData, setStreamingState, 
         setBudgetData, setStats, setCurrentCharacterExpression,
-        setLastSelectedModelId, addToast, processMemoryTrigger,
+        setLastSelectedModelId, addToast,
     } = deps;
+
+    const { processMemoryTrigger } = useMemoryTrigger();
 
     const handleServerResponse = useCallback(async (
         data: InteractionData, 
@@ -134,14 +135,12 @@ export function useChatEngine(deps: EngineDependencies) {
         );
 
         if (finalData) {
-            const allCharacters = getState().allCharacters ?? [];
-            const processed = processPendingToolActions(finalData, allCharacters, { onToast: addToast });
-            await saveRawInteractionData(processed);
-            setInteractionData(processed);
-            return processed;
+            await saveRawInteractionData(finalData);
+            setInteractionData(finalData);
+            return finalData;
         }
         return initialData;
-    }, [handleServerResponse, setStreamingState, setInteractionData, getState, addToast]);
+    }, [handleServerResponse, setStreamingState, setInteractionData]);
 
     const startAutonomousMode = useCallback((
         checkCanAct: () => boolean,

@@ -91,16 +91,6 @@ function hasMessagesChanged(a: InteractionData | null, b: InteractionData): bool
 }
 
 function App() {
-    // ─── Session Hook ────────────────────────────────────────────────
-    const session = useChatSession();
-    const {
-        interactionData, setInteractionData, currentCharacter, setCurrentCharacter,
-        isLoading, streamingText, streamingCharacter, currentCharacterExpression, sendMessage, stopGeneration,
-        resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef,
-        startNewChat,
-        sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel,
-        activeStrategy, budgetData,
-    } = session;
 
     const { addToast } = useToast();
 
@@ -121,6 +111,17 @@ function App() {
     const { memories: allMemories, deleteMemory } = useMemoryManager();
 
     const { activeIds: activeExtensionIds, setActiveIds: setActiveExtensionIds } = useActiveExtensions(allExtensions);
+
+    // ─── Session Hook ────────────────────────────────────────────────
+    const session = useChatSession(allCharacters);
+    const {
+        interactionData, setInteractionData, currentCharacter, setCurrentCharacter,
+        isLoading, streamingText, streamingCharacter, currentCharacterExpression, sendMessage, stopGeneration,
+        resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef,
+        startNewChat,
+        sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel,
+        activeStrategy, budgetData,
+    } = session;
 
     const defaultCharacterId = useSessionStore(s => s.defaultCharacterId);
     const selectedBudgetStrategyId = useSessionStore(s => s.selectedBudgetStrategyId);

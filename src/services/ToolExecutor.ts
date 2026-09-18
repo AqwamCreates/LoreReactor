@@ -606,7 +606,7 @@ function executeMap(args: string, _nextMessage: BaseMessage, interactionData: In
 
 // ─── Audio ──────────────────────────────────────────────────────────
 
-function executeAudio(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeAudio(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('audio', args, 'audio play <track_id> | audio stop <track_id>');
@@ -788,13 +788,14 @@ function executeKey(args: string, nextMessage: BaseMessage, interactionData: Int
     if (subcommand === 'lock') {
         locks[targetLocation.id] = true; inventory['__location_locks__'] = JSON.stringify(locks); nextMessage.inventory = inventory;
         return { toolType: 'key', args, content: `Locked "${targetLocation.name}".`, displayReplacement: `[🔒 Locked "${targetLocation.name}"]` };
-    } else {
-        if (!locks[targetLocation.id]) return { toolType: 'key', args, content: `Not locked.`, displayReplacement: `[🔓 Not locked]` };
-        delete locks[targetLocation.id];
-        if (Object.keys(locks).length === 0) delete inventory['__location_locks__']; else inventory['__location_locks__'] = JSON.stringify(locks);
-        nextMessage.inventory = inventory;
-        return { toolType: 'key', args, content: `Unlocked "${targetLocation.name}".`, displayReplacement: `[🔓 Unlocked "${targetLocation.name}"]` };
     }
+
+    if (!locks[targetLocation.id]) return { toolType: 'key', args, content: `Not locked.`, displayReplacement: `[🔓 Not locked]` };
+    delete locks[targetLocation.id];
+    if (Object.keys(locks).length === 0) delete inventory['__location_locks__']; else inventory['__location_locks__'] = JSON.stringify(locks);
+    nextMessage.inventory = inventory;
+    return { toolType: 'key', args, content: `Unlocked "${targetLocation.name}".`, displayReplacement: `[🔓 Unlocked "${targetLocation.name}"]` };
+
 }
 
 // ─── Clothing ───────────────────────────────────────────────────────
@@ -878,7 +879,7 @@ function executeInspect(args: string, _nextMessage: BaseMessage, interactionData
     for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) { if (interactionData.interactionHistory[i].character.id === targetChar.id && interactionData.interactionHistory[i].characterExpression) { lastExpression = interactionData.interactionHistory[i].characterExpression!; break; } }
     for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) { if (interactionData.interactionHistory[i].character.id === targetChar.id && interactionData.interactionHistory[i].inventory) { itemCount = Object.keys(interactionData.interactionHistory[i].inventory!).filter(k => !k.startsWith('__')).length; break; } }
 
-    let wornClothing: { name: string; id: string }[] = [];
+    const wornClothing: { name: string; id: string }[] = [];
     for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
         const msg = interactionData.interactionHistory[i];
         if (msg.character.id === targetChar.id && msg.characterClothingWearingStatuses) {
