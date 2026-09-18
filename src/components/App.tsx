@@ -386,6 +386,7 @@ function App() {
     const loadingStartedAtRef = useRef<number | null>(null);
     const chatModifiedRef = useRef(false);
     const previousMessageCountRef = useRef<number>(0);
+    const previousInteractionDataRef = useRef<InteractionData | null>(null);
 
     useEffect(() => {
         if (!isInitializing) return;
@@ -409,15 +410,37 @@ function App() {
 
     useEffect(() => {
         if (!interactionData || !interactionData.id) return;
+        
         const historyLength = interactionData.interactionHistory?.length ?? 0;
         const protagId = interactionData.protagonist?.id;
         const nonProtagParticipants = interactionData.participants.filter(p => p.id !== protagId);
         const hasContent = nonProtagParticipants.length > 0 || historyLength > 0 || (interactionData.contexts?.length ?? 0) > 0 || (interactionData.locations?.length ?? 0) > 0 || (interactionData.audioTracks?.length ?? 0) > 0 || !!interactionData.Profile;
+        
         if (!chatModifiedRef.current && hasContent) chatModifiedRef.current = true;
+        
+        // Only save if message count actually changed
         if (chatModifiedRef.current && historyLength !== previousMessageCountRef.current) {
-            previousMessageCountRef.current = historyLength;
-            saveRawInteractionData(interactionData).catch(e => console.error('Failed to save chat:', e));
-            if (!rawChatShells.some(c => c.id === interactionData.id)) refreshChatList();
+            const previousData = previousInteractionDataRef.current;
+            
+            // Check if interactionData actually changed (not just reference)
+            const hasActualChange = !previousData || 
+                previousData.interactionHistory?.length !== historyLength ||
+                previousData.name !== interactionData.name ||
+                previousData.protagonist?.id !== interactionData.protagonist?.id ||
+                previousData.participants.length !== interactionData.participants.length ||
+                previousData.contexts?.length !== interactionData.contexts?.length ||
+                previousData.locations?.length !== interactionData.locations?.length ||
+                previousData.audioTracks?.length !== interactionData.audioTracks?.length;
+            
+            if (hasActualChange) {
+                previousMessageCountRef.current = historyLength;
+                previousInteractionDataRef.current = interactionData;
+                saveRawInteractionData(interactionData).catch(e => console.error('Failed to save chat:', e));
+                
+                if (!rawChatShells.some(c => c.id === interactionData.id)) {
+                    refreshChatList();
+                }
+            }
         }
     }, [interactionData, rawChatShells, refreshChatList]);
 
