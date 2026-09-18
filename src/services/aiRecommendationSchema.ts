@@ -62,6 +62,14 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
       "regularExpressionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
       "regularExpressionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
       "clothingBindings": ["string array of clothing UUIDs this item covers/hides when worn"]
+    }],
+    "textCharacterInjections": [{
+      "id": "string (UUID)",
+      "name": "string (required)",
+      "description": "string (display only, describes what this injection does)",
+      "textCharacters": ["string array of individual characters to randomly select from for prefix injection"],
+      "textCharacterWeights": {"positional index (number)": "selection weight (number), higher = more likely to be picked"},
+      "textCharacterInjectionBindings": ["string array of TextCharacterInjection UUIDs to chain to after this injection fires"]
     }]
   }]`);
     }
@@ -184,6 +192,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "volume": "number (-1 to 1, default -1 means per-track default)",
     "forceNameReveal": "boolean (default false)",
     "enableCharacterExpression": "boolean (default false)",
+    "randomizeTextCharacterInjection": "boolean (default false, master toggle for text character injection across all characters)",
     "forceNoCharacterImageInjection": "boolean (default false)",
     "forceNoContextImageInjection": "boolean (default false)",
     "forceNoLocationImageInjection": "boolean (default false)",

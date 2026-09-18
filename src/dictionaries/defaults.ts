@@ -58,6 +58,7 @@ export const defaultCharacter: Character = {
     enableMemoryWriting: false,
     enableMemoryReading: false,
     clothings: [],
+    textCharacterInjections: [],
     memories: {},
     firstCreatedTimestamp: now,
     lastUpdatedTimestamp: now,

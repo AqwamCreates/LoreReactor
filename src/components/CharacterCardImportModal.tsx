@@ -135,6 +135,7 @@ export function CharacterCardImportModal({
                 enableMemoryWriting: false,
                 enableMemoryReading: false,
                 clothings: [],
+                textCharacterInjections: [],
                 memories: {},
                 numberOfMessagesToDisableThinkPrompt: 1,
                 numberOfMessagesToDisableMetaThinkInstructions: 1,

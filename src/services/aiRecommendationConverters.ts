@@ -1,5 +1,5 @@
 // src/services/aiRecommendationConverters.ts
-import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, tool, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, tool, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './aiRecommendationTypes';
 import type { GeneratedOutput } from './aiRecommendationTypes';
@@ -79,6 +79,20 @@ function filterRecordKeysByUuid<T>(record: Record<string, T> | undefined): Recor
     return result;
 }
 
+function fillTextCharacterInjectionDefaults(t: Record<string, unknown>): TextCharacterInjection {
+    const now = Date.now();
+    return {
+        id: ensureId(t),
+        name: (t.name as string) || 'Unnamed Injection',
+        description: (t.description as string) || '',
+        textCharacters: Array.isArray(t.textCharacters) ? (t.textCharacters as string[]).filter(c => typeof c === 'string') : [],
+        textCharacterWeights: filterRecordKeysByUuid(t.textCharacterWeights as Record<string, number> | undefined),
+        textCharacterInjectionBindings: filterValidUuids(t.textCharacterInjectionBindings as string[] | undefined),
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+}
+
 function fillClothingDefaults(c: Record<string, unknown>): Clothing {
     const now = Date.now();
     return {
@@ -97,6 +111,7 @@ function fillClothingDefaults(c: Record<string, unknown>): Clothing {
 function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]): Character {
     const now = Date.now();
     const rawClothings = Array.isArray(c.clothings) ? c.clothings as Record<string, unknown>[] : [];
+    const rawTextInjections = Array.isArray(c.textCharacterInjections) ? c.textCharacterInjections as Record<string, unknown>[] : [];
     return {
         id: ensureId(c),
         name: (c.name as string) || 'Unnamed',
@@ -127,6 +142,7 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
         enableMemoryWriting: (c.enableMemoryWriting as boolean) ?? false,
         enableMemoryReading: (c.enableMemoryReading as boolean) ?? false,
         clothings: rawClothings.map(item => fillClothingDefaults(item)),
+        textCharacterInjections: rawTextInjections.map(item => fillTextCharacterInjectionDefaults(item)),
         memories: {},
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
@@ -265,6 +281,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         volume: (p.volume as number) ?? -1,
         forceNameReveal: (p.forceNameReveal as boolean) ?? false,
         enableCharacterExpression: (p.enableCharacterExpression as boolean) ?? false,
+        randomizeTextCharacterInjection: (p.randomizeTextCharacterInjection as boolean) ?? false,
         forceNoCharacterImageInjection: (p.forceNoCharacterImageInjection as boolean) ?? false,
         forceNoContextImageInjection: (p.forceNoContextImageInjection as boolean) ?? false,
         forceNoLocationImageInjection: (p.forceNoLocationImageInjection as boolean) ?? false,
@@ -401,6 +418,9 @@ export function resolveWorldCrossReferences(
     for (const character of characters) {
         for (const clothing of character.clothings) {
             clothing.clothingBindings = filterValidUuids(clothing.clothingBindings);
+        }
+        for (const injection of character.textCharacterInjections) {
+            injection.textCharacterInjectionBindings = filterValidUuids(injection.textCharacterInjectionBindings);
         }
     }
 
