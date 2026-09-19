@@ -33,7 +33,6 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
     const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const skipNextFocusScrollRef = useRef(false);
 
-    // Scroll to focused message when it changes externally
     useEffect(() => {
         if (skipNextFocusScrollRef.current) {
             skipNextFocusScrollRef.current = false;
@@ -50,7 +49,6 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         }
     }, [focusedMessageId, chatHistoryRef]);
 
-    // Track which message is most visible and update focusedMessageId
     const updateFocusedFromScroll = useCallback(() => {
         if (!chatHistoryRef.current || isScrollingRef.current) return;
 
@@ -112,19 +110,26 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                 </div>
             )}
 
+            {/* MOVED OUTSIDE: Minimap must be outside .chat-history because the CSS mask-image 
+                on .chat-history breaks position:fixed containing blocks */}
+            {interactionData && interactionData.interactionHistory.length > 5 && (
+                <ChatMinimap
+                    messages={interactionData.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat')}
+                    containerRef={chatHistoryRef}
+                    currentCharacterId={currentCharacterId}
+                />
+            )}
+
+            {/* MOVED OUTSIDE: Scroll buttons must also be outside .chat-history for the same reason */}
+            {interactionData && interactionData.interactionHistory.length > 3 && (
+                <ChatScrollButtons 
+                    containerRef={chatHistoryRef} 
+                    messageCount={displayMessages.length} 
+                    useViewportBounds={true}
+                />
+            )}
+
             <div className="chat-history" ref={chatHistoryRef}>
-                {interactionData.interactionHistory.length > 3 && (
-                    <ChatScrollButtons containerRef={chatHistoryRef} messageCount={displayMessages.length} />
-                )}
-
-                {interactionData && interactionData.interactionHistory.length > 5 && (
-                    <ChatMinimap
-                        messages={interactionData.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat')}
-                        containerRef={chatHistoryRef}
-                        currentCharacterId={currentCharacterId}
-                    />
-                )}
-
                 <StreamingIndicators
                     formattedStreamingText={formattedStreamingText}
                     viewMode="cinematic"

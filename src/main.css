@@ -1606,9 +1606,11 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     width: 100%;
     box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.5);
     position: relative;
-    max-height: 40vh;
-    overflow: visible;
+    max-height: 35vh;
+    overflow: visible; /* CHANGED BACK TO visible SO THE NAME PLATE ISN'T CLIPPED */
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
 }
 
 .vn-name-plate {
@@ -1683,13 +1685,15 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 .vn-dialogue-text {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
-    font-size: 17px;
+    overflow-y: auto; /* THE SCROLLBAR */
+    overflow-x: hidden;
+    font-size: 17px; /* RESTORED */
     color: #e0e0e0;
-    line-height: 1.6;
+    line-height: 1.6; /* RESTORED */
     white-space: pre-wrap;
     word-break: break-word;
-    margin-top: 10px;
+    margin-top: 10px; /* RESTORED */
+    padding-right: 12px; /* Prevents the scrollbar from squashing the text */
     text-align: left;
     -webkit-overflow-scrolling: touch;
 }
@@ -2015,7 +2019,7 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 @media (max-width: 768px) {
     .vn-sprite { height: 45vh; width: calc(45vh * 9 / 16); }
     .vn-sprites-layer { height: 60%; }
-    .vn-dialogue-box { padding: 16px 14px; max-height: 35vh; }
+    .vn-dialogue-box { padding: 16px 14px; max-height: 30vh; }
     .vn-name-plate { font-size: 0.75rem; top: -12px; left: 12px; padding: 3px 12px; }
     .vn-message-toolbar { top: -12px; right: 12px; padding: 2px 4px; gap: 2px; max-width: calc(100% - 24px); }
     .vn-toolbar-btn { font-size: 0.85rem; padding: 2px 4px; min-width: 28px; min-height: 28px; }
@@ -2032,7 +2036,7 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 @media (max-width: 480px) {
     .vn-sprite { height: 35vh; width: calc(35vh * 9 / 16); }
     .vn-sprites-layer { height: 55%; }
-    .vn-dialogue-box { padding: 12px 10px; max-height: 30vh; }
+    .vn-dialogue-box { padding: 12px 10px; max-height: 25vh; }
     .vn-dialogue-text { font-size: 0.85rem; }
     .vn-name-plate { font-size: 0.65rem; top: -10px; left: 8px; padding: 2px 8px; }
     .vn-message-toolbar { top: -10px; right: 8px; padding: 2px 3px; gap: 1px; }
@@ -4288,7 +4292,7 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
     top: 0;
     bottom: 0;
     width: 32px;
-    z-index: 45;
+    z-index: 100;
     pointer-events: auto;
     display: flex;
     flex-direction: column;

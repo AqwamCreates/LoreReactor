@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 interface ChatScrollButtonsProps {
     containerRef: React.RefObject<HTMLDivElement | null>;
     messageCount: number;
+    useViewportBounds?: boolean; // New prop for Cinematic mode
 }
 
 const BUTTON_GAP = 16;
@@ -12,6 +13,7 @@ const VERTICAL_GAP = 5;
 export const ChatScrollButtons = React.memo(function ChatScrollButtons({
     containerRef,
     messageCount,
+    useViewportBounds = false,
 }: ChatScrollButtonsProps) {
     const [showTopButton, setShowTopButton] = useState(false);
     const [showBottomButton, setShowBottomButton] = useState(false);
@@ -72,15 +74,28 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
 
     if (!containerRect || (!showTopButton && !showBottomButton)) return null;
 
-    const topPosition = containerRect.top + BUTTON_GAP + VERTICAL_GAP;
-    const bottomPosition = window.innerHeight - containerRect.bottom + BUTTON_GAP + VERTICAL_GAP;
-    const rightPosition = window.innerWidth - containerRect.right + BUTTON_GAP;
+    let topPosition: number;
+    let bottomPosition: number;
+    let rightPosition: number;
+
+    if (useViewportBounds) {
+        // Anchor to viewport edges for Cinematic mode
+        topPosition = 100;
+        bottomPosition = 100;
+        rightPosition = 20;
+    } else {
+        // Anchor to the chat-history container for Ladder mode
+        topPosition = containerRect.top + BUTTON_GAP + VERTICAL_GAP;
+        bottomPosition = window.innerHeight - containerRect.bottom + BUTTON_GAP + VERTICAL_GAP;
+        rightPosition = window.innerWidth - containerRect.right + BUTTON_GAP;
+    }
 
     return (
         <>
             {showTopButton && (
                 <button
                     type="button"
+                    tabIndex={-1}
                     className="chat-scroll-button"
                     onClick={scrollToTop}
                     onMouseDown={(e) => e.preventDefault()}
@@ -97,6 +112,7 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
             {showBottomButton && (
                 <button
                     type="button"
+                    tabIndex={-1}
                     className="chat-scroll-button"
                     onClick={scrollToBottom}
                     onMouseDown={(e) => e.preventDefault()}

@@ -1,5 +1,5 @@
 // src/components/CharacterClothingEditorModal.tsx
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import type { Clothing } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
@@ -159,15 +159,15 @@ export function CharacterClothingEditorModal({
 }: CharacterClothingEditorModalProps) {
     const [items, setItems] = useState<Clothing[]>(() => clothings.length > 0 ? [...clothings] : []);
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [prevClothings, setPrevClothings] = useState<Clothing[]>(clothings);
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
-    // Reset local state when modal opens with fresh data
-    useEffect(() => {
-        if (isOpen) {
-            setItems(clothings.length > 0 ? [...clothings] : []);
-            setSelectedId(null);
-        }
-    }, [isOpen, clothings]);
+    // Adjust state during render when prop changes (no useEffect, no ref reads during render)
+    if (clothings !== prevClothings) {
+        setPrevClothings(clothings);
+        setItems(clothings.length > 0 ? [...clothings] : []);
+        setSelectedId(null);
+    }
 
     const buildNodeData = (item: Clothing): ClothingNodeData => ({
         name: item.name,
@@ -186,7 +186,7 @@ export function CharacterClothingEditorModal({
             position: { x: (idx % cols) * 220 + 50, y: Math.floor(idx / cols) * 180 + 50 },
             data: buildNodeData(item),
         }));
-    }, []);
+    }, [items]);
 
     const initialEdges = useMemo(() => {
         const edges: Edge[] = [];
@@ -207,18 +207,10 @@ export function CharacterClothingEditorModal({
             }
         }
         return edges;
-    }, []);
+    }, [items]);
 
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-
-    useEffect(() => {
-        setNodes(prev => prev.map(node => {
-            const item = items.find(i => i.id === node.id);
-            if (!item) return node;
-            return { ...node, data: buildNodeData(item) };
-        }));
-    }, [items, setNodes]);
 
     const onConnect = useCallback((connection: Connection) => {
         if (!connection.source || !connection.target) return;
@@ -250,7 +242,7 @@ export function CharacterClothingEditorModal({
             };
         }));
         setEdges(prev => prev.filter(e => e.id !== edge.id));
-    }, []);
+    }, [setEdges]);
 
     const removeBinding = useCallback((sourceItemId: string, boundId: string) => {
         setItems(prev => prev.map(item => {
@@ -262,7 +254,7 @@ export function CharacterClothingEditorModal({
             };
         }));
         setEdges(prev => prev.filter(e => !(e.source === sourceItemId && e.target === boundId)));
-    }, []);
+    }, [setEdges]);
 
     const handleAdd = useCallback(() => {
         const now = Date.now();
