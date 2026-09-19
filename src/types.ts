@@ -213,7 +213,7 @@ export interface RawMemory extends RawData {
   interactionDataId: string;
 }
 
-export type tool = "pick" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "invite" | "kick" | "teleport" | "key" | "dialogue" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"
+export type tool = "pick" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "invite" | "kick" | "teleport" | "key" | "dialogue" | "knowledge" | "memories" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"
 
 export interface DialoguePrompt extends ObjectData {
   content: string;
@@ -225,6 +225,15 @@ export interface DialoguePrompt extends ObjectData {
   regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
   regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
   regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+}
+
+export interface KnowledgePrompt extends ObjectData {
+    content: string;
+    knowledgePromptBindings: string[]; // IDs of other KnowledgePrompts this links to
+    regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+    regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+    regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+    regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
 }
 export interface Clothing extends ObjectData {
     regularExpressionActivationTriggers?: RegularExpressionTrigger[];
@@ -251,6 +260,7 @@ export interface Character extends ObjectData {
   thinkPrompt?: string;
   appearancePrompt?: string;
   dialoguePrompts?: DialoguePrompt[];
+  knowledgePrompts?: KnowledgePrompt[];
   starterPrompts?: Record<string, number>; // Text -> Weight value for that text during the sampling.
   initiativeWeight: number;
   chatProbability: number;
@@ -269,8 +279,6 @@ export interface Character extends ObjectData {
   numberOfMessagesToDisableDialoguePrompt: number;
   numberOfMessagesToDisableStarterPrompt: number;
   tools: Record<tool, boolean>
-  enableMemoryWriting: boolean;
-  enableMemoryReading: boolean;
   clothings: Clothing[];
   textCharacterInjections: TextCharacterInjection[],
   memories: Record<string, Memory[]>;
@@ -283,6 +291,7 @@ export interface RawCharacter extends RawData {
   thinkPrompt?: string;
   appearancePrompt?: string;
   dialoguePrompts?: DialoguePrompt[];
+  knowledgePrompts?: KnowledgePrompt[];
   starterPrompts?: Record<string, number>; // Text -> Weight value for that text during the sampling.
   initiativeWeight: number;
   chatProbability: number;
@@ -301,8 +310,6 @@ export interface RawCharacter extends RawData {
   numberOfMessagesToDisableDialoguePrompt: number;
   numberOfMessagesToDisableStarterPrompt: number;
   tools: Record<tool, boolean>
-  enableMemoryWriting: boolean;
-  enableMemoryReading: boolean;
   clothings: Clothing[];
   textCharacterInjections: TextCharacterInjection[],
   memories: Record<string, string[]>;
@@ -608,8 +615,6 @@ export interface Profile extends ObjectData {
   narrateTexts: Record<textType, boolean>;
   stripThinkTokens: boolean;
   tools: Record<tool, number>;
-  enableMemoryWriting: number;
-  enableMemoryReading: number;
   inputStrategy: (PromptBlockType | string)[];
   summarizationSteps: SummarizationStep[];
   characterSampler?: Sampler;
@@ -653,8 +658,6 @@ export interface RawProfile extends RawData {
   narrateTexts: Record<textType, boolean>;
   stripThinkTokens: boolean;
   tools: Record<tool, number>;
-  enableMemoryWriting: number;
-  enableMemoryReading: number;
   inputStrategy: (PromptBlockType | string)[];
   summarizationSteps: RawSummarizationStep[];
   characterSamplerId?: string;
