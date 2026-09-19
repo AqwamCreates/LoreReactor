@@ -9,7 +9,7 @@ import { sentimentEngine } from './SentimentAnalysisEngine';
 import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEngine';
 import { ToolInvocationParser } from './ToolInvocationParser';
 import { defaultBudgetData } from '../dictionaries/defaults';
-import { executeTools } from './ToolExecutor';
+import { executeTools, formatToolDisplay } from './ToolExecutor';
 import { StreamingAccumulator } from './StreamingAccumulator';
 
 // ─── Result Types ───────────────────────────────────────────────────
@@ -83,11 +83,8 @@ async function processToolInvocations(
 
     if (enabledInvocations.length === 0) return null;
 
-    const displayToolUsage = profile?.displayToolUsage ?? false;
-
-    const toolResults = await executeTools(enabledInvocations, nextMessage, interactionData);
-
-    
+    const displayMode = profile?.toolUsageDisplayMode ?? 'none';
+    const toolResults = await executeTools(enabledInvocations, nextMessage, interactionData, undefined, displayMode);
 
     let resumeText = rawText;
     let displayText = rawText;
@@ -99,8 +96,10 @@ async function processToolInvocations(
         // resumeText always gets the actual tool result content for continued generation
         resumeText = resumeText.replace(invocation.rawMatch, toolResult.content);
 
-        displayText = displayText.replace(invocation.rawMatch, toolResult.displayReplacement);
-        displayReplacements.push({ type: invocation.toolType, value: toolResult.displayReplacement });
+        // Format display based on mode
+        const formattedDisplay = formatToolDisplay(toolResult, invocation.rawMatch, displayMode);
+        displayText = displayText.replace(invocation.rawMatch, formattedDisplay);
+        displayReplacements.push({ type: invocation.toolType, value: formattedDisplay });
     }
 
     return { resumeText, displayText, displayReplacements };
