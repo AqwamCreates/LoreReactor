@@ -65,13 +65,11 @@ function generateInitialCharacterText(character: Character): string {
     const textCharacterInjections = character.textCharacterInjections;
     if (!textCharacterInjections || textCharacterInjections.length === 0) return '';
 
-    // Build lookup map by ID
     const injectionMap = new Map<string, TextCharacterInjection>();
     for (const inj of textCharacterInjections) {
         injectionMap.set(inj.id, inj);
     }
 
-    // Sample starting injection by textCharacterInjectionWeight
     const startPool: { inj: TextCharacterInjection; weight: number }[] = [];
     let totalStartWeight = 0;
     for (const inj of textCharacterInjections) {
@@ -86,7 +84,6 @@ function generateInitialCharacterText(character: Character): string {
     let result = '';
     let currentInj: TextCharacterInjection | undefined;
 
-    // Pick starting injection
     let roll = Math.random() * totalStartWeight;
     for (const entry of startPool) {
         roll -= entry.weight;
@@ -95,7 +92,6 @@ function generateInitialCharacterText(character: Character): string {
     if (!currentInj) currentInj = startPool[startPool.length - 1].inj;
 
     while (currentInj) {
-        // Sample text from current injection by textCharacterWeights
         const textPool: { text: string; weight: number }[] = [];
         let totalTextWeight = 0;
         for (let i = 0; i < currentInj.textCharacters.length; i++) {
@@ -117,11 +113,9 @@ function generateInitialCharacterText(character: Character): string {
             result += pickedText;
         }
 
-        // Check break probability
         const breakProb = currentInj.textCharacterBreakProbability ?? 0;
         if (breakProb > 0 && Math.random() < breakProb) break;
 
-        // Sample next injection from bindings by their textCharacterInjectionWeight
         const bindings = currentInj.textCharacterInjectionBindings;
         if (!bindings || bindings.length === 0) break;
 
@@ -164,22 +158,16 @@ export async function prepareRequestBody(
 
     const profile = interactionData.Profile;
 
-    if (profile?.randomizeTextCharacterInjection && !existingCharacterText) existingCharacterText = generateInitialCharacterText(character)
-
     const { prompt, stops, contextImages, locationImages, promptBlockImages, characterClothingWearingStatuses, fetchErrors } = await buildPrompt(interactionData, character, existingCharacterText, allPromptBlocks, modelId);
 
     const sampler = character.sampler;
-
     const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection;
 
     const filesBase64: { data: string; id: number }[] = [];
-
     let imageIdCounter = 1;
-
     let initialPrompt = "";
 
     if (!forceNoCharacterImageInjection) {
-
         let isCharacterImageInjected = false;
 
         if (!character.doNotInjectCharacterImage) {
@@ -189,7 +177,6 @@ export async function prepareRequestBody(
 
             if (characterImagePath) {
                 const characterImageBase64 = await getImageBase64(characterImagePath);
-
                 if (characterImageBase64) {
                     const rawData = characterImageBase64.includes(',') ? characterImageBase64.split(',')[1] : characterImageBase64;
                     filesBase64.push({ data: rawData, id: imageIdCounter++ });
@@ -207,7 +194,6 @@ export async function prepareRequestBody(
 
             if (protagonistImagePath) {
                 const protagonistImageBase64 = await getImageBase64(protagonistImagePath);
-
                 if (protagonistImageBase64) {
                     const rawData = protagonistImageBase64.includes(',') ? protagonistImageBase64.split(',')[1] : protagonistImageBase64;
                     let protagonistString = getParticipantTag(protagonist, interactionData.participants);
@@ -244,10 +230,7 @@ export async function prepareRequestBody(
                 });
                 const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
                 return { data: rawData, id: imageIdCounter++ };
-            } catch (e) {
-                console.warn(`Failed to load context image ${filename}`, e);
-                return null;
-            }
+            } catch (e) { return null; }
         });
         const resolvedContextImages = (await Promise.all(contextImagePromises)).filter(img => img !== null);
         filesBase64.push(...resolvedContextImages);
@@ -268,10 +251,7 @@ export async function prepareRequestBody(
                 });
                 const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
                 return { data: rawData, id: imageIdCounter++ };
-            } catch (e) {
-                console.warn(`Failed to load location image ${filename}`, e);
-                return null;
-            }
+            } catch (e) { return null; }
         });
         const resolvedLocationImages = (await Promise.all(locationImagePromises)).filter(img => img !== null);
         filesBase64.push(...resolvedLocationImages);
@@ -292,10 +272,7 @@ export async function prepareRequestBody(
                 });
                 const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
                 return { data: rawData, id: imageIdCounter++ };
-            } catch (e) {
-                console.warn(`Failed to load prompt block image ${filename}`, e);
-                return null;
-            }
+            } catch (e) { return null; }
         });
         const resolvedPromptBlockImages = (await Promise.all(promptBlockImagePromises)).filter(img => img !== null);
         filesBase64.push(...resolvedPromptBlockImages);
@@ -313,14 +290,12 @@ export async function prepareRequestBody(
     }
 
     const fullPrompt = `${initialPrompt}${prompt}`;
-
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
 
     const finalStops = [
         ...(Array.isArray(paramStops) ? paramStops : []),
         ...stops,
     ];
-
     const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
 
     const body: Record<string, unknown> = {
@@ -330,6 +305,28 @@ export async function prepareRequestBody(
         stream: true,
         stop: uniqueStops,
     };
+
+    // ─── Text Character Injection Logic ─────────────────────────────
+    if (profile?.randomizeTextCharacterInjection) {
+        const maxRetries = profile.maximumNumberOfTextCharacterRandomizationPerModel ?? 1;
+        const injections: string[] = [];
+        for (let i = 0; i < maxRetries; i++) {
+            injections.push(generateInitialCharacterText(character));
+        }
+
+        body._basePrompt = fullPrompt;
+
+        // If not "retry only", prepend the first injection immediately
+        if (!profile.randomizeTextCharacterInjectionOnRetry && injections.length > 0) {
+            const firstInjection = injections.shift()!;
+            body.prompt = firstInjection + (body.prompt as string);
+        }
+
+        // Attach remaining injections for retries
+        if (injections.length > 0) {
+            body._injectionStrings = injections;
+        }
+    }
 
     if (filesBase64.length > 0) body.image_data = filesBase64;
 
@@ -395,9 +392,7 @@ export function createChatMessage(
     const now = Date.now();
 
     const id = uuidv4();
-
     const files = options?.files ?? [];
-    
     const isProtagonist = character.id === interactionData.protagonist?.id;
     const isPartial = options?.isPartial ?? !isProtagonist;
 
@@ -406,11 +401,8 @@ export function createChatMessage(
         locationIndex = detectLocationFromText(textContent, interactionData.locations);
     }
 
-    // Carry forward clothing wearing statuses from previous message, use provided override, or initialize from character definition
     const prevClothingStatuses = (previousMessage as ChatMessage)?.characterClothingWearingStatuses;
     const clothingWearingStatuses = options?.clothingWearingStatuses ?? prevClothingStatuses ?? initializeClothingWearingStatuses(character);
-
-    // Carry forward locked locations from previous message
     const prevLockedLocations = previousMessage?.characterLockedLocations ?? {};
 
     return {
@@ -454,21 +446,10 @@ export function editInteractionMessageInInteractionData(interactionData: Interac
         ...interactionData,
         interactionHistory: interactionHistory.map((message, idx) => {
             if (idx === index && message.messageType === 'chat') {
-                return {
-                    ...message,
-                    textContent: newText,
-                    kvCacheTextContentPaths: {},
-                    kvCacheTextContentSummaryPaths: {},
-                    kvCacheInteractionTextContentSummaries: {},
-                };
+                return { ...message, textContent: newText, kvCacheTextContentPaths: {}, kvCacheTextContentSummaryPaths: {}, kvCacheInteractionTextContentSummaries: {} };
             }
             if (idx > index && message.messageType === 'chat') {
-                return {
-                    ...message,
-                    kvCacheTextContentPaths: {},
-                    kvCacheTextContentSummaryPaths: {},
-                    kvCacheInteractionTextContentSummaries: {},
-                };
+                return { ...message, kvCacheTextContentPaths: {}, kvCacheTextContentSummaryPaths: {}, kvCacheInteractionTextContentSummaries: {} };
             }
             return message;
         })
@@ -485,12 +466,7 @@ export function updatePartialMessageInInteractionData(
     for (let i = history.length - 1; i >= 0; i--) {
         const m = history[i];
         if (m.character.id === characterId && m.messageType === 'chat' && (m as ChatMessage).isPartial) {
-            history[i] = {
-                ...m,
-                textContent: newText,
-                characterExpression: characterExpression ?? (m as ChatMessage).characterExpression,
-                lastUpdatedTimestamp: Date.now(),
-            } as ChatMessage;
+            history[i] = { ...m, textContent: newText, characterExpression: characterExpression ?? (m as ChatMessage).characterExpression, lastUpdatedTimestamp: Date.now() } as ChatMessage;
             return { ...interactionData, interactionHistory: history, lastUpdatedTimestamp: Date.now() };
         }
     }
@@ -504,12 +480,7 @@ export function deleteInteractionMessage(interactionData: InteractionData, messa
     const newHistory = interactionHistory.filter(m => m.id !== messageId);
     const finalHistory = newHistory.map((message, idx) => {
         if (idx >= targetIndex && message.messageType === 'chat') {
-            return {
-                ...message,
-                kvCacheTextContentPaths: {},
-                kvCacheTextContentSummaryPaths: {},
-                kvCacheInteractionTextContentSummaries: {},
-            };
+            return { ...message, kvCacheTextContentPaths: {}, kvCacheTextContentSummaryPaths: {}, kvCacheInteractionTextContentSummaries: {} };
         }
         return message;
     });
