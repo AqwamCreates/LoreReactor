@@ -425,7 +425,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
             {hasParentBranch && onNavigateToBranchSource && (
                 <div className="vn-branch-indicator">
                     <button type="button" className="vn-branch-button" onClick={onNavigateToBranchSource}>
-                        🌿 Return to {parentInteractionDataName || 'Source'}
+                        🌿 Timeline branches from {parentInteractionDataName || 'Source'}
                     </button>
                 </div>
             )}

@@ -20,6 +20,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      devOptions: {
+        enabled: false,
+      },
       includeAssets: [],
       manifest: {
         name: 'LoreReactor',
