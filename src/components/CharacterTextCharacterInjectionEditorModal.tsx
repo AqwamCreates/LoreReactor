@@ -84,7 +84,7 @@ function InjectionNode({ data }: NodeProps<Node<InjectionNodeData>>) {
             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
                 {characterCount > 0 && (
                     <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(96, 165, 250, 0.2)', borderRadius: '3px', color: '#93c5fd' }}>
-                        {characterCount} char{characterCount !== 1 ? 's' : ''}
+                        {characterCount} Character{characterCount !== 1 ? 's' : ''}
                     </span>
                 )}
                 {hasWeights && (

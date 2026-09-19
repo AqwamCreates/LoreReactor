@@ -1,5 +1,5 @@
 // src/components/ChatInspectionModal.tsx
-import { useMemo, useEffect, useState, useRef } from 'react';
+import { useMemo, useEffect, useState, useCallback } from 'react';
 import type { InteractionData, Location, Character } from '../types';
 import { getCharacterImageUrlWithFallBack } from '../storage/serverStorage';
 import { getCurrentLocation } from '../hooks/locationLogic';
@@ -32,6 +32,13 @@ interface LocationNodeData extends Record<string, unknown> {
     isReachable: boolean;
     participants: { name: string; index: number }[];
 }
+
+const HANDLE_STYLE: React.CSSProperties = {
+    background: '#f59e0b',
+    width: '10px',
+    height: '10px',
+    border: '2px solid var(--social-bg, #1a1a2e)',
+};
 
 function LocationNode({ data }: NodeProps<Node<LocationNodeData>>) {
     const { name, isCurrent, hasParticipants, isReachable, participants } = data;
@@ -80,9 +87,12 @@ function LocationNode({ data }: NodeProps<Node<LocationNodeData>>) {
             boxShadow,
             transition: 'all 0.3s ease',
             textAlign: 'center',
+            overflow: 'visible',
         }}>
-            <Handle type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: 'none' }} />
-            <Handle type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: 'none' }} />
+            <Handle type="source" position={Position.Top} id="top" style={HANDLE_STYLE} />
+            <Handle type="source" position={Position.Right} id="right" style={HANDLE_STYLE} />
+            <Handle type="source" position={Position.Bottom} id="bottom" style={HANDLE_STYLE} />
+            <Handle type="source" position={Position.Left} id="left" style={HANDLE_STYLE} />
 
             <div style={{
                 fontWeight: 'bold',
@@ -169,6 +179,9 @@ function getLocationDistanceKm(locA: Location, locB: Location): number | null {
 function useCharacterPortraits(characters: Character[]): Map<string, string | null> {
     const [portraits, setPortraits] = useState<Map<string, string | null>>(new Map());
 
+    // Stable dependency: join IDs into a single string
+    const characterIdsKey = characters.map(c => c.id).join(',');
+
     useEffect(() => {
         let cancelled = false;
         const resolved = new Map<string, string | null>();
@@ -182,7 +195,7 @@ function useCharacterPortraits(characters: Character[]): Map<string, string | nu
         })();
 
         return () => { cancelled = true; };
-    }, [characters.map(c => c.id).join(',')]);
+    }, [characters, characterIdsKey]);
 
     return portraits;
 }
@@ -195,24 +208,37 @@ export function ChatInspectionModal({
     inspectionStack,
     onInspectingParentInteractionData,
 }: ChatInspectionModalProps) {
-    const [internalStack, setInternalStack] = useState<InteractionData[]>([]);
-    const prevOpenRef = useRef(false);
+    // Track which inspectionStack we've already initialized from.
+    // When it changes (new modal open), reset userNavStack.
+    const [initializedFromStack, setInitializedFromStack] = useState<InteractionData[] | null>(null);
+    const [userNavStack, setUserNavStack] = useState<InteractionData[]>([]);
 
-    useEffect(() => {
-        if (isOpen && !prevOpenRef.current && inspectionStack.length > 0) {
-            setInternalStack([...inspectionStack]);
-        } else if (!isOpen) {
-            setInternalStack([]);
+    // Derive the effective stack during render — no useEffect setState
+    const internalStack = useMemo(() => {
+        if (!isOpen) return [];
+
+        // If inspectionStack changed since last initialization, reset
+        if (initializedFromStack !== inspectionStack) {
+            return inspectionStack.length > 0 ? [...inspectionStack] : [];
         }
-        prevOpenRef.current = isOpen;
-    }, [isOpen, inspectionStack]);
+
+        // Use user navigation stack if it has entries, otherwise fall back to inspectionStack
+        if (userNavStack.length > 0) return userNavStack;
+        return inspectionStack.length > 0 ? [...inspectionStack] : [];
+    }, [isOpen, inspectionStack, initializedFromStack, userNavStack]);
+
+    // Sync initializedFromStack when inspectionStack changes (render-time adjustment)
+    if (isOpen && initializedFromStack !== inspectionStack) {
+        setInitializedFromStack(inspectionStack);
+        setUserNavStack([]);
+    }
 
     const chat = internalStack[0] ?? null;
     const canGoBack = internalStack.length > 1;
 
     // ALL derived values and hooks MUST be before the early return
     const protagonist = chat?.protagonist ?? null;
-    const participants = chat?.participants || [];
+    const participants = useMemo(() => chat?.participants || [], [chat]);
     const locations = chat?.locations || [];
     const audioTracks = chat?.audioTracks || [];
     const contexts = chat?.contexts || [];
@@ -223,20 +249,20 @@ export function ChatInspectionModal({
 
     const portraits = useCharacterPortraits(participants);
 
-    const handleBack = () => {
-        setInternalStack(prev => prev.slice(1));
-    };
+    const handleBack = useCallback(() => {
+        setUserNavStack(prev => prev.slice(1));
+    }, []);
 
-    const handleNavigateToParent = async () => {
+    const handleNavigateToParent = useCallback(async () => {
         const current = internalStack[0];
         if (!current?.parentInteractionDataId) return;
         try {
             const parentData = await onInspectingParentInteractionData(current.parentInteractionDataId);
-            setInternalStack(prev => [parentData, ...prev]);
+            setUserNavStack(prev => [parentData, ...prev]);
         } catch {
             // Parent data unavailable
         }
-    };
+    }, [internalStack, onInspectingParentInteractionData]);
 
     const { nodes, edges } = useMemo(() => {
         if (!chat || !chat.locations || chat.locations.length === 0) {

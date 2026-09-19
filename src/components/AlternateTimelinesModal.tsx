@@ -91,6 +91,13 @@ function getLayoutedElements(nodes: BranchFlowNode[], edges: Edge[]): { nodes: B
 
 // ─── Custom Branch Node ──────────────────────────────────────────────
 
+const HANDLE_STYLE: React.CSSProperties = {
+    background: '#f59e0b',
+    width: '10px',
+    height: '10px',
+    border: '2px solid var(--social-bg, #1a1a2e)',
+};
+
 function BranchNode({ data }: NodeProps<BranchFlowNode>) {
     const borderColor = data.isCurrent ? '#4ade80' : data.isAncestor ? '#60a5fa' : '#f59e0b';
     const bgColor = data.isCurrent ? 'rgba(74, 222, 128, 0.12)' : data.isAncestor ? 'rgba(96, 165, 250, 0.08)' : 'rgba(245, 158, 11, 0.06)';
@@ -118,10 +125,13 @@ function BranchNode({ data }: NodeProps<BranchFlowNode>) {
                 flexDirection: 'column',
                 gap: '4px',
                 pointerEvents: 'auto',
+                overflow: 'visible',
             }}
         >
-            <Handle type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: 'none' }} />
-            <Handle type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: 'none' }} />
+            <Handle type="source" position={Position.Top} id="top" style={HANDLE_STYLE} />
+            <Handle type="source" position={Position.Right} id="right" style={HANDLE_STYLE} />
+            <Handle type="source" position={Position.Bottom} id="bottom" style={HANDLE_STYLE} />
+            <Handle type="source" position={Position.Left} id="left" style={HANDLE_STYLE} />
 
             {/* Title row with pencil edit button */}
             {data.isRenaming ? (
