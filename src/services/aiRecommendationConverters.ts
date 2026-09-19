@@ -90,6 +90,7 @@ function fillTextCharacterInjectionDefaults(t: Record<string, unknown>): TextCha
         textCharacterInjectionBindings: filterValidUuids(t.textCharacterInjectionBindings as string[] | undefined),
         textCharacterInjectionWeight: (t.textCharacterInjectionWeight as number) ?? 1,
         textCharacterBreakProbability: (t.textCharacterBreakProbability as number) ?? 0,
+        textCharacterSkipProbability: (t.textCharacterSkipProbability as number) ?? 0,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
     };

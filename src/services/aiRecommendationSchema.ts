@@ -71,7 +71,8 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
       "textCharacterWeights": {"positional index (number)": "selection weight (number), higher = more likely to be picked"},
       "textCharacterInjectionBindings": ["string array of TextCharacterInjection UUIDs to chain to after this injection fires"],
       "textCharacterInjectionWeight": "number (≥0, default 1). Weight for being selected as the starting injection or as a chained next injection. Higher = more likely to be picked.",
-      "textCharacterBreakProbability": "number (0-1, default 0). Probability that the injection chain breaks before advancing to the next binding. Higher = more likely to stop chaining."
+      "textCharacterBreakProbability": "number (0-1, default 0). Probability that the injection chain breaks after generating this text. Higher = more likely to stop chaining.",
+      "textCharacterSkipProbability": "number (0-1, default 0). Probability of skipping text generation for this injection and moving to the next binding. 0 = always generate. 1 = always skip."
     }]
   }]`);
     }

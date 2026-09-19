@@ -1,5 +1,5 @@
 // src/components/CharacterTextCharacterInjectionEditorModal.tsx
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import type { TextCharacterInjection } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -20,6 +20,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import '../main.css';
+import { TEXT_CHARACTER_INJECTION_PRESETS, createInjectionFromPreset } from '../dictionaries/textCharacterInjectionPresets';
 
 interface CharacterTextCharacterInjectionEditorModalProps {
     isOpen: boolean;
@@ -37,6 +38,7 @@ interface InjectionNodeData extends Record<string, unknown> {
     bindingCount: number;
     injectionWeight: number;
     breakProbability: number;
+    skipProbability: number;
 }
 
 const HANDLE_STYLE: React.CSSProperties = {
@@ -47,7 +49,7 @@ const HANDLE_STYLE: React.CSSProperties = {
 };
 
 function InjectionNode({ data }: NodeProps<Node<InjectionNodeData>>) {
-    const { name, characterCount, hasWeights, bindingCount, injectionWeight, breakProbability } = data;
+    const { name, characterCount, hasWeights, bindingCount, injectionWeight, breakProbability, skipProbability } = data;
 
     const borderColor = characterCount > 0 ? '#60a5fa' : 'rgba(255, 255, 255, 0.1)';
     const bgColor = characterCount > 0 ? 'rgba(96, 165, 250, 0.1)' : 'rgba(255, 255, 255, 0.02)';
@@ -68,6 +70,7 @@ function InjectionNode({ data }: NodeProps<Node<InjectionNodeData>>) {
             flexDirection: 'column',
             alignItems: 'center',
             textAlign: 'center',
+            overflow: 'visible',
         }}>
             <Handle type="source" position={Position.Top} id="top" style={HANDLE_STYLE} />
             <Handle type="source" position={Position.Right} id="right" style={HANDLE_STYLE} />
@@ -104,7 +107,12 @@ function InjectionNode({ data }: NodeProps<Node<InjectionNodeData>>) {
                         Break {Math.round(breakProbability * 100)}%
                     </span>
                 )}
-                {characterCount === 0 && !hasWeights && bindingCount === 0 && breakProbability === 0 && injectionWeight === 1 && (
+                {skipProbability > 0 && (
+                    <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(251, 146, 60, 0.15)', borderRadius: '3px', color: '#fb923c' }}>
+                        Skip {Math.round(skipProbability * 100)}%
+                    </span>
+                )}
+                {characterCount === 0 && !hasWeights && bindingCount === 0 && breakProbability === 0 && skipProbability === 0 && injectionWeight === 1 && (
                     <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '3px', color: 'rgba(255,255,255,0.4)' }}>
                         Empty
                     </span>
@@ -126,15 +134,8 @@ export function CharacterTextCharacterInjectionEditorModal({
 }: CharacterTextCharacterInjectionEditorModalProps) {
     const [items, setItems] = useState<TextCharacterInjection[]>(() => injections.length > 0 ? [...injections] : []);
     const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [prevInjections, setPrevInjections] = useState<TextCharacterInjection[]>(injections);
+    const [selectedPresetIndex, setSelectedPresetIndex] = useState<number>(-1);
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
-
-    // Adjust state during render when prop changes (no useEffect, no ref reads during render)
-    if (injections !== prevInjections) {
-        setPrevInjections(injections);
-        setItems(injections.length > 0 ? [...injections] : []);
-        setSelectedId(null);
-    }
 
     const buildNodeData = (item: TextCharacterInjection): InjectionNodeData => ({
         name: item.name,
@@ -143,6 +144,7 @@ export function CharacterTextCharacterInjectionEditorModal({
         bindingCount: item.textCharacterInjectionBindings?.length ?? 0,
         injectionWeight: item.textCharacterInjectionWeight ?? 1,
         breakProbability: item.textCharacterBreakProbability ?? 0,
+        skipProbability: item.textCharacterSkipProbability ?? 0,
     });
 
     const initialNodes = useMemo(() => {
@@ -179,8 +181,17 @@ export function CharacterTextCharacterInjectionEditorModal({
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
+    useEffect(() => {
+        setNodes(prev => prev.map(node => {
+            const item = items.find(i => i.id === node.id);
+            if (!item) return node;
+            return { ...node, data: buildNodeData(item) };
+        }));
+    }, [items, setNodes]);
+
     const onConnect = useCallback((connection: Connection) => {
         if (!connection.source || !connection.target) return;
+        // Allow self-connections (source === target)
         setItems(prev => prev.map(item => {
             if (item.id !== connection.source) return item;
             const bindings = item.textCharacterInjectionBindings ?? [];
@@ -224,6 +235,24 @@ export function CharacterTextCharacterInjectionEditorModal({
         setEdges(prev => prev.filter(e => !(e.source === sourceItemId && e.target === boundId)));
     }, [setEdges]);
 
+    const handleAddFromPreset = useCallback((presetIndex: number) => {
+        if (presetIndex < 0 || presetIndex >= TEXT_CHARACTER_INJECTION_PRESETS.length) return;
+        const preset = TEXT_CHARACTER_INJECTION_PRESETS[presetIndex];
+        const newInjection = createInjectionFromPreset(preset);
+        setItems(prev => [...prev, newInjection]);
+        setSelectedId(newInjection.id);
+        setSelectedPresetIndex(-1);
+
+        const idx = items.length;
+        const cols = Math.ceil(Math.sqrt(idx + 1));
+        setNodes(prev => [...prev, {
+            id: newInjection.id,
+            type: 'injectionNode',
+            position: { x: (idx % cols) * 220 + 50, y: Math.floor(idx / cols) * 180 + 50 },
+            data: buildNodeData(newInjection),
+        }]);
+    }, [items.length, setNodes]);
+
     const handleAdd = useCallback(() => {
         const now = Date.now();
         const newItem: TextCharacterInjection = {
@@ -235,11 +264,13 @@ export function CharacterTextCharacterInjectionEditorModal({
             textCharacterInjectionBindings: [],
             textCharacterInjectionWeight: 1,
             textCharacterBreakProbability: 0,
+            textCharacterSkipProbability: 0,
             firstCreatedTimestamp: now,
             lastUpdatedTimestamp: now,
         };
         setItems(prev => [...prev, newItem]);
         setSelectedId(newItem.id);
+        setSelectedPresetIndex(-1);
 
         const idx = items.length;
         const cols = Math.ceil(Math.sqrt(idx + 1));
@@ -269,8 +300,6 @@ export function CharacterTextCharacterInjectionEditorModal({
         onSaveInjections(validItems);
         onClose();
     }, [items, onSaveInjections, onClose]);
-
-    // ─── Character pool editing helpers ─────────────────────────────
 
     const handleAddCharacter = useCallback(() => {
         if (!selectedId) return;
@@ -341,7 +370,7 @@ export function CharacterTextCharacterInjectionEditorModal({
                     {/* Graph */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div style={{ fontSize: '0.6rem', opacity: 0.6 }}>
-                            Drag between nodes to create chaining connections. Tap a chain chip below to disconnect. Click a node to edit. Blue = has characters. Green badge = injection weight. Orange arrows = chains. Red badge = break probability.
+                            Drag between nodes to create chaining connections. Nodes can connect to themselves. Tap a chain chip below to disconnect. Click a node to edit. Blue = has characters. Green badge = injection weight. Orange arrows = chains. Red badge = break probability.
                         </div>
                         <div ref={reactFlowWrapper} style={{ height: '300px', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
                             <ReactFlow
@@ -372,9 +401,25 @@ export function CharacterTextCharacterInjectionEditorModal({
                                 <Controls showInteractive={false} />
                             </ReactFlow>
                         </div>
-                        <button type="button" className="editor-button editor-button-import" onClick={handleAdd} style={{ width: '100%' }}>
-                            + Add Injection
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <button type="button" className="editor-button editor-button-import" onClick={handleAdd} style={{ flex: 1 }}>
+                                + Add Injection
+                            </button>
+                            <select
+                                value={selectedPresetIndex}
+                                onChange={(e) => {
+                                    const idx = Number(e.target.value);
+                                    if (idx >= 0) handleAddFromPreset(idx);
+                                }}
+                                className="editor-select"
+                                style={{ flex: 1, fontSize: '0.75rem', padding: '8px 12px' }}
+                            >
+                                <option value={-1}>+ Add from Preset...</option>
+                                {TEXT_CHARACTER_INJECTION_PRESETS.map((preset, idx) => (
+                                    <option key={idx} value={idx}>{preset.name}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
 
                     {/* Node List */}
@@ -424,12 +469,17 @@ export function CharacterTextCharacterInjectionEditorModal({
                                         )}
                                         {(item.textCharacterInjectionBindings?.length ?? 0) > 0 && (
                                             <span style={{ fontSize: '0.55rem', padding: '1px 4px', background: 'rgba(245, 158, 11, 0.15)', borderRadius: '3px', color: '#fbbf24' }}>
-                                                Chains {item.textCharacterInjectionBindings!.length}
+                                                →{item.textCharacterInjectionBindings!.length}
                                             </span>
                                         )}
                                         {(item.textCharacterBreakProbability ?? 0) > 0 && (
                                             <span style={{ fontSize: '0.55rem', padding: '1px 4px', background: 'rgba(239, 68, 68, 0.15)', borderRadius: '3px', color: '#ef4444' }}>
                                                 ⚡{Math.round((item.textCharacterBreakProbability ?? 0) * 100)}%
+                                            </span>
+                                        )}
+                                        {(item.textCharacterSkipProbability ?? 0) > 0 && (
+                                            <span style={{ fontSize: '0.55rem', padding: '1px 4px', background: 'rgba(251, 146, 60, 0.15)', borderRadius: '3px', color: '#fb923c' }}>
+                                                ⏭️{Math.round((item.textCharacterSkipProbability ?? 0) * 100)}%
                                             </span>
                                         )}
                                     </div>
@@ -514,7 +564,25 @@ export function CharacterTextCharacterInjectionEditorModal({
                                     placeholder="0"
                                 />
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Probability that the injection chain breaks before advancing to the next binding. 0 = always chain. 1 = never chain.
+                                    Probability that the injection chain breaks after generating this text. 0 = always chain. 1 = never chain.
+                                </div>
+                            </div>
+
+                            {/* Skip Probability */}
+                            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+                                <label className="editor-label editor-label-small">Skip Probability</label>
+                                <input
+                                    type="number"
+                                    value={selectedItem.textCharacterSkipProbability ?? 0}
+                                    onChange={(e) => updateField(selectedItem.id, 'textCharacterSkipProbability', Number(e.target.value))}
+                                    className="editor-input"
+                                    min="0"
+                                    max="1"
+                                    step="0.05"
+                                    placeholder="0"
+                                />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Probability of skipping text generation for this injection and moving to the next binding. 0 = always generate. 1 = always skip.
                                 </div>
                             </div>
 
@@ -582,18 +650,21 @@ export function CharacterTextCharacterInjectionEditorModal({
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                                         {selectedItem.textCharacterInjectionBindings!.map(boundId => {
                                             const boundItem = items.find(i => i.id === boundId);
+                                            const isSelf = boundId === selectedItem.id;
                                             return (
                                                 <span
                                                     key={boundId}
                                                     onClick={() => removeBinding(selectedItem.id, boundId)}
                                                     style={{
                                                         fontSize: '0.6rem', padding: '2px 6px',
-                                                        background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)',
-                                                        borderRadius: '4px', color: '#fbbf24',
+                                                        background: isSelf ? 'rgba(168, 85, 247, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                                        border: `1px solid ${isSelf ? 'rgba(168, 85, 247, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+                                                        borderRadius: '4px',
+                                                        color: isSelf ? '#c084fc' : '#fbbf24',
                                                         cursor: 'pointer', transition: 'all 0.15s',
                                                     }}
                                                 >
-                                                    {boundItem?.name || '(Unknown)'}
+                                                    {isSelf ? '↻ Self' : (boundItem?.name || '(Unknown)')}
                                                 </span>
                                             );
                                         })}

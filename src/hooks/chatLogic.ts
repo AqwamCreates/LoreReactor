@@ -92,25 +92,31 @@ function generateInitialCharacterText(character: Character): string {
     if (!currentInj) currentInj = startPool[startPool.length - 1].inj;
 
     while (currentInj) {
-        const textPool: { text: string; weight: number }[] = [];
-        let totalTextWeight = 0;
-        for (let i = 0; i < currentInj.textCharacters.length; i++) {
-            const w = currentInj.textCharacterWeights[i] ?? 0;
-            if (w > 0) {
-                textPool.push({ text: currentInj.textCharacters[i], weight: w });
-                totalTextWeight += w;
-            }
-        }
+        // Check skip probability — if hit, skip this node's text but continue the chain
+        const skipProb = currentInj.textCharacterSkipProbability ?? 0;
+        const isSkipped = skipProb > 0 && Math.random() < skipProb;
 
-        if (textPool.length > 0 && totalTextWeight > 0) {
-            let textRoll = Math.random() * totalTextWeight;
-            let pickedText = '';
-            for (const entry of textPool) {
-                textRoll -= entry.weight;
-                if (textRoll <= 0) { pickedText = entry.text; break; }
+        if (!isSkipped) {
+            const textPool: { text: string; weight: number }[] = [];
+            let totalTextWeight = 0;
+            for (let i = 0; i < currentInj.textCharacters.length; i++) {
+                const w = currentInj.textCharacterWeights[i] ?? 0;
+                if (w > 0) {
+                    textPool.push({ text: currentInj.textCharacters[i], weight: w });
+                    totalTextWeight += w;
+                }
             }
-            if (!pickedText) pickedText = textPool[textPool.length - 1].text;
-            result += pickedText;
+
+            if (textPool.length > 0 && totalTextWeight > 0) {
+                let textRoll = Math.random() * totalTextWeight;
+                let pickedText = '';
+                for (const entry of textPool) {
+                    textRoll -= entry.weight;
+                    if (textRoll <= 0) { pickedText = entry.text; break; }
+                }
+                if (!pickedText) pickedText = textPool[textPool.length - 1].text;
+                result += pickedText;
+            }
         }
 
         const breakProb = currentInj.textCharacterBreakProbability ?? 0;

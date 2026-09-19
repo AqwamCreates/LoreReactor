@@ -229,6 +229,7 @@ export interface TextCharacterInjection extends ObjectData {
   textCharacterInjectionBindings: string[]; // Next IDs to go to once this text is generated.
   textCharacterInjectionWeight: number // This text character injection weight when being a part of next injection or the start of it. Default is 1.
   textCharacterBreakProbability: number; // The higher the value, the higher the probability that the character will break before it can go to next weights. Default is 0.
+  textCharacterSkipProbability: number // The higher the value, the higher the likelihood of skipping choosing a text from this node. Default is 0.
 
 }
 
