@@ -22,7 +22,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [activeSource, setActiveSource] = useState<ImportSource>('file');
     const [pasteText, setPasteText] = useState('');
-    const [schemaEntities, setSchemaEntities] = useState<string[]>(['Character', 'Profile']);
+    const [schemaEntities, setSchemaEntities] = useState<string[]>([]);
     const [schemaCopied, setSchemaCopied] = useState(false);
 
     // Selection state for filtering what to import from the parsed file
