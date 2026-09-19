@@ -1,7 +1,8 @@
 // src/components/DataImportModal.tsx
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import type { World } from '../types';
 import { validateExport, importSelectedData, type LoreReactorExport, type ImportResult } from '../services/DataPortabilityEngine';
+import { buildJsonSchema } from '../services/dataSchema';
 import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
 
@@ -11,12 +12,18 @@ interface DataImportModalProps {
     onImportComplete: () => void;
 }
 
+type ImportSource = 'file' | 'paste' | 'schema';
+
 export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImportModalProps) {
     const [parsedData, setParsedData] = useState<LoreReactorExport | null>(null);
     const [isImporting, setIsImporting] = useState(false);
     const [importResult, setImportResult] = useState<ImportResult | null>(null);
     const [error, setError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [activeSource, setActiveSource] = useState<ImportSource>('file');
+    const [pasteText, setPasteText] = useState('');
+    const [schemaEntities, setSchemaEntities] = useState<string[]>(['Character', 'Profile']);
+    const [schemaCopied, setSchemaCopied] = useState(false);
 
     // Selection state for filtering what to import from the parsed file
     const [selectedChatIds, setSelectedChatIds] = useState<string[]>([]);
@@ -56,6 +63,8 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
         setSelectedStopPatternIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
         setSelectedMemoryIds([]);
         setIncludeActions(true);
+        setPasteText('');
+        setSchemaCopied(false);
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
         setAudioTrackSearch(''); setWorldSearch(''); setModelSearch(''); setSamplerSearch('');
         setPromptBlockSearch(''); setStopPatternSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
@@ -66,6 +75,23 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
 
     const toggle = (_ids: string[], setIds: React.Dispatch<React.SetStateAction<string[]>>, id: string) => {
         setIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    const populateSelectionFromData = (json: LoreReactorExport) => {
+        setSelectedChatIds(json.chats.map((c: { id: string }) => c.id));
+        setSelectedCharacterIds(json.characters.map((c: { id: string }) => c.id));
+        setSelectedContextIds(json.contexts.map((c: { id: string }) => c.id));
+        setSelectedLocationIds(json.locations.map((l: { id: string }) => l.id));
+        setSelectedAudioTrackIds(json.audioTracks.map((t: { id: string }) => t.id));
+        setSelectedWorldIds(json.worlds?.map((w: World) => w.id) ?? []);
+        setSelectedModelIds(json.models.map((m: { id: string }) => m.id));
+        setSelectedSamplerIds(json.samplers.map((s: { id: string }) => s.id));
+        setSelectedPromptBlockIds(json.promptBlocks.map((b: { id: string }) => b.id));
+        setSelectedStopPatternIds(json.stopPatterns.map((s: { id: string }) => s.id));
+        setSelectedBudgetStrategyIds(json.budgetStrategies.map((b: { id: string }) => b.id));
+        setSelectedProfileIds(json.profiles.map((p: { id: string }) => p.id));
+        setSelectedMemoryIds(json.memories?.map((m: { id: string }) => m.id) ?? []);
+        setIncludeActions(json.interjectableActions.length > 0);
     };
 
     const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -79,22 +105,62 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
             const json = JSON.parse(text);
             if (!validateExport(json)) { setError('Invalid LoreReactor export file. The file may be corrupted or from an incompatible version.'); return; }
             setParsedData(json);
-            // Pre-select all items by default
-            setSelectedChatIds(json.chats.map((c: { id: string }) => c.id));
-            setSelectedCharacterIds(json.characters.map((c: { id: string }) => c.id));
-            setSelectedContextIds(json.contexts.map((c: { id: string }) => c.id));
-            setSelectedLocationIds(json.locations.map((l: { id: string }) => l.id));
-            setSelectedAudioTrackIds(json.audioTracks.map((t: { id: string }) => t.id));
-            setSelectedWorldIds(json.worlds?.map((w: World) => w.id) ?? []);
-            setSelectedModelIds(json.models.map((m: { id: string }) => m.id));
-            setSelectedSamplerIds(json.samplers.map((s: { id: string }) => s.id));
-            setSelectedPromptBlockIds(json.promptBlocks.map((b: { id: string }) => b.id));
-            setSelectedStopPatternIds(json.stopPatterns.map((s: { id: string }) => s.id));
-            setSelectedBudgetStrategyIds(json.budgetStrategies.map((b: { id: string }) => b.id));
-            setSelectedProfileIds(json.profiles.map((p: { id: string }) => p.id));
-            setSelectedMemoryIds(json.memories?.map((m: { id: string }) => m.id) ?? []);
-            setIncludeActions(json.interjectableActions.length > 0);
+            populateSelectionFromData(json);
         } catch (error) { setError(`Failed to parse file: ${(error as Error).message}`); }
+    };
+
+    const handlePasteImport = () => {
+        setError(null); setParsedData(null); setImportResult(null);
+
+        if (!pasteText.trim()) { setError('Paste JSON content first.'); return; }
+
+        try {
+            const json = JSON.parse(pasteText);
+            if (!validateExport(json)) { setError('Invalid LoreReactor export format. Ensure the JSON matches the expected export structure.'); return; }
+            setParsedData(json);
+            populateSelectionFromData(json);
+        } catch (error) { setError(`Failed to parse pasted JSON: ${(error as Error).message}`); }
+    };
+
+    // Generate wrapped schema reactively based on selected entities
+    const wrappedSchemaText = useMemo(() => {
+        if (schemaEntities.length === 0) return '';
+        try {
+            const entitySchema = buildJsonSchema(schemaEntities as any[]);
+            const wrapped = {
+                version: 1,
+                exportedAt: "ISO timestamp string",
+                chats: [],
+                characters: schemaEntities.includes('Character') ? "/* see _entitySchema */" : [],
+                contexts: schemaEntities.includes('Context') ? "/* see _entitySchema */" : [],
+                locations: schemaEntities.includes('Location') ? "/* see _entitySchema */" : [],
+                audioTracks: schemaEntities.includes('AudioTrack') ? "/* see _entitySchema */" : [],
+                worlds: [],
+                models: [],
+                samplers: [],
+                promptBlocks: schemaEntities.includes('PromptBlock') ? "/* see _entitySchema */" : [],
+                stopPatterns: [],
+                budgetStrategies: [],
+                profiles: schemaEntities.includes('Profile') ? "/* see _entitySchema */" : [],
+                memories: [],
+                interjectableActions: [],
+                _entitySchema: JSON.parse(entitySchema),
+            };
+            return JSON.stringify(wrapped, null, 2);
+        } catch {
+            return '';
+        }
+    }, [schemaEntities]);
+
+    const handleCopySchema = () => {
+        if (!wrappedSchemaText) return;
+        navigator.clipboard.writeText(wrappedSchemaText).then(() => {
+            setSchemaCopied(true);
+            setError(null);
+            setTimeout(() => setSchemaCopied(false), 2000);
+        }).catch(() => {
+            setError('Failed to copy to clipboard. Try selecting and copying manually.');
+        });
     };
 
     const handleConfirmImport = async () => {
@@ -136,6 +202,8 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
 
     if (!isOpen) return null;
 
+    const SCHEMA_ENTITY_OPTIONS = ['Character', 'Context', 'Location', 'AudioTrack', 'PromptBlock', 'Profile'] as const;
+
     return (
         <div className="modal-overlay" onClick={handleClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
@@ -152,20 +220,128 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                     {error && <div className="editor-error-message editor-error-centered">{error}</div>}
 
                     {!parsedData && !importResult && (
-                        <div className="entity-upload-state">
-                            <div className="entity-upload-icon">📥</div>
-                            <div className="entity-upload-title">Import from JSON</div>
-                            <div className="entity-upload-hint">
-                                Load a previously exported LoreReactor JSON file.<br />
-                                You can choose which items to import after loading.<br />
-                                Existing entities with matching IDs will be overwritten.
+                        <>
+                            {/* Source Tabs */}
+                            <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', borderBottom: '1px solid var(--border)' }}>
+                                {[
+                                    { id: 'file' as ImportSource, label: '📁 From File' },
+                                    { id: 'paste' as ImportSource, label: '📋 Paste JSON' },
+                                    { id: 'schema' as ImportSource, label: '📐 JSON Schema' },
+                                ].map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        type="button"
+                                        onClick={() => { setActiveSource(tab.id); setError(null); }}
+                                        className={`entity-tab-button ${activeSource === tab.id ? 'entity-tab-button-active' : ''}`}
+                                        style={{ fontSize: '0.7rem', padding: '8px 12px' }}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
                             </div>
-                            <button type="button" className="editor-button editor-button-save entity-upload-button"
-                                onClick={() => fileInputRef.current?.click()}>
-                                Choose File
-                            </button>
-                            <input ref={fileInputRef} type="file" accept=".json,application/json" hidden onChange={handleFileSelected} />
-                        </div>
+
+                            {/* File Upload */}
+                            {activeSource === 'file' && (
+                                <div className="entity-upload-state">
+                                    <div className="entity-upload-icon">📥</div>
+                                    <div className="entity-upload-title">Import from JSON File</div>
+                                    <div className="entity-upload-hint">
+                                        Load a previously exported LoreReactor JSON file.<br />
+                                        You can choose which items to import after loading.<br />
+                                        Existing entities with matching IDs will be overwritten.
+                                    </div>
+                                    <button type="button" className="editor-button editor-button-save entity-upload-button"
+                                        onClick={() => fileInputRef.current?.click()}>
+                                        Choose File
+                                    </button>
+                                    <input ref={fileInputRef} type="file" accept=".json,application/json" hidden onChange={handleFileSelected} />
+                                </div>
+                            )}
+
+                            {/* Paste JSON */}
+                            {activeSource === 'paste' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                                        Paste a LoreReactor export JSON directly. Useful for quick transfers between instances or importing AI-generated data that matches the export format.
+                                    </div>
+                                    <textarea
+                                        value={pasteText}
+                                        onChange={(e) => setPasteText(e.target.value)}
+                                        placeholder='{"version": 1, "exportedAt": "...", "characters": [...], ...}'
+                                        className="editor-textarea"
+                                        rows={12}
+                                        style={{ fontFamily: 'monospace', fontSize: '0.7rem', resize: 'vertical' }}
+                                    />
+                                    <button
+                                        type="button"
+                                        className="editor-button editor-button-save"
+                                        onClick={handlePasteImport}
+                                        disabled={!pasteText.trim()}
+                                    >
+                                        Parse & Preview
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* JSON Schema */}
+                            {activeSource === 'schema' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                                        Generate a JSON schema wrapped in the LoreReactor export envelope. Copy and paste into an AI prompt to get correctly structured output that can be imported directly via the "Paste JSON" tab.
+                                    </div>
+                                    <div style={{ fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '4px' }}>Include Entity Types:</div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                        {SCHEMA_ENTITY_OPTIONS.map(entity => (
+                                            <label key={entity} className="editor-checkbox-label" style={{ margin: 0 }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={schemaEntities.includes(entity)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setSchemaEntities(prev => [...prev, entity]);
+                                                        } else {
+                                                            setSchemaEntities(prev => prev.filter(x => x !== entity));
+                                                        }
+                                                    }}
+                                                    className="editor-checkbox-input"
+                                                />
+                                                <span style={{ fontSize: '0.7rem' }}>{entity}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                        <button
+                                            type="button"
+                                            className="editor-button editor-button-save"
+                                            onClick={handleCopySchema}
+                                            disabled={schemaEntities.length === 0}
+                                            style={{ flex: 1 }}
+                                        >
+                                            {schemaCopied ? '✅ Copied!' : '📋 Copy Schema to Clipboard'}
+                                        </button>
+                                    </div>
+                                    {schemaEntities.length === 0 && (
+                                        <div style={{ fontSize: '0.65rem', opacity: 0.5, fontStyle: 'italic' }}>Select at least one entity type to generate a schema.</div>
+                                    )}
+                                    {wrappedSchemaText && (
+                                        <pre style={{
+                                            background: 'var(--social-bg)',
+                                            border: '1px solid var(--border)',
+                                            borderRadius: '6px',
+                                            padding: '10px',
+                                            fontSize: '0.6rem',
+                                            fontFamily: 'monospace',
+                                            whiteSpace: 'pre-wrap',
+                                            wordBreak: 'break-word',
+                                            maxHeight: '400px',
+                                            overflowY: 'auto',
+                                            color: 'var(--text-h)',
+                                            margin: 0,
+                                        }}>{wrappedSchemaText}</pre>
+                                    )}
+                                </div>
+                            )}
+                        </>
                     )}
 
                     {parsedData && !importResult && !isImporting && (
@@ -173,7 +349,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                             <div className="editor-section">
                                 <span className="editor-section-title">Select Items to Import</span>
                                 <div className="entity-ref-hint">
-                                    File exported: {new Date(parsedData.exportedAt).toLocaleString()}. Click items to deselect. Only selected items will be imported.
+                                    {activeSource === 'file' ? `File exported: ${new Date(parsedData.exportedAt).toLocaleString()}.` : 'Pasted JSON loaded.'} Click items to deselect. Only selected items will be imported.
                                 </div>
 
                                 {parsedData.chats.length > 0 && (
@@ -238,7 +414,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                             </div>
 
                             <div className="entity-action-buttons">
-                                <button type="button" className="editor-button editor-button-cancel" onClick={reset}>Choose Different File</button>
+                                <button type="button" className="editor-button editor-button-cancel" onClick={reset}>Choose Different Source</button>
                                 <button type="button" className="editor-button editor-button-save" onClick={handleConfirmImport} disabled={totalSelected === 0}>
                                     Import {totalSelected > 0 ? `${totalSelected} Selected` : ''}
                                 </button>

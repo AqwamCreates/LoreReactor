@@ -1,8 +1,8 @@
-// src/services/aiRecommendationConverters.ts
+// src/services/dataConverters.ts
 import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { UUID_REGEX } from './aiRecommendationTypes';
-import type { GeneratedOutput } from './aiRecommendationTypes';
+import { UUID_REGEX } from './dataTypes';
+import type { GeneratedOutput } from './dataTypes';
 import { defaultCharacterTools, defaultProfileTools, defaultNarrateTexts } from '../dictionaries/defaults'
 
 function ensureId(obj: Record<string, unknown>): string {

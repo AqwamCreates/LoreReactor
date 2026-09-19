@@ -6,10 +6,10 @@ import { buildRequestBody } from '../hooks/genericRequestBuilderLogic';
 import { EntitySelectList } from './EntitySelectList';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
-import type { EntityType, ViewTab, ImagePriorityItem, GeneratedOutput, JsonHistoryEntry } from '../services/aiRecommendationTypes';
-import { IMAGE_PRIORITY_ITEMS, IMAGE_LABELS, IMAGE_SHORT_LABELS, IMAGE_PROMPT_DESCRIPTIONS, ENTITY_OPTIONS } from '../services/aiRecommendationTypes';
-import { buildJsonSchema } from '../services/aiRecommendationSchema';
-import { tryParseGeneratedOutput, deriveHistoryLabel, resolveWorldCrossReferences } from '../services/aiRecommendationConverters';
+import type { EntityType, ViewTab, ImagePriorityItem, GeneratedOutput, JsonHistoryEntry } from '../services/dataTypes';
+import { IMAGE_PRIORITY_ITEMS, IMAGE_LABELS, IMAGE_SHORT_LABELS, IMAGE_PROMPT_DESCRIPTIONS, ENTITY_OPTIONS } from '../services/dataTypes';
+import { buildJsonSchema } from '../services/dataSchema';
+import { tryParseGeneratedOutput, deriveHistoryLabel, resolveWorldCrossReferences } from '../services/dataConverters';
 import '../main.css';
 
 const recommendationEngine = getLanguageModelEngine();
@@ -50,8 +50,6 @@ export function AIRecommendationModal({
     const [userPrompt, setUserPrompt] = useState('');
     const [maxTokens, setMaxTokens] = useState(2048);
     const [error, setError] = useState<string | null>(null);
-    const [showSchemaPreview, setShowSchemaPreview] = useState(false);
-    const [schemaCopied, setSchemaCopied] = useState(false);
     const [imageInjectionPriority, setImageInjectionPriority] = useState<ImagePriorityItem[]>(['reference', 'character', 'context', 'location', 'promptBlock']);
     const [dragIndex, setDragIndex] = useState<number | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -114,7 +112,6 @@ export function AIRecommendationModal({
 
     const resetForm = useCallback(() => {
         setError(null); setUserPrompt(''); setMaxTokens(2048);
-        setShowSchemaPreview(false); setSchemaCopied(false);
         setImageInjectionPriority(['reference', 'character', 'context', 'location', 'promptBlock']);
         setDragIndex(null); setDragOverIndex(null);
         setJsonHistory([]); setEditingHistoryId(null); setEditingJsonText(''); setExpandedHistoryId(null);
@@ -164,10 +161,6 @@ export function AIRecommendationModal({
 
     const handleReferenceImageChange = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files?.length) { const f = Array.from(e.target.files); setReferenceImages(prev => [...prev, ...f]); setReferenceImagePreviews(prev => [...prev, ...f.map(x => URL.createObjectURL(x))]); } e.target.value = ''; };
     const handleRemoveReferenceImage = (i: number) => { setReferenceImages(prev => prev.filter((_, j) => j !== i)); if (!referenceImagePreviews[i].startsWith('data:image')) URL.revokeObjectURL(referenceImagePreviews[i]); setReferenceImagePreviews(prev => prev.filter((_, j) => j !== i)); };
-
-    const handleCopySchema = useCallback(() => {
-        navigator.clipboard.writeText(buildJsonSchema(selectedEntities)).then(() => { setSchemaCopied(true); setTimeout(() => setSchemaCopied(false), 2000); }).catch(() => setError('Failed to copy.'));
-    }, [selectedEntities]);
 
     const addToHistory = useCallback((jsonText: string, parsed: GeneratedOutput, isEdited = false) => {
         setJsonHistory(prev => [{ id: uuidv4(), timestamp: Date.now(), jsonText, parsedOutput: parsed, label: deriveHistoryLabel(parsed), isEdited }, ...prev]);
@@ -433,8 +426,6 @@ export function AIRecommendationModal({
                             <span className="editor-section-title">Generate</span>
                             <div className="entity-type-buttons">{ENTITY_OPTIONS.map(opt => (<button key={opt.type} type="button" onClick={() => toggleEntity(opt.type)} className={`editor-button ${selectedEntities.includes(opt.type) ? 'editor-button-save' : 'editor-button-cancel'} entity-type-button`}>{opt.icon} {opt.label}</button>))}</div>
                             <div className="entity-type-hint">Select entity types. Co-selected types with World generate inside the world.</div>
-                            <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'center' }}><button type="button" className={`editor-button ${showSchemaPreview ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setShowSchemaPreview(!showSchemaPreview)} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>{showSchemaPreview ? '🔽 Hide JSON Schema' : '📋 Show JSON Schema'}</button></div>
-                            {showSchemaPreview && <div style={{ marginTop: '8px' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}><span style={{ fontSize: '0.6rem', opacity: 0.6 }}>Copy schema for external AI tools</span><button type="button" className="editor-button editor-button-cancel" onClick={handleCopySchema} style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px' }}>{schemaCopied ? '✅ Copied!' : '📋 Copy'}</button></div><pre style={{ background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px', fontSize: '0.65rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: '300px', overflowY: 'auto', color: 'var(--text-h)', margin: 0 }}>{buildJsonSchema(selectedEntities)}</pre></div>}
                         </div>
                         <div className="editor-section"><span className="editor-section-title">Reference Existing Entities (Optional)</span><div className="entity-ref-hint">Select existing entities for consistency.</div><EntitySelectList label="Characters" items={allCharacters} selectedIds={selectedCharacterIds} onToggle={(id) => toggleInOrderedList(selectedCharacterIds, setSelectedCharacterIds, id)} searchQuery={charSearch} onSearchChange={setCharSearch} /><EntitySelectList label="Contexts" items={allContexts} selectedIds={selectedContextIds} onToggle={(id) => toggleInOrderedList(selectedContextIds, setSelectedContextIds, id)} searchQuery={ctxSearch} onSearchChange={setCtxSearch} /><EntitySelectList label="Locations" items={allLocations} selectedIds={selectedLocationIds} onToggle={(id) => toggleInOrderedList(selectedLocationIds, setSelectedLocationIds, id)} searchQuery={locSearch} onSearchChange={setLocSearch} /><EntitySelectList label="Audio Tracks" items={allAudioTracks} selectedIds={selectedAudioTrackIds} onToggle={(id) => toggleInOrderedList(selectedAudioTrackIds, setSelectedAudioTrackIds, id)} searchQuery={audioSearch} onSearchChange={setAudioSearch} /><EntitySelectList label="Prompt Blocks" items={allPromptBlocks} selectedIds={selectedPromptBlockIds} onToggle={(id) => toggleInOrderedList(selectedPromptBlockIds, setSelectedPromptBlockIds, id)} searchQuery={promptBlockSearch} onSearchChange={setPromptBlockSearch} /></div>
                         <div className="editor-section">
