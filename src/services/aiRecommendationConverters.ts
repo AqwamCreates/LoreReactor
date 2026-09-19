@@ -284,6 +284,8 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         forceNameReveal: (p.forceNameReveal as boolean) ?? false,
         enableCharacterExpression: (p.enableCharacterExpression as boolean) ?? false,
         randomizeTextCharacterInjection: (p.randomizeTextCharacterInjection as boolean) ?? false,
+        randomizeTextCharacterInjectionOnRetry: (p.randomizeTextCharacterInjectionOnRetry as boolean) ?? true,
+        maximumNumberOfTextCharacterRandomizationPerModel: (p.maximumNumberOfTextCharacterRandomizationPerModel as number) ?? 1,
         forceNoCharacterImageInjection: (p.forceNoCharacterImageInjection as boolean) ?? false,
         forceNoContextImageInjection: (p.forceNoContextImageInjection as boolean) ?? false,
         forceNoLocationImageInjection: (p.forceNoLocationImageInjection as boolean) ?? false,

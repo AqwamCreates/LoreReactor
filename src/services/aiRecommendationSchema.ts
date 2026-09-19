@@ -195,6 +195,8 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "forceNameReveal": "boolean (default false)",
     "enableCharacterExpression": "boolean (default false)",
     "randomizeTextCharacterInjection": "boolean (default false, master toggle for text character injection across all characters)",
+    "randomizeTextCharacterInjectionOnRetry": "boolean (default true, only randomize if the initial generation fails. Only relevant when randomizeTextCharacterInjection is true)",
+    "maximumNumberOfTextCharacterRandomizationPerModel": "number (≥1, default 1, number of retry attempts per model for text character randomization. Only relevant when randomizeTextCharacterInjection is true)",
     "forceNoCharacterImageInjection": "boolean (default false)",
     "forceNoContextImageInjection": "boolean (default false)",
     "forceNoLocationImageInjection": "boolean (default false)",
