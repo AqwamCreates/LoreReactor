@@ -262,7 +262,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                             {activeSource === 'paste' && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
-                                        Paste a LoreReactor export JSON directly. Useful for quick transfers between instances or importing AI-generated data that matches the export format.
+                                        Paste a LoreReactor export JSON directly. Useful for quick transfers between instances or importing AI-generated text data that matches the export format.
                                     </div>
                                     <textarea
                                         value={pasteText}

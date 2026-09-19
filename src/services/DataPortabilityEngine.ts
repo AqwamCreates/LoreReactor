@@ -54,7 +54,8 @@ export function validateExport(data: unknown): data is LoreReactorExport {
     if (!data || typeof data !== 'object') return false;
     const d = data as Record<string, unknown>;
     if (d.version !== 1) return false;
-    if (typeof d.exportedAt !== 'number') return false;
+    // Accept both numeric timestamps and ISO strings (AI generates strings)
+    if (typeof d.exportedAt !== 'number' && typeof d.exportedAt !== 'string') return false;
     if (!Array.isArray(d.chats)) return false;
     if (!Array.isArray(d.characters)) return false;
     if (!Array.isArray(d.contexts)) return false;
@@ -71,6 +72,17 @@ export function validateExport(data: unknown): data is LoreReactorExport {
     if (d.memories !== undefined && !Array.isArray(d.memories)) return false;
     if (!Array.isArray(d.interjectableActions)) return false;
     return true;
+}
+
+/**
+ * Normalizes an export object so downstream code always gets numeric timestamps.
+ * Call after validateExport() passes.
+ */
+export function normalizeExport(data: LoreReactorExport): LoreReactorExport {
+    if (typeof data.exportedAt === 'string') {
+        data.exportedAt = new Date(data.exportedAt).getTime() || Date.now();
+    }
+    return data;
 }
 
 /**
