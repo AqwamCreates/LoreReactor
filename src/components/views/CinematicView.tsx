@@ -1,13 +1,16 @@
 // src/components/views/CinematicView.tsx
 import React, { useEffect, useCallback, useRef } from 'react';
 import type { ViewModeProps } from './types';
+import type { ChatMessage } from '../../types';
 import { MessageBubble } from '../MessageBubble';
 import { StreamingIndicators } from '../StreamingIndicators';
+import { ChatScrollButtons } from '../ChatScrollButtons';
+import { ChatMinimap } from '../ChatMinimap';
 import { resolveDelayedDisplayNameFromCache } from '../../hooks/immersionLogic';
 
 export const CinematicView = React.memo(function CinematicView(props: ViewModeProps) {
     const {
-        displayMessages, currentCharacterId,
+        interactionData, displayMessages, currentCharacterId,
         editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
         activeToolbarId, portraitUrlCache, displayNameCache,
         centerAvatar, streamingPortraitUrl, formattedStreamingText,
@@ -28,9 +31,15 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
 
     const isScrollingRef = useRef(false);
     const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const skipNextFocusScrollRef = useRef(false);
 
     // Scroll to focused message when it changes externally
     useEffect(() => {
+        if (skipNextFocusScrollRef.current) {
+            skipNextFocusScrollRef.current = false;
+            return;
+        }
+
         if (focusedMessageId && chatHistoryRef.current && !isScrollingRef.current) {
             const msgElement = chatHistoryRef.current.querySelector(`[data-message-id="${focusedMessageId}"]`);
             if (msgElement) {
@@ -65,6 +74,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         }
 
         if (bestId && bestOverlap > 0 && bestId !== focusedMessageId) {
+            skipNextFocusScrollRef.current = true;
             setFocusedMessageId(bestId);
         }
     }, [chatHistoryRef, focusedMessageId, setFocusedMessageId]);
@@ -103,6 +113,18 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
             )}
 
             <div className="chat-history" ref={chatHistoryRef}>
+                {interactionData.interactionHistory.length > 3 && (
+                    <ChatScrollButtons containerRef={chatHistoryRef} messageCount={displayMessages.length} />
+                )}
+
+                {interactionData && interactionData.interactionHistory.length > 5 && (
+                    <ChatMinimap
+                        messages={interactionData.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat')}
+                        containerRef={chatHistoryRef}
+                        currentCharacterId={currentCharacterId}
+                    />
+                )}
+
                 <StreamingIndicators
                     formattedStreamingText={formattedStreamingText}
                     viewMode="cinematic"

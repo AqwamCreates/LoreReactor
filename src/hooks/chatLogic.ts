@@ -1,5 +1,5 @@
 // src/hooks/chatLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, Location, RegularExpressionTrigger } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, Location, RegularExpressionTrigger, TextCharacterInjection } from '../types';
 import { detectName } from './nameDetection';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storage/serverStorage';
@@ -61,6 +61,98 @@ export function compileTriggerRegexes(triggers: RegularExpressionTrigger[] | und
     return regexes;
 }
 
+function generateInitialCharacterText(character: Character): string {
+    const textCharacterInjections = character.textCharacterInjections;
+    if (!textCharacterInjections || textCharacterInjections.length === 0) return '';
+
+    // Build lookup map by ID
+    const injectionMap = new Map<string, TextCharacterInjection>();
+    for (const inj of textCharacterInjections) {
+        injectionMap.set(inj.id, inj);
+    }
+
+    // Sample starting injection by textCharacterInjectionWeight
+    const startPool: { inj: TextCharacterInjection; weight: number }[] = [];
+    let totalStartWeight = 0;
+    for (const inj of textCharacterInjections) {
+        const w = inj.textCharacterInjectionWeight ?? 1;
+        if (w > 0) {
+            startPool.push({ inj, weight: w });
+            totalStartWeight += w;
+        }
+    }
+    if (startPool.length === 0 || totalStartWeight <= 0) return '';
+
+    let result = '';
+    let currentInj: TextCharacterInjection | undefined;
+
+    // Pick starting injection
+    let roll = Math.random() * totalStartWeight;
+    for (const entry of startPool) {
+        roll -= entry.weight;
+        if (roll <= 0) { currentInj = entry.inj; break; }
+    }
+    if (!currentInj) currentInj = startPool[startPool.length - 1].inj;
+
+    while (currentInj) {
+        // Sample text from current injection by textCharacterWeights
+        const textPool: { text: string; weight: number }[] = [];
+        let totalTextWeight = 0;
+        for (let i = 0; i < currentInj.textCharacters.length; i++) {
+            const w = currentInj.textCharacterWeights[i] ?? 0;
+            if (w > 0) {
+                textPool.push({ text: currentInj.textCharacters[i], weight: w });
+                totalTextWeight += w;
+            }
+        }
+
+        if (textPool.length > 0 && totalTextWeight > 0) {
+            let textRoll = Math.random() * totalTextWeight;
+            let pickedText = '';
+            for (const entry of textPool) {
+                textRoll -= entry.weight;
+                if (textRoll <= 0) { pickedText = entry.text; break; }
+            }
+            if (!pickedText) pickedText = textPool[textPool.length - 1].text;
+            result += pickedText;
+        }
+
+        // Check break probability
+        const breakProb = currentInj.textCharacterBreakProbability ?? 0;
+        if (breakProb > 0 && Math.random() < breakProb) break;
+
+        // Sample next injection from bindings by their textCharacterInjectionWeight
+        const bindings = currentInj.textCharacterInjectionBindings;
+        if (!bindings || bindings.length === 0) break;
+
+        const nextPool: { inj: TextCharacterInjection; weight: number }[] = [];
+        let totalNextWeight = 0;
+        for (const bindId of bindings) {
+            const nextInj = injectionMap.get(bindId);
+            if (!nextInj) continue;
+            const w = nextInj.textCharacterInjectionWeight ?? 1;
+            if (w > 0) {
+                nextPool.push({ inj: nextInj, weight: w });
+                totalNextWeight += w;
+            }
+        }
+
+        if (nextPool.length === 0 || totalNextWeight <= 0) break;
+
+        let nextRoll = Math.random() * totalNextWeight;
+        let nextInj: TextCharacterInjection | undefined;
+        for (const entry of nextPool) {
+            nextRoll -= entry.weight;
+            if (nextRoll <= 0) { nextInj = entry.inj; break; }
+        }
+        if (!nextInj) nextInj = nextPool[nextPool.length - 1].inj;
+
+        currentInj = nextInj;
+    }
+
+    return result;
+}
+
 export async function prepareRequestBody(
     interactionData: InteractionData,
     character: Character,
@@ -69,11 +161,14 @@ export async function prepareRequestBody(
     modelId: string,
     protagonistFileBase64s?: string[],
 ): Promise<{ body: Record<string, unknown>; fetchErrors: string[]; characterClothingWearingStatuses: Record<string, boolean> }> {
-    const sampler = character.sampler;
+
+    const profile = interactionData.Profile;
+
+    if (profile?.randomizeTextCharacterInjection && !existingCharacterText) existingCharacterText = generateInitialCharacterText(character)
 
     const { prompt, stops, contextImages, locationImages, promptBlockImages, characterClothingWearingStatuses, fetchErrors } = await buildPrompt(interactionData, character, existingCharacterText, allPromptBlocks, modelId);
 
-    const profile = interactionData.Profile;
+    const sampler = character.sampler;
 
     const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection;
 

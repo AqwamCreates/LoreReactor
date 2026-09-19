@@ -111,12 +111,19 @@ function isEntityHollow(
     switch (type) {
         case 'character': {
             const c = entity as Character;
+            const hasTextInjections = c.textCharacterInjections && c.textCharacterInjections.length > 0;
+            const hasNonEmptyTextInjection = hasTextInjections && c.textCharacterInjections.some(ti =>
+                (ti.textCharacters && ti.textCharacters.length > 0) ||
+                (ti.textCharacterInjectionBindings && ti.textCharacterInjectionBindings.length > 0) ||
+                (ti.textCharacterWeights && Object.keys(ti.textCharacterWeights).length > 0)
+            );
             return !(c.systemPrompt?.trim() || c.appearancePrompt?.trim() || c.dialoguePrompt?.trim() || c.thinkPrompt?.trim() || c.starterPrompt?.trim())
                 && !(c.images && Object.keys(c.images).length > 0)
                 && !c.voice?.trim()
                 && !(c.memories && Object.values(c.memories).some(arr => arr.length > 0))
                 && !(c.tools && Object.values(c.tools).some(v => v))
-                && !(c.clothings && c.clothings.length > 0);
+                && !(c.clothings && c.clothings.length > 0)
+                && !hasNonEmptyTextInjection;
         }
         case 'context': {
             const c = entity as Context;
@@ -451,6 +458,15 @@ export function DataManagerModal({
                 for (const clothing of c.clothings) {
                     for (const boundId of (clothing.clothingBindings || [])) {
                         if (!clothingIdSet.has(boundId)) issues.push({ entityType: 'Character', entityName: c.name, issue: `Clothing "${clothing.name}" references missing clothing binding`, refType: 'Clothing', refId: boundId });
+                    }
+                }
+            }
+            // Validate text character injection bindings (internal references within same character)
+            if (c.textCharacterInjections && c.textCharacterInjections.length > 0) {
+                const injectionIdSet = new Set(c.textCharacterInjections.map(ti => ti.id));
+                for (const injection of c.textCharacterInjections) {
+                    for (const boundId of (injection.textCharacterInjectionBindings || [])) {
+                        if (!injectionIdSet.has(boundId)) issues.push({ entityType: 'Character', entityName: c.name, issue: `Text injection "${injection.name}" references missing injection binding`, refType: 'Text Injection', refId: boundId });
                     }
                 }
             }

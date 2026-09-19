@@ -8,6 +8,7 @@ import {
     Controls,
     Handle,
     Position,
+    ConnectionMode,
     addEdge,
     useNodesState,
     useEdgesState,
@@ -34,10 +35,19 @@ interface InjectionNodeData extends Record<string, unknown> {
     characterCount: number;
     hasWeights: boolean;
     bindingCount: number;
+    injectionWeight: number;
+    breakProbability: number;
 }
 
+const HANDLE_STYLE: React.CSSProperties = {
+    background: '#f59e0b',
+    width: '10px',
+    height: '10px',
+    border: '2px solid var(--social-bg, #1a1a2e)',
+};
+
 function InjectionNode({ data }: NodeProps<Node<InjectionNodeData>>) {
-    const { name, characterCount, hasWeights, bindingCount } = data;
+    const { name, characterCount, hasWeights, bindingCount, injectionWeight, breakProbability } = data;
 
     const borderColor = characterCount > 0 ? '#60a5fa' : 'rgba(255, 255, 255, 0.1)';
     const bgColor = characterCount > 0 ? 'rgba(96, 165, 250, 0.1)' : 'rgba(255, 255, 255, 0.02)';
@@ -59,12 +69,10 @@ function InjectionNode({ data }: NodeProps<Node<InjectionNodeData>>) {
             alignItems: 'center',
             textAlign: 'center',
         }}>
-            <Handle type="target" position={Position.Top} style={{
-                background: '#f59e0b', width: '10px', height: '10px', border: '2px solid var(--social-bg, #1a1a2e)',
-            }} />
-            <Handle type="source" position={Position.Bottom} style={{
-                background: '#f59e0b', width: '10px', height: '10px', border: '2px solid var(--social-bg, #1a1a2e)',
-            }} />
+            <Handle type="source" position={Position.Top} id="top" style={HANDLE_STYLE} />
+            <Handle type="source" position={Position.Right} id="right" style={HANDLE_STYLE} />
+            <Handle type="source" position={Position.Bottom} id="bottom" style={HANDLE_STYLE} />
+            <Handle type="source" position={Position.Left} id="left" style={HANDLE_STYLE} />
 
             <div style={{ fontWeight: 'bold', fontSize: '0.75rem', color: textColor, marginBottom: '4px', lineHeight: 1.3 }}>
                 {name || '(Unnamed)'}
@@ -81,12 +89,22 @@ function InjectionNode({ data }: NodeProps<Node<InjectionNodeData>>) {
                         Weighted
                     </span>
                 )}
-                {bindingCount > 0 && (
-                    <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(245, 158, 11, 0.15)', borderRadius: '3px', color: '#fbbf24' }}>
-                        Chains → {bindingCount}
+                {injectionWeight !== 1 && (
+                    <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(34, 197, 94, 0.15)', borderRadius: '3px', color: '#22c55e' }}>
+                        Wt {injectionWeight}
                     </span>
                 )}
-                {characterCount === 0 && !hasWeights && bindingCount === 0 && (
+                {bindingCount > 0 && (
+                    <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(245, 158, 11, 0.15)', borderRadius: '3px', color: '#fbbf24' }}>
+                        Chains {bindingCount}
+                    </span>
+                )}
+                {breakProbability > 0 && (
+                    <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(239, 68, 68, 0.15)', borderRadius: '3px', color: '#ef4444' }}>
+                        Break {Math.round(breakProbability * 100)}%
+                    </span>
+                )}
+                {characterCount === 0 && !hasWeights && bindingCount === 0 && breakProbability === 0 && injectionWeight === 1 && (
                     <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '3px', color: 'rgba(255,255,255,0.4)' }}>
                         Empty
                     </span>
@@ -110,11 +128,21 @@ export function CharacterTextCharacterInjectionEditorModal({
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
+    // Reset local state when modal opens with fresh data
+    useEffect(() => {
+        if (isOpen) {
+            setItems(injections.length > 0 ? [...injections] : []);
+            setSelectedId(null);
+        }
+    }, [isOpen, injections]);
+
     const buildNodeData = (item: TextCharacterInjection): InjectionNodeData => ({
         name: item.name,
         characterCount: item.textCharacters?.length ?? 0,
         hasWeights: Object.keys(item.textCharacterWeights ?? {}).length > 0,
         bindingCount: item.textCharacterInjectionBindings?.length ?? 0,
+        injectionWeight: item.textCharacterInjectionWeight ?? 1,
+        breakProbability: item.textCharacterBreakProbability ?? 0,
     });
 
     const initialNodes = useMemo(() => {
@@ -176,7 +204,11 @@ export function CharacterTextCharacterInjectionEditorModal({
         }, prev));
     }, [setItems, setEdges]);
 
-    const onEdgeRemove = useCallback((edge: Edge) => {
+    const onReconnectStart = useCallback((_event: unknown, _edge: Edge, _handleType: string) => {
+        // No-op: just tracking that a reconnect drag started
+    }, []);
+
+    const onReconnectEnd = useCallback((_event: unknown, edge: Edge) => {
         setItems(prev => prev.map(item => {
             if (item.id !== edge.source) return item;
             return {
@@ -185,7 +217,20 @@ export function CharacterTextCharacterInjectionEditorModal({
                 lastUpdatedTimestamp: Date.now(),
             };
         }));
-    }, [setItems]);
+        setEdges(prev => prev.filter(e => e.id !== edge.id));
+    }, []);
+
+    const removeBinding = useCallback((sourceItemId: string, boundId: string) => {
+        setItems(prev => prev.map(item => {
+            if (item.id !== sourceItemId) return item;
+            return {
+                ...item,
+                textCharacterInjectionBindings: (item.textCharacterInjectionBindings ?? []).filter(b => b !== boundId),
+                lastUpdatedTimestamp: Date.now(),
+            };
+        }));
+        setEdges(prev => prev.filter(e => !(e.source === sourceItemId && e.target === boundId)));
+    }, []);
 
     const handleAdd = useCallback(() => {
         const now = Date.now();
@@ -196,6 +241,8 @@ export function CharacterTextCharacterInjectionEditorModal({
             textCharacters: [],
             textCharacterWeights: {},
             textCharacterInjectionBindings: [],
+            textCharacterInjectionWeight: 1,
+            textCharacterBreakProbability: 0,
             firstCreatedTimestamp: now,
             lastUpdatedTimestamp: now,
         };
@@ -302,7 +349,7 @@ export function CharacterTextCharacterInjectionEditorModal({
                     {/* Graph */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div style={{ fontSize: '0.6rem', opacity: 0.6 }}>
-                            Drag between nodes to create chaining connections. Click a node to edit. Blue = has characters. Orange arrows = chains to next injection. Randomized prefix characters are prepended to bypass provider input filters.
+                            Drag between nodes to create chaining connections. Tap a chain chip below to disconnect. Click a node to edit. Blue = has characters. Green badge = injection weight. Orange arrows = chains. Red badge = break probability.
                         </div>
                         <div ref={reactFlowWrapper} style={{ height: '300px', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
                             <ReactFlow
@@ -311,9 +358,12 @@ export function CharacterTextCharacterInjectionEditorModal({
                                 onNodesChange={onNodesChange}
                                 onEdgesChange={onEdgesChange}
                                 onConnect={onConnect}
+                                onReconnectStart={onReconnectStart}
+                                onReconnectEnd={onReconnectEnd}
                                 onNodeClick={(_, node) => setSelectedId(node.id)}
-                                onEdgeContextMenu={(e, edge) => { e.preventDefault(); onEdgeRemove(edge); }}
                                 nodeTypes={nodeTypes}
+                                connectionMode={ConnectionMode.Loose}
+                                edgesReconnectable={true}
                                 fitView
                                 fitViewOptions={{ padding: 0.2 }}
                                 colorMode="dark"
@@ -365,6 +415,7 @@ export function CharacterTextCharacterInjectionEditorModal({
                                         whiteSpace: 'nowrap',
                                         flex: 1,
                                         minWidth: 0,
+                                        textAlign: 'left',
                                     }}>
                                         {item.name || '(Unnamed)'}
                                     </span>
@@ -374,9 +425,19 @@ export function CharacterTextCharacterInjectionEditorModal({
                                                 {item.textCharacters!.length}
                                             </span>
                                         )}
+                                        {(item.textCharacterInjectionWeight ?? 1) !== 1 && (
+                                            <span style={{ fontSize: '0.55rem', padding: '1px 4px', background: 'rgba(34, 197, 94, 0.15)', borderRadius: '3px', color: '#22c55e' }}>
+                                                Wt {item.textCharacterInjectionWeight}
+                                            </span>
+                                        )}
                                         {(item.textCharacterInjectionBindings?.length ?? 0) > 0 && (
                                             <span style={{ fontSize: '0.55rem', padding: '1px 4px', background: 'rgba(245, 158, 11, 0.15)', borderRadius: '3px', color: '#fbbf24' }}>
-                                                →{item.textCharacterInjectionBindings!.length}
+                                                Chains {item.textCharacterInjectionBindings!.length}
+                                            </span>
+                                        )}
+                                        {(item.textCharacterBreakProbability ?? 0) > 0 && (
+                                            <span style={{ fontSize: '0.55rem', padding: '1px 4px', background: 'rgba(239, 68, 68, 0.15)', borderRadius: '3px', color: '#ef4444' }}>
+                                                ⚡{Math.round((item.textCharacterBreakProbability ?? 0) * 100)}%
                                             </span>
                                         )}
                                     </div>
@@ -428,6 +489,41 @@ export function CharacterTextCharacterInjectionEditorModal({
                                     placeholder="What this injection does (display only)"
                                     rows={2}
                                 />
+                            </div>
+
+                            {/* Injection Weight */}
+                            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+                                <label className="editor-label editor-label-small">Injection Weight</label>
+                                <input
+                                    type="number"
+                                    value={selectedItem.textCharacterInjectionWeight ?? 1}
+                                    onChange={(e) => updateField(selectedItem.id, 'textCharacterInjectionWeight', Number(e.target.value))}
+                                    className="editor-input"
+                                    min="0"
+                                    step="0.5"
+                                    placeholder="1"
+                                />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Selection weight when this injection is chosen as the next in a chain or as the starting injection. Higher = more likely to be picked. Default is 1.
+                                </div>
+                            </div>
+
+                            {/* Break Probability */}
+                            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+                                <label className="editor-label editor-label-small">Break Probability</label>
+                                <input
+                                    type="number"
+                                    value={selectedItem.textCharacterBreakProbability ?? 0}
+                                    onChange={(e) => updateField(selectedItem.id, 'textCharacterBreakProbability', Number(e.target.value))}
+                                    className="editor-input"
+                                    min="0"
+                                    max="1"
+                                    step="0.05"
+                                    placeholder="0"
+                                />
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Probability that the injection chain breaks before advancing to the next binding. 0 = always chain. 1 = never chain.
+                                </div>
                             </div>
 
                             {/* Character Pool */}
@@ -495,18 +591,23 @@ export function CharacterTextCharacterInjectionEditorModal({
                                         {selectedItem.textCharacterInjectionBindings!.map(boundId => {
                                             const boundItem = items.find(i => i.id === boundId);
                                             return (
-                                                <span key={boundId} style={{
-                                                    fontSize: '0.6rem', padding: '2px 6px',
-                                                    background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)',
-                                                    borderRadius: '4px', color: '#fbbf24',
-                                                }}>
+                                                <span
+                                                    key={boundId}
+                                                    onClick={() => removeBinding(selectedItem.id, boundId)}
+                                                    style={{
+                                                        fontSize: '0.6rem', padding: '2px 6px',
+                                                        background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)',
+                                                        borderRadius: '4px', color: '#fbbf24',
+                                                        cursor: 'pointer', transition: 'all 0.15s',
+                                                    }}
+                                                >
                                                     {boundItem?.name || '(Unknown)'}
                                                 </span>
                                             );
                                         })}
                                     </div>
                                     <div style={{ fontSize: '0.5rem', opacity: 0.4, marginTop: '4px' }}>
-                                        Right-click an orange arrow in the graph to remove a chain.
+                                        Tap a chip to disconnect.
                                     </div>
                                 </div>
                             )}

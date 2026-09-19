@@ -67,9 +67,11 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
       "id": "string (UUID)",
       "name": "string (required)",
       "description": "string (display only, describes what this injection does)",
-      "textCharacters": ["string array of individual characters to randomly select from for prefix injection"],
+      "textCharacters": ["string array of text strings to randomly select from for prefix injection"],
       "textCharacterWeights": {"positional index (number)": "selection weight (number), higher = more likely to be picked"},
-      "textCharacterInjectionBindings": ["string array of TextCharacterInjection UUIDs to chain to after this injection fires"]
+      "textCharacterInjectionBindings": ["string array of TextCharacterInjection UUIDs to chain to after this injection fires"],
+      "textCharacterInjectionWeight": "number (≥0, default 1). Weight for being selected as the starting injection or as a chained next injection. Higher = more likely to be picked.",
+      "textCharacterBreakProbability": "number (0-1, default 0). Probability that the injection chain breaks before advancing to the next binding. Higher = more likely to stop chaining."
     }]
   }]`);
     }

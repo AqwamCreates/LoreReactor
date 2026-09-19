@@ -88,6 +88,8 @@ function fillTextCharacterInjectionDefaults(t: Record<string, unknown>): TextCha
         textCharacters: Array.isArray(t.textCharacters) ? (t.textCharacters as string[]).filter(c => typeof c === 'string') : [],
         textCharacterWeights: filterRecordKeysByUuid(t.textCharacterWeights as Record<string, number> | undefined),
         textCharacterInjectionBindings: filterValidUuids(t.textCharacterInjectionBindings as string[] | undefined),
+        textCharacterInjectionWeight: (t.textCharacterInjectionWeight as number) ?? 1,
+        textCharacterBreakProbability: (t.textCharacterBreakProbability as number) ?? 0,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
     };

@@ -27,9 +27,16 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
     const isStreamingInList = lastMsg?.isPartial === true;
     const isScrollingRef = useRef(false);
     const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const skipNextFocusScrollRef = useRef(false);
 
-    // Scroll to focused message when it changes externally
+    // Scroll to focused message when it changes externally (e.g., from Minimap or Cinematic view)
     useEffect(() => {
+        // If this focus change was triggered by the user scrolling, ignore it
+        if (skipNextFocusScrollRef.current) {
+            skipNextFocusScrollRef.current = false;
+            return;
+        }
+
         if (focusedMessageId && chatHistoryRef.current && !isScrollingRef.current) {
             const msgElement = chatHistoryRef.current.querySelector(`[data-message-id="${focusedMessageId}"]`);
             if (msgElement) {
@@ -64,6 +71,8 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
         }
 
         if (bestId && bestOverlap > 0 && bestId !== focusedMessageId) {
+            // Flag that this state change came from a scroll, so the effect above doesn't try to scroll again
+            skipNextFocusScrollRef.current = true;
             setFocusedMessageId(bestId);
         }
     }, [chatHistoryRef, focusedMessageId, setFocusedMessageId]);

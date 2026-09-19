@@ -4283,7 +4283,7 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
 21. CHAT MINIMAP
 ============================================================================= */
 .chat-minimap {
-    position: absolute;
+    position: fixed;
     right: 0;
     top: 0;
     bottom: 0;
@@ -4413,8 +4413,6 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
     .chat-minimap { display: none; }
 }
 
-.mode-cinematic .chat-minimap { display: none; }
-
 /* =============================================================================
 22. CHAT SCROLL BUTTONS
 ============================================================================= */
@@ -4467,8 +4465,6 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
         font-size: 1.2rem;
     }
 }
-
-.mode-cinematic .chat-scroll-button { display: none; }
 
 /* =============================================================================
 23. GLOBAL SELECT FIXES

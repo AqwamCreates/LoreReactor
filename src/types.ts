@@ -227,6 +227,8 @@ export interface TextCharacterInjection extends ObjectData {
   textCharacters: string[];
   textCharacterWeights: Record<number, number>; // Positional index -> weight value.
   textCharacterInjectionBindings: string[]; // Next IDs to go to once this text is generated.
+  textCharacterInjectionWeight: number // This text character injection weight when being a part of next injection or the start of it. Default is 1.
+  textCharacterBreakProbability: number; // The higher the value, the higher the probability that the character will break before it can go to next weights. Default is 0.
 
 }
 
@@ -563,6 +565,9 @@ export interface Profile extends ObjectData {
   volume: number;
   forceNameReveal: boolean;
   enableCharacterExpression: boolean;
+  randomizeTextCharacterInjection: boolean;
+  randomizeTextCharacterInjectionOnRetry: boolean; // Only randomize if the initial randomization fails. Default is true. This setting get revealed when randomizeTextCharacterInjection is true.
+  maximumNumberOfTextCharacterRandomizationPerModel: number; // Number of retries to get the text generated per model. Default is 1. This setting get revealed when randomizeTextCharacterInjection is true.
   forceNoCharacterImageInjection: boolean;
   forceNoContextImageInjection: boolean;
   forceNoLocationImageInjection: boolean;
@@ -605,6 +610,8 @@ export interface RawProfile extends RawData {
   forceNameReveal: boolean;
   enableCharacterExpression: boolean;
   randomizeTextCharacterInjection: boolean;
+  randomizeTextCharacterInjectionOnRetry: boolean; // Only randomize if the initial randomization fails. Default is true. This setting get revealed when randomizeTextCharacterInjection is true.
+  maximumNumberOfTextCharacterRandomizationPerModel: number; // Number of retries to get the text generated per model. Default is 1. This setting get revealed when randomizeTextCharacterInjection is true.
   forceNoCharacterImageInjection: boolean;
   forceNoContextImageInjection: boolean;
   forceNoLocationImageInjection: boolean;

@@ -1,5 +1,5 @@
 // src/components/ChatScrollButtons.tsx
-import React, { useState, useCallback, useLayoutEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface ChatScrollButtonsProps {
     containerRef: React.RefObject<HTMLDivElement | null>;
@@ -17,71 +17,58 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
     const [showBottomButton, setShowBottomButton] = useState(false);
     const [containerRect, setContainerRect] = useState<{ top: number; bottom: number; right: number } | null>(null);
 
-    const checkScroll = useCallback(() => {
-        const container = containerRef.current;
-        if (!container) return;
-        const { scrollTop, scrollHeight, clientHeight } = container;
-        setShowTopButton(scrollTop > 200);
-        setShowBottomButton(scrollHeight - scrollTop - clientHeight > 200);
-    }, [containerRef]);
+    useEffect(() => {
+        const measure = () => {
+            const container = containerRef.current;
+            if (!container) return;
+            const { scrollTop, scrollHeight, clientHeight } = container;
+            setShowTopButton(scrollTop > 100);
+            setShowBottomButton(scrollHeight - scrollTop - clientHeight > 100);
 
-    const updateRect = useCallback(() => {
-        const container = containerRef.current;
-        if (!container) return;
-        const rect = container.getBoundingClientRect();
-        setContainerRect({
-            top: rect.top,
-            bottom: rect.bottom,
-            right: rect.right,
-        });
-    }, [containerRef]);
-
-    useLayoutEffect(() => {
-        const container = containerRef.current;
-        if (!container) return;
-
-        const onScroll = () => {
-            updateRect();
-            checkScroll();
+            const rect = container.getBoundingClientRect();
+            setContainerRect({ top: rect.top, bottom: rect.bottom, right: rect.right });
         };
 
-        updateRect();
-        checkScroll();
+        const handleScroll = (e: Event) => {
+            if (e.target === containerRef.current) {
+                measure();
+            }
+        };
 
-        const resizeObserver = new ResizeObserver(() => {
-            updateRect();
-            checkScroll();
-        });
-        resizeObserver.observe(container);
-        container.addEventListener('scroll', onScroll, { passive: true });
-        window.addEventListener('resize', onScroll);
+        measure();
+        const timeoutId = setTimeout(measure, 150);
+
+        window.addEventListener('scroll', handleScroll, { capture: true, passive: true });
+        window.addEventListener('resize', measure);
 
         return () => {
-            resizeObserver.disconnect();
-            container.removeEventListener('scroll', onScroll);
-            window.removeEventListener('resize', onScroll);
+            clearTimeout(timeoutId);
+            window.removeEventListener('scroll', handleScroll, { capture: true });
+            window.removeEventListener('resize', measure);
         };
-    }, [containerRef, checkScroll, updateRect]);
-
-    // Re-check scroll state when message count changes (session restore, new messages)
-    useLayoutEffect(() => {
-        // Defer to next frame to ensure browser has completed layout
-        const frameId = requestAnimationFrame(() => {
-            checkScroll();
-            updateRect();
-        });
-        return () => cancelAnimationFrame(frameId);
-    }, [messageCount, checkScroll, updateRect]);
-
-    const scrollToTop = useCallback(() => {
-        containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     }, [containerRef]);
 
-    const scrollToBottom = useCallback(() => {
+    useEffect(() => {
+        const container = containerRef.current;
+        if (container) {
+            const { scrollTop, scrollHeight, clientHeight } = container;
+            setShowTopButton(scrollTop > 100);
+            setShowBottomButton(scrollHeight - scrollTop - clientHeight > 100);
+
+            const rect = container.getBoundingClientRect();
+            setContainerRect({ top: rect.top, bottom: rect.bottom, right: rect.right });
+        }
+    }, [messageCount, containerRef]);
+
+    const scrollToTop = () => {
+        containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const scrollToBottom = () => {
         const container = containerRef.current;
         if (!container) return;
         container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-    }, [containerRef]);
+    };
 
     if (!containerRect || (!showTopButton && !showBottomButton)) return null;
 
@@ -96,6 +83,7 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
                     type="button"
                     className="chat-scroll-button"
                     onClick={scrollToTop}
+                    onMouseDown={(e) => e.preventDefault()}
                     title="Scroll to top"
                     style={{
                         position: 'fixed',
@@ -111,6 +99,7 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
                     type="button"
                     className="chat-scroll-button"
                     onClick={scrollToBottom}
+                    onMouseDown={(e) => e.preventDefault()}
                     title="Scroll to latest"
                     style={{
                         position: 'fixed',

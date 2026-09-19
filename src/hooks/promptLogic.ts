@@ -1453,7 +1453,7 @@ export async function buildPrompt(
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${characterParticipantTag} requires it.`;
     const memoryWriteTriggerInstructions = enableMemoryWriting ? `I will always write ${memoryWriteTrigger}${contextEndString} instead of ${contextEndString} after the final paragraph if I want to remember something for the future as ${characterParticipantTag} without adding any additional text. ` : '';
     const characterResponsePriming = `${generalStartString}${noRepeatInstructions} ${noRestrictionsInstructions} ${callingOtherCharacterInstructions} ${formatInstructions} ${memoryWriteTriggerInstructions}I am now responding as ${characterParticipantTag} with the format I am given and I will follow all the prompts given to me.${generalEndString}`;
-    const characterTextInjection = `${turnStartString}${characterParticipantTag}: ${existingCharacterText}`;
+    const characterTextInjection = `${turnStartString}${characterParticipantTag}: {{text}}`;
 
     textInjectionLines.push(characterResponsePriming)
     textInjectionLines.push(characterTextInjection)
@@ -1645,7 +1645,9 @@ export async function buildPrompt(
         }
     }
 
-    const prompt = promptLines.join('\n');
+    const templatePrompt = promptLines.join('\n');
+
+    const prompt = templatePrompt.replaceAll("{{text}}", `${existingCharacterText}`)
 
     let defaultStops: string[] = [];
 

@@ -9,6 +9,7 @@ import {
     Controls,
     Handle,
     Position,
+    ConnectionMode,
     addEdge,
     useNodesState,
     useEdgesState,
@@ -38,6 +39,13 @@ interface ClothingNodeData extends Record<string, unknown> {
     hasDeactivationTriggers: boolean;
     bindingCount: number;
 }
+
+const HANDLE_STYLE: React.CSSProperties = {
+    background: '#f59e0b',
+    width: '10px',
+    height: '10px',
+    border: '2px solid var(--social-bg, #1a1a2e)',
+};
 
 function ClothingNode({ data }: NodeProps<Node<ClothingNodeData>>) {
     const { name, description, initialWearingProbability, hasActivationTriggers, hasDeactivationTriggers, bindingCount } = data;
@@ -88,12 +96,10 @@ function ClothingNode({ data }: NodeProps<Node<ClothingNodeData>>) {
             alignItems: 'center',
             textAlign: 'center',
         }}>
-            <Handle type="target" position={Position.Top} style={{
-                background: '#f59e0b', width: '10px', height: '10px', border: '2px solid var(--social-bg, #1a1a2e)',
-            }} />
-            <Handle type="source" position={Position.Bottom} style={{
-                background: '#f59e0b', width: '10px', height: '10px', border: '2px solid var(--social-bg, #1a1a2e)',
-            }} />
+            <Handle type="source" position={Position.Top} id="top" style={HANDLE_STYLE} />
+            <Handle type="source" position={Position.Right} id="right" style={HANDLE_STYLE} />
+            <Handle type="source" position={Position.Bottom} id="bottom" style={HANDLE_STYLE} />
+            <Handle type="source" position={Position.Left} id="left" style={HANDLE_STYLE} />
 
             <div style={{ fontWeight: 'bold', fontSize: '0.75rem', color: textColor, marginBottom: '4px', lineHeight: 1.3 }}>
                 {name || '(Unnamed)'}
@@ -154,6 +160,14 @@ export function CharacterClothingEditorModal({
     const [items, setItems] = useState<Clothing[]>(() => clothings.length > 0 ? [...clothings] : []);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
+
+    // Reset local state when modal opens with fresh data
+    useEffect(() => {
+        if (isOpen) {
+            setItems(clothings.length > 0 ? [...clothings] : []);
+            setSelectedId(null);
+        }
+    }, [isOpen, clothings]);
 
     const buildNodeData = (item: Clothing): ClothingNodeData => ({
         name: item.name,
@@ -222,12 +236,33 @@ export function CharacterClothingEditorModal({
         }, prev));
     }, [setItems, setEdges]);
 
-    const onEdgeRemove = useCallback((edge: Edge) => {
+    const onReconnectStart = useCallback((_event: unknown, _edge: Edge, _handleType: string) => {
+        // No-op: just tracking that a reconnect drag started
+    }, []);
+
+    const onReconnectEnd = useCallback((_event: unknown, edge: Edge) => {
         setItems(prev => prev.map(item => {
             if (item.id !== edge.source) return item;
-            return { ...item, clothingBindings: item.clothingBindings.filter(b => b !== edge.target), lastUpdatedTimestamp: Date.now() };
+            return {
+                ...item,
+                clothingBindings: item.clothingBindings.filter(b => b !== edge.target),
+                lastUpdatedTimestamp: Date.now(),
+            };
         }));
-    }, [setItems]);
+        setEdges(prev => prev.filter(e => e.id !== edge.id));
+    }, []);
+
+    const removeBinding = useCallback((sourceItemId: string, boundId: string) => {
+        setItems(prev => prev.map(item => {
+            if (item.id !== sourceItemId) return item;
+            return {
+                ...item,
+                clothingBindings: item.clothingBindings.filter(b => b !== boundId),
+                lastUpdatedTimestamp: Date.now(),
+            };
+        }));
+        setEdges(prev => prev.filter(e => !(e.source === sourceItemId && e.target === boundId)));
+    }, []);
 
     const handleAdd = useCallback(() => {
         const now = Date.now();
@@ -291,7 +326,7 @@ export function CharacterClothingEditorModal({
                     {/* Graph */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div style={{ fontSize: '0.6rem', opacity: 0.6 }}>
-                            Drag between nodes to create "covers" connections. Click a node to edit. Green = always worn. Blue = can be put on. Purple = start chance only. Grey = wardrobe only. Orange arrows = covers.
+                            Drag between nodes to create "covers" connections. Tap a cover chip below to disconnect. Click a node to edit. Green = always worn. Blue = can be put on. Purple = start chance only. Grey = wardrobe only. Orange arrows = covers.
                         </div>
                         <div ref={reactFlowWrapper} style={{ height: '300px', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
                             <ReactFlow
@@ -300,9 +335,12 @@ export function CharacterClothingEditorModal({
                                 onNodesChange={onNodesChange}
                                 onEdgesChange={onEdgesChange}
                                 onConnect={onConnect}
+                                onReconnectStart={onReconnectStart}
+                                onReconnectEnd={onReconnectEnd}
                                 onNodeClick={(_, node) => setSelectedId(node.id)}
-                                onEdgeContextMenu={(e, edge) => { e.preventDefault(); onEdgeRemove(edge); }}
                                 nodeTypes={nodeTypes}
+                                connectionMode={ConnectionMode.Loose}
+                                edgesReconnectable={true}
                                 fitView
                                 fitViewOptions={{ padding: 0.2 }}
                                 colorMode="dark"
@@ -354,6 +392,7 @@ export function CharacterClothingEditorModal({
                                         whiteSpace: 'nowrap',
                                         flex: 1,
                                         minWidth: 0,
+                                        textAlign: 'left',
                                     }}>
                                         {item.name || '(Unnamed)'}
                                     </span>
@@ -470,18 +509,23 @@ export function CharacterClothingEditorModal({
                                         {selectedItem.clothingBindings.map(boundId => {
                                             const boundItem = items.find(i => i.id === boundId);
                                             return (
-                                                <span key={boundId} style={{
-                                                    fontSize: '0.6rem', padding: '2px 6px',
-                                                    background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)',
-                                                    borderRadius: '4px', color: '#fbbf24',
-                                                }}>
+                                                <span
+                                                    key={boundId}
+                                                    onClick={() => removeBinding(selectedItem.id, boundId)}
+                                                    style={{
+                                                        fontSize: '0.6rem', padding: '2px 6px',
+                                                        background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)',
+                                                        borderRadius: '4px', color: '#fbbf24',
+                                                        cursor: 'pointer', transition: 'all 0.15s',
+                                                    }}
+                                                >
                                                     {boundItem?.name || '(Unknown)'}
                                                 </span>
                                             );
                                         })}
                                     </div>
                                     <div style={{ fontSize: '0.5rem', opacity: 0.4, marginTop: '4px' }}>
-                                        Right-click an orange arrow in the graph to remove a connection.
+                                        Tap a chip to disconnect.
                                     </div>
                                 </div>
                             )}
