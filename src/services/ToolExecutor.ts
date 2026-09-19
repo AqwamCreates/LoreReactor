@@ -2,6 +2,7 @@
 
 import type { ToolInvocation } from '../services/ToolInvocationParser';
 import { fetchLinkContent, buildSearchUrl } from '../services/linkFetcher';
+import { getActiveDialoguePrompts, collectActiveDialoguePromptContent, buildDialogueSearchSpace } from '../hooks/dialoguePromptLogic';
 import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension } from '../types';
 import { findPreviousMessage } from '../hooks/chatLogic';
 import { getAudioEngine } from './AudioEngine';
@@ -65,6 +66,7 @@ const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, int
     "stopwatch": executeStopwatch,
     "calculator": executeCalculator,
     "web": executeWeb,
+    "dialogue": executeDialogue,
     "lookup": executeLookup,
     "map": executeMap,
     "audio": executeAudio,
@@ -549,6 +551,73 @@ async function executeWeb(query: string, _nextMessage: BaseMessage, _interaction
         const errorContent = `[Error: Web request failed - ${(e as Error).message}]`;
         return { toolType: 'web', args: query, content: errorContent, displayReplacement: errorContent };
     }
+}
+
+// ─── Dialogue ──────────────────────────────────────────────────────
+
+function executeDialogue(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+    const trimmed = args.trim();
+    const character = nextMessage.character;
+    const dialoguePrompts = character.dialoguePrompts;
+
+    if (!dialoguePrompts || dialoguePrompts.length === 0) {
+        return helpResult('dialogue', args, 'dialogue — no dialogue prompts configured for this character');
+    }
+
+    if (!trimmed) {
+        return helpResult('dialogue', args, 'dialogue list | dialogue recall — recall active dialogue instructions');
+    }
+
+    const subcommand = trimmed.split(/\s+/)[0]?.toLowerCase();
+
+    if (subcommand === 'list') {
+        const entries = dialoguePrompts.map(dp => {
+            const hasTriggers = (dp.regularExpressionActivationTriggers?.length ?? 0) > 0;
+            const bindings = dp.dialoguePromptBindings?.length ?? 0;
+            return `${dp.name} (${dp.id})${hasTriggers ? ' [regex]' : ''}${bindings > 0 ? ` [→${bindings}]` : ''}`;
+        });
+        return {
+            toolType: 'dialogue',
+            args,
+            content: entries.join('\n'),
+            displayReplacement: `[💬 ${entries.length} dialogue prompt(s)]`,
+        };
+    }
+
+    if (subcommand === 'recall') {
+        const textContentArray: string[] = [];
+        for (const msg of interactionData.interactionHistory) {
+            if (msg.messageType === 'chat') {
+                textContentArray.push(msg.textContent);
+            }
+        }
+        const searchSpace = buildDialogueSearchSpace(textContentArray);
+
+        const recalledContents = collectActiveDialoguePromptContent(character.dialoguePrompts, searchSpace);
+
+        if (recalledContents.length === 0) {
+            const activeCount = getActiveDialoguePrompts(character.dialoguePrompts, searchSpace).length;
+            const msg = activeCount === 0
+                ? 'No active dialogue prompts match current conversation state.'
+                : 'All active dialogue prompts were skipped by probability.';
+            return { toolType: 'dialogue', args, content: msg, displayReplacement: '[💬 No active dialogue prompts]' };
+        }
+
+        const combined = recalledContents.join('\n\n');
+        return {
+            toolType: 'dialogue',
+            args,
+            content: combined,
+            displayReplacement: `[💬 Recalled ${recalledContents.length} dialogue instruction(s)]`,
+        };
+    }
+
+    return {
+        toolType: 'dialogue',
+        args,
+        content: `[Error: Unknown dialogue command "${subcommand}". Use list or recall.]`,
+        displayReplacement: `[Error: Unknown dialogue command]`,
+    };
 }
 
 // ─── Lookup ────────────────────────────────────────────────────────

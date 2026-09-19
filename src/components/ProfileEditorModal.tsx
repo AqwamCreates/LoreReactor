@@ -35,7 +35,7 @@ const ALL_STRATEGY_TYPES: SummarizationStrategyType[] = [
 const TOOL_LABELS: Record<tool, string> = {
     pick: 'Random Pick', date: 'Current Date & Time', coin: 'Coin Flip', dice: 'Roll Dice',
     random: 'Random Number', rng: 'RNG Table', move: 'Move', timer: 'Timer',
-    stopwatch: 'Stopwatch', calculator: 'Calculator', web: 'Web Search', lookup: 'Look Up',
+    stopwatch: 'Stopwatch', calculator: 'Calculator', web: 'Web Search', dialogue: 'Dialogue', lookup: 'Look Up',
     map: 'Map', audio: 'Audio', clothing: 'Clothing', note: 'Note', inventory: 'Inventory',
     invite: 'Invite Participant', kick: 'Kick Participant', teleport: 'Teleport',
     key: 'Key', summon: 'Summon Character',
@@ -132,6 +132,7 @@ function ProfileEditorContent({
     const [autonomousMode, setAutonomousMode] = useState(ep?.autonomousMode ?? false);
     const [autonomousInteractionIntervalMs, setAutonomousInteractionIntervalMs] = useState<number>(ep?.autonomousInteractionIntervalMs ?? 10000);
     const [forceNameReveal, setForceNameReveal] = useState(ep?.forceNameReveal ?? false);
+    const [displayToolUsage, setDisplayToolUsage] = useState(ep?.displayToolUsage ?? false);
     const [enableCharacterExpression, setEnableCharacterExpression] = useState(ep?.enableCharacterExpression ?? false);
     const [randomizeTextCharacterInjection, setRandomizeTextCharacterInjection] = useState<boolean>(ep?.randomizeTextCharacterInjection ?? false);
     const [randomizeTextCharacterInjectionOnRetry, setRandomizeTextCharacterInjectionOnRetry] = useState<boolean>(ep?.randomizeTextCharacterInjectionOnRetry ?? true);
@@ -205,7 +206,7 @@ function ProfileEditorContent({
         return {
             id, name: profileName, description: description.trim() || undefined,
             autonomousMode, autonomousInteractionIntervalMs,
-            forceNameReveal, enableCharacterExpression,
+            forceNameReveal, displayToolUsage, enableCharacterExpression,
             randomizeTextCharacterInjection,
             randomizeTextCharacterInjectionOnRetry,
             maximumNumberOfTextCharacterRandomizationPerModel,
@@ -289,7 +290,7 @@ function ProfileEditorContent({
 
                     <div className="editor-section"><span className="editor-section-title">Agentic Roleplay</span><ProfileCheckbox checked={autonomousMode} onChange={setAutonomousMode} label="Autonomous Mode" hint="When enabled, characters act independently in the background using weighted sampling based on initiative, stamina ratios, and skip probability." />{autonomousMode && (<div style={{ marginTop: '12px' }}><div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Interaction Interval</label><span style={SLIDER_VALUE_STYLE}>{(autonomousInteractionIntervalMs / 1000).toFixed(1)}s</span></div><SliderInput label="" value={autonomousInteractionIntervalMs} minimumValue={1000} maximumValue={60000} stepValue={1000} decimals={0} onChange={(val) => setAutonomousInteractionIntervalMs(Math.round(val))} description="How often the engine evaluates characters for autonomous actions. Lower = more frequent activity, higher token usage." /></div>)}</div>
 
-                    <div className="editor-section"><span className="editor-section-title">Display</span><div style={{ marginBottom: '12px' }}><div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Global Volume Override</label><span style={SLIDER_VALUE_STYLE}>{volume === -1 ? '(Per-track default)' : `${Math.round(volume * 100)}%`}</span></div><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="range" min="-1" max="1" step="0.01" value={volume} onChange={(e) => setVolume(Number(e.target.value))} style={{ flex: 1 }} /></div><div style={FIELD_HINT_STYLE}>-1 = use each track's own volume. ≥0 = override all tracks uniformly.</div></div><ProfileCheckbox checked={forceNameReveal} onChange={setForceNameReveal} label="Force Name Reveal" hint='Always show character names instead of "Character X".' /><ProfileCheckbox checked={enableCharacterExpression} onChange={setEnableCharacterExpression} label="Enable Character Expression" hint="Use sentiment analysis to swap character images based on emotional tone. Disable to always use the neutral character images." spaced /></div>
+                    <div className="editor-section"><span className="editor-section-title">Display</span><div style={{ marginBottom: '12px' }}><div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Global Volume Override</label><span style={SLIDER_VALUE_STYLE}>{volume === -1 ? '(Per-track default)' : `${Math.round(volume * 100)}%`}</span></div><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="range" min="-1" max="1" step="0.01" value={volume} onChange={(e) => setVolume(Number(e.target.value))} style={{ flex: 1 }} /></div><div style={FIELD_HINT_STYLE}>-1 = use each track's own volume. ≥0 = override all tracks uniformly.</div></div><ProfileCheckbox checked={forceNameReveal} onChange={setForceNameReveal} label="Force Name Reveal" hint='Always show character names instead of "Character X".' /><ProfileCheckbox checked={displayToolUsage} onChange={setDisplayToolUsage} label="Display Tool Usage" hint="Show tool invocation markers and results in the chat output. Disable to hide tool usage from the displayed conversation." spaced /><ProfileCheckbox checked={enableCharacterExpression} onChange={setEnableCharacterExpression} label="Enable Character Expression" hint="Use sentiment analysis to swap character images based on emotional tone. Disable to always use the neutral character images." spaced /></div>
 
                     <div className="editor-section">
                         <span className="editor-section-title">Text Character Injection</span>

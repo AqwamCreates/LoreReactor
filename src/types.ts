@@ -213,8 +213,19 @@ export interface RawMemory extends RawData {
   interactionDataId: string;
 }
 
-export type tool = "pick" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "invite" | "kick" | "teleport" | "key" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"
+export type tool = "pick" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "invite" | "kick" | "teleport" | "key" | "dialogue" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"
 
+export interface DialoguePrompt extends ObjectData {
+  content: string;
+  dialoguePromptBindings: string[]; // IDs of dialogue prompts this can chain to.
+  dialoguePromptWeight: number // This dialogue prompt weight when being a part of the dialogue prompt or the start of it. Default is 1.
+  dialoguePromptBreakProbability: number; // The higher the value, the higher the probability that the dialogue prompt will break before it can go to next node. Default is 0.
+  dialoguePromptSkipProbability: number // The higher the value, the higher the likelihood of skipping choosing the dialogue from this node. Default is 0.
+  regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+}
 export interface Clothing extends ObjectData {
     regularExpressionActivationTriggers?: RegularExpressionTrigger[];
     regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
@@ -239,8 +250,8 @@ export interface Character extends ObjectData {
   systemPrompt?: string;
   thinkPrompt?: string;
   appearancePrompt?: string;
-  dialoguePrompt?: string;
-  starterPrompt?: string;
+  dialoguePrompts?: DialoguePrompt[];
+  starterPrompts?: Record<string, number>; // Text -> Weight value for that text during the sampling.
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;
@@ -271,8 +282,8 @@ export interface RawCharacter extends RawData {
   systemPrompt?: string;
   thinkPrompt?: string;
   appearancePrompt?: string;
-  dialoguePrompt?: string;
-  starterPrompt?: string;
+  dialoguePrompts?: DialoguePrompt[];
+  starterPrompts?: Record<string, number>; // Text -> Weight value for that text during the sampling.
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;
@@ -565,6 +576,7 @@ export interface Profile extends ObjectData {
   autonomousInteractionIntervalMs: number;
   volume: number;
   forceNameReveal: boolean;
+  displayToolUsage: boolean;
   enableCharacterExpression: boolean;
   randomizeTextCharacterInjection: boolean;
   randomizeTextCharacterInjectionOnRetry: boolean; // Only randomize if the initial randomization fails. Default is true. This setting get revealed when randomizeTextCharacterInjection is true.
@@ -609,6 +621,7 @@ export interface RawProfile extends RawData {
   autonomousInteractionIntervalMs: number;
   volume: number;
   forceNameReveal: boolean;
+  displayToolUsage: boolean;
   enableCharacterExpression: boolean;
   randomizeTextCharacterInjection: boolean;
   randomizeTextCharacterInjectionOnRetry: boolean; // Only randomize if the initial randomization fails. Default is true. This setting get revealed when randomizeTextCharacterInjection is true.

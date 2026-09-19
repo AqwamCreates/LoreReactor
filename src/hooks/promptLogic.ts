@@ -10,6 +10,7 @@ import { defaultInputStrategy } from '../dictionaries/defaults';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { generateLocationVisitSummary } from '../services/ChatMessageSummarizationEngine';
 import { compileTriggerRegexes, findPreviousMessage } from './chatLogic';
+import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from './dialoguePromptLogic';
 
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging.";
 const beingIgnoredInstructions = "Anytime a character ignores me talking, there would be an awkward atmosphere.";
@@ -811,12 +812,6 @@ export function createChatHistoryPrompt(
 
 /**
  * Resolves which clothing items are currently worn for a character.
- * 
- * 1. Start from previous message's characterClothingWearingStatuses (carry forward).
- * 2. For items without prior state, roll initialWearingProbability.
- * 3. Check activation triggers against chat history → put on.
- * 4. Check deactivation triggers against chat history → take off.
- * 5. Return final wearing status map.
  */
 function resolveClothingWearingStatus(
     character: Character,
@@ -831,23 +826,19 @@ function resolveClothingWearingStatus(
     const protagonistId = interactionData.protagonist.id;
     const characterId = character.id;
 
-    // Carry forward from previous message
     const prevMsg = findPreviousMessage(interactionData, characterId);
     const prevStatus = (prevMsg as ChatMessage)?.characterClothingWearingStatuses ?? {};
 
     const status: Record<string, boolean> = {};
 
     for (const clothing of clothings) {
-        // If we have prior state, use it as baseline
         if (clothing.id in prevStatus) {
             status[clothing.id] = prevStatus[clothing.id];
         } else {
-            // First appearance: roll initialWearingProbability
             const prob = clothing.initialWearingProbability ?? 1;
             status[clothing.id] = prob >= 1 ? true : prob <= 0 ? false : Math.random() < prob;
         }
 
-        // Check activation triggers: if any match, put it on
         if (clothing.regularExpressionActivationTriggers && clothing.regularExpressionActivationTriggers.length > 0) {
             const activated = doesAnyTriggerMatchCached(
                 clothing.regularExpressionActivationTriggers,
@@ -858,7 +849,6 @@ function resolveClothingWearingStatus(
             if (activated) status[clothing.id] = true;
         }
 
-        // Check deactivation triggers: if any match, take it off
         if (clothing.regularExpressionDeactivationTriggers && clothing.regularExpressionDeactivationTriggers.length > 0) {
             const deactivated = doesAnyTriggerMatchCached(
                 clothing.regularExpressionDeactivationTriggers,
@@ -875,9 +865,7 @@ function resolveClothingWearingStatus(
 
 /**
  * Given wearing status and clothing definitions, returns the list of
- * visible clothing descriptions. An item is visible if:
- * - It is worn (status = true)
- * - No other worn item covers it (via clothingBindings transitive closure)
+ * visible clothing descriptions.
  */
 function getVisibleClothingDescriptions(
     clothings: Clothing[],
@@ -885,14 +873,12 @@ function getVisibleClothingDescriptions(
 ): string[] {
     if (!clothings || clothings.length === 0) return [];
 
-    // Build set of covered clothing IDs via transitive closure
     const coveredIds = new Set<string>();
     const clothingMap = new Map<string, Clothing>();
     for (const c of clothings) {
         clothingMap.set(c.id, c);
     }
 
-    // For each worn item, mark everything it covers (BFS)
     for (const clothing of clothings) {
         if (!wearingStatus[clothing.id]) continue;
         const queue = [...clothing.clothingBindings];
@@ -911,7 +897,6 @@ function getVisibleClothingDescriptions(
         }
     }
 
-    // Collect visible descriptions
     const visible: string[] = [];
     for (const clothing of clothings) {
         if (!wearingStatus[clothing.id]) continue;
@@ -1376,14 +1361,17 @@ export async function buildPrompt(
         timeElapsedLines.push(`${generalStartString}It has been ${timeSinceLastMessageString} since the last message in the real world. I may or may not acknowledge the time elapsed. I will update relevant information according to this information. For example, a previous time must be subtracted or added with the elapsed time to get current time.${generalEndString}`);
     }
 
+    // ─── Dialogue Prompts (array-based with shared logic) ────────────
     const dialoguePromptLines: string[] = [];
+    const dialogueSearchSpace = buildDialogueSearchSpace(textContentArray);
+    const activeDialogueContents = collectActiveDialoguePromptContent(character.dialoguePrompts, dialogueSearchSpace);
 
-    const dialoguePrompt = character.dialoguePrompt;
-
-    if (dialoguePrompt?.trim()) {
+    if (activeDialogueContents.length > 0) {
         dialoguePromptLines.push(startingDialoguePromptLine);
-        const replacedDialogue = replacePlaceholders(dialoguePrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
-        dialoguePromptLines.push(`${contextStartString}${replacedDialogue}${contextEndString}`);
+        for (const content of activeDialogueContents) {
+            const replacedDialogue = replacePlaceholders(content, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
+            dialoguePromptLines.push(`${contextStartString}${replacedDialogue}${contextEndString}`);
+        }
         dialoguePromptLines.push(endOfDialoguePromptLine);
     }
 
@@ -1413,15 +1401,32 @@ export async function buildPrompt(
         }
     }
 
+    // ─── Starter Prompts (weighted sampling) ─────────────────────────
     const starterPromptLines: string[] = [];
+    const starterPrompts = character.starterPrompts;
 
-    const starterPrompt = character.starterPrompt;
+    if (starterPrompts && Object.keys(starterPrompts).length > 0) {
+        // Weighted random selection
+        const entries = Object.entries(starterPrompts);
+        let totalWeight = 0;
+        for (const [, weight] of entries) totalWeight += weight;
 
-    if (starterPrompt?.trim()) {
-        starterPromptLines.push(startOfStarterPromptLine);
-        const replacedStarter = replacePlaceholders(starterPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
-        starterPromptLines.push(`${contextStartString}${replacedStarter}${contextEndString}`);
-        starterPromptLines.push(endOfStarterPromptLines);
+        if (totalWeight > 0) {
+            let roll = Math.random() * totalWeight;
+            let selectedText = '';
+            for (const [text, weight] of entries) {
+                roll -= weight;
+                if (roll <= 0) { selectedText = text; break; }
+            }
+            if (!selectedText) selectedText = entries[entries.length - 1][0];
+
+            if (selectedText.trim()) {
+                starterPromptLines.push(startOfStarterPromptLine);
+                const replacedStarter = replacePlaceholders(selectedText, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
+                starterPromptLines.push(`${contextStartString}${replacedStarter}${contextEndString}`);
+                starterPromptLines.push(endOfStarterPromptLines);
+            }
+        }
     }
 
     const toolInstructions: string[] = [];

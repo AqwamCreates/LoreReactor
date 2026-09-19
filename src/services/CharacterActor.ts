@@ -1,5 +1,5 @@
 // src/services/CharacterActor.ts
-import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel } from '../types';
+import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from '../storage/serverStorage';
 import { prepareRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
@@ -62,7 +62,7 @@ export interface TurnExecutionParams {
 async function processToolInvocations(
     rawText: string,
     character: Character,
-    profile: InteractionData['Profile'],
+    profile: Profile | undefined,
     nextMessage: ChatMessage,
     interactionData: InteractionData,
 ): Promise<{ resumeText: string; displayText: string; displayReplacements: { type: string; value: string }[] } | null> {
@@ -85,6 +85,8 @@ async function processToolInvocations(
 
     const toolResults = await executeTools(enabledInvocations, nextMessage, interactionData);
 
+    const displayToolUsage = profile?.displayToolUsage ?? false;
+
     let resumeText = rawText;
     let displayText = rawText;
     const displayReplacements: { type: string; value: string }[] = [];
@@ -92,9 +94,18 @@ async function processToolInvocations(
     for (let i = 0; i < enabledInvocations.length; i++) {
         const invocation = enabledInvocations[i];
         const toolResult = toolResults[i];
+        // resumeText always gets the actual tool result content for continued generation
         resumeText = resumeText.replace(invocation.rawMatch, toolResult.content);
-        displayText = displayText.replace(invocation.rawMatch, toolResult.displayReplacement);
-        displayReplacements.push({ type: invocation.toolType, value: toolResult.displayReplacement });
+
+        if (displayToolUsage) {
+            // Show the raw invocation marker so users can see what tools were called
+            // Keep the original raw match visible in display text
+            displayReplacements.push({ type: invocation.toolType, value: invocation.rawMatch });
+        } else {
+            // Hide tool usage — replace with the user-friendly display replacement
+            displayText = displayText.replace(invocation.rawMatch, toolResult.displayReplacement);
+            displayReplacements.push({ type: invocation.toolType, value: toolResult.displayReplacement });
+        }
     }
 
     return { resumeText, displayText, displayReplacements };

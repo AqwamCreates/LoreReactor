@@ -17,6 +17,7 @@ export const defaultCharacterTools: Record<tool, boolean> = {
     stopwatch: false,
     calculator: false,
     web: false,
+    dialogue: false,
     lookup: false,
     map: false,
     audio: false,
@@ -134,9 +135,9 @@ export const defaultInputStrategy: PromptBlockType[] = [
 
 export const defaultProfileTools: Record<tool, number> = {
     pick: 0, date: 0, coin: 0, dice: 0, random: 0, rng: 0,
-    move: 0, timer: 0, stopwatch: 0, calculator: 0, web: 0, lookup: 0,
-    map: 0, audio: 0, clothing: 0, note: 0, inventory: 0,
-    invite: 0, kick: 0, teleport: 0, key: 0,
+    move: 0, timer: 0, stopwatch: 0, calculator: 0, web: 0, dialogue: 0, lookup: 0,
+    map: 0, audio: 0, key: 0, clothing: 0, note: 0, inventory: 0,
+    invite: 0, kick: 0, teleport: 0, 
     summon: 0, narrate: 0, inspect: 0,
     administrator: 0, creator: 0, destroyer: 0,
 };

@@ -108,6 +108,19 @@ export function CharacterCardImportModal({
             // Assign default sampler if available
             const defaultSampler = allSamplers.length > 0 ? allSamplers[0] : undefined;
 
+            // Build starterPrompts from firstMes / alternateGreetings
+            const starterPrompts: Record<string, number> = {};
+            if (fields.starterPrompt && fields.starterPrompt.trim()) {
+                starterPrompts[fields.starterPrompt.trim()] = 1;
+            }
+            if (extended.alternateGreetings) {
+                for (const greeting of extended.alternateGreetings) {
+                    if (greeting && greeting.trim() && !starterPrompts[greeting.trim()]) {
+                        starterPrompts[greeting.trim()] = 1;
+                    }
+                }
+            }
+
             const character: Character = {
                 id: charId,
                 name: fields.name || 'Unnamed Character',
@@ -115,8 +128,8 @@ export function CharacterCardImportModal({
                 systemPrompt: fields.systemPrompt || '',
                 thinkPrompt: undefined,
                 appearancePrompt: fields.appearancePrompt || undefined,
-                dialoguePrompt: fields.dialoguePrompt || undefined,
-                starterPrompt: fields.starterPrompt || undefined,
+                dialoguePrompts: undefined,
+                starterPrompts: Object.keys(starterPrompts).length > 0 ? starterPrompts : undefined,
                 images,
                 voice: undefined,
                 sampler: defaultSampler,
@@ -289,7 +302,7 @@ export function CharacterCardImportModal({
                                     <div><strong>Description:</strong> {preview.character.description?.substring(0, 80) || '(none)'}{preview.character.description && preview.character.description.length > 80 ? '...' : ''}</div>
                                     <div><strong>Emotion Images:</strong> {preview.emotionImageCount}</div>
                                     <div><strong>System Prompt:</strong> {preview.character.systemPrompt ? `${preview.character.systemPrompt.length} chars` : '(none)'}</div>
-                                    <div><strong>Dialogue Examples:</strong> {preview.character.dialoguePrompt ? 'Yes' : 'No'}</div>
+                                    <div><strong>Starter Prompts:</strong> {preview.character.starterPrompts ? Object.keys(preview.character.starterPrompts).length : 0}</div>
                                 </div>
                                 <div style={{ marginTop: '8px', fontSize: '0.65rem', opacity: 0.5 }}>
                                     Traits auto-detected: IW={preview.character.initiativeWeight.toFixed(1)} · CP={preview.character.chatProbability.toFixed(2)} · Chat Stamina={preview.character.maximumChatStamina} · Action Stamina={preview.character.maximumActionStamina} · NS={preview.character.nameSensitivity.toFixed(1)} · CIS={preview.character.chatImpatienceSensitivity.toFixed(1)}

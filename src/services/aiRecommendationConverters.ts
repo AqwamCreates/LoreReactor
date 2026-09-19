@@ -1,5 +1,5 @@
 // src/services/aiRecommendationConverters.ts
-import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, tool, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, tool, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './aiRecommendationTypes';
 import type { GeneratedOutput } from './aiRecommendationTypes';
@@ -22,11 +22,6 @@ function parseToolsRecord(raw: unknown, defaults: Record<string, boolean | numbe
     return result;
 }
 
-/**
- * Parses a RegularExpressionTrigger[] from AI-generated JSON.
- * Accepts either the new array-of-objects format or the legacy flat-string format
- * for backwards compatibility with older AI outputs.
- */
 function parseRegexTriggers(
     raw: unknown,
     fallbackContext: regularExpressionContext = 'global',
@@ -34,7 +29,6 @@ function parseRegexTriggers(
 ): RegularExpressionTrigger[] | undefined {
     if (!raw) return undefined;
 
-    // New format: array of { trigger, context, target }
     if (Array.isArray(raw)) {
         const triggers: RegularExpressionTrigger[] = [];
         for (const item of raw) {
@@ -51,25 +45,14 @@ function parseRegexTriggers(
         return triggers.length > 0 ? triggers : undefined;
     }
 
-    // Legacy format: single string (backwards compat)
-    if (typeof raw === 'string' && raw.trim()) {
-        return [{
-            trigger: raw.trim(),
-            context: fallbackContext,
-            target: fallbackTarget,
-        }];
-    }
-
     return undefined;
 }
 
-/** Filters an array of strings to only valid UUIDs. */
 function filterValidUuids(refs: string[] | undefined): string[] {
     if (!refs) return [];
     return refs.filter((id): id is string => typeof id === 'string' && UUID_REGEX.test(id));
 }
 
-/** Filters record keys to only valid UUIDs, preserving values. */
 function filterRecordKeysByUuid<T>(record: Record<string, T> | undefined): Record<string, T> {
     if (!record) return {};
     const result: Record<string, T> = {};
@@ -77,6 +60,41 @@ function filterRecordKeysByUuid<T>(record: Record<string, T> | undefined): Recor
         if (UUID_REGEX.test(key)) result[key] = value;
     }
     return result;
+}
+
+/**
+ * Parses starterPrompts: Record<string, number> from AI-generated JSON.
+ * Keys are text strings, values are numeric weights.
+ */
+function parseStarterPrompts(raw: unknown): Record<string, number> | undefined {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+    const result: Record<string, number> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof key === 'string' && typeof value === 'number') {
+            result[key] = value;
+        }
+    }
+    return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function fillDialoguePromptDefaults(d: Record<string, unknown>): DialoguePrompt {
+    const now = Date.now();
+    return {
+        id: ensureId(d),
+        name: (d.name as string) || 'Unnamed Dialogue',
+        description: (d.description as string) || '',
+        content: (d.content as string) || '',
+        dialoguePromptBindings: filterValidUuids(d.dialoguePromptBindings as string[] | undefined),
+        dialoguePromptWeight: (d.dialoguePromptWeight as number) ?? 1,
+        dialoguePromptBreakProbability: (d.dialoguePromptBreakProbability as number) ?? 0,
+        dialoguePromptSkipProbability: (d.dialoguePromptSkipProbability as number) ?? 0,
+        regularExpressionActivationTriggers: parseRegexTriggers(d.regularExpressionActivationTriggers),
+        regularExpressionDeactivationTriggers: parseRegexTriggers(d.regularExpressionDeactivationTriggers),
+        regularExpressionExclusionActivationTriggers: parseRegexTriggers(d.regularExpressionExclusionActivationTriggers),
+        regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(d.regularExpressionExclusionDeactivationTriggers),
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
 }
 
 function fillTextCharacterInjectionDefaults(t: Record<string, unknown>): TextCharacterInjection {
@@ -115,6 +133,7 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
     const now = Date.now();
     const rawClothings = Array.isArray(c.clothings) ? c.clothings as Record<string, unknown>[] : [];
     const rawTextInjections = Array.isArray(c.textCharacterInjections) ? c.textCharacterInjections as Record<string, unknown>[] : [];
+    const rawDialoguePrompts = Array.isArray(c.dialoguePrompts) ? c.dialoguePrompts as Record<string, unknown>[] : [];
     return {
         id: ensureId(c),
         name: (c.name as string) || 'Unnamed',
@@ -124,8 +143,8 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
         systemPrompt: (c.systemPrompt as string) || '',
         thinkPrompt: (c.thinkPrompt as string) || undefined,
         appearancePrompt: (c.appearancePrompt as string) || undefined,
-        dialoguePrompt: (c.dialoguePrompt as string) || undefined,
-        starterPrompt: (c.starterPrompt as string) || undefined,
+        dialoguePrompts: rawDialoguePrompts.map(item => fillDialoguePromptDefaults(item)),
+        starterPrompts: parseStarterPrompts(c.starterPrompts),
         sampler: samplers.length > 0 ? samplers[0] : undefined,
         initiativeWeight: (c.initiativeWeight as number) ?? 5,
         chatProbability: (c.chatProbability as number) ?? 0.8,
@@ -283,6 +302,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         autonomousInteractionIntervalMs: (p.autonomousInteractionIntervalMs as number) ?? 10000,
         volume: (p.volume as number) ?? -1,
         forceNameReveal: (p.forceNameReveal as boolean) ?? false,
+        displayToolUsage: (p.displayToolUsage as boolean) ?? false,
         enableCharacterExpression: (p.enableCharacterExpression as boolean) ?? false,
         randomizeTextCharacterInjection: (p.randomizeTextCharacterInjection as boolean) ?? false,
         randomizeTextCharacterInjectionOnRetry: (p.randomizeTextCharacterInjectionOnRetry as boolean) ?? true,
@@ -415,7 +435,6 @@ export function resolveWorldCrossReferences(
     const contexts = world.contexts;
     const locations = world.locations;
 
-    // All bindings are UUID-only. Filter out any non-UUID references.
     for (const context of contexts) {
         context.characterBindings = filterValidUuids(context.characterBindings);
     }
@@ -426,6 +445,11 @@ export function resolveWorldCrossReferences(
         }
         for (const injection of character.textCharacterInjections) {
             injection.textCharacterInjectionBindings = filterValidUuids(injection.textCharacterInjectionBindings);
+        }
+        if (character.dialoguePrompts) {
+            for (const dp of character.dialoguePrompts) {
+                dp.dialoguePromptBindings = filterValidUuids(dp.dialoguePromptBindings);
+            }
         }
     }
 

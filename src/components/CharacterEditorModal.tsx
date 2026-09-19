@@ -1,7 +1,7 @@
 // src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacterInjection, tool } from '../types';
+import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacterInjection, DialoguePrompt, tool } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from '../storage/serverStorage';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getChatImpatienceSensitivityValueFromText, getSkipProbabilityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText, getMaximumActionStaminaValueFromText } from '../hooks/chatTraitsDetection';
@@ -12,6 +12,7 @@ import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
 import { CharacterImageEditorModal } from './CharacterImageEditorModal';
 import { CharacterClothingEditorModal } from './CharacterClothingEditorModal';
 import { CharacterTextCharacterInjectionEditorModal } from './CharacterTextCharacterInjectionEditorModal';
+import { CharacterDialoguePromptEditorModal } from './CharacterDialoguePromptEditorModal';
 import '../main.css';
 import { defaultCharacterTools } from '../dictionaries/defaults';
 
@@ -89,8 +90,6 @@ function CharacterEditorModalInner({
     const [systemPrompt, setSystemPrompt] = useState(existingCharacter?.systemPrompt || '');
     const [thinkPrompt, setThinkPrompt] = useState(existingCharacter?.thinkPrompt || '');
     const [appearancePrompt, setAppearancePrompt] = useState(existingCharacter?.appearancePrompt || '');
-    const [dialoguePrompt, setDialoguePrompt] = useState(existingCharacter?.dialoguePrompt || '');
-    const [starterPrompt, setStarterPrompt] = useState(existingCharacter?.starterPrompt || '');
     const [firstMessage, setFirstMessage] = useState('');
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(() => {
@@ -134,12 +133,15 @@ function CharacterEditorModalInner({
     const [memories, setMemories] = useState<Record<string, Memory[]>>(existingCharacter?.memories ?? {});
     const [clothings, setClothings] = useState<Clothing[]>(existingCharacter?.clothings ?? []);
     const [textCharacterInjections, setTextCharacterInjections] = useState<TextCharacterInjection[]>(existingCharacter?.textCharacterInjections ?? []);
+    const [dialoguePrompts, setDialoguePrompts] = useState<DialoguePrompt[]>(existingCharacter?.dialoguePrompts ?? []);
+    const [starterPrompts, setStarterPrompts] = useState<Record<string, number>>(existingCharacter?.starterPrompts ?? {});
 
     const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
     const [showMemoryManager, setShowMemoryManager] = useState(false);
     const [showImageEditor, setShowImageEditor] = useState(false);
     const [showClothingEditor, setShowClothingEditor] = useState(false);
     const [showTextInjectionEditor, setShowTextInjectionEditor] = useState(false);
+    const [showDialoguePromptEditor, setShowDialoguePromptEditor] = useState(false);
     const [emotionImages, setEmotionImages] = useState<Record<string, string>>(existingCharacter?.images ?? {});
 
     const [pendingCharacterId] = useState<string | null>(existingCharacter ? null : uuidv4());
@@ -192,8 +194,7 @@ function CharacterEditorModalInner({
                 { key: 'systemPrompt', text: existingCharacter?.systemPrompt || '' },
                 { key: 'thinkPrompt', text: existingCharacter?.thinkPrompt || '' },
                 { key: 'appearancePrompt', text: existingCharacter?.appearancePrompt || '' },
-                { key: 'dialoguePrompt', text: existingCharacter?.dialoguePrompt || '' },
-                { key: 'starterPrompt', text: existingCharacter?.starterPrompt || '' },
+                { key: 'starterPrompt', text: '' },
             ];
 
             for (const { key, text } of fields) {
@@ -275,8 +276,6 @@ function CharacterEditorModalInner({
         setSystemPrompt(fields.systemPrompt);
         setThinkPrompt('');
         setAppearancePrompt(fields.appearancePrompt);
-        setDialoguePrompt(fields.dialoguePrompt);
-        setStarterPrompt(fields.starterPrompt || '');
         setFirstMessage(fields.firstMessage);
         setImageFile(file); setImagePreview(URL.createObjectURL(file));
         setAutoDetected({ iw: null, cp: null, ms: null });
@@ -294,11 +293,12 @@ function CharacterEditorModalInner({
         setMemories({});
         setClothings([]);
         setTextCharacterInjections([]);
+        setDialoguePrompts([]);
+        setStarterPrompts({});
         countFieldTokens('systemPrompt', fields.systemPrompt);
         countFieldTokens('thinkPrompt', '');
         countFieldTokens('appearancePrompt', fields.appearancePrompt);
-        countFieldTokens('dialoguePrompt', fields.dialoguePrompt);
-        countFieldTokens('starterPrompt', fields.starterPrompt || '');
+        countFieldTokens('starterPrompt', '');
         setSubmitError(null);
         const extended = card as ParsedCharacterCardExtended;
         if (extended.emotionImages && Object.keys(extended.emotionImages).length > 0) {
@@ -415,8 +415,8 @@ function CharacterEditorModalInner({
             description, systemPrompt,
             thinkPrompt: thinkPrompt.trim() || undefined,
             appearancePrompt: appearancePrompt.trim() || undefined,
-            dialoguePrompt: dialoguePrompt.trim() || undefined,
-            starterPrompt: starterPrompt.trim() || undefined,
+            dialoguePrompts: dialoguePrompts.length > 0 ? dialoguePrompts : undefined,
+            starterPrompts: Object.keys(starterPrompts).length > 0 ? starterPrompts : undefined,
             images: finalImages,
             voice: finalVoiceFilename, sampler: finalSampler,
             initiativeWeight: finalIW, chatProbability: finalCP, maximumChatStamina: finalMS,
@@ -450,6 +450,34 @@ function CharacterEditorModalInner({
     const hasVoice = !!voiceFile || !!existingVoiceName;
     const effectiveCharacterId = existingCharacter?.id || pendingCharacterId || '';
     const memoryCount = Object.values(memories).reduce((sum, arr) => sum + arr.length, 0);
+
+    // Starter prompts helper
+    const [newStarterPromptText, setNewStarterPromptText] = useState('');
+    const [newStarterPromptWeight, setNewStarterPromptWeight] = useState<string>('1');
+
+    const handleAddStarterPrompt = useCallback(() => {
+        const text = newStarterPromptText.trim();
+        if (!text) return;
+        const weight = Number.parseFloat(newStarterPromptWeight);
+        const finalWeight = Number.isNaN(weight) || weight <= 0 ? 1 : weight;
+        setStarterPrompts(prev => ({ ...prev, [text]: finalWeight }));
+        setNewStarterPromptText('');
+        setNewStarterPromptWeight('1');
+    }, [newStarterPromptText, newStarterPromptWeight]);
+
+    const handleRemoveStarterPrompt = useCallback((text: string) => {
+        setStarterPrompts(prev => {
+            const next = { ...prev };
+            delete next[text];
+            return next;
+        });
+    }, []);
+
+    const handleStarterPromptWeightChange = useCallback((text: string, value: string) => {
+        const weight = Number.parseFloat(value);
+        const finalWeight = Number.isNaN(weight) || weight <= 0 ? 1 : weight;
+        setStarterPrompts(prev => ({ ...prev, [text]: finalWeight }));
+    }, []);
 
     return (
         <>
@@ -511,8 +539,29 @@ function CharacterEditorModalInner({
                                 </div>
                                 <div className="editor-field-wrapper"><textarea value={thinkPrompt} onChange={(e) => { setThinkPrompt(e.target.value); countFieldTokens('thinkPrompt', e.target.value); }} className="editor-textarea editor-textarea-think" placeholder="Think Prompt" disabled={isUploading} />{renderTokenCount('thinkPrompt')}</div>
                                 <div className="editor-field-wrapper"><textarea value={appearancePrompt} onChange={(e) => { setAppearancePrompt(e.target.value); countFieldTokens('appearancePrompt', e.target.value); }} className="editor-textarea editor-textarea-appearance" placeholder="Appearance Prompt" disabled={isUploading} />{renderTokenCount('appearancePrompt')}</div>
-                                <div className="editor-field-wrapper"><textarea value={dialoguePrompt} onChange={(e) => { setDialoguePrompt(e.target.value); countFieldTokens('dialoguePrompt', e.target.value); }} className="editor-textarea editor-textarea-dialogue" placeholder="Dialogue Examples" disabled={isUploading} />{renderTokenCount('dialoguePrompt')}</div>
-                                <div className="editor-field-wrapper"><textarea value={starterPrompt} onChange={(e) => { setStarterPrompt(e.target.value); countFieldTokens('starterPrompt', e.target.value); }} className="editor-textarea editor-textarea-starter" placeholder="Starter Prompt" disabled={isUploading} />{renderTokenCount('starterPrompt')}</div>
+
+                                {/* Starter Prompts (weighted) */}
+                                <div className="editor-section" style={{ margin: 0 }}>
+                                    <div className="editor-section-title">Starter Prompts ({Object.keys(starterPrompts).length})</div>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Weighted starter messages. Higher weight = more likely to be selected.</div>
+                                    <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                                        <input type="text" value={newStarterPromptText} onChange={e => setNewStarterPromptText(e.target.value)} className="editor-input" placeholder="Starter prompt text..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
+                                        <input type="number" value={newStarterPromptWeight} onChange={e => setNewStarterPromptWeight(e.target.value)} className="editor-input" placeholder="Wt" min="0.1" step="0.5" style={{ width: '50px', fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
+                                        <button type="button" onClick={handleAddStarterPrompt} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading}>+</button>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '120px', overflowY: 'auto' }}>
+                                        {Object.entries(starterPrompts).map(([text, weight]) => (
+                                            <div key={text} style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                                <span style={{ flex: 1, fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{text}</span>
+                                                <input type="number" value={weight} onChange={e => handleStarterPromptWeightChange(text, e.target.value)} className="editor-input" min="0.1" step="0.5" style={{ width: '45px', fontSize: '0.6rem', padding: '2px 4px' }} disabled={isUploading} />
+                                                <button type="button" onClick={() => handleRemoveStarterPrompt(text)} className="toolbar-button" title="Remove" style={{ width: '18px', height: '18px', fontSize: '0.6rem', color: '#ff4444', padding: 0 }} disabled={isUploading}>×</button>
+                                            </div>
+                                        ))}
+                                        {Object.keys(starterPrompts).length === 0 && (
+                                            <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', padding: '4px 0' }}>No starter prompts. Add above.</div>
+                                        )}
+                                    </div>
+                                </div>
 
                                 <div className="editor-bottom-section">
                                     <select value={selectedSamplerId} onChange={(e) => setSelectedSamplerId(e.target.value)} className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingSamplers || isUploading}>
@@ -534,7 +583,11 @@ function CharacterEditorModalInner({
                                     </div>
 
                                     <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowDialoguePromptEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Dialogue Prompts ({dialoguePrompts.length})</button>
                                         <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowTextInjectionEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Text Injection ({textCharacterInjections.length})</button>
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                                         <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading} style={{ flex: 1 }}>Memory ({memoryCount})</button>
                                     </div>
                                 </div>
@@ -603,6 +656,13 @@ function CharacterEditorModalInner({
                 onClose={() => setShowClothingEditor(false)}
                 clothings={clothings}
                 onSaveClothings={setClothings}
+            />
+
+            <CharacterDialoguePromptEditorModal
+                isOpen={showDialoguePromptEditor}
+                onClose={() => setShowDialoguePromptEditor(false)}
+                dialoguePrompts={dialoguePrompts}
+                onSaveDialoguePrompts={setDialoguePrompts}
             />
 
             <CharacterTextCharacterInjectionEditorModal

@@ -117,7 +117,10 @@ function isEntityHollow(
                 (ti.textCharacterInjectionBindings && ti.textCharacterInjectionBindings.length > 0) ||
                 (ti.textCharacterWeights && Object.keys(ti.textCharacterWeights).length > 0)
             );
-            return !(c.systemPrompt?.trim() || c.appearancePrompt?.trim() || c.dialoguePrompt?.trim() || c.thinkPrompt?.trim() || c.starterPrompt?.trim())
+            const hasDialoguePrompts = c.dialoguePrompts && c.dialoguePrompts.length > 0;
+            const hasNonEmptyDialoguePrompt = hasDialoguePrompts && c.dialoguePrompts?.some(dp => dp.content?.trim());
+            const hasStarterPrompts = c.starterPrompts && Object.keys(c.starterPrompts).length > 0;
+            return !(c.systemPrompt?.trim() || c.appearancePrompt?.trim() || hasNonEmptyDialoguePrompt || c.thinkPrompt?.trim() || hasStarterPrompts)
                 && !(c.images && Object.keys(c.images).length > 0)
                 && !c.voice?.trim()
                 && !(c.memories && Object.values(c.memories).some(arr => arr.length > 0))
@@ -467,6 +470,15 @@ export function DataManagerModal({
                 for (const injection of c.textCharacterInjections) {
                     for (const boundId of (injection.textCharacterInjectionBindings || [])) {
                         if (!injectionIdSet.has(boundId)) issues.push({ entityType: 'Character', entityName: c.name, issue: `Text injection "${injection.name}" references missing injection binding`, refType: 'Text Injection', refId: boundId });
+                    }
+                }
+            }
+            // Validate dialogue prompt bindings (internal references within same character)
+            if (c.dialoguePrompts && c.dialoguePrompts.length > 0) {
+                const dialoguePromptIdSet = new Set(c.dialoguePrompts.map(dp => dp.id));
+                for (const dp of c.dialoguePrompts) {
+                    for (const boundId of (dp.dialoguePromptBindings || [])) {
+                        if (!dialoguePromptIdSet.has(boundId)) issues.push({ entityType: 'Character', entityName: c.name, issue: `Dialogue prompt "${dp.name}" references missing dialogue prompt binding`, refType: 'Dialogue Prompt', refId: boundId });
                     }
                 }
             }
