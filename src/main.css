@@ -2668,6 +2668,31 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
 
 .editor-textarea { resize: vertical; font-family: monospace; min-height: 80px; line-height: 1.6; }
 
+/* FIX: Prevent textareas from stretching modal width */
+.editor-modal-content {
+    max-width: 600px;
+    min-width: 0;
+}
+
+.editor-modal-body {
+    min-width: 0;
+    overflow-x: hidden;
+}
+
+.editor-input,
+.editor-textarea,
+.editor-select {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+    word-break: break-word;
+}
+
+.editor-section {
+    min-width: 0;
+    overflow: hidden;
+}
+
 .editor-input:focus,
 .editor-textarea:focus,
 .editor-select:focus {
