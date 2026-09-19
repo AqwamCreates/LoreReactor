@@ -154,6 +154,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         massDeleteId, isMassActive,
         onStopGeneration,
         onNavigateToBranchSource,
+        parentInteractionDataName,
         focusedMessageId,
         setFocusedMessageId,
     } = props;
@@ -424,7 +425,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
             {hasParentBranch && onNavigateToBranchSource && (
                 <div className="vn-branch-indicator">
                     <button type="button" className="vn-branch-button" onClick={onNavigateToBranchSource}>
-                        🌿 Return to Source
+                        🌿 Return to {parentInteractionDataName || 'Source'}
                     </button>
                 </div>
             )}

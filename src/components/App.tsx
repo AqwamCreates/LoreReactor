@@ -81,7 +81,6 @@ function hasMessagesChanged(a: InteractionData | null, b: InteractionData): bool
         if (aMsg.id !== bMsg.id) return true;
         if (aMsg.character.id !== bMsg.character.id) return true;
         
-        // Compare text content for chat messages
         if ('textContent' in aMsg && 'textContent' in bMsg) {
             if (aMsg.textContent !== bMsg.textContent) return true;
         }
@@ -267,7 +266,6 @@ function App() {
         return total;
     }, [interactionData]);
 
-    // Maximum context length across all models in the active strategy or selected model
     const maximumContextLength = useMemo(() => {
         if (activeStrategy) {
             let max = 0;
@@ -285,6 +283,12 @@ function App() {
         }
         return defaultContextLength;
     }, [activeStrategy, selectedModelId, allModels]);
+
+    const parentInteractionDataName = useMemo(() => {
+        if (!interactionData?.parentInteractionDataId) return null;
+        const parentShell = rawChatShells.find(s => s.id === interactionData.parentInteractionDataId);
+        return parentShell?.name ?? null;
+    }, [interactionData, rawChatShells]);
 
     const loadLocalModelForBudgetStrategyEngine = useCallback(async (modelId: string): Promise<number | null> => {
         const existing = runningModels[modelId];
@@ -440,11 +444,9 @@ function App() {
         
         if (!chatModifiedRef.current && hasContent) chatModifiedRef.current = true;
         
-        // Only save if message count actually changed
         if (chatModifiedRef.current && historyLength !== previousMessageCountRef.current) {
             const previousData = previousInteractionDataRef.current;
             
-            // Check if interactionData actually changed (not just reference)
             const hasActualChange = !previousData || 
                 previousData.interactionHistory?.length !== historyLength ||
                 previousData.name !== interactionData.name ||
@@ -704,12 +706,14 @@ function App() {
 
     const massStartIndex = isMassActive ? displayMessages.findIndex(m => m.id === massDeleteId) : -1;
 
-    const timeUntilResetRef = useRef<number | undefined>(undefined);
-    if (budgetData && activeStrategy && budgetData.resetDuration > 0) {
-        timeUntilResetRef.current = Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp));
-    } else {
-        timeUntilResetRef.current = undefined;
-    }
+    const [timeUntilReset, setTimeUntilReset] = useState<number | undefined>(undefined);
+    useEffect(() => {
+        if (budgetData && activeStrategy && budgetData.resetDuration > 0) {
+            setTimeUntilReset(Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp)));
+        } else {
+            setTimeUntilReset(undefined);
+        }
+    }, [budgetData, activeStrategy]);
 
     const viewProps: ViewModeProps = {
         interactionData: interactionData!,
@@ -732,6 +736,7 @@ function App() {
         isEditingTitle,
         editTitleValue,
         parentInteractionMessageId: interactionData?.parentInteractionMessageId ?? null,
+        parentInteractionDataName,
         streamingCharacter,
         chatHistoryRef,
         messageEndRef,
@@ -823,7 +828,7 @@ function App() {
                                             maximumNumberOfContextTokens={maximumNumberOfContextTokens}
                                             budgetSpent={budgetData?.budgetSpent}
                                             maximumBudget={activeStrategy?.maximumBudget}
-                                            timeUntilReset={timeUntilResetRef.current}
+                                            timeUntilReset={timeUntilReset}
                                         />
                                     </div>
                                 </div>

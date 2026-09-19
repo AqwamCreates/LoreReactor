@@ -15,7 +15,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         activeToolbarId, portraitUrlCache, displayNameCache,
         centerAvatar, streamingPortraitUrl, formattedStreamingText,
         isLoading, chatHistoryRef, messageEndRef, editTextareaRef,
-        parentInteractionMessageId,
+        parentInteractionMessageId, parentInteractionDataName,
         focusedMessageId, setFocusedMessageId,
         onAvatarClick, onStartEditing, onCancelEditing, onSaveEdit,
         onRegenerateFromEdit, onResumeGeneration, onCopyText,
@@ -57,7 +57,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         const elements = container.querySelectorAll('[data-message-id]');
 
         let bestId: string | null = null;
-        let bestOverlap = -Infinity;
+        let bestOverlap = Number.NEGATIVE_INFINITY;
 
         for (const el of elements) {
             const rect = el.getBoundingClientRect();
@@ -180,6 +180,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                             displayName={dn}
                             isStem={stem}
                             beforeBranch={beforeBranch}
+                            parentInteractionDataName={parentInteractionDataName}
                             onAvatarClick={onAvatarClick}
                             onStartEditing={onStartEditing}
                             onCancelEditing={onCancelEditing}

@@ -25,6 +25,7 @@ export interface ViewModeProps {
     editTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
     parentInteractionMessageId: string | null;
     locationBackgroundUrl: string | null;
+    parentInteractionDataName?: string | null;
 
     focusedMessageId: string | null;
     setFocusedMessageId: (id: string | null) => void;

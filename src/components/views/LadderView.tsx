@@ -13,7 +13,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
         activeToolbarId, portraitUrlCache, displayNameCache,
         formattedStreamingText, isLoading, streamingPortraitUrl,
         chatHistoryRef, messageEndRef, editTextareaRef,
-        parentInteractionMessageId,
+        parentInteractionMessageId, parentInteractionDataName,
         focusedMessageId, setFocusedMessageId,
         onAvatarClick, onStartEditing, onCancelEditing, onSaveEdit,
         onRegenerateFromEdit, onResumeGeneration, onCopyText,
@@ -140,6 +140,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
                         displayName={dn}
                         isStem={stem}
                         beforeBranch={beforeBranch}
+                        parentInteractionDataName={parentInteractionDataName}
                         onAvatarClick={onAvatarClick}
                         onStartEditing={onStartEditing}
                         onCancelEditing={onCancelEditing}

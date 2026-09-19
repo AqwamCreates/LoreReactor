@@ -28,6 +28,7 @@ interface MessageBubbleProps {
     displayName: string;
     isStem: boolean;
     beforeBranch: boolean;
+    parentInteractionDataName?: string | null;
     onAvatarClick: (e: React.MouseEvent, id: string, character: Character) => void;
     onStartEditing: (id: string, text: string) => void;
     onCancelEditing: () => void;
@@ -57,6 +58,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     message, index, viewMode, currentCharacterId,
     editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
     activeToolbarId, portraitUrl, displayName, isStem, beforeBranch,
+    parentInteractionDataName,
     onAvatarClick, onStartEditing, onCancelEditing, onSaveEdit, onRegenerateFromEdit,
     onResumeGeneration, onCopyText, onRegenerateFromMessage,
     onBranch, onClone, onDelete, onSetMassDelete,
@@ -86,7 +88,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
     const isProtag = message.character.id === currentCharacterId;
     const isEditing = editingId === message.id;
-        const inDelRange = isMassActive && massStartIndex !== null && massStartIndex !== -1 && index >= massStartIndex;
+    const inDelRange = isMassActive && massStartIndex !== null && massStartIndex !== -1 && index >= massStartIndex;
     const showAvatar = viewMode === 'ladder' && !isProtag && !isAmbient;
 
     // Only initialize editing state when isEditing first becomes true,
@@ -480,19 +482,20 @@ export const MessageBubble = React.memo(function MessageBubble({
             </div>
 
             {beforeBranch && (
-                <button
-                    type="button"
-                    className="branch-separator-line clickable"
-                    onClick={onNavigateToBranchSource}
-                    title="Click to go back to source chat"
-                    style={{ cursor: 'pointer' }}
-                >
-                    <span className="branch-separator-content">
+                <div className="branch-separator-line">
+                    <button
+                        type="button"
+                        className="branch-separator-content"
+                        onClick={onNavigateToBranchSource}
+                        title="Click to go back to source chat"
+                    >
                         <span className="branch-separator-icon">🌿</span>
-                        <span className="branch-separator-text">Timeline Branches Here</span>
+                        <span className="branch-separator-text">
+                            Timeline Branches From {parentInteractionDataName || 'Unknown Chat'}
+                        </span>
                         <span className="branch-separator-icon">🌿</span>
-                    </span>
-                </button>
+                    </button>
+                </div>
             )}
         </React.Fragment>
     );
