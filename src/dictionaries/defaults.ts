@@ -18,6 +18,8 @@ export const defaultCharacterTools: Record<tool, boolean> = {
     calculator: false,
     web: false,
     dialogue: false,
+    knowledge: false,
+    memory: false,
     lookup: false,
     map: false,
     audio: false,
@@ -56,8 +58,6 @@ export const defaultCharacter: Character = {
     numberOfMessagesToDisableDialoguePrompt: 1,
     numberOfMessagesToDisableStarterPrompt: 1,
     tools: { ...defaultCharacterTools },
-    enableMemoryWriting: false,
-    enableMemoryReading: false,
     clothings: [],
     textCharacterInjections: [],
     memories: {},
@@ -129,14 +129,15 @@ export const defaultActions: InterjectableAction[] = [
 
 export const defaultInputStrategy: PromptBlockType[] = [
     'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt',
-    'Memory', 'Chat History', 'Context', 'Location', 'Weather', 'Date And Time', 'Time Elapsed',
+    'Chat History', 'Context', 'Location', 'Weather', 'Date And Time', 'Time Elapsed',
     'Fatigue Information', 'Starter Prompt', 'Tool Instructions', 'Text Injection',
 ];
 
 export const defaultProfileTools: Record<tool, number> = {
     pick: 0, date: 0, coin: 0, dice: 0, random: 0, rng: 0,
-    move: 0, timer: 0, stopwatch: 0, calculator: 0, web: 0, dialogue: 0, lookup: 0,
-    map: 0, audio: 0, key: 0, clothing: 0, note: 0, inventory: 0,
+    move: 0, timer: 0, stopwatch: 0, calculator: 0, web: 0, 
+    dialogue: 0, knowledge: 0, memory: 0,
+    lookup: 0, map: 0, audio: 0, key: 0, clothing: 0, note: 0, inventory: 0,
     invite: 0, kick: 0, teleport: 0, 
     summon: 0, narrate: 0, inspect: 0,
     administrator: 0, creator: 0, destroyer: 0,

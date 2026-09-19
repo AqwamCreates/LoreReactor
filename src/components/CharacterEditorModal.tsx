@@ -1,7 +1,7 @@
 // src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacterInjection, DialoguePrompt, tool } from '../types';
+import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, tool } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from '../storage/serverStorage';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getChatImpatienceSensitivityValueFromText, getSkipProbabilityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText, getMaximumActionStaminaValueFromText } from '../hooks/chatTraitsDetection';
@@ -13,6 +13,7 @@ import { CharacterImageEditorModal } from './CharacterImageEditorModal';
 import { CharacterClothingEditorModal } from './CharacterClothingEditorModal';
 import { CharacterTextCharacterInjectionEditorModal } from './CharacterTextCharacterInjectionEditorModal';
 import { CharacterDialoguePromptEditorModal } from './CharacterDialoguePromptEditorModal';
+import { CharacterKnowledgePromptEditorModal } from './CharacterKnowledgePromptEditorModal';
 import '../main.css';
 import { defaultCharacterTools } from '../dictionaries/defaults';
 
@@ -126,13 +127,12 @@ function CharacterEditorModalInner({
     const [numberOfMessagesToDisableStarterPromptStr, setNumberOfMessagesToDisableStarterPromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableStarterPrompt ?? DEFAULT_DISABLE_STARTER_PROMPT));
 
     const [tools, setTools] = useState<Record<tool, boolean>>(existingCharacter?.tools ?? { ...defaultCharacterTools });
-    const [enableMemoryWriting, setEnableMemoryWriting] = useState<boolean>(existingCharacter?.enableMemoryWriting ?? false);
-    const [enableMemoryReading, setEnableMemoryReading] = useState<boolean>(existingCharacter?.enableMemoryReading ?? false);
 
     const [memories, setMemories] = useState<Record<string, Memory[]>>(existingCharacter?.memories ?? {});
     const [clothings, setClothings] = useState<Clothing[]>(existingCharacter?.clothings ?? []);
     const [textCharacterInjections, setTextCharacterInjections] = useState<TextCharacterInjection[]>(existingCharacter?.textCharacterInjections ?? []);
     const [dialoguePrompts, setDialoguePrompts] = useState<DialoguePrompt[]>(existingCharacter?.dialoguePrompts ?? []);
+    const [knowledgePrompts, setKnowledgePrompts] = useState<KnowledgePrompt[]>(existingCharacter?.knowledgePrompts ?? []);
     const [starterPrompts, setStarterPrompts] = useState<Record<string, number>>(existingCharacter?.starterPrompts ?? {});
 
     const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
@@ -141,6 +141,7 @@ function CharacterEditorModalInner({
     const [showClothingEditor, setShowClothingEditor] = useState(false);
     const [showTextInjectionEditor, setShowTextInjectionEditor] = useState(false);
     const [showDialoguePromptEditor, setShowDialoguePromptEditor] = useState(false);
+    const [showKnowledgePromptEditor, setShowKnowledgePromptEditor] = useState(false);
     const [emotionImages, setEmotionImages] = useState<Record<string, string>>(existingCharacter?.images ?? {});
 
     const [pendingCharacterId] = useState<string | null>(existingCharacter ? null : uuidv4());
@@ -288,11 +289,11 @@ function CharacterEditorModalInner({
         setNumberOfMessagesToDisableDialoguePromptStr(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
         setNumberOfMessagesToDisableStarterPromptStr(String(DEFAULT_DISABLE_STARTER_PROMPT));
         setTools({ ...defaultCharacterTools });
-        setEnableMemoryWriting(false); setEnableMemoryReading(false);
         setMemories({});
         setClothings([]);
         setTextCharacterInjections([]);
         setDialoguePrompts([]);
+        setKnowledgePrompts([]);
         // Migrate old singular starterPrompt into weighted format
         if (fields.starterPrompt?.trim()) {
             setStarterPrompts({ [fields.starterPrompt.trim()]: 1 });
@@ -420,6 +421,7 @@ function CharacterEditorModalInner({
             thinkPrompt: thinkPrompt.trim() || undefined,
             appearancePrompt: appearancePrompt.trim() || undefined,
             dialoguePrompts: dialoguePrompts.length > 0 ? dialoguePrompts : undefined,
+            knowledgePrompts: knowledgePrompts.length > 0 ? knowledgePrompts : undefined,
             starterPrompts: Object.keys(starterPrompts).length > 0 ? starterPrompts : undefined,
             images: finalImages,
             voice: finalVoiceFilename, sampler: finalSampler,
@@ -433,8 +435,6 @@ function CharacterEditorModalInner({
             numberOfMessagesToDisableDialoguePrompt: Number.isNaN(rawDisableDialogue) ? DEFAULT_DISABLE_DIALOGUE_PROMPT : Math.max(0, rawDisableDialogue),
             numberOfMessagesToDisableStarterPrompt: Number.isNaN(rawDisableStarter) ? DEFAULT_DISABLE_STARTER_PROMPT : Math.max(0, rawDisableStarter),
             tools: { ...tools },
-            enableMemoryWriting,
-            enableMemoryReading,
             clothings,
             textCharacterInjections,
             memories,
@@ -587,11 +587,12 @@ function CharacterEditorModalInner({
                                     </div>
 
                                     <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowDialoguePromptEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Dialogue Prompts ({dialoguePrompts.length})</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowTextInjectionEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Text Injection ({textCharacterInjections.length})</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowDialoguePromptEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Dialogue ({dialoguePrompts.length})</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowKnowledgePromptEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Knowledge ({knowledgePrompts.length})</button>
                                     </div>
 
                                     <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowTextInjectionEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Text Injection ({textCharacterInjections.length})</button>
                                         <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading} style={{ flex: 1 }}>Memory ({memoryCount})</button>
                                     </div>
                                 </div>
@@ -631,8 +632,6 @@ function CharacterEditorModalInner({
                 numberOfMessagesToDisableDialoguePromptStr={numberOfMessagesToDisableDialoguePromptStr}
                 numberOfMessagesToDisableStarterPromptStr={numberOfMessagesToDisableStarterPromptStr}
                 tools={tools}
-                enableMemoryWriting={enableMemoryWriting}
-                enableMemoryReading={enableMemoryReading}
                 selectedStopPatternIds={selectedStopPatternIds}
                 allSamplers={allSamplers}
                 isUploading={isUploading}
@@ -650,8 +649,6 @@ function CharacterEditorModalInner({
                 onDisableDialogueChange={setNumberOfMessagesToDisableDialoguePromptStr}
                 onDisableStarterChange={setNumberOfMessagesToDisableStarterPromptStr}
                 onToolToggle={handleToolToggle}
-                onEnableMemoryWritingChange={setEnableMemoryWriting}
-                onEnableMemoryReadingChange={setEnableMemoryReading}
                 onStopPatternToggle={handleStopPatternToggle}
             />
 
@@ -667,6 +664,13 @@ function CharacterEditorModalInner({
                 onClose={() => setShowDialoguePromptEditor(false)}
                 dialoguePrompts={dialoguePrompts}
                 onSaveDialoguePrompts={setDialoguePrompts}
+            />
+
+            <CharacterKnowledgePromptEditorModal
+                isOpen={showKnowledgePromptEditor}
+                onClose={() => setShowKnowledgePromptEditor(false)}
+                knowledgePrompts={knowledgePrompts}
+                onSaveKnowledgePrompts={setKnowledgePrompts}
             />
 
             <CharacterTextCharacterInjectionEditorModal

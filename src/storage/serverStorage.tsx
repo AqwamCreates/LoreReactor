@@ -849,6 +849,7 @@ const profileRepo = createRepository<Profile, RawProfile>({
     return hydrateEntity<Profile, RawProfile>(raw, id, {
         name: 'Unknown Profile',
         forceNameReveal: false,
+        toolUsageDisplayMode: 'none',
         enableCharacterExpression: false,
         useCurrentDateAndTime: false,
         useTimeElapsed: false,
@@ -869,8 +870,6 @@ const profileRepo = createRepository<Profile, RawProfile>({
         doNotInjectDefaultStopTokens: false,
         stripThinkTokens: false,
         tools: {} as Record<tool, number>,
-        enableMemoryWriting: 0,
-        enableMemoryReading: 0,
         inputStrategy: [...defaultInputStrategy],
     }, {
         summarizationSteps: () => summarizationSteps,
@@ -1048,6 +1047,8 @@ export async function loadInteractionMessages(interactionData: InteractionData):
                 tools: {} as Record<tool, boolean>,
                 enableMemoryWriting: false,
                 enableMemoryReading: false,
+                clothings: [],
+                textCharacterInjections: [],
                 memories: {},
                 firstCreatedTimestamp: Date.now(),
                 lastUpdatedTimestamp: Date.now()

@@ -35,7 +35,8 @@ const ALL_STRATEGY_TYPES: SummarizationStrategyType[] = [
 const TOOL_LABELS: Record<tool, string> = {
     pick: 'Random Pick', date: 'Current Date & Time', coin: 'Coin Flip', dice: 'Roll Dice',
     random: 'Random Number', rng: 'RNG Table', move: 'Move', timer: 'Timer',
-    stopwatch: 'Stopwatch', calculator: 'Calculator', web: 'Web Search', dialogue: 'Dialogue', lookup: 'Look Up',
+    stopwatch: 'Stopwatch', calculator: 'Calculator', web: 'Web Search', dialogue: 'Dialogue',
+    knowledge: 'Knowledge', memory: 'memory', lookup: 'Look Up',
     map: 'Map', audio: 'Audio', clothing: 'Clothing', note: 'Note', inventory: 'Inventory',
     invite: 'Invite Participant', kick: 'Kick Participant', teleport: 'Teleport',
     key: 'Key', summon: 'Summon Character',
@@ -171,8 +172,6 @@ function ProfileEditorContent({
     const [volume, setVolume] = useState<number>(ep?.volume ?? -1);
     const [stripThinkTokens, setStripThinkTokens] = useState(ep?.stripThinkTokens ?? false);
     const [tools, setTools] = useState<Record<tool, number>>(mergeToolsWithDefaults(ep?.tools));
-    const [enableMemoryWriting, setEnableMemoryWriting] = useState<number>(ep?.enableMemoryWriting ?? 0);
-    const [enableMemoryReading, setEnableMemoryReading] = useState<number>(ep?.enableMemoryReading ?? 0);
     const [narrateTexts, setNarrateTexts] = useState<Record<textType, boolean>>(ep ? migrateNarrateTexts(ep) : { ...DEFAULT_NARRATE_TEXTS });
     const [inputStrategy, setInputStrategy] = useState<(PromptBlockType | string)[]>(ep?.inputStrategy?.length ? ep.inputStrategy : []);
     const [summarizationSteps, setSummarizationSteps] = useState<SummarizationStep[]>(
@@ -227,7 +226,7 @@ function ProfileEditorContent({
             memoryRetentionWeight, contextSensitivity, maximumActionStamina,
             cacheInvalidationReductionLevel: cacheLevel, doNotInjectDefaultStopTokens,
             volume, stripThinkTokens, tools: { ...tools },
-            enableMemoryWriting, enableMemoryReading, narrateTexts: { ...narrateTexts },
+            narrateTexts: { ...narrateTexts },
             inputStrategy: [...inputStrategy],
             summarizationSteps: summarizationSteps.map((s, i) => ({
                 ...s, id: s.id || `step-${crypto.randomUUID()}`, order: i,
@@ -253,7 +252,8 @@ function ProfileEditorContent({
     const addBlock = (blockEntry: PromptBlockType | string) => { if (!inputStrategy.includes(blockEntry)) setInputStrategy(prev => [...prev, blockEntry]); };
     const removeBlock = (index: number) => { setInputStrategy(prev => prev.filter((_, i) => i !== index)); };
 
-    const missingBuiltInBlocks = ALL_BUILT_IN_BLOCK_TYPES.filter(b => !inputStrategy.includes(b));
+    // Filter out 'Memory' from built-in blocks — memory is now tool-driven
+    const missingBuiltInBlocks = ALL_BUILT_IN_BLOCK_TYPES.filter(b => !inputStrategy.includes(b) && b !== 'Memory');
     const availablePromptBlocks = allPromptBlocks.filter((pb: PromptBlock) => !inputStrategy.includes(pb.id));
 
     const handleStepDragStart = (e: React.DragEvent, index: number) => { setDraggedStepIndex(index); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(index)); setTimeout(() => { (e.target as HTMLElement).style.opacity = '0.5'; }, 0); };
@@ -352,8 +352,6 @@ function ProfileEditorContent({
                     <div className="editor-section"><span className="editor-section-title">Output Processing</span><ProfileCheckbox checked={stripThinkTokens} onChange={setStripThinkTokens} label="Strip Think Tokens" hint="Remove thinking tokens from displayed output. The model still uses them internally." /></div>
 
                     <div className="editor-section"><span className="editor-section-title">Tools</span><div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>-1 = force off for all characters. 0 = defer to each character's own setting. 1 = force on for all characters.</div>{allToolKeys.map(toolName => (<div key={toolName} style={{ marginBottom: '12px' }}><div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>{TOOL_LABELS[toolName]} Override</label><span style={SLIDER_VALUE_STYLE}>{tools[toolName] === -1 ? '(Force Off)' : tools[toolName] === 1 ? '(Force On)' : '(Character default)'}</span></div><SliderInput label="" value={tools[toolName]} minimumValue={-1} maximumValue={1} stepValue={1} decimals={0} onChange={(val) => handleToolChange(toolName, Math.round(val))} description="" /></div>))}</div>
-
-                    <div className="editor-section"><span className="editor-section-title">Memory</span><div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>-1 = force off for all. 0 = use each character's own setting. 1 = force on for all.</div>{renderOverrideSlider('Memory Reading Override', enableMemoryReading, -1, 1, 1, 0, (val) => setEnableMemoryReading(Math.round(val)), '', enableMemoryReading === 0 ? '(Character default)' : enableMemoryReading === -1 ? '(Force Off)' : '(Force On)')}{renderOverrideSlider('Memory Writing Override', enableMemoryWriting, -1, 1, 1, 0, (val) => setEnableMemoryWriting(Math.round(val)), '', enableMemoryWriting === 0 ? '(Character default)' : enableMemoryWriting === -1 ? '(Force Off)' : '(Force On)')}</div>
 
                     <div className="editor-section"><div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>Prompt Block Order</span><span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span></div><div style={CHECKBOX_HINT_STYLE}>Controls the order in which prompt sections are assembled. Includes built-in blocks and custom prompt blocks.</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>{inputStrategy.map((blockEntry, index) => (<div key={`${blockEntry}-${index}`} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, index)} className={`sampler-param-row ${draggedIndex === index ? 'sampler-param-dragging' : ''}`} style={{ padding: '6px 8px' }}><div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div><div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{index + 1}. {getBlockLabel(blockEntry)}</span></div><div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}><button type="button" onClick={() => moveBlock(index, -1)} disabled={index === 0} className="toolbar-button" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button><button type="button" onClick={() => moveBlock(index, 1)} disabled={index === inputStrategy.length - 1} className="toolbar-button" title="Move down" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === inputStrategy.length - 1 ? 0.3 : 1 }}>▼</button><button type="button" onClick={() => removeBlock(index)} className="toolbar-button" title="Remove from order" style={TOOLBAR_BTN_DELETE_STYLE}>×</button></div></div>))}</div>{(missingBuiltInBlocks.length > 0 || availablePromptBlocks.length > 0) && (<div style={{ marginTop: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}><select onChange={(e) => { const val = e.target.value; if (val) addBlock(val); e.target.value = ''; }} className="editor-select" defaultValue="" style={{ flex: 1 }}><option value="" disabled>+ Add a block</option>{missingBuiltInBlocks.length > 0 && <optgroup label="Built-in Blocks">{missingBuiltInBlocks.map(b => <option key={b} value={b}>{b}</option>)}</optgroup>}{availablePromptBlocks.length > 0 && <optgroup label="Custom Prompt Blocks">{availablePromptBlocks.map((pb: PromptBlock) => <option key={pb.id} value={pb.id}>🧱 {pb.name}</option>)}</optgroup>}</select></div>)}</div>
 

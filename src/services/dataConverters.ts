@@ -1,5 +1,5 @@
 // src/services/dataConverters.ts
-import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';
 import type { GeneratedOutput } from './dataTypes';
@@ -106,6 +106,23 @@ function fillDialoguePromptDefaults(d: Record<string, unknown>): DialoguePrompt 
     };
 }
 
+function fillKnowledgePromptDefaults(k: Record<string, unknown>): KnowledgePrompt {
+    const now = Date.now();
+    return {
+        id: ensureId(k),
+        name: (k.name as string) || 'Unnamed Knowledge',
+        description: (k.description as string) || '',
+        content: (k.content as string) || '',
+        knowledgePromptBindings: filterValidUuids(k.knowledgePromptBindings as string[] | undefined),
+        regularExpressionActivationTriggers: parseRegexTriggers(k.regularExpressionActivationTriggers),
+        regularExpressionDeactivationTriggers: parseRegexTriggers(k.regularExpressionDeactivationTriggers),
+        regularExpressionExclusionActivationTriggers: parseRegexTriggers(k.regularExpressionExclusionActivationTriggers),
+        regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(k.regularExpressionExclusionDeactivationTriggers),
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+}
+
 function fillTextCharacterInjectionDefaults(t: Record<string, unknown>): TextCharacterInjection {
     const now = Date.now();
     return {
@@ -143,6 +160,7 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
     const rawClothings = Array.isArray(c.clothings) ? c.clothings as Record<string, unknown>[] : [];
     const rawTextInjections = Array.isArray(c.textCharacterInjections) ? c.textCharacterInjections as Record<string, unknown>[] : [];
     const rawDialoguePrompts = Array.isArray(c.dialoguePrompts) ? c.dialoguePrompts as Record<string, unknown>[] : [];
+    const rawKnowledgePrompts = Array.isArray(c.knowledgePrompts) ? c.knowledgePrompts as Record<string, unknown>[] : [];
     return {
         id: ensureId(c),
         name: (c.name as string) || 'Unnamed',
@@ -153,6 +171,7 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
         thinkPrompt: (c.thinkPrompt as string) || undefined,
         appearancePrompt: (c.appearancePrompt as string) || undefined,
         dialoguePrompts: rawDialoguePrompts.map(item => fillDialoguePromptDefaults(item)),
+        knowledgePrompts: rawKnowledgePrompts.map(item => fillKnowledgePromptDefaults(item)),
         starterPrompts: parseStarterPrompts(c.starterPrompts),
         sampler: samplers.length > 0 ? samplers[0] : undefined,
         initiativeWeight: (c.initiativeWeight as number) ?? 5,
@@ -170,8 +189,6 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
         numberOfMessagesToDisableDialoguePrompt: (c.numberOfMessagesToDisableDialoguePrompt as number) ?? 0,
         numberOfMessagesToDisableStarterPrompt: (c.numberOfMessagesToDisableStarterPrompt as number) ?? 0,
         tools: parseToolsRecord(c.tools, defaultCharacterTools) as Record<tool, boolean>,
-        enableMemoryWriting: (c.enableMemoryWriting as boolean) ?? false,
-        enableMemoryReading: (c.enableMemoryReading as boolean) ?? false,
         clothings: rawClothings.map(item => fillClothingDefaults(item)),
         textCharacterInjections: rawTextInjections.map(item => fillTextCharacterInjectionDefaults(item)),
         memories: {},
@@ -349,8 +366,6 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         },
         stripThinkTokens: (p.stripThinkTokens as boolean) ?? true,
         tools: parseToolsRecord(p.tools, defaultProfileTools) as Record<tool, number>,
-        enableMemoryWriting: (p.enableMemoryWriting as number) ?? 0,
-        enableMemoryReading: (p.enableMemoryReading as number) ?? 0,
         inputStrategy: (p.inputStrategy as Profile['inputStrategy']) || ['System Prompt', 'Chat History', 'Context', 'Location'],
         summarizationSteps: ((p.summarizationSteps as Record<string, unknown>[]) || []).map(s => ({
             id: ensureId(s),
@@ -458,6 +473,11 @@ export function resolveWorldCrossReferences(
         if (character.dialoguePrompts) {
             for (const dp of character.dialoguePrompts) {
                 dp.dialoguePromptBindings = filterValidUuids(dp.dialoguePromptBindings);
+            }
+        }
+        if (character.knowledgePrompts) {
+            for (const kp of character.knowledgePrompts) {
+                kp.knowledgePromptBindings = filterValidUuids(kp.knowledgePromptBindings);
             }
         }
     }

@@ -16,7 +16,7 @@ const TOOL_LABELS: Record<tool, string> = {
     web: 'Web Search',
     dialogue: 'Dialogue',
     knowledge: 'Knowledge',
-    memories: 'Memories',
+    memory: 'Memory',
     lookup: 'Look Up',
     map: 'Map',
     audio: 'Audio',
@@ -49,7 +49,7 @@ const TOOL_DESCRIPTIONS: Record<tool, string> = {
     web: 'Allow this character to search the web during conversation.',
     dialogue: 'Allow this character to reference its own dialogue prompts.',
     knowledge: 'Allow this character to access its knowledge prompts on demand. Knowledge is not injected into context unless explicitly recalled via this tool.',
-    memories: 'Allow this character to recall its own memories on demand. Memories are not injected into context unless explicitly recalled via this tool.',
+    memory: 'Allow this character to recall its own memories on demand. Memories are not injected into context unless explicitly recalled via this tool.',
     lookup: 'Allow this character to search contexts and lore by keyword.',
     map: 'Allow this character to check distances between locations.',
     audio: 'Allow this character to play and stop audio tracks during conversation.',
@@ -85,8 +85,6 @@ interface CharacterAdvancedSettingsEditorModalProps {
     numberOfMessagesToDisableDialoguePromptStr: string;
     numberOfMessagesToDisableStarterPromptStr: string;
     tools: Record<tool, boolean>;
-    enableMemoryWriting: boolean;
-    enableMemoryReading: boolean;
     selectedStopPatternIds: string[];
     allSamplers: Sampler[];
     isUploading: boolean;
@@ -104,8 +102,6 @@ interface CharacterAdvancedSettingsEditorModalProps {
     onDisableDialogueChange: (val: string) => void;
     onDisableStarterChange: (val: string) => void;
     onToolToggle: (toolName: tool) => void;
-    onEnableMemoryWritingChange: (val: boolean) => void;
-    onEnableMemoryReadingChange: (val: boolean) => void;
     onStopPatternToggle: (id: string) => void;
 }
 
@@ -126,8 +122,6 @@ export function CharacterAdvancedSettingsEditorModal({
     numberOfMessagesToDisableDialoguePromptStr,
     numberOfMessagesToDisableStarterPromptStr,
     tools,
-    enableMemoryWriting,
-    enableMemoryReading,
     selectedStopPatternIds,
     allSamplers,
     isUploading,
@@ -145,8 +139,6 @@ export function CharacterAdvancedSettingsEditorModal({
     onDisableDialogueChange,
     onDisableStarterChange,
     onToolToggle,
-    onEnableMemoryWritingChange,
-    onEnableMemoryReadingChange,
     onStopPatternToggle,
 }: CharacterAdvancedSettingsEditorModalProps) {
     if (!isOpen) return null;
@@ -397,39 +389,6 @@ export function CharacterAdvancedSettingsEditorModal({
                                 </div>
                             </div>
                         ))}
-                    </div>
-
-                    {/* Memory Toggles */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Memory</span>
-
-                        <label className="editor-checkbox-label">
-                            <input
-                                type="checkbox"
-                                checked={enableMemoryReading}
-                                onChange={(e) => onEnableMemoryReadingChange(e.target.checked)}
-                                className="editor-checkbox-input"
-                                disabled={isUploading}
-                            />
-                            <span>Enable Memory Reading</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            This character will recall past interactions across chat sessions. Can be overridden by profile settings.
-                        </div>
-
-                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                            <input
-                                type="checkbox"
-                                checked={enableMemoryWriting}
-                                onChange={(e) => onEnableMemoryWritingChange(e.target.checked)}
-                                className="editor-checkbox-input"
-                                disabled={isUploading}
-                            />
-                            <span>Enable Memory Writing</span>
-                        </label>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                            Allow this character to save new memories based on the language model's decisions. Can be overridden by profile settings.
-                        </div>
                     </div>
 
                     {/* Stop Patterns */}

@@ -110,12 +110,12 @@ export function CharacterCardImportModal({
 
             // Build starterPrompts from firstMes / alternateGreetings
             const starterPrompts: Record<string, number> = {};
-            if (fields.starterPrompt && fields.starterPrompt.trim()) {
+            if (fields.starterPrompt?.trim()) {
                 starterPrompts[fields.starterPrompt.trim()] = 1;
             }
             if (extended.alternateGreetings) {
                 for (const greeting of extended.alternateGreetings) {
-                    if (greeting && greeting.trim() && !starterPrompts[greeting.trim()]) {
+                    if (greeting?.trim() && !starterPrompts[greeting.trim()]) {
                         starterPrompts[greeting.trim()] = 1;
                     }
                 }
@@ -145,8 +145,6 @@ export function CharacterCardImportModal({
                 maximumActionStamina,
                 doNotInjectCharacterImage: false,
                 tools: { ...defaultCharacterTools },
-                enableMemoryWriting: false,
-                enableMemoryReading: false,
                 clothings: [],
                 textCharacterInjections: [],
                 memories: {},
