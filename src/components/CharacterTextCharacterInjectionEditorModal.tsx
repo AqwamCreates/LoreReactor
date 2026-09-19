@@ -664,7 +664,7 @@ export function CharacterTextCharacterInjectionEditorModal({
                                                         cursor: 'pointer', transition: 'all 0.15s',
                                                     }}
                                                 >
-                                                    {isSelf ? '↻' : (boundItem?.name || '(Unknown)')}
+                                                    {isSelf ? '↻ ' : (boundItem?.name || '(Unknown)')}
                                                 </span>
                                             );
                                         })}
