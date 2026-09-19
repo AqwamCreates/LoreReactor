@@ -169,12 +169,8 @@ export function useModelManager() {
         try {
             await saveRawModel(model);
             await loadModelsRef.current();
-            addToastRef.current(`Model ${model.name} saved`, "success");
             return true;
-        } catch (e) {
-            const message = e instanceof Error ? e.message : "Unknown error";
-            console.error("Failed to save model", e);
-            addToastRef.current(`Failed to save model: ${message}`, "error");
+        } catch {
             return false;
         }
     }, []);
@@ -290,12 +286,8 @@ export function useModelManager() {
             await deleteRawModel(id);
             await loadModelsRef.current();
             setSelectedModelId(prev => prev === id ? null : prev);
-            addToastRef.current("Model deleted", "info");
             return true;
-        } catch (e) {
-            const message = e instanceof Error ? e.message : "Unknown error";
-            console.error("Failed to delete model", e);
-            addToastRef.current(`Failed to delete model: ${message}`, "error");
+        } catch {
             return false;
         }
     }, [unloadModelInternal]);
