@@ -207,7 +207,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "autonomousInteractionIntervalMs": "number (1000-60000, default 10000)",
     "volume": "number (-1 to 1, default -1 means per-track default)",
     "forceNameReveal": "boolean (default false)",
-    "displayToolUsage": "boolean (default false, show tool invocation markers and results in chat output)",
+    "toolUsageDisplayMode": "'none' | 'icon' | 'simple' | 'detailed' | 'full' | 'raw' (default 'none'). Controls how tool invocations appear in chat output.",
     "enableCharacterExpression": "boolean (default false)",
     "randomizeTextCharacterInjection": "boolean (default false, master toggle for text character injection across all characters)",
     "randomizeTextCharacterInjectionOnRetry": "boolean (default true, only randomize if the initial generation fails. Only relevant when randomizeTextCharacterInjection is true)",

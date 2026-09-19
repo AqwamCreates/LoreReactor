@@ -3,7 +3,7 @@
 import type { ToolInvocation } from '../services/ToolInvocationParser';
 import { fetchLinkContent, buildSearchUrl } from '../services/linkFetcher';
 import { getActiveDialoguePrompts, collectActiveDialoguePromptContent, buildDialogueSearchSpace } from '../hooks/dialoguePromptLogic';
-import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension } from '../types';
+import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension, toolUsageDisplayMode } from '../types';
 import { findPreviousMessage } from '../hooks/chatLogic';
 import { getAudioEngine } from './AudioEngine';
 import { getCurrentLocationIndex, getReachableLocationsByCharacter, isCharacterLockedFromLocation, getCoLocatedParticipants } from '../hooks/locationLogic';
@@ -54,7 +54,7 @@ function appendPendingAction(nextMessage: BaseMessage, action: PendingToolAction
     nextMessage.inventory = inventory;
 }
 
-const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext) => ToolResult | Promise<ToolResult>> = {
+const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, displayMode?: toolUsageDisplayMode) => ToolResult | Promise<ToolResult>> = {
     "pick": executeRandomPick,
     "date": executeDate,
     "coin": executeCoinFlip,
@@ -85,22 +85,34 @@ const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, int
     "destroyer": executeDestroyer,
 };
 
-export async function executeTool(invocation: ToolInvocation, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): Promise<ToolResult> {
+export async function executeTool(
+    invocation: ToolInvocation,
+    nextMessage: BaseMessage,
+    interactionData: InteractionData,
+    context?: ToolExecutionContext,
+    displayMode?: toolUsageDisplayMode,
+): Promise<ToolResult> {
     const toolType = invocation.toolType;
     const args = invocation.args;
     const executeFunction = toolFunctions[toolType as string];
 
-    if (executeFunction) return executeFunction(args, nextMessage, interactionData, context);
+    if (executeFunction) return executeFunction(args, nextMessage, interactionData, context, displayMode);
 
     console.warn(`Unknown tool type: ${toolType}`);
     const errorContent = `[Error: Unknown tool "${toolType}"]`;
     return { toolType, args, content: errorContent, displayReplacement: errorContent };
 }
 
-export async function executeTools(invocations: ToolInvocation[], nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): Promise<ToolResult[]> {
+export async function executeTools(
+    invocations: ToolInvocation[],
+    nextMessage: BaseMessage,
+    interactionData: InteractionData,
+    context?: ToolExecutionContext,
+    displayMode?: toolUsageDisplayMode,
+): Promise<ToolResult[]> {
     const results: ToolResult[] = [];
     for (const invocation of invocations) {
-        const result = await executeTool(invocation, nextMessage, interactionData, context);
+        const result = await executeTool(invocation, nextMessage, interactionData, context, displayMode);
         results.push(result);
     }
     return results;
@@ -112,9 +124,36 @@ function helpResult(toolType: string, args: string, usage: string): ToolResult {
     return { toolType, args, content: usage, displayReplacement: `[❓ ${toolType}: ${usage.split('\n')[0]}]` };
 }
 
+// ─── Display Mode Formatter ────────────────────────────────────────
+
+export function formatToolDisplay(
+    result: ToolResult,
+    rawMatch: string,
+    mode: toolUsageDisplayMode,
+): string {
+    switch (mode) {
+        case 'none':
+            return result.displayReplacement;
+        case 'icon': {
+            const iconMatch = result.displayReplacement.match(/^\[?([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}⚡🔧💀🛠️✨📨👢🔒🔓👕🎙️📝📦🗺️🌐🔍🎲🪙📅⏱️❓])/u);
+            return iconMatch ? iconMatch[1] : result.displayReplacement;
+        }
+        case 'simple':
+            return result.displayReplacement;
+        case 'detailed':
+            return result.displayReplacement;
+        case 'full':
+            return `[${result.toolType}(${result.args}) → ${result.content}]`;
+        case 'raw':
+            return rawMatch;
+        default:
+            return result.displayReplacement;
+    }
+}
+
 // ─── Random Pick ────────────────────────────────────────────────────
 
-function executeRandomPick(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeRandomPick(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     if (!expression.trim()) {
         return helpResult('pick', expression, 'pick <option1>, <option2>, ... — randomly picks one option from the list');
     }
@@ -137,7 +176,7 @@ function executeRandomPick(expression: string, _nextMessage: BaseMessage, _inter
 
 // ─── Date ────────────────────────────────────────────────────────────
 
-function executeDate(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeDate(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const now = new Date();
     const trimmed = args.trim().toLowerCase();
 
@@ -160,7 +199,7 @@ function executeDate(args: string, _nextMessage: BaseMessage, _interactionData: 
 
 // ─── Coin Flip ───────────────────────────────────────────────────────
 
-function executeCoinFlip(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeCoinFlip(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
     return { toolType: 'coin', args, content: result, displayReplacement: `[🪙 Coin flip: ${result}]` };
 }
@@ -169,7 +208,7 @@ function executeCoinFlip(args: string, _nextMessage: BaseMessage, _interactionDa
 
 interface RollGroup { count: number; sides: number }
 
-function executeDiceRoll(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeDiceRoll(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     if (!expression.trim()) {
         return helpResult('dice', expression, 'dice <notation> — roll dice (e.g. 2d6+3, d20, 1d8-2)');
     }
@@ -225,7 +264,7 @@ function parseRollExpression(expr: string): { groups: RollGroup[]; modifier: num
 
 // ─── Random Number ───────────────────────────────────────────────────
 
-function executeRandom(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeRandom(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('random', args, 'random <min>-<max> or random <max> — random integer in range');
@@ -253,7 +292,7 @@ function executeRandom(args: string, _nextMessage: BaseMessage, _interactionData
 
 // ─── RNG Table ─────────────────────────────────────────────────────
 
-function executeRng(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeRng(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('rng', args, 'rng <table name> — roll on a named RNG table defined in contexts (entries: "1-10: outcome")');
@@ -302,7 +341,7 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
 
 // ─── Move ───────────────────────────────────────────────────────────
 
-function executeMove(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeMove(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('move', args, 'move <location_id> — move to an adjacent location via normal movement cost');
@@ -379,7 +418,7 @@ function saveStopwatches(inventory: Inventory, stopwatches: StopwatchEntry[]): v
 
 // ─── Timer ──────────────────────────────────────────────────────────
 
-function executeTimer(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeTimer(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('timer', args, 'timer set <name> <duration> | timer check [name] | timer delete <name> | timer list');
@@ -433,7 +472,7 @@ function executeTimer(args: string, nextMessage: BaseMessage, interactionData: I
 
 // ─── Stopwatch ──────────────────────────────────────────────────────
 
-function executeStopwatch(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeStopwatch(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('stopwatch', args, 'stopwatch start|stop|pause|resume|reset|check|list <name>');
@@ -507,7 +546,7 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
 
 // ─── Calculator ─────────────────────────────────────────────────────
 
-function executeCalculator(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeCalculator(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     if (!expression.trim()) {
         return helpResult('calculator', expression, 'calculator <expression> — evaluate math (supports +, -, *, /, (), %, ^)');
     }
@@ -529,7 +568,7 @@ function executeCalculator(expression: string, _nextMessage: BaseMessage, _inter
 
 // ─── Web ────────────────────────────────────────────────────────────
 
-async function executeWeb(query: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext): Promise<ToolResult> {
+async function executeWeb(query: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): Promise<ToolResult> {
     if (!query.trim()) {
         return helpResult('web', query, 'web <query or URL> — search the web or fetch a webpage directly');
     }
@@ -555,7 +594,7 @@ async function executeWeb(query: string, _nextMessage: BaseMessage, _interaction
 
 // ─── Dialogue ──────────────────────────────────────────────────────
 
-function executeDialogue(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeDialogue(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     const character = nextMessage.character;
     const dialoguePrompts = character.dialoguePrompts;
@@ -622,7 +661,7 @@ function executeDialogue(args: string, nextMessage: BaseMessage, interactionData
 
 // ─── Lookup ────────────────────────────────────────────────────────
 
-function executeLookup(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeLookup(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const query = args.trim().toLowerCase();
     if (!query) {
         return helpResult('lookup', args, 'lookup <keyword> — search contexts and lore by keyword');
@@ -646,7 +685,7 @@ function executeLookup(args: string, _nextMessage: BaseMessage, interactionData:
 
 // ─── Map ────────────────────────────────────────────────────────────
 
-function executeMap(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeMap(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('map', args, 'map <location_id> or map <loc1_id> to <loc2_id> — distance between locations');
@@ -679,7 +718,7 @@ function executeMap(args: string, _nextMessage: BaseMessage, interactionData: In
 
 // ─── Audio ──────────────────────────────────────────────────────────
 
-function executeAudio(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeAudio(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('audio', args, 'audio play <track_id> | audio stop <track_id>');
@@ -701,7 +740,7 @@ function executeAudio(args: string, _nextMessage: BaseMessage, interactionData: 
 
 // ─── Note ──────────────────────────────────────────────────────────
 
-function executeNote(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeNote(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('note', args, 'note set <key> <text> | note get <key> | note delete <key> | note list');
@@ -723,7 +762,7 @@ function executeNote(args: string, nextMessage: BaseMessage, interactionData: In
 
 // ─── Inventory ──────────────────────────────────────────────────────
 
-function executeInventory(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeInventory(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('inventory', args, 'inventory list | inventory add <item> <qty> | inventory remove <item> <qty> | inventory set <item> <value>');
@@ -744,7 +783,7 @@ function executeInventory(args: string, nextMessage: BaseMessage, interactionDat
 
 // ─── Invite ─────────────────────────────────────────────────────────
 
-function executeInvite(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
+function executeInvite(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('invite', args, 'invite <character_id> — bring existing participant to current location');
@@ -760,7 +799,7 @@ function executeInvite(args: string, nextMessage: BaseMessage, interactionData: 
 
 // ─── Kick ───────────────────────────────────────────────────────────
 
-function executeKick(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
+function executeKick(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('kick', args, 'kick locations | kick characters | kick <character_id> [location_id]');
@@ -819,7 +858,7 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
 
 // ─── Teleport ───────────────────────────────────────────────────────
 
-function executeTeleport(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeTeleport(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('teleport', args, 'teleport <location_id> — instant movement to any location');
@@ -839,7 +878,7 @@ function executeTeleport(args: string, nextMessage: BaseMessage, interactionData
 
 // ─── Key ────────────────────────────────────────────────────────────
 
-function executeKey(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeKey(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('key', args, 'key lock <location_id> [character_id] | key unlock <location_id> [character_id]');
@@ -898,7 +937,7 @@ function executeKey(args: string, nextMessage: BaseMessage, interactionData: Int
 
 // ─── Clothing ───────────────────────────────────────────────────────
 
-function executeClothing(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
+function executeClothing(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('clothing', args, 'clothing <character_id> wear <clothing_id> | clothing <character_id> remove <clothing_id>');
@@ -935,7 +974,7 @@ function executeClothing(args: string, nextMessage: BaseMessage, interactionData
 
 // ─── Summon ─────────────────────────────────────────────────────────
 
-function executeSummon(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
+function executeSummon(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('summon', args, 'summon <character_id> — add non-participant character to session');
@@ -950,7 +989,7 @@ function executeSummon(args: string, nextMessage: BaseMessage, interactionData: 
 
 // ─── Narrate ────────────────────────────────────────────────────────
 
-function executeNarrate(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeNarrate(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('narrate', args, 'narrate <text> — inject ambient narration without consuming chat stamina');
@@ -960,7 +999,7 @@ function executeNarrate(args: string, _nextMessage: BaseMessage, _interactionDat
 
 // ─── Inspect ────────────────────────────────────────────────────────
 
-function executeInspect(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
+function executeInspect(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('inspect', args, 'inspect <character_id> — examine character\'s visible state');
@@ -992,7 +1031,7 @@ function executeInspect(args: string, _nextMessage: BaseMessage, interactionData
 
 // ─── Administrator ──────────────────────────────────────────────────
 
-function executeAdministrator(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext): ToolResult {
+function executeAdministrator(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('administrator', args, 'administrator list_chats | move_protagonist <chat_id> | switch_model <model_name> | list_models');
@@ -1012,7 +1051,7 @@ function executeAdministrator(args: string, nextMessage: BaseMessage, interactio
 
 const VALID_ENTITY_TYPES = ['character', 'context', 'location', 'audio_track', 'prompt_block', 'stop_pattern', 'sampler', 'budget_strategy', 'profile', 'world', 'memory', 'extension'];
 
-function executeCreator(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
+function executeCreator(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('creator', args, `creator <entity_type> <name> — types: ${VALID_ENTITY_TYPES.join(', ')}`);
@@ -1028,7 +1067,7 @@ function executeCreator(args: string, nextMessage: BaseMessage, _interactionData
 
 // ─── Destroyer ──────────────────────────────────────────────────────
 
-function executeDestroyer(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
+function executeDestroyer(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
         return helpResult('destroyer', args, `destroyer <entity_type> <entity_id> — types: ${VALID_ENTITY_TYPES.join(', ')}`);

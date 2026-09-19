@@ -1,5 +1,5 @@
 // src/services/aiRecommendationConverters.ts
-import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, tool, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './aiRecommendationTypes';
 import type { GeneratedOutput } from './aiRecommendationTypes';
@@ -75,6 +75,15 @@ function parseStarterPrompts(raw: unknown): Record<string, number> | undefined {
         }
     }
     return Object.keys(result).length > 0 ? result : undefined;
+}
+
+const VALID_TOOL_USAGE_DISPLAY_MODES: toolUsageDisplayMode[] = ['none', 'icon', 'simple', 'detailed', 'full', 'raw'];
+
+function parseToolUsageDisplayMode(raw: unknown): toolUsageDisplayMode {
+    if (typeof raw === 'string' && VALID_TOOL_USAGE_DISPLAY_MODES.includes(raw as toolUsageDisplayMode)) {
+        return raw as toolUsageDisplayMode;
+    }
+    return 'none';
 }
 
 function fillDialoguePromptDefaults(d: Record<string, unknown>): DialoguePrompt {
@@ -302,7 +311,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         autonomousInteractionIntervalMs: (p.autonomousInteractionIntervalMs as number) ?? 10000,
         volume: (p.volume as number) ?? -1,
         forceNameReveal: (p.forceNameReveal as boolean) ?? false,
-        displayToolUsage: (p.displayToolUsage as boolean) ?? false,
+        toolUsageDisplayMode: parseToolUsageDisplayMode(p.toolUsageDisplayMode),
         enableCharacterExpression: (p.enableCharacterExpression as boolean) ?? false,
         randomizeTextCharacterInjection: (p.randomizeTextCharacterInjection as boolean) ?? false,
         randomizeTextCharacterInjectionOnRetry: (p.randomizeTextCharacterInjectionOnRetry as boolean) ?? true,

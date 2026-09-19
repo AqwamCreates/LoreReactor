@@ -83,9 +83,11 @@ async function processToolInvocations(
 
     if (enabledInvocations.length === 0) return null;
 
+    const displayToolUsage = profile?.displayToolUsage ?? false;
+
     const toolResults = await executeTools(enabledInvocations, nextMessage, interactionData);
 
-    const displayToolUsage = profile?.displayToolUsage ?? false;
+    
 
     let resumeText = rawText;
     let displayText = rawText;
@@ -97,15 +99,8 @@ async function processToolInvocations(
         // resumeText always gets the actual tool result content for continued generation
         resumeText = resumeText.replace(invocation.rawMatch, toolResult.content);
 
-        if (displayToolUsage) {
-            // Show the raw invocation marker so users can see what tools were called
-            // Keep the original raw match visible in display text
-            displayReplacements.push({ type: invocation.toolType, value: invocation.rawMatch });
-        } else {
-            // Hide tool usage — replace with the user-friendly display replacement
-            displayText = displayText.replace(invocation.rawMatch, toolResult.displayReplacement);
-            displayReplacements.push({ type: invocation.toolType, value: toolResult.displayReplacement });
-        }
+        displayText = displayText.replace(invocation.rawMatch, toolResult.displayReplacement);
+        displayReplacements.push({ type: invocation.toolType, value: toolResult.displayReplacement });
     }
 
     return { resumeText, displayText, displayReplacements };

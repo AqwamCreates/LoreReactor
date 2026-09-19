@@ -571,12 +571,14 @@ export interface RawPromptBlock extends RawData {
 }
 
 export type textType = "normal" | "quoted" | "bolded" | "italicized" | "parenthesized" | "bracketed" | "braced"
+
+export type toolUsageDisplayMode = "none" | "icon" | "simple" | "detailed" | "full" | "raw" // Default is none.
 export interface Profile extends ObjectData {
   autonomousMode: boolean;
   autonomousInteractionIntervalMs: number;
   volume: number;
   forceNameReveal: boolean;
-  displayToolUsage: boolean;
+  toolUsageDisplayMode: toolUsageDisplayMode;
   enableCharacterExpression: boolean;
   randomizeTextCharacterInjection: boolean;
   randomizeTextCharacterInjectionOnRetry: boolean; // Only randomize if the initial randomization fails. Default is true. This setting get revealed when randomizeTextCharacterInjection is true.
@@ -621,7 +623,7 @@ export interface RawProfile extends RawData {
   autonomousInteractionIntervalMs: number;
   volume: number;
   forceNameReveal: boolean;
-  displayToolUsage: boolean;
+  toolUsageDisplayMode: toolUsageDisplayMode;
   enableCharacterExpression: boolean;
   randomizeTextCharacterInjection: boolean;
   randomizeTextCharacterInjectionOnRetry: boolean; // Only randomize if the initial randomization fails. Default is true. This setting get revealed when randomizeTextCharacterInjection is true.

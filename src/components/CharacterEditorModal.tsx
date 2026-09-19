@@ -38,7 +38,6 @@ interface TokenCounts {
     systemPrompt: number | null;
     thinkPrompt: number | null;
     appearancePrompt: number | null;
-    dialoguePrompt: number | null;
     starterPrompt: number | null;
 }
 
@@ -151,7 +150,7 @@ function CharacterEditorModalInner({
     });
 
     const [tokenCounts, setTokenCounts] = useState<TokenCounts>({
-        systemPrompt: null, thinkPrompt: null, appearancePrompt: null, dialoguePrompt: null, starterPrompt: null,
+        systemPrompt: null, thinkPrompt: null, appearancePrompt: null, starterPrompt: null,
     });
     const [countingField, setCountingField] = useState<keyof TokenCounts | null>(null);
 
@@ -294,7 +293,12 @@ function CharacterEditorModalInner({
         setClothings([]);
         setTextCharacterInjections([]);
         setDialoguePrompts([]);
-        setStarterPrompts({});
+        // Migrate old singular starterPrompt into weighted format
+        if (fields.starterPrompt?.trim()) {
+            setStarterPrompts({ [fields.starterPrompt.trim()]: 1 });
+        } else {
+            setStarterPrompts({});
+        }
         countFieldTokens('systemPrompt', fields.systemPrompt);
         countFieldTokens('thinkPrompt', '');
         countFieldTokens('appearancePrompt', fields.appearancePrompt);
