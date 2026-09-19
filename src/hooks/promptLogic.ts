@@ -2,8 +2,8 @@
 import type { Character, InteractionData, HistoryMessage, ChatMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger, Clothing } from '../types';
 import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { getEffectiveTools, getEffectiveEnableMemoryReading, getEffectiveEnableMemoryWriting, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
-import { contextStartString, contextEndString, turnStartString, turnEndString, memoryWriteTrigger, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString, generalStartString, generalEndString } from '../dictionaries/stringList';
+import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
+import { contextStartString, contextEndString, turnStartString, turnEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString, generalStartString, generalEndString } from '../dictionaries/stringList';
 import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
 import { getCurrentLocation } from './locationLogic';
 import { defaultInputStrategy } from '../dictionaries/defaults';
@@ -944,8 +944,6 @@ export async function buildPrompt(
     const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
     const inputStrategy = profile?.inputStrategy ?? defaultInputStrategy;
     const effectiveTools = getEffectiveTools(character, profile);
-    const enableMemoryReading = getEffectiveEnableMemoryReading(character, profile);
-    const enableMemoryWriting = getEffectiveEnableMemoryWriting(character, profile);
 
     const effectiveContextSensitivity = (() => {
         const profileValue = profile?.contextSensitivity;
@@ -1344,7 +1342,7 @@ export async function buildPrompt(
         const lastMsgTimestamp = interactionHistory[interactionHistory.length - 1].lastUpdatedTimestamp;
         const diffMs = Math.max(0, localTimestamp - lastMsgTimestamp);
 
-        const totalSeconds = Math.floor(diffMs / 1000);
+        const totalSeconds = Math.floor(diffMs / 86400);
         const numberOfDays = Math.floor(totalSeconds / 86400);
         const numberOfHours = Math.floor((totalSeconds % 86400) / 3600);
         const numberOfMinutes = Math.floor((totalSeconds % 3600) / 60);
@@ -1373,32 +1371,6 @@ export async function buildPrompt(
             dialoguePromptLines.push(`${contextStartString}${replacedDialogue}${contextEndString}`);
         }
         dialoguePromptLines.push(endOfDialoguePromptLine);
-    }
-
-    const memoryLines: string[] = [];
-    const characterMemories = character.memories;
-    if (enableMemoryReading && characterMemories) {
-        const relevantMemories: string[] = [];
-        const participantIds = new Set(participants.map(p => p.id));
-        for (const [key, memories] of Object.entries(characterMemories)) {
-            if (key === 'global' || participantIds.has(key)) {
-                for (const memory of memories) {
-                    const memoryInteractionDataId = memory.interactionData?.id;
-                    if (memoryInteractionDataId === interactionData.id) continue;
-                    const memoryContent = memory.content;
-                    if (memoryContent && typeof memoryContent === 'string' && memoryContent.trim()) {
-                        relevantMemories.push(memoryContent.trim());
-                    }
-                }
-            }
-        }
-        if (relevantMemories.length > 0) {
-            memoryLines.push(`${contextStartString}Start Of Long-Term Memory.${contextEndString}`);
-            for (const memory of relevantMemories) {
-                memoryLines.push(`${contextStartString}${memory}${contextEndString}`);
-            }
-            memoryLines.push(`${contextStartString}End Of Long-Term Memory.${contextEndString}`);
-        }
     }
 
     // ─── Starter Prompts (weighted sampling) ─────────────────────────
@@ -1456,8 +1428,7 @@ export async function buildPrompt(
     if (hasBeenSummarized) textInjectionLines.push(summarizationAwarenessInstructions)
 
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${characterParticipantTag} requires it.`;
-    const memoryWriteTriggerInstructions = enableMemoryWriting ? `I will always write ${memoryWriteTrigger}${contextEndString} instead of ${contextEndString} after the final paragraph if I want to remember something for the future as ${characterParticipantTag} without adding any additional text. ` : '';
-    const characterResponsePriming = `${generalStartString}${noRepeatInstructions} ${noRestrictionsInstructions} ${callingOtherCharacterInstructions} ${formatInstructions} ${memoryWriteTriggerInstructions}I am now responding as ${characterParticipantTag} with the format I am given and I will follow all the prompts given to me.${generalEndString}`;
+    const characterResponsePriming = `${generalStartString}${noRepeatInstructions} ${noRestrictionsInstructions} ${callingOtherCharacterInstructions} ${formatInstructions} I am now responding as ${characterParticipantTag} with the format I am given and I will follow all the prompts given to me.${generalEndString}`;
     const characterTextInjection = `${turnStartString}${characterParticipantTag}: {{text}}`;
 
     textInjectionLines.push(characterResponsePriming)
@@ -1469,7 +1440,6 @@ export async function buildPrompt(
         'Meta Think Instructions': metaThinkLines,
         'Appearance Prompt': appearancePromptLines,
         'Dialogue Prompt': dialoguePromptLines,
-        'Memory': memoryLines,
         'Chat History': chatHistoryLines,
         'Context': contextLines,
         'Location': locationLines,

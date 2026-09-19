@@ -2,11 +2,13 @@
 
 import type { ToolInvocation } from '../services/ToolInvocationParser';
 import { fetchLinkContent, buildSearchUrl } from '../services/linkFetcher';
-import { getActiveDialoguePrompts, collectActiveDialoguePromptContent, buildDialogueSearchSpace } from '../hooks/dialoguePromptLogic';
+import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from '../hooks/dialoguePromptLogic';
 import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension, toolUsageDisplayMode } from '../types';
 import { findPreviousMessage } from '../hooks/chatLogic';
 import { getAudioEngine } from './AudioEngine';
 import { getCurrentLocationIndex, getReachableLocationsByCharacter, isCharacterLockedFromLocation, getCoLocatedParticipants } from '../hooks/locationLogic';
+import { generateCharacterMemory } from './ChatMessageSummarizationEngine';
+import { saveRawCharacter } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface ToolResult {
@@ -67,6 +69,8 @@ const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, int
     "calculator": executeCalculator,
     "web": executeWeb,
     "dialogue": executeDialogue,
+    "knowledge": executeKnowledge,
+    "memory": executeMemory,
     "lookup": executeLookup,
     "map": executeMap,
     "audio": executeAudio,
@@ -236,8 +240,8 @@ function parseRollExpression(expr: string): { groups: RollGroup[]; modifier: num
     let lastIndex = 0;
 
     while ((match = rollGroupRegex.exec(sanitized)) !== null) {
-        const count = match[1] ? parseInt(match[1], 10) : 1;
-        const sides = parseInt(match[2], 10);
+        const count = match[1] ? Number.parseInt(match[1], 10) : 1;
+        const sides = Number.parseInt(match[2], 10);
         if (count < 1 || count > 100 || sides < 1 || sides > 1000) return null;
         groups.push({ count, sides });
         lastIndex = match.index + match[0].length;
@@ -250,7 +254,7 @@ function parseRollExpression(expr: string): { groups: RollGroup[]; modifier: num
     if (remainder) {
         const modMatch = remainder.match(/^([+-])(\d+)$/);
         if (!modMatch) return null;
-        modifier = parseInt(modMatch[2], 10);
+        modifier = Number.parseInt(modMatch[2], 10);
         if (modMatch[1] === '-') modifier = -modifier;
     }
 
@@ -274,10 +278,10 @@ function executeRandom(args: string, _nextMessage: BaseMessage, _interactionData
     const dashMatch = trimmed.match(/^(-?\d+)\s*[-–—]\s*(-?\d+)$/);
     const toMatch = trimmed.match(/^(-?\d+)\s+to\s+(-?\d+)$/i);
 
-    if (dashMatch) { min = parseInt(dashMatch[1], 10); max = parseInt(dashMatch[2], 10); }
-    else if (toMatch) { min = parseInt(toMatch[1], 10); max = parseInt(toMatch[2], 10); }
+    if (dashMatch) { min = Number.parseInt(dashMatch[1], 10); max = Number.parseInt(dashMatch[2], 10); }
+    else if (toMatch) { min = Number.parseInt(toMatch[1], 10); max = Number.parseInt(toMatch[2], 10); }
     else {
-        const single = parseInt(trimmed, 10);
+        const single = Number.parseInt(trimmed, 10);
         if (isNaN(single) || single < 1) {
             const errorContent = `[Error: Invalid range "${trimmed}". Use format like "1-100" or "1-6"]`;
             return { toolType: 'random', args, content: errorContent, displayReplacement: errorContent };
@@ -295,14 +299,19 @@ function executeRandom(args: string, _nextMessage: BaseMessage, _interactionData
 function executeRng(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
-        return helpResult('rng', args, 'rng <table name> — roll on a named RNG table defined in contexts (entries: "1-10: outcome")');
+        return helpResult('rng', args, 'rng <context_id> — roll on a named RNG table defined in contexts (entries: "1-10: outcome")');
     }
 
-    const tableName = trimmed.toLowerCase();
-    const tableContext = (interactionData.contexts || []).find(c => c.name?.toLowerCase() === tableName && c.text);
+    // Look up by ID first, then fall back to name
+    const contexts = interactionData.contexts || [];
+    let tableContext = contexts.find(c => c.id === trimmed && c.text);
+    if (!tableContext) {
+        const lowerTrimmed = trimmed.toLowerCase();
+        tableContext = contexts.find(c => c.name?.toLowerCase() === lowerTrimmed && c.text);
+    }
 
     if (!tableContext || !tableContext.text) {
-        const errorContent = `[Error: RNG table "${trimmed}" not found. Create a context with the table name and entries formatted as "1-10: outcome text" per line.]`;
+        const errorContent = `[Error: RNG table "${trimmed}" not found. Use context ID or exact name. Create a context with entries formatted as "1-10: outcome text" per line.]`;
         return { toolType: 'rng', args, content: errorContent, displayReplacement: errorContent };
     }
 
@@ -314,18 +323,18 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
         const rangeMatch = line.match(/^(\d+)\s*[-–]\s*(\d+)\s*[:=]\s*(.+)$/);
         const singleMatch = line.match(/^(\d+)\s*[:=]\s*(.+)$/);
         if (rangeMatch) {
-            const min = parseInt(rangeMatch[1], 10), max = parseInt(rangeMatch[2], 10);
+            const min = Number.parseInt(rangeMatch[1], 10), max = Number.parseInt(rangeMatch[2], 10);
             entries.push({ min, max, result: rangeMatch[3].trim() });
             if (max > globalMax) globalMax = max;
         } else if (singleMatch) {
-            const val = parseInt(singleMatch[1], 10);
+            const val = Number.parseInt(singleMatch[1], 10);
             entries.push({ min: val, max: val, result: singleMatch[2].trim() });
             if (val > globalMax) globalMax = val;
         }
     }
 
     if (entries.length === 0) {
-        const errorContent = `[Error: Table "${trimmed}" has no valid entries. Format each line as "1-10: outcome" or "5: outcome".]`;
+        const errorContent = `[Error: Table "${tableContext.name}" has no valid entries. Format each line as "1-10: outcome" or "5: outcome".]`;
         return { toolType: 'rng', args, content: errorContent, displayReplacement: errorContent };
     }
 
@@ -382,12 +391,12 @@ function parseDurationToMs(input: string): number | null {
     const trimmed = input.trim().toLowerCase();
     let totalMs = 0, matched = false;
     const hourMatch = trimmed.match(/(\d+)\s*h(?:ours?|r)?/);
-    if (hourMatch) { totalMs += parseInt(hourMatch[1], 10) * 3600000; matched = true; }
+    if (hourMatch) { totalMs += Number.parseInt(hourMatch[1], 10) * 3600000; matched = true; }
     const minMatch = trimmed.match(/(\d+)\s*m(?:in(?:utes?|s)?)?/);
-    if (minMatch) { totalMs += parseInt(minMatch[1], 10) * 60000; matched = true; }
+    if (minMatch) { totalMs += Number.parseInt(minMatch[1], 10) * 60000; matched = true; }
     const secMatch = trimmed.match(/(\d+)\s*s(?:ec(?:onds?|s)?)?/);
-    if (secMatch) { totalMs += parseInt(secMatch[1], 10) * 1000; matched = true; }
-    if (!matched) { const plainNum = parseInt(trimmed, 10); if (!isNaN(plainNum) && plainNum > 0) return plainNum * 1000; return null; }
+    if (secMatch) { totalMs += Number.parseInt(secMatch[1], 10) * 1000; matched = true; }
+    if (!matched) { const plainNum = Number.parseInt(trimmed, 10); if (!isNaN(plainNum) && plainNum > 0) return plainNum * 1000; return null; }
     return totalMs > 0 ? totalMs : null;
 }
 
@@ -604,7 +613,7 @@ function executeDialogue(args: string, nextMessage: BaseMessage, interactionData
     }
 
     if (!trimmed) {
-        return helpResult('dialogue', args, 'dialogue list | dialogue recall — recall active dialogue instructions');
+        return helpResult('dialogue', args, 'dialogue list | dialogue recall <id> — recall active dialogue instructions by ID');
     }
 
     const subcommand = trimmed.split(/\s+/)[0]?.toLowerCase();
@@ -613,7 +622,7 @@ function executeDialogue(args: string, nextMessage: BaseMessage, interactionData
         const entries = dialoguePrompts.map(dp => {
             const hasTriggers = (dp.regularExpressionActivationTriggers?.length ?? 0) > 0;
             const bindings = dp.dialoguePromptBindings?.length ?? 0;
-            return `${dp.name} (${dp.id})${hasTriggers ? ' [regex]' : ''}${bindings > 0 ? ` [→${bindings}]` : ''}`;
+            return `${dp.id} | ${dp.name}${hasTriggers ? ' [regex]' : ''}${bindings > 0 ? ` [→${bindings}]` : ''}`;
         });
         return {
             toolType: 'dialogue',
@@ -624,22 +633,30 @@ function executeDialogue(args: string, nextMessage: BaseMessage, interactionData
     }
 
     if (subcommand === 'recall') {
+        const queryId = trimmed.slice(subcommand.length).trim();
+        if (!queryId) {
+            return { toolType: 'dialogue', args, content: '[Error: Usage: dialogue recall <id>]', displayReplacement: '[Error: Missing ID]' };
+        }
+
+        // Match by ID (exact or prefix)
+        const matched = dialoguePrompts.filter(dp =>
+            dp.id === queryId || dp.id.startsWith(queryId)
+        );
+
+        if (matched.length === 0) {
+            return { toolType: 'dialogue', args, content: `No dialogue prompt matching ID "${queryId}".`, displayReplacement: `[💬 No match for "${queryId}"]` };
+        }
+
+        // For matched prompts, also check regex activation against conversation
         const textContentArray: string[] = [];
         for (const msg of interactionData.interactionHistory) {
-            if (msg.messageType === 'chat') {
-                textContentArray.push(msg.textContent);
-            }
+            if (msg.messageType === 'chat') textContentArray.push(msg.textContent);
         }
         const searchSpace = buildDialogueSearchSpace(textContentArray);
-
-        const recalledContents = collectActiveDialoguePromptContent(character.dialoguePrompts, searchSpace);
+        const recalledContents = collectActiveDialoguePromptContent(matched, searchSpace);
 
         if (recalledContents.length === 0) {
-            const activeCount = getActiveDialoguePrompts(character.dialoguePrompts, searchSpace).length;
-            const msg = activeCount === 0
-                ? 'No active dialogue prompts match current conversation state.'
-                : 'All active dialogue prompts were skipped by probability.';
-            return { toolType: 'dialogue', args, content: msg, displayReplacement: '[💬 No active dialogue prompts]' };
+            return { toolType: 'dialogue', args, content: `Matched ${matched.length} prompt(s) by ID but none are currently active.`, displayReplacement: `[💬 Matched but inactive]` };
         }
 
         const combined = recalledContents.join('\n\n');
@@ -654,8 +671,232 @@ function executeDialogue(args: string, nextMessage: BaseMessage, interactionData
     return {
         toolType: 'dialogue',
         args,
-        content: `[Error: Unknown dialogue command "${subcommand}". Use list or recall.]`,
+        content: `[Error: Unknown dialogue command "${subcommand}". Use list or recall <id>.]`,
         displayReplacement: `[Error: Unknown dialogue command]`,
+    };
+}
+
+// ─── Knowledge ──────────────────────────────────────────────────────
+
+function executeKnowledge(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
+    const trimmed = args.trim();
+    const character = nextMessage.character;
+    const knowledgePrompts = character.knowledgePrompts;
+
+    if (!knowledgePrompts || knowledgePrompts.length === 0) {
+        return helpResult('knowledge', args, 'knowledge — no knowledge prompts configured for this character');
+    }
+
+    if (!trimmed) {
+        return helpResult('knowledge', args, 'knowledge list | knowledge recall <id> — recall knowledge by ID');
+    }
+
+    const subcommand = trimmed.split(/\s+/)[0]?.toLowerCase();
+
+    if (subcommand === 'list') {
+        const entries = knowledgePrompts.map(kp => {
+            const hasTriggers = (kp.regularExpressionActivationTriggers?.length ?? 0) > 0;
+            const bindings = kp.knowledgePromptBindings?.length ?? 0;
+            return `${kp.id} | ${kp.name}${hasTriggers ? ' [regex]' : ''}${bindings > 0 ? ` [→${bindings}]` : ''}`;
+        });
+        return {
+            toolType: 'knowledge',
+            args,
+            content: entries.join('\n'),
+            displayReplacement: `[🧠 ${entries.length} knowledge prompt(s)]`,
+        };
+    }
+
+    if (subcommand === 'recall') {
+        const queryId = trimmed.slice(subcommand.length).trim();
+        if (!queryId) {
+            return { toolType: 'knowledge', args, content: '[Error: Usage: knowledge recall <id>]', displayReplacement: '[Error: Missing ID]' };
+        }
+
+        // Match by exact ID first, then prefix match
+        let matched = knowledgePrompts.filter(kp => kp.id === queryId);
+        if (matched.length === 0) {
+            matched = knowledgePrompts.filter(kp => kp.id.startsWith(queryId));
+        }
+
+        if (matched.length === 0) {
+            return { toolType: 'knowledge', args, content: `No knowledge matching ID "${queryId}". Use "knowledge list" to see available IDs.`, displayReplacement: `[🧠 No match for "${queryId}"]` };
+        }
+
+        const combined = matched.map(kp => `[${kp.id}] ${kp.name}\n${kp.content}`).join('\n\n---\n\n');
+        return {
+            toolType: 'knowledge',
+            args,
+            content: combined,
+            displayReplacement: `[🧠 Recalled ${matched.length} knowledge entry(ies)]`,
+        };
+    }
+
+    return {
+        toolType: 'knowledge',
+        args,
+        content: `[Error: Unknown knowledge command "${subcommand}". Use list or recall <id>.]`,
+        displayReplacement: `[Error: Unknown knowledge command]`,
+    };
+}
+
+// ─── Memory ─────────────────────────────────────────────────────────
+
+async function executeMemory(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): Promise<ToolResult> {
+    const trimmed = args.trim();
+    const character = nextMessage.character;
+
+    if (!trimmed) {
+        return helpResult('memory', args, 'memory list | memory recall [id] | memory save — save uses auto-summarization, no content arg needed');
+    }
+
+    const parts = trimmed.split(/\s+/);
+    const subcommand = parts[0]?.toLowerCase();
+
+    if (subcommand === 'list') {
+        const memories = character.memories;
+        if (!memories || Object.keys(memories).length === 0) {
+            return { toolType: 'memory', args, content: 'No memories stored.', displayReplacement: '[🧠 No memories]' };
+        }
+        const entries: string[] = [];
+        for (const [key, mems] of Object.entries(memories)) {
+            for (const mem of mems) {
+                const snippet = mem.content.length > 100 ? mem.content.substring(0, 100) + '...' : mem.content;
+                entries.push(`${mem.id} | [${key}] ${mem.name}: ${snippet}`);
+            }
+        }
+        return {
+            toolType: 'memory',
+            args,
+            content: entries.join('\n'),
+            displayReplacement: `[🧠 ${entries.length} memory(ies)]`,
+        };
+    }
+
+    if (subcommand === 'recall') {
+        const memories = character.memories;
+        if (!memories || Object.keys(memories).length === 0) {
+            return { toolType: 'memory', args, content: 'No memories to recall.', displayReplacement: '[🧠 No memories]' };
+        }
+
+        const queryId = parts.slice(1).join(' ').trim();
+
+        // If specific ID provided, recall just that memory
+        if (queryId) {
+            let foundMemory: Memory | undefined;
+            for (const [, mems] of Object.entries(memories)) {
+                const m = mems.find(mem => mem.id === queryId || mem.id.startsWith(queryId));
+                if (m) { foundMemory = m; break; }
+            }
+            if (!foundMemory) {
+                return { toolType: 'memory', args, content: `No memory matching ID "${queryId}". Use "memory list" to see available IDs.`, displayReplacement: `[🧠 No match for "${queryId}"]` };
+            }
+            return {
+                toolType: 'memory',
+                args,
+                content: `[${foundMemory.id}] ${foundMemory.name}\n${foundMemory.content}`,
+                displayReplacement: `[🧠 Recalled 1 memory]`,
+            };
+        }
+
+        // No ID: recall all relevant memories for current conversation
+        const participantIds = new Set(interactionData.participants.map(p => p.id));
+        const relevantMemories: string[] = [];
+
+        for (const [key, mems] of Object.entries(memories)) {
+            if (key === 'global' || participantIds.has(key)) {
+                for (const memory of mems) {
+                    if (memory.interactionData?.id === interactionData.id) continue;
+                    if (memory.content && memory.content.trim()) {
+                        relevantMemories.push(`[${memory.id}] ${memory.content.trim()}`);
+                    }
+                }
+            }
+        }
+
+        if (relevantMemories.length === 0) {
+            return { toolType: 'memory', args, content: 'No relevant memories for current conversation.', displayReplacement: '[🧠 No relevant memories]' };
+        }
+
+        return {
+            toolType: 'memory',
+            args,
+            content: relevantMemories.join('\n\n---\n\n'),
+            displayReplacement: `[🧠 Recalled ${relevantMemories.length} memory(ies)]`,
+        };
+    }
+
+    if (subcommand === 'save') {
+        // memory save takes NO content argument — it auto-summarizes the conversation
+        const otherParticipants = interactionData.participants.filter(p => p.id !== character.id);
+        if (otherParticipants.length === 0) {
+            return { toolType: 'memory', args, content: '[Error: No other participants to create memories with.]', displayReplacement: '[🧠 No participants]' };
+        }
+
+        const ts = Date.now();
+
+        // Auto-summarize the conversation
+        let summaryText: string | null = null;
+        try {
+            const summaryResult = await generateCharacterMemory(interactionData, character, '', 512);
+            if (summaryResult?.text) summaryText = summaryResult.text;
+        } catch {
+            // Fall through
+        }
+
+        if (!summaryText) {
+            return { toolType: 'memory', args, content: '[Error: Failed to generate memory summary.]', displayReplacement: '[🧠 Summarization failed]' };
+        }
+
+        if (!character.memories) character.memories = {};
+
+        // Save per-participant memories
+        for (const other of otherParticipants) {
+            const newMemory: Memory = {
+                id: uuidv4(),
+                name: `Memory with ${other.name}`,
+                content: summaryText,
+                interactionData: interactionData,
+                firstCreatedTimestamp: ts,
+                lastUpdatedTimestamp: ts,
+            };
+            character.memories[other.id] = [newMemory];
+        }
+
+        // Save global memory
+        const globalMemory: Memory = {
+            id: uuidv4(),
+            name: 'Global Memory',
+            content: summaryText,
+            interactionData: interactionData,
+            firstCreatedTimestamp: ts,
+            lastUpdatedTimestamp: ts,
+        };
+        character.memories.global = [globalMemory];
+
+        // Persist the updated character
+        try {
+            await saveRawCharacter(character);
+        } catch (e) {
+            console.warn('Failed to save character memories:', e);
+            return { toolType: 'memory', args, content: '[Error: Failed to save memory]', displayReplacement: '[🧠 Save failed]' };
+        }
+
+        context?.addToast?.(`🧠 Memory saved for ${character.name}`, 'success');
+
+        return {
+            toolType: 'memory',
+            args,
+            content: `Memory saved: "${summaryText.substring(0, 100)}${summaryText.length > 100 ? '...' : ''}"`,
+            displayReplacement: `[🧠 Memory saved]`,
+        };
+    }
+
+    return {
+        toolType: 'memory',
+        args,
+        content: `[Error: Unknown memory command "${subcommand}". Use list, recall [id], or save.]`,
+        displayReplacement: `[Error: Unknown memory command]`,
     };
 }
 
@@ -680,7 +921,7 @@ function executeLookup(args: string, _nextMessage: BaseMessage, interactionData:
         }
     }
     if (matches.length === 0) return { toolType: 'lookup', args, content: `No results for "${args.trim()}".`, displayReplacement: `[🔍 No results for "${args.trim()}"]` };
-    return { toolType: 'lookup', args, content: matches.map(m => `[${m.name} (${m.id})] ${m.snippet}`).join('\n\n'), displayReplacement: `[🔍 Found ${matches.length} result(s) for "${args.trim()}"]` };
+    return { toolType: 'lookup', args, content: matches.map(m => `[${m.id}] ${m.name}: ${m.snippet}`).join('\n\n'), displayReplacement: `[🔍 Found ${matches.length} result(s) for "${args.trim()}"]` };
 }
 
 // ─── Map ────────────────────────────────────────────────────────────
@@ -703,7 +944,7 @@ function executeMap(args: string, _nextMessage: BaseMessage, interactionData: In
         toLoc = locations.find(l => l.id === trimmed);
     }
     if (!toLoc) return { toolType: 'map', args, content: `[Error: Location ID "${trimmed}" not found.]`, displayReplacement: `[Error: Location not found]` };
-    if (!fromLoc) return { toolType: 'map', args, content: '[Error: No current location. Use "map <loc1> to <loc2>" format.]', displayReplacement: '[Error: No current location]' };
+    if (!fromLoc) return { toolType: 'map', args, content: '[Error: No current location. Use "map <loc1_id> to <loc2_id>" format.]', displayReplacement: '[Error: No current location]' };
     if (fromLoc.id === toLoc.id) return { toolType: 'map', args, content: `Already at "${toLoc.name}".`, displayReplacement: `[🗺️ Already at "${toLoc.name}"]` };
 
     let distanceKm = fromLoc.locationDistances?.[toLoc.id];
@@ -1205,7 +1446,7 @@ export function processPendingToolActions(
             case 'kick': {
                 const kickedChar = updatedData.participants.find(p => p.id === action.payload.characterId);
                 if (kickedChar) {
-                    const destLocIdx = action.payload.destinationLocationIndex !== undefined ? parseInt(action.payload.destinationLocationIndex, 10) : undefined;
+                    const destLocIdx = action.payload.destinationLocationIndex !== undefined ? Number.parseInt(action.payload.destinationLocationIndex, 10) : undefined;
                     const prevKickedMsg = findPrevMsg(updatedData, kickedChar.id);
                     const prevLockedLocations = prevKickedMsg?.characterLockedLocations ?? {};
                     const kickMsg = {

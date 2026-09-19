@@ -7,7 +7,6 @@ import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngi
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { saveRawInteractionData } from '../storage/serverStorage';
 import { updatePartialMessageInInteractionData } from './chatLogic';
-import { useMemoryTrigger } from './useMemoryTrigger';
 
 const characterActor = new CharacterActor();
 const autonomousEngine = new AutonomousSimulationEngine();
@@ -34,8 +33,6 @@ export function useChatEngine(deps: EngineDependencies) {
         setBudgetData, setStats, setCurrentCharacterExpression,
         setLastSelectedModelId, addToast,
     } = deps;
-
-    const { processMemoryTrigger } = useMemoryTrigger();
 
     const handleServerResponse = useCallback(async (
         data: InteractionData, 
@@ -112,13 +109,9 @@ export function useChatEngine(deps: EngineDependencies) {
         const effectiveData = isResuming
             ? (getState().interactionData ?? result.updatedData)
             : result.updatedData;
-
-        if (result.rawText) {
-            await processMemoryTrigger(result.rawText, character, effectiveData);
-        }
         
         return { interactionData: effectiveData, isCompleted: result.isCompleted };
-    }, [getState, setStreamingState, setStats, setCurrentCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast, processMemoryTrigger]);
+    }, [getState, setStreamingState, setStats, setCurrentCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast]);
 
     const runTurn = useCallback(async (
         initialData: InteractionData,
