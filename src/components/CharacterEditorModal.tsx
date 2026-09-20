@@ -7,7 +7,6 @@ import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getChatImpatienceSensitivityValueFromText, getSkipProbabilityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText, getMaximumActionStaminaValueFromText } from '../hooks/chatTraitsDetection';
 import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExtended } from '../services/characterCardParser';
 import { v4 as uuidv4 } from 'uuid';
-import { CharacterAdvancedSettingsEditorModal } from './CharacterAdvancedSettingsEditorModal';
 import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
 import { CharacterImageEditorModal } from './CharacterImageEditorModal';
 import { CharacterClothingEditorModal } from './CharacterClothingEditorModal';
@@ -16,6 +15,7 @@ import { CharacterDialoguePromptEditorModal } from './CharacterDialoguePromptEdi
 import { CharacterKnowledgePromptEditorModal } from './CharacterKnowledgePromptEditorModal';
 import '../main.css';
 import { defaultCharacterTools } from '../dictionaries/defaults';
+import { toolLabels } from '../dictionaries/texts';
 
 // ─── Defaults ───────────────────────────────────────────────────────
 const DEFAULT_INITIATIVE_WEIGHT = 1.2;
@@ -27,11 +27,41 @@ const DEFAULT_SKIP_PROBABILITY = 0;
 const DEFAULT_MEMORY_RETENTION_WEIGHT = 1;
 const DEFAULT_CONTEXT_SENSITIVITY = 1;
 const DEFAULT_MAXIMUM_ACTION_STAMINA = 5;
-const DEFAULT_DISABLE_THINK_PROMPT = 1;
-const DEFAULT_DISABLE_META_THINK = 1;
-const DEFAULT_DISABLE_DIALOGUE_PROMPT = 1;
-const DEFAULT_DISABLE_STARTER_PROMPT = 1;
 const MAX_VOICE_FILE_SIZE = 5 * 1024 * 1024;
+
+const TOOL_DESCRIPTIONS: Record<tool, string> = {
+    think: 'Allow this character to think before committing to an output.',
+    pick: 'Allow this character to randomly pick from a list of options.',
+    date: 'Allow this character to check the current date and time during conversation.',
+    coin: 'Allow this character to flip a coin during conversation.',
+    dice: 'Allow this character to roll dice, such as 2d6+3, during conversation.',
+    random: 'Allow this character to generate random numbers during conversation.',
+    rng: 'Allow this character to roll on named RNG tables defined in contexts.',
+    move: 'Allow this character to move between adjacent locations using normal movement cost.',
+    timer: 'Allow this character to set, check, and manage countdown timers.',
+    stopwatch: 'Allow this character to start, pause, resume, and stop stopwatches.',
+    calculator: 'Allow this character to perform calculations during conversation.',
+    web: 'Allow this character to search the web during conversation.',
+    dialogue: 'Allow this character to reference its own dialogue prompts.',
+    knowledge: 'Allow this character to access its knowledge prompts on demand. Knowledge is not injected into context unless explicitly recalled via this tool.',
+    memory: 'Allow this character to recall its own memories on demand. Memories are not injected into context unless explicitly recalled via this tool.',
+    lookup: 'Allow this character to search contexts and lore by keyword.',
+    map: 'Allow this character to check distances between locations.',
+    audio: 'Allow this character to play and stop audio tracks during conversation.',
+    clothing: 'Allow this character to wear and take off clothing.',
+    note: 'Allow this character to save, retrieve, and manage persistent notes.',
+    inventory: 'Allow this character to add, remove, set, and list inventory items.',
+    invite: 'Allow this character to bring an existing participant, except the protagonist, to the current location.',
+    kick: 'Allow this character to move an existing participant, including the protagonist, out of the current location to another one.',
+    teleport: 'Allow this character to instantly move self or a target to any location regardless of adjacency, bypassing normal movement cost.',
+    key: 'Allow this character to lock or unlock a location.',
+    summon: 'Allow this character to add a non-participant character into the current interaction session.',
+    narrate: 'Allow this character to inject ambient narration as the narrator voice without consuming character chat stamina.',
+    inspect: 'Allow this character to examine another character\'s visible state such as name, location, expression, or inventory.',
+    administrator: 'Allow this character to perform high-level administrative actions such as managing chat sessions, models, navigation, and user-data-related controls.',
+    creator: 'Allow this character to create user-data-related entities such as characters, contexts, locations, worlds, prompt blocks, profiles, or other supported data.',
+    destroyer: 'Allow this character to delete or destroy user-data-related entities. Enable with caution.',
+};
 
 const tokenEngine = getLanguageModelEngine();
 
@@ -39,8 +69,9 @@ interface TokenCounts {
     systemPrompt: number | null;
     thinkPrompt: number | null;
     appearancePrompt: number | null;
-    starterPrompt: number | null;
 }
+
+type EditorTabId = 'general' | 'behaviour' | 'stats' | 'tools' | 'model';
 
 interface CharacterEditorModalProps {
     isOpen: boolean;
@@ -85,6 +116,8 @@ function CharacterEditorModalInner({
     selectedModel, runningModels,
     chatNameMap,
 }: Omit<CharacterEditorModalProps, 'isOpen'>) {
+    const [activeTab, setActiveTab] = useState<EditorTabId>('general');
+
     const [name, setName] = useState(existingCharacter?.name || '');
     const [description, setDescription] = useState(existingCharacter?.description || '');
     const [systemPrompt, setSystemPrompt] = useState(existingCharacter?.systemPrompt || '');
@@ -122,10 +155,10 @@ function CharacterEditorModalInner({
     const [useFrontCameraImage, setUseFrontCameraImage] = useState<boolean>(existingCharacter?.useFrontCameraImage ?? false);
     const [doNotInjectCharacterImage, setDoNotInjectCharacterImage] = useState<boolean>(existingCharacter?.doNotInjectCharacterImage ?? false);
 
-    const [numberOfMessagesToDisableThinkPromptStr, setNumberOfMessagesToDisableThinkPromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableThinkPrompt ?? DEFAULT_DISABLE_THINK_PROMPT));
-    const [numberOfMessagesToDisableMetaThinkInstructionsStr, setNumberOfMessagesToDisableMetaThinkInstructionsStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableMetaThinkInstructions ?? DEFAULT_DISABLE_META_THINK));
-    const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableDialoguePrompt ?? DEFAULT_DISABLE_DIALOGUE_PROMPT));
-    const [numberOfMessagesToDisableStarterPromptStr, setNumberOfMessagesToDisableStarterPromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableStarterPrompt ?? DEFAULT_DISABLE_STARTER_PROMPT));
+    const [numberOfMessagesToDisableThinkPromptStr, setNumberOfMessagesToDisableThinkPromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableThinkPrompt ?? 0));
+    const [numberOfMessagesToDisableMetaThinkInstructionsStr, setNumberOfMessagesToDisableMetaThinkInstructionsStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableMetaThinkInstructions ?? 0));
+    const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableDialoguePrompt ?? 0));
+    const [numberOfMessagesToDisableStarterPromptStr, setNumberOfMessagesToDisableStarterPromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableStarterPrompt ?? 0));
 
     const [tools, setTools] = useState<Record<tool, boolean>>(existingCharacter?.tools ?? { ...defaultCharacterTools });
 
@@ -136,7 +169,6 @@ function CharacterEditorModalInner({
     const [knowledgePrompts, setKnowledgePrompts] = useState<KnowledgePrompt[]>(existingCharacter?.knowledgePrompts ?? []);
     const [starterPrompts, setStarterPrompts] = useState<Record<string, number>>(existingCharacter?.starterPrompts ?? {});
 
-    const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
     const [showMemoryManager, setShowMemoryManager] = useState(false);
     const [showImageEditor, setShowImageEditor] = useState(false);
     const [showClothingEditor, setShowClothingEditor] = useState(false);
@@ -152,7 +184,7 @@ function CharacterEditorModalInner({
     });
 
     const [tokenCounts, setTokenCounts] = useState<TokenCounts>({
-        systemPrompt: null, thinkPrompt: null, appearancePrompt: null, starterPrompt: null,
+        systemPrompt: null, thinkPrompt: null, appearancePrompt: null,
     });
     const [countingField, setCountingField] = useState<keyof TokenCounts | null>(null);
 
@@ -195,7 +227,6 @@ function CharacterEditorModalInner({
                 { key: 'systemPrompt', text: existingCharacter?.systemPrompt || '' },
                 { key: 'thinkPrompt', text: existingCharacter?.thinkPrompt || '' },
                 { key: 'appearancePrompt', text: existingCharacter?.appearancePrompt || '' },
-                { key: 'starterPrompt', text: '' },
             ];
 
             for (const { key, text } of fields) {
@@ -285,17 +316,16 @@ function CharacterEditorModalInner({
         setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
         setMaximumActionStaminaStr('-1');
         setSelectedStopPatternIds([]); setUseFrontCameraImage(false); setDoNotInjectCharacterImage(false);
-        setNumberOfMessagesToDisableThinkPromptStr(String(DEFAULT_DISABLE_THINK_PROMPT));
-        setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(DEFAULT_DISABLE_META_THINK));
-        setNumberOfMessagesToDisableDialoguePromptStr(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
-        setNumberOfMessagesToDisableStarterPromptStr(String(DEFAULT_DISABLE_STARTER_PROMPT));
+        setNumberOfMessagesToDisableThinkPromptStr('0');
+        setNumberOfMessagesToDisableMetaThinkInstructionsStr('0');
+        setNumberOfMessagesToDisableDialoguePromptStr('0');
+        setNumberOfMessagesToDisableStarterPromptStr('0');
         setTools({ ...defaultCharacterTools });
         setMemories({});
         setClothings([]);
         setTextCharacterInjections([]);
         setDialoguePrompts([]);
         setKnowledgePrompts([]);
-        // Migrate old singular starterPrompt into weighted format
         if (fields.starterPrompt?.trim()) {
             setStarterPrompts({ [fields.starterPrompt.trim()]: 1 });
         } else {
@@ -304,7 +334,6 @@ function CharacterEditorModalInner({
         countFieldTokens('systemPrompt', fields.systemPrompt);
         countFieldTokens('thinkPrompt', '');
         countFieldTokens('appearancePrompt', fields.appearancePrompt);
-        countFieldTokens('starterPrompt', '');
         setSubmitError(null);
         const extended = card as ParsedCharacterCardExtended;
         if (extended.emotionImages && Object.keys(extended.emotionImages).length > 0) {
@@ -432,10 +461,10 @@ function CharacterEditorModalInner({
             memoryRetentionWeight: finalMRW, contextSensitivity: finalCRS,
             maximumActionStamina: finalMAS,
             doNotInjectCharacterImage: doNotInjectCharacterImage || undefined,
-            numberOfMessagesToDisableThinkPrompt: Number.isNaN(rawDisableThink) ? DEFAULT_DISABLE_THINK_PROMPT : Math.max(0, rawDisableThink),
-            numberOfMessagesToDisableMetaThinkInstructions: Number.isNaN(rawDisableMeta) ? DEFAULT_DISABLE_META_THINK : Math.max(0, rawDisableMeta),
-            numberOfMessagesToDisableDialoguePrompt: Number.isNaN(rawDisableDialogue) ? DEFAULT_DISABLE_DIALOGUE_PROMPT : Math.max(0, rawDisableDialogue),
-            numberOfMessagesToDisableStarterPrompt: Number.isNaN(rawDisableStarter) ? DEFAULT_DISABLE_STARTER_PROMPT : Math.max(0, rawDisableStarter),
+            numberOfMessagesToDisableThinkPrompt: Number.isNaN(rawDisableThink) ? 0 : Math.max(0, rawDisableThink),
+            numberOfMessagesToDisableMetaThinkInstructions: Number.isNaN(rawDisableMeta) ? 0 : Math.max(0, rawDisableMeta),
+            numberOfMessagesToDisableDialoguePrompt: Number.isNaN(rawDisableDialogue) ? 0 : Math.max(0, rawDisableDialogue),
+            numberOfMessagesToDisableStarterPrompt: Number.isNaN(rawDisableStarter) ? 0 : Math.max(0, rawDisableStarter),
             tools: { ...tools },
             clothings,
             textCharacterInjections,
@@ -485,6 +514,22 @@ function CharacterEditorModalInner({
         setStarterPrompts(prev => ({ ...prev, [text]: finalWeight }));
     }, []);
 
+    const getStopPatternById = (id: string) => {
+        for (const s of allSamplers) {
+            const found = s.stopPatterns.find(sp => sp.id === id);
+            if (found) return found;
+        }
+        return null;
+    };
+
+    const editorTabs: { id: EditorTabId; label: string; icon: string }[] = [
+        { id: 'general', label: 'General', icon: '📝' },
+        { id: 'behaviour', label: 'Behaviour', icon: '🧠' },
+        { id: 'stats', label: 'Stats', icon: '📊' },
+        { id: 'tools', label: 'Tools', icon: '🔧' },
+        { id: 'model', label: 'Model', icon: '⚙️' },
+    ];
+
     return (
         <>
             <div className="modal-overlay" onClick={onClose}>
@@ -502,68 +547,88 @@ function CharacterEditorModalInner({
                         </div>
                     </div>
 
+                    {/* Tab Bar */}
+                    <div className="entity-tab-bar" style={{ padding: '0 20px', marginBottom: 0, borderBottom: '1px solid var(--border)', background: 'var(--social-bg)' }}>
+                        {editorTabs.map(tab => (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`entity-tab-button ${activeTab === tab.id ? 'entity-tab-button-active' : ''}`}
+                            >
+                                {tab.icon} {tab.label}
+                            </button>
+                        ))}
+                    </div>
+
                     <div className="modal-body editor-modal-body">
                         {submitError && <div className="editor-error-message editor-error-centered">{submitError}</div>}
 
-                        <div className="editor-modal-columns">
-                            {/* LEFT COLUMN */}
-                            <div className="editor-left-column">
-                                <div className="editor-image-upload-container">
-                                    <div className={`editor-image-square editor-image-portrait ${imagePreview ? 'active solid' : 'dashed'}`}
-                                        style={{ cursor: isUploading ? 'wait' : 'pointer', opacity: isUploading ? 0.7 : 1 }}
-                                        onClick={() => !isUploading && fileInputRef.current?.click()}>
-                                        {imagePreview ? (<><img src={imagePreview} alt="Character" />{!isUploading && <div className="editor-image-hover-overlay"><button type="button" onClick={handleRemoveImage} className="editor-image-remove-button-large" title="Remove Picture">🗑️</button></div>}</>) : (<div className="editor-image-placeholder">{isUploading ? '⏳' : '📷'}</div>)}
+                        {/* ─── GENERAL TAB ─── */}
+                        {activeTab === 'general' && (
+                            <div className="editor-modal-columns">
+                                <div className="editor-left-column">
+                                    <div className="editor-image-upload-container">
+                                        <div className={`editor-image-square editor-image-portrait ${imagePreview ? 'active solid' : 'dashed'}`}
+                                            style={{ cursor: isUploading ? 'wait' : 'pointer', opacity: isUploading ? 0.7 : 1 }}
+                                            onClick={() => !isUploading && fileInputRef.current?.click()}>
+                                            {imagePreview ? (<><img src={imagePreview} alt="Character" />{!isUploading && <div className="editor-image-hover-overlay"><button type="button" onClick={handleRemoveImage} className="editor-image-remove-button-large" title="Remove Picture">🗑️</button></div>}</>) : (<div className="editor-image-placeholder">{isUploading ? '⏳' : '📷'}</div>)}
+                                        </div>
+                                        <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleImageChange} disabled={isUploading} />
                                     </div>
-                                    <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleImageChange} disabled={isUploading} />
+
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowImageEditor(true)} disabled={isUploading} style={{ width: '100%', marginTop: '6px', fontSize: '0.75rem' }}>
+                                        More Images ({Object.keys(emotionImages).length})
+                                    </button>
+
+                                    <div className="editor-section" style={{ marginTop: '8px' }}>
+                                        <label className="editor-checkbox-label">
+                                            <input type="checkbox" checked={useFrontCameraImage} onChange={(e) => setUseFrontCameraImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
+                                            <span>Use Front Camera Image</span>
+                                        </label>
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', marginLeft: '26px' }}>
+                                            Replace stored image with live front camera snapshot when profile allows per-character control.
+                                        </div>
+                                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
+                                            <input type="checkbox" checked={doNotInjectCharacterImage} onChange={(e) => setDoNotInjectCharacterImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
+                                            <span>Do Not Inject Character Image</span>
+                                        </label>
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', marginLeft: '26px' }}>
+                                            Prevent this character's image from being sent to the model.
+                                        </div>
+                                    </div>
+
+                                    <div className="editor-section editor-voice-section">
+                                        <span className="editor-section-title">Voice</span>
+                                        <div className="editor-voice-hint">Used for reading character's text. Maximum 5MB.</div>
+                                        {hasVoice ? (
+                                            <div className="editor-voice-chip"><span className="editor-voice-chip-name">🎙️ {voiceFile ? voiceFile.name : existingVoiceName}</span><button type="button" onClick={handleRemoveVoice} disabled={isUploading} className="editor-voice-remove-button" title="Remove voice">×</button></div>
+                                        ) : (
+                                            <button type="button" onClick={() => !isUploading && voiceInputRef.current?.click()} disabled={isUploading} className={`toolbar-button editor-voice-upload-button ${isUploading ? 'uploading' : ''}`}>{isUploading ? 'Uploading...' : '🎙️ Upload Voice Sample'}</button>
+                                        )}
+                                        <input ref={voiceInputRef} type="file" accept="audio/*,.wav,.mp3,.flac,.ogg" hidden onChange={handleVoiceChange} disabled={isUploading} />
+                                    </div>
                                 </div>
 
-                                <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowImageEditor(true)} disabled={isUploading} style={{ width: '100%', marginTop: '6px', fontSize: '0.75rem' }}>
-                                    More Images ({Object.keys(emotionImages).length})
-                                </button>
+                                <div className="editor-right-column">
+                                    <textarea value={name} onChange={(e) => setName(e.target.value)} className="editor-textarea editor-textarea-name" placeholder="Name *" disabled={isUploading} />
+                                    <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea editor-textarea-description" placeholder="Description" disabled={isUploading} />
+                                    <textarea value={firstMessage} onChange={(e) => setFirstMessage(e.target.value)} className="editor-textarea editor-textarea-first-message" placeholder="First message" disabled={isUploading} />
 
-                                <div className="editor-section" style={{ marginTop: '8px' }}>
-                                    <label className="editor-checkbox-label">
-                                        <input type="checkbox" checked={useFrontCameraImage} onChange={(e) => setUseFrontCameraImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
-                                        <span>Use Front Camera Image</span>
-                                    </label>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', marginLeft: '26px' }}>
-                                        Replace stored image with live front camera snapshot when profile allows per-character control.
+                                    <div className="editor-field-wrapper-full">
+                                        <textarea value={systemPrompt} onChange={(e) => { setSystemPrompt(e.target.value); countFieldTokens('systemPrompt', e.target.value); }} onBlur={handleSystemPromptBlur} className="editor-textarea editor-textarea-system" placeholder="System prompt" disabled={isUploading} />
+                                        {renderTokenCount('systemPrompt')}
                                     </div>
-                                    <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                                        <input type="checkbox" checked={doNotInjectCharacterImage} onChange={(e) => setDoNotInjectCharacterImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
-                                        <span>Do Not Inject Character Image</span>
-                                    </label>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', marginLeft: '26px' }}>
-                                        Prevent this character's image from being sent to the model.
-                                    </div>
-                                </div>
-
-                                <textarea value={name} onChange={(e) => setName(e.target.value)} className="editor-textarea editor-textarea-name" placeholder="Name *" disabled={isUploading} />
-                                <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea editor-textarea-description" placeholder="Description" disabled={isUploading} />
-                                <textarea value={firstMessage} onChange={(e) => setFirstMessage(e.target.value)} className="editor-textarea editor-textarea-first-message" placeholder="First message" disabled={isUploading} />
-
-                                <div className="editor-section editor-voice-section">
-                                    <span className="editor-section-title">Voice</span>
-                                    <div className="editor-voice-hint">Used for reading character's text. Maximum 5MB.</div>
-                                    {hasVoice ? (
-                                        <div className="editor-voice-chip"><span className="editor-voice-chip-name">🎙️ {voiceFile ? voiceFile.name : existingVoiceName}</span><button type="button" onClick={handleRemoveVoice} disabled={isUploading} className="editor-voice-remove-button" title="Remove voice">×</button></div>
-                                    ) : (
-                                        <button type="button" onClick={() => !isUploading && voiceInputRef.current?.click()} disabled={isUploading} className={`toolbar-button editor-voice-upload-button ${isUploading ? 'uploading' : ''}`}>{isUploading ? 'Uploading...' : '🎙️ Upload Voice Sample'}</button>
-                                    )}
-                                    <input ref={voiceInputRef} type="file" accept="audio/*,.wav,.mp3,.flac,.ogg" hidden onChange={handleVoiceChange} disabled={isUploading} />
+                                    <div className="editor-field-wrapper"><textarea value={thinkPrompt} onChange={(e) => { setThinkPrompt(e.target.value); countFieldTokens('thinkPrompt', e.target.value); }} className="editor-textarea editor-textarea-think" placeholder="Think Prompt" disabled={isUploading} />{renderTokenCount('thinkPrompt')}</div>
+                                    <div className="editor-field-wrapper"><textarea value={appearancePrompt} onChange={(e) => { setAppearancePrompt(e.target.value); countFieldTokens('appearancePrompt', e.target.value); }} className="editor-textarea editor-textarea-appearance" placeholder="Appearance Prompt" disabled={isUploading} />{renderTokenCount('appearancePrompt')}</div>
                                 </div>
                             </div>
+                        )}
 
-                            {/* RIGHT COLUMN */}
-                            <div className="editor-right-column">
-                                <div className="editor-field-wrapper-full">
-                                    <textarea value={systemPrompt} onChange={(e) => { setSystemPrompt(e.target.value); countFieldTokens('systemPrompt', e.target.value); }} onBlur={handleSystemPromptBlur} className="editor-textarea editor-textarea-system" placeholder="System prompt" disabled={isUploading} />
-                                    {renderTokenCount('systemPrompt')}
-                                </div>
-                                <div className="editor-field-wrapper"><textarea value={thinkPrompt} onChange={(e) => { setThinkPrompt(e.target.value); countFieldTokens('thinkPrompt', e.target.value); }} className="editor-textarea editor-textarea-think" placeholder="Think Prompt" disabled={isUploading} />{renderTokenCount('thinkPrompt')}</div>
-                                <div className="editor-field-wrapper"><textarea value={appearancePrompt} onChange={(e) => { setAppearancePrompt(e.target.value); countFieldTokens('appearancePrompt', e.target.value); }} className="editor-textarea editor-textarea-appearance" placeholder="Appearance Prompt" disabled={isUploading} />{renderTokenCount('appearancePrompt')}</div>
-
-                                {/* Starter Prompts (weighted) */}
+                        {/* ─── BEHAVIOUR TAB ─── */}
+                        {activeTab === 'behaviour' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                {/* Starter Prompts */}
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <div className="editor-section-title">Starter Prompts ({Object.keys(starterPrompts).length})</div>
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Weighted starter messages. Higher weight = more likely to be selected.</div>
@@ -586,30 +651,214 @@ function CharacterEditorModalInner({
                                     </div>
                                 </div>
 
-                                <div className="editor-bottom-section">
+                                {/* Behaviour buttons */}
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowDialoguePromptEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Dialogue ({dialoguePrompts.length})</button>
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowKnowledgePromptEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Knowledge ({knowledgePrompts.length})</button>
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowClothingEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Clothing ({clothings.length})</button>
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowTextInjectionEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Text Injection ({textCharacterInjections.length})</button>
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading} style={{ flex: 1 }}>Memory ({memoryCount})</button>
+                                </div>
+
+                                {/* Prompt Decay */}
+                                <div className="editor-section" style={{ margin: 0 }}>
+                                    <span className="editor-section-title">Prompt Decay</span>
+                                    <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '12px' }}>
+                                        Prompts are automatically removed from context after the character has sent this many messages. Set to 0 to disable immediately, or leave high to keep them active longer.
+                                    </div>
+                                    <div className="editor-stats-grid">
+                                        <div>
+                                            <label className="editor-label editor-label-small">Think Prompt</label>
+                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableThinkPromptStr} onChange={(e) => setNumberOfMessagesToDisableThinkPromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                        </div>
+                                        <div>
+                                            <label className="editor-label editor-label-small">Meta-Think Instructions</label>
+                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableMetaThinkInstructionsStr} onChange={(e) => setNumberOfMessagesToDisableMetaThinkInstructionsStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                        </div>
+                                        <div>
+                                            <label className="editor-label editor-label-small">Dialogue Prompt</label>
+                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableDialoguePromptStr} onChange={(e) => setNumberOfMessagesToDisableDialoguePromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                        </div>
+                                        <div>
+                                            <label className="editor-label editor-label-small">Starter Prompt</label>
+                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableStarterPromptStr} onChange={(e) => setNumberOfMessagesToDisableStarterPromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ─── STATS TAB ─── */}
+                        {activeTab === 'stats' && (
+                            <>
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Turn Order & Output</span>
+                                    <div className="editor-stats-grid">
+                                        <div>
+                                            <label className="editor-label editor-label-small">Initiative Weight</label>
+                                            <input type="number" step="0.1" value={initiativeWeightStr} onChange={(e) => setInitiativeWeightStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the character's initiative when determining turn order. Range: 0 - ∞.</div>
+                                        </div>
+                                        <div>
+                                            <label className="editor-label editor-label-small">Chat Probability</label>
+                                            <input type="number" step="0.05" value={chatProbabilityStr} onChange={(e) => setChatProbabilityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the probability of the character initiating a chat message when selected. Range: 0 - 1.</div>
+                                        </div>
+                                        <div>
+                                            <label className="editor-label editor-label-small">Maximum Chat Stamina</label>
+                                            <input type="number" step="1" min="0" value={maximumChatStaminaStr} onChange={(e) => setMaximumChatStaminaStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the number of maximum paragraphs that the character could produce. Range: 0 - ∞.</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Responsiveness</span>
+                                    <div className="editor-stats-grid">
+                                        <div>
+                                            <label className="editor-label editor-label-small">Name Sensitivity</label>
+                                            <input type="number" step="0.5" min="0" value={nameSensitivityStr} onChange={(e) => setNameSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how likely the character is to be the first one to respond to the latest message. Multiplied by mention count. 0 = off.</div>
+                                        </div>
+                                        <div>
+                                            <label className="editor-label editor-label-small">Chat Impatience</label>
+                                            <input type="number" step="0.1" min="0" value={chatImpatienceSensitivityStr} onChange={(e) => setChatImpatienceSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how impatient the character is after waiting to speak for too long. Higher = speaks sooner after being quiet. 0 = off.</div>
+                                        </div>
+                                        <div>
+                                            <label className="editor-label editor-label-small">Skip Probability</label>
+                                            <input type="number" step="0.05" min="0" max="1" value={skipProbabilityStr} onChange={(e) => setSkipProbabilityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Probability of skipping an action. Range: 0 - 1.</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Awareness & Actions</span>
+                                    <div className="editor-stats-grid">
+                                        <div>
+                                            <label className="editor-label editor-label-small">Memory Retention</label>
+                                            <input type="number" step="0.1" min="0" value={memoryRetentionWeightStr} onChange={(e) => setMemoryRetentionWeightStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how much of the character's memory is retained. Range: 0 - 1.</div>
+                                        </div>
+                                        <div>
+                                            <label className="editor-label editor-label-small">Context Sensitivity</label>
+                                            <input type="number" step="0.1" min="0" value={contextSensitivityStr} onChange={(e) => setContextSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how sensitive the character is to contextual cues. Range: 0 - 1.</div>
+                                        </div>
+                                        <div>
+                                            <label className="editor-label editor-label-small">Maximum Action Stamina</label>
+                                            <input type="number" step="1" min="0" value={maximumActionStaminaStr} onChange={(e) => setMaximumActionStaminaStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how many silent actions, movement, or non-chat interactions the character can perform before needing to rest. Range: 0 - ∞.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {/* ─── TOOLS TAB ─── */}
+                        {activeTab === 'tools' && (
+                            <div className="editor-section">
+                                <span className="editor-section-title">Character Tools</span>
+                                <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '12px' }}>
+                                    Enable runtime tool use during generation for this character. Can be overridden by profile settings.
+                                </div>
+
+                                {(Object.keys(tools) as tool[]).map(toolName => (
+                                    <div key={toolName} style={{ marginBottom: '8px' }}>
+                                        <label className="editor-checkbox-label">
+                                            <input
+                                                type="checkbox"
+                                                checked={tools[toolName]}
+                                                onChange={() => handleToolToggle(toolName)}
+                                                className="editor-checkbox-input"
+                                                disabled={isUploading}
+                                            />
+                                            <span>{toolLabels[toolName] ?? toolName}</span>
+                                        </label>
+                                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                                            {TOOL_DESCRIPTIONS[toolName] ?? 'Allow this character to use this tool during conversation.'}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* ─── MODEL TAB ─── */}
+                        {activeTab === 'model' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Sampler</span>
                                     <select value={selectedSamplerId} onChange={(e) => setSelectedSamplerId(e.target.value)} className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingSamplers || isUploading}>
                                         {isLoadingSamplers && <option>Loading samplers...</option>}
                                         {!isLoadingSamplers && allSamplers.length === 0 && <option>No samplers available</option>}
                                         {!isLoadingSamplers && allSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
                                     </select>
+                                </div>
 
-                                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowAdvancedSettings(true)} disabled={isUploading} style={{ flex: 1 }}>Advanced Settings</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowClothingEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Clothing ({clothings.length})</button>
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Character Stop Patterns</span>
+                                    <div className="editor-stop-patterns-hint">
+                                        Specific stop sequences for this character, overrides or augments sampler defaults.
                                     </div>
 
-                                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowDialoguePromptEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Dialogue ({dialoguePrompts.length})</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowKnowledgePromptEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Knowledge ({knowledgePrompts.length})</button>
+                                    <div className="sampler-stop-patterns-list">
+                                        {selectedStopPatternIds.length === 0 && (
+                                            <div className="sampler-stop-empty">No character-specific stop patterns assigned.</div>
+                                        )}
+
+                                        {selectedStopPatternIds.map(id => {
+                                            const sp = getStopPatternById(id);
+                                            if (!sp) return null;
+
+                                            return (
+                                                <div key={id} className="sampler-stop-item">
+                                                    <div className="sampler-stop-info">
+                                                        <span className="sampler-stop-name">{sp.name}</span>
+                                                        <span className="sampler-stop-pattern">{sp.pattern}</span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleStopPatternToggle(id)}
+                                                        className="sampler-stop-remove-button"
+                                                        title="Remove stop pattern"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
 
-                                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowTextInjectionEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Text Injection ({textCharacterInjections.length})</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading} style={{ flex: 1 }}>Memory ({memoryCount})</button>
-                                    </div>
+                                    <select
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val) handleStopPatternToggle(val);
+                                            e.target.value = '';
+                                        }}
+                                        className="editor-select"
+                                        defaultValue=""
+                                        disabled={isUploading}
+                                    >
+                                        <option value="" disabled>+ Add a stop pattern</option>
+                                        {allSamplers
+                                            .flatMap(s => s.stopPatterns)
+                                            .filter((sp, index, self) => index === self.findIndex(t => t.id === sp.id))
+                                            .filter(sp => !selectedStopPatternIds.includes(sp.id))
+                                            .map(sp => (
+                                                <option key={sp.id} value={sp.id}>
+                                                    {sp.name} — {sp.pattern}
+                                                </option>
+                                            ))}
+                                    </select>
                                 </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -625,43 +874,6 @@ function CharacterEditorModalInner({
                     if (neutral) { setImagePreview(getCharacterImageUrl(effectiveCharacterId, neutral)); setImageFile(null); }
                     else if (!imageFile) { setImagePreview(null); }
                 }}
-            />
-
-            <CharacterAdvancedSettingsEditorModal
-                isOpen={showAdvancedSettings}
-                onClose={() => setShowAdvancedSettings(false)}
-                initiativeWeightStr={initiativeWeightStr}
-                chatProbabilityStr={chatProbabilityStr}
-                maximumChatStaminaStr={maximumChatStaminaStr}
-                nameSensitivityStr={nameSensitivityStr}
-                chatImpatienceSensitivityStr={chatImpatienceSensitivityStr}
-                skipProbabilityStr={skipProbabilityStr}
-                memoryRetentionWeightStr={memoryRetentionWeightStr}
-                contextSensitivityStr={contextSensitivityStr}
-                maximumActionStaminaStr={maximumActionStaminaStr}
-                numberOfMessagesToDisableThinkPromptStr={numberOfMessagesToDisableThinkPromptStr}
-                numberOfMessagesToDisableMetaThinkInstructionsStr={numberOfMessagesToDisableMetaThinkInstructionsStr}
-                numberOfMessagesToDisableDialoguePromptStr={numberOfMessagesToDisableDialoguePromptStr}
-                numberOfMessagesToDisableStarterPromptStr={numberOfMessagesToDisableStarterPromptStr}
-                tools={tools}
-                selectedStopPatternIds={selectedStopPatternIds}
-                allSamplers={allSamplers}
-                isUploading={isUploading}
-                onInitiativeWeightChange={setInitiativeWeightStr}
-                onChatProbabilityChange={setChatProbabilityStr}
-                onMaximumChatStaminaChange={setMaximumChatStaminaStr}
-                onNameSensitivityChange={setNameSensitivityStr}
-                onChatImpatienceSensitivityChange={setChatImpatienceSensitivityStr}
-                onSkipProbabilityChange={setSkipProbabilityStr}
-                onMemoryRetentionWeightChange={setMemoryRetentionWeightStr}
-                onContextSensitivityChange={setContextSensitivityStr}
-                onMaximumActionStaminaChange={setMaximumActionStaminaStr}
-                onDisableThinkChange={setNumberOfMessagesToDisableThinkPromptStr}
-                onDisableMetaChange={setNumberOfMessagesToDisableMetaThinkInstructionsStr}
-                onDisableDialogueChange={setNumberOfMessagesToDisableDialoguePromptStr}
-                onDisableStarterChange={setNumberOfMessagesToDisableStarterPromptStr}
-                onToolToggle={handleToolToggle}
-                onStopPatternToggle={handleStopPatternToggle}
             />
 
             <CharacterClothingEditorModal

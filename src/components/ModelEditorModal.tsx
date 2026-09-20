@@ -81,8 +81,6 @@ const SPEC_TYPE_OPTIONS = [
     { value: 'ngram-mod', label: 'N-Gram Mod' },
 ];
 
-// ─── Backend capability flags ───────────────────────────────────────
-
 const GPU_LAYERS_BACKENDS = new Set<string>(['Llama.cpp', 'Ollama', 'mistral.rs']);
 const SEPARATE_KV_BACKENDS = new Set<string>(['Llama.cpp', 'Ollama']);
 const SPEC_DECODING_BACKENDS = new Set<string>(['Llama.cpp', 'vLLM', 'SGLang', 'ExLlamaV3', 'ExLlamaV3 HF']);
@@ -159,6 +157,8 @@ const syncKVFromCombined = (combinedValue: string): { k: string; v: string } => 
     return { k: combinedValue, v: combinedValue };
 };
 
+type ModelTabId = 'general' | 'templates' | 'inference' | 'advanced' | 'cost';
+
 export function ModelEditorModal({
     isOpen,
     onClose,
@@ -166,6 +166,8 @@ export function ModelEditorModal({
     existingModel,
     allStopPatterns,
 }: ModelEditorModalProps) {
+    const [activeTab, setActiveTab] = useState<ModelTabId>('general');
+
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [selectedBackend, setSelectedBackend] = useState<backend>('Llama.cpp');
@@ -210,7 +212,6 @@ export function ModelEditorModal({
     const supportsLlamaMemory = LLAMA_MEMORY_BACKENDS.has(selectedBackend);
     const supportsVRAM = VRAM_SUPPORTED_BACKENDS.has(selectedBackend);
 
-    // Auto-detect templates when model name/path changes and template is set to 'auto'
     const detectedTemplateKey = (instructionTemplate === 'auto' || chatTemplate === 'auto')
         ? autoDetectTemplate(name || modelPath)
         : '';
@@ -404,7 +405,6 @@ export function ModelEditorModal({
         if (selectedStopPatternIds.length > 0) params.stop_pattern_ids = selectedStopPatternIds;
         if (apiKey.trim()) params.api_key = apiKey.trim();
 
-        // Resolve 'auto' template selections to actual detected template keys
         const resolvedInstructionTemplate = instructionTemplate === 'auto'
             ? (detectedTemplateKey || undefined)
             : (instructionTemplate || undefined);
@@ -464,8 +464,15 @@ export function ModelEditorModal({
     const displayVRAM = isEstimating ? '...' : (vramError ? 'Unknown' : estimatedVRAM);
     const getStopPatternById = (id: string) => allStopPatterns.find(sp => sp.id === id);
 
-    // Compute detected template info for display hints
     const detectedTmpl = detectedTemplateKey ? getModelTemplate(detectedTemplateKey) : null;
+
+    const modelTabs: { id: ModelTabId; label: string; icon: string }[] = [
+        { id: 'general', label: 'General', icon: '🤖' },
+        { id: 'templates', label: 'Templates', icon: '📋' },
+        { id: 'inference', label: 'Inference', icon: '⚙️' },
+        { id: 'advanced', label: 'Advanced', icon: '🔧' },
+        { id: 'cost', label: 'Cost', icon: '💰' },
+    ];
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -488,418 +495,338 @@ export function ModelEditorModal({
                     </div>
                 </div>
 
+                {/* Tab Bar */}
+                <div className="entity-tab-bar" style={{ padding: '0 20px', marginBottom: 0, borderBottom: '1px solid var(--border)', background: 'var(--social-bg)' }}>
+                    {modelTabs.map(tab => (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`entity-tab-button ${activeTab === tab.id ? 'entity-tab-button-active' : ''}`}
+                        >
+                            {tab.icon} {tab.label}
+                        </button>
+                    ))}
+                </div>
+
                 <div className="modal-body editor-modal-body">
-                    <div style={{ marginBottom: '16px' }}>
-                        <label className="editor-label">Model Name <span style={{ color: '#ff4444' }}>*</span></label>
-                        <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Gemma-4-E4B" />
-                        {errors.name && <div className="editor-error-message">{errors.name}</div>}
-                    </div>
-
-                    <div style={{ marginBottom: '16px' }}>
-                        <label className="editor-label">Description</label>
-                        <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Describe the model's strengths, use cases, etc." rows={2} />
-                    </div>
-
-                    <div style={{ marginBottom: '16px' }}>
-                        <label className="editor-label">Backend</label>
-                        <select value={selectedBackend ?? ""} onChange={(e) => setSelectedBackend(e.target.value as backend)} className="editor-select">
-                            {backends.map(opt => (<option key={opt} value={opt}>{opt}</option>))}
-                        </select>
-                    </div>
-
-                    <div style={{ marginBottom: '16px' }}>
-                        <label className="editor-label">Model Path {!isCloudBackend && <span style={{ color: '#ff4444' }}>*</span>}</label>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <input
-                                type="text"
-                                value={modelPath}
-                                onChange={(e) => { setModelPath(e.target.value); if (errors.model) setErrors({ ...errors, model: undefined }); }}
-                                className={`editor-input ${errors.model ? 'error' : ''}`}
-                                style={{ fontFamily: 'monospace', flex: 1 }}
-                                placeholder="/path/to/model.gguf"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => modelFileRef.current?.click()}
-                                className="editor-button editor-button-cancel"
-                                style={{ padding: '6px 12px' }}
-                            >
-                                📁
-                            </button>
-                            <input
-                                ref={modelFileRef}
-                                type="file"
-                                style={{ display: 'none' }}
-                                onChange={(e) => handleFileSelect(e, setModelPath)}
-                            />
-                        </div>
-                        {errors.model && <div className="editor-error-message">{errors.model}</div>}
-                    </div>
-
-                    <div style={{ marginBottom: '16px' }}>
-                        <label className="editor-label">MMProj Path</label>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <input
-                                type="text"
-                                value={mmprojPath}
-                                onChange={(e) => setMmprojPath(e.target.value)}
-                                className="editor-input"
-                                style={{ fontFamily: 'monospace', flex: 1 }}
-                                placeholder="/path/to/mmproj.gguf"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => mmprojFileRef.current?.click()}
-                                className="editor-button editor-button-cancel"
-                                style={{ padding: '6px 12px' }}
-                            >
-                                📁
-                            </button>
-                            <input
-                                ref={mmprojFileRef}
-                                type="file"
-                                style={{ display: 'none' }}
-                                onChange={(e) => handleFileSelect(e, setMmprojPath)}
-                            />
-                        </div>
-                        {mmprojPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Multi-modal support enabled</div>}
-                    </div>
-
-                    <div style={{ marginBottom: '16px' }}>
-                        <label className="editor-label">LoRA Adapter Path</label>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <input
-                                type="text"
-                                value={loraPath}
-                                onChange={(e) => setLoraPath(e.target.value)}
-                                className="editor-input"
-                                style={{ fontFamily: 'monospace', flex: 1 }}
-                                placeholder="/path/to/lora-adapter.gguf"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => loraFileRef.current?.click()}
-                                className="editor-button editor-button-cancel"
-                                style={{ padding: '6px 12px' }}
-                            >
-                                📁
-                            </button>
-                            <input
-                                ref={loraFileRef}
-                                type="file"
-                                style={{ display: 'none' }}
-                                onChange={(e) => handleFileSelect(e, setLoraPath)}
-                            />
-                        </div>
-                        {loraPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Language model has been modified.</div>}
-                    </div>
-
-                    <div style={{ marginBottom: '16px' }}>
-                        <label className="editor-label">Context Length</label>
-                        <input
-                            type="number"
-                            value={contextLength}
-                            onChange={(e) => setContextLength(Math.max(0, Number(e.target.value) || 0))}
-                            className="editor-input"
-                            min="0"
-                            step="1024"
-                            placeholder="0 (Auto-detect from model)"
-                        />
-                        <div style={{ fontSize: '0.6rem', opacity: 0.5, marginTop: '2px' }}>
-                            0 = Auto-detect from model. Set manually if auto-detection is wrong (e.g., 8192, 16384, 32768, 65536, 131072).
-                        </div>
-                    </div>
-
-                    <div style={{ marginBottom: '16px' }}>
-                        <label className="editor-label">API Key {isCloudBackend && <span style={{ color: '#ff4444' }}>*</span>}</label>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <input
-                                type={showApiKey ? 'text' : 'password'}
-                                value={apiKey}
-                                onChange={(e) => { setApiKey(e.target.value); if (errors.apiKey) setErrors({ ...errors, apiKey: undefined }); }}
-                                className={`editor-input ${errors.apiKey ? 'error' : ''}`}
-                                style={{ fontFamily: 'monospace', flex: 1 }}
-                                placeholder="Enter your API key"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowApiKey(!showApiKey)}
-                                className="editor-button"
-                                style={{
-                                    padding: '6px 10px', width: 'auto', minWidth: '40px',
-                                    color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    background: 'transparent', border: '1px solid var(--border)', transition: 'all 0.2s'
-                                }}
-                                title={showApiKey ? 'Hide API key' : 'Show API key'}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-bg)'; e.currentTarget.style.borderColor = 'var(--accent)'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border)'; }}
-                            >
-                                {showApiKey ? '🙈' : '👁️'}
-                            </button>
-                        </div>
-                        {errors.apiKey && <div className="editor-error-message">{errors.apiKey}</div>}
-                    </div>
-
-                    {/* ─── Chat & Instruction Templates ─── */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Chat & Instruction Templates</span>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
-                            Select the formatting template this model was trained with. Used when "Model Chat Template" or "Model Instruction Template" is added to a profile's input strategy. "Auto" detects from the model name. "None" uses the engine default.
-                        </div>
-                        <div className="editor-row">
-                            <div>
-                                <label className="editor-label editor-label-small">Instruction Template</label>
-                                <select value={instructionTemplate} onChange={(e) => setInstructionTemplate(e.target.value)} className="editor-select">
-                                    {getInstructionTemplateOptions().map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                </select>
-                                {instructionTemplate === 'auto' && (
-                                    <div style={{ fontSize: '0.6rem', marginTop: '4px', color: detectedTmpl?.instructionTemplate ? 'var(--accent)' : 'rgba(255,255,255,0.4)' }}>
-                                        {detectedTmpl?.instructionTemplate ? `✓ Detected: ${detectedTmpl.label}` : '⚠ No match found — will fall back to None'}
-                                    </div>
-                                )}
+                    {/* ─── GENERAL TAB ─── */}
+                    {activeTab === 'general' && (
+                        <>
+                            <div style={{ marginBottom: '16px' }}>
+                                <label className="editor-label">Model Name <span style={{ color: '#ff4444' }}>*</span></label>
+                                <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Gemma-4-E4B" />
+                                {errors.name && <div className="editor-error-message">{errors.name}</div>}
                             </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Chat Template</label>
-                                <select value={chatTemplate} onChange={(e) => setChatTemplate(e.target.value)} className="editor-select">
-                                    {getChatTemplateOptions().map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                </select>
-                                {chatTemplate === 'auto' && (
-                                    <div style={{ fontSize: '0.6rem', marginTop: '4px', color: detectedTmpl?.chatTemplate ? 'var(--accent)' : 'rgba(255,255,255,0.4)' }}>
-                                        {detectedTmpl?.chatTemplate ? `✓ Detected: ${detectedTmpl.label}` : '⚠ No chat template match — will fall back to None'}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
 
-                    {/* ─── Main Options (GPU layers backends only) ─── */}
-                    {(supportsGpuLayers || !isCloudBackend) && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">Main Options</span>
-                            {supportsGpuLayers && (
-                                <div className="editor-row">
-                                    <div>
-                                        <label className="editor-label editor-label-small">GPU Layers</label>
-                                        <input type="number" value={settings.gpu_layers} onChange={(e) => handleSettingChange('gpu_layers', Number(e.target.value) || -1)} className="editor-input" min="-1" step="1" placeholder="-1 (auto)" />
-                                    </div>
-                                    <div>
-                                        <label className="editor-label editor-label-small">Split Mode</label>
-                                        <select value={settings.split_mode} onChange={(e) => handleSettingChange('split_mode', e.target.value)} className="editor-select">
-                                            {SPLIT_MODE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                        </select>
-                                    </div>
-                                </div>
-                            )}
-                            {supportsGpuLayers && (
-                                <div className="editor-row">
-                                    <div>
-                                        <label className="editor-label editor-label-small">Use IK</label>
-                                        <div style={{ paddingTop: '6px' }}>
-                                            <label className="editor-checkbox-label" style={{ margin: 0 }}>
-                                                <input type="checkbox" checked={settings.ik} onChange={(e) => handleSettingChange('ik', e.target.checked)} className="editor-checkbox-input" />
-                                                <span>IK Llama.cpp</span>
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+                            <div style={{ marginBottom: '16px' }}>
+                                <label className="editor-label">Description</label>
+                                <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Describe the model's strengths, use cases, etc." rows={2} />
+                            </div>
+
+                            <div style={{ marginBottom: '16px' }}>
+                                <label className="editor-label">Backend</label>
+                                <select value={selectedBackend ?? ""} onChange={(e) => setSelectedBackend(e.target.value as backend)} className="editor-select">
+                                    {backends.map(opt => (<option key={opt} value={opt}>{opt}</option>))}
+                                </select>
+                            </div>
+
                             {!isCloudBackend && (
-                                <div style={{ fontSize: '0.7rem', color: 'var(--text-h)', opacity: 0.6, padding: '8px 12px', borderRadius: '6px', background: 'var(--social-bg)', border: '1px solid var(--border)', marginTop: '8px', fontStyle: 'italic' }}>
-                                    ℹ️ LoreReactor uses Streaming LLM by default for optimal performance.
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* ─── KV Cache Quantization ─── */}
-                    {!isCloudBackend && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">Key-Value Cache Quantization</span>
-                            {supportsSeparateKV ? (
                                 <>
-                                    <div style={{ marginBottom: '12px' }}>
-                                        <label className="editor-label editor-label-small">Combined Key-Value Cache</label>
-                                        <select value={settings.cache_type} onChange={(e) => handleSettingChange('cache_type', e.target.value)} className="editor-select">
-                                            {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                        </select>
+                                    <div style={{ marginBottom: '16px' }}>
+                                        <label className="editor-label">Model Path <span style={{ color: '#ff4444' }}>*</span></label>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <input type="text" value={modelPath} onChange={(e) => { setModelPath(e.target.value); if (errors.model) setErrors({ ...errors, model: undefined }); }} className={`editor-input ${errors.model ? 'error' : ''}`} style={{ fontFamily: 'monospace', flex: 1 }} placeholder="/path/to/model.gguf" />
+                                            <button type="button" onClick={() => modelFileRef.current?.click()} className="editor-button editor-button-cancel" style={{ padding: '6px 12px' }}>📁</button>
+                                            <input ref={modelFileRef} type="file" style={{ display: 'none' }} onChange={(e) => handleFileSelect(e, setModelPath)} />
+                                        </div>
+                                        {errors.model && <div className="editor-error-message">{errors.model}</div>}
                                     </div>
-                                    <div className="editor-row">
-                                        <div>
-                                            <label className="editor-label editor-label-small">Key Cache Type</label>
-                                            <select value={settings.cache_type_k} onChange={(e) => handleSettingChange('cache_type_k', e.target.value)} className="editor-select">
-                                                {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                            </select>
+
+                                    <div style={{ marginBottom: '16px' }}>
+                                        <label className="editor-label">MMProj Path</label>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <input type="text" value={mmprojPath} onChange={(e) => setMmprojPath(e.target.value)} className="editor-input" style={{ fontFamily: 'monospace', flex: 1 }} placeholder="/path/to/mmproj.gguf" />
+                                            <button type="button" onClick={() => mmprojFileRef.current?.click()} className="editor-button editor-button-cancel" style={{ padding: '6px 12px' }}>📁</button>
+                                            <input ref={mmprojFileRef} type="file" style={{ display: 'none' }} onChange={(e) => handleFileSelect(e, setMmprojPath)} />
                                         </div>
-                                        <div>
-                                            <label className="editor-label editor-label-small">Value Cache Type</label>
-                                            <select value={settings.cache_type_v} onChange={(e) => handleSettingChange('cache_type_v', e.target.value)} className="editor-select">
-                                                {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                            </select>
+                                        {mmprojPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Multi-modal support enabled</div>}
+                                    </div>
+
+                                    <div style={{ marginBottom: '16px' }}>
+                                        <label className="editor-label">LoRA Adapter Path</label>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <input type="text" value={loraPath} onChange={(e) => setLoraPath(e.target.value)} className="editor-input" style={{ fontFamily: 'monospace', flex: 1 }} placeholder="/path/to/lora-adapter.gguf" />
+                                            <button type="button" onClick={() => loraFileRef.current?.click()} className="editor-button editor-button-cancel" style={{ padding: '6px 12px' }}>📁</button>
+                                            <input ref={loraFileRef} type="file" style={{ display: 'none' }} onChange={(e) => handleFileSelect(e, setLoraPath)} />
                                         </div>
+                                        {loraPath && <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '4px' }}>✓ Language model has been modified.</div>}
                                     </div>
                                 </>
-                            ) : (
-                                <div>
-                                    <label className="editor-label editor-label-small">Cache Type</label>
-                                    <select value={settings.cache_type} onChange={(e) => handleSettingChange('cache_type', e.target.value)} className="editor-select">
-                                        {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                    </select>
-                                </div>
                             )}
-                        </div>
-                    )}
 
-                    {/* ─── Speculative Decoding (supported backends only) ─── */}
-                    {supportsSpecDecoding && !isCloudBackend && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">Speculative Decoding</span>
                             <div style={{ marginBottom: '16px' }}>
-                                <label className="editor-label">Draft Model Path</label>
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                    <input
-                                        type="text"
-                                        value={settings.draft_model}
-                                        onChange={(e) => handleSettingChange('draft_model', e.target.value)}
-                                        className="editor-input"
-                                        style={{ fontFamily: 'monospace', flex: 1 }}
-                                        placeholder="/path/to/draft/model.gguf"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => draftFileRef.current?.click()}
-                                        className="editor-button editor-button-cancel"
-                                        style={{ padding: '6px 12px' }}
-                                    >
-                                        📁
-                                    </button>
-                                    <input
-                                        ref={draftFileRef}
-                                        type="file"
-                                        style={{ display: 'none' }}
-                                        onChange={(e) => handleFileSelect(e, (val) => handleSettingChange('draft_model', val))}
-                                    />
-                                </div>
+                                <label className="editor-label">Context Length</label>
+                                <input type="number" value={contextLength} onChange={(e) => setContextLength(Math.max(0, Number(e.target.value) || 0))} className="editor-input" min="0" step="1024" placeholder="0 (Auto-detect from model)" />
+                                <div style={{ fontSize: '0.6rem', opacity: 0.5, marginTop: '2px' }}>0 = Auto-detect from model. Set manually if auto-detection is wrong (e.g., 8192, 16384, 32768, 65536, 131072).</div>
                             </div>
-                            <div className="editor-row">
-                                <div>
-                                    <label className="editor-label editor-label-small">Speculation Type</label>
-                                    <select value={settings.spec_type} onChange={(e) => handleSettingChange('spec_type', e.target.value)} className="editor-select">
-                                        {SPEC_TYPE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="editor-label editor-label-small">Draft Maximum</label>
-                                    <input type="number" value={settings.draft_max} onChange={(e) => handleSettingChange('draft_max', Number(e.target.value) || 3)} className="editor-input" min="1" step="1" placeholder="3" />
-                                </div>
-                            </div>
-                            <div className="editor-row">
-                                <div>
-                                    <label className="editor-label editor-label-small">GPU Layers (Draft)</label>
-                                    <input type="number" value={settings.gpu_layers_draft} onChange={(e) => handleSettingChange('gpu_layers_draft', Number(e.target.value) || 256)} className="editor-input" min="0" step="1" placeholder="256" />
-                                </div>
-                                <div>
-                                    <label className="editor-label editor-label-small">Device (Draft)</label>
-                                    <input type="text" value={settings.device_draft} onChange={(e) => handleSettingChange('device_draft', e.target.value)} className="editor-input" placeholder="CUDA0,CUDA1" />
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
-                    {/* ─── Other Options ─── */}
-                    {!isCloudBackend && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">Other Options</span>
-                            <div className="editor-row">
-                                <div><label className="editor-label editor-label-small">Parallel Slots</label><input type="number" value={settings.parallel} onChange={(e) => handleSettingChange('parallel', Number(e.target.value) || 1)} className="editor-input" min="1" step="1" placeholder="1" /></div>
-                                <div><label className="editor-label editor-label-small">Thread Count</label><input type="number" value={settings.threads} onChange={(e) => handleSettingChange('threads', Number(e.target.value) || 0)} className="editor-input" min="0" step="1" placeholder="0 (auto)" /></div>
-                            </div>
-                            <div className="editor-row">
-                                <div><label className="editor-label editor-label-small">Thread Count (Batch)</label><input type="number" value={settings.threads_batch} onChange={(e) => handleSettingChange('threads_batch', Number(e.target.value) || 0)} className="editor-input" min="0" step="1" placeholder="0 (auto)" /></div>
-                                <div><label className="editor-label editor-label-small">Batch Size</label><input type="number" value={settings.batch_size} onChange={(e) => handleSettingChange('batch_size', Number(e.target.value) || 1024)} className="editor-input" min="1" step="1" placeholder="1024" /></div>
-                            </div>
-                            <div className="editor-row">
-                                <div><label className="editor-label editor-label-small">Micro Batch Size</label><input type="number" value={settings.ubatch_size} onChange={(e) => handleSettingChange('ubatch_size', Number(e.target.value) || 1024)} className="editor-input" min="1" step="1" placeholder="1024" /></div>
-                                <div><label className="editor-label editor-label-small">Fit Target (MiB)</label><input type="text" value={settings.fit_target} onChange={(e) => handleSettingChange('fit_target', e.target.value)} className="editor-input" placeholder="512" /></div>
-                            </div>
-                            <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Tensor Split</label><input type="text" value={settings.tensor_split} onChange={(e) => handleSettingChange('tensor_split', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="60,40" /></div></div>
-                            <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Extra Flags</label><input type="text" value={settings.extra_flags} onChange={(e) => handleSettingChange('extra_flags', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="--jinja --rpc 192.168.1.100:50052" /></div></div>
-
-                            {supportsLlamaMemory && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
-                                    <label className="editor-checkbox-label"><input type="checkbox" checked={settings.cpu_moe} onChange={(e) => handleSettingChange('cpu_moe', e.target.checked)} className="editor-checkbox-input" /><span>Mixture-Of-Experts On CPU</span></label>
-                                    <label className="editor-checkbox-label"><input type="checkbox" checked={settings.no_kv_offload} onChange={(e) => handleSettingChange('no_kv_offload', e.target.checked)} className="editor-checkbox-input" /><span>No Key-Value Offload</span></label>
-                                    <label className="editor-checkbox-label"><input type="checkbox" checked={settings.no_mmap} onChange={(e) => handleSettingChange('no_mmap', e.target.checked)} className="editor-checkbox-input" /><span>No Memory Map</span></label>
-                                    <label className="editor-checkbox-label"><input type="checkbox" checked={settings.mlock} onChange={(e) => handleSettingChange('mlock', e.target.checked)} className="editor-checkbox-input" /><span>Memory Lock</span></label>
-                                    <label className="editor-checkbox-label"><input type="checkbox" checked={settings.numa} onChange={(e) => handleSettingChange('numa', e.target.checked)} className="editor-checkbox-input" /><span>Non-Uniform Memory Access</span></label>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* ─── Stop Patterns ─── */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Model Stop Patterns</span>
-                        <div style={{ marginBottom: '12px', fontSize: '0.7rem', color: 'var(--text-h)', opacity: 0.7 }}>
-                            These stop patterns will be automatically applied when using this model.
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
-                            {selectedStopPatternIds.length === 0 && (
-                                <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic' }}>No stop patterns assigned.</div>
-                            )}
-                            {selectedStopPatternIds.map(id => {
-                                const sp = getStopPatternById(id);
-                                if (!sp) return null;
-                                return (
-                                    <div key={id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--social-bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                                        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                                            <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{sp.name}</span>
-                                            <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', opacity: 0.6, color: 'var(--text-h)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sp.pattern}</span>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setSelectedStopPatternIds(prev => prev.filter(sid => sid !== id))}
-                                            style={{ background: 'transparent', border: 'none', color: '#ff4444', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1, padding: '0 4px' }}
-                                            title="Remove"
-                                        >
-                                            ×
+                            {isCloudBackend && (
+                                <div style={{ marginBottom: '16px' }}>
+                                    <label className="editor-label">API Key <span style={{ color: '#ff4444' }}>*</span></label>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                        <input type={showApiKey ? 'text' : 'password'} value={apiKey} onChange={(e) => { setApiKey(e.target.value); if (errors.apiKey) setErrors({ ...errors, apiKey: undefined }); }} className={`editor-input ${errors.apiKey ? 'error' : ''}`} style={{ fontFamily: 'monospace', flex: 1 }} placeholder="Enter your API key" />
+                                        <button type="button" onClick={() => setShowApiKey(!showApiKey)} className="editor-button" style={{ padding: '6px 10px', width: 'auto', minWidth: '40px', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: '1px solid var(--border)', transition: 'all 0.2s' }} title={showApiKey ? 'Hide API key' : 'Show API key'} onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-bg)'; e.currentTarget.style.borderColor = 'var(--accent)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border)'; }}>
+                                            {showApiKey ? '🙈' : '👁️'}
                                         </button>
                                     </div>
-                                );
-                            })}
-                        </div>
+                                    {errors.apiKey && <div className="editor-error-message">{errors.apiKey}</div>}
+                                </div>
+                            )}
+                        </>
+                    )}
 
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <select
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    if (val && !selectedStopPatternIds.includes(val)) {
-                                        setSelectedStopPatternIds(prev => [...prev, val]);
-                                    }
-                                    e.target.value = "";
-                                }}
-                                className="editor-select"
-                                defaultValue=""
-                            >
-                                <option value="" disabled>+ Add a stop pattern</option>
-                                {allStopPatterns.filter(sp => !selectedStopPatternIds.includes(sp.id)).map(sp => (
-                                    <option key={sp.id} value={sp.id}>{sp.name} ({sp.pattern})</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
+                    {/* ─── TEMPLATES TAB ─── */}
+                    {activeTab === 'templates' && (
+                        <>
+                            <div className="editor-section">
+                                <span className="editor-section-title">Chat & Instruction Templates</span>
+                                <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
+                                    Select the formatting template this model was trained with. Used when "Model Chat Template" or "Model Instruction Template" is added to a profile's input strategy. "Auto" detects from the model name. "None" uses the engine default.
+                                </div>
+                                <div className="editor-row">
+                                    <div>
+                                        <label className="editor-label editor-label-small">Instruction Template</label>
+                                        <select value={instructionTemplate} onChange={(e) => setInstructionTemplate(e.target.value)} className="editor-select">
+                                            {getInstructionTemplateOptions().map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                        </select>
+                                        {instructionTemplate === 'auto' && (
+                                            <div style={{ fontSize: '0.6rem', marginTop: '4px', color: detectedTmpl?.instructionTemplate ? 'var(--accent)' : 'rgba(255,255,255,0.4)' }}>
+                                                {detectedTmpl?.instructionTemplate ? `✓ Detected: ${detectedTmpl.label}` : '⚠ No match found — will fall back to None'}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <label className="editor-label editor-label-small">Chat Template</label>
+                                        <select value={chatTemplate} onChange={(e) => setChatTemplate(e.target.value)} className="editor-select">
+                                            {getChatTemplateOptions().map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                        </select>
+                                        {chatTemplate === 'auto' && (
+                                            <div style={{ fontSize: '0.6rem', marginTop: '4px', color: detectedTmpl?.chatTemplate ? 'var(--accent)' : 'rgba(255,255,255,0.4)' }}>
+                                                {detectedTmpl?.chatTemplate ? `✓ Detected: ${detectedTmpl.label}` : '⚠ No chat template match — will fall back to None'}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
 
-                    {/* ─── Cost ─── */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Cost</span>
-                        <div className="editor-row">
-                            <div><label className="editor-label editor-label-small">Cache Hit Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={inputCacheHitCostPerMillion} onChange={(e) => setCacheHitCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
-                            <div><label className="editor-label editor-label-small">Cache Miss Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={inputCacheMissCostPerMillion} onChange={(e) => setCacheMissCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
+                            <div className="editor-section">
+                                <span className="editor-section-title">Model Stop Patterns</span>
+                                <div style={{ marginBottom: '12px', fontSize: '0.7rem', color: 'var(--text-h)', opacity: 0.7 }}>
+                                    These stop patterns will be automatically applied when using this model.
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                                    {selectedStopPatternIds.length === 0 && (
+                                        <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic' }}>No stop patterns assigned.</div>
+                                    )}
+                                    {selectedStopPatternIds.map(id => {
+                                        const sp = getStopPatternById(id);
+                                        if (!sp) return null;
+                                        return (
+                                            <div key={id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--social-bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                                                    <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{sp.name}</span>
+                                                    <span style={{ fontSize: '0.65rem', fontFamily: 'monospace', opacity: 0.6, color: 'var(--text-h)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sp.pattern}</span>
+                                                </div>
+                                                <button type="button" onClick={() => setSelectedStopPatternIds(prev => prev.filter(sid => sid !== id))} style={{ background: 'transparent', border: 'none', color: '#ff4444', cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1, padding: '0 4px' }} title="Remove">×</button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <select onChange={(e) => { const val = e.target.value; if (val && !selectedStopPatternIds.includes(val)) setSelectedStopPatternIds(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
+                                        <option value="" disabled>+ Add a stop pattern</option>
+                                        {allStopPatterns.filter(sp => !selectedStopPatternIds.includes(sp.id)).map(sp => (
+                                            <option key={sp.id} value={sp.id}>{sp.name} ({sp.pattern})</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                        </>
+                    )}
+
+                    {/* ─── INFERENCE TAB ─── */}
+                    {activeTab === 'inference' && (
+                        <>
+                            {isCloudBackend ? (
+                                <div style={{ textAlign: 'center', padding: '40px 20px', opacity: 0.5, fontSize: '0.85rem' }}>
+                                    Inference settings are managed by the cloud provider for {selectedBackend} models. Switch to a local backend to configure these options.
+                                </div>
+                            ) : (
+                                <>
+                                    {(supportsGpuLayers || !isCloudBackend) && (
+                                        <div className="editor-section">
+                                            <span className="editor-section-title">Main Options</span>
+                                            {supportsGpuLayers && (
+                                                <div className="editor-row">
+                                                    <div>
+                                                        <label className="editor-label editor-label-small">GPU Layers</label>
+                                                        <input type="number" value={settings.gpu_layers} onChange={(e) => handleSettingChange('gpu_layers', Number(e.target.value) || -1)} className="editor-input" min="-1" step="1" placeholder="-1 (auto)" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="editor-label editor-label-small">Split Mode</label>
+                                                        <select value={settings.split_mode} onChange={(e) => handleSettingChange('split_mode', e.target.value)} className="editor-select">
+                                                            {SPLIT_MODE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {supportsGpuLayers && (
+                                                <div className="editor-row">
+                                                    <div>
+                                                        <label className="editor-label editor-label-small">Use IK</label>
+                                                        <div style={{ paddingTop: '6px' }}>
+                                                            <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                                                <input type="checkbox" checked={settings.ik} onChange={(e) => handleSettingChange('ik', e.target.checked)} className="editor-checkbox-input" />
+                                                                <span>IK Llama.cpp</span>
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-h)', opacity: 0.6, padding: '8px 12px', borderRadius: '6px', background: 'var(--social-bg)', border: '1px solid var(--border)', marginTop: '8px', fontStyle: 'italic' }}>
+                                                ℹ️ LoreReactor uses Streaming LLM by default for optimal performance.
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="editor-section">
+                                        <span className="editor-section-title">Key-Value Cache Quantization</span>
+                                        {supportsSeparateKV ? (
+                                            <>
+                                                <div style={{ marginBottom: '12px' }}>
+                                                    <label className="editor-label editor-label-small">Combined Key-Value Cache</label>
+                                                    <select value={settings.cache_type} onChange={(e) => handleSettingChange('cache_type', e.target.value)} className="editor-select">
+                                                        {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                                    </select>
+                                                </div>
+                                                <div className="editor-row">
+                                                    <div>
+                                                        <label className="editor-label editor-label-small">Key Cache Type</label>
+                                                        <select value={settings.cache_type_k} onChange={(e) => handleSettingChange('cache_type_k', e.target.value)} className="editor-select">
+                                                            {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="editor-label editor-label-small">Value Cache Type</label>
+                                                        <select value={settings.cache_type_v} onChange={(e) => handleSettingChange('cache_type_v', e.target.value)} className="editor-select">
+                                                            {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div>
+                                                <label className="editor-label editor-label-small">Cache Type</label>
+                                                <select value={settings.cache_type} onChange={(e) => handleSettingChange('cache_type', e.target.value)} className="editor-select">
+                                                    {cacheTypes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                                </select>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {supportsSpecDecoding && (
+                                        <div className="editor-section">
+                                            <span className="editor-section-title">Speculative Decoding</span>
+                                            <div style={{ marginBottom: '16px' }}>
+                                                <label className="editor-label">Draft Model Path</label>
+                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <input type="text" value={settings.draft_model} onChange={(e) => handleSettingChange('draft_model', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace', flex: 1 }} placeholder="/path/to/draft/model.gguf" />
+                                                    <button type="button" onClick={() => draftFileRef.current?.click()} className="editor-button editor-button-cancel" style={{ padding: '6px 12px' }}>📁</button>
+                                                    <input ref={draftFileRef} type="file" style={{ display: 'none' }} onChange={(e) => handleFileSelect(e, (val) => handleSettingChange('draft_model', val))} />
+                                                </div>
+                                            </div>
+                                            <div className="editor-row">
+                                                <div>
+                                                    <label className="editor-label editor-label-small">Speculation Type</label>
+                                                    <select value={settings.spec_type} onChange={(e) => handleSettingChange('spec_type', e.target.value)} className="editor-select">
+                                                        {SPEC_TYPE_OPTIONS.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="editor-label editor-label-small">Draft Maximum</label>
+                                                    <input type="number" value={settings.draft_max} onChange={(e) => handleSettingChange('draft_max', Number(e.target.value) || 3)} className="editor-input" min="1" step="1" placeholder="3" />
+                                                </div>
+                                            </div>
+                                            <div className="editor-row">
+                                                <div>
+                                                    <label className="editor-label editor-label-small">GPU Layers (Draft)</label>
+                                                    <input type="number" value={settings.gpu_layers_draft} onChange={(e) => handleSettingChange('gpu_layers_draft', Number(e.target.value) || 256)} className="editor-input" min="0" step="1" placeholder="256" />
+                                                </div>
+                                                <div>
+                                                    <label className="editor-label editor-label-small">Device (Draft)</label>
+                                                    <input type="text" value={settings.device_draft} onChange={(e) => handleSettingChange('device_draft', e.target.value)} className="editor-input" placeholder="CUDA0,CUDA1" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </>
+                    )}
+
+                    {/* ─── ADVANCED TAB ─── */}
+                    {activeTab === 'advanced' && (
+                        <>
+                            {isCloudBackend ? (
+                                <div style={{ textAlign: 'center', padding: '40px 20px', opacity: 0.5, fontSize: '0.85rem' }}>
+                                    Advanced inference settings are managed by the cloud provider for {selectedBackend} models. Switch to a local backend to configure these options.
+                                </div>
+                            ) : (
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Other Options</span>
+                                    <div className="editor-row">
+                                        <div><label className="editor-label editor-label-small">Parallel Slots</label><input type="number" value={settings.parallel} onChange={(e) => handleSettingChange('parallel', Number(e.target.value) || 1)} className="editor-input" min="1" step="1" placeholder="1" /></div>
+                                        <div><label className="editor-label editor-label-small">Thread Count</label><input type="number" value={settings.threads} onChange={(e) => handleSettingChange('threads', Number(e.target.value) || 0)} className="editor-input" min="0" step="1" placeholder="0 (auto)" /></div>
+                                    </div>
+                                    <div className="editor-row">
+                                        <div><label className="editor-label editor-label-small">Thread Count (Batch)</label><input type="number" value={settings.threads_batch} onChange={(e) => handleSettingChange('threads_batch', Number(e.target.value) || 0)} className="editor-input" min="0" step="1" placeholder="0 (auto)" /></div>
+                                        <div><label className="editor-label editor-label-small">Batch Size</label><input type="number" value={settings.batch_size} onChange={(e) => handleSettingChange('batch_size', Number(e.target.value) || 1024)} className="editor-input" min="1" step="1" placeholder="1024" /></div>
+                                    </div>
+                                    <div className="editor-row">
+                                        <div><label className="editor-label editor-label-small">Micro Batch Size</label><input type="number" value={settings.ubatch_size} onChange={(e) => handleSettingChange('ubatch_size', Number(e.target.value) || 1024)} className="editor-input" min="1" step="1" placeholder="1024" /></div>
+                                        <div><label className="editor-label editor-label-small">Fit Target (MiB)</label><input type="text" value={settings.fit_target} onChange={(e) => handleSettingChange('fit_target', e.target.value)} className="editor-input" placeholder="512" /></div>
+                                    </div>
+                                    <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Tensor Split</label><input type="text" value={settings.tensor_split} onChange={(e) => handleSettingChange('tensor_split', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="60,40" /></div></div>
+                                    <div className="editor-row-full" style={{ marginBottom: '8px' }}><div><label className="editor-label editor-label-small">Extra Flags</label><input type="text" value={settings.extra_flags} onChange={(e) => handleSettingChange('extra_flags', e.target.value)} className="editor-input" style={{ fontFamily: 'monospace' }} placeholder="--jinja --rpc 192.168.1.100:50052" /></div></div>
+
+                                    {supportsLlamaMemory && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
+                                            <label className="editor-checkbox-label"><input type="checkbox" checked={settings.cpu_moe} onChange={(e) => handleSettingChange('cpu_moe', e.target.checked)} className="editor-checkbox-input" /><span>Mixture-Of-Experts On CPU</span></label>
+                                            <label className="editor-checkbox-label"><input type="checkbox" checked={settings.no_kv_offload} onChange={(e) => handleSettingChange('no_kv_offload', e.target.checked)} className="editor-checkbox-input" /><span>No Key-Value Offload</span></label>
+                                            <label className="editor-checkbox-label"><input type="checkbox" checked={settings.no_mmap} onChange={(e) => handleSettingChange('no_mmap', e.target.checked)} className="editor-checkbox-input" /><span>No Memory Map</span></label>
+                                            <label className="editor-checkbox-label"><input type="checkbox" checked={settings.mlock} onChange={(e) => handleSettingChange('mlock', e.target.checked)} className="editor-checkbox-input" /><span>Memory Lock</span></label>
+                                            <label className="editor-checkbox-label"><input type="checkbox" checked={settings.numa} onChange={(e) => handleSettingChange('numa', e.target.checked)} className="editor-checkbox-input" /><span>Non-Uniform Memory Access</span></label>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </>
+                    )}
+
+                    {/* ─── COST TAB ─── */}
+                    {activeTab === 'cost' && (
+                        <div className="editor-section">
+                            <span className="editor-section-title">Cost</span>
+                            <div className="editor-row">
+                                <div><label className="editor-label editor-label-small">Cache Hit Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={inputCacheHitCostPerMillion} onChange={(e) => setCacheHitCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
+                                <div><label className="editor-label editor-label-small">Cache Miss Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={inputCacheMissCostPerMillion} onChange={(e) => setCacheMissCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
+                            </div>
+                            <div className="editor-row-full" style={{ marginTop: '8px' }}>
+                                <div><label className="editor-label editor-label-small">Output Generation Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={outputGenerationCostPerMillion} onChange={(e) => setOutputGenerationCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
+                            </div>
                         </div>
-                        <div className="editor-row-full" style={{ marginTop: '8px' }}>
-                            <div><label className="editor-label editor-label-small">Output Generation Cost (Per 1M tokens)</label><input type="number" step="0.01" min="0" value={outputGenerationCostPerMillion} onChange={(e) => setOutputGenerationCostPerMillion(Number(e.target.value) || 0)} className="editor-input" placeholder="0.00" /></div>
-                        </div>
-                    </div>
+                    )}
                 </div>
             </div>
         </div>

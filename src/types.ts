@@ -623,6 +623,10 @@ export interface Profile extends ObjectData {
   webSummarizationSampler?: Sampler;
   interactionDataSummarizationSampler?: Sampler;
   aiRecommendationSampler?: Sampler;
+  characterStopPattern?: StopPattern;
+  webSummarizationStopPattern: StopPattern;
+  interactionDataSummarizationStopPattern?: StopPattern;
+  aiRecommendationStopPattern?: StopPattern;
 }
 
 export interface RawProfile extends RawData {
@@ -667,6 +671,10 @@ export interface RawProfile extends RawData {
   webSummarizationSamplerId?: string;
   interactionDataSummarizationSamplerId?: string;
   aiRecommendationSamplerId?: string;
+  characterStopPatternId?: string;
+  webSummarizationStopPatternId: string;
+  interactionDataSummarizationStopPatternId?: string;
+  aiRecommendationStopPatternId?: string;
 }
 
 export interface InterjectableAction {

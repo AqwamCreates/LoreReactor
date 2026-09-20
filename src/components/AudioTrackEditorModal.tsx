@@ -22,6 +22,8 @@ const AUDIO_CATEGORIES: { value: audioCategory; label: string; icon: string }[] 
     { value: 'sound effect', label: 'Sound Effect', icon: '💥' },
 ];
 
+type AudioTabId = 'general' | 'detection' | 'bindings';
+
 export function AudioTrackEditorModal({
     isOpen,
     onClose,
@@ -56,6 +58,8 @@ function AudioTrackEditorModalInner({
     allContexts = [],
     allLocations = [],
 }: Omit<AudioTrackEditorModalProps, 'isOpen'>) {
+    const [activeTab, setActiveTab] = useState<AudioTabId>('general');
+
     const [name, setName] = useState(existingTrack?.name || '');
     const [description, setDescription] = useState(existingTrack?.description || '');
     const [filename, setFilename] = useState(existingTrack?.filename || '');
@@ -216,6 +220,12 @@ function AudioTrackEditorModalInner({
     const getContextById = (id: string) => allContexts.find(c => c.id === id);
     const getLocationById = (id: string) => allLocations.find(l => l.id === id);
 
+    const audioTabs: { id: AudioTabId; label: string; icon: string }[] = [
+        { id: 'general', label: 'General', icon: '🎵' },
+        { id: 'detection', label: 'Detection', icon: '🔍' },
+        { id: 'bindings', label: 'Bindings', icon: '🔗' },
+    ];
+
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
@@ -228,224 +238,248 @@ function AudioTrackEditorModalInner({
                     </div>
                 </div>
 
+                {/* Tab Bar */}
+                <div className="entity-tab-bar" style={{ padding: '0 20px', marginBottom: 0, borderBottom: '1px solid var(--border)', background: 'var(--social-bg)' }}>
+                    {audioTabs.map(tab => (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`entity-tab-button ${activeTab === tab.id ? 'entity-tab-button-active' : ''}`}
+                        >
+                            {tab.icon} {tab.label}
+                        </button>
+                    ))}
+                </div>
+
                 <div className="modal-body editor-modal-body">
-                    {/* ─── Basic Fields ─── */}
-                    <div className="context-field-group">
-                        <label className="editor-label">Name <span className="context-required-asterisk">*</span></label>
-                        <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Forest Ambience" />
-                        {errors.name && <div className="editor-error-message">{errors.name}</div>}
-                    </div>
-
-                    <div className="context-field-group">
-                        <label className="editor-label">Description</label>
-                        <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Brief description of this audio track" rows={2} />
-                    </div>
-
-                    <div className="context-field-group">
-                        <label className="editor-label">Audio File <span className="context-required-asterisk">*</span></label>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <input type="text" value={filename} onChange={(e) => { setFilename(e.target.value); if (errors.filename) setErrors({ ...errors, filename: undefined }); }} className={`editor-input context-mono-input ${errors.filename ? 'error' : ''}`} placeholder="forest_birds.ogg" style={{ flex: 1 }} />
-                            <button type="button" className="editor-button editor-button-cancel" onClick={() => audioInputRef.current?.click()} disabled={isUploading} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px', whiteSpace: 'nowrap' }}>
-                                {isUploading ? '⏳' : '📁 Upload'}
-                            </button>
-                        </div>
-                        <input ref={audioInputRef} type="file" accept=".ogg,.mp3,.wav,.flac,audio/*" hidden onChange={(e) => {
-                            if (e.target.files?.[0]) {
-                                const file = e.target.files[0];
-                                setAudioFile(file);
-                                setFilename(file.name.replace(/[^a-zA-Z0-9._-]/g, '_'));
-                                if (errors.filename) setErrors({ ...errors, filename: undefined });
-                                setPreviewUrl(URL.createObjectURL(file));
-                            }
-                            e.target.value = '';
-                        }} disabled={isUploading} />
-                        {errors.filename && <div className="editor-error-message">{errors.filename}</div>}
-                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                            Supports .ogg, .mp3, .wav, .flac. Upload stores the file; or type an existing filename manually.
-                        </div>
-                    </div>
-
-                    {previewUrl && (
-                        <div className="context-field-group">
-                            <label className="editor-label editor-label-small">Preview</label>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <button type="button" onClick={handleTogglePreview} className={`editor-button ${isPreviewPlaying ? 'editor-button-save' : 'editor-button-cancel'}`} style={{ fontSize: '0.75rem', padding: '4px 14px', minHeight: '28px' }}>
-                                    {isPreviewPlaying ? '⏹' : '▶'}
-                                </button>
-                                <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
-                                    {isPreviewPlaying ? 'Playing...' : 'Click to preview at current volume & loop settings'}
-                                </span>
+                    {/* ─── GENERAL TAB ─── */}
+                    {activeTab === 'general' && (
+                        <>
+                            <div className="context-field-group">
+                                <label className="editor-label">Name <span className="context-required-asterisk">*</span></label>
+                                <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Forest Ambience" />
+                                {errors.name && <div className="editor-error-message">{errors.name}</div>}
                             </div>
+
+                            <div className="context-field-group">
+                                <label className="editor-label">Description</label>
+                                <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Brief description of this audio track" rows={2} />
+                            </div>
+
+                            <div className="context-field-group">
+                                <label className="editor-label">Audio File <span className="context-required-asterisk">*</span></label>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                    <input type="text" value={filename} onChange={(e) => { setFilename(e.target.value); if (errors.filename) setErrors({ ...errors, filename: undefined }); }} className={`editor-input context-mono-input ${errors.filename ? 'error' : ''}`} placeholder="forest_birds.ogg" style={{ flex: 1 }} />
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => audioInputRef.current?.click()} disabled={isUploading} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px', whiteSpace: 'nowrap' }}>
+                                        {isUploading ? '⏳' : '📁 Upload'}
+                                    </button>
+                                </div>
+                                <input ref={audioInputRef} type="file" accept=".ogg,.mp3,.wav,.flac,audio/*" hidden onChange={(e) => {
+                                    if (e.target.files?.[0]) {
+                                        const file = e.target.files[0];
+                                        setAudioFile(file);
+                                        setFilename(file.name.replace(/[^a-zA-Z0-9._-]/g, '_'));
+                                        if (errors.filename) setErrors({ ...errors, filename: undefined });
+                                        setPreviewUrl(URL.createObjectURL(file));
+                                    }
+                                    e.target.value = '';
+                                }} disabled={isUploading} />
+                                {errors.filename && <div className="editor-error-message">{errors.filename}</div>}
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    Supports .ogg, .mp3, .wav, .flac. Upload stores the file; or type an existing filename manually.
+                                </div>
+                            </div>
+
+                            {previewUrl && (
+                                <div className="context-field-group">
+                                    <label className="editor-label editor-label-small">Preview</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <button type="button" onClick={handleTogglePreview} className={`editor-button ${isPreviewPlaying ? 'editor-button-save' : 'editor-button-cancel'}`} style={{ fontSize: '0.75rem', padding: '4px 14px', minHeight: '28px' }}>
+                                            {isPreviewPlaying ? '⏹' : '▶'}
+                                        </button>
+                                        <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
+                                            {isPreviewPlaying ? 'Playing...' : 'Click to preview at current volume & loop settings'}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Category & Priority */}
+                            <div className="editor-section">
+                                <span className="editor-section-title">Category & Priority</span>
+                                <div className="context-field-group">
+                                    <label className="editor-label editor-label-small">Category</label>
+                                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                        {AUDIO_CATEGORIES.map(cat => (
+                                            <button key={cat.value} type="button" onClick={() => setAudioCategory(cat.value)} className={`editor-button ${audioCategory === cat.value ? 'editor-button-save' : 'editor-button-cancel'}`} style={{ fontSize: '0.75rem', padding: '4px 12px', minHeight: '28px' }}>
+                                                {cat.icon} {cat.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="context-field-group">
+                                    <label className="editor-label editor-label-small">Priority</label>
+                                    <input type="number" step="1" min="0" value={priority} onChange={(e) => setPriority(Math.max(0, Number(e.target.value) || 0))} className="editor-input context-input-small" />
+                                    <div className="context-field-hint">Higher priority tracks override lower ones when multiple are active.</div>
+                                </div>
+                            </div>
+
+                            {/* Playback */}
+                            <div className="editor-section">
+                                <span className="editor-section-title">Playback</span>
+                                <div className="context-field-group">
+                                    <label className="editor-checkbox-label">
+                                        <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} className="editor-checkbox-input" />
+                                        <span>Loop</span>
+                                    </label>
+                                </div>
+                                <div className="context-field-group">
+                                    <label className="editor-checkbox-label">
+                                        <input type="checkbox" checked={playableByParticipants} onChange={(e) => setPlayableByParticipant(e.target.checked)} className="editor-checkbox-input" />
+                                        <span>Playable by Participants</span>
+                                    </label>
+                                    <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                                        When enabled, AI participants can trigger this track via their messages.
+                                    </div>
+                                </div>
+                                <div className="context-field-group">
+                                    <label className="editor-label editor-label-small">Volume</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(Number(e.target.value))} style={{ flex: 1 }} />
+                                        <span style={{ fontSize: '0.75rem', minWidth: '36px', textAlign: 'right' }}>{Math.round(volume * 100)}%</span>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                    <div className="context-field-group" style={{ flex: 1 }}>
+                                        <label className="editor-label editor-label-small">Start Fade (ms)</label>
+                                        <input type="number" step="100" min="0" value={startFadeDurationMs} onChange={(e) => setStartFadeDurationMs(Math.max(0, Number(e.target.value) || 0))} className="editor-input context-input-small" />
+                                        <div className="context-field-hint">Fade-in duration when track activates.</div>
+                                    </div>
+                                    <div className="context-field-group" style={{ flex: 1 }}>
+                                        <label className="editor-label editor-label-small">End Fade (ms)</label>
+                                        <input type="number" step="100" min="0" value={endFadeDurationMs} onChange={(e) => setEndFadeDurationMs(Math.max(0, Number(e.target.value) || 0))} className="editor-input context-input-small" />
+                                        <div className="context-field-hint">Fade-out duration when track deactivates.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    )}
+
+                    {/* ─── DETECTION TAB ─── */}
+                    {activeTab === 'detection' && (
+                        <div className="editor-section" style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
+                            <RegularExpressionTriggerEditor
+                                label="Activation"
+                                description="Track activates when a message matches any trigger. Leave empty to rely on bindings only."
+                                triggers={regexActivationTriggers}
+                                onChange={setRegexActivationTriggers}
+                                error={errors.regex}
+                                placeholder="/enters? (the )?forest/i"
+                            />
+                            <RegularExpressionTriggerEditor
+                                label="Deactivation"
+                                description="Track deactivates when a message matches any trigger."
+                                triggers={regexDeactivationTriggers}
+                                onChange={setRegexDeactivationTriggers}
+                                error={errors.deactivationRegex}
+                                placeholder="/leaves? (the )?forest/i"
+                            />
+                            <RegularExpressionTriggerEditor
+                                label="Exclusion Activation"
+                                description="Overrides activation when matched (e.g., 'forest' activates but 'dream forest' excludes)."
+                                triggers={regexExclusionActivationTriggers}
+                                onChange={setRegexExclusionActivationTriggers}
+                                error={errors.exclusionActivationRegex}
+                                placeholder="/dream forest|memory of forest/i"
+                            />
+                            <RegularExpressionTriggerEditor
+                                label="Exclusion Deactivation"
+                                description="When the exclusion stops being active."
+                                triggers={regexExclusionDeactivationTriggers}
+                                onChange={setRegexExclusionDeactivationTriggers}
+                                error={errors.exclusionDeactivationRegex}
+                                placeholder="/wake up|snap out of dream/i"
+                            />
                         </div>
                     )}
 
-                    {/* ─── Category & Priority ─── */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Category & Priority</span>
-                        <div className="context-field-group">
-                            <label className="editor-label editor-label-small">Category</label>
-                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                {AUDIO_CATEGORIES.map(cat => (
-                                    <button key={cat.value} type="button" onClick={() => setAudioCategory(cat.value)} className={`editor-button ${audioCategory === cat.value ? 'editor-button-save' : 'editor-button-cancel'}`} style={{ fontSize: '0.75rem', padding: '4px 12px', minHeight: '28px' }}>
-                                        {cat.icon} {cat.label}
-                                    </button>
-                                ))}
+                    {/* ─── BINDINGS TAB ─── */}
+                    {activeTab === 'bindings' && (
+                        <>
+                            {/* Location Bindings */}
+                            <div className="editor-section">
+                                <span className="editor-section-title">Location Bindings</span>
+                                <div className="context-field-group">
+                                    <div className="context-binding-hint">Track activates when any of these locations are active. Empty = no location restriction.</div>
+                                    <div className="context-character-binding-list">
+                                        {locationBindings.map(id => {
+                                            const loc = getLocationById(id);
+                                            if (!loc) return null;
+                                            return (
+                                                <div key={id} className="context-character-binding-chip">
+                                                    <span className="context-character-binding-name">📍 {loc.name}</span>
+                                                    <button type="button" onClick={() => setLocationBindings(prev => prev.filter(lid => lid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
+                                        <option value="" disabled>+ Bind to a location</option>
+                                        {allLocations.filter(l => !locationBindings.includes(l.id)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
+                                    </select>
+                                </div>
                             </div>
-                        </div>
-                        <div className="context-field-group">
-                            <label className="editor-label editor-label-small">Priority</label>
-                            <input type="number" step="1" min="0" value={priority} onChange={(e) => setPriority(Math.max(0, Number(e.target.value) || 0))} className="editor-input context-input-small" />
-                            <div className="context-field-hint">Higher priority tracks override lower ones when multiple are active.</div>
-                        </div>
-                    </div>
 
-                    {/* ─── Playback ─── */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Playback</span>
-                        <div className="context-field-group">
-                            <label className="editor-checkbox-label">
-                                <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} className="editor-checkbox-input" />
-                                <span>Loop</span>
-                            </label>
-                        </div>
-                        <div className="context-field-group">
-                            <label className="editor-checkbox-label">
-                                <input type="checkbox" checked={playableByParticipants} onChange={(e) => setPlayableByParticipant(e.target.checked)} className="editor-checkbox-input" />
-                                <span>Playable by Participants</span>
-                            </label>
-                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                                When enabled, AI participants can trigger this track via their messages.
+                            {/* Context Bindings */}
+                            <div className="editor-section">
+                                <span className="editor-section-title">Context Bindings</span>
+                                <div className="context-field-group">
+                                    <div className="context-binding-hint">Track activates when any of these contexts are active. Empty = no context restriction.</div>
+                                    <div className="context-character-binding-list">
+                                        {contextBindings.map(id => {
+                                            const context = getContextById(id);
+                                            if (!context) return null;
+                                            return (
+                                                <div key={id} className="context-character-binding-chip">
+                                                    <span className="context-character-binding-name">📜 {context.name}</span>
+                                                    <button type="button" onClick={() => setContextBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <select onChange={(e) => { const val = e.target.value; if (val && !contextBindings.includes(val)) setContextBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
+                                        <option value="" disabled>+ Bind to a context</option>
+                                        {allContexts.filter(c => !contextBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                    </select>
+                                </div>
                             </div>
-                        </div>
-                        <div className="context-field-group">
-                            <label className="editor-label editor-label-small">Volume</label>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(Number(e.target.value))} style={{ flex: 1 }} />
-                                <span style={{ fontSize: '0.75rem', minWidth: '36px', textAlign: 'right' }}>{Math.round(volume * 100)}%</span>
-                            </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '12px' }}>
-                            <div className="context-field-group" style={{ flex: 1 }}>
-                                <label className="editor-label editor-label-small">Start Fade (ms)</label>
-                                <input type="number" step="100" min="0" value={startFadeDurationMs} onChange={(e) => setStartFadeDurationMs(Math.max(0, Number(e.target.value) || 0))} className="editor-input context-input-small" />
-                                <div className="context-field-hint">Fade-in duration when track activates.</div>
-                            </div>
-                            <div className="context-field-group" style={{ flex: 1 }}>
-                                <label className="editor-label editor-label-small">End Fade (ms)</label>
-                                <input type="number" step="100" min="0" value={endFadeDurationMs} onChange={(e) => setEndFadeDurationMs(Math.max(0, Number(e.target.value) || 0))} className="editor-input context-input-small" />
-                                <div className="context-field-hint">Fade-out duration when track deactivates.</div>
-                            </div>
-                        </div>
-                    </div>
 
-                    {/* ─── Activation Triggers ─── */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Activation Triggers</span>
-                        <RegularExpressionTriggerEditor
-                            label="Activation"
-                            description="Track activates when a message matches any trigger. Leave empty to rely on bindings only."
-                            triggers={regexActivationTriggers}
-                            onChange={setRegexActivationTriggers}
-                            error={errors.regex}
-                            placeholder="/enters? (the )?forest/i"
-                        />
-                        <RegularExpressionTriggerEditor
-                            label="Deactivation"
-                            description="Track deactivates when a message matches any trigger."
-                            triggers={regexDeactivationTriggers}
-                            onChange={setRegexDeactivationTriggers}
-                            error={errors.deactivationRegex}
-                            placeholder="/leaves? (the )?forest/i"
-                        />
-                        <RegularExpressionTriggerEditor
-                            label="Exclusion Activation"
-                            description="Overrides activation when matched (e.g., 'forest' activates but 'dream forest' excludes)."
-                            triggers={regexExclusionActivationTriggers}
-                            onChange={setRegexExclusionActivationTriggers}
-                            error={errors.exclusionActivationRegex}
-                            placeholder="/dream forest|memory of forest/i"
-                        />
-                        <RegularExpressionTriggerEditor
-                            label="Exclusion Deactivation"
-                            description="When the exclusion stops being active."
-                            triggers={regexExclusionDeactivationTriggers}
-                            onChange={setRegexExclusionDeactivationTriggers}
-                            error={errors.exclusionDeactivationRegex}
-                            placeholder="/wake up|snap out of dream/i"
-                        />
-                    </div>
-
-                    {/* ─── Location Bindings ─── */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Location Bindings</span>
-                        <div className="context-field-group">
-                            <div className="context-binding-hint">Track activates when any of these locations are active. Empty = no location restriction.</div>
-                            <div className="context-character-binding-list">
-                                {locationBindings.map(id => {
-                                    const loc = getLocationById(id);
-                                    if (!loc) return null;
-                                    return (
-                                        <div key={id} className="context-character-binding-chip">
-                                            <span className="context-character-binding-name">📍 {loc.name}</span>
-                                            <button type="button" onClick={() => setLocationBindings(prev => prev.filter(lid => lid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
-                                        </div>
-                                    );
-                                })}
+                            {/* Character Bindings */}
+                            <div className="editor-section">
+                                <span className="editor-section-title">Character Bindings</span>
+                                <div className="context-field-group">
+                                    <div className="context-binding-hint">Track only plays for these characters. Empty = plays for all characters.</div>
+                                    <div className="context-character-binding-list">
+                                        {characterBindings.map(id => {
+                                            const char = getCharacterById(id);
+                                            if (!char) return null;
+                                            return (
+                                                <div key={id} className="context-character-binding-chip">
+                                                    <span className="context-character-binding-name">🎭 {char.name}</span>
+                                                    <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
+                                        <option value="" disabled>+ Bind to a character</option>
+                                        {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                    </select>
+                                </div>
                             </div>
-                            <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
-                                <option value="" disabled>+ Bind to a location</option>
-                                {allLocations.filter(l => !locationBindings.includes(l.id)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
-                            </select>
-                        </div>
-                    </div>
-
-                    {/* ─── Context Bindings ─── */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Context Bindings</span>
-                        <div className="context-field-group">
-                            <div className="context-binding-hint">Track activates when any of these contexts are active. Empty = no context restriction.</div>
-                            <div className="context-character-binding-list">
-                                {contextBindings.map(id => {
-                                    const context = getContextById(id);
-                                    if (!context) return null;
-                                    return (
-                                        <div key={id} className="context-character-binding-chip">
-                                            <span className="context-character-binding-name">📜 {context.name}</span>
-                                            <button type="button" onClick={() => setContextBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                            <select onChange={(e) => { const val = e.target.value; if (val && !contextBindings.includes(val)) setContextBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
-                                <option value="" disabled>+ Bind to a context</option>
-                                {allContexts.filter(c => !contextBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                            </select>
-                        </div>
-                    </div>
-
-                    {/* ─── Character Bindings ─── */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Character Bindings</span>
-                        <div className="context-field-group">
-                            <div className="context-binding-hint">Track only plays for these characters. Empty = plays for all characters.</div>
-                            <div className="context-character-binding-list">
-                                {characterBindings.map(id => {
-                                    const char = getCharacterById(id);
-                                    if (!char) return null;
-                                    return (
-                                        <div key={id} className="context-character-binding-chip">
-                                            <span className="context-character-binding-name">🎭 {char.name}</span>
-                                            <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                            <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
-                                <option value="" disabled>+ Bind to a character</option>
-                                {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                            </select>
-                        </div>
-                    </div>
+                        </>
+                    )}
                 </div>
             </div>
         </div>

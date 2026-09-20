@@ -2886,8 +2886,8 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
 .editor-right-column {
     flex: 1;
     min-width: 280px;
-    display: grid;
-    grid-template-rows: 1fr auto;
+    display: flex;
+    flex-direction: column;
     gap: 10px;
     min-height: 0;
 }
@@ -3908,24 +3908,42 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
 .entity-tab-bar { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
 
 .entity-tab-button {
-    padding: 6px 14px;
-    font-size: 0.75rem;
+    flex: 1;
+    font-size: 0.7rem;
     font-weight: bold;
-    border: 1px solid var(--border);
-    border-radius: 6px;
+    padding: 10px 14px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 6px 6px 0 0;
     background: transparent;
     color: var(--text-h);
     cursor: pointer;
     transition: all 0.15s;
     font-family: inherit;
     min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    white-space: nowrap;
+    box-sizing: border-box;
+    line-height: 1;
 }
 
-.entity-tab-button:hover { background: var(--social-bg); border-color: var(--accent-border); }
-.entity-tab-button-active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.entity-tab-button:hover {
+    background: var(--social-bg);
+    border-bottom-color: var(--accent-border);
+}
+.entity-tab-button-active {
+    background: var(--accent);
+    color: #fff;
+    border-bottom-color: var(--accent);
+}
 .entity-tab-button-active:hover { opacity: 0.9; }
 
-.entity-raw-output { margin-bottom: 12px; }
+.entity-tab-button-active:hover {
+    opacity: 0.9;
+}
 
 .entity-raw-pre {
     white-space: pre-wrap;
