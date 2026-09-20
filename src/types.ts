@@ -397,9 +397,9 @@ export interface Account extends ObjectData {
 export interface MultiplayerData extends ObjectData {
 
   password: string // Password - invite only. No password - accessible for all.
-  whiteListedAccountId: string[] // Hoster automatically accepts this user to join.
-  blacklistedAccountId: string[] // Hoster automatically blocks this user from joining.
-  pendingAccountId: string[] // Received the join request, and is waiting for the hoster's decision.
+  whiteListedAccountIds: string[] // Hoster automatically accepts this user to join.
+  blacklistedAccountIds: string[] // Hoster automatically blocks this user from joining.
+  pendingAccountIds: string[] // Received the join request, and is waiting for the hoster's decision.
 
 }
 
