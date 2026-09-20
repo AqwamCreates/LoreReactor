@@ -4,6 +4,7 @@ import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, Summariz
 import { SliderInput } from './SliderInput';
 import '../main.css';
 import { defaultInputStrategy, defaultProfileTools } from '../dictionaries/defaults';
+import { toolLabels } from '../dictionaries/texts';
 
 interface ProfileEditorModalProps {
     isOpen: boolean;
@@ -31,18 +32,6 @@ const STRATEGY_DESCRIPTIONS: Record<SummarizationStrategyType, string> = {
 const ALL_STRATEGY_TYPES: SummarizationStrategyType[] = [
     'Sliding Window Replace', 'Periodic Compression', 'Recursive Summary', 'Observation Masking',
 ];
-
-const TOOL_LABELS: Record<tool, string> = {
-    pick: 'Random Pick', date: 'Current Date & Time', coin: 'Coin Flip', dice: 'Roll Dice',
-    random: 'Random Number', rng: 'RNG Table', move: 'Move', timer: 'Timer',
-    stopwatch: 'Stopwatch', calculator: 'Calculator', web: 'Web Search', dialogue: 'Dialogue',
-    knowledge: 'Knowledge', memory: 'memory', lookup: 'Look Up',
-    map: 'Map', audio: 'Audio', clothing: 'Clothing', note: 'Note', inventory: 'Inventory',
-    invite: 'Invite Participant', kick: 'Kick Participant', teleport: 'Teleport',
-    key: 'Key', summon: 'Summon Character',
-    narrate: 'Narrate', inspect: 'Inspect', administrator: 'Administrator',
-    creator: 'Creator', destroyer: 'Destroyer',
-};
 
 const NARRATE_TEXT_LABELS: Record<textType, string> = {
     normal: 'Normal Text', quoted: 'Quoted Text', bolded: 'Bolded Text',
@@ -279,7 +268,7 @@ function ProfileEditorContent({
         </div>
     );
 
-    const allToolKeys = Object.keys(TOOL_LABELS) as tool[];
+    const allToolKeys = Object.keys(toolLabels) as tool[];
     const narrateTextKeys = Object.keys(NARRATE_TEXT_LABELS) as textType[];
 
     const selectedToolDisplayMode = TOOL_USAGE_DISPLAY_MODES.find(m => m.value === toolUsageDisplayMode) ?? TOOL_USAGE_DISPLAY_MODES[0];
@@ -351,7 +340,7 @@ function ProfileEditorContent({
 
                     <div className="editor-section"><span className="editor-section-title">Output Processing</span><ProfileCheckbox checked={stripThinkTokens} onChange={setStripThinkTokens} label="Strip Think Tokens" hint="Remove thinking tokens from displayed output. The model still uses them internally." /></div>
 
-                    <div className="editor-section"><span className="editor-section-title">Tools</span><div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>-1 = force off for all characters. 0 = defer to each character's own setting. 1 = force on for all characters.</div>{allToolKeys.map(toolName => (<div key={toolName} style={{ marginBottom: '12px' }}><div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>{TOOL_LABELS[toolName]} Override</label><span style={SLIDER_VALUE_STYLE}>{tools[toolName] === -1 ? '(Force Off)' : tools[toolName] === 1 ? '(Force On)' : '(Character default)'}</span></div><SliderInput label="" value={tools[toolName]} minimumValue={-1} maximumValue={1} stepValue={1} decimals={0} onChange={(val) => handleToolChange(toolName, Math.round(val))} description="" /></div>))}</div>
+                    <div className="editor-section"><span className="editor-section-title">Tools</span><div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>-1 = force off for all characters. 0 = defer to each character's own setting. 1 = force on for all characters.</div>{allToolKeys.map(toolName => (<div key={toolName} style={{ marginBottom: '12px' }}><div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>{toolLabels[toolName]} Override</label><span style={SLIDER_VALUE_STYLE}>{tools[toolName] === -1 ? '(Force Off)' : tools[toolName] === 1 ? '(Force On)' : '(Character default)'}</span></div><SliderInput label="" value={tools[toolName]} minimumValue={-1} maximumValue={1} stepValue={1} decimals={0} onChange={(val) => handleToolChange(toolName, Math.round(val))} description="" /></div>))}</div>
 
                     <div className="editor-section"><div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>Prompt Block Order</span><span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span></div><div style={CHECKBOX_HINT_STYLE}>Controls the order in which prompt sections are assembled. Includes built-in blocks and custom prompt blocks.</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>{inputStrategy.map((blockEntry, index) => (<div key={`${blockEntry}-${index}`} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, index)} className={`sampler-param-row ${draggedIndex === index ? 'sampler-param-dragging' : ''}`} style={{ padding: '6px 8px' }}><div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div><div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{index + 1}. {getBlockLabel(blockEntry)}</span></div><div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}><button type="button" onClick={() => moveBlock(index, -1)} disabled={index === 0} className="toolbar-button" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button><button type="button" onClick={() => moveBlock(index, 1)} disabled={index === inputStrategy.length - 1} className="toolbar-button" title="Move down" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === inputStrategy.length - 1 ? 0.3 : 1 }}>▼</button><button type="button" onClick={() => removeBlock(index)} className="toolbar-button" title="Remove from order" style={TOOLBAR_BTN_DELETE_STYLE}>×</button></div></div>))}</div>{(missingBuiltInBlocks.length > 0 || availablePromptBlocks.length > 0) && (<div style={{ marginTop: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}><select onChange={(e) => { const val = e.target.value; if (val) addBlock(val); e.target.value = ''; }} className="editor-select" defaultValue="" style={{ flex: 1 }}><option value="" disabled>+ Add a block</option>{missingBuiltInBlocks.length > 0 && <optgroup label="Built-in Blocks">{missingBuiltInBlocks.map(b => <option key={b} value={b}>{b}</option>)}</optgroup>}{availablePromptBlocks.length > 0 && <optgroup label="Custom Prompt Blocks">{availablePromptBlocks.map((pb: PromptBlock) => <option key={pb.id} value={pb.id}>🧱 {pb.name}</option>)}</optgroup>}</select></div>)}</div>
 

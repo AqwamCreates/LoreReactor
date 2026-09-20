@@ -66,7 +66,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "numberOfMessagesToDisableDialoguePrompt": "number (≥0, default 1)",
     "numberOfMessagesToDisableStarterPrompt": "number (≥0, default 1)",
     "tools": {
-      "pick": "boolean (default true)", "date": "boolean (default false)", "coin": "boolean (default true)",
+      "think": "boolean (default false)", "pick": "boolean (default true)", "date": "boolean (default false)", "coin": "boolean (default true)",
       "dice": "boolean (default true)", "random": "boolean (default true)", "rng": "boolean (default false)",
       "move": "boolean (default true)", "timer": "boolean (default false)", "stopwatch": "boolean (default false)",
       "calculator": "boolean (default false)", "web": "boolean (default false)", "dialogue": "boolean (default false)",
@@ -230,6 +230,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "useWeather": "boolean (default false)",
     "weatherApiKey": "string (OpenWeather API key, required if useWeather is true)",
     "useTimeElapsed": "boolean (default false)",
+    "useFrontCameraImage": "boolean (default false, captures front camera snapshot and attaches to user message for multimodal models)",
     "numberOfMessagesToDisableThinkPrompt": "number (-1 or ≥0, default -1 defers to character)",
     "numberOfMessagesToDisableMetaThinkInstructions": "number (-1 or ≥0, default -1 defers to character)",
     "numberOfMessagesToDisableDialoguePrompt": "number (-1 or ≥0, default -1 defers to character)",
@@ -252,7 +253,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     },
     "stripThinkTokens": "boolean (default true)",
     "tools": {
-      "pick": "number (-1, 0, or 1, default 0)", "date": "number (-1, 0, or 1, default 0)", "coin": "number (-1, 0, or 1, default 0)",
+      "think": "number (-1, 0, or 1, default 0)", "pick": "number (-1, 0, or 1, default 0)", "date": "number (-1, 0, or 1, default 0)", "coin": "number (-1, 0, or 1, default 0)",
       "dice": "number (-1, 0, or 1, default 0)", "random": "number (-1, 0, or 1, default 0)", "rng": "number (-1, 0, or 1, default 0)",
       "move": "number (-1, 0, or 1, default 0)", "timer": "number (-1, 0, or 1, default 0)", "stopwatch": "number (-1, 0, or 1, default 0)",
       "calculator": "number (-1, 0, or 1, default 0)", "web": "number (-1, 0, or 1, default 0)", "dialogue": "number (-1, 0, or 1, default 0)",

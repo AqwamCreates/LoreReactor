@@ -42,6 +42,7 @@ export function useChatEngine(deps: EngineDependencies) {
         strategyOverride?: BudgetStrategy | null,
         existingCharacterText?: string,
         allPromptBlocks?: PromptBlock[],
+        frontCameraImageBase64?: string,
     ): Promise<HandleServerResponseResult | null> => {
         const selectedModel = getState().selectedModel;
         const runningModels = getState().runningModels;
@@ -74,7 +75,8 @@ export function useChatEngine(deps: EngineDependencies) {
 
         const outcome = await characterActor.executeTurn({
             data, character, signal, selectedModel, runningModels, activeStrategy,
-            strategyOverride, existingCharacterText, allPromptBlocks: allPromptBlocks ?? [], callbacks,
+            strategyOverride, existingCharacterText, allPromptBlocks: allPromptBlocks ?? [], frontCameraImageBase64, 
+            callbacks,
         });
 
         if ('error' in outcome) {
@@ -116,11 +118,12 @@ export function useChatEngine(deps: EngineDependencies) {
     const runTurn = useCallback(async (
         initialData: InteractionData,
         signal: AbortController,
-        promptBlocks?: PromptBlock[]
+        promptBlocks?: PromptBlock[],
+        frontCameraImageBase64?: string,
     ): Promise<{ interactionData: InteractionData; isCompleted: boolean }> => {
         const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken: (t: string) => void) => {
             setStreamingState(c, '');
-            return handleServerResponse(d, c, s, onToken, undefined, '', promptBlocks);
+            return handleServerResponse(d, c, s, onToken, undefined, '', promptBlocks, frontCameraImageBase64);
         };
 
         const result = await runTurnSequence(

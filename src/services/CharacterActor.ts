@@ -55,6 +55,7 @@ export interface TurnExecutionParams {
     strategyOverride?: BudgetStrategy | null;
     existingCharacterText?: string;
     allPromptBlocks: PromptBlock[];
+    frontCameraImageBase64?: string;
     callbacks?: TurnStreamCallbacks;
 }
 
@@ -178,7 +179,7 @@ export class CharacterActor {
                 : (selectedModel?.id || '');
             if (probeModelId) {
                 try {
-                    const probeResult = await prepareRequestBody(data, character, '', allPromptBlocks, probeModelId, protagonistFileBase64s);
+                    const probeResult = await prepareRequestBody(data, character, '', allPromptBlocks, probeModelId, protagonistFileBase64s, params.frontCameraImageBase64);
                     resolvedClothingStatuses = probeResult.characterClothingWearingStatuses;
                 } catch { /* non-critical, keep initializeClothingWearingStatuses fallback */ }
             }
@@ -260,7 +261,7 @@ export class CharacterActor {
                     const selection = await bse.selectModelForRequest({ prompt: '' });
                     const activeModelId = selection?.modelId || '';
 
-                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, activeModelId, protagonistFileBase64s);
+                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, activeModelId, protagonistFileBase64s, params.frontCameraImageBase64);
 
                     const cb = callbacks ? createStreamCallbacks(streamToolParser, accumulator) : undefined;
                     const streamResult = await bse.generateStream(body, { signal } as AbortController, cb);
@@ -338,11 +339,11 @@ export class CharacterActor {
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
-                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s);
+                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s, params.frontCameraImageBase64);
                     rawText = await doStream(body);
 
                     if ((!rawText || !rawText.trim()) && !signal.aborted) {
-                        const { body: rb } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s);
+                        const { body: rb } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s, params.frontCameraImageBase64);
                         rawText = await doStream(rb);
                         if (!rawText || !rawText.trim()) {
                             return { error: { message: 'Empty response from model', type: 'inference' } };

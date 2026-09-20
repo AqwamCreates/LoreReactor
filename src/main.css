@@ -2892,6 +2892,13 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
     min-height: 0;
 }
 
+.editor-right-column .entity-tab-button {
+    padding: 4px 6px;
+    font-size: 0.65rem;
+    min-height: 26px;
+    border-radius: 4px;
+}
+
 .editor-field-wrapper {
     display: flex;
     flex-direction: column;

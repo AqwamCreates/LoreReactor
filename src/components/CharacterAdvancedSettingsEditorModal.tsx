@@ -2,41 +2,10 @@
 import { useState } from 'react';
 import type { Sampler, tool } from '../types';
 import '../main.css';
-
-const TOOL_LABELS: Record<tool, string> = {
-    pick: 'Random Pick',
-    date: 'Current Date & Time',
-    coin: 'Coin Flip',
-    dice: 'Roll Dice',
-    random: 'Random Number',
-    rng: 'RNG Table',
-    move: 'Move',
-    timer: 'Timer',
-    stopwatch: 'Stopwatch',
-    calculator: 'Calculator',
-    web: 'Web Search',
-    dialogue: 'Dialogue',
-    knowledge: 'Knowledge',
-    memory: 'Memory',
-    lookup: 'Look Up',
-    map: 'Map',
-    audio: 'Audio',
-    clothing: 'Clothing',
-    note: 'Note',
-    inventory: 'Inventory',
-    invite: 'Invite Participant',
-    kick: 'Kick Participant',
-    teleport: 'Teleport',
-    key: 'Key',
-    summon: 'Summon Character',
-    narrate: 'Narrate',
-    inspect: 'Inspect',
-    administrator: 'Administrator',
-    creator: 'Creator',
-    destroyer: 'Destroyer',
-};
+import { toolLabels } from '../dictionaries/texts';
 
 const TOOL_DESCRIPTIONS: Record<tool, string> = {
+    think: 'Allow this character to think before committing to an output.',
     pick: 'Allow this character to randomly pick from a list of options.',
     date: 'Allow this character to check the current date and time during conversation.',
     coin: 'Allow this character to flip a coin during conversation.',
@@ -425,7 +394,7 @@ export function CharacterAdvancedSettingsEditorModal({
                                             className="editor-checkbox-input"
                                             disabled={isUploading}
                                         />
-                                        <span>{TOOL_LABELS[toolName] ?? toolName}</span>
+                                        <span>{toolLabels[toolName] ?? toolName}</span>
                                     </label>
                                     <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
                                         {TOOL_DESCRIPTIONS[toolName] ?? 'Allow this character to use this tool during conversation.'}

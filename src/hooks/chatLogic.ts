@@ -6,6 +6,76 @@ import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageU
 import { getEffectiveMaximumChatStamina, initializeClothingWearingStatuses } from './characterLogic';
 import { generalStartString, generalEndString } from '../dictionaries/stringList';
 import { buildPrompt, getParticipantTag } from './promptLogic';
+import { getCoLocatedParticipants } from './locationLogic';
+
+// ─── Front Camera Capture ──────────────────────────────────────────
+
+let _cameraStream: MediaStream | null = null;
+let _cameraVideo: HTMLVideoElement | null = null;
+let _cameraCleanupTimer: ReturnType<typeof setTimeout> | null = null;
+
+const CAMERA_IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
+function scheduleCameraCleanup(): void {
+    if (_cameraCleanupTimer) clearTimeout(_cameraCleanupTimer);
+    _cameraCleanupTimer = setTimeout(() => {
+        if (_cameraStream) {
+            _cameraStream.getTracks().forEach(t => t.stop());
+            _cameraStream = null;
+        }
+        if (_cameraVideo) {
+            _cameraVideo.srcObject = null;
+            _cameraVideo.remove();
+            _cameraVideo = null;
+        }
+        _cameraCleanupTimer = null;
+    }, CAMERA_IDLE_TIMEOUT_MS);
+}
+
+export async function captureFrontCameraImage(): Promise<string | null> {
+    try {
+        if (!_cameraStream || !_cameraStream.active) {
+            if (_cameraVideo) {
+                _cameraVideo.srcObject = null;
+                _cameraVideo.remove();
+                _cameraVideo = null;
+            }
+            _cameraStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'user', width: { ideal: 512 }, height: { ideal: 512 } },
+                audio: false,
+            });
+            _cameraVideo = document.createElement('video');
+            _cameraVideo.srcObject = _cameraStream;
+            _cameraVideo.setAttribute('playsinline', '');
+            _cameraVideo.muted = true;
+            await _cameraVideo.play();
+            await new Promise<void>(resolve => {
+                const check = () => {
+                    if (_cameraVideo && _cameraVideo.readyState >= 2) resolve();
+                    else requestAnimationFrame(check);
+                };
+                check();
+            });
+        }
+
+        scheduleCameraCleanup();
+
+        if (!_cameraVideo || _cameraVideo.readyState < 2) return null;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = _cameraVideo.videoWidth || 512;
+        canvas.height = _cameraVideo.videoHeight || 512;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+        ctx.drawImage(_cameraVideo, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL('image/jpeg', 0.8);
+    } catch (e) {
+        console.error('Front camera capture failed:', e);
+        return null;
+    }
+}
+
+// ─── Core Functions ────────────────────────────────────────────────
 
 export function findPreviousMessage(interactionData: InteractionData, characterId: string): HistoryMessage | null {
     const interactionHistory = interactionData.interactionHistory;
@@ -92,7 +162,6 @@ function generateInitialCharacterText(character: Character): string {
     if (!currentInj) currentInj = startPool[startPool.length - 1].inj;
 
     while (currentInj) {
-        // Check skip probability — if hit, skip this node's text but continue the chain
         const skipProb = currentInj.textCharacterSkipProbability ?? 0;
         const isSkipped = skipProb > 0 && Math.random() < skipProb;
 
@@ -160,9 +229,11 @@ export async function prepareRequestBody(
     allPromptBlocks: PromptBlock[],
     modelId: string,
     protagonistFileBase64s?: string[],
+    frontCameraBase64?: string,
 ): Promise<{ body: Record<string, unknown>; fetchErrors: string[]; characterClothingWearingStatuses: Record<string, boolean> }> {
 
     const profile = interactionData.Profile;
+    const protagonistId = interactionData.protagonist?.id;
 
     const { prompt, stops, contextImages, locationImages, promptBlockImages, characterClothingWearingStatuses, fetchErrors } = await buildPrompt(interactionData, character, existingCharacterText, allPromptBlocks, modelId);
 
@@ -174,7 +245,6 @@ export async function prepareRequestBody(
     let initialPrompt = "";
 
     if (!forceNoCharacterImageInjection) {
-        let isCharacterImageInjected = false;
 
         if (!character.doNotInjectCharacterImage) {
             const characterMessage = findPreviousMessage(interactionData, character.id);
@@ -186,33 +256,49 @@ export async function prepareRequestBody(
                 if (characterImageBase64) {
                     const rawData = characterImageBase64.includes(',') ? characterImageBase64.split(',')[1] : characterImageBase64;
                     filesBase64.push({ data: rawData, id: imageIdCounter++ });
-                    initialPrompt = `${generalStartString}I understand that the first image is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${generalEndString}`;
-                    isCharacterImageInjected = true;
+                    initialPrompt = `${generalStartString}I understand that the image ${imageIdCounter} is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${generalEndString}`;
                 }
             }
         }
 
-        const protagonist = interactionData.protagonist;
-        if (protagonist && !protagonist.doNotInjectCharacterImage) {
-            const protagonistMessage = findPreviousMessage(interactionData, protagonist.id);
-            const protagonistExpression = protagonistMessage?.characterExpression;
-            const protagonistImagePath = await getCharacterImageUrlWithFallBack(protagonist.id, protagonistExpression);
+        // Inject all co-located participant images (includes protagonist if co-located)
+        const colocatedParticipants = getCoLocatedParticipants(interactionData, character);
 
-            if (protagonistImagePath) {
-                const protagonistImageBase64 = await getImageBase64(protagonistImagePath);
-                if (protagonistImageBase64) {
-                    const rawData = protagonistImageBase64.includes(',') ? protagonistImageBase64.split(',')[1] : protagonistImageBase64;
-                    let protagonistString = getParticipantTag(protagonist, interactionData.participants);
-                    if (protagonistMessage?.isNameRevealed) {
-                        protagonistString = `${protagonistString} (${protagonist.name})`;
-                    }
-                    filesBase64.push({ data: rawData, id: imageIdCounter++ });
-                    const protagonistImagePositionText = isCharacterImageInjected ? "second" : "first";
-                    initialPrompt = `${initialPrompt}${generalStartString}I understand that the ${protagonistImagePositionText} image is the appearance of ${protagonistString}.${generalEndString}`;
+        for (const participant of colocatedParticipants) {
+            // Skip self — already injected above
+            if (participant.id === character.id) continue;
+
+            if (participant.doNotInjectCharacterImage) continue;
+
+            const participantMessage = findPreviousMessage(interactionData, participant.id);
+            const participantExpression = participantMessage?.characterExpression;
+
+            let participantImageBase64: string | null = null;
+
+            // If this participant is the protagonist and front camera is enabled, use live camera instead of stored image
+            if (participant.id === protagonistId && frontCameraBase64 && profile?.useFrontCameraImage) {
+                participantImageBase64 = frontCameraBase64;
+            } else {
+                const participantImagePath = await getCharacterImageUrlWithFallBack(participant.id, participantExpression);
+                if (participantImagePath) {
+                    participantImageBase64 = await getImageBase64(participantImagePath);
                 }
             }
+
+            if (!participantImageBase64) continue;
+
+            const rawData = participantImageBase64.includes(',') ? participantImageBase64.split(',')[1] : participantImageBase64;
+            let participantString = getParticipantTag(participant, interactionData.participants);
+            if (participantMessage?.isNameRevealed) {
+                participantString = `${participantString} (${participant.name})`;
+            }
+
+            filesBase64.push({ data: rawData, id: imageIdCounter++ });
+
+            initialPrompt = `${initialPrompt}${generalStartString}I understand that the image ${imageIdCounter} is the appearance of ${participantString}.${generalEndString}`;
         }
 
+        // Attach protagonist-uploaded files (attachments, etc.)
         if (protagonistFileBase64s && protagonistFileBase64s.length > 0) {
             for (let i = 0; i < protagonistFileBase64s.length; i++) {
                 const rawData = protagonistFileBase64s[i].includes(',') ? protagonistFileBase64s[i].split(',')[1] : protagonistFileBase64s[i];
@@ -236,7 +322,7 @@ export async function prepareRequestBody(
                 });
                 const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
                 return { data: rawData, id: imageIdCounter++ };
-            } catch (e) { return null; }
+            } catch { return null; }
         });
         const resolvedContextImages = (await Promise.all(contextImagePromises)).filter(img => img !== null);
         filesBase64.push(...resolvedContextImages);
@@ -257,7 +343,7 @@ export async function prepareRequestBody(
                 });
                 const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
                 return { data: rawData, id: imageIdCounter++ };
-            } catch (e) { return null; }
+            } catch{ return null; }
         });
         const resolvedLocationImages = (await Promise.all(locationImagePromises)).filter(img => img !== null);
         filesBase64.push(...resolvedLocationImages);
@@ -278,14 +364,14 @@ export async function prepareRequestBody(
                 });
                 const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
                 return { data: rawData, id: imageIdCounter++ };
-            } catch (e) { return null; }
+            } catch { return null; }
         });
         const resolvedPromptBlockImages = (await Promise.all(promptBlockImagePromises)).filter(img => img !== null);
         filesBase64.push(...resolvedPromptBlockImages);
     }
 
     const lastUserMsg = [...interactionData.interactionHistory].reverse().find(
-        (m): m is ChatMessage => m.character.id === interactionData.protagonist.id && m.messageType === 'chat'
+        (m): m is ChatMessage => m.character.id === protagonistId && m.messageType === 'chat'
     );
 
     if (lastUserMsg?.files?.length) {
@@ -322,13 +408,11 @@ export async function prepareRequestBody(
 
         body._basePrompt = fullPrompt;
 
-        // If not "retry only", prepend the first injection immediately
         if (!profile.randomizeTextCharacterInjectionOnRetry && injections.length > 0) {
             const firstInjection = injections.shift()!;
             body.prompt = firstInjection + (body.prompt as string);
         }
 
-        // Attach remaining injections for retries
         if (injections.length > 0) {
             body._injectionStrings = injections;
         }

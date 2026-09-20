@@ -6,6 +6,7 @@ export const DEFAULT_BUDGET_RESET_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 const now = Date.now()
 
 export const defaultCharacterTools: Record<tool, boolean> = {
+    think: false,
     pick: true,
     date: false,
     coin: true,
@@ -134,7 +135,7 @@ export const defaultInputStrategy: PromptBlockType[] = [
 ];
 
 export const defaultProfileTools: Record<tool, number> = {
-    pick: 0, date: 0, coin: 0, dice: 0, random: 0, rng: 0,
+    think: 0, pick: 0, date: 0, coin: 0, dice: 0, random: 0, rng: 0,
     move: 0, timer: 0, stopwatch: 0, calculator: 0, web: 0, 
     dialogue: 0, knowledge: 0, memory: 0,
     lookup: 0, map: 0, audio: 0, key: 0, clothing: 0, note: 0, inventory: 0,

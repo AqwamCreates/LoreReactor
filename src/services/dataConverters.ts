@@ -340,6 +340,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         useWeather: (p.useWeather as boolean) ?? false,
         weatherApiKey: (p.weatherApiKey as string) || undefined,
         useTimeElapsed: (p.useTimeElapsed as boolean) ?? false,
+        useFrontCameraImage: (p.useFrontCameraImage as boolean) ?? false,
         numberOfMessagesToDisableThinkPrompt: (p.numberOfMessagesToDisableThinkPrompt as number) ?? 0,
         numberOfMessagesToDisableMetaThinkInstructions: (p.numberOfMessagesToDisableMetaThinkInstructions as number) ?? 0,
         numberOfMessagesToDisableDialoguePrompt: (p.numberOfMessagesToDisableDialoguePrompt as number) ?? 0,

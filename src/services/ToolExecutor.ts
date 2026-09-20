@@ -57,6 +57,7 @@ function appendPendingAction(nextMessage: BaseMessage, action: PendingToolAction
 }
 
 const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, displayMode?: toolUsageDisplayMode) => ToolResult | Promise<ToolResult>> = {
+    "think": executeThink,
     "pick": executeRandomPick,
     "date": executeDate,
     "coin": executeCoinFlip,
@@ -139,7 +140,7 @@ export function formatToolDisplay(
         case 'none':
             return result.displayReplacement;
         case 'icon': {
-            const iconMatch = result.displayReplacement.match(/^\[?([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}⚡🔧💀🛠️✨📨👢🔒🔓👕🎙️📝📦🗺️🌐🔍🎲🪙📅⏱️❓])/u);
+            const iconMatch = result.displayReplacement.match(/^\[?([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}⚡🔧💀🛠️✨📨👢🔒🔓👕🎙️📝📦🗺️🌐🔍🎲🪙📅⏱️❓💭])/u);
             return iconMatch ? iconMatch[1] : result.displayReplacement;
         }
         case 'simple':
@@ -153,6 +154,83 @@ export function formatToolDisplay(
         default:
             return result.displayReplacement;
     }
+}
+
+// ─── Think ──────────────────────────────────────────────────────────
+
+function executeThink(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
+    const reasoning = args.trim();
+    if (!reasoning) {
+        return helpResult('think', args, 'think <reasoning> — evaluate whether to speak, what to say, or stay silent based on conversation context');
+    }
+
+    // Gather context signals for the model's reasoning
+    const character = nextMessage.character
+    const characterId = character.id;
+    const protagonistId = interactionData.protagonist?.id;
+    const history = interactionData.interactionHistory;
+
+    // Who spoke last
+    let lastSpeakerName = 'nobody';
+    let lastSpeakerId = '';
+    for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].messageType === 'chat') {
+            lastSpeakerName = history[i].character.name;
+            lastSpeakerId = history[i].character.id;
+            break;
+        }
+    }
+
+    const coLocatedParticipants = getCoLocatedParticipants(interactionData, character)
+    let wasAddressed = false;
+    const recentWindow = coLocatedParticipants.length
+    for (let i = history.length - recentWindow; i < history.length; i++) {
+        if (i < 0) continue;
+        const msg = history[i];
+        if (msg.messageType === 'chat' && msg.character.id !== characterId) {
+            const text = msg.textContent.toLowerCase();
+            const charName = nextMessage.character.name.toLowerCase();
+            if (text.includes(charName)) {
+                wasAddressed = true;
+                break;
+            }
+        }
+    }
+
+    // How many messages since this character last spoke
+    let messagesSinceLastSpoke = 0;
+    for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].messageType === 'chat' && history[i].character.id === characterId) break;
+        messagesSinceLastSpoke++;
+    }
+
+    // Current stamina
+    const remainingChatStamina = nextMessage.remainingChatStamina;
+    const maximumChatStamina = character.maximumChatStamina
+
+    // Build context summary for the model
+    const contextLines: string[] = [];
+    contextLines.push(`You are ${nextMessage.character.name}.`);
+    contextLines.push(`Last speaker: ${lastSpeakerName}${lastSpeakerId === protagonistId ? ' (protagonist)' : ''}.`);
+    contextLines.push(`You were ${wasAddressed ? 'addressed' : 'not addressed'} in recent messages.`);
+    contextLines.push(`Messages since you last spoke: ${messagesSinceLastSpoke}.`);
+    if (remainingChatStamina !== undefined) {
+        contextLines.push(`Remaining chat stamina: ${remainingChatStamina}.`);
+    }
+    if (maximumChatStamina !== undefined) {
+        contextLines.push(`Maximum chat stamina: ${maximumChatStamina}.`);
+    }
+    contextLines.push(`Your reasoning: ${reasoning}`);
+    contextLines.push('');
+    contextLines.push('Based on your reasoning and the above context, decide: should you speak now? Respond with your decision and brief justification. If you decide to speak, continue naturally after this tool result.');
+
+    const content = contextLines.join('\n');
+    return {
+        toolType: 'think',
+        args: reasoning,
+        content,
+        displayReplacement: `[💭 ${nextMessage.character.name} is thinking...]`,
+    };
 }
 
 // ─── Random Pick ────────────────────────────────────────────────────

@@ -213,7 +213,7 @@ export interface RawMemory extends RawData {
   interactionDataId: string;
 }
 
-export type tool = "pick" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "invite" | "kick" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"
+export type tool = "think" | "pick" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "invite" | "kick" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"
 
 export interface DialoguePrompt extends ObjectData {
   content: string;
@@ -596,6 +596,7 @@ export interface Profile extends ObjectData {
   useWeather: boolean;
   weatherApiKey?: string;
   useTimeElapsed: boolean;
+  useFrontCameraImage: boolean;
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
   numberOfMessagesToDisableDialoguePrompt: number;
@@ -639,6 +640,7 @@ export interface RawProfile extends RawData {
   useWeather: boolean;
   weatherApiKey?: string;
   useTimeElapsed: boolean;
+  useFrontCameraImage: boolean;
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
   numberOfMessagesToDisableDialoguePrompt: number;
