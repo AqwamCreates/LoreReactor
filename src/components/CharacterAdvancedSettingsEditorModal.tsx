@@ -1,4 +1,5 @@
 // src/components/CharacterAdvancedSettingsEditorModal.tsx
+import { useState } from 'react';
 import type { Sampler, tool } from '../types';
 import '../main.css';
 
@@ -67,6 +68,8 @@ const TOOL_DESCRIPTIONS: Record<tool, string> = {
     creator: 'Allow this character to create user-data-related entities such as characters, contexts, locations, worlds, prompt blocks, profiles, or other supported data.',
     destroyer: 'Allow this character to delete or destroy user-data-related entities. Enable with caution.',
 };
+
+type TabId = 'stats' | 'decay' | 'tools' | 'stopPatterns';
 
 interface CharacterAdvancedSettingsEditorModalProps {
     isOpen: boolean;
@@ -141,6 +144,8 @@ export function CharacterAdvancedSettingsEditorModal({
     onToolToggle,
     onStopPatternToggle,
 }: CharacterAdvancedSettingsEditorModalProps) {
+    const [activeTab, setActiveTab] = useState<TabId>('stats');
+
     if (!isOpen) return null;
 
     const getStopPatternById = (id: string) => {
@@ -150,6 +155,13 @@ export function CharacterAdvancedSettingsEditorModal({
         }
         return null;
     };
+
+    const tabs: { id: TabId; label: string; icon: string }[] = [
+        { id: 'stats', label: 'Stats', icon: '📊' },
+        { id: 'decay', label: 'Prompt Decay', icon: '⏳' },
+        { id: 'tools', label: 'Tools', icon: '🔧' },
+        { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑' },
+    ];
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -161,293 +173,327 @@ export function CharacterAdvancedSettingsEditorModal({
                     </div>
                 </div>
 
+                {/* Tab Bar */}
+                <div style={{ display: 'flex', gap: '2px', padding: '0 20px', borderBottom: '1px solid var(--border)', background: 'var(--social-bg)' }}>
+                    {tabs.map(tab => (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`entity-tab-button ${activeTab === tab.id ? 'entity-tab-button-active' : ''}`}
+                            style={{ fontSize: '0.7rem', padding: '8px 14px', borderRadius: '6px 6px 0 0', border: 'none', borderBottom: activeTab === tab.id ? '2px solid var(--accent)' : '2px solid transparent' }}
+                        >
+                            {tab.icon} {tab.label}
+                        </button>
+                    ))}
+                </div>
+
                 <div className="modal-body editor-modal-body">
 
-                    {/* Stats */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Character Stats</span>
-                        <div className="editor-stats-grid">
-                            <div>
-                                <label className="editor-label editor-label-small">Initiative Weight</label>
-                                <input
-                                    type="number"
-                                    step="0.1"
-                                    value={initiativeWeightStr}
-                                    onChange={(e) => onInitiativeWeightChange(e.target.value)}
-                                    className="editor-input editor-stat-input"
-                                    disabled={isUploading}
-                                />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Controls the character's initiative when determining turn order. Range: 0 - ∞.
+                    {/* ─── STATS TAB ─── */}
+                    {activeTab === 'stats' && (
+                        <>
+                            <div className="editor-section">
+                                <span className="editor-section-title">Turn Order & Output</span>
+                                <div className="editor-stats-grid">
+                                    <div>
+                                        <label className="editor-label editor-label-small">Initiative Weight</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            value={initiativeWeightStr}
+                                            onChange={(e) => onInitiativeWeightChange(e.target.value)}
+                                            className="editor-input editor-stat-input"
+                                            disabled={isUploading}
+                                        />
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                            Controls the character's initiative when determining turn order. Range: 0 - ∞.
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="editor-label editor-label-small">Chat Probability</label>
+                                        <input
+                                            type="number"
+                                            step="0.05"
+                                            value={chatProbabilityStr}
+                                            onChange={(e) => onChatProbabilityChange(e.target.value)}
+                                            className="editor-input editor-stat-input"
+                                            disabled={isUploading}
+                                        />
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                            Controls the probability of the character initiating a chat message when selected. Range: 0 - 1.
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="editor-label editor-label-small">Maximum Chat Stamina</label>
+                                        <input
+                                            type="number"
+                                            step="1"
+                                            min="0"
+                                            value={maximumChatStaminaStr}
+                                            onChange={(e) => onMaximumChatStaminaChange(e.target.value)}
+                                            className="editor-input editor-stat-input"
+                                            disabled={isUploading}
+                                        />
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                            Controls the number of maximum paragraphs that the character could produce. Range: 0 - ∞.
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Chat Probability</label>
-                                <input
-                                    type="number"
-                                    step="0.05"
-                                    value={chatProbabilityStr}
-                                    onChange={(e) => onChatProbabilityChange(e.target.value)}
-                                    className="editor-input editor-stat-input"
-                                    disabled={isUploading}
-                                />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Controls the probability of the character initiating a chat message when selected. Range: 0 - 1.
-                                </div>
-                            </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Maximum Chat Stamina</label>
-                                <input
-                                    type="number"
-                                    step="1"
-                                    min="0"
-                                    value={maximumChatStaminaStr}
-                                    onChange={(e) => onMaximumChatStaminaChange(e.target.value)}
-                                    className="editor-input editor-stat-input"
-                                    disabled={isUploading}
-                                />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Controls the number of maximum paragraphs that the character could produce. Range: 0 - ∞.
-                                </div>
-                            </div>
-                        </div>
 
-                        <div className="editor-stats-grid" style={{ marginTop: '10px' }}>
-                            <div>
-                                <label className="editor-label editor-label-small">Name Sensitivity</label>
-                                <input
-                                    type="number"
-                                    step="0.5"
-                                    min="0"
-                                    value={nameSensitivityStr}
-                                    onChange={(e) => onNameSensitivityChange(e.target.value)}
-                                    className="editor-input editor-stat-input"
-                                    disabled={isUploading}
-                                />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Controls how likely the character is to be the first one to respond to the latest message. Multiplied by mention count. 0 = off.
+                            <div className="editor-section">
+                                <span className="editor-section-title">Responsiveness</span>
+                                <div className="editor-stats-grid">
+                                    <div>
+                                        <label className="editor-label editor-label-small">Name Sensitivity</label>
+                                        <input
+                                            type="number"
+                                            step="0.5"
+                                            min="0"
+                                            value={nameSensitivityStr}
+                                            onChange={(e) => onNameSensitivityChange(e.target.value)}
+                                            className="editor-input editor-stat-input"
+                                            disabled={isUploading}
+                                        />
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                            Controls how likely the character is to be the first one to respond to the latest message. Multiplied by mention count. 0 = off.
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="editor-label editor-label-small">Chat Impatience</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            min="0"
+                                            value={chatImpatienceSensitivityStr}
+                                            onChange={(e) => onChatImpatienceSensitivityChange(e.target.value)}
+                                            className="editor-input editor-stat-input"
+                                            disabled={isUploading}
+                                        />
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                            Controls how impatient the character is after waiting to speak for too long. Higher = speaks sooner after being quiet. 0 = off.
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="editor-label editor-label-small">Skip Probability</label>
+                                        <input
+                                            type="number"
+                                            step="0.05"
+                                            min="0"
+                                            max="1"
+                                            value={skipProbabilityStr}
+                                            onChange={(e) => onSkipProbabilityChange(e.target.value)}
+                                            className="editor-input editor-stat-input"
+                                            disabled={isUploading}
+                                        />
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                            Probability of skipping an action. Range: 0 - 1.
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Chat Impatience</label>
-                                <input
-                                    type="number"
-                                    step="0.1"
-                                    min="0"
-                                    value={chatImpatienceSensitivityStr}
-                                    onChange={(e) => onChatImpatienceSensitivityChange(e.target.value)}
-                                    className="editor-input editor-stat-input"
-                                    disabled={isUploading}
-                                />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Controls how impatient the character is after waiting to speak for too long. Higher = speaks sooner after being quiet. 0 = off.
-                                </div>
-                            </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Skip Probability</label>
-                                <input
-                                    type="number"
-                                    step="0.05"
-                                    min="0"
-                                    max="1"
-                                    value={skipProbabilityStr}
-                                    onChange={(e) => onSkipProbabilityChange(e.target.value)}
-                                    className="editor-input editor-stat-input"
-                                    disabled={isUploading}
-                                />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Probability of skipping an action. Range: 0 - 1.
-                                </div>
-                            </div>
-                        </div>
 
-                        <div className="editor-stats-grid" style={{ marginTop: '10px' }}>
-                            <div>
-                                <label className="editor-label editor-label-small">Memory Retention</label>
-                                <input
-                                    type="number"
-                                    step="0.1"
-                                    min="0"
-                                    value={memoryRetentionWeightStr}
-                                    onChange={(e) => onMemoryRetentionWeightChange(e.target.value)}
-                                    className="editor-input editor-stat-input"
-                                    disabled={isUploading}
-                                />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Controls how much of the character's memory is retained. Range: 0 - 1.
+                            <div className="editor-section">
+                                <span className="editor-section-title">Awareness & Actions</span>
+                                <div className="editor-stats-grid">
+                                    <div>
+                                        <label className="editor-label editor-label-small">Memory Retention</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            min="0"
+                                            value={memoryRetentionWeightStr}
+                                            onChange={(e) => onMemoryRetentionWeightChange(e.target.value)}
+                                            className="editor-input editor-stat-input"
+                                            disabled={isUploading}
+                                        />
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                            Controls how much of the character's memory is retained. Range: 0 - 1.
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="editor-label editor-label-small">Context Sensitivity</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            min="0"
+                                            value={contextSensitivityStr}
+                                            onChange={(e) => onContextSensitivityChange(e.target.value)}
+                                            className="editor-input editor-stat-input"
+                                            disabled={isUploading}
+                                        />
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                            Controls how sensitive the character is to contextual cues. Range: 0 - 1.
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="editor-label editor-label-small">Maximum Action Stamina</label>
+                                        <input
+                                            type="number"
+                                            step="1"
+                                            min="0"
+                                            value={maximumActionStaminaStr}
+                                            onChange={(e) => onMaximumActionStaminaChange(e.target.value)}
+                                            className="editor-input editor-stat-input"
+                                            disabled={isUploading}
+                                        />
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                            Controls how many silent actions, movement, or non-chat interactions the character can perform before needing to rest. Range: 0 - ∞.
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Context Sensitivity</label>
-                                <input
-                                    type="number"
-                                    step="0.1"
-                                    min="0"
-                                    value={contextSensitivityStr}
-                                    onChange={(e) => onContextSensitivityChange(e.target.value)}
-                                    className="editor-input editor-stat-input"
-                                    disabled={isUploading}
-                                />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Controls how sensitive the character is to contextual cues. Range: 0 - 1.
-                                </div>
-                            </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Maximum Action Stamina</label>
-                                <input
-                                    type="number"
-                                    step="1"
-                                    min="0"
-                                    value={maximumActionStaminaStr}
-                                    onChange={(e) => onMaximumActionStaminaChange(e.target.value)}
-                                    className="editor-input editor-stat-input"
-                                    disabled={isUploading}
-                                />
-                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    Controls how many silent actions, movement, or non-chat interactions the character can perform before needing to rest. Range: 0 - ∞.
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                        </>
+                    )}
 
-                    {/* Disable Prompts */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Disable Prompts After X Messages</span>
-                        <div className="editor-stats-grid">
-                            <div>
-                                <label className="editor-label editor-label-small">Think Prompt</label>
-                                <input
-                                    type="number"
-                                    step="1"
-                                    min="0"
-                                    value={numberOfMessagesToDisableThinkPromptStr}
-                                    onChange={(e) => onDisableThinkChange(e.target.value)}
-                                    className="editor-input editor-stat-input"
-                                    disabled={isUploading}
-                                />
+                    {/* ─── PROMPT DECAY TAB ─── */}
+                    {activeTab === 'decay' && (
+                        <div className="editor-section">
+                            <span className="editor-section-title">Disable Prompts After X Messages</span>
+                            <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '12px' }}>
+                                Prompts are automatically removed from context after the character has sent this many messages. Set to 0 to disable immediately, or leave high to keep them active longer.
                             </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Meta-Think Instructions</label>
-                                <input
-                                    type="number"
-                                    step="1"
-                                    min="0"
-                                    value={numberOfMessagesToDisableMetaThinkInstructionsStr}
-                                    onChange={(e) => onDisableMetaChange(e.target.value)}
-                                    className="editor-input editor-stat-input"
-                                    disabled={isUploading}
-                                />
-                            </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Dialogue Prompt</label>
-                                <input
-                                    type="number"
-                                    step="1"
-                                    min="0"
-                                    value={numberOfMessagesToDisableDialoguePromptStr}
-                                    onChange={(e) => onDisableDialogueChange(e.target.value)}
-                                    className="editor-input editor-stat-input"
-                                    disabled={isUploading}
-                                />
-                            </div>
-                            <div>
-                                <label className="editor-label editor-label-small">Starter Prompt</label>
-                                <input
-                                    type="number"
-                                    step="1"
-                                    min="0"
-                                    value={numberOfMessagesToDisableStarterPromptStr}
-                                    onChange={(e) => onDisableStarterChange(e.target.value)}
-                                    className="editor-input editor-stat-input"
-                                    disabled={isUploading}
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Tools */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Tools</span>
-                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
-                            Enable runtime tool use during generation for this character. Can be overridden by profile settings.
-                        </div>
-
-                        {(Object.keys(tools) as tool[]).map(toolName => (
-                            <div key={toolName} style={{ marginBottom: '8px' }}>
-                                <label className="editor-checkbox-label">
+                            <div className="editor-stats-grid">
+                                <div>
+                                    <label className="editor-label editor-label-small">Think Prompt</label>
                                     <input
-                                        type="checkbox"
-                                        checked={tools[toolName]}
-                                        onChange={() => onToolToggle(toolName)}
-                                        className="editor-checkbox-input"
+                                        type="number"
+                                        step="1"
+                                        min="0"
+                                        value={numberOfMessagesToDisableThinkPromptStr}
+                                        onChange={(e) => onDisableThinkChange(e.target.value)}
+                                        className="editor-input editor-stat-input"
                                         disabled={isUploading}
                                     />
-                                    <span>{TOOL_LABELS[toolName] ?? toolName}</span>
-                                </label>
-                                <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                                    {TOOL_DESCRIPTIONS[toolName] ?? 'Allow this character to use this tool during conversation.'}
+                                </div>
+                                <div>
+                                    <label className="editor-label editor-label-small">Meta-Think Instructions</label>
+                                    <input
+                                        type="number"
+                                        step="1"
+                                        min="0"
+                                        value={numberOfMessagesToDisableMetaThinkInstructionsStr}
+                                        onChange={(e) => onDisableMetaChange(e.target.value)}
+                                        className="editor-input editor-stat-input"
+                                        disabled={isUploading}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="editor-label editor-label-small">Dialogue Prompt</label>
+                                    <input
+                                        type="number"
+                                        step="1"
+                                        min="0"
+                                        value={numberOfMessagesToDisableDialoguePromptStr}
+                                        onChange={(e) => onDisableDialogueChange(e.target.value)}
+                                        className="editor-input editor-stat-input"
+                                        disabled={isUploading}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="editor-label editor-label-small">Starter Prompt</label>
+                                    <input
+                                        type="number"
+                                        step="1"
+                                        min="0"
+                                        value={numberOfMessagesToDisableStarterPromptStr}
+                                        onChange={(e) => onDisableStarterChange(e.target.value)}
+                                        className="editor-input editor-stat-input"
+                                        disabled={isUploading}
+                                    />
                                 </div>
                             </div>
-                        ))}
-                    </div>
-
-                    {/* Stop Patterns */}
-                    <div className="editor-section">
-                        <span className="editor-section-title">Character Stop Patterns</span>
-                        <div className="editor-stop-patterns-hint">
-                            Specific stop sequences for this character, overrides or augments sampler defaults.
                         </div>
+                    )}
 
-                        <div className="sampler-stop-patterns-list">
-                            {selectedStopPatternIds.length === 0 && (
-                                <div className="sampler-stop-empty">No character-specific stop patterns assigned.</div>
-                            )}
+                    {/* ─── TOOLS TAB ─── */}
+                    {activeTab === 'tools' && (
+                        <div className="editor-section">
+                            <span className="editor-section-title">Character Tools</span>
+                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '12px' }}>
+                                Enable runtime tool use during generation for this character. Can be overridden by profile settings.
+                            </div>
 
-                            {selectedStopPatternIds.map(id => {
-                                const sp = getStopPatternById(id);
-                                if (!sp) return null;
-
-                                return (
-                                    <div key={id} className="sampler-stop-item">
-                                        <div className="sampler-stop-info">
-                                            <span className="sampler-stop-name">{sp.name}</span>
-                                            <span className="sampler-stop-pattern">{sp.pattern}</span>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => onStopPatternToggle(id)}
-                                            className="sampler-stop-remove-button"
-                                            title="Remove stop pattern"
-                                        >
-                                            ×
-                                        </button>
+                            {(Object.keys(tools) as tool[]).map(toolName => (
+                                <div key={toolName} style={{ marginBottom: '8px' }}>
+                                    <label className="editor-checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={tools[toolName]}
+                                            onChange={() => onToolToggle(toolName)}
+                                            className="editor-checkbox-input"
+                                            disabled={isUploading}
+                                        />
+                                        <span>{TOOL_LABELS[toolName] ?? toolName}</span>
+                                    </label>
+                                    <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                                        {TOOL_DESCRIPTIONS[toolName] ?? 'Allow this character to use this tool during conversation.'}
                                     </div>
-                                );
-                            })}
+                                </div>
+                            ))}
                         </div>
+                    )}
 
-                        <select
-                            onChange={(e) => {
-                                const val = e.target.value;
-                                if (val) onStopPatternToggle(val);
-                                e.target.value = '';
-                            }}
-                            className="editor-select"
-                            defaultValue=""
-                            disabled={isUploading}
-                        >
-                            <option value="" disabled>+ Add a stop pattern</option>
-                            {allSamplers
-                                .flatMap(s => s.stopPatterns)
-                                .filter((sp, index, self) => index === self.findIndex(t => t.id === sp.id))
-                                .filter(sp => !selectedStopPatternIds.includes(sp.id))
-                                .map(sp => (
-                                    <option key={sp.id} value={sp.id}>
-                                        {sp.name} — {sp.pattern}
-                                    </option>
-                                ))}
-                        </select>
-                    </div>
+                    {/* ─── STOP PATTERNS TAB ─── */}
+                    {activeTab === 'stopPatterns' && (
+                        <div className="editor-section">
+                            <span className="editor-section-title">Character Stop Patterns</span>
+                            <div className="editor-stop-patterns-hint">
+                                Specific stop sequences for this character, overrides or augments sampler defaults.
+                            </div>
+
+                            <div className="sampler-stop-patterns-list">
+                                {selectedStopPatternIds.length === 0 && (
+                                    <div className="sampler-stop-empty">No character-specific stop patterns assigned.</div>
+                                )}
+
+                                {selectedStopPatternIds.map(id => {
+                                    const sp = getStopPatternById(id);
+                                    if (!sp) return null;
+
+                                    return (
+                                        <div key={id} className="sampler-stop-item">
+                                            <div className="sampler-stop-info">
+                                                <span className="sampler-stop-name">{sp.name}</span>
+                                                <span className="sampler-stop-pattern">{sp.pattern}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => onStopPatternToggle(id)}
+                                                className="sampler-stop-remove-button"
+                                                title="Remove stop pattern"
+                                            >
+                                                ×
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            <select
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val) onStopPatternToggle(val);
+                                    e.target.value = '';
+                                }}
+                                className="editor-select"
+                                defaultValue=""
+                                disabled={isUploading}
+                            >
+                                <option value="" disabled>+ Add a stop pattern</option>
+                                {allSamplers
+                                    .flatMap(s => s.stopPatterns)
+                                    .filter((sp, index, self) => index === self.findIndex(t => t.id === sp.id))
+                                    .filter(sp => !selectedStopPatternIds.includes(sp.id))
+                                    .map(sp => (
+                                        <option key={sp.id} value={sp.id}>
+                                            {sp.name} — {sp.pattern}
+                                        </option>
+                                    ))}
+                            </select>
+                        </div>
+                    )}
 
                 </div>
             </div>

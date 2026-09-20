@@ -533,6 +533,16 @@ function CharacterEditorModalInner({
                                     )}
                                     <input ref={voiceInputRef} type="file" accept="audio/*,.wav,.mp3,.flac,.ogg" hidden onChange={handleVoiceChange} disabled={isUploading} />
                                 </div>
+
+                                <div className="editor-section" style={{ marginTop: '8px' }}>
+                                    <label className="editor-checkbox-label">
+                                        <input type="checkbox" checked={doNotInjectCharacterImage} onChange={(e) => setDoNotInjectCharacterImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
+                                        <span>Do Not Inject Character Image</span>
+                                    </label>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', marginLeft: '26px' }}>
+                                        Prevent this character's image from being sent to the model.
+                                    </div>
+                                </div>
                             </div>
 
                             {/* RIGHT COLUMN */}
@@ -573,13 +583,6 @@ function CharacterEditorModalInner({
                                         {!isLoadingSamplers && allSamplers.length === 0 && <option>No samplers available</option>}
                                         {!isLoadingSamplers && allSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
                                     </select>
-
-                                    <div className="editor-section">
-                                        <label className="editor-checkbox-label">
-                                            <input type="checkbox" checked={doNotInjectCharacterImage} onChange={(e) => setDoNotInjectCharacterImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
-                                            <span>Do Not Inject Character Image</span>
-                                        </label>
-                                    </div>
 
                                     <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                                         <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowAdvancedSettings(true)} disabled={isUploading} style={{ flex: 1 }}>Advanced Settings</button>
