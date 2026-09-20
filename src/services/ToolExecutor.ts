@@ -642,7 +642,6 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
 
     switch (subcommand) {
         case 'set': {
-            // schedule set <name> <duration> <action...>
             if (parts.length < 4) return { toolType: 'schedule', args, content: '[Error: Usage: schedule set <name> <duration> <action>]', displayReplacement: '[Error: Usage: schedule set <name> <duration> <action>]' };
             const name = parts[1];
             const durationStr = parts[2];
@@ -656,7 +655,6 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
             return { toolType: 'schedule', args, content: `Scheduled "${name}" in ${formatDuration(durationMs)}: ${action}`, displayReplacement: `[📅 Scheduled "${name}" in ${formatDuration(durationMs)}]` };
         }
         case 'set_repeat': {
-            // schedule set_repeat <name> <interval> <action...>
             if (parts.length < 4) return { toolType: 'schedule', args, content: '[Error: Usage: schedule set_repeat <name> <interval> <action>]', displayReplacement: '[Error: Usage: schedule set_repeat <name> <interval> <action>]' };
             const name = parts[1];
             const intervalStr = parts[2];
@@ -1183,10 +1181,29 @@ function executeInventory(args: string, nextMessage: BaseMessage, interactionDat
 
 // ─── Trade ──────────────────────────────────────────────────────────
 
+interface PendingTradeOffer {
+    id: string;
+    fromCharId: string;
+    fromCharName: string;
+    toCharId: string;
+    toCharName: string;
+    giveItems: { item: string; qty: number }[];
+    takeItems: { item: string; qty: number }[];
+    createdAt: number;
+}
+
+function loadPendingOffers(inventory: Inventory | undefined): PendingTradeOffer[] {
+    if (!inventory || typeof inventory['__pending_trade_offers__'] !== 'string') return [];
+    try { return JSON.parse(inventory['__pending_trade_offers__'] as string); } catch { return []; }
+}
+function savePendingOffers(inventory: Inventory, offers: PendingTradeOffer[]): void {
+    if (offers.length === 0) delete inventory['__pending_trade_offers__']; else inventory['__pending_trade_offers__'] = JSON.stringify(offers);
+}
+
 function executeTrade(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
-        return helpResult('trade', args, 'trade give <char_id> <item> <qty> | trade take <char_id> <item> <qty> | trade offer <char_id> <give_item> <give_qty> for <take_item> <take_qty> | trade bulk_give <char_id> <item1>:<qty1>,<item2>:<qty2>,... | trade bulk_take <char_id> <item1>:<qty1>,<item2>:<qty2>,...');
+        return helpResult('trade', args, 'trade give <char_id> <item>:<qty>[,...] | trade take <char_id> <item>:<qty>[,...] | trade offer <char_id> <give_items> for <take_items> | trade accept <offer_id> | trade decline <offer_id> | trade list_offers');
     }
 
     const parts = trimmed.split(/\s+/);
@@ -1194,10 +1211,9 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
     const currentMessage = findPreviousMessage(interactionData, nextMessage.character.id);
     const myInventory: Inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
 
-    // Helper: parse bulk items "item1:qty1,item2:qty2,..."
-    const parseBulkItems = (bulkStr: string): { item: string; qty: number }[] => {
+    const parseItems = (raw: string): { item: string; qty: number }[] => {
         const entries: { item: string; qty: number }[] = [];
-        const segments = bulkStr.split(',');
+        const segments = raw.split(',');
         for (const seg of segments) {
             const colonIdx = seg.lastIndexOf(':');
             if (colonIdx === -1) continue;
@@ -1208,7 +1224,6 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
         return entries;
     };
 
-    // Helper: get target character's inventory from their last message
     const getTargetInventory = (charId: string): { inventory: Inventory; msgIndex: number } | null => {
         for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
             if (interactionData.interactionHistory[i].character.id === charId) {
@@ -1221,129 +1236,15 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
 
     switch (subcommand) {
         case 'give': {
-            // trade give <char_id> <item> <qty>
-            if (parts.length < 4) return { toolType: 'trade', args, content: '[Error: Usage: trade give <char_id> <item> <qty>]', displayReplacement: '[Error: Usage]' };
+            if (parts.length < 3) return { toolType: 'trade', args, content: '[Error: Usage: trade give <char_id> <item>:<qty>[,...]]', displayReplacement: '[Error: Usage]' };
             const targetCharId = parts[1];
-            const item = parts.slice(2, -1).join(' ');
-            const qty = Number(parts[parts.length - 1]);
-            if (!item || isNaN(qty) || qty <= 0) return { toolType: 'trade', args, content: '[Error: Invalid item or quantity]', displayReplacement: '[Error: Invalid]' };
+            const itemsRaw = parts.slice(2).join(' ');
+            const items = parseItems(itemsRaw);
+            if (items.length === 0) return { toolType: 'trade', args, content: '[Error: No valid items. Format: item:qty or item1:qty1,item2:qty2]', displayReplacement: '[Error: No valid items]' };
 
             const targetChar = (context?.allCharacters || interactionData.participants || []).find(c => c.id === targetCharId);
             if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: '[Error: Character not found]' };
 
-            const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
-            if (myCurrent < qty) return { toolType: 'trade', args, content: `[Error: Not enough "${item}". Have ${myCurrent}, need ${qty}.]`, displayReplacement: `[Error: Not enough "${item}"]` };
-
-            const targetData = getTargetInventory(targetCharId);
-            if (!targetData) return { toolType: 'trade', args, content: `[Error: No message history for "${targetChar.name}".]`, displayReplacement: '[Error: Target has no history]' };
-
-            // Remove from giver
-            const newMyQty = myCurrent - qty;
-            if (newMyQty <= 0) delete myInventory[item]; else myInventory[item] = newMyQty;
-            nextMessage.inventory = myInventory;
-
-            // Add to receiver
-            const targetCurrent = typeof targetData.inventory[item] === 'number' ? (targetData.inventory[item] as number) : 0;
-            targetData.inventory[item] = targetCurrent + qty;
-
-            // Update target's last message inventory
-            const updatedHistory = [...interactionData.interactionHistory];
-            const targetMsg = { ...updatedHistory[targetData.msgIndex] } as ChatMessage;
-            targetMsg.inventory = targetData.inventory;
-            updatedHistory[targetData.msgIndex] = targetMsg;
-            interactionData.interactionHistory = updatedHistory;
-
-            return { toolType: 'trade', args, content: `Gave ${qty}x "${item}" to ${targetChar.name}.`, displayReplacement: `[🤝 Gave ${qty}x "${item}" to ${targetChar.name}]` };
-        }
-        case 'take': {
-            // trade take <char_id> <item> <qty>
-            if (parts.length < 4) return { toolType: 'trade', args, content: '[Error: Usage: trade take <char_id> <item> <qty>]', displayReplacement: '[Error: Usage]' };
-            const targetCharId = parts[1];
-            const item = parts.slice(2, -1).join(' ');
-            const qty = Number(parts[parts.length - 1]);
-            if (!item || isNaN(qty) || qty <= 0) return { toolType: 'trade', args, content: '[Error: Invalid item or quantity]', displayReplacement: '[Error: Invalid]' };
-
-            const targetChar = (context?.allCharacters || interactionData.participants || []).find(c => c.id === targetCharId);
-            if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: '[Error: Character not found]' };
-
-            const targetData = getTargetInventory(targetCharId);
-            if (!targetData) return { toolType: 'trade', args, content: `[Error: No message history for "${targetChar.name}".]`, displayReplacement: '[Error: Target has no history]' };
-
-            const targetCurrent = typeof targetData.inventory[item] === 'number' ? (targetData.inventory[item] as number) : 0;
-            if (targetCurrent < qty) return { toolType: 'trade', args, content: `[Error: ${targetChar.name} doesn't have enough "${item}". Has ${targetCurrent}, need ${qty}.]`, displayReplacement: `[Error: Target lacks "${item}"]` };
-
-            // Remove from target
-            const newTargetQty = targetCurrent - qty;
-            if (newTargetQty <= 0) delete targetData.inventory[item]; else targetData.inventory[item] = newTargetQty;
-
-            const updatedHistory = [...interactionData.interactionHistory];
-            const targetMsg = { ...updatedHistory[targetData.msgIndex] } as ChatMessage;
-            targetMsg.inventory = targetData.inventory;
-            updatedHistory[targetData.msgIndex] = targetMsg;
-            interactionData.interactionHistory = updatedHistory;
-
-            // Add to self
-            const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
-            myInventory[item] = myCurrent + qty;
-            nextMessage.inventory = myInventory;
-
-            return { toolType: 'trade', args, content: `Took ${qty}x "${item}" from ${targetChar.name}.`, displayReplacement: `[🤝 Took ${qty}x "${item}" from ${targetChar.name}]` };
-        }
-        case 'offer': {
-            // trade offer <char_id> <give_item> <give_qty> for <take_item> <take_qty>
-            const forIdx = parts.findIndex(p => p.toLowerCase() === 'for');
-            if (forIdx === -1 || parts.length < 6) return { toolType: 'trade', args, content: '[Error: Usage: trade offer <char_id> <give_item> <give_qty> for <take_item> <take_qty>]', displayReplacement: '[Error: Usage]' };
-            const targetCharId = parts[1];
-            const giveItem = parts.slice(2, forIdx - 1).join(' ');
-            const giveQty = Number(parts[forIdx - 1]);
-            const takeItem = parts.slice(forIdx + 1, -1).join(' ');
-            const takeQty = Number(parts[parts.length - 1]);
-            if (!giveItem || isNaN(giveQty) || giveQty <= 0 || !takeItem || isNaN(takeQty) || takeQty <= 0) return { toolType: 'trade', args, content: '[Error: Invalid items or quantities]', displayReplacement: '[Error: Invalid]' };
-
-            const targetChar = (context?.allCharacters || interactionData.participants || []).find(c => c.id === targetCharId);
-            if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: '[Error: Character not found]' };
-
-            const myGiveCurrent = typeof myInventory[giveItem] === 'number' ? (myInventory[giveItem] as number) : 0;
-            if (myGiveCurrent < giveQty) return { toolType: 'trade', args, content: `[Error: Not enough "${giveItem}". Have ${myGiveCurrent}, need ${giveQty}.]`, displayReplacement: `[Error: Not enough "${giveItem}"]` };
-
-            const targetData = getTargetInventory(targetCharId);
-            if (!targetData) return { toolType: 'trade', args, content: `[Error: No message history for "${targetChar.name}".]`, displayReplacement: '[Error: Target has no history]' };
-
-            const targetTakeCurrent = typeof targetData.inventory[takeItem] === 'number' ? (targetData.inventory[takeItem] as number) : 0;
-            if (targetTakeCurrent < takeQty) return { toolType: 'trade', args, content: `[Error: ${targetChar.name} doesn't have enough "${takeItem}". Has ${targetTakeCurrent}, need ${takeQty}.]`, displayReplacement: `[Error: Target lacks "${takeItem}"]` };
-
-            // Execute swap
-            const newMyGive = myGiveCurrent - giveQty;
-            if (newMyGive <= 0) delete myInventory[giveItem]; else myInventory[giveItem] = newMyGive;
-            const myTakeCurrent = typeof myInventory[takeItem] === 'number' ? (myInventory[takeItem] as number) : 0;
-            myInventory[takeItem] = myTakeCurrent + takeQty;
-            nextMessage.inventory = myInventory;
-
-            const newTargetTake = targetTakeCurrent - takeQty;
-            if (newTargetTake <= 0) delete targetData.inventory[takeItem]; else targetData.inventory[takeItem] = newTargetTake;
-            const targetGiveCurrent = typeof targetData.inventory[giveItem] === 'number' ? (targetData.inventory[giveItem] as number) : 0;
-            targetData.inventory[giveItem] = targetGiveCurrent + giveQty;
-
-            const updatedHistory = [...interactionData.interactionHistory];
-            const targetMsg = { ...updatedHistory[targetData.msgIndex] } as ChatMessage;
-            targetMsg.inventory = targetData.inventory;
-            updatedHistory[targetData.msgIndex] = targetMsg;
-            interactionData.interactionHistory = updatedHistory;
-
-            return { toolType: 'trade', args, content: `Traded ${giveQty}x "${giveItem}" ↔ ${takeQty}x "${takeItem}" with ${targetChar.name}.`, displayReplacement: `[🤝 Traded ${giveQty}x "${giveItem}" ↔ ${takeQty}x "${takeItem}" with ${targetChar.name}]` };
-        }
-        case 'bulk_give': {
-            // trade bulk_give <char_id> <item1:qty1,item2:qty2,...>
-            if (parts.length < 3) return { toolType: 'trade', args, content: '[Error: Usage: trade bulk_give <char_id> <item1:qty1,item2:qty2,...>]', displayReplacement: '[Error: Usage]' };
-            const targetCharId = parts[1];
-            const bulkStr = parts.slice(2).join(' ');
-            const items = parseBulkItems(bulkStr);
-            if (items.length === 0) return { toolType: 'trade', args, content: '[Error: No valid items parsed. Format: item1:qty1,item2:qty2]', displayReplacement: '[Error: No valid items]' };
-
-            const targetChar = (context?.allCharacters || interactionData.participants || []).find(c => c.id === targetCharId);
-            if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: '[Error: Character not found]' };
-
-            // Validate all items first
             for (const { item, qty } of items) {
                 const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
                 if (myCurrent < qty) return { toolType: 'trade', args, content: `[Error: Not enough "${item}". Have ${myCurrent}, need ${qty}.]`, displayReplacement: `[Error: Not enough "${item}"]` };
@@ -1352,13 +1253,11 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
             const targetData = getTargetInventory(targetCharId);
             if (!targetData) return { toolType: 'trade', args, content: `[Error: No message history for "${targetChar.name}".]`, displayReplacement: '[Error: Target has no history]' };
 
-            // Execute bulk transfer
             const transferred: string[] = [];
             for (const { item, qty } of items) {
                 const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
                 const newMyQty = myCurrent - qty;
                 if (newMyQty <= 0) delete myInventory[item]; else myInventory[item] = newMyQty;
-
                 const targetCurrent = typeof targetData.inventory[item] === 'number' ? (targetData.inventory[item] as number) : 0;
                 targetData.inventory[item] = targetCurrent + qty;
                 transferred.push(`${qty}x "${item}"`);
@@ -1371,15 +1270,14 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
             updatedHistory[targetData.msgIndex] = targetMsg;
             interactionData.interactionHistory = updatedHistory;
 
-            return { toolType: 'trade', args, content: `Bulk gave to ${targetChar.name}: ${transferred.join(', ')}.`, displayReplacement: `[🤝 Bulk gave ${items.length} item(s) to ${targetChar.name}]` };
+            return { toolType: 'trade', args, content: `Gave to ${targetChar.name}: ${transferred.join(', ')}.`, displayReplacement: `[🤝 Gave ${items.length} item(s) to ${targetChar.name}]` };
         }
-        case 'bulk_take': {
-            // trade bulk_take <char_id> <item1:qty1,item2:qty2,...>
-            if (parts.length < 3) return { toolType: 'trade', args, content: '[Error: Usage: trade bulk_take <char_id> <item1:qty1,item2:qty2,...>]', displayReplacement: '[Error: Usage]' };
+        case 'take': {
+            if (parts.length < 3) return { toolType: 'trade', args, content: '[Error: Usage: trade take <char_id> <item>:<qty>[,...]]', displayReplacement: '[Error: Usage]' };
             const targetCharId = parts[1];
-            const bulkStr = parts.slice(2).join(' ');
-            const items = parseBulkItems(bulkStr);
-            if (items.length === 0) return { toolType: 'trade', args, content: '[Error: No valid items parsed. Format: item1:qty1,item2:qty2]', displayReplacement: '[Error: No valid items]' };
+            const itemsRaw = parts.slice(2).join(' ');
+            const items = parseItems(itemsRaw);
+            if (items.length === 0) return { toolType: 'trade', args, content: '[Error: No valid items. Format: item:qty or item1:qty1,item2:qty2]', displayReplacement: '[Error: No valid items]' };
 
             const targetChar = (context?.allCharacters || interactionData.participants || []).find(c => c.id === targetCharId);
             if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: '[Error: Character not found]' };
@@ -1387,19 +1285,16 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
             const targetData = getTargetInventory(targetCharId);
             if (!targetData) return { toolType: 'trade', args, content: `[Error: No message history for "${targetChar.name}".]`, displayReplacement: '[Error: Target has no history]' };
 
-            // Validate all items first
             for (const { item, qty } of items) {
                 const targetCurrent = typeof targetData.inventory[item] === 'number' ? (targetData.inventory[item] as number) : 0;
                 if (targetCurrent < qty) return { toolType: 'trade', args, content: `[Error: ${targetChar.name} doesn't have enough "${item}". Has ${targetCurrent}, need ${qty}.]`, displayReplacement: `[Error: Target lacks "${item}"]` };
             }
 
-            // Execute bulk transfer
             const taken: string[] = [];
             for (const { item, qty } of items) {
                 const targetCurrent = typeof targetData.inventory[item] === 'number' ? (targetData.inventory[item] as number) : 0;
                 const newTargetQty = targetCurrent - qty;
                 if (newTargetQty <= 0) delete targetData.inventory[item]; else targetData.inventory[item] = newTargetQty;
-
                 const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
                 myInventory[item] = myCurrent + qty;
                 taken.push(`${qty}x "${item}"`);
@@ -1412,9 +1307,147 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
             updatedHistory[targetData.msgIndex] = targetMsg;
             interactionData.interactionHistory = updatedHistory;
 
-            return { toolType: 'trade', args, content: `Bulk took from ${targetChar.name}: ${taken.join(', ')}.`, displayReplacement: `[🤝 Bulk took ${items.length} item(s) from ${targetChar.name}]` };
+            return { toolType: 'trade', args, content: `Took from ${targetChar.name}: ${taken.join(', ')}.`, displayReplacement: `[🤝 Took ${items.length} item(s) from ${targetChar.name}]` };
         }
-        default: return { toolType: 'trade', args, content: `[Error: Unknown trade command "${subcommand}". Use give, take, offer, bulk_give, or bulk_take.]`, displayReplacement: `[Error: Unknown trade command]` };
+        case 'offer': {
+            const forIdx = parts.findIndex(p => p.toLowerCase() === 'for');
+            if (forIdx === -1 || parts.length < 5) return { toolType: 'trade', args, content: '[Error: Usage: trade offer <char_id> <give_items> for <take_items>]', displayReplacement: '[Error: Usage]' };
+            const targetCharId = parts[1];
+            const giveItemsRaw = parts.slice(2, forIdx).join(' ');
+            const takeItemsRaw = parts.slice(forIdx + 1).join(' ');
+            const giveItems = parseItems(giveItemsRaw);
+            const takeItems = parseItems(takeItemsRaw);
+            if (giveItems.length === 0 || takeItems.length === 0) return { toolType: 'trade', args, content: '[Error: No valid items. Format: item:qty or item1:qty1,item2:qty2]', displayReplacement: '[Error: No valid items]' };
+
+            const targetChar = (context?.allCharacters || interactionData.participants || []).find(c => c.id === targetCharId);
+            if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: '[Error: Character not found]' };
+
+            for (const { item, qty } of giveItems) {
+                const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
+                if (myCurrent < qty) return { toolType: 'trade', args, content: `[Error: Not enough "${item}". Have ${myCurrent}, need ${qty}.]`, displayReplacement: `[Error: Not enough "${item}"]` };
+            }
+
+            const targetData = getTargetInventory(targetCharId);
+            if (!targetData) return { toolType: 'trade', args, content: `[Error: No message history for "${targetChar.name}".]`, displayReplacement: '[Error: Target has no history]' };
+
+            const offer: PendingTradeOffer = {
+                id: uuidv4(),
+                fromCharId: nextMessage.character.id,
+                fromCharName: nextMessage.character.name,
+                toCharId: targetCharId,
+                toCharName: targetChar.name,
+                giveItems,
+                takeItems,
+                createdAt: Date.now(),
+            };
+
+            const targetOffers = loadPendingOffers(targetData.inventory);
+            targetOffers.push(offer);
+            savePendingOffers(targetData.inventory, targetOffers);
+
+            const updatedHistory = [...interactionData.interactionHistory];
+            const targetMsg = { ...updatedHistory[targetData.msgIndex] } as ChatMessage;
+            targetMsg.inventory = targetData.inventory;
+            updatedHistory[targetData.msgIndex] = targetMsg;
+            interactionData.interactionHistory = updatedHistory;
+
+            const giveStr = giveItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
+            const takeStr = takeItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
+            return {
+                toolType: 'trade',
+                args,
+                content: `Trade offer sent to ${targetChar.name} (ID: ${offer.id}): offering ${giveStr} for ${takeStr}. They must accept or decline.`,
+                displayReplacement: `[🤝 Offer sent to ${targetChar.name}: ${giveStr} ↔ ${takeStr}]`,
+            };
+        }
+        case 'accept': {
+            if (parts.length < 2) return { toolType: 'trade', args, content: '[Error: Usage: trade accept <offer_id>]', displayReplacement: '[Error: Usage]' };
+            const offerId = parts[1].trim();
+
+            const myOffers = loadPendingOffers(myInventory);
+            const offerIdx = myOffers.findIndex(o => o.id === offerId || o.id.startsWith(offerId));
+            if (offerIdx === -1) return { toolType: 'trade', args, content: `[Error: No pending offer matching "${offerId}". Use "trade list_offers" to see available offers.]`, displayReplacement: `[Error: Offer not found]` };
+
+            const offer = myOffers[offerIdx];
+
+            for (const { item, qty } of offer.takeItems) {
+                const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
+                if (myCurrent < qty) return { toolType: 'trade', args, content: `[Error: Cannot accept. You don't have enough "${item}". Have ${myCurrent}, need ${qty}.]`, displayReplacement: `[Error: Not enough "${item}"]` };
+            }
+
+            const offererData = getTargetInventory(offer.fromCharId);
+            if (!offererData) return { toolType: 'trade', args, content: `[Error: Cannot find ${offer.fromCharName}'s inventory. Offer may be stale.]`, displayReplacement: '[Error: Offerer not found]' };
+
+            for (const { item, qty } of offer.giveItems) {
+                const offererCurrent = typeof offererData.inventory[item] === 'number' ? (offererData.inventory[item] as number) : 0;
+                if (offererCurrent < qty) return { toolType: 'trade', args, content: `[Error: ${offer.fromCharName} no longer has enough "${item}". Offer is stale.]`, displayReplacement: `[Error: Offer stale — "${item}" unavailable]` };
+            }
+
+            for (const { item, qty } of offer.takeItems) {
+                const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
+                const newMyQty = myCurrent - qty;
+                if (newMyQty <= 0) delete myInventory[item]; else myInventory[item] = newMyQty;
+                const offererCurrent = typeof offererData.inventory[item] === 'number' ? (offererData.inventory[item] as number) : 0;
+                offererData.inventory[item] = offererCurrent + qty;
+            }
+            for (const { item, qty } of offer.giveItems) {
+                const offererCurrent = typeof offererData.inventory[item] === 'number' ? (offererData.inventory[item] as number) : 0;
+                const newOffererQty = offererCurrent - qty;
+                if (newOffererQty <= 0) delete offererData.inventory[item]; else offererData.inventory[item] = newOffererQty;
+                const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
+                myInventory[item] = myCurrent + qty;
+            }
+
+            myOffers.splice(offerIdx, 1);
+            savePendingOffers(myInventory, myOffers);
+            nextMessage.inventory = myInventory;
+
+            const updatedHistory = [...interactionData.interactionHistory];
+            const offererMsg = { ...updatedHistory[offererData.msgIndex] } as ChatMessage;
+            offererMsg.inventory = offererData.inventory;
+            updatedHistory[offererData.msgIndex] = offererMsg;
+            interactionData.interactionHistory = updatedHistory;
+
+            const receivedStr = offer.giveItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
+            const gaveStr = offer.takeItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
+            return {
+                toolType: 'trade',
+                args,
+                content: `Accepted offer from ${offer.fromCharName}. Received: ${receivedStr}. Gave: ${gaveStr}.`,
+                displayReplacement: `[🤝 Accepted trade with ${offer.fromCharName}]`,
+            };
+        }
+        case 'decline': {
+            if (parts.length < 2) return { toolType: 'trade', args, content: '[Error: Usage: trade decline <offer_id>]', displayReplacement: '[Error: Usage]' };
+            const offerId = parts[1].trim();
+
+            const myOffers = loadPendingOffers(myInventory);
+            const offerIdx = myOffers.findIndex(o => o.id === offerId || o.id.startsWith(offerId));
+            if (offerIdx === -1) return { toolType: 'trade', args, content: `[Error: No pending offer matching "${offerId}". Use "trade list_offers" to see available offers.]`, displayReplacement: `[Error: Offer not found]` };
+
+            const declinedOffer = myOffers[offerIdx];
+            myOffers.splice(offerIdx, 1);
+            savePendingOffers(myInventory, myOffers);
+            nextMessage.inventory = myInventory;
+
+            return {
+                toolType: 'trade',
+                args,
+                content: `Declined trade offer from ${declinedOffer.fromCharName} (ID: ${declinedOffer.id}).`,
+                displayReplacement: `[🤝 Declined offer from ${declinedOffer.fromCharName}]`,
+            };
+        }
+        case 'list_offers': {
+            const myOffers = loadPendingOffers(myInventory);
+            if (myOffers.length === 0) return { toolType: 'trade', args, content: 'No pending trade offers.', displayReplacement: '[🤝 No pending offers]' };
+            const lines = myOffers.map(o => {
+                const giveStr = o.giveItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
+                const takeStr = o.takeItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
+                return `[${o.id}] From ${o.fromCharName}: offering ${giveStr} for ${takeStr}`;
+            });
+            return { toolType: 'trade', args, content: lines.join('\n'), displayReplacement: `[🤝 ${myOffers.length} pending offer(s)]` };
+        }
+        default: return { toolType: 'trade', args, content: `[Error: Unknown trade command "${subcommand}". Use give, take, offer, accept, decline, or list_offers.]`, displayReplacement: `[Error: Unknown trade command]` };
     }
 }
 

@@ -44,10 +44,19 @@ export function useGpuMonitor(enabled: boolean) {
             return;
         }
 
-        fetchStatus();
-        timerRef.current = setInterval(fetchStatus, POLL_INTERVAL_MS);
+        // Use an async IIFE so setState calls happen in a callback, not synchronously in the effect body
+        let cancelled = false;
+        (async () => {
+            if (cancelled) return;
+            await fetchStatus();
+        })();
+
+        timerRef.current = setInterval(() => {
+            if (!cancelled) fetchStatus();
+        }, POLL_INTERVAL_MS);
 
         return () => {
+            cancelled = true;
             if (timerRef.current) {
                 clearInterval(timerRef.current);
                 timerRef.current = null;
