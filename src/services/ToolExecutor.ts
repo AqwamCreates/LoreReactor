@@ -67,6 +67,7 @@ const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, int
     "move": executeMove,
     "timer": executeTimer,
     "stopwatch": executeStopwatch,
+    "schedule": executeSchedule,
     "calculator": executeCalculator,
     "web": executeWeb,
     "dialogue": executeDialogue,
@@ -77,6 +78,7 @@ const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, int
     "audio": executeAudio,
     "note": executeNote,
     "inventory": executeInventory,
+    "trade": executeTrade,
     "invite": executeInvite,
     "kick": executeKick,
     "teleport": executeTeleport,
@@ -164,7 +166,6 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
         return helpResult('think', args, 'think <reasoning> — evaluate whether to speak, what to say, or stay silent based on conversation context');
     }
 
-    // Gather context signals for the model's reasoning
     const character = nextMessage.character
     const characterId = character.id;
     const history = interactionData.interactionHistory;
@@ -185,18 +186,15 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
         }
     }
 
-    // How many messages since this character last spoke
     let messagesSinceLastSpoke = 0;
     for (let i = history.length - 1; i >= 0; i--) {
         if (history[i].messageType === 'chat' && history[i].character.id === characterId) break;
         messagesSinceLastSpoke++;
     }
 
-    // Current stamina
     const remainingChatStamina = nextMessage.remainingChatStamina;
     const maximumChatStamina = character.maximumChatStamina
 
-    // Build context summary for the model
     const contextLines: string[] = [];
     contextLines.push(`You are ${nextMessage.character.name}.`);
     contextLines.push(`You were ${wasAddressed ? 'addressed' : 'not addressed'} in recent messages.`);
@@ -367,7 +365,6 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
         return helpResult('rng', args, 'rng <context_id> — roll on a named RNG table defined in contexts (entries: "1-10: outcome")');
     }
 
-    // Look up by ID first, then fall back to name
     const contexts = interactionData.contexts || [];
     let tableContext = contexts.find(c => c.id === trimmed && c.text);
     if (!tableContext) {
@@ -618,6 +615,113 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
     }
 }
 
+// ─── Schedule ───────────────────────────────────────────────────────
+
+interface ScheduleEntry { name: string; triggerTimestamp: number; action: string; repeatIntervalMs?: number }
+
+function loadSchedules(inventory: Inventory | undefined): ScheduleEntry[] {
+    if (!inventory || typeof inventory['__schedules__'] !== 'string') return [];
+    try { return JSON.parse(inventory['__schedules__'] as string); } catch { return []; }
+}
+function saveSchedules(inventory: Inventory, schedules: ScheduleEntry[]): void {
+    if (schedules.length === 0) delete inventory['__schedules__']; else inventory['__schedules__'] = JSON.stringify(schedules);
+}
+
+function executeSchedule(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
+    const trimmed = args.trim();
+    if (!trimmed) {
+        return helpResult('schedule', args, 'schedule set <name> <duration> <action> | schedule set_repeat <name> <interval> <action> | schedule check [name] | schedule cancel <name> | schedule cancel_all | schedule list');
+    }
+
+    const parts = trimmed.split(/\s+/);
+    const subcommand = parts[0]?.toLowerCase();
+    const currentMessage = findPreviousMessage(interactionData, nextMessage.character.id);
+    const inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
+    const schedules = loadSchedules(inventory);
+    const now = Date.now();
+
+    switch (subcommand) {
+        case 'set': {
+            // schedule set <name> <duration> <action...>
+            if (parts.length < 4) return { toolType: 'schedule', args, content: '[Error: Usage: schedule set <name> <duration> <action>]', displayReplacement: '[Error: Usage: schedule set <name> <duration> <action>]' };
+            const name = parts[1];
+            const durationStr = parts[2];
+            const action = parts.slice(3).join(' ');
+            const durationMs = parseDurationToMs(durationStr);
+            if (!durationMs) return { toolType: 'schedule', args, content: `[Error: Invalid duration "${durationStr}"]`, displayReplacement: `[Error: Invalid duration]` };
+            const filtered = schedules.filter(s => s.name.toLowerCase() !== name.toLowerCase());
+            filtered.push({ name, triggerTimestamp: now + durationMs, action });
+            saveSchedules(inventory, filtered);
+            nextMessage.inventory = inventory;
+            return { toolType: 'schedule', args, content: `Scheduled "${name}" in ${formatDuration(durationMs)}: ${action}`, displayReplacement: `[📅 Scheduled "${name}" in ${formatDuration(durationMs)}]` };
+        }
+        case 'set_repeat': {
+            // schedule set_repeat <name> <interval> <action...>
+            if (parts.length < 4) return { toolType: 'schedule', args, content: '[Error: Usage: schedule set_repeat <name> <interval> <action>]', displayReplacement: '[Error: Usage: schedule set_repeat <name> <interval> <action>]' };
+            const name = parts[1];
+            const intervalStr = parts[2];
+            const action = parts.slice(3).join(' ');
+            const intervalMs = parseDurationToMs(intervalStr);
+            if (!intervalMs) return { toolType: 'schedule', args, content: `[Error: Invalid interval "${intervalStr}"]`, displayReplacement: `[Error: Invalid interval]` };
+            const filtered = schedules.filter(s => s.name.toLowerCase() !== name.toLowerCase());
+            filtered.push({ name, triggerTimestamp: now + intervalMs, action, repeatIntervalMs: intervalMs });
+            saveSchedules(inventory, filtered);
+            nextMessage.inventory = inventory;
+            return { toolType: 'schedule', args, content: `Repeating schedule "${name}" every ${formatDuration(intervalMs)}: ${action}`, displayReplacement: `[📅 Repeating "${name}" every ${formatDuration(intervalMs)}]` };
+        }
+        case 'check': {
+            const specificName = parts.slice(1).join(' ').toLowerCase();
+            if (specificName) {
+                const entry = schedules.find(s => s.name.toLowerCase() === specificName);
+                if (!entry) return { toolType: 'schedule', args, content: `No schedule named "${specificName}".`, displayReplacement: `[📅 No schedule: "${specificName}"]` };
+                const remaining = entry.triggerTimestamp - now;
+                const repeatStr = entry.repeatIntervalMs ? ` (repeats every ${formatDuration(entry.repeatIntervalMs)})` : ' (one-time)';
+                if (remaining <= 0) return { toolType: 'schedule', args, content: `Schedule "${entry.name}" TRIGGERED: ${entry.action}${repeatStr}`, displayReplacement: `[📅 "${entry.name}": TRIGGERED]` };
+                return { toolType: 'schedule', args, content: `Schedule "${entry.name}": ${formatDuration(remaining)} remaining. Action: ${entry.action}${repeatStr}`, displayReplacement: `[📅 "${entry.name}": ${formatDuration(remaining)} left]` };
+            }
+            if (schedules.length === 0) return { toolType: 'schedule', args, content: 'No active schedules.', displayReplacement: '[📅 No active schedules]' };
+            const lines = schedules.map(s => {
+                const remaining = s.triggerTimestamp - now;
+                const repeatStr = s.repeatIntervalMs ? ` (repeats ${formatDuration(s.repeatIntervalMs)})` : ' (once)';
+                return remaining <= 0
+                    ? `${s.name}: TRIGGERED → ${s.action}${repeatStr}`
+                    : `${s.name}: ${formatDuration(remaining)} left → ${s.action}${repeatStr}`;
+            });
+            return { toolType: 'schedule', args, content: lines.join('\n'), displayReplacement: `[📅 ${schedules.length} schedule(s)]` };
+        }
+        case 'cancel': {
+            if (parts.length < 2) return { toolType: 'schedule', args, content: '[Error: Usage: schedule cancel <name>]', displayReplacement: '[Error: Usage: schedule cancel <name>]' };
+            const name = parts.slice(1).join(' ').toLowerCase();
+            const idx = schedules.findIndex(s => s.name.toLowerCase() === name);
+            if (idx === -1) return { toolType: 'schedule', args, content: `No schedule named "${name}".`, displayReplacement: `[📅 No schedule: "${name}"]` };
+            const cancelledName = schedules[idx].name;
+            schedules.splice(idx, 1);
+            saveSchedules(inventory, schedules);
+            nextMessage.inventory = inventory;
+            return { toolType: 'schedule', args, content: `Cancelled schedule "${cancelledName}".`, displayReplacement: `[📅 Cancelled: "${cancelledName}"]` };
+        }
+        case 'cancel_all': {
+            if (schedules.length === 0) return { toolType: 'schedule', args, content: 'No schedules to cancel.', displayReplacement: '[📅 No schedules]' };
+            const count = schedules.length;
+            saveSchedules(inventory, []);
+            nextMessage.inventory = inventory;
+            return { toolType: 'schedule', args, content: `Cancelled all ${count} schedule(s).`, displayReplacement: `[📅 Cancelled all ${count} schedule(s)]` };
+        }
+        case 'list': {
+            if (schedules.length === 0) return { toolType: 'schedule', args, content: 'No active schedules.', displayReplacement: '[📅 No active schedules]' };
+            const lines = schedules.map(s => {
+                const remaining = s.triggerTimestamp - now;
+                const repeatStr = s.repeatIntervalMs ? ` (repeats ${formatDuration(s.repeatIntervalMs)})` : ' (once)';
+                return remaining <= 0
+                    ? `${s.name}: TRIGGERED → ${s.action}${repeatStr}`
+                    : `${s.name}: ${formatDuration(remaining)} left → ${s.action}${repeatStr}`;
+            });
+            return { toolType: 'schedule', args, content: lines.join('\n'), displayReplacement: `[📅 ${schedules.length} schedule(s)]` };
+        }
+        default: return { toolType: 'schedule', args, content: `[Error: Unknown schedule command "${subcommand}". Use set, set_repeat, check, cancel, cancel_all, or list.]`, displayReplacement: `[Error: Unknown schedule command]` };
+    }
+}
+
 // ─── Calculator ─────────────────────────────────────────────────────
 
 function executeCalculator(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
@@ -703,7 +807,6 @@ function executeDialogue(args: string, nextMessage: BaseMessage, interactionData
             return { toolType: 'dialogue', args, content: '[Error: Usage: dialogue recall <id>]', displayReplacement: '[Error: Missing ID]' };
         }
 
-        // Match by ID (exact or prefix)
         const matched = dialoguePrompts.filter(dp =>
             dp.id === queryId || dp.id.startsWith(queryId)
         );
@@ -712,7 +815,6 @@ function executeDialogue(args: string, nextMessage: BaseMessage, interactionData
             return { toolType: 'dialogue', args, content: `No dialogue prompt matching ID "${queryId}".`, displayReplacement: `[💬 No match for "${queryId}"]` };
         }
 
-        // For matched prompts, also check regex activation against conversation
         const textContentArray: string[] = [];
         for (const msg of interactionData.interactionHistory) {
             if (msg.messageType === 'chat') textContentArray.push(msg.textContent);
@@ -778,7 +880,6 @@ function executeKnowledge(args: string, nextMessage: BaseMessage, _interactionDa
             return { toolType: 'knowledge', args, content: '[Error: Usage: knowledge recall <id>]', displayReplacement: '[Error: Missing ID]' };
         }
 
-        // Match by exact ID first, then prefix match
         let matched = knowledgePrompts.filter(kp => kp.id === queryId);
         if (matched.length === 0) {
             matched = knowledgePrompts.filter(kp => kp.id.startsWith(queryId));
@@ -846,7 +947,6 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
 
         const queryId = parts.slice(1).join(' ').trim();
 
-        // If specific ID provided, recall just that memory
         if (queryId) {
             let foundMemory: Memory | undefined;
             for (const [, mems] of Object.entries(memories)) {
@@ -864,7 +964,6 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
             };
         }
 
-        // No ID: recall all relevant memories for current conversation
         const participantIds = new Set(interactionData.participants.map(p => p.id));
         const relevantMemories: string[] = [];
 
@@ -892,7 +991,6 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
     }
 
     if (subcommand === 'save') {
-        // memory save takes NO content argument — it auto-summarizes the conversation
         const otherParticipants = interactionData.participants.filter(p => p.id !== character.id);
         if (otherParticipants.length === 0) {
             return { toolType: 'memory', args, content: '[Error: No other participants to create memories with.]', displayReplacement: '[🧠 No participants]' };
@@ -900,7 +998,6 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
 
         const ts = Date.now();
 
-        // Auto-summarize the conversation
         let summaryText: string | null = null;
         try {
             const summaryResult = await generateCharacterMemory(interactionData, character, '', 512);
@@ -915,7 +1012,6 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
 
         if (!character.memories) character.memories = {};
 
-        // Save per-participant memories
         for (const other of otherParticipants) {
             const newMemory: Memory = {
                 id: uuidv4(),
@@ -928,7 +1024,6 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
             character.memories[other.id] = [newMemory];
         }
 
-        // Save global memory
         const globalMemory: Memory = {
             id: uuidv4(),
             name: 'Global Memory',
@@ -939,7 +1034,6 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
         };
         character.memories.global = [globalMemory];
 
-        // Persist the updated character
         try {
             await saveRawCharacter(character);
         } catch (e) {
@@ -1084,6 +1178,243 @@ function executeInventory(args: string, nextMessage: BaseMessage, interactionDat
         case 'remove': { if (parts.length < 3) return { toolType: 'inventory', args, content: '[Error: Usage: inventory remove <item> <qty>]', displayReplacement: '[Error: Usage]' }; const item = parts.slice(1, -1).join(' '), qty = Number(parts[parts.length - 1]); if (!item || isNaN(qty) || qty <= 0) return { toolType: 'inventory', args, content: '[Error: Invalid]', displayReplacement: '[Error: Invalid]' }; const current = typeof inventory[item] === 'number' ? (inventory[item] as number) : 0; const nv = current - qty; if (nv <= 0) delete inventory[item]; else inventory[item] = nv; nextMessage.inventory = inventory; return { toolType: 'inventory', args, content: `Removed ${qty}x "${item}"`, displayReplacement: `[📦 Removed ${qty}x "${item}"]` }; }
         case 'set': { if (parts.length < 3) return { toolType: 'inventory', args, content: '[Error: Usage: inventory set <item> <value>]', displayReplacement: '[Error: Usage]' }; const item = parts.slice(1, -1).join(' '), rawValue = parts[parts.length - 1]; if (!item) return { toolType: 'inventory', args, content: '[Error: Invalid item]', displayReplacement: '[Error: Invalid]' }; const numValue = Number(rawValue); inventory[item] = !isNaN(numValue) ? numValue : rawValue; nextMessage.inventory = inventory; return { toolType: 'inventory', args, content: `Set "${item}"`, displayReplacement: `[📦 Set "${item}"]` }; }
         default: return { toolType: 'inventory', args, content: `[Error: Unknown inventory command "${subcommand}"]`, displayReplacement: `[Error: Unknown command]` };
+    }
+}
+
+// ─── Trade ──────────────────────────────────────────────────────────
+
+function executeTrade(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
+    const trimmed = args.trim();
+    if (!trimmed) {
+        return helpResult('trade', args, 'trade give <char_id> <item> <qty> | trade take <char_id> <item> <qty> | trade offer <char_id> <give_item> <give_qty> for <take_item> <take_qty> | trade bulk_give <char_id> <item1>:<qty1>,<item2>:<qty2>,... | trade bulk_take <char_id> <item1>:<qty1>,<item2>:<qty2>,...');
+    }
+
+    const parts = trimmed.split(/\s+/);
+    const subcommand = parts[0]?.toLowerCase();
+    const currentMessage = findPreviousMessage(interactionData, nextMessage.character.id);
+    const myInventory: Inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
+
+    // Helper: parse bulk items "item1:qty1,item2:qty2,..."
+    const parseBulkItems = (bulkStr: string): { item: string; qty: number }[] => {
+        const entries: { item: string; qty: number }[] = [];
+        const segments = bulkStr.split(',');
+        for (const seg of segments) {
+            const colonIdx = seg.lastIndexOf(':');
+            if (colonIdx === -1) continue;
+            const item = seg.substring(0, colonIdx).trim();
+            const qty = Number(seg.substring(colonIdx + 1).trim());
+            if (item && !isNaN(qty) && qty > 0) entries.push({ item, qty });
+        }
+        return entries;
+    };
+
+    // Helper: get target character's inventory from their last message
+    const getTargetInventory = (charId: string): { inventory: Inventory; msgIndex: number } | null => {
+        for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
+            if (interactionData.interactionHistory[i].character.id === charId) {
+                const inv = interactionData.interactionHistory[i].inventory ? { ...interactionData.interactionHistory[i].inventory! } : {};
+                return { inventory: inv, msgIndex: i };
+            }
+        }
+        return null;
+    };
+
+    switch (subcommand) {
+        case 'give': {
+            // trade give <char_id> <item> <qty>
+            if (parts.length < 4) return { toolType: 'trade', args, content: '[Error: Usage: trade give <char_id> <item> <qty>]', displayReplacement: '[Error: Usage]' };
+            const targetCharId = parts[1];
+            const item = parts.slice(2, -1).join(' ');
+            const qty = Number(parts[parts.length - 1]);
+            if (!item || isNaN(qty) || qty <= 0) return { toolType: 'trade', args, content: '[Error: Invalid item or quantity]', displayReplacement: '[Error: Invalid]' };
+
+            const targetChar = (context?.allCharacters || interactionData.participants || []).find(c => c.id === targetCharId);
+            if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: '[Error: Character not found]' };
+
+            const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
+            if (myCurrent < qty) return { toolType: 'trade', args, content: `[Error: Not enough "${item}". Have ${myCurrent}, need ${qty}.]`, displayReplacement: `[Error: Not enough "${item}"]` };
+
+            const targetData = getTargetInventory(targetCharId);
+            if (!targetData) return { toolType: 'trade', args, content: `[Error: No message history for "${targetChar.name}".]`, displayReplacement: '[Error: Target has no history]' };
+
+            // Remove from giver
+            const newMyQty = myCurrent - qty;
+            if (newMyQty <= 0) delete myInventory[item]; else myInventory[item] = newMyQty;
+            nextMessage.inventory = myInventory;
+
+            // Add to receiver
+            const targetCurrent = typeof targetData.inventory[item] === 'number' ? (targetData.inventory[item] as number) : 0;
+            targetData.inventory[item] = targetCurrent + qty;
+
+            // Update target's last message inventory
+            const updatedHistory = [...interactionData.interactionHistory];
+            const targetMsg = { ...updatedHistory[targetData.msgIndex] } as ChatMessage;
+            targetMsg.inventory = targetData.inventory;
+            updatedHistory[targetData.msgIndex] = targetMsg;
+            interactionData.interactionHistory = updatedHistory;
+
+            return { toolType: 'trade', args, content: `Gave ${qty}x "${item}" to ${targetChar.name}.`, displayReplacement: `[🤝 Gave ${qty}x "${item}" to ${targetChar.name}]` };
+        }
+        case 'take': {
+            // trade take <char_id> <item> <qty>
+            if (parts.length < 4) return { toolType: 'trade', args, content: '[Error: Usage: trade take <char_id> <item> <qty>]', displayReplacement: '[Error: Usage]' };
+            const targetCharId = parts[1];
+            const item = parts.slice(2, -1).join(' ');
+            const qty = Number(parts[parts.length - 1]);
+            if (!item || isNaN(qty) || qty <= 0) return { toolType: 'trade', args, content: '[Error: Invalid item or quantity]', displayReplacement: '[Error: Invalid]' };
+
+            const targetChar = (context?.allCharacters || interactionData.participants || []).find(c => c.id === targetCharId);
+            if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: '[Error: Character not found]' };
+
+            const targetData = getTargetInventory(targetCharId);
+            if (!targetData) return { toolType: 'trade', args, content: `[Error: No message history for "${targetChar.name}".]`, displayReplacement: '[Error: Target has no history]' };
+
+            const targetCurrent = typeof targetData.inventory[item] === 'number' ? (targetData.inventory[item] as number) : 0;
+            if (targetCurrent < qty) return { toolType: 'trade', args, content: `[Error: ${targetChar.name} doesn't have enough "${item}". Has ${targetCurrent}, need ${qty}.]`, displayReplacement: `[Error: Target lacks "${item}"]` };
+
+            // Remove from target
+            const newTargetQty = targetCurrent - qty;
+            if (newTargetQty <= 0) delete targetData.inventory[item]; else targetData.inventory[item] = newTargetQty;
+
+            const updatedHistory = [...interactionData.interactionHistory];
+            const targetMsg = { ...updatedHistory[targetData.msgIndex] } as ChatMessage;
+            targetMsg.inventory = targetData.inventory;
+            updatedHistory[targetData.msgIndex] = targetMsg;
+            interactionData.interactionHistory = updatedHistory;
+
+            // Add to self
+            const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
+            myInventory[item] = myCurrent + qty;
+            nextMessage.inventory = myInventory;
+
+            return { toolType: 'trade', args, content: `Took ${qty}x "${item}" from ${targetChar.name}.`, displayReplacement: `[🤝 Took ${qty}x "${item}" from ${targetChar.name}]` };
+        }
+        case 'offer': {
+            // trade offer <char_id> <give_item> <give_qty> for <take_item> <take_qty>
+            const forIdx = parts.findIndex(p => p.toLowerCase() === 'for');
+            if (forIdx === -1 || parts.length < 6) return { toolType: 'trade', args, content: '[Error: Usage: trade offer <char_id> <give_item> <give_qty> for <take_item> <take_qty>]', displayReplacement: '[Error: Usage]' };
+            const targetCharId = parts[1];
+            const giveItem = parts.slice(2, forIdx - 1).join(' ');
+            const giveQty = Number(parts[forIdx - 1]);
+            const takeItem = parts.slice(forIdx + 1, -1).join(' ');
+            const takeQty = Number(parts[parts.length - 1]);
+            if (!giveItem || isNaN(giveQty) || giveQty <= 0 || !takeItem || isNaN(takeQty) || takeQty <= 0) return { toolType: 'trade', args, content: '[Error: Invalid items or quantities]', displayReplacement: '[Error: Invalid]' };
+
+            const targetChar = (context?.allCharacters || interactionData.participants || []).find(c => c.id === targetCharId);
+            if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: '[Error: Character not found]' };
+
+            const myGiveCurrent = typeof myInventory[giveItem] === 'number' ? (myInventory[giveItem] as number) : 0;
+            if (myGiveCurrent < giveQty) return { toolType: 'trade', args, content: `[Error: Not enough "${giveItem}". Have ${myGiveCurrent}, need ${giveQty}.]`, displayReplacement: `[Error: Not enough "${giveItem}"]` };
+
+            const targetData = getTargetInventory(targetCharId);
+            if (!targetData) return { toolType: 'trade', args, content: `[Error: No message history for "${targetChar.name}".]`, displayReplacement: '[Error: Target has no history]' };
+
+            const targetTakeCurrent = typeof targetData.inventory[takeItem] === 'number' ? (targetData.inventory[takeItem] as number) : 0;
+            if (targetTakeCurrent < takeQty) return { toolType: 'trade', args, content: `[Error: ${targetChar.name} doesn't have enough "${takeItem}". Has ${targetTakeCurrent}, need ${takeQty}.]`, displayReplacement: `[Error: Target lacks "${takeItem}"]` };
+
+            // Execute swap
+            const newMyGive = myGiveCurrent - giveQty;
+            if (newMyGive <= 0) delete myInventory[giveItem]; else myInventory[giveItem] = newMyGive;
+            const myTakeCurrent = typeof myInventory[takeItem] === 'number' ? (myInventory[takeItem] as number) : 0;
+            myInventory[takeItem] = myTakeCurrent + takeQty;
+            nextMessage.inventory = myInventory;
+
+            const newTargetTake = targetTakeCurrent - takeQty;
+            if (newTargetTake <= 0) delete targetData.inventory[takeItem]; else targetData.inventory[takeItem] = newTargetTake;
+            const targetGiveCurrent = typeof targetData.inventory[giveItem] === 'number' ? (targetData.inventory[giveItem] as number) : 0;
+            targetData.inventory[giveItem] = targetGiveCurrent + giveQty;
+
+            const updatedHistory = [...interactionData.interactionHistory];
+            const targetMsg = { ...updatedHistory[targetData.msgIndex] } as ChatMessage;
+            targetMsg.inventory = targetData.inventory;
+            updatedHistory[targetData.msgIndex] = targetMsg;
+            interactionData.interactionHistory = updatedHistory;
+
+            return { toolType: 'trade', args, content: `Traded ${giveQty}x "${giveItem}" ↔ ${takeQty}x "${takeItem}" with ${targetChar.name}.`, displayReplacement: `[🤝 Traded ${giveQty}x "${giveItem}" ↔ ${takeQty}x "${takeItem}" with ${targetChar.name}]` };
+        }
+        case 'bulk_give': {
+            // trade bulk_give <char_id> <item1:qty1,item2:qty2,...>
+            if (parts.length < 3) return { toolType: 'trade', args, content: '[Error: Usage: trade bulk_give <char_id> <item1:qty1,item2:qty2,...>]', displayReplacement: '[Error: Usage]' };
+            const targetCharId = parts[1];
+            const bulkStr = parts.slice(2).join(' ');
+            const items = parseBulkItems(bulkStr);
+            if (items.length === 0) return { toolType: 'trade', args, content: '[Error: No valid items parsed. Format: item1:qty1,item2:qty2]', displayReplacement: '[Error: No valid items]' };
+
+            const targetChar = (context?.allCharacters || interactionData.participants || []).find(c => c.id === targetCharId);
+            if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: '[Error: Character not found]' };
+
+            // Validate all items first
+            for (const { item, qty } of items) {
+                const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
+                if (myCurrent < qty) return { toolType: 'trade', args, content: `[Error: Not enough "${item}". Have ${myCurrent}, need ${qty}.]`, displayReplacement: `[Error: Not enough "${item}"]` };
+            }
+
+            const targetData = getTargetInventory(targetCharId);
+            if (!targetData) return { toolType: 'trade', args, content: `[Error: No message history for "${targetChar.name}".]`, displayReplacement: '[Error: Target has no history]' };
+
+            // Execute bulk transfer
+            const transferred: string[] = [];
+            for (const { item, qty } of items) {
+                const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
+                const newMyQty = myCurrent - qty;
+                if (newMyQty <= 0) delete myInventory[item]; else myInventory[item] = newMyQty;
+
+                const targetCurrent = typeof targetData.inventory[item] === 'number' ? (targetData.inventory[item] as number) : 0;
+                targetData.inventory[item] = targetCurrent + qty;
+                transferred.push(`${qty}x "${item}"`);
+            }
+            nextMessage.inventory = myInventory;
+
+            const updatedHistory = [...interactionData.interactionHistory];
+            const targetMsg = { ...updatedHistory[targetData.msgIndex] } as ChatMessage;
+            targetMsg.inventory = targetData.inventory;
+            updatedHistory[targetData.msgIndex] = targetMsg;
+            interactionData.interactionHistory = updatedHistory;
+
+            return { toolType: 'trade', args, content: `Bulk gave to ${targetChar.name}: ${transferred.join(', ')}.`, displayReplacement: `[🤝 Bulk gave ${items.length} item(s) to ${targetChar.name}]` };
+        }
+        case 'bulk_take': {
+            // trade bulk_take <char_id> <item1:qty1,item2:qty2,...>
+            if (parts.length < 3) return { toolType: 'trade', args, content: '[Error: Usage: trade bulk_take <char_id> <item1:qty1,item2:qty2,...>]', displayReplacement: '[Error: Usage]' };
+            const targetCharId = parts[1];
+            const bulkStr = parts.slice(2).join(' ');
+            const items = parseBulkItems(bulkStr);
+            if (items.length === 0) return { toolType: 'trade', args, content: '[Error: No valid items parsed. Format: item1:qty1,item2:qty2]', displayReplacement: '[Error: No valid items]' };
+
+            const targetChar = (context?.allCharacters || interactionData.participants || []).find(c => c.id === targetCharId);
+            if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: '[Error: Character not found]' };
+
+            const targetData = getTargetInventory(targetCharId);
+            if (!targetData) return { toolType: 'trade', args, content: `[Error: No message history for "${targetChar.name}".]`, displayReplacement: '[Error: Target has no history]' };
+
+            // Validate all items first
+            for (const { item, qty } of items) {
+                const targetCurrent = typeof targetData.inventory[item] === 'number' ? (targetData.inventory[item] as number) : 0;
+                if (targetCurrent < qty) return { toolType: 'trade', args, content: `[Error: ${targetChar.name} doesn't have enough "${item}". Has ${targetCurrent}, need ${qty}.]`, displayReplacement: `[Error: Target lacks "${item}"]` };
+            }
+
+            // Execute bulk transfer
+            const taken: string[] = [];
+            for (const { item, qty } of items) {
+                const targetCurrent = typeof targetData.inventory[item] === 'number' ? (targetData.inventory[item] as number) : 0;
+                const newTargetQty = targetCurrent - qty;
+                if (newTargetQty <= 0) delete targetData.inventory[item]; else targetData.inventory[item] = newTargetQty;
+
+                const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
+                myInventory[item] = myCurrent + qty;
+                taken.push(`${qty}x "${item}"`);
+            }
+            nextMessage.inventory = myInventory;
+
+            const updatedHistory = [...interactionData.interactionHistory];
+            const targetMsg = { ...updatedHistory[targetData.msgIndex] } as ChatMessage;
+            targetMsg.inventory = targetData.inventory;
+            updatedHistory[targetData.msgIndex] = targetMsg;
+            interactionData.interactionHistory = updatedHistory;
+
+            return { toolType: 'trade', args, content: `Bulk took from ${targetChar.name}: ${taken.join(', ')}.`, displayReplacement: `[🤝 Bulk took ${items.length} item(s) from ${targetChar.name}]` };
+        }
+        default: return { toolType: 'trade', args, content: `[Error: Unknown trade command "${subcommand}". Use give, take, offer, bulk_give, or bulk_take.]`, displayReplacement: `[Error: Unknown trade command]` };
     }
 }
 
