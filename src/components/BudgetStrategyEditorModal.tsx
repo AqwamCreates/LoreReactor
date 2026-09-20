@@ -15,7 +15,7 @@ interface BudgetStrategyEditorModalProps {
     allModels: LanguageModel[];
 }
 
-type BudgetTabId = 'general' | 'models' | 'switching' | 'fallback';
+type BudgetTabId = 'general' | 'switching' | 'fallback';
 
 function BudgetStrategyEditorContent({
     existingStrategy,
@@ -204,7 +204,6 @@ function BudgetStrategyEditorContent({
 
     const budgetTabs: { id: BudgetTabId; label: string; icon: string }[] = [
         { id: 'general', label: 'General', icon: '📝' },
-        { id: 'models', label: 'Models', icon: '🤖' },
         { id: 'switching', label: 'Switching', icon: '🔄' },
         { id: 'fallback', label: 'Fallback', icon: '🛡️' },
     ];
@@ -273,6 +272,37 @@ function BudgetStrategyEditorContent({
                                 />
                             </div>
 
+                            {/* Model Pools */}
+                            <div className="editor-section">
+                                <span className="editor-section-title">Model Pools</span>
+                                <div className="entity-ref-hint">
+                                    Select models for each pool. The engine exhausts the primary pool before falling back. Cost tiers control selection priority — higher values are tried first.
+                                </div>
+
+                                <EntitySelectList
+                                    label="Online Language Models"
+                                    items={allModels}
+                                    selectedIds={onlineModelIds}
+                                    onToggle={toggleOnlineModel}
+                                    searchQuery={onlineSearch}
+                                    onSearchChange={setOnlineSearch}
+                                />
+                                {renderTierGrid(onlineModelIds, 'Online')}
+                                {errors.onlineModels && <div className="editor-error-message">{errors.onlineModels}</div>}
+
+                                <EntitySelectList
+                                    label="Local Language Models"
+                                    items={allModels}
+                                    selectedIds={localModelIds}
+                                    onToggle={toggleLocalModel}
+                                    searchQuery={localSearch}
+                                    onSearchChange={setLocalSearch}
+                                />
+                                {renderTierGrid(localModelIds, 'Local')}
+                                {errors.localModels && <div className="editor-error-message">{errors.localModels}</div>}
+                            </div>
+
+                            {/* Budget Control */}
                             <div className="editor-section">
                                 <span className="editor-section-title">Budget Control</span>
                                 <div className="editor-row-full">
@@ -294,38 +324,6 @@ function BudgetStrategyEditorContent({
                                 </div>
                             </div>
                         </>
-                    )}
-
-                    {/* ─── MODELS TAB ─── */}
-                    {activeTab === 'models' && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">Model Pools</span>
-                            <div className="entity-ref-hint">
-                                Select models for each pool. The engine exhausts the primary pool before falling back. Cost tiers control selection priority — higher values are tried first.
-                            </div>
-
-                            <EntitySelectList
-                                label="Online Language Models"
-                                items={allModels}
-                                selectedIds={onlineModelIds}
-                                onToggle={toggleOnlineModel}
-                                searchQuery={onlineSearch}
-                                onSearchChange={setOnlineSearch}
-                            />
-                            {renderTierGrid(onlineModelIds, 'Online')}
-                            {errors.onlineModels && <div className="editor-error-message">{errors.onlineModels}</div>}
-
-                            <EntitySelectList
-                                label="Local Language Models"
-                                items={allModels}
-                                selectedIds={localModelIds}
-                                onToggle={toggleLocalModel}
-                                searchQuery={localSearch}
-                                onSearchChange={setLocalSearch}
-                            />
-                            {renderTierGrid(localModelIds, 'Local')}
-                            {errors.localModels && <div className="editor-error-message">{errors.localModels}</div>}
-                        </div>
                     )}
 
                     {/* ─── SWITCHING TAB ─── */}

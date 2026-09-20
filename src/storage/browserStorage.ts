@@ -55,7 +55,7 @@ export async function browserReadJson<T>(relativePath: string): Promise<T | null
 export async function browserListDirectory(dirPath: string): Promise<string[]> {
     const db = await getDb();
     const allKeys = await db.getAllKeys(STORE_NAME);
-    const prefix = dirPath.endsWith('/') ? dirPath : dirPath + '/';
+    const prefix = dirPath.endsWith('/') ? dirPath : `${dirPath}/`;
     const entries = new Set<string>();
 
     for (const key of allKeys) {
