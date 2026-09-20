@@ -1,5 +1,5 @@
 // src/services/dataConverters.ts
-import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StopPattern, tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';
 import type { GeneratedOutput } from './dataTypes';
@@ -152,6 +152,22 @@ function fillClothingDefaults(c: Record<string, unknown>): Clothing {
         clothingBindings: filterValidUuids(c.clothingBindings as string[] | undefined),
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
+    };
+}
+
+function fillStopPatternDefaults(sp: Record<string, unknown>): StopPattern {
+    const now = Date.now();
+    return {
+        id: ensureId(sp),
+        name: (sp.name as string) || 'Unnamed Stop Pattern',
+        description: (sp.description as string) || undefined,
+        pattern: (sp.pattern as string) || '',
+        regularExpressionActivationTriggers: parseRegexTriggers(sp.regularExpressionActivationTriggers),
+        regularExpressionDeactivationTriggers: parseRegexTriggers(sp.regularExpressionDeactivationTriggers),
+        regularExpressionExclusionActivationTriggers: parseRegexTriggers(sp.regularExpressionExclusionActivationTriggers),
+        regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(sp.regularExpressionExclusionDeactivationTriggers),
+        firstCreatedTimestamp: (sp.firstCreatedTimestamp as number) || now,
+        lastUpdatedTimestamp: (sp.lastUpdatedTimestamp as number) || now,
     };
 }
 
@@ -389,6 +405,10 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
             firstCreatedTimestamp: now,
             lastUpdatedTimestamp: now,
         })),
+        characterStopPattern: (p.characterStopPattern && typeof p.characterStopPattern === 'object') ? fillStopPatternDefaults(p.characterStopPattern as Record<string, unknown>) : undefined,
+        webSummarizationStopPattern: (p.webSummarizationStopPattern && typeof p.webSummarizationStopPattern === 'object') ? fillStopPatternDefaults(p.webSummarizationStopPattern as Record<string, unknown>) : undefined,
+        interactionDataSummarizationStopPattern: (p.interactionDataSummarizationStopPattern && typeof p.interactionDataSummarizationStopPattern === 'object') ? fillStopPatternDefaults(p.interactionDataSummarizationStopPattern as Record<string, unknown>) : undefined,
+        aiRecommendationStopPattern: (p.aiRecommendationStopPattern && typeof p.aiRecommendationStopPattern === 'object') ? fillStopPatternDefaults(p.aiRecommendationStopPattern as Record<string, unknown>) : undefined,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
     };

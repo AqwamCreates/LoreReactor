@@ -70,11 +70,13 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
       "think": "boolean (default false)", "pick": "boolean (default true)", "date": "boolean (default false)", "coin": "boolean (default true)",
       "dice": "boolean (default true)", "random": "boolean (default true)", "rng": "boolean (default false)",
       "move": "boolean (default true)", "timer": "boolean (default false)", "stopwatch": "boolean (default false)",
+      "schedule": "boolean (default false)",
       "calculator": "boolean (default false)", "web": "boolean (default false)", "dialogue": "boolean (default false)",
       "knowledge": "boolean (default false)", "memory": "boolean (default false)",
       "lookup": "boolean (default false)",
       "map": "boolean (default false)", "audio": "boolean (default false)", "note": "boolean (default false)",
-      "inventory": "boolean (default false)", "invite": "boolean (default false)", "kick": "boolean (default false)",
+      "inventory": "boolean (default false)", "trade": "boolean (default false)",
+      "invite": "boolean (default false)", "kick": "boolean (default false)",
       "teleport": "boolean (default false)", "key": "boolean (default false)", "clothing": "boolean (default false)",
       "summon": "boolean (default false)", "narrate": "boolean (default false)", "inspect": "boolean (default false)",
       "administrator": "boolean (default false)", "creator": "boolean (default false)", "destroyer": "boolean (default false)"
@@ -257,11 +259,13 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
       "think": "number (-1, 0, or 1, default 0)", "pick": "number (-1, 0, or 1, default 0)", "date": "number (-1, 0, or 1, default 0)", "coin": "number (-1, 0, or 1, default 0)",
       "dice": "number (-1, 0, or 1, default 0)", "random": "number (-1, 0, or 1, default 0)", "rng": "number (-1, 0, or 1, default 0)",
       "move": "number (-1, 0, or 1, default 0)", "timer": "number (-1, 0, or 1, default 0)", "stopwatch": "number (-1, 0, or 1, default 0)",
+      "schedule": "number (-1, 0, or 1, default 0)",
       "calculator": "number (-1, 0, or 1, default 0)", "web": "number (-1, 0, or 1, default 0)", "dialogue": "number (-1, 0, or 1, default 0)",
       "knowledge": "number (-1, 0, or 1, default 0)", "memory": "number (-1, 0, or 1, default 0)",
       "lookup": "number (-1, 0, or 1, default 0)",
       "map": "number (-1, 0, or 1, default 0)", "audio": "number (-1, 0, or 1, default 0)", "note": "number (-1, 0, or 1, default 0)",
-      "inventory": "number (-1, 0, or 1, default 0)", "invite": "number (-1, 0, or 1, default 0)", "kick": "number (-1, 0, or 1, default 0)",
+      "inventory": "number (-1, 0, or 1, default 0)", "trade": "number (-1, 0, or 1, default 0)",
+      "invite": "number (-1, 0, or 1, default 0)", "kick": "number (-1, 0, or 1, default 0)",
       "teleport": "number (-1, 0, or 1, default 0)", "key": "number (-1, 0, or 1, default 0)", "clothing": "number (-1, 0, or 1, default 0)",
       "summon": "number (-1, 0, or 1, default 0)", "narrate": "number (-1, 0, or 1, default 0)", "inspect": "number (-1, 0, or 1, default 0)",
       "administrator": "number (-1, 0, or 1, default 0)", "creator": "number (-1, 0, or 1, default 0)", "destroyer": "number (-1, 0, or 1, default 0)"
@@ -281,7 +285,15 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
       "summaryTokenBudget": "number (optional)",
       "summaryModelId": "string (optional UUID)",
       "triggerTokenThreshold": "number (optional)"
-    }]
+    }],
+    "characterSampler": "object (Sampler, optional)",
+    "webSummarizationSampler": "object (Sampler, optional)",
+    "interactionDataSummarizationSampler": "object (Sampler, optional)",
+    "aiRecommendationSampler": "object (Sampler, optional)",
+    "characterStopPattern": "object (StopPattern, optional)",
+    "webSummarizationStopPattern": "object (StopPattern, optional)",
+    "interactionDataSummarizationStopPattern": "object (StopPattern, optional)",
+    "aiRecommendationStopPattern": "object (StopPattern, optional)"
   }`);
     }
 
