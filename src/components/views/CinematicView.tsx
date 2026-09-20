@@ -33,6 +33,13 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
     const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const skipNextFocusScrollRef = useRef(false);
 
+    // Prevent scroll jump when entering/exiting edit mode
+    useEffect(() => {
+        if (editingId) {
+            skipNextFocusScrollRef.current = true;
+        }
+    }, [editingId]);
+
     useEffect(() => {
         if (skipNextFocusScrollRef.current) {
             skipNextFocusScrollRef.current = false;
