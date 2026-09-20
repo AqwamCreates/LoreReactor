@@ -167,19 +167,7 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
     // Gather context signals for the model's reasoning
     const character = nextMessage.character
     const characterId = character.id;
-    const protagonistId = interactionData.protagonist?.id;
     const history = interactionData.interactionHistory;
-
-    // Who spoke last
-    let lastSpeakerName = 'nobody';
-    let lastSpeakerId = '';
-    for (let i = history.length - 1; i >= 0; i--) {
-        if (history[i].messageType === 'chat') {
-            lastSpeakerName = history[i].character.name;
-            lastSpeakerId = history[i].character.id;
-            break;
-        }
-    }
 
     const coLocatedParticipants = getCoLocatedParticipants(interactionData, character)
     let wasAddressed = false;
@@ -211,7 +199,6 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
     // Build context summary for the model
     const contextLines: string[] = [];
     contextLines.push(`You are ${nextMessage.character.name}.`);
-    contextLines.push(`Last speaker: ${lastSpeakerName}${lastSpeakerId === protagonistId ? ' (protagonist)' : ''}.`);
     contextLines.push(`You were ${wasAddressed ? 'addressed' : 'not addressed'} in recent messages.`);
     contextLines.push(`Messages since you last spoke: ${messagesSinceLastSpoke}.`);
     if (remainingChatStamina !== undefined) {

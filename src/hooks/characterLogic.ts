@@ -2,6 +2,14 @@
 import type { Character, InteractionData, HistoryMessage, Profile, tool } from "../types";
 import { findPreviousMessage } from "./chatLogic";
 
+function getEffectiveTriStateBoolean<K extends keyof Character>(key: K, character: Character, profile?: Profile): boolean {
+    const characterValue = character[key] as boolean;
+    const profileValue = profile?.[key as keyof Profile] as number | undefined;
+    if (profileValue === undefined || profileValue === 0) return characterValue;
+    if (profileValue < 0) return false;
+    return true;
+}
+
 function getEffectiveNumeric<K extends keyof Character>(key: K, character: Character, profile?: Profile): number {
     const characterValue = character[key] as number;
     const profileValue = profile?.[key as keyof Profile] as number | undefined;
@@ -31,6 +39,10 @@ function getEffectiveRecordStringBoolean(key: string, character: Character, prof
         }
     }
     return result;
+}
+
+export function getEffectiveUseFrontCameraImage(character: Character, profile?: Profile){
+    return getEffectiveTriStateBoolean("useFrontCameraImage", character, profile)
 }
 
 export function getEffectiveChatProbability(character: Character, profile?: Profile): number {

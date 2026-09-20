@@ -255,6 +255,7 @@ export interface TextCharacterInjection extends ObjectData {
 
 export interface Character extends ObjectData {
   images: Record<string, string>;
+  useFrontCameraImage?: boolean; // Default is false.
   voice?: string;
   systemPrompt?: string;
   thinkPrompt?: string;
@@ -286,6 +287,7 @@ export interface Character extends ObjectData {
 
 export interface RawCharacter extends RawData {
   images?: Record<string, string>;
+  useFrontCameraImage?: boolean; // Default is false.
   voice?: string;
   systemPrompt?: string;
   thinkPrompt?: string;
@@ -596,7 +598,7 @@ export interface Profile extends ObjectData {
   useWeather: boolean;
   weatherApiKey?: string;
   useTimeElapsed: boolean;
-  useFrontCameraImage: boolean;
+  useFrontCameraImage: number; // -1 -> Disabled for all character, 0 -> Per-Character (Default), 1 -> Enabled for all character.
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
   numberOfMessagesToDisableDialoguePrompt: number;
@@ -640,7 +642,7 @@ export interface RawProfile extends RawData {
   useWeather: boolean;
   weatherApiKey?: string;
   useTimeElapsed: boolean;
-  useFrontCameraImage: boolean;
+  useFrontCameraImage: number; // -1 -> Disabled for all character, 0 -> Per-Character (Default), 1 -> Enabled for all character.
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
   numberOfMessagesToDisableDialoguePrompt: number;

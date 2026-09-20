@@ -3,7 +3,7 @@ import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlo
 import { detectName } from './nameDetection';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storage/serverStorage';
-import { getEffectiveMaximumChatStamina, initializeClothingWearingStatuses } from './characterLogic';
+import { getEffectiveUseFrontCameraImage, getEffectiveMaximumChatStamina, initializeClothingWearingStatuses } from './characterLogic';
 import { generalStartString, generalEndString } from '../dictionaries/stringList';
 import { buildPrompt, getParticipantTag } from './promptLogic';
 import { getCoLocatedParticipants } from './locationLogic';
@@ -275,8 +275,10 @@ export async function prepareRequestBody(
 
             let participantImageBase64: string | null = null;
 
+            const effectiveUseFrontCameraImage = getEffectiveUseFrontCameraImage(character, profile)
+
             // If this participant is the protagonist and front camera is enabled, use live camera instead of stored image
-            if (participant.id === protagonistId && frontCameraBase64 && profile?.useFrontCameraImage) {
+            if (participant.id === protagonistId && frontCameraBase64 && effectiveUseFrontCameraImage) {
                 participantImageBase64 = frontCameraBase64;
             } else {
                 const participantImagePath = await getCharacterImageUrlWithFallBack(participant.id, participantExpression);

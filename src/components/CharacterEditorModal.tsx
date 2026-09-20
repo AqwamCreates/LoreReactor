@@ -119,6 +119,7 @@ function CharacterEditorModalInner({
     const [voiceName, setVoiceName] = useState<string>(existingCharacter?.voice || '');
     const [existingVoiceName, setExistingVoiceName] = useState<string>(existingCharacter?.voice || '');
 
+    const [useFrontCameraImage, setUseFrontCameraImage] = useState<boolean>(existingCharacter?.useFrontCameraImage ?? false);
     const [doNotInjectCharacterImage, setDoNotInjectCharacterImage] = useState<boolean>(existingCharacter?.doNotInjectCharacterImage ?? false);
 
     const [numberOfMessagesToDisableThinkPromptStr, setNumberOfMessagesToDisableThinkPromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableThinkPrompt ?? DEFAULT_DISABLE_THINK_PROMPT));
@@ -283,7 +284,7 @@ function CharacterEditorModalInner({
         setNameSensitivityStr('-1');
         setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
         setMaximumActionStaminaStr('-1');
-        setSelectedStopPatternIds([]); setDoNotInjectCharacterImage(false);
+        setSelectedStopPatternIds([]); setUseFrontCameraImage(false); setDoNotInjectCharacterImage(false);
         setNumberOfMessagesToDisableThinkPromptStr(String(DEFAULT_DISABLE_THINK_PROMPT));
         setNumberOfMessagesToDisableMetaThinkInstructionsStr(String(DEFAULT_DISABLE_META_THINK));
         setNumberOfMessagesToDisableDialoguePromptStr(String(DEFAULT_DISABLE_DIALOGUE_PROMPT));
@@ -424,6 +425,7 @@ function CharacterEditorModalInner({
             knowledgePrompts: knowledgePrompts.length > 0 ? knowledgePrompts : undefined,
             starterPrompts: Object.keys(starterPrompts).length > 0 ? starterPrompts : undefined,
             images: finalImages,
+            useFrontCameraImage: useFrontCameraImage || undefined,
             voice: finalVoiceFilename, sampler: finalSampler,
             initiativeWeight: finalIW, chatProbability: finalCP, maximumChatStamina: finalMS,
             nameSensitivity: finalNS, chatImpatienceSensitivity: finalCIS, skipProbability: finalSP,
@@ -519,6 +521,23 @@ function CharacterEditorModalInner({
                                     More Images ({Object.keys(emotionImages).length})
                                 </button>
 
+                                <div className="editor-section" style={{ marginTop: '8px' }}>
+                                    <label className="editor-checkbox-label">
+                                        <input type="checkbox" checked={useFrontCameraImage} onChange={(e) => setUseFrontCameraImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
+                                        <span>Use Front Camera Image</span>
+                                    </label>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', marginLeft: '26px' }}>
+                                        Replace stored image with live front camera snapshot when profile allows per-character control.
+                                    </div>
+                                    <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
+                                        <input type="checkbox" checked={doNotInjectCharacterImage} onChange={(e) => setDoNotInjectCharacterImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
+                                        <span>Do Not Inject Character Image</span>
+                                    </label>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', marginLeft: '26px' }}>
+                                        Prevent this character's image from being sent to the model.
+                                    </div>
+                                </div>
+
                                 <textarea value={name} onChange={(e) => setName(e.target.value)} className="editor-textarea editor-textarea-name" placeholder="Name *" disabled={isUploading} />
                                 <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea editor-textarea-description" placeholder="Description" disabled={isUploading} />
                                 <textarea value={firstMessage} onChange={(e) => setFirstMessage(e.target.value)} className="editor-textarea editor-textarea-first-message" placeholder="First message" disabled={isUploading} />
@@ -532,16 +551,6 @@ function CharacterEditorModalInner({
                                         <button type="button" onClick={() => !isUploading && voiceInputRef.current?.click()} disabled={isUploading} className={`toolbar-button editor-voice-upload-button ${isUploading ? 'uploading' : ''}`}>{isUploading ? 'Uploading...' : '🎙️ Upload Voice Sample'}</button>
                                     )}
                                     <input ref={voiceInputRef} type="file" accept="audio/*,.wav,.mp3,.flac,.ogg" hidden onChange={handleVoiceChange} disabled={isUploading} />
-                                </div>
-
-                                <div className="editor-section" style={{ marginTop: '8px' }}>
-                                    <label className="editor-checkbox-label">
-                                        <input type="checkbox" checked={doNotInjectCharacterImage} onChange={(e) => setDoNotInjectCharacterImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
-                                        <span>Do Not Inject Character Image</span>
-                                    </label>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', marginLeft: '26px' }}>
-                                        Prevent this character's image from being sent to the model.
-                                    </div>
                                 </div>
                             </div>
 
