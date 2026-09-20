@@ -1,6 +1,6 @@
 // src/components/ProfileEditorModal.tsx
 import { useState, useMemo, type CSSProperties } from 'react';
-import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, Sampler } from '../types';
+import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, Sampler, StopPattern } from '../types';
 import { SliderInput } from './SliderInput';
 import '../main.css';
 import { defaultInputStrategy, defaultProfileTools } from '../dictionaries/defaults';
@@ -13,6 +13,7 @@ interface ProfileEditorModalProps {
     existingProfile?: Profile | null;
     allPromptBlocks?: PromptBlock[];
     allSamplers?: Sampler[];
+    allStopPatterns?: StopPattern[];
 }
 
 const CACHE_LEVEL_DESCRIPTIONS = [
@@ -109,6 +110,8 @@ const STEP_DESC_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6, font
 const INPUT_RIGHT_STYLE: CSSProperties = { textAlign: 'right' as const };
 const FIELD_HINT_STYLE: CSSProperties = { fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' };
 
+type ProfileTabId = 'general' | 'injection' | 'behaviour' | 'tools' | 'pipeline' | 'model';
+
 function ProfileCheckbox({ checked, onChange, label, hint, spaced = false }: { checked: boolean; onChange: (checked: boolean) => void; label: string; hint?: string; spaced?: boolean }) {
     return (
         <div className={`profile-checkbox-row ${spaced ? 'profile-checkbox-spaced' : ''}`}>
@@ -121,9 +124,32 @@ function ProfileCheckbox({ checked, onChange, label, hint, spaced = false }: { c
     );
 }
 
+function StopPatternSelect({
+    label,
+    value,
+    onChange,
+    allStopPatterns,
+}: {
+    label: string;
+    value: string;
+    onChange: (id: string) => void;
+    allStopPatterns: StopPattern[];
+}) {
+    return (
+        <div>
+            <label className="editor-label editor-label-small">{label}</label>
+            <select value={value} onChange={(e) => onChange(e.target.value)} className="editor-select">
+                <option value="">(None)</option>
+                {allStopPatterns.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+            </select>
+        </div>
+    );
+}
+
 function ProfileEditorContent({
-    existingProfile, onClose, onSave, allPromptBlocks = [], allSamplers = [],
+    existingProfile, onClose, onSave, allPromptBlocks = [], allSamplers = [], allStopPatterns = [],
 }: Omit<ProfileEditorModalProps, 'isOpen'>) {
+    const [activeTab, setActiveTab] = useState<ProfileTabId>('general');
     const ep = existingProfile ?? null;
 
     const [name, setName] = useState(ep?.name || '');
@@ -171,6 +197,10 @@ function ProfileEditorContent({
     const [webSummarizationSamplerId, setWebSummarizationSamplerId] = useState<string>(ep?.webSummarizationSampler?.id ?? '');
     const [interactionDataSummarizationSamplerId, setInteractionDataSummarizationSamplerId] = useState<string>(ep?.interactionDataSummarizationSampler?.id ?? '');
     const [aiRecommendationSamplerId, setAiRecommendationSamplerId] = useState<string>(ep?.aiRecommendationSampler?.id ?? '');
+    const [characterStopPatternId, setCharacterStopPatternId] = useState<string>(ep?.characterStopPattern?.id ?? '');
+    const [webSummarizationStopPatternId, setWebSummarizationStopPatternId] = useState<string>(ep?.webSummarizationStopPattern?.id ?? '');
+    const [interactionDataSummarizationStopPatternId, setInteractionDataSummarizationStopPatternId] = useState<string>(ep?.interactionDataSummarizationStopPattern?.id ?? '');
+    const [aiRecommendationStopPatternId, setAiRecommendationStopPatternId] = useState<string>(ep?.aiRecommendationStopPattern?.id ?? '');
     const [errors, setErrors] = useState<{ name?: string }>({});
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
     const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
@@ -201,6 +231,7 @@ function ProfileEditorContent({
     const buildProfile = (id: string, profileName: string): Profile => {
         const now = Date.now();
         const getSampler = (sId: string) => allSamplers.find(s => s.id === sId);
+        const getStopPattern = (spId: string) => allStopPatterns.find(sp => sp.id === spId);
         return {
             id, name: profileName, description: description.trim() || undefined,
             autonomousMode, autonomousInteractionIntervalMs,
@@ -226,6 +257,10 @@ function ProfileEditorContent({
             webSummarizationSampler: getSampler(webSummarizationSamplerId),
             interactionDataSummarizationSampler: getSampler(interactionDataSummarizationSamplerId),
             aiRecommendationSampler: getSampler(aiRecommendationSamplerId),
+            characterStopPattern: getStopPattern(characterStopPatternId),
+            webSummarizationStopPattern: getStopPattern(webSummarizationStopPatternId),
+            interactionDataSummarizationStopPattern: getStopPattern(interactionDataSummarizationStopPatternId),
+            aiRecommendationStopPattern: getStopPattern(aiRecommendationStopPatternId),
             firstCreatedTimestamp: ep?.firstCreatedTimestamp || now,
             lastUpdatedTimestamp: now,
         };
@@ -242,7 +277,6 @@ function ProfileEditorContent({
     const addBlock = (blockEntry: PromptBlockType | string) => { if (!inputStrategy.includes(blockEntry)) setInputStrategy(prev => [...prev, blockEntry]); };
     const removeBlock = (index: number) => { setInputStrategy(prev => prev.filter((_, i) => i !== index)); };
 
-    // Filter out 'Memory' from built-in blocks — memory is now tool-driven
     const missingBuiltInBlocks = ALL_BUILT_IN_BLOCK_TYPES.filter(b => !inputStrategy.includes(b) && b !== 'Memory');
     const availablePromptBlocks = allPromptBlocks.filter((pb: PromptBlock) => !inputStrategy.includes(pb.id));
 
@@ -274,6 +308,15 @@ function ProfileEditorContent({
 
     const selectedToolDisplayMode = TOOL_USAGE_DISPLAY_MODES.find(m => m.value === toolUsageDisplayMode) ?? TOOL_USAGE_DISPLAY_MODES[0];
 
+    const profileTabs: { id: ProfileTabId; label: string; icon: string }[] = [
+        { id: 'general', label: 'General', icon: '📝' },
+        { id: 'injection', label: 'Injection', icon: '💉' },
+        { id: 'behaviour', label: 'Behaviour', icon: '🧠' },
+        { id: 'tools', label: 'Tools', icon: '🔧' },
+        { id: 'pipeline', label: 'Pipeline', icon: '🔄' },
+        { id: 'model', label: 'Model', icon: '⚙️' },
+    ];
+
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
@@ -285,69 +328,175 @@ function ProfileEditorContent({
                         <button type="button" className="editor-button editor-button-save" onClick={handleSubmit}>Save</button>
                     </div>
                 </div>
+
+                {/* Tab Bar */}
+                <div className="entity-tab-bar" style={{ padding: '0 20px', marginBottom: 0, borderBottom: '1px solid var(--border)', background: 'var(--social-bg)' }}>
+                    {profileTabs.map(tab => (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`entity-tab-button ${activeTab === tab.id ? 'entity-tab-button-active' : ''}`}
+                        >
+                            {tab.icon} {tab.label}
+                        </button>
+                    ))}
+                </div>
+
                 <div className="modal-body editor-modal-body">
-                    <div style={{ marginBottom: '16px' }}><label className="editor-label">Name <span style={{ color: '#ff4444' }}>*</span></label><input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Default RP, No Cache Mode, Strict Names" />{errors.name && <div className="editor-error-message">{errors.name}</div>}</div>
-                    <div style={{ marginBottom: '16px' }}><label className="editor-label">Description</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Describe when to use this profile" rows={2} /></div>
+                    {/* ─── GENERAL TAB ─── */}
+                    {activeTab === 'general' && (
+                        <>
+                            <div style={{ marginBottom: '16px' }}><label className="editor-label">Name <span style={{ color: '#ff4444' }}>*</span></label><input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Default RP, No Cache Mode, Strict Names" />{errors.name && <div className="editor-error-message">{errors.name}</div>}</div>
+                            <div style={{ marginBottom: '16px' }}><label className="editor-label">Description</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Describe when to use this profile" rows={2} /></div>
 
-                    <div className="editor-section"><span className="editor-section-title">Agentic Roleplay</span><ProfileCheckbox checked={autonomousMode} onChange={setAutonomousMode} label="Autonomous Mode" hint="When enabled, characters act independently in the background using weighted sampling based on initiative, stamina ratios, and skip probability." />{autonomousMode && (<div style={{ marginTop: '12px' }}><div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Interaction Interval</label><span style={SLIDER_VALUE_STYLE}>{(autonomousInteractionIntervalMs / 1000).toFixed(1)}s</span></div><SliderInput label="" value={autonomousInteractionIntervalMs} minimumValue={1000} maximumValue={60000} stepValue={1000} decimals={0} onChange={(val) => setAutonomousInteractionIntervalMs(Math.round(val))} description="How often the engine evaluates characters for autonomous actions. Lower = more frequent activity, higher token usage." /></div>)}</div>
+                            <div className="editor-section"><span className="editor-section-title">Agentic Roleplay</span><ProfileCheckbox checked={autonomousMode} onChange={setAutonomousMode} label="Autonomous Mode" hint="When enabled, characters act independently in the background using weighted sampling based on initiative, stamina ratios, and skip probability." />{autonomousMode && (<div style={{ marginTop: '12px' }}><div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Interaction Interval</label><span style={SLIDER_VALUE_STYLE}>{(autonomousInteractionIntervalMs / 1000).toFixed(1)}s</span></div><SliderInput label="" value={autonomousInteractionIntervalMs} minimumValue={1000} maximumValue={60000} stepValue={1000} decimals={0} onChange={(val) => setAutonomousInteractionIntervalMs(Math.round(val))} description="How often the engine evaluates characters for autonomous actions. Lower = more frequent activity, higher token usage." /></div>)}</div>
 
-                    <div className="editor-section">
-                        <span className="editor-section-title">Display</span>
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Global Volume Override</label><span style={SLIDER_VALUE_STYLE}>{volume === -1 ? '(Per-track default)' : `${Math.round(volume * 100)}%`}</span></div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="range" min="-1" max="1" step="0.01" value={volume} onChange={(e) => setVolume(Number(e.target.value))} style={{ flex: 1 }} /></div>
-                            <div style={FIELD_HINT_STYLE}>-1 = use each track's own volume. ≥0 = override all tracks uniformly.</div>
-                        </div>
-                        <ProfileCheckbox checked={forceNameReveal} onChange={setForceNameReveal} label="Force Name Reveal" hint='Always show character names instead of "Character X".' />
-                        <div style={{ marginTop: '12px', marginBottom: '12px' }}>
-                            <label className="editor-label editor-label-small">Tool Usage Display Mode</label>
-                            <select value={toolUsageDisplayMode} onChange={(e) => setToolUsageDisplayMode(e.target.value as toolUsageDisplayMode)} className="editor-select" style={{ width: '100%' }}>
-                                {TOOL_USAGE_DISPLAY_MODES.map(mode => (
-                                    <option key={mode.value} value={mode.value}>{mode.label}</option>
-                                ))}
-                            </select>
-                            <div style={FIELD_HINT_STYLE}>{selectedToolDisplayMode.description}</div>
-                        </div>
-                        <ProfileCheckbox checked={enableCharacterExpression} onChange={setEnableCharacterExpression} label="Enable Character Expression" hint="Use sentiment analysis to swap character images based on emotional tone. Disable to always use the neutral character images." />
-                    </div>
-
-                    <div className="editor-section">
-                        <span className="editor-section-title">Text Character Injection</span>
-                        <ProfileCheckbox checked={randomizeTextCharacterInjection} onChange={setRandomizeTextCharacterInjection} label="Randomize Text Character Injection" hint="Prepend randomized characters from each character's text injection pool to bypass provider input filters that reject certain prompt patterns." />
-                        {randomizeTextCharacterInjection && (
-                            <>
-                                <ProfileCheckbox checked={randomizeTextCharacterInjectionOnRetry} onChange={setRandomizeTextCharacterInjectionOnRetry} label="Only Randomize On Retry" hint="Only apply randomization if the initial generation fails. Reduces unnecessary randomization when the model accepts the prompt as-is." spaced />
-                                <div style={{ marginTop: '12px' }}>
-                                    <SliderInput label="Maximum Number Of Text Character Randomization Per Model" value={maximumNumberOfTextCharacterRandomizationPerModel} minimumValue={1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => setMaximumNumberOfTextCharacterRandomizationPerModel(Math.round(val))} description="Number of retry attempts per model before giving up on randomization. Higher = more chances to bypass filters but uses more tokens." />
+                            <div className="editor-section">
+                                <span className="editor-section-title">Display</span>
+                                <div style={{ marginBottom: '12px' }}>
+                                    <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Global Volume Override</label><span style={SLIDER_VALUE_STYLE}>{volume === -1 ? '(Per-track default)' : `${Math.round(volume * 100)}%`}</span></div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="range" min="-1" max="1" step="0.01" value={volume} onChange={(e) => setVolume(Number(e.target.value))} style={{ flex: 1 }} /></div>
+                                    <div style={FIELD_HINT_STYLE}>-1 = use each track's own volume. ≥0 = override all tracks uniformly.</div>
                                 </div>
-                            </>
-                        )}
-                    </div>
+                                <ProfileCheckbox checked={forceNameReveal} onChange={setForceNameReveal} label="Force Name Reveal" hint='Always show character names instead of "Character X".' />
+                                <div style={{ marginTop: '12px', marginBottom: '12px' }}>
+                                    <label className="editor-label editor-label-small">Tool Usage Display Mode</label>
+                                    <select value={toolUsageDisplayMode} onChange={(e) => setToolUsageDisplayMode(e.target.value as toolUsageDisplayMode)} className="editor-select" style={{ width: '100%' }}>
+                                        {TOOL_USAGE_DISPLAY_MODES.map(mode => (<option key={mode.value} value={mode.value}>{mode.label}</option>))}
+                                    </select>
+                                    <div style={FIELD_HINT_STYLE}>{selectedToolDisplayMode.description}</div>
+                                </div>
+                                <ProfileCheckbox checked={enableCharacterExpression} onChange={setEnableCharacterExpression} label="Enable Character Expression" hint="Use sentiment analysis to swap character images based on emotional tone. Disable to always use the neutral character images." />
+                            </div>
 
-                    <div className="editor-section">
-                        <span className="editor-section-title">Image Injection</span>
-                        <ProfileCheckbox checked={forceNoCharacterImageInjection} onChange={setForceNoCharacterImageInjection} label="Force No Character Image Injection" hint="Prevent character images from being sent to the model, even if the character has one assigned." />
-                        <ProfileCheckbox checked={forceNoContextImageInjection} onChange={setForceNoContextImageInjection} label="Force No Context Image Injection" hint="Prevent context images from being sent to the model." spaced />
-                        <ProfileCheckbox checked={forceNoLocationImageInjection} onChange={setForceNoLocationImageInjection} label="Force No Location Image Injection" hint="Prevent location images from being sent to the model." spaced />
-                    </div>
+                            <div className="editor-section"><span className="editor-section-title">Voice Narration</span><div className="voice-narration-grid">{narrateTextKeys.map(type => (<label key={type} className="voice-narration-toggle"><input type="checkbox" checked={narrateTexts[type]} onChange={(e) => handleNarrateToggle(type, e.target.checked)} className="editor-checkbox-input" /><span>{NARRATE_TEXT_LABELS[type]}</span></label>))}</div></div>
 
-                    <div className="editor-section"><span className="editor-section-title">Injection</span><ProfileCheckbox checked={useCurrentDateAndTime} onChange={setUseCurrentDateAndTime} label="Use Current Date And Time" hint="Inject the current real-world date and time into the prompt so the model is aware of when the conversation is taking place." /><ProfileCheckbox checked={useWeather} onChange={setUseWeather} label="Use Weather" hint="Auto-detect your location via browser geolocation and inject current weather conditions using the OpenWeather API." spaced />{useWeather && (<div style={{ marginTop: '8px', marginLeft: '26px' }}><label className="editor-label editor-label-small">OpenWeather API Key</label><input type="password" value={weatherApiKey} onChange={(e) => setWeatherApiKey(e.target.value)} className="editor-input" placeholder="Paste your OpenWeather API key..." autoComplete="off" /><div style={FIELD_HINT_STYLE}>Free tier: 1,000 calls/day. Get one at openweathermap.org/api</div></div>)}<ProfileCheckbox checked={useTimeElapsed} onChange={setUseTimeElapsed} label="Use Time Elapsed" hint="Inject how long it has been since the last message was sent. Useful for real-time pacing awareness." spaced /><div style={{ marginTop: '12px' }}>{renderOverrideSlider('Use Front Camera Image Override', useFrontCameraImage, -1, 1, 1, 0, (val) => setUseFrontCameraImage(Math.round(val)), 'Replace protagonist stored image with live front camera snapshot. Camera activates on first use and auto-closes after 10 minutes idle.', useFrontCameraImage === -1 ? '(Force Off)' : useFrontCameraImage === 1 ? '(Force On)' : '(Per-Character default)')}</div><div style={{ marginTop: '12px' }}><SliderInput label="Number of Messages to Disable Think Prompt" value={numberOfMessagesToDisableThinkPrompt} minimumValue={-1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => setNumberOfMessagesToDisableThinkPrompt(Math.round(val))} description="-1 = auto defer to character default. N = disable after N messages." /></div><div style={{ marginTop: '12px' }}><SliderInput label="Number of Messages to Disable Meta-Thinking" value={numberOfMessagesToDisableMetaThinkInstructions} minimumValue={-1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => setNumberOfMessagesToDisableMetaThinkInstructions(Math.round(val))} description="-1 = auto defer to character default. N = disable after N messages." /></div><div style={{ marginTop: '12px' }}><SliderInput label="Number of Messages to Disable Dialogue Prompt" value={numberOfMessagesToDisableDialoguePrompt} minimumValue={-1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => setNumberOfMessagesToDisableDialoguePrompt(Math.round(val))} description="-1 = auto defer to character default. N = disable after N messages." /></div><div style={{ marginTop: '12px' }}><SliderInput label="Number of Messages to Disable Starter Prompt" value={numberOfMessagesToDisableStarterPrompt} minimumValue={-1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => setNumberOfMessagesToDisableStarterPrompt(Math.round(val))} description="-1 = auto defer to character default. N = disable after N messages." /></div></div>
+                            <div className="editor-section"><span className="editor-section-title">Output Processing</span><ProfileCheckbox checked={stripThinkTokens} onChange={setStripThinkTokens} label="Strip Think Tokens" hint="Remove thinking tokens from displayed output. The model still uses them internally." /></div>
+                        </>
+                    )}
 
-                    <div className="editor-section"><span className="editor-section-title">Turn Sequencing</span><div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>-1 = defer to each character's own setting. Set a value to override all participants uniformly.</div><ProfileCheckbox checked={forceEqualInitiative} onChange={setForceEqualInitiative} label="Force Equal Initiative" hint="All participants get equal initiative weight regardless of character settings." />{renderOverrideSlider('Chat Probability Override', chatProbability, -1, 1, 0.05, 2, setChatProbability, 'Probability of initiating a chat message when selected.', chatProbability === -1 ? '(Character default)' : undefined)}{renderOverrideSlider('Maximum Chat Stamina Override', maximumChatStamina, -1, 10, 1, 0, (val) => setMaximumChatStamina(Math.round(val)), 'Maximum paragraphs the character can produce.', maximumChatStamina === -1 ? '(Character default)' : undefined)}{renderOverrideSlider('Name Sensitivity Override', nameSensitivity, -1, 10, 0.5, 1, setNameSensitivity, 'Multiplier per name mention in latest message. 0 = off.', nameSensitivity === -1 ? '(Character default)' : nameSensitivity === 0 ? '(Disabled)' : undefined)}{renderOverrideSlider('Skip Probability Override', skipProbability, -1, 1, 0.05, 2, setSkipProbability, 'Probability of skipping an action even when selected.', skipProbability === -1 ? '(Character default)' : skipProbability === 0 ? '(Disabled)' : undefined)}{renderOverrideSlider('Chat Impatience Override', chatImpatienceSensitivity, -1, 5, 0.1, 1, setChatImpatienceSensitivity, 'Higher values make quiet characters speak sooner. 0 = off.', chatImpatienceSensitivity === -1 ? '(Character default)' : chatImpatienceSensitivity === 0 ? '(Disabled)' : undefined)}{renderOverrideSlider('Memory Retention Override', memoryRetentionWeight, -1, 2, 0.1, 1, setMemoryRetentionWeight, 'How far back memories reach. 0 = minimal, 1 = full.', memoryRetentionWeight === -1 ? '(Character default)' : memoryRetentionWeight === 0 ? '(Minimal)' : undefined)}{renderOverrideSlider('Context Sensitivity Override', contextSensitivity, -1, 2, 0.1, 1, setContextSensitivity, 'How readily context entries trigger. 0 = never.', contextSensitivity === -1 ? '(Character default)' : contextSensitivity === 0 ? '(Blind)' : undefined)}{renderOverrideSlider('Maximum Action Stamina Override', maximumActionStamina, -1, 10, 1, 0, (val) => setMaximumActionStamina(Math.round(val)), 'Silent actions (movement, non-chat interactions) before needing rest.', maximumActionStamina === -1 ? '(Character default)' : undefined)}</div>
+                    {/* ─── INJECTION TAB ─── */}
+                    {activeTab === 'injection' && (
+                        <>
+                            <div className="editor-section">
+                                <span className="editor-section-title">Text Character Injection</span>
+                                <ProfileCheckbox checked={randomizeTextCharacterInjection} onChange={setRandomizeTextCharacterInjection} label="Randomize Text Character Injection" hint="Prepend randomized characters from each character's text injection pool to bypass provider input filters that reject certain prompt patterns." />
+                                {randomizeTextCharacterInjection && (
+                                    <>
+                                        <ProfileCheckbox checked={randomizeTextCharacterInjectionOnRetry} onChange={setRandomizeTextCharacterInjectionOnRetry} label="Only Randomize On Retry" hint="Only apply randomization if the initial generation fails. Reduces unnecessary randomization when the model accepts the prompt as-is." spaced />
+                                        <div style={{ marginTop: '12px' }}>
+                                            <SliderInput label="Maximum Number Of Text Character Randomization Per Model" value={maximumNumberOfTextCharacterRandomizationPerModel} minimumValue={1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => setMaximumNumberOfTextCharacterRandomizationPerModel(Math.round(val))} description="Number of retry attempts per model before giving up on randomization. Higher = more chances to bypass filters but uses more tokens." />
+                                        </div>
+                                    </>
+                                )}
+                            </div>
 
-                    <div className="editor-section"><span className="editor-section-title">Language Model Handling</span><div style={{ marginBottom: '12px' }}><div style={SLIDER_HEADER_STYLE}><span className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Cache Invalidation Reduction</span></div><SliderInput label="" value={cacheLevel} minimumValue={0} maximumValue={3} stepValue={1} decimals={0} onChange={(val) => setCacheLevel(Math.round(val))} description={CACHE_LEVEL_DESCRIPTIONS[Math.round(cacheLevel)] || ''} /></div><ProfileCheckbox checked={doNotInjectDefaultStopTokens} onChange={setDoNotInjectDefaultStopTokens} label="Do Not Inject Default Stop Tokens" hint="Prevent default stop tokens from being injected into the request. Only custom stop patterns will be used." /></div>
+                            <div className="editor-section">
+                                <span className="editor-section-title">Image Injection</span>
+                                <ProfileCheckbox checked={forceNoCharacterImageInjection} onChange={setForceNoCharacterImageInjection} label="Force No Character Image Injection" hint="Prevent character images from being sent to the model, even if the character has one assigned." />
+                                <ProfileCheckbox checked={forceNoContextImageInjection} onChange={setForceNoContextImageInjection} label="Force No Context Image Injection" hint="Prevent context images from being sent to the model." spaced />
+                                <ProfileCheckbox checked={forceNoLocationImageInjection} onChange={setForceNoLocationImageInjection} label="Force No Location Image Injection" hint="Prevent location images from being sent to the model." spaced />
+                            </div>
 
-                    <div className="editor-section"><span className="editor-section-title">Voice Narration</span><div className="voice-narration-grid">{narrateTextKeys.map(type => (<label key={type} className="voice-narration-toggle"><input type="checkbox" checked={narrateTexts[type]} onChange={(e) => handleNarrateToggle(type, e.target.checked)} className="editor-checkbox-input" /><span>{NARRATE_TEXT_LABELS[type]}</span></label>))}</div></div>
+                            <div className="editor-section">
+                                <span className="editor-section-title">Context Injection</span>
+                                <ProfileCheckbox checked={useCurrentDateAndTime} onChange={setUseCurrentDateAndTime} label="Use Current Date And Time" hint="Inject the current real-world date and time into the prompt so the model is aware of when the conversation is taking place." />
+                                <ProfileCheckbox checked={useWeather} onChange={setUseWeather} label="Use Weather" hint="Auto-detect your location via browser geolocation and inject current weather conditions using the OpenWeather API." spaced />
+                                {useWeather && (<div style={{ marginTop: '8px', marginLeft: '26px' }}><label className="editor-label editor-label-small">OpenWeather API Key</label><input type="password" value={weatherApiKey} onChange={(e) => setWeatherApiKey(e.target.value)} className="editor-input" placeholder="Paste your OpenWeather API key..." autoComplete="off" /><div style={FIELD_HINT_STYLE}>Free tier: 1,000 calls/day. Get one at openweathermap.org/api</div></div>)}
+                                <ProfileCheckbox checked={useTimeElapsed} onChange={setUseTimeElapsed} label="Use Time Elapsed" hint="Inject how long it has been since the last message was sent. Useful for real-time pacing awareness." spaced />
+                                <div style={{ marginTop: '12px' }}>{renderOverrideSlider('Use Front Camera Image Override', useFrontCameraImage, -1, 1, 1, 0, (val) => setUseFrontCameraImage(Math.round(val)), 'Replace protagonist stored image with live front camera snapshot. Camera activates on first use and auto-closes after 10 minutes idle.', useFrontCameraImage === -1 ? '(Force Off)' : useFrontCameraImage === 1 ? '(Force On)' : '(Per-Character default)')}</div>
+                            </div>
 
-                    <div className="editor-section"><span className="editor-section-title">Output Processing</span><ProfileCheckbox checked={stripThinkTokens} onChange={setStripThinkTokens} label="Strip Think Tokens" hint="Remove thinking tokens from displayed output. The model still uses them internally." /></div>
+                            <div className="editor-section">
+                                <span className="editor-section-title">Prompt Decay</span>
+                                <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '12px' }}>Prompts are automatically removed from context after the character has sent this many messages. Set to 0 to disable immediately, or leave high to keep them active longer.</div>
+                                <SliderInput label="Number of Messages to Disable Think Prompt" value={numberOfMessagesToDisableThinkPrompt} minimumValue={-1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => setNumberOfMessagesToDisableThinkPrompt(Math.round(val))} description="-1 = auto defer to character default. N = disable after N messages." />
+                                <div style={{ marginTop: '12px' }}><SliderInput label="Number of Messages to Disable Meta-Thinking" value={numberOfMessagesToDisableMetaThinkInstructions} minimumValue={-1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => setNumberOfMessagesToDisableMetaThinkInstructions(Math.round(val))} description="-1 = auto defer to character default. N = disable after N messages." /></div>
+                                <div style={{ marginTop: '12px' }}><SliderInput label="Number of Messages to Disable Dialogue Prompt" value={numberOfMessagesToDisableDialoguePrompt} minimumValue={-1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => setNumberOfMessagesToDisableDialoguePrompt(Math.round(val))} description="-1 = auto defer to character default. N = disable after N messages." /></div>
+                                <div style={{ marginTop: '12px' }}><SliderInput label="Number of Messages to Disable Starter Prompt" value={numberOfMessagesToDisableStarterPrompt} minimumValue={-1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => setNumberOfMessagesToDisableStarterPrompt(Math.round(val))} description="-1 = auto defer to character default. N = disable after N messages." /></div>
+                            </div>
+                        </>
+                    )}
 
-                    <div className="editor-section"><span className="editor-section-title">Tools</span><div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>-1 = force off for all characters. 0 = defer to each character's own setting. 1 = force on for all characters.</div>{allToolKeys.map(toolName => (<div key={toolName} style={{ marginBottom: '12px' }}><div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>{toolLabels[toolName]} Override</label><span style={SLIDER_VALUE_STYLE}>{tools[toolName] === -1 ? '(Force Off)' : tools[toolName] === 1 ? '(Force On)' : '(Character default)'}</span></div><SliderInput label="" value={tools[toolName]} minimumValue={-1} maximumValue={1} stepValue={1} decimals={0} onChange={(val) => handleToolChange(toolName, Math.round(val))} description="" /></div>))}</div>
+                    {/* ─── BEHAVIOUR TAB ─── */}
+                    {activeTab === 'behaviour' && (
+                        <div className="editor-section">
+                            <span className="editor-section-title">Turn Sequencing</span>
+                            <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>-1 = defer to each character's own setting. Set a value to override all participants uniformly.</div>
+                            <ProfileCheckbox checked={forceEqualInitiative} onChange={setForceEqualInitiative} label="Force Equal Initiative" hint="All participants get equal initiative weight regardless of character settings." />
+                            {renderOverrideSlider('Chat Probability Override', chatProbability, -1, 1, 0.05, 2, setChatProbability, 'Probability of initiating a chat message when selected.', chatProbability === -1 ? '(Character default)' : undefined)}
+                            {renderOverrideSlider('Maximum Chat Stamina Override', maximumChatStamina, -1, 10, 1, 0, (val) => setMaximumChatStamina(Math.round(val)), 'Maximum paragraphs the character can produce.', maximumChatStamina === -1 ? '(Character default)' : undefined)}
+                            {renderOverrideSlider('Name Sensitivity Override', nameSensitivity, -1, 10, 0.5, 1, setNameSensitivity, 'Multiplier per name mention in latest message. 0 = off.', nameSensitivity === -1 ? '(Character default)' : nameSensitivity === 0 ? '(Disabled)' : undefined)}
+                            {renderOverrideSlider('Skip Probability Override', skipProbability, -1, 1, 0.05, 2, setSkipProbability, 'Probability of skipping an action even when selected.', skipProbability === -1 ? '(Character default)' : skipProbability === 0 ? '(Disabled)' : undefined)}
+                            {renderOverrideSlider('Chat Impatience Override', chatImpatienceSensitivity, -1, 5, 0.1, 1, setChatImpatienceSensitivity, 'Higher values make quiet characters speak sooner. 0 = off.', chatImpatienceSensitivity === -1 ? '(Character default)' : chatImpatienceSensitivity === 0 ? '(Disabled)' : undefined)}
+                            {renderOverrideSlider('Memory Retention Override', memoryRetentionWeight, -1, 2, 0.1, 1, setMemoryRetentionWeight, 'How far back memories reach. 0 = minimal, 1 = full.', memoryRetentionWeight === -1 ? '(Character default)' : memoryRetentionWeight === 0 ? '(Minimal)' : undefined)}
+                            {renderOverrideSlider('Context Sensitivity Override', contextSensitivity, -1, 2, 0.1, 1, setContextSensitivity, 'How readily context entries trigger. 0 = never.', contextSensitivity === -1 ? '(Character default)' : contextSensitivity === 0 ? '(Blind)' : undefined)}
+                            {renderOverrideSlider('Maximum Action Stamina Override', maximumActionStamina, -1, 10, 1, 0, (val) => setMaximumActionStamina(Math.round(val)), 'Silent actions (movement, non-chat interactions) before needing rest.', maximumActionStamina === -1 ? '(Character default)' : undefined)}
+                        </div>
+                    )}
 
-                    <div className="editor-section"><div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>Prompt Block Order</span><span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span></div><div style={CHECKBOX_HINT_STYLE}>Controls the order in which prompt sections are assembled. Includes built-in blocks and custom prompt blocks.</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>{inputStrategy.map((blockEntry, index) => (<div key={`${blockEntry}-${index}`} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, index)} className={`sampler-param-row ${draggedIndex === index ? 'sampler-param-dragging' : ''}`} style={{ padding: '6px 8px' }}><div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div><div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{index + 1}. {getBlockLabel(blockEntry)}</span></div><div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}><button type="button" onClick={() => moveBlock(index, -1)} disabled={index === 0} className="toolbar-button" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button><button type="button" onClick={() => moveBlock(index, 1)} disabled={index === inputStrategy.length - 1} className="toolbar-button" title="Move down" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === inputStrategy.length - 1 ? 0.3 : 1 }}>▼</button><button type="button" onClick={() => removeBlock(index)} className="toolbar-button" title="Remove from order" style={TOOLBAR_BTN_DELETE_STYLE}>×</button></div></div>))}</div>{(missingBuiltInBlocks.length > 0 || availablePromptBlocks.length > 0) && (<div style={{ marginTop: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}><select onChange={(e) => { const val = e.target.value; if (val) addBlock(val); e.target.value = ''; }} className="editor-select" defaultValue="" style={{ flex: 1 }}><option value="" disabled>+ Add a block</option>{missingBuiltInBlocks.length > 0 && <optgroup label="Built-in Blocks">{missingBuiltInBlocks.map(b => <option key={b} value={b}>{b}</option>)}</optgroup>}{availablePromptBlocks.length > 0 && <optgroup label="Custom Prompt Blocks">{availablePromptBlocks.map((pb: PromptBlock) => <option key={pb.id} value={pb.id}>🧱 {pb.name}</option>)}</optgroup>}</select></div>)}</div>
+                    {/* ─── TOOLS TAB ─── */}
+                    {activeTab === 'tools' && (
+                        <div className="editor-section">
+                            <span className="editor-section-title">Tools</span>
+                            <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>-1 = force off for all characters. 0 = defer to each character's own setting. 1 = force on for all characters.</div>
+                            {allToolKeys.map(toolName => (<div key={toolName} style={{ marginBottom: '12px' }}><div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>{toolLabels[toolName]} Override</label><span style={SLIDER_VALUE_STYLE}>{tools[toolName] === -1 ? '(Force Off)' : tools[toolName] === 1 ? '(Force On)' : '(Character default)'}</span></div><SliderInput label="" value={tools[toolName]} minimumValue={-1} maximumValue={1} stepValue={1} decimals={0} onChange={(val) => handleToolChange(toolName, Math.round(val))} description="" /></div>))}
+                        </div>
+                    )}
 
-                    <div className="editor-section"><div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>Summarization Pipeline</span><span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span></div><div style={CHECKBOX_HINT_STYLE}>Controls how messages are summarized based on the order of the individual text summarizers.</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>{summarizationSteps.map((step, index) => { const isDragging = draggedStepIndex === index; const isExpanded = expandedStepId === step.id; return (<div key={step.id}><div draggable onDragStart={(e) => handleStepDragStart(e, index)} onDragEnd={handleStepDragEnd} onDragOver={handleDragOver} onDrop={(e) => handleStepDrop(e, index)} className={`sampler-param-row ${isDragging ? 'sampler-param-dragging' : ''}`} style={{ padding: '6px 8px', cursor: 'pointer' }} onClick={() => setExpandedStepId(isExpanded ? null : step.id)}><div className="sampler-drag-handle" title="Drag to reorder" onClick={(e) => e.stopPropagation()}>⋮⋮</div><div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><span style={STEP_NAME_STYLE}>{index + 1}. {step.name}</span></div><div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}><button type="button" onClick={() => moveStep(index, -1)} disabled={index === 0} className="toolbar-button" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button><button type="button" onClick={() => moveStep(index, 1)} disabled={index === summarizationSteps.length - 1} className="toolbar-button" title="Move down" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === summarizationSteps.length - 1 ? 0.3 : 1 }}>▼</button><button type="button" onClick={() => removeSummarizationStep(index)} className="toolbar-button" title="Remove step" style={TOOLBAR_BTN_DELETE_STYLE}>×</button><span style={{ fontSize: '0.7rem', opacity: 0.5, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span></div></div>{isExpanded && (<div style={STEP_EXPANDED_STYLE}><div style={STEP_DESC_STYLE}>{STRATEGY_DESCRIPTIONS[step.strategyType]}</div>{step.strategyType === 'Sliding Window Replace' && (<div><label className="editor-label editor-label-small">Window Size</label><input type="number" min="1" max="50" value={step.slidingWindowSize ?? 10} onChange={(e) => updateStepField(index, 'slidingWindowSize', Math.max(1, Number(e.target.value) || 10))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Keep last N messages verbatim</div></div>)}{step.strategyType === 'Periodic Compression' && (<div className="editor-row"><div><label className="editor-label editor-label-small">Compression Interval</label><input type="number" min="5" max="100" value={step.compressionInterval ?? 20} onChange={(e) => updateStepField(index, 'compressionInterval', Math.max(5, Number(e.target.value) || 20))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Compress every M messages</div></div><div><label className="editor-label editor-label-small">Chunk Size</label><input type="number" min="5" max="50" value={step.compressionChunkSize ?? 10} onChange={(e) => updateStepField(index, 'compressionChunkSize', Math.max(5, Number(e.target.value) || 10))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Messages per compression chunk</div></div></div>)}{step.strategyType === 'Recursive Summary' && (<div className="editor-row"><div><label className="editor-label editor-label-small">Chunk Size</label><input type="number" min="5" max="50" value={step.recursiveChunkSize ?? 10} onChange={(e) => updateStepField(index, 'recursiveChunkSize', Math.max(5, Number(e.target.value) || 10))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Messages per chunk at layer 0</div></div><div><label className="editor-label editor-label-small">Max Depth</label><input type="number" min="1" max="5" value={step.recursiveMaxDepth ?? 3} onChange={(e) => updateStepField(index, 'recursiveMaxDepth', Math.max(1, Number(e.target.value) || 3))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Max recursion layers</div></div></div>)}{step.strategyType === 'Observation Masking' && (<div className="editor-row"><div><label className="editor-label editor-label-small">Relevance Threshold</label><input type="number" min="0" max="1" step="0.05" value={step.maskingRelevanceThreshold ?? 0.3} onChange={(e) => updateStepField(index, 'maskingRelevanceThreshold', Math.max(0, Math.min(1, Number(e.target.value) || 0.3)))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Min score to include (0.0–1.0)</div></div><div><label className="editor-label editor-label-small">Keyword Weight</label><input type="number" min="0" max="1" step="0.05" value={step.maskingKeywordWeight ?? 0.7} onChange={(e) => updateStepField(index, 'maskingKeywordWeight', Math.max(0, Math.min(1, Number(e.target.value) || 0.7)))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Keyword vs recency balance</div></div></div>)}<div className="editor-row"><div><label className="editor-label editor-label-small">Summary Token Budget</label><input type="number" min="64" max="4096" step="64" value={step.summaryTokenBudget ?? 512} onChange={(e) => updateStepField(index, 'summaryTokenBudget', Math.max(64, Number(e.target.value) || 512))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Max tokens for generated summaries</div></div><div><label className="editor-label editor-label-small">Trigger Threshold</label><input type="number" min="0" max="131072" step="1024" value={step.triggerTokenThreshold ?? 0} onChange={(e) => updateStepField(index, 'triggerTokenThreshold', Math.max(0, Number(e.target.value) || 0))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>0 = auto based on context length</div></div></div></div>)}</div>); })}</div><div style={{ marginTop: '8px' }}><select onChange={(e) => { const val = e.target.value as SummarizationStrategyType; if (val) addSummarizationStep(val); e.target.value = ''; }} className="editor-select" defaultValue=""><option value="" disabled>+ Add a summarization step</option>{ALL_STRATEGY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>{summarizationSteps.length === 0 && (<div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '12px 0' }}>No summarization steps configured. Add one above to enable context management.</div>)}</div>
+                    {/* ─── PIPELINE TAB ─── */}
+                    {activeTab === 'pipeline' && (
+                        <>
+                            <div className="editor-section">
+                                <div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>Prompt Block Order</span><span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span></div>
+                                <div style={CHECKBOX_HINT_STYLE}>Controls the order in which prompt sections are assembled. Includes built-in blocks and custom prompt blocks.</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>{inputStrategy.map((blockEntry, index) => (<div key={`${blockEntry}-${index}`} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, index)} className={`sampler-param-row ${draggedIndex === index ? 'sampler-param-dragging' : ''}`} style={{ padding: '6px 8px' }}><div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div><div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{index + 1}. {getBlockLabel(blockEntry)}</span></div><div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}><button type="button" onClick={() => moveBlock(index, -1)} disabled={index === 0} className="toolbar-button" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button><button type="button" onClick={() => moveBlock(index, 1)} disabled={index === inputStrategy.length - 1} className="toolbar-button" title="Move down" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === inputStrategy.length - 1 ? 0.3 : 1 }}>▼</button><button type="button" onClick={() => removeBlock(index)} className="toolbar-button" title="Remove from order" style={TOOLBAR_BTN_DELETE_STYLE}>×</button></div></div>))}</div>
+                                {(missingBuiltInBlocks.length > 0 || availablePromptBlocks.length > 0) && (<div style={{ marginTop: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}><select onChange={(e) => { const val = e.target.value; if (val) addBlock(val); e.target.value = ''; }} className="editor-select" defaultValue="" style={{ flex: 1 }}><option value="" disabled>+ Add a block</option>{missingBuiltInBlocks.length > 0 && <optgroup label="Built-in Blocks">{missingBuiltInBlocks.map(b => <option key={b} value={b}>{b}</option>)}</optgroup>}{availablePromptBlocks.length > 0 && <optgroup label="Custom Prompt Blocks">{availablePromptBlocks.map((pb: PromptBlock) => <option key={pb.id} value={pb.id}>🧱 {pb.name}</option>)}</optgroup>}</select></div>)}
+                            </div>
 
-                    <div className="editor-section"><span className="editor-section-title">Samplers</span><div style={CHECKBOX_HINT_STYLE}>Assign specific samplers for different generation tasks. Leave empty to use system defaults.</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px', marginTop: '12px' }}><div><label className="editor-label editor-label-small">Character Sampler</label><select value={characterSamplerId} onChange={(e) => setCharacterSamplerId(e.target.value)} className="editor-select"><option value="">(System Default)</option>{allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div style={FIELD_HINT_STYLE}>Used for main character dialogue/actions.</div></div><div><label className="editor-label editor-label-small">Web Summarization Sampler</label><select value={webSummarizationSamplerId} onChange={(e) => setWebSummarizationSamplerId(e.target.value)} className="editor-select"><option value="">(System Default)</option>{allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div style={FIELD_HINT_STYLE}>Used for summarizing web search results.</div></div><div><label className="editor-label editor-label-small">Interaction Data Sampler</label><select value={interactionDataSummarizationSamplerId} onChange={(e) => setInteractionDataSummarizationSamplerId(e.target.value)} className="editor-select"><option value="">(System Default)</option>{allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div style={FIELD_HINT_STYLE}>Used for summarizing chat history/context.</div></div><div><label className="editor-label editor-label-small">AI Recommendation Sampler</label><select value={aiRecommendationSamplerId} onChange={(e) => setAiRecommendationSamplerId(e.target.value)} className="editor-select"><option value="">(System Default)</option>{allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div style={FIELD_HINT_STYLE}>Used for AI recommendation generations.</div></div></div></div>
+                            <div className="editor-section">
+                                <div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>Summarization Pipeline</span><span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span></div>
+                                <div style={CHECKBOX_HINT_STYLE}>Controls how messages are summarized based on the order of the individual text summarizers.</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>{summarizationSteps.map((step, index) => { const isDragging = draggedStepIndex === index; const isExpanded = expandedStepId === step.id; return (<div key={step.id}><div draggable onDragStart={(e) => handleStepDragStart(e, index)} onDragEnd={handleStepDragEnd} onDragOver={handleDragOver} onDrop={(e) => handleStepDrop(e, index)} className={`sampler-param-row ${isDragging ? 'sampler-param-dragging' : ''}`} style={{ padding: '6px 8px', cursor: 'pointer' }} onClick={() => setExpandedStepId(isExpanded ? null : step.id)}><div className="sampler-drag-handle" title="Drag to reorder" onClick={(e) => e.stopPropagation()}>⋮⋮</div><div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><span style={STEP_NAME_STYLE}>{index + 1}. {step.name}</span></div><div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}><button type="button" onClick={() => moveStep(index, -1)} disabled={index === 0} className="toolbar-button" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button><button type="button" onClick={() => moveStep(index, 1)} disabled={index === summarizationSteps.length - 1} className="toolbar-button" title="Move down" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === summarizationSteps.length - 1 ? 0.3 : 1 }}>▼</button><button type="button" onClick={() => removeSummarizationStep(index)} className="toolbar-button" title="Remove step" style={TOOLBAR_BTN_DELETE_STYLE}>×</button><span style={{ fontSize: '0.7rem', opacity: 0.5, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span></div></div>{isExpanded && (<div style={STEP_EXPANDED_STYLE}><div style={STEP_DESC_STYLE}>{STRATEGY_DESCRIPTIONS[step.strategyType]}</div>{step.strategyType === 'Sliding Window Replace' && (<div><label className="editor-label editor-label-small">Window Size</label><input type="number" min="1" max="50" value={step.slidingWindowSize ?? 10} onChange={(e) => updateStepField(index, 'slidingWindowSize', Math.max(1, Number(e.target.value) || 10))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Keep last N messages verbatim</div></div>)}{step.strategyType === 'Periodic Compression' && (<div className="editor-row"><div><label className="editor-label editor-label-small">Compression Interval</label><input type="number" min="5" max="100" value={step.compressionInterval ?? 20} onChange={(e) => updateStepField(index, 'compressionInterval', Math.max(5, Number(e.target.value) || 20))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Compress every M messages</div></div><div><label className="editor-label editor-label-small">Chunk Size</label><input type="number" min="5" max="50" value={step.compressionChunkSize ?? 10} onChange={(e) => updateStepField(index, 'compressionChunkSize', Math.max(5, Number(e.target.value) || 10))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Messages per compression chunk</div></div></div>)}{step.strategyType === 'Recursive Summary' && (<div className="editor-row"><div><label className="editor-label editor-label-small">Chunk Size</label><input type="number" min="5" max="50" value={step.recursiveChunkSize ?? 10} onChange={(e) => updateStepField(index, 'recursiveChunkSize', Math.max(5, Number(e.target.value) || 10))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Messages per chunk at layer 0</div></div><div><label className="editor-label editor-label-small">Max Depth</label><input type="number" min="1" max="5" value={step.recursiveMaxDepth ?? 3} onChange={(e) => updateStepField(index, 'recursiveMaxDepth', Math.max(1, Number(e.target.value) || 3))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Max recursion layers</div></div></div>)}{step.strategyType === 'Observation Masking' && (<div className="editor-row"><div><label className="editor-label editor-label-small">Relevance Threshold</label><input type="number" min="0" max="1" step="0.05" value={step.maskingRelevanceThreshold ?? 0.3} onChange={(e) => updateStepField(index, 'maskingRelevanceThreshold', Math.max(0, Math.min(1, Number(e.target.value) || 0.3)))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Min score to include (0.0–1.0)</div></div><div><label className="editor-label editor-label-small">Keyword Weight</label><input type="number" min="0" max="1" step="0.05" value={step.maskingKeywordWeight ?? 0.7} onChange={(e) => updateStepField(index, 'maskingKeywordWeight', Math.max(0, Math.min(1, Number(e.target.value) || 0.7)))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Keyword vs recency balance</div></div></div>)}<div className="editor-row"><div><label className="editor-label editor-label-small">Summary Token Budget</label><input type="number" min="64" max="4096" step="64" value={step.summaryTokenBudget ?? 512} onChange={(e) => updateStepField(index, 'summaryTokenBudget', Math.max(64, Number(e.target.value) || 512))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>Max tokens for generated summaries</div></div><div><label className="editor-label editor-label-small">Trigger Threshold</label><input type="number" min="0" max="131072" step="1024" value={step.triggerTokenThreshold ?? 0} onChange={(e) => updateStepField(index, 'triggerTokenThreshold', Math.max(0, Number(e.target.value) || 0))} className="editor-input" style={INPUT_RIGHT_STYLE} /><div style={FIELD_HINT_STYLE}>0 = auto based on context length</div></div></div></div>)}</div>); })}</div>
+                                <div style={{ marginTop: '8px' }}><select onChange={(e) => { const val = e.target.value as SummarizationStrategyType; if (val) addSummarizationStep(val); e.target.value = ''; }} className="editor-select" defaultValue=""><option value="" disabled>+ Add a summarization step</option>{ALL_STRATEGY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                {summarizationSteps.length === 0 && (<div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '12px 0' }}>No summarization steps configured. Add one above to enable context management.</div>)}
+                            </div>
+                        </>
+                    )}
+
+                    {/* ─── MODEL TAB ─── */}
+                    {activeTab === 'model' && (
+                        <>
+                            <div className="editor-section">
+                                <span className="editor-section-title">Language Model Handling</span>
+                                <div style={{ marginBottom: '12px' }}><div style={SLIDER_HEADER_STYLE}><span className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Cache Invalidation Reduction</span></div><SliderInput label="" value={cacheLevel} minimumValue={0} maximumValue={3} stepValue={1} decimals={0} onChange={(val) => setCacheLevel(Math.round(val))} description={CACHE_LEVEL_DESCRIPTIONS[Math.round(cacheLevel)] || ''} /></div>
+                                <ProfileCheckbox checked={doNotInjectDefaultStopTokens} onChange={setDoNotInjectDefaultStopTokens} label="Do Not Inject Default Stop Tokens" hint="Prevent default stop tokens from being injected into the request. Only custom stop patterns will be used." />
+                            </div>
+
+                            <div className="editor-section">
+                                <span className="editor-section-title">Samplers</span>
+                                <div style={CHECKBOX_HINT_STYLE}>Assign specific samplers for different generation tasks. Leave empty to use system defaults.</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px', marginTop: '12px' }}>
+                                    <div><label className="editor-label editor-label-small">Character Sampler</label><select value={characterSamplerId} onChange={(e) => setCharacterSamplerId(e.target.value)} className="editor-select"><option value="">(System Default)</option>{allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div style={FIELD_HINT_STYLE}>Used for main character dialogue/actions.</div></div>
+                                    <div><label className="editor-label editor-label-small">Web Summarization Sampler</label><select value={webSummarizationSamplerId} onChange={(e) => setWebSummarizationSamplerId(e.target.value)} className="editor-select"><option value="">(System Default)</option>{allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div style={FIELD_HINT_STYLE}>Used for summarizing web search results.</div></div>
+                                    <div><label className="editor-label editor-label-small">Interaction Data Sampler</label><select value={interactionDataSummarizationSamplerId} onChange={(e) => setInteractionDataSummarizationSamplerId(e.target.value)} className="editor-select"><option value="">(System Default)</option>{allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div style={FIELD_HINT_STYLE}>Used for summarizing chat history/context.</div></div>
+                                    <div><label className="editor-label editor-label-small">AI Recommendation Sampler</label><select value={aiRecommendationSamplerId} onChange={(e) => setAiRecommendationSamplerId(e.target.value)} className="editor-select"><option value="">(System Default)</option>{allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div style={FIELD_HINT_STYLE}>Used for AI recommendation generations.</div></div>
+                                </div>
+                            </div>
+
+                            <div className="editor-section">
+                                <span className="editor-section-title">Stop Patterns</span>
+                                <div style={CHECKBOX_HINT_STYLE}>Assign specific stop patterns for different generation tasks. Leave empty to use sampler defaults.</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px', marginTop: '12px' }}>
+                                    <StopPatternSelect label="Character Stop Pattern" value={characterStopPatternId} onChange={setCharacterStopPatternId} allStopPatterns={allStopPatterns} />
+                                    <StopPatternSelect label="Web Summarization Stop Pattern" value={webSummarizationStopPatternId} onChange={setWebSummarizationStopPatternId} allStopPatterns={allStopPatterns} />
+                                    <StopPatternSelect label="Interaction Data Stop Pattern" value={interactionDataSummarizationStopPatternId} onChange={setInteractionDataSummarizationStopPatternId} allStopPatterns={allStopPatterns} />
+                                    <StopPatternSelect label="AI Recommendation Stop Pattern" value={aiRecommendationStopPatternId} onChange={setAiRecommendationStopPatternId} allStopPatterns={allStopPatterns} />
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
         </div>

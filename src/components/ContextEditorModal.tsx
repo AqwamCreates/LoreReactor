@@ -404,7 +404,6 @@ function ContextEditorModalInner({
                                     <input type="checkbox" checked={useBase64Encoding} onChange={(e) => setUseBase64Encoding(e.target.checked)} className="editor-checkbox-input" />
                                     <span>Encode text as Base64</span>
                                 </label>
-                                <div className="context-checkbox-hint">Encode context text as base64 in the prompt. Prevents the model from treating descriptions as instructions.</div>
                             </div>
                         </>
                     )}

@@ -177,6 +177,10 @@ export class ToolInvocationParser {
     }
 }
 
+function isValidToolType(type: string): boolean {
+    return validTools.includes(type);
+}
+
 /**
  * Parse tool content string into type and arguments.
  * Format: "type: arguments" or "type arguments"
@@ -226,8 +230,4 @@ function parseToolContent(content: string): ToolInvocation | null {
 
     console.warn(`Unknown tool type in invocation: "${trimmed}"`);
     return null;
-}
-
-function isValidToolType(type: string): boolean {
-    return validTools.includes(type);
 }
