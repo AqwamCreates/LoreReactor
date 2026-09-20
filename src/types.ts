@@ -414,7 +414,7 @@ export interface InteractionData extends ObjectData {
   parentInteractionDataId?: string | null;
   parentInteractionMessageId?: string | null;
   Profile?: Profile;
-  isLocalMultiplayerActive: boolean;
+  isLocalMultiplayerEnabled: boolean;
   multiplayerData?: MultiplayerData
 }
 
@@ -428,7 +428,7 @@ export interface RawInteractionData extends RawData {
   parentInteractionDataId?: string | null;
   parentInteractionMessageId?: string | null;
   ProfileId?: string;
-  isLocalMultiplayerActive: boolean;
+  isLocalMultiplayerEnabled: boolean;
   multiplayerData?: MultiplayerData
 }
 
