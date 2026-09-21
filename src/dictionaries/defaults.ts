@@ -1,5 +1,5 @@
 // src/dictionaries/defaults.ts
-import type { BudgetData, BudgetStrategy, Character, InterjectableAction, LanguageModel, PromptBlockType, Sampler, textType, tool } from '../types';
+import type { BudgetData, BudgetStrategy, Character, InterjectableAction, LanguageModel, MultiplayerData, PromptBlockType, Sampler, textType, tool } from '../types';
 
 export const DEFAULT_BUDGET_RESET_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -150,5 +150,21 @@ export const defaultNarrateTexts: Record<textType, boolean> = {
     normal: false, quoted: false, bolded: false, italicized: false,
     parenthesized: false, bracketed: false, braced: false,
 };
+
+export function createDefaultMultiplayerData(): MultiplayerData {
+    const now = Date.now();
+    return {
+        id: uuidv4(),
+        name: '',
+        password: '',
+        whiteListedAccountIds: [],
+        blacklistedAccountIds: [],
+        pendingAccountIds: [],
+        administratorAccountIds: [],
+        accountIdCharacterIds: {},
+        lastUpdatedTimestamp: now,
+        firstCreatedTimestamp: now,
+    };
+}
 
 export const defaultContextLength = 8192

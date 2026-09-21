@@ -30,7 +30,7 @@ import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, cloudBackend } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, cloudBackend, MultiplayerData } from '../types';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
 import { useActionMenu } from '../hooks/useActionMenu';
@@ -89,23 +89,24 @@ function hasMessagesChanged(a: InteractionData | null, b: InteractionData): bool
     return false;
 }
 
-/** Derive current user's protagonist from interactionData + currentAccountId */
+/** Derive current user's protagonist from interactionData + multiplayerData + currentAccountId */
 function deriveCurrentProtagonist(
     interactionData: InteractionData | null,
+    multiplayerData: MultiplayerData | null,
     currentAccountId: string | null,
 ): Character | null {
     if (!interactionData?.protagonists?.length) return null;
-    if (!currentAccountId) {
-        // Single-player: first protagonist is always the local user's
+    if (!multiplayerData || !currentAccountId) {
+        // No multiplayer data or no account: first protagonist is the local user's
         return interactionData.protagonists[0] ?? null;
     }
-    const myCharIds = interactionData.multiplayerData?.accountIdCharacterIds?.[currentAccountId];
+    const myCharIds = multiplayerData.accountIdCharacterIds?.[currentAccountId];
     if (myCharIds?.length) {
         const found = interactionData.protagonists.find(p => myCharIds.includes(p.id));
         if (found) return found;
     }
-    // Multiplayer but no mapping found — cannot determine local protagonist
-    return null;
+    // Multiplayer but no mapping found for this account — fall back to first protagonist
+    return interactionData.protagonists[0] ?? null;
 }
 
 function App() {

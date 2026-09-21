@@ -399,6 +399,7 @@ export interface Account extends ObjectData {
 export interface MultiplayerData extends ObjectData {
 
   password: string // Password - invite only. No password - accessible for all.
+  interactionDataIds: string[]
   whiteListedAccountIds: string[] // Hoster automatically accepts this user to join.
   blacklistedAccountIds: string[] // Hoster automatically blocks this user from joining.
   pendingAccountIds: string[] // Received the join request, and is waiting for the hoster's decision.
@@ -418,8 +419,6 @@ export interface InteractionData extends ObjectData {
   parentInteractionDataId?: string | null;
   parentInteractionMessageId?: string | null;
   Profile?: Profile;
-  isMultiplayerEnabled: boolean;
-  multiplayerData?: MultiplayerData
 }
 
 export interface RawInteractionData extends RawData {

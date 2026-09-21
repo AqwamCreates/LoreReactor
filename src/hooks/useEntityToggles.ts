@@ -1,10 +1,10 @@
 // src/hooks/useEntityToggles.ts
 import { useCallback } from 'react';
-import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy, InteractionData } from '../types';
+import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy, InteractionData, MultiplayerData } from '../types';
 import { saveRawInteractionData, loadRawContext, loadRawLocation, loadRawAudioTrack } from '../storage/serverStorage';
 import { assignInitialLocationsIfNeeded } from './locationLogic';
 import { useSessionStore } from './useSessionStore';
-import { v4 as uuidv4 } from 'uuid';
+import { createDefaultMultiplayerData } from '../dictionaries/defaults';
 
 const EXTENSION_STORAGE_KEY = 'loreReactor_activeExtensionIds';
 
@@ -37,23 +37,24 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
     } = options;
 
     const currentAccountId = useSessionStore(s => s.currentAccountId);
+    const multiplayerData = useSessionStore(s => s.multiplayerData);
 
-    /** Get the protagonist IDs for the current user from multiplayerData */
+    /** Get the protagonist IDs for the current user from centralized multiplayerData */
     const getMyProtagonistIds = useCallback((): string[] => {
         if (!interactionData?.protagonists?.length) return [];
-        if (!currentAccountId) {
-            // Single-player fallback: first protagonist
-            return interactionData.protagonists.length > 0 ? [interactionData.protagonists[0].id] : [];
+        if (!multiplayerData || !currentAccountId) {
+            // No multiplayer data or no account: first protagonist
+            return [interactionData.protagonists[0].id];
         }
-        const myCharIds = interactionData.multiplayerData?.accountIdCharacterIds?.[currentAccountId];
+        const myCharIds = multiplayerData.accountIdCharacterIds?.[currentAccountId];
         if (myCharIds?.length) {
             return interactionData.protagonists
                 .filter(p => myCharIds.includes(p.id))
                 .map(p => p.id);
         }
-        // Fallback: first protagonist
-        return interactionData.protagonists.length > 0 ? [interactionData.protagonists[0].id] : [];
-    }, [interactionData, currentAccountId]);
+        // Multiplayer but no mapping for this account: first protagonist
+        return [interactionData.protagonists[0].id];
+    }, [interactionData, multiplayerData, currentAccountId]);
 
     const handleToggleParticipant = useCallback(async (charId: string) => {
         if (!interactionData) return;
@@ -150,23 +151,11 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             updatedProtagonists.push(ch);
         }
 
-        // Update accountIdCharacterIds mapping for current account
-        let updatedMultiplayerData = interactionData.multiplayerData ? { ...interactionData.multiplayerData } : undefined;
+        // Update accountIdCharacterIds mapping in centralized multiplayerData
+        let updatedMultiplayerData: MultiplayerData | undefined = multiplayerData ? { ...multiplayerData } : undefined;
         if (currentAccountId) {
             if (!updatedMultiplayerData) {
-                const now = Date.now();
-                updatedMultiplayerData = {
-                    id: uuidv4(),
-                    name: '',
-                    password: '',
-                    whiteListedAccountIds: [],
-                    blacklistedAccountIds: [],
-                    pendingAccountIds: [],
-                    administratorAccountIds: [],
-                    accountIdCharacterIds: {},
-                    lastUpdatedTimestamp: now,
-                    firstCreatedTimestamp: now,
-                };
+                updatedMultiplayerData = createDefaultMultiplayerData();
             }
             const existingIds = updatedMultiplayerData.accountIdCharacterIds?.[currentAccountId] ?? [];
             if (!existingIds.includes(charId)) {
@@ -180,10 +169,14 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             }
         }
 
+        // Persist updated multiplayerData to store
+        if (updatedMultiplayerData) {
+            useSessionStore.setState({ multiplayerData: updatedMultiplayerData });
+        }
+
         let uc: InteractionData = {
             ...interactionData,
             protagonists: updatedProtagonists,
-            multiplayerData: updatedMultiplayerData,
         };
         if (!uc.participants.find(p => p.id === charId)) uc.participants = [ch, ...uc.participants];
         // Ensure new protagonist has a location assigned
@@ -192,7 +185,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         setCurrentCharacter(ch);
         setDefaultCharacterId(charId);
         addToast('Protagonist switched.', 'info');
-    }, [interactionData, allCharacters, currentAccountId, setInteractionData, setCurrentCharacter, setDefaultCharacterId, loadFullCharacter, addToast]);
+    }, [interactionData, allCharacters, currentAccountId, multiplayerData, setInteractionData, setCurrentCharacter, setDefaultCharacterId, loadFullCharacter, addToast]);
 
     const handleToggleExtension = useCallback((extId: string) => {
         const nextIds = activeExtensionIds.includes(extId)

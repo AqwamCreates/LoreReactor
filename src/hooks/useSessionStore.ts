@@ -1,6 +1,6 @@
 // src/store/useSessionStore.ts
 import { create } from 'zustand';
-import type { Character, InteractionData, BudgetStrategy, LanguageModel, BudgetData } from '../types';
+import type { Character, InteractionData, BudgetStrategy, LanguageModel, BudgetData, MultiplayerData } from '../types';
 
 interface SessionState {
     // Core chat state
@@ -34,6 +34,7 @@ interface SessionState {
 
     // Multiplayer state
     currentAccountId: string | null;
+    multiplayerData: MultiplayerData | null;
 
     // UI preferences (persisted to localStorage)
     selectedBudgetStrategyId: string | null;
@@ -66,6 +67,7 @@ export const useSessionStore = create<SessionState>()(() => ({
     currentAccountId: (() => {
         try { return localStorage.getItem('loreReactor_currentAccountId') || '__local__'; } catch { return '__local__'; }
     })(),
+    multiplayerData: null,
 
     // Initialize from localStorage
     selectedBudgetStrategyId: (() => {
