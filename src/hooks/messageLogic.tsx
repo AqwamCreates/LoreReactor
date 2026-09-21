@@ -133,8 +133,6 @@ export async function branchMessage(currentChat: InteractionData, messageId: str
         parentInteractionDataId: currentChat.id,
         parentInteractionMessageId: messageId,
         Profile: currentChat.Profile,
-        isMultiplayerEnabled: currentChat.isMultiplayerEnabled,
-        multiplayerData: currentChat.multiplayerData ? { ...currentChat.multiplayerData } : undefined,
         firstCreatedTimestamp: Date.now(),
         lastUpdatedTimestamp: Date.now(),
     };
@@ -174,8 +172,6 @@ export async function cloneChatUpToMessage(currentChat: InteractionData, message
         audioTracks: (currentChat.audioTracks || []).map(a => ({ ...a })),
         interactionHistory: clonedMessages,
         Profile: currentChat.Profile,
-        isMultiplayerEnabled: false,
-        multiplayerData: undefined,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
         parentInteractionDataId: null,

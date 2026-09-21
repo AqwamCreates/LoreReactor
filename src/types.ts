@@ -387,7 +387,6 @@ export interface RawChatMessage extends RawBaseMessage {
 }
 
 export type RawHistoryMessage = RawInteractionMessage | RawChatMessage;
-
 export interface Account extends ObjectData {
 
   username: string
@@ -396,7 +395,27 @@ export interface Account extends ObjectData {
 
 }
 
+export interface RawAccount extends RawData {
+
+  username: string
+  password: string
+  url?: string
+
+}
+
 export interface MultiplayerData extends ObjectData {
+
+  password: string // Password - invite only. No password - accessible for all.
+  interactionDataIds: string[]
+  whiteListedAccountIds: string[] // Hoster automatically accepts this user to join.
+  blacklistedAccountIds: string[] // Hoster automatically blocks this user from joining.
+  pendingAccountIds: string[] // Received the join request, and is waiting for the hoster's decision.
+  administratorAccountIds: string[]
+  accountIdCharacterIds: Record<string, string[]> // Each account id can map to several character Ids.
+
+}
+
+export interface RawMultiplayerData extends RawData {
 
   password: string // Password - invite only. No password - accessible for all.
   interactionDataIds: string[]
@@ -431,8 +450,6 @@ export interface RawInteractionData extends RawData {
   parentInteractionDataId?: string | null;
   parentInteractionMessageId?: string | null;
   ProfileId?: string;
-  isMultiplayerEnabled: boolean;
-  multiplayerData?: MultiplayerData
 }
 
 export type ExtensionType = 'Image Generation API' | 'Accessibility' | 'Extra';

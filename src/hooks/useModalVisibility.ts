@@ -52,6 +52,7 @@ export function useModalVisibility() {
     const [settings, setSettingsOpen] = useState(false);
     const [worldManager, setWorldManagerOpen] = useState(false);
     const [participantControl, setParticipantControlOpen] = useState(false);
+    const [multiplayerSettings, setMultiplayerSettingsOpen] = useState(false);
     const [aiRecommendation, setAiRecommendationOpen] = useState(false);
     const [cardImport, setCardImportOpen] = useState(false);
     const [importData, setImportDataOpen] = useState(false);
@@ -76,6 +77,7 @@ export function useModalVisibility() {
         setSettingsOpen(false);
         setWorldManagerOpen(false);
         setParticipantControlOpen(false);
+        setMultiplayerSettingsOpen(false);
         setAiRecommendationOpen(false);
         setCardImportOpen(false);
         setImportDataOpen(false);
@@ -101,6 +103,7 @@ export function useModalVisibility() {
         settings: createModalState(settings, setSettingsOpen),
         worldManager: createModalState(worldManager, setWorldManagerOpen),
         participantControl: createModalState(participantControl, setParticipantControlOpen),
+        multiplayerSettings: createModalState(multiplayerSettings, setMultiplayerSettingsOpen),
         aiRecommendation: createModalState(aiRecommendation, setAiRecommendationOpen),
         cardImport: createModalState(cardImport, setCardImportOpen),
         importData: createModalState(importData, setImportDataOpen),

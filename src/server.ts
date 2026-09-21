@@ -471,6 +471,15 @@ function sanitizeManifestDir(dirName: string): number {
   const dirPath = path.join(ROOT_DIR, 'user_data', dirName);
   const manifestPath = path.join(dirPath, 'manifest.json');
 
+  // Ensure directory exists
+  if (!fs.existsSync(dirPath)) {
+    try {
+      fs.mkdirSync(dirPath, { recursive: true });
+      log.info(`Created directory: ${dirPath}`);
+    } catch { /* ignore */ }
+    return 0;
+  }
+
   if (!fs.existsSync(manifestPath)) return 0;
 
   try {
@@ -685,6 +694,8 @@ function runStartupSanitization(): void {
     'memory_data',
     'webpage_data',
     'kv_caches',
+    'account_data',
+    'multiplayer_data',
   ];
 
   let totalManifestOrphans = 0;

@@ -30,7 +30,7 @@ import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, cloudBackend, MultiplayerData } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, MultiplayerData, cloudBackend } from '../types';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
 import { useActionMenu } from '../hooks/useActionMenu';
@@ -89,7 +89,7 @@ function hasMessagesChanged(a: InteractionData | null, b: InteractionData): bool
     return false;
 }
 
-/** Derive current user's protagonist from interactionData + multiplayerData + currentAccountId */
+/** Derive current user's protagonist from interactionData + centralized multiplayerData + currentAccountId */
 function deriveCurrentProtagonist(
     interactionData: InteractionData | null,
     multiplayerData: MultiplayerData | null,
@@ -143,13 +143,14 @@ function App() {
     } = session;
 
     const currentAccountId = useSessionStore(s => s.currentAccountId);
+    const multiplayerData = useSessionStore(s => s.multiplayerData);
     const defaultCharacterId = useSessionStore(s => s.defaultCharacterId);
     const selectedBudgetStrategyId = useSessionStore(s => s.selectedBudgetStrategyId);
 
-    // Derive localProtagonist from protagonists + accountIdCharacterIds
+    // Derive localProtagonist from centralized multiplayerData
     const localProtagonist = useMemo(
-        () => deriveCurrentProtagonist(interactionData, currentAccountId),
-        [interactionData, currentAccountId],
+        () => deriveCurrentProtagonist(interactionData, multiplayerData, currentAccountId),
+        [interactionData, multiplayerData, currentAccountId],
     );
 
     // currentCharacter is the same as localProtagonist for backward compatibility
@@ -580,7 +581,7 @@ function App() {
         }
     }, [isRecording, addToast]);
 
-    const handleSend = useCallback((_protagonist: Character) => {
+    const handleSend = useCallback(() => {
         if (!inputText.trim() && !pendingFiles.length) return;
         sendMessage(inputText, pendingFiles);
         setInputText('');
@@ -669,7 +670,8 @@ function App() {
             const source = await loadRawInteractionData(interactionData.parentInteractionDataId, allCharacters);
             if (source) {
                 setInteractionData(source);
-                const sourceProtagonist = deriveCurrentProtagonist(source, currentAccountId);
+                const sourceMultiplayerData = useSessionStore.getState().multiplayerData;
+                const sourceProtagonist = deriveCurrentProtagonist(source, sourceMultiplayerData, currentAccountId);
                 if (sourceProtagonist) setCurrentCharacter(sourceProtagonist);
                 refreshChatList();
                 addToast(`Returned to source: "${source.name}"`, 'info');
@@ -919,7 +921,7 @@ function App() {
                             isModelReady={isModelReady} 
                             isModelLoading={isModelLoading} 
                             modelStatusMessage={modelStatusMessage} 
-                            localProtagonist={localProtagonist!} 
+                            localProtagonist={localProtagonist} 
                             activeStrategy={activeStrategy ?? undefined} 
                             selectedModelId={selectedModelId} 
                             fileInputRef={fileInputRef} 
@@ -1034,7 +1036,7 @@ function App() {
                 filteredActions={getFilteredActions()} 
                 isModelReady={isModelReady} 
                 allCharacters={allCharacters}
-                localProtagonist={localProtagonist!}
+                localProtagonist={localProtagonist}
                 onAddAction={handleAddAction} 
                 onDeleteAction={handleDeleteAction} 
                 onActionInterject={handleActionInterject} 

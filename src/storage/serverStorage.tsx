@@ -9,6 +9,7 @@ import type {
   AudioTrack, RawAudioTrack,
   PromptBlock, RawPromptBlock,
   Account,
+  MultiplayerData,
   tool,
   HistoryMessage,
   RawChatMessage,
@@ -51,6 +52,7 @@ const ENTITY_REGISTRY = {
   audioTracks: { dir: 'audio_track_data', hasManifest: true },
   promptBlocks: { dir: 'prompt_block_data', hasManifest: true },
   accounts: { dir: 'account_data', hasManifest: true },
+  multiplayerData: { dir: 'multiplayer_data', hasManifest: true },
 } as const;
 
 type EntityKey = keyof typeof ENTITY_REGISTRY;
@@ -927,6 +929,29 @@ export const saveRawAccount = accountRepo.save;
 export const deleteRawAccount = accountRepo.remove;
 
 // =============================================================================
+// MULTIPLAYER DATA REPOSITORY
+// =============================================================================
+
+const multiplayerDataRepo = createRepository<MultiplayerData, MultiplayerData>({
+  entityKey: 'multiplayerData',
+  hydrate: (raw, id) => hydrateEntity<MultiplayerData, MultiplayerData>(raw, id, {
+    password: '',
+    interactionDataIds: [],
+    whiteListedAccountIds: [],
+    blacklistedAccountIds: [],
+    pendingAccountIds: [],
+    administratorAccountIds: [],
+    accountIdCharacterIds: {},
+  }),
+});
+
+export const loadRawMultiplayerDataManifest = multiplayerDataRepo.loadManifest;
+export const loadRawMultiplayerData = multiplayerDataRepo.loadRaw;
+export const loadAllRawMultiplayerData = multiplayerDataRepo.loadAll;
+export const saveRawMultiplayerData = multiplayerDataRepo.save;
+export const deleteRawMultiplayerData = multiplayerDataRepo.remove;
+
+// =============================================================================
 // CHAT MESSAGE REPOSITORY
 // =============================================================================
 
@@ -955,12 +980,6 @@ async function buildInteractionDataShell(
   // Hydrate protagonists array from protagonistIds
   const protagonists: Character[] = (rawInteractionData.protagonistIds || [])
     .map(pid => charMap.get(pid) ?? createDeletedCharacterStub(pid));
-
-  // Fallback: if protagonistIds is empty but legacy protagonistId exists, use it
-  if (protagonists.length === 0 && (rawInteractionData as any).protagonistId) {
-    const legacyId = (rawInteractionData as any).protagonistId as string;
-    protagonists.push(charMap.get(legacyId) ?? createDeletedCharacterStub(legacyId));
-  }
 
   const participants = (rawInteractionData.participantIds || [])
     .map(pid => charMap.get(pid) ?? createDeletedCharacterStub(pid));
@@ -998,8 +1017,6 @@ async function buildInteractionDataShell(
     audioTracks,
     interactionHistory: [],
     numberOfMessages: rawInteractionData.interactionIdHistory?.length ?? 0,
-    isMultiplayerEnabled: rawInteractionData.isMultiplayerEnabled ?? false,
-    multiplayerData: rawInteractionData.multiplayerData,
     firstCreatedTimestamp: rawInteractionData.firstCreatedTimestamp || Date.now(), 
     lastUpdatedTimestamp: rawInteractionData.lastUpdatedTimestamp || Date.now(),
     parentInteractionDataId: rawInteractionData.parentInteractionDataId || null, 
@@ -1163,7 +1180,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     await Promise.all(saveMessagePromises.slice(i, i + BATCH_SIZE));
   }
 
-  const { id, protagonists, participants, contexts, locations, audioTracks, interactionHistory, parentInteractionDataId, parentInteractionMessageId, Profile, isMultiplayerEnabled, multiplayerData, ...rawInteractionData } = interactionData;
+  const { id, protagonists, participants, contexts, locations, audioTracks, interactionHistory, parentInteractionDataId, parentInteractionMessageId, Profile, ...rawInteractionData } = interactionData;
   const payload: RawInteractionData = {
     ...rawInteractionData, 
     protagonistIds: protagonists.map(p => p.id),
@@ -1175,8 +1192,6 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     parentInteractionDataId: parentInteractionDataId || null, 
     parentInteractionMessageId: parentInteractionMessageId || null,
     ProfileId: Profile?.id,
-    isMultiplayerEnabled: isMultiplayerEnabled ?? false,
-    multiplayerData,
     lastUpdatedTimestamp: Date.now(),
   };
   await putJson(`${PATHS.interactionData}/${id}.json`, payload);
@@ -1197,8 +1212,6 @@ export async function branchRawInteractionData(parentInteractionDataId: string, 
     locationIds: sourceChat.locations?.map(l => l.id) || [],
     audioTrackIds: sourceChat.audioTracks?.map(t => t.id) || [],
     interactionIdHistory: sourceChat.interactionHistory.slice(0, branchIndex + 1).map(m => m.id),
-    isMultiplayerEnabled: sourceChat.isMultiplayerEnabled ?? false,
-    multiplayerData: sourceChat.multiplayerData,
     firstCreatedTimestamp: Date.now(), 
     lastUpdatedTimestamp: Date.now(), 
     parentInteractionDataId, 

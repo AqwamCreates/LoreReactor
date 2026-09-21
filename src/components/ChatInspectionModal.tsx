@@ -481,7 +481,6 @@ export function ChatInspectionModal({
                             <span>💬 {chat.interactionHistory.length} message{chat.interactionHistory.length !== 1 ? 's' : ''}</span>
                             <span>🕐 Last active: {getRelativeTime(chat.lastUpdatedTimestamp)}</span>
                             {chat.Profile && <span>👤 Profile: {chat.Profile.name}</span>}
-                            {chat.isMultiplayerEnabled && <span>🌐 Multiplayer</span>}
                             {chat.parentInteractionDataId && (
                                 <button
                                     type="button"

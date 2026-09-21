@@ -458,7 +458,6 @@ export function createNewInteractionData(character: Character): InteractionData 
         lastUpdatedTimestamp: now,
         parentInteractionDataId: null,
         parentInteractionMessageId: null,
-        isMultiplayerEnabled: false,
     };
 }
 
@@ -596,7 +595,5 @@ export function branchInteractionMessage(interactionData: InteractionData, branc
         Profile: interactionData.Profile,
         parentInteractionDataId: interactionData.id,
         parentInteractionMessageId: branchPointMessageId,
-        isMultiplayerEnabled: interactionData.isMultiplayerEnabled,
-        multiplayerData: interactionData.multiplayerData,
     };
 }

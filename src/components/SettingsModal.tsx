@@ -25,7 +25,13 @@ const SETTINGS_ITEMS: SettingsItem[] = [
         id: 'participant-control',
         icon: '🎛️',
         label: 'Participant Control',
-        description: 'Force messages and override chat stamina for participants.',
+        description: 'Force messages and override staminas for participants.',
+    },
+    {
+        id: 'multiplayer-settings',
+        icon: '👥',
+        label: 'Multiplayer Settings',
+        description: 'Manage access control, account permissions, password, and protagonist assignments for this chat session.',
     },
     {
         id: 'ai-recommendation',
@@ -71,6 +77,7 @@ interface SettingsModalProps {
     onOpenBudgetControl: () => void;
     onOpenGpuMonitor: () => void;
     onOpenParticipantControl: () => void;
+    onOpenMultiplayerSettings: () => void;
     onOpenAIRecommendation: () => void;
     onOpenAlternateTimelines: () => void;
     onOpenImportCharacterCard: () => void;
@@ -85,6 +92,7 @@ export function SettingsModal({
     onOpenBudgetControl,
     onOpenGpuMonitor,
     onOpenParticipantControl,
+    onOpenMultiplayerSettings,
     onOpenAIRecommendation,
     onOpenAlternateTimelines,
     onOpenImportCharacterCard,
@@ -104,6 +112,9 @@ export function SettingsModal({
                 break;
             case 'participant-control':
                 onOpenParticipantControl();
+                break;
+            case 'multiplayer-settings':
+                onOpenMultiplayerSettings();
                 break;
             case 'ai-recommendation':
                 onOpenAIRecommendation();

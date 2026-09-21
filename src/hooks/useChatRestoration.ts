@@ -57,7 +57,6 @@ function createEmptyChat(): InteractionData {
         audioTracks: [],
         interactionHistory: [],
         numberOfMessages: 0,
-        isMultiplayerEnabled: false,
         firstCreatedTimestamp: Date.now(),
         lastUpdatedTimestamp: Date.now(),
         parentInteractionDataId: null,

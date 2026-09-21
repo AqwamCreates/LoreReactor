@@ -154,9 +154,10 @@ export const defaultNarrateTexts: Record<textType, boolean> = {
 export function createDefaultMultiplayerData(): MultiplayerData {
     const now = Date.now();
     return {
-        id: uuidv4(),
+        id: '',
         name: '',
         password: '',
+        interactionDataIds: [],
         whiteListedAccountIds: [],
         blacklistedAccountIds: [],
         pendingAccountIds: [],

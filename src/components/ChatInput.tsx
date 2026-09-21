@@ -19,7 +19,7 @@ interface ChatInputProps {
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     onFileSelected: (e: React.ChangeEvent<HTMLInputElement>) => void;
     onToggleMicrophone: () => void;
-    onSend: (protagonist: Character) => void;
+    onSend: () => void;
     onStopGeneration: () => void;
     onOpenModels: () => void;
 }
@@ -64,14 +64,14 @@ export function ChatInput({
                     ref={textareaRef}
                     value={inputText}
                     onChange={e => setInputText(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && localProtagonist) { e.preventDefault(); onSend(localProtagonist); } }}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && localProtagonist) { e.preventDefault(); onSend(); } }}
                     placeholder={isModelReady ? `Chat as ${localProtagonist?.name || 'User'}.` : isModelLoading ? 'Warming up... please wait' : 'Load a model to start chatting...'}
                     className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`}
                     disabled={isLoading || !isModelReady || !localProtagonist}
                 />
                 <button
                     type="button"
-                    onClick={isLoading ? onStopGeneration : () => { if (localProtagonist) onSend(localProtagonist); }}
+                    onClick={isLoading ? onStopGeneration : onSend}
                     disabled={!isLoading && (!inputText.trim() && !pendingFiles.length) || (!isLoading && !isModelReady) || (!isLoading && !localProtagonist)}
                     className={`send-button ${!isLoading && !isModelReady ? 'send-button-disabled' : ''}`}
                 >{isLoading ? '⏹' : !isModelReady ? '⏳' : '↑'}</button>
