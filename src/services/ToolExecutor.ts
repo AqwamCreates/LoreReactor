@@ -166,18 +166,18 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
         return helpResult('think', args, 'think <reasoning> — evaluate whether to speak, what to say, or stay silent based on conversation context');
     }
 
-    const character = nextMessage.character
+    const character = nextMessage.character;
     const characterId = character.id;
     const history = interactionData.interactionHistory;
 
-    const coLocatedParticipants = getCoLocatedParticipants(interactionData, character)
+    const coLocatedParticipants = getCoLocatedParticipants(interactionData, character);
     let wasAddressed = false;
-    const recentWindow = coLocatedParticipants.length
+    const recentWindow = coLocatedParticipants.length;
     for (let i = history.length - recentWindow; i < history.length; i++) {
         if (i < 0) continue;
         const msg = history[i];
         if (msg.messageType === 'chat' && msg.character.id !== characterId) {
-            const text = msg.textContent.toLowerCase();
+            const text = (msg as ChatMessage).textContent.toLowerCase();
             const charName = nextMessage.character.name.toLowerCase();
             if (text.includes(charName)) {
                 wasAddressed = true;
@@ -193,7 +193,7 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
     }
 
     const remainingChatStamina = nextMessage.remainingChatStamina;
-    const maximumChatStamina = character.maximumChatStamina
+    const maximumChatStamina = character.maximumChatStamina;
 
     const contextLines: string[] = [];
     contextLines.push(`You are ${nextMessage.character.name}.`);
@@ -815,7 +815,7 @@ function executeDialogue(args: string, nextMessage: BaseMessage, interactionData
 
         const textContentArray: string[] = [];
         for (const msg of interactionData.interactionHistory) {
-            if (msg.messageType === 'chat') textContentArray.push(msg.textContent);
+            if (msg.messageType === 'chat') textContentArray.push((msg as ChatMessage).textContent);
         }
         const searchSpace = buildDialogueSearchSpace(textContentArray);
         const recalledContents = collectActiveDialoguePromptContent(matched, searchSpace);
@@ -1461,7 +1461,8 @@ function executeInvite(args: string, nextMessage: BaseMessage, interactionData: 
     const allChars = context?.allCharacters || interactionData.participants || [];
     const targetChar = allChars.find(c => c.id === trimmed);
     if (!targetChar) return { toolType: 'invite', args, content: `[Error: Character ID "${trimmed}" not found.]`, displayReplacement: `[Error: Not found]` };
-    if (targetChar.id === interactionData.protagonist?.id) return { toolType: 'invite', args, content: '[Error: Cannot invite protagonist. Use summon.]', displayReplacement: `[Error: Cannot invite protagonist]` };
+    const isProtagonist = interactionData.protagonists?.some(p => p.id === targetChar.id) ?? false;
+    if (isProtagonist) return { toolType: 'invite', args, content: '[Error: Cannot invite protagonist. Use summon.]', displayReplacement: `[Error: Cannot invite protagonist]` };
     if (!interactionData.participants.some(p => p.id === targetChar.id)) return { toolType: 'invite', args, content: '[Error: Not a participant. Use summon.]', displayReplacement: `[Error: Not a participant]` };
     appendPendingAction(nextMessage, { type: 'invite', payload: { characterId: targetChar.id, characterName: targetChar.name } });
     return { toolType: 'invite', args, content: `Invited ${targetChar.name}.`, displayReplacement: `[📨 Invited ${targetChar.name}]` };
@@ -1752,7 +1753,8 @@ function executeDestroyer(args: string, nextMessage: BaseMessage, interactionDat
         case 'character': {
             const t = (context?.allCharacters || []).find(c => c.id === entityId);
             if (!t) return { toolType: 'destroyer', args, content: `[Error: Character ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` };
-            if (t.id === interactionData.protagonist?.id) return { toolType: 'destroyer', args, content: '[Error: Cannot destroy protagonist.]', displayReplacement: `[💀 Cannot destroy protagonist]` };
+            const isProtagonist = interactionData.protagonists?.some(p => p.id === t.id) ?? false;
+            if (isProtagonist) return { toolType: 'destroyer', args, content: '[Error: Cannot destroy protagonist.]', displayReplacement: `[💀 Cannot destroy protagonist]` };
             targetName = t.name;
             break;
         }
@@ -1836,10 +1838,11 @@ export function processPendingToolActions(
     allCharacters: Character[],
     options?: { onToast?: (msg: string, type: 'success' | 'error' | 'info') => void }
 ): InteractionData {
+    const protagonistIds = new Set(data.protagonists?.map(p => p.id) ?? []);
     let lastAiCharId: string | null = null;
     for (let i = data.interactionHistory.length - 1; i >= 0; i--) {
         const msg = data.interactionHistory[i];
-        if (msg.messageType === 'chat' && msg.character.id !== data.protagonist.id) { lastAiCharId = msg.character.id; break; }
+        if (msg.messageType === 'chat' && !protagonistIds.has(msg.character.id)) { lastAiCharId = msg.character.id; break; }
     }
     if (!lastAiCharId) return data;
 
