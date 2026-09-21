@@ -710,7 +710,7 @@ export function DataManagerModal({
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '800px' }}>
                 <div className="modal-header">
-                    <h2>🗄️ Data Manager</h2>
+                    <h2>Data Manager</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Close</button>
                     </div>
