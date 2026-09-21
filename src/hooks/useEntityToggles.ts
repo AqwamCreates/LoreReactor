@@ -4,6 +4,7 @@ import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy,
 import { saveRawInteractionData, loadRawContext, loadRawLocation, loadRawAudioTrack } from '../storage/serverStorage';
 import { assignInitialLocationsIfNeeded } from './locationLogic';
 import { useSessionStore } from './useSessionStore';
+import { v4 as uuidv4 } from 'uuid';
 
 const EXTENSION_STORAGE_KEY = 'loreReactor_activeExtensionIds';
 
@@ -155,24 +156,24 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             if (!updatedMultiplayerData) {
                 const now = Date.now();
                 updatedMultiplayerData = {
+                    id: uuidv4(),
+                    name: '',
                     password: '',
                     whiteListedAccountIds: [],
                     blacklistedAccountIds: [],
                     pendingAccountIds: [],
                     administratorAccountIds: [],
                     accountIdCharacterIds: {},
-                    accountIdDisplayNames: {},
-                    accountIdLastActiveTimestamps: {},
-                    accountIdJoinTimestamps: {},
                     lastUpdatedTimestamp: now,
+                    firstCreatedTimestamp: now,
                 };
             }
-            const existingIds = updatedMultiplayerData!.accountIdCharacterIds?.[currentAccountId] ?? [];
+            const existingIds = updatedMultiplayerData.accountIdCharacterIds?.[currentAccountId] ?? [];
             if (!existingIds.includes(charId)) {
                 updatedMultiplayerData = {
-                    ...updatedMultiplayerData!,
+                    ...updatedMultiplayerData,
                     accountIdCharacterIds: {
-                        ...(updatedMultiplayerData!.accountIdCharacterIds ?? {}),
+                        ...(updatedMultiplayerData.accountIdCharacterIds ?? {}),
                         [currentAccountId]: [...existingIds, charId],
                     },
                 };

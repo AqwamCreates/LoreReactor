@@ -17,7 +17,7 @@ interface ActionMenuProps {
     filteredActions: InterjectableAction[];
     isModelReady: boolean;
     allCharacters: Character[];
-    localProtagonist: Character;
+    localProtagonist: Character | null;
     onAddAction: (label: string) => void;
     onDeleteAction: (label: string) => void;
     onActionInterject: (label: string, targetChar: Character, protagonist: Character) => void;
@@ -36,9 +36,10 @@ export function ActionMenu({
     if (!actionMenuTarget || !interactionDataExists) return null;
 
     const handleInterject = (label: string) => {
+        if (!localProtagonist) return;
         const tc = allCharacters.find(c => c.id === actionMenuTarget.charId);
         if (tc) onActionInterject(label, tc, localProtagonist);
-    };
+    };;
 
     return (
         <div

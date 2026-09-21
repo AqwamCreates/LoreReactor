@@ -5,7 +5,7 @@ import type { DisplayNameCache } from '../../hooks/immersionLogic';
 
 export interface ViewModeProps {
     interactionData: InteractionData;
-    localProtagonist: Character;
+    localProtagonist: Character | null;
     displayMessages: ChatMessage[];
     currentCharacterId: string | undefined;
     editingId: string | null;
