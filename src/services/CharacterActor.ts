@@ -55,7 +55,6 @@ export interface TurnExecutionParams {
     strategyOverride?: BudgetStrategy | null;
     existingCharacterText?: string;
     allPromptBlocks: PromptBlock[];
-    frontCameraImageBase64?: string;
     callbacks?: TurnStreamCallbacks;
 }
 
@@ -106,14 +105,6 @@ async function processToolInvocations(
     return { resumeText, displayText, displayReplacements };
 }
 
-function getProtagonistFileBase64s(data: InteractionData): string[] | undefined {
-    const lastUserMsg = [...data.interactionHistory].reverse().find(
-        (m): m is import('../types').ChatMessage => m.character.id === data.protagonist.id && m.messageType === 'chat'
-    );
-    if (lastUserMsg?.files?.length) return lastUserMsg.files;
-    return undefined;
-}
-
 function classifyError(error: unknown, signal: AbortSignal): TurnError {
     if (signal.aborted) {
         return { message: 'Aborted', type: 'aborted' };
@@ -147,9 +138,7 @@ export class CharacterActor {
 
         const strat = strategyOverride ?? activeStrategy;
         const pricing: ModelPricing = { cacheHitPerMillion: 0, cacheMissPerMillion: 0, outputPerMillion: 0 };
-
-        const protagonistFileBase64s = getProtagonistFileBase64s(data);
-
+        
         const statsDelta: TurnStats = {
             numberOfRequests: 0,
             numberOfCacheInvalidations: 0,
@@ -179,7 +168,7 @@ export class CharacterActor {
                 : (selectedModel?.id || '');
             if (probeModelId) {
                 try {
-                    const probeResult = await prepareRequestBody(data, character, '', allPromptBlocks, probeModelId, protagonistFileBase64s, params.frontCameraImageBase64);
+                    const probeResult = await prepareRequestBody(data, character, '', allPromptBlocks, probeModelId);
                     resolvedClothingStatuses = probeResult.characterClothingWearingStatuses;
                 } catch { /* non-critical, keep initializeClothingWearingStatuses fallback */ }
             }
@@ -261,7 +250,7 @@ export class CharacterActor {
                     const selection = await bse.selectModelForRequest({ prompt: '' });
                     const activeModelId = selection?.modelId || '';
 
-                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, activeModelId, protagonistFileBase64s, params.frontCameraImageBase64);
+                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, activeModelId);
 
                     const cb = callbacks ? createStreamCallbacks(streamToolParser, accumulator) : undefined;
                     const streamResult = await bse.generateStream(body, { signal } as AbortController, cb);
@@ -339,11 +328,11 @@ export class CharacterActor {
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
-                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s, params.frontCameraImageBase64);
+                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId);
                     rawText = await doStream(body);
 
                     if ((!rawText || !rawText.trim()) && !signal.aborted) {
-                        const { body: rb } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId, protagonistFileBase64s, params.frontCameraImageBase64);
+                        const { body: rb } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId);
                         rawText = await doStream(rb);
                         if (!rawText || !rawText.trim()) {
                             return { error: { message: 'Empty response from model', type: 'inference' } };

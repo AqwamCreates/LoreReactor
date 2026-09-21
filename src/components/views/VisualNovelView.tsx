@@ -1,7 +1,7 @@
 // src/components/views/VisualNovelView.tsx
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import type { ViewModeProps } from './types';
-import type { ChatMessage } from '../../types';
+import type { Character, ChatMessage } from '../../types';
 import { MemoizedMessageText } from '../MemoizedMessageText';
 import { useVisualNovelSpriteStates } from '../../hooks/useVisualNovelSpriteStates';
 import type { FormatCategory } from '../../utilities/textReformatter';
@@ -141,7 +141,7 @@ function buildCategoryConversions(segments: DetectedSegment[]): CategoryConversi
 // =============================================================================
 export const VisualNovelView = React.memo(function VisualNovelView(props: ViewModeProps) {
     const {
-        interactionData, displayMessages,
+        interactionData, localProtagonist, displayMessages,
         portraitUrlCache, locationBackgroundUrl,
         formattedStreamingText, isLoading, streamingCharacter,
         centerAvatar,
@@ -159,7 +159,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         setFocusedMessageId,
     } = props;
 
-    const protagonistId = interactionData.protagonist?.id;
+    const protagonistId = localProtagonist?.id;
 
     // --- Reformat State ---
     const [conversions, setConversions] = useState<CategoryConversion[]>([]);
@@ -279,11 +279,11 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         protagonistId,
     });
 
-    const handleRegenerateFromMessageWithRollback = useCallback((id: string, type: 'ai' | 'user') => {
+    const handleRegenerateFromMessageWithRollback = useCallback((id: string, protagonists: Character[]) => {
         const msgIndex = chatMessages.findIndex(m => m.id === id);
         if (msgIndex !== -1) rollbackToMessage(msgIndex);
         setFocusedMessageId(null);
-        onRegenerateFromMessage(id, type);
+        onRegenerateFromMessage(id, protagonists);
     }, [chatMessages, rollbackToMessage, onRegenerateFromMessage, setFocusedMessageId]);
 
     const handleBranchWithRollback = useCallback((id: string) => {
@@ -505,7 +505,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                         {displayedMessage.isPartial ? (
                                             <button type="button" className="vn-toolbar-btn" onClick={() => onResumeGeneration(displayedMessage.id)} title="Resume Generation">▶</button>
                                         ) : (
-                                            <button type="button" className="vn-toolbar-btn" onClick={() => handleRegenerateFromMessageWithRollback(displayedMessage.id, displayedMessage.character.id === protagonistId ? 'user' : 'ai')} title="Regenerate">↻</button>
+                                            <button type="button" className="vn-toolbar-btn" onClick={() => handleRegenerateFromMessageWithRollback(displayedMessage.id, interactionData.protagonists)} title="Regenerate">↻</button>
                                         )}
                                         <button type="button" className="vn-toolbar-btn" onClick={() => onStartEditing(displayedMessage.id, displayedMessage.textContent)} title="Edit Message">✎</button>
                                         <button type="button" className="vn-toolbar-btn" onClick={() => handleBranchWithRollback(displayedMessage.id)} title="Branch Timeline">🌿</button>

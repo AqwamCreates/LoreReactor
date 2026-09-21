@@ -345,6 +345,7 @@ export interface ChatMessage extends BaseMessage {
   messageType: 'chat';
   textContent: string;
   files?: string[];
+  frontCameraImage?: string;
   isPartial?: boolean;
   modelTextContentSummaries: Record<string, string>;
   modelInteractionTextContentSummaries: Record<string, string>;
@@ -376,6 +377,7 @@ export interface RawChatMessage extends RawBaseMessage {
   messageType: 'chat';
   textContent: string;
   files?: string[];
+  frontCameraImage?: string;
   isPartial?: boolean;
   modelTextContentSummaries: Record<string, string>;
   modelInteractionTextContentSummaries: Record<string, string>;
@@ -400,11 +402,13 @@ export interface MultiplayerData extends ObjectData {
   whiteListedAccountIds: string[] // Hoster automatically accepts this user to join.
   blacklistedAccountIds: string[] // Hoster automatically blocks this user from joining.
   pendingAccountIds: string[] // Received the join request, and is waiting for the hoster's decision.
+  administratorAccountIds: string[]
+  accountIdCharacterIds: Record<string, string[]> // Each account id can map to several character Ids.
 
 }
 
 export interface InteractionData extends ObjectData {
-  protagonist: Character;
+  protagonists: Character[];
   participants: Character[];
   contexts: Context[];
   locations: Location[];
@@ -414,12 +418,12 @@ export interface InteractionData extends ObjectData {
   parentInteractionDataId?: string | null;
   parentInteractionMessageId?: string | null;
   Profile?: Profile;
-  isLocalMultiplayerEnabled: boolean;
+  isMultiplayerEnabled: boolean;
   multiplayerData?: MultiplayerData
 }
 
 export interface RawInteractionData extends RawData {
-  protagonistId: string;
+  protagonistIds: string[];
   participantIds: string[];
   contextIds: string[];
   locationIds: string[];
@@ -428,7 +432,7 @@ export interface RawInteractionData extends RawData {
   parentInteractionDataId?: string | null;
   parentInteractionMessageId?: string | null;
   ProfileId?: string;
-  isLocalMultiplayerEnabled: boolean;
+  isMultiplayerEnabled: boolean;
   multiplayerData?: MultiplayerData
 }
 

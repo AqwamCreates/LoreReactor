@@ -9,6 +9,7 @@ interface UseViewAssetsOptions {
     viewMode: 'ladder' | 'cinematic' | 'vn';
     interactionData: InteractionData | null;
     currentCharacter: Character | null;
+    localProtagonist: Character | null;
     streamingCharacter: Character | null;
     currentCharacterExpression: string;
     chatHistoryRef: React.RefObject<HTMLDivElement | null>;
@@ -21,7 +22,7 @@ function resolvePortrait(characterId: string, images: Record<string, string> | u
     return getCharacterImageUrl(characterId, filename);
 }
 
-function resolveLocationBackgroundUrl(interactionData: InteractionData): string | null {
+function resolveLocationBackgroundUrl(interactionData: InteractionData, localProtagonist: Character): string | null {
     const locations = interactionData.locations;
     if (!locations || locations.length === 0) return null;
     let currentLocIndex: number | undefined;
@@ -36,7 +37,7 @@ function resolveLocationBackgroundUrl(interactionData: InteractionData): string 
     if (currentLocIndex === undefined) return null;
     const loc = locations[currentLocIndex];
     if (!loc?.images || loc.images.length === 0) return null;
-    const protagonistId = interactionData.protagonist?.id;
+    const protagonistId = localProtagonist.id;
     let lastUserText = '';
     if (protagonistId) {
         for (let i = history.length - 1; i >= 0; i--) {
@@ -88,7 +89,7 @@ function resolveLocationBackgroundUrl(interactionData: InteractionData): string 
 
 export function useViewAssets(options: UseViewAssetsOptions) {
     const {
-        viewMode, interactionData, currentCharacter,
+        viewMode, interactionData, currentCharacter, localProtagonist,
         streamingCharacter, currentCharacterExpression, chatHistoryRef,
     } = options;
 
@@ -144,7 +145,9 @@ export function useViewAssets(options: UseViewAssetsOptions) {
         return portraitUrlCache.get(`character:${streamingCharacter.id}`) || null;
     }, [streamingCharacter, portraitUrlCache]);
 
-    const locationBackgroundUrl = interactionData ? resolveLocationBackgroundUrl(interactionData) : null;
+    const locationBackgroundUrl = interactionData && localProtagonist
+        ? resolveLocationBackgroundUrl(interactionData, localProtagonist)
+        : null;
 
     // Center avatar selection — only active in cinematic mode
     useEffect(() => {
@@ -159,7 +162,7 @@ export function useViewAssets(options: UseViewAssetsOptions) {
             const elements = chatHistoryElement.querySelectorAll('[data-message-id]');
 
             let bestId: string | null = null;
-            let bestOverlap = -Infinity;
+            let bestOverlap = Number.NEGATIVE_INFINITY;
 
             for (const el of elements) {
                 const rect = el.getBoundingClientRect();

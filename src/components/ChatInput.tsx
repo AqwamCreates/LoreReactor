@@ -1,6 +1,6 @@
 // src/components/ChatInput.tsx
 import type React from 'react';
-import type { BudgetStrategy } from '../types';
+import type { BudgetStrategy, Character } from '../types';
 
 interface ChatInputProps {
     inputText: string;
@@ -12,14 +12,14 @@ interface ChatInputProps {
     isModelReady: boolean;
     isModelLoading: boolean;
     modelStatusMessage: string;
-    currentCharacterName: string | undefined;
+    localProtagonist: Character | null;
     activeStrategy?: BudgetStrategy;
     selectedModelId: string | null;
     fileInputRef: React.RefObject<HTMLInputElement | null>;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     onFileSelected: (e: React.ChangeEvent<HTMLInputElement>) => void;
     onToggleMicrophone: () => void;
-    onSend: () => void;
+    onSend: (protagonist: Character) => void;
     onStopGeneration: () => void;
     onOpenModels: () => void;
 }
@@ -27,7 +27,7 @@ interface ChatInputProps {
 export function ChatInput({
     inputText, setInputText, pendingFiles, setPendingFiles,
     isRecording, isLoading, isModelReady, isModelLoading, modelStatusMessage,
-    currentCharacterName, activeStrategy, selectedModelId,
+    localProtagonist, activeStrategy, selectedModelId,
     fileInputRef, textareaRef,
     onFileSelected, onToggleMicrophone, onSend, onStopGeneration, onOpenModels,
 }: ChatInputProps) {
@@ -64,15 +64,15 @@ export function ChatInput({
                     ref={textareaRef}
                     value={inputText}
                     onChange={e => setInputText(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
-                    placeholder={isModelReady ? `Chat as ${currentCharacterName || 'User'}.` : isModelLoading ? 'Warming up... please wait' : 'Load a model to start chatting...'}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && localProtagonist) { e.preventDefault(); onSend(localProtagonist); } }}
+                    placeholder={isModelReady ? `Chat as ${localProtagonist?.name || 'User'}.` : isModelLoading ? 'Warming up... please wait' : 'Load a model to start chatting...'}
                     className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`}
-                    disabled={isLoading || !isModelReady}
+                    disabled={isLoading || !isModelReady || !localProtagonist}
                 />
                 <button
                     type="button"
-                    onClick={isLoading ? onStopGeneration : onSend}
-                    disabled={!isLoading && (!inputText.trim() && !pendingFiles.length) || (!isLoading && !isModelReady)}
+                    onClick={isLoading ? onStopGeneration : () => { if (localProtagonist) onSend(localProtagonist); }}
+                    disabled={!isLoading && (!inputText.trim() && !pendingFiles.length) || (!isLoading && !isModelReady) || (!isLoading && !localProtagonist)}
                     className={`send-button ${!isLoading && !isModelReady ? 'send-button-disabled' : ''}`}
                 >{isLoading ? '⏹' : !isModelReady ? '⏳' : '↑'}</button>
             </div>

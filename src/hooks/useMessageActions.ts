@@ -5,19 +5,19 @@ import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneCha
 
 interface UseMessageActionsOptions {
     interactionData: InteractionData | null;
-    currentCharacter: Character | null;
+    localProtagonist: Character | null;
     isModelReady: boolean;
     isLoading: boolean;
     setInteractionData: (data: InteractionData) => void;
     setCurrentCharacter: (char: Character | null) => void;
     refreshChatList: () => void;
-    regenerateFromMessage: (id: string, type: 'ai' | 'user') => Promise<void>;
+    regenerateFromMessage: (id: string, protagonists: Character[]) => Promise<void>;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
 export function useMessageActions(options: UseMessageActionsOptions) {
     const {
-        interactionData, currentCharacter, isModelReady, isLoading,
+        interactionData, localProtagonist, isModelReady, isLoading,
         setInteractionData, setCurrentCharacter, refreshChatList,
         regenerateFromMessage, addToast,
     } = options;
@@ -30,12 +30,12 @@ export function useMessageActions(options: UseMessageActionsOptions) {
     // Trigger regeneration AFTER edit state has committed
     useEffect(() => {
         if (pendingRegenRef.current && interactionData) {
-            const { id, type } = pendingRegenRef.current;
+            const { id } = pendingRegenRef.current;
             pendingRegenRef.current = null;
 
             const msg = interactionData.interactionHistory.find(m => m.id === id);
             if (msg) {
-                regenerateFromMessage(id, type);
+                regenerateFromMessage(id, interactionData.protagonists ?? []);
             }
         }
     }, [interactionData, regenerateFromMessage]);
@@ -59,7 +59,8 @@ export function useMessageActions(options: UseMessageActionsOptions) {
             const updatedData = await editMessage(interactionData, editingId, editDraft);
 
             const editedMsg = updatedData.interactionHistory.find(m => m.id === editingId);
-            const isUserMsg = editedMsg && 'character' in editedMsg && editedMsg.character?.id === currentCharacter?.id;
+            const protagonistIds = new Set(interactionData.protagonists?.map(p => p.id) ?? []);
+            const isUserMsg = editedMsg && 'character' in editedMsg && protagonistIds.has(editedMsg.character?.id);
 
             pendingRegenRef.current = { id: editingId, type: isUserMsg ? 'user' : 'ai' };
 
@@ -69,7 +70,7 @@ export function useMessageActions(options: UseMessageActionsOptions) {
         } catch (e) {
             addToast((e as Error).message, 'error');
         }
-    }, [interactionData, editingId, editDraft, currentCharacter, isModelReady, isLoading, setInteractionData, addToast]);
+    }, [interactionData, editingId, editDraft, isModelReady, isLoading, setInteractionData, addToast]);
 
     const handleDelete = useCallback(async (id: string) => {
         if (!interactionData) return;
@@ -99,26 +100,26 @@ export function useMessageActions(options: UseMessageActionsOptions) {
         try {
             const b = await branchMessage(interactionData, id);
             setInteractionData(b);
-            if (b.protagonist) setCurrentCharacter(b.protagonist);
+            if (localProtagonist) setCurrentCharacter(localProtagonist);
             refreshChatList();
             addToast(`Branched to "${b.name}"`, 'success');
         } catch {
             addToast('Failed to branch chat.', 'error');
         }
-    }, [interactionData, setInteractionData, setCurrentCharacter, refreshChatList, addToast]);
+    }, [interactionData, localProtagonist, setInteractionData, setCurrentCharacter, refreshChatList, addToast]);
 
     const handleClone = useCallback(async (id: string) => {
         if (!interactionData) return;
         try {
             const c = await cloneChatUpToMessage(interactionData, id);
             setInteractionData(c);
-            if (c.protagonist) setCurrentCharacter(c.protagonist);
+            if (localProtagonist) setCurrentCharacter(localProtagonist);
             refreshChatList();
             addToast(`Cloned to "${c.name}"`, 'success');
         } catch {
             addToast('Failed to clone chat.', 'error');
         }
-    }, [interactionData, setInteractionData, setCurrentCharacter, refreshChatList, addToast]);
+    }, [interactionData, localProtagonist, setInteractionData, setCurrentCharacter, refreshChatList, addToast]);
 
     const handleCopyText = useCallback(async (text: string) => {
         try {

@@ -5,7 +5,7 @@ import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
 import { contextStartString, contextEndString, turnStartString, turnEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString, generalStartString, generalEndString } from '../dictionaries/stringList';
 import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
-import { getCurrentLocation } from './locationLogic';
+import { getCurrentLocation, getCoLocatedProtagonists } from './locationLogic';
 import { defaultInputStrategy } from '../dictionaries/defaults';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { generateLocationVisitSummary } from '../services/ChatMessageSummarizationEngine';
@@ -84,11 +84,64 @@ function selectModelSummary(msg: ChatMessage, modelId: string): string {
     return msg.textContent;
 }
 
-export function replacePlaceholders(text: string, characterParticipantTag: string, characterName: string, protagonistParticipantTag: string, protagonistName: string | null): string {
+/**
+ * Build the display string for co-located protagonists used in {{user}} replacement.
+ * Single: "Character 1 (Alice)"
+ * Multiple: "Character 1 (Alice) and Character 2 (Bob)"
+ * None: "Character N" (tag only, no name)
+ */
+function buildProtagonistDisplayString(
+    coLocatedProtagonists: Character[],
+    participants: Character[],
+    revealIndexByCharacterId: Map<string, number>,
+): string {
+    if (coLocatedProtagonists.length === 0) return '';
+    const parts = coLocatedProtagonists.map(p => {
+        const tag = getParticipantTag(p, participants);
+        const isRevealed = revealIndexByCharacterId.has(p.id);
+        return isRevealed ? `${tag} (${p.name})` : tag;
+    });
+    return parts.join(' and ');
+}
+
+/**
+ * Build possessive form for co-located protagonists.
+ * Single revealed: "Alice's"
+ * Multiple revealed: "Alice's and Bob's"
+ * Unrevealed: "Character 1's"
+ */
+function buildProtagonistPossessiveString(
+    coLocatedProtagonists: Character[],
+    participants: Character[],
+    revealIndexByCharacterId: Map<string, number>,
+): string {
+    if (coLocatedProtagonists.length === 0) return '';
+    const parts = coLocatedProtagonists.map(p => {
+        const tag = getParticipantTag(p, participants);
+        const isRevealed = revealIndexByCharacterId.has(p.id);
+        const name = isRevealed ? p.name : tag;
+        return `${name}'s`;
+    });
+    return parts.join(' and ');
+}
+
+export function replacePlaceholders(
+    text: string,
+    characterParticipantTag: string,
+    characterName: string,
+    coLocatedProtagonists: Character[],
+    participants: Character[],
+    revealIndexByCharacterId: Map<string, number>,
+): string {
     if (!text) return text;
-    const protagonistString = protagonistName ? `${protagonistParticipantTag} (${protagonistName})` : `${protagonistParticipantTag}`;
+
+    const protagonistString = buildProtagonistDisplayString(coLocatedProtagonists, participants, revealIndexByCharacterId);
+    const protagonistPossessive = buildProtagonistPossessiveString(coLocatedProtagonists, participants, revealIndexByCharacterId);
+
     let result = text;
     result = result.replace(/\{\{char\}\}/g, `${characterParticipantTag} (${characterName})`);
+    // Handle possessive first ({{user}}'s) before plain {{user}}
+    result = result.replace(/\{\{user\}\}'s/g, protagonistPossessive);
     result = result.replace(/\{\{user\}\}/g, protagonistString);
     return result;
 }
@@ -161,32 +214,48 @@ function filterArrayBasedOnTarget(
     textContentArray: string[],
     currentCharacterId: string,
     targetType: regularExpressionTarget,
-    protagonistId: string,
+    protagonistIds: string[],
 ): { characterIdArray: string[]; textContentArray: string[] } {
     const length = characterIdArray.length;
     if (length === 0) return { characterIdArray: [], textContentArray: [] };
     if (targetType === "everyone") return { characterIdArray, textContentArray };
 
-    let targetCharacterId: string | undefined = undefined;
-    if (targetType === "self") targetCharacterId = currentCharacterId;
-    else if (targetType === "listener") {
-        for (let i = length - 1; i >= 0; i--) {
-            if (characterIdArray[i] !== currentCharacterId) { targetCharacterId = characterIdArray[i]; break; }
-        }
-    }
-    else if (targetType === "protagonist") targetCharacterId = protagonistId;
-    else if (targetType === "narrator") targetCharacterId = '__ambient_narrator__';
-
-    if (!targetCharacterId) return { characterIdArray: [], textContentArray: [] };
+    const protagonistIdSet = new Set(protagonistIds);
 
     const extractedCharacterIdArray: string[] = [];
     const extractedTextContentArray: string[] = [];
-    for (let i = 0; i < length; i++) {
-        if (characterIdArray[i] === targetCharacterId) {
-            extractedCharacterIdArray.push(characterIdArray[i]);
-            extractedTextContentArray.push(textContentArray[i]);
+
+    if (targetType === "self") {
+        for (let i = 0; i < length; i++) {
+            if (characterIdArray[i] === currentCharacterId) {
+                extractedCharacterIdArray.push(characterIdArray[i]);
+                extractedTextContentArray.push(textContentArray[i]);
+            }
+        }
+    } else if (targetType === "listener") {
+        for (let i = length - 1; i >= 0; i--) {
+            if (characterIdArray[i] !== currentCharacterId) {
+                extractedCharacterIdArray.push(characterIdArray[i]);
+                extractedTextContentArray.push(textContentArray[i]);
+                break;
+            }
+        }
+    } else if (targetType === "protagonist") {
+        for (let i = 0; i < length; i++) {
+            if (protagonistIdSet.has(characterIdArray[i])) {
+                extractedCharacterIdArray.push(characterIdArray[i]);
+                extractedTextContentArray.push(textContentArray[i]);
+            }
+        }
+    } else if (targetType === "narrator") {
+        for (let i = 0; i < length; i++) {
+            if (characterIdArray[i] === '__ambient_narrator__') {
+                extractedCharacterIdArray.push(characterIdArray[i]);
+                extractedTextContentArray.push(textContentArray[i]);
+            }
         }
     }
+
     return { characterIdArray: extractedCharacterIdArray, textContentArray: extractedTextContentArray };
 }
 
@@ -226,17 +295,19 @@ function getFilteredDataCached(
     characterIdArray: string[],
     textContentArray: string[],
     characterId: string,
-    protagonistId: string,
+    protagonistIds: string[],
     ctxType: regularExpressionContext,
     tgtType: regularExpressionTarget,
 ): { characterIdArray: string[]; textContentArray: string[] } {
+    const cacheKey = protagonistIds.join(',');
     if (!cache[ctxType]) cache[ctxType] = {};
-    if (!cache[ctxType][tgtType]) {
+    const subCache = cache[ctxType];
+    if (!subCache[`${tgtType}:${cacheKey}`]) {
         const step1 = filterArrayBasedOnContext(characterIdArray, textContentArray, characterId, ctxType);
-        const step2 = filterArrayBasedOnTarget(step1.characterIdArray, step1.textContentArray, characterId, tgtType, protagonistId);
-        cache[ctxType][tgtType] = step2;
+        const step2 = filterArrayBasedOnTarget(step1.characterIdArray, step1.textContentArray, characterId, tgtType, protagonistIds);
+        subCache[`${tgtType}:${cacheKey}`] = step2;
     }
-    return cache[ctxType][tgtType];
+    return subCache[`${tgtType}:${cacheKey}`];
 }
 
 function doesAnyTriggerMatchCached(
@@ -244,7 +315,7 @@ function doesAnyTriggerMatchCached(
     characterIdArray: string[],
     textContentArray: string[],
     currentCharacterId: string,
-    protagonistId: string,
+    protagonistIds: string[],
     fallbackSearchSpace: string,
     combinationCache: CombinationCache,
     sensitivityMultiplier?: number,
@@ -254,7 +325,7 @@ function doesAnyTriggerMatchCached(
         if (!trigger.trigger.trim()) continue;
         const { textContentArray: filteredTexts } = getFilteredDataCached(
             combinationCache, characterIdArray, textContentArray,
-            currentCharacterId, protagonistId,
+            currentCharacterId, protagonistIds,
             trigger.context || 'global', trigger.target || 'everyone'
         );
         const searchSpace = filteredTexts.length > 0
@@ -275,7 +346,7 @@ function isEntityActiveWithCache(
     characterIdArray: string[],
     textContentArray: string[],
     currentCharacterId: string,
-    protagonistId: string,
+    protagonistIds: string[],
     fallbackSearchSpace: string,
     combinationCache: CombinationCache,
     sensitivityMultiplier?: number,
@@ -284,7 +355,7 @@ function isEntityActiveWithCache(
 
     if (!doesAnyTriggerMatchCached(
         activationTriggers, characterIdArray, textContentArray,
-        currentCharacterId, protagonistId, fallbackSearchSpace,
+        currentCharacterId, protagonistIds, fallbackSearchSpace,
         combinationCache, sensitivityMultiplier
     )) {
         return false;
@@ -292,7 +363,7 @@ function isEntityActiveWithCache(
 
     if (doesAnyTriggerMatchCached(
         deactivationTriggers, characterIdArray, textContentArray,
-        currentCharacterId, protagonistId, fallbackSearchSpace,
+        currentCharacterId, protagonistIds, fallbackSearchSpace,
         combinationCache
     )) {
         return false;
@@ -300,12 +371,12 @@ function isEntityActiveWithCache(
 
     if (doesAnyTriggerMatchCached(
         exclusionActivationTriggers, characterIdArray, textContentArray,
-        currentCharacterId, protagonistId, fallbackSearchSpace,
+        currentCharacterId, protagonistIds, fallbackSearchSpace,
         combinationCache
     )) {
         if (!doesAnyTriggerMatchCached(
             exclusionDeactivationTriggers, characterIdArray, textContentArray,
-            currentCharacterId, protagonistId, fallbackSearchSpace,
+            currentCharacterId, protagonistIds, fallbackSearchSpace,
             combinationCache
         )) {
             return false;
@@ -384,7 +455,7 @@ async function resolveContextEntries(
     contexts: Context[],
     chatSearchSpace: string,
     currentCharacterId: string,
-    protagonistId: string,
+    protagonistIds: string[],
     characterIdArray: string[],
     textContentArray: string[],
     combinationCache: CombinationCache,
@@ -405,7 +476,7 @@ async function resolveContextEntries(
             context.regularExpressionExclusionActivationTriggers,
             context.regularExpressionExclusionDeactivationTriggers,
             characterIdArray, textContentArray,
-            currentCharacterId, protagonistId,
+            currentCharacterId, protagonistIds,
             chatSearchSpace, combinationCache,
             sensitivityForCharacter,
         )) {
@@ -450,7 +521,7 @@ async function resolveContextEntries(
                 context.regularExpressionExclusionActivationTriggers,
                 context.regularExpressionExclusionDeactivationTriggers,
                 characterIdArray, textContentArray,
-                currentCharacterId, protagonistId,
+                currentCharacterId, protagonistIds,
                 activatedText, combinationCache,
                 sensitivityForCharacter,
             )) {
@@ -552,11 +623,12 @@ export function detectUnsummarizedLocationDepartures(
     modelId: string,
 ): LocationVisitSegment[] {
     const history = interactionData.interactionHistory;
-    const protagonistId = interactionData.protagonist.id;
     const locs = interactionData.locations;
     if (!locs || locs.length === 0) return [];
 
-    if (characterId === protagonistId) return [];
+    // Skip if this character is any protagonist
+    const protagonistIds = new Set(interactionData.protagonists?.map(p => p.id) ?? []);
+    if (protagonistIds.has(characterId)) return [];
 
     let currentLocationIndex: number | undefined;
     for (let i = history.length - 1; i >= 0; i--) {
@@ -613,29 +685,27 @@ export function detectUnsummarizedLocationDepartures(
 
 export function createChatHistoryPrompt(
     interactionData: InteractionData, 
-    character: Character, 
+    character: Character,
     revealIndexByCharacterId: Map<string, number>,
     modelId: string,
     allPromptBlocks: PromptBlock[] = [],
 ): { chatHistoryPrompt: string; hasBeenSummarized: boolean } {
     const interactionHistory = interactionData.interactionHistory;
     const participants = interactionData.participants;
-    const protagonist = interactionData.protagonist;
     const profile = interactionData.Profile;
     const contexts = interactionData.contexts || [];
     const locations = interactionData.locations || [];
+
+    // Derive co-located protagonists internally
+    const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
+    const protagonistIds = new Set(coLocatedProtagonists.map(p => p.id));
     
     const chatMessagesOnly = interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
 
     if (chatMessagesOnly.length === 0) return { chatHistoryPrompt: '', hasBeenSummarized: false };
 
     const characterParticipantTag = getParticipantTag(character, participants);
-    const protagonistParticipantTag = getParticipantTag(protagonist, participants);
-    const protagonistName = protagonist.name;
     
-    const protagonistEverRevealed = revealIndexByCharacterId.has(protagonist.id);
-    const contextProtagonistName = protagonistEverRevealed ? protagonistName : null;
-
     const filterFlags = getMessageFilterFlags(chatMessagesOnly, contexts, locations, allPromptBlocks, character.id);
     const filteredMessages = chatMessagesOnly.filter((_, i) => !filterFlags[i]);
 
@@ -732,7 +802,7 @@ export function createChatHistoryPrompt(
     if (hasLocationData) {
         const seenSummaries = new Set<string>();
         for (const msg of chatMessagesOnly) {
-            if (msg.character.id === protagonist.id) continue;
+            if (protagonistIds.has(msg.character.id)) continue;
             if (msg.character.id === character.id) continue;
             const summary = msg.modelInteractionTextContentSummaries?.[modelId];
             if (!summary) continue;
@@ -751,7 +821,7 @@ export function createChatHistoryPrompt(
     }
 
     const outputMessages = processedMessages.filter((p) => {
-        if (p.msg.character.id === protagonist.id) return true;
+        if (protagonistIds.has(p.msg.character.id)) return true;
         if (p.msg.character.id === character.id) return true;
         if (recentInteractors.has(p.msg.character.id)) return true;
         if (hasLocationData) {
@@ -795,8 +865,9 @@ export function createChatHistoryPrompt(
             p.text, 
             characterParticipantTag, 
             character.name, 
-            protagonistParticipantTag, 
-            contextProtagonistName
+            coLocatedProtagonists,
+            participants,
+            revealIndexByCharacterId,
         );
 
         chatHistoryText = `${chatHistoryText}: ${replacedText}${turnEndString}`;
@@ -823,7 +894,9 @@ function resolveClothingWearingStatus(
     const clothings = character.clothings;
     if (!clothings || clothings.length === 0) return {};
 
-    const protagonistId = interactionData.protagonist.id;
+    // Derive co-located protagonist IDs internally
+    const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
+    const protagonistIds = coLocatedProtagonists.map(p => p.id);
     const characterId = character.id;
 
     const prevMsg = findPreviousMessage(interactionData, characterId);
@@ -843,7 +916,7 @@ function resolveClothingWearingStatus(
             const activated = doesAnyTriggerMatchCached(
                 clothing.regularExpressionActivationTriggers,
                 characterIdArray, textContentArray,
-                characterId, protagonistId,
+                characterId, protagonistIds,
                 '', combinationCache,
             );
             if (activated) status[clothing.id] = true;
@@ -853,7 +926,7 @@ function resolveClothingWearingStatus(
             const deactivated = doesAnyTriggerMatchCached(
                 clothing.regularExpressionDeactivationTriggers,
                 characterIdArray, textContentArray,
-                characterId, protagonistId,
+                characterId, protagonistIds,
                 '', combinationCache,
             );
             if (deactivated) status[clothing.id] = false;
@@ -926,13 +999,14 @@ export async function buildPrompt(
 
     const participants = interactionData.participants;
 
+    // Derive co-located protagonists internally
+    const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
+    const protagonistIds = coLocatedProtagonists.map(p => p.id);
+
     const characterId = character.id;
     const characterParticipantId = getParticipantId(character, participants);
     const characterParticipantTag = getParticipantTag(character, participants);
     const characterName = character.name;
-    const protagonist = interactionData.protagonist;
-    const protagonistParticipantTag = getParticipantTag(protagonist, participants);
-    const protagonistName = protagonist.name;
     let systemPrompt = character.systemPrompt;
     let thinkPrompt = character.thinkPrompt;
 
@@ -1007,7 +1081,7 @@ export async function buildPrompt(
             const otherCharacterName = participant.name;
             const isRevealed = revealIndexByCharacterId.has(participant.id);
             const participantTag = getParticipantTag(participant, participants);
-            const finalAppearancePrompt = replacePlaceholders(appearancePrompt, participantTag, participant.name, protagonistParticipantTag, protagonistName);
+            const finalAppearancePrompt = replacePlaceholders(appearancePrompt, participantTag, participant.name, coLocatedProtagonists, participants, revealIndexByCharacterId);
 
             let appearanceText = `${contextStartString}Character ${otherParticipantId + 1}`;
 
@@ -1079,16 +1153,13 @@ export async function buildPrompt(
         contexts,
         textContentArray.join('\n'),
         characterId,
-        protagonist.id,
+        protagonistIds,
         characterIdArray,
         textContentArray,
         combinationCache,
         fetchedContentMap,
         effectiveContextSensitivity
     );
-
-    const protagonistEverRevealed = revealIndexByCharacterId.has(protagonist.id);
-    const contextProtagonistName = protagonistEverRevealed ? protagonistName : null;
 
     const activeContextIds = new Set<string>();
     for (const { context } of resolvedContextsWithWeb) {
@@ -1101,7 +1172,7 @@ export async function buildPrompt(
         let line: string;
 
         const innerContent = formattedLine.slice(contextStartString.length, -contextEndString.length);
-        const replacedText = replacePlaceholders(innerContent, characterParticipantTag, characterName, protagonistParticipantTag, contextProtagonistName);
+        const replacedText = replacePlaceholders(innerContent, characterParticipantTag, characterName, coLocatedProtagonists, participants, revealIndexByCharacterId);
 
         if (context.useBase64Encoding) {
             const encodedText = btoa(unescape(encodeURIComponent(replacedText)));
@@ -1127,7 +1198,7 @@ export async function buildPrompt(
             stopPattern.regularExpressionExclusionActivationTriggers,
             stopPattern.regularExpressionExclusionDeactivationTriggers,
             characterIdArray, textContentArray,
-            characterId, protagonist.id,
+            characterId, protagonistIds,
             allTextSearchSpace, combinationCache,
         )) {
             activeStopPatterns.push(stopPattern);
@@ -1162,11 +1233,11 @@ export async function buildPrompt(
     if (cacheLevel >= 2) {
         for (const p of participants) {
             if (p.systemPrompt) {
-                systemPromptLines.push(`${contextStartString}${getParticipantTag(p, participants)} Prompt: ${replacePlaceholders(p.systemPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName)}${contextEndString}`);
+                systemPromptLines.push(`${contextStartString}${getParticipantTag(p, participants)} Prompt: ${replacePlaceholders(p.systemPrompt, characterParticipantTag, characterName, coLocatedProtagonists, participants, revealIndexByCharacterId)}${contextEndString}`);
             }
         }
     } else if (systemPrompt) {
-        systemPrompt = replacePlaceholders(systemPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
+        systemPrompt = replacePlaceholders(systemPrompt, characterParticipantTag, characterName, coLocatedProtagonists, participants, revealIndexByCharacterId);
         systemPromptLines.push(`${contextStartString}${characterParticipantTag} Prompt: ${systemPrompt}${contextEndString}`);
     }
 
@@ -1174,11 +1245,11 @@ export async function buildPrompt(
     if (cacheLevel >= 3) {
         for (const p of interactionData.participants) {
             if (p.thinkPrompt) {
-                thinkPromptLines.push(`${generalStartString}I am keeping this in mind as ${getParticipantTag(p, participants)}: ${replacePlaceholders(p.thinkPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName)}${generalEndString}`);
+                thinkPromptLines.push(`${generalStartString}I am keeping this in mind as ${getParticipantTag(p, participants)}: ${replacePlaceholders(p.thinkPrompt, characterParticipantTag, characterName, coLocatedProtagonists, participants, revealIndexByCharacterId)}${generalEndString}`);
             }
         }
     } else if (thinkPrompt) {
-        thinkPrompt = replacePlaceholders(thinkPrompt, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
+        thinkPrompt = replacePlaceholders(thinkPrompt, characterParticipantTag, characterName, coLocatedProtagonists, participants, revealIndexByCharacterId);
         thinkPromptLines.push(`${generalStartString}${thinkPrompt}${generalEndString}`);
     }
 
@@ -1367,7 +1438,7 @@ export async function buildPrompt(
     if (activeDialogueContents.length > 0) {
         dialoguePromptLines.push(startingDialoguePromptLine);
         for (const content of activeDialogueContents) {
-            const replacedDialogue = replacePlaceholders(content, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
+            const replacedDialogue = replacePlaceholders(content, characterParticipantTag, characterName, coLocatedProtagonists, participants, revealIndexByCharacterId);
             dialoguePromptLines.push(`${contextStartString}${replacedDialogue}${contextEndString}`);
         }
         dialoguePromptLines.push(endOfDialoguePromptLine);
@@ -1394,7 +1465,7 @@ export async function buildPrompt(
 
             if (selectedText.trim()) {
                 starterPromptLines.push(startOfStarterPromptLine);
-                const replacedStarter = replacePlaceholders(selectedText, characterParticipantTag, characterName, protagonistParticipantTag, protagonistName);
+                const replacedStarter = replacePlaceholders(selectedText, characterParticipantTag, characterName, coLocatedProtagonists, participants, revealIndexByCharacterId);
                 starterPromptLines.push(`${contextStartString}${replacedStarter}${contextEndString}`);
                 starterPromptLines.push(endOfStarterPromptLines);
             }
@@ -1480,6 +1551,7 @@ export async function buildPrompt(
     }
 
     const activePromptBlockImages: string[] = [];
+    const protagonistIdSet = new Set(protagonistIds);
     for (const block of allPromptBlocks) {
         if (!isPromptBlockCharacterBound(block, characterId)) continue;
         if (block.contextBindings && block.contextBindings.length > 0) {
@@ -1495,7 +1567,7 @@ export async function buildPrompt(
             block.regularExpressionExclusionActivationTriggers,
             block.regularExpressionExclusionDeactivationTriggers,
             characterIdArray, textContentArray,
-            characterId, protagonist.id,
+            characterId, protagonistIds,
             allTextSearchSpace, combinationCache,
         )) {
             continue;
@@ -1530,11 +1602,11 @@ export async function buildPrompt(
             if (resolvedChatTemplate?.chatTemplate) {
                 const chatHistoryForTemplate = interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
                 for (const msg of chatHistoryForTemplate) {
-                    const role = msg.character.id === protagonist.id ? 'user' : 'assistant';
+                    const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
                     const content = replacePlaceholders(
                         selectModelSummary(msg, modelId),
                         characterParticipantTag, characterName,
-                        protagonistParticipantTag, contextProtagonistName,
+                        coLocatedProtagonists, participants, revealIndexByCharacterId,
                     );
                     const wrapped = resolvedChatTemplate.chatTemplate
                         .replace(/\{role\}/gi, role)
@@ -1558,11 +1630,11 @@ export async function buildPrompt(
                 promptLines.push(instructionWrapped);
                 const chatHistoryForTemplate = interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
                 for (const msg of chatHistoryForTemplate) {
-                    const role = msg.character.id === protagonist.id ? 'user' : 'assistant';
+                    const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
                     const content = replacePlaceholders(
                         selectModelSummary(msg, modelId),
                         characterParticipantTag, characterName,
-                        protagonistParticipantTag, contextProtagonistName,
+                        coLocatedProtagonists, participants, revealIndexByCharacterId,
                     );
                     const wrapped = resolvedChatTemplate.chatTemplate
                         .replace(/\{role\}/gi, role)
@@ -1602,7 +1674,7 @@ export async function buildPrompt(
                 block.regularExpressionExclusionActivationTriggers,
                 block.regularExpressionExclusionDeactivationTriggers,
                 characterIdArray, textContentArray,
-                characterId, protagonist.id,
+                characterId, protagonistIds,
                 allTextSearchSpace, combinationCache,
             )) {
                 continue;
@@ -1612,8 +1684,9 @@ export async function buildPrompt(
                 block.textContent,
                 characterParticipantTag,
                 characterName,
-                protagonistParticipantTag,
-                contextProtagonistName,
+                coLocatedProtagonists,
+                participants,
+                revealIndexByCharacterId,
             );
 
             promptLines.push(`${contextStartString}${replacedText}${contextEndString}`);

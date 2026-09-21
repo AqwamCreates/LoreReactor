@@ -48,10 +48,21 @@ export function useEntitySync(options: UseEntitySyncOptions) {
         let changed = false;
         const updated = { ...currentChat };
 
-        // Sync protagonist — never remove, only update if fresher version exists
-        const freshProtag = charMap.get(currentChat.protagonist?.id ?? '');
-        if (freshProtag && freshProtag.lastUpdatedTimestamp !== currentChat.protagonist?.lastUpdatedTimestamp) {
-            updated.protagonist = freshProtag; changed = true;
+        // Sync protagonists — update each if fresher version exists
+        if (currentChat.protagonists?.length) {
+            let protagonistsChanged = false;
+            const freshProtagonists = currentChat.protagonists.map(p => {
+                const fresh = charMap.get(p.id);
+                if (fresh && fresh.lastUpdatedTimestamp !== p.lastUpdatedTimestamp) {
+                    protagonistsChanged = true;
+                    return fresh;
+                }
+                return p;
+            });
+            if (protagonistsChanged) {
+                updated.protagonists = freshProtagonists;
+                changed = true;
+            }
         }
 
         // Sync participants — NEVER filter out participants that aren't in allCharacters.

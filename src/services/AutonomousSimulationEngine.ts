@@ -59,6 +59,18 @@ function createSilentInteraction(
     };
 }
 
+/** Check if a character is co-located with any protagonist */
+function isCoLocatedWithAnyProtagonist(
+    data: InteractionData,
+    characterId: string,
+    protagonistLocIndices: Set<number>,
+    hasLocations: boolean,
+): boolean {
+    if (!hasLocations || protagonistLocIndices.size === 0) return true;
+    const charLoc = getCurrentLocationIndex(data, { id: characterId } as Character);
+    return charLoc !== undefined && protagonistLocIndices.has(charLoc);
+}
+
 export class AutonomousSimulationEngine {
     private timerId: ReturnType<typeof setInterval> | null = null;
     private abortController: AbortController | null = null;
@@ -128,14 +140,23 @@ export class AutonomousSimulationEngine {
         const profile = workingData.Profile;
         if (!profile) return;
 
-        const allAI = workingData.participants.filter(p => p.id !== workingData.protagonist.id);
+        // Filter out all protagonists — only AI participants act autonomously
+        const protagonistIds = new Set(workingData.protagonists.map(p => p.id));
+        const allAI = workingData.participants.filter(p => !protagonistIds.has(p.id));
         if (allAI.length === 0) return;
 
-        const protagonistLoc = getCurrentLocationIndex(workingData, workingData.protagonist);
+        // Pre-compute protagonist location indices for co-location checks
         const hasLocations = workingData.locations && workingData.locations.length > 0;
+        const protagonistLocIndices = new Set<number>();
+        if (hasLocations) {
+            for (const p of workingData.protagonists) {
+                const locIdx = getCurrentLocationIndex(workingData, p);
+                if (locIdx !== undefined) protagonistLocIndices.add(locIdx);
+            }
+        }
 
         const lastChatEntry = [...workingData.interactionHistory].reverse().find(m => hasTextContent(m));
-        const triggeringMessageText = lastChatEntry && hasTextContent(lastChatEntry) ? lastChatEntry.textContent : undefined;
+        const triggeringMessageText = lastChatEntry && hasTextContent(lastChatEntry) ? (lastChatEntry as ChatMessage).textContent : undefined;
 
         const lastParentId = workingData.interactionHistory.length > 0
             ? workingData.interactionHistory[workingData.interactionHistory.length - 1].id
@@ -179,15 +200,13 @@ export class AutonomousSimulationEngine {
             }
 
             // ─── Co-location check ───
-            const winnerLoc = hasLocations ? getCurrentLocationIndex(workingData, globalWinner) : undefined;
-            const isCoLocated = !hasLocations || (winnerLoc !== undefined && protagonistLoc !== undefined && winnerLoc === protagonistLoc);
+            const winnerCoLocated = isCoLocatedWithAnyProtagonist(workingData, globalWinner.id, protagonistLocIndices, !!hasLocations);
 
-            if (isCoLocated) {
+            if (winnerCoLocated) {
                 // ─── CHAT PATH ───
                 const chatEligible = remaining.filter(p => {
                     if (chatRefusedThisIteration.has(p.id)) return false;
-                    const pLoc = hasLocations ? getCurrentLocationIndex(workingData, p) : undefined;
-                    return !hasLocations || (pLoc !== undefined && protagonistLoc !== undefined && pLoc === protagonistLoc);
+                    return isCoLocatedWithAnyProtagonist(workingData, p.id, protagonistLocIndices, !!hasLocations);
                 });
 
                 if (chatEligible.length === 0) {
@@ -225,13 +244,13 @@ export class AutonomousSimulationEngine {
                 // Post-speech: consume stamina, resolve location
                 const newLastEntry = resultData.interactionHistory[resultData.interactionHistory.length - 1];
                 if (newLastEntry && newLastEntry.character.id === speaker.id && hasTextContent(newLastEntry)) {
-                    const paragraphs = countParagraphs(newLastEntry.textContent);
+                    const paragraphs = countParagraphs((newLastEntry as ChatMessage).textContent);
                     const chatCost = computeChatStaminaConsumptionCost(speaker, resultData, paragraphs);
                     if (chatCost > 0) consumeChatStaminaForMessage(newLastEntry, chatCost);
 
                     if (hasLocations) {
                         const currentLoc = getCurrentLocationIndex(resultData, speaker);
-                        const regexLoc = findLocationByRegex(resultData.locations, newLastEntry.textContent, speaker);
+                        const regexLoc = findLocationByRegex(resultData.locations, (newLastEntry as ChatMessage).textContent, speaker);
                         const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
 
                         if (regexLoc !== undefined && regexLoc !== currentLoc) {
@@ -259,8 +278,7 @@ export class AutonomousSimulationEngine {
             } else {
                 // ─── ACTION PATH ───
                 const actionEligible = remaining.filter(p => {
-                    const pLoc = hasLocations ? getCurrentLocationIndex(workingData, p) : undefined;
-                    return hasLocations && pLoc !== undefined && protagonistLoc !== undefined && pLoc !== protagonistLoc;
+                    return !isCoLocatedWithAnyProtagonist(workingData, p.id, protagonistLocIndices, !!hasLocations);
                 });
 
                 let mover: Character;
@@ -291,7 +309,7 @@ export class AutonomousSimulationEngine {
                     const leavePool: { item: Character; weight: number }[] = [];
                     for (const char of leaveGroup) {
                         const impatience = getEffectiveChatImpatienceSensitivity(char, profile);
-                        const leaveWeight = impatience > 0 ? 1 / impatience : Infinity;
+                        const leaveWeight = impatience > 0 ? 1 / impatience : Number.POSITIVE_INFINITY;
                         leavePool.push({ item: char, weight: leaveWeight });
                     }
 

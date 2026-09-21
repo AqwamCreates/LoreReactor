@@ -5,6 +5,7 @@ import type { DisplayNameCache } from '../../hooks/immersionLogic';
 
 export interface ViewModeProps {
     interactionData: InteractionData;
+    localProtagonist: Character;
     displayMessages: ChatMessage[];
     currentCharacterId: string | undefined;
     editingId: string | null;
@@ -37,7 +38,7 @@ export interface ViewModeProps {
     onRegenerateFromEdit: () => void;
     onResumeGeneration: (id: string) => void;
     onCopyText: (text: string) => void;
-    onRegenerateFromMessage: (id: string, type: 'ai' | 'user') => void;
+    onRegenerateFromMessage: (id: string, protagonists: Character[]) => void;
     onBranch: (id: string) => void;
     onClone: (id: string) => void;
     onDelete: (id: string) => void;

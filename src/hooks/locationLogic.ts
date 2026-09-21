@@ -30,6 +30,16 @@ export function getCoLocatedParticipants(interactionData: InteractionData, chara
     });
 }
 
+export function getCoLocatedProtagonists(interactionData: InteractionData, character: Character): Character[] {
+    const locationIndex = getCurrentLocationIndex(interactionData, character);
+    if (locationIndex === undefined) return [];
+    return interactionData.protagonists.filter(p => {
+        if (p.id === character.id) return false;
+        const pLocIdx = getCurrentLocationIndex(interactionData, p);
+        return pLocIdx === locationIndex;
+    });
+}
+
 export function getCoLocatedParticipantCount(interactionData: InteractionData, character: Character): number {
     return getCoLocatedParticipants(interactionData, character).length;
 }
@@ -183,7 +193,9 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
     if (!locations || locations.length === 0) return interactionData;
 
     const allParticipantIds = new Set<string>();
-    allParticipantIds.add(interactionData.protagonist.id);
+    // Include all protagonists
+    for (const p of interactionData.protagonists) allParticipantIds.add(p.id);
+    // Include all AI participants
     for (const p of interactionData.participants) allParticipantIds.add(p.id);
 
     const newHistory = [...interactionData.interactionHistory];
@@ -192,15 +204,19 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
 
     const noHistoryAtAll: Character[] = [];
     for (const id of allParticipantIds) {
-        const character = id === interactionData.protagonist.id
-            ? interactionData.protagonist
-            : interactionData.participants.find(p => p.id === id);
+        // Check protagonists first
+        let character = interactionData.protagonists.find(p => p.id === id);
+        // Then check participants
+        if (!character) character = interactionData.participants.find(p => p.id === id);
         if (!character) continue;
+
         const lastMsg = findPreviousMessage(interactionData, character.id);
         if (!lastMsg) { noHistoryAtAll.push(character); continue; }
         if (lastMsg.locationIndex !== undefined) continue;
+
         const locationIndex = sampleInitialLocationForCharacter(locations, character);
         if (locationIndex === undefined) continue;
+
         for (let i = newHistory.length - 1; i >= 0; i--) {
             if (newHistory[i].character.id === character.id && newHistory[i].locationIndex === undefined) {
                 newHistory[i] = { ...newHistory[i], locationIndex };

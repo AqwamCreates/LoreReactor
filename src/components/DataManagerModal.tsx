@@ -300,7 +300,6 @@ export function DataManagerModal({
 
         for (const shell of rawChatShells) {
             for (const id of (shell.participantIds || [])) if (charIdSet.has(id)) referencedCharIds.add(id);
-            if (shell.protagonistId && charIdSet.has(shell.protagonistId)) referencedCharIds.add(shell.protagonistId);
             for (const id of (shell.contextIds || [])) if (ctxIdSet.has(id)) referencedCtxIds.add(id);
             for (const id of (shell.locationIds || [])) if (locIdSet.has(id)) referencedLocIds.add(id);
             for (const id of (shell.audioTrackIds || [])) if (audioIdSet.has(id)) referencedAudioIds.add(id);
@@ -595,7 +594,6 @@ export function DataManagerModal({
     const isShellExcluded = useCallback((shell: RawInteractionData): boolean => {
         if (exclusions.length === 0) return false;
         for (const id of (shell.participantIds || [])) { if (exclusionIdSet.character.has(id)) return true; }
-        if (shell.protagonistId && exclusionIdSet.character.has(shell.protagonistId)) return true;
         for (const id of (shell.contextIds || [])) { if (exclusionIdSet.context.has(id)) return true; }
         for (const id of (shell.locationIds || [])) { if (exclusionIdSet.location.has(id)) return true; }
         for (const id of (shell.audioTrackIds || [])) { if (exclusionIdSet.audioTrack.has(id)) return true; }

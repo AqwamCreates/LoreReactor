@@ -42,7 +42,6 @@ export function useChatEngine(deps: EngineDependencies) {
         strategyOverride?: BudgetStrategy | null,
         existingCharacterText?: string,
         allPromptBlocks?: PromptBlock[],
-        frontCameraImageBase64?: string,
     ): Promise<HandleServerResponseResult | null> => {
         const selectedModel = getState().selectedModel;
         const runningModels = getState().runningModels;
@@ -75,7 +74,7 @@ export function useChatEngine(deps: EngineDependencies) {
 
         const outcome = await characterActor.executeTurn({
             data, character, signal, selectedModel, runningModels, activeStrategy,
-            strategyOverride, existingCharacterText, allPromptBlocks: allPromptBlocks ?? [], frontCameraImageBase64, 
+            strategyOverride, existingCharacterText, allPromptBlocks: allPromptBlocks ?? [], 
             callbacks,
         });
 
@@ -119,20 +118,20 @@ export function useChatEngine(deps: EngineDependencies) {
         initialData: InteractionData,
         signal: AbortController,
         promptBlocks?: PromptBlock[],
-        frontCameraImageBase64?: string,
     ): Promise<{ interactionData: InteractionData; isCompleted: boolean }> => {
+        // Matches TurnExecutor: (data, character, signal, onToken)
         const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken: (t: string) => void) => {
             setStreamingState(c, '');
-            return handleServerResponse(d, c, s, onToken, undefined, '', promptBlocks, frontCameraImageBase64);
+            return handleServerResponse(d, c, s, onToken, undefined, '', promptBlocks);
         };
 
         const result = await runTurnSequence(
-            initialData, 
+            initialData,
             executor, 
             signal, 
-            (char) => setStreamingState(char, ''), 
+            (char) => setStreamingState(char ?? null, ''), 
             () => {}, 
-            (data) => setInteractionData(data)
+            (data: InteractionData) => setInteractionData(data)
         );
 
         if (result) {
@@ -149,6 +148,7 @@ export function useChatEngine(deps: EngineDependencies) {
         setData: (data: InteractionData) => void,
         resetStream: () => void
     ) => {
+        // Matches AutonomousExecutor: (data, character, signal)
         const executor = async (d: InteractionData, c: Character, s: AbortSignal) => {
             resetStream();
             setStreamingState(c, '');

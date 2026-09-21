@@ -102,6 +102,13 @@ async function compressChunk(
     return text || null;
 }
 
+/**
+ * Generate a character-specific memory as a Context object.
+ * @param interactionData The current interaction data
+ * @param character The character whose perspective this memory represents
+ * @param modelId The model ID used for generating summaries within chat history
+ * @param maxTokens Maximum tokens for the generated memory
+ */
 export async function generateCharacterMemory(
     interactionData: InteractionData,
     character: Character,
@@ -112,19 +119,29 @@ export async function generateCharacterMemory(
     if (history.length === 0) return null;
 
     const participants = interactionData.participants;
-    const participantTag = getParticipantTag(character, participants);
-    const protagonistTag = getParticipantTag(interactionData.protagonist, participants);
-    const systemPrompt = character.systemPrompt ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, protagonistTag, interactionData.protagonist?.name || null)}${contextEndString}` : '';
-    const thinkPrompt = character.thinkPrompt ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, protagonistTag, interactionData.protagonist?.name || null)}${contextEndString}` : '';
 
     // Use characterSampler for character memory generation
     const sampler = interactionData.Profile?.characterSampler || character.sampler;
 
     const revealIndexByCharacterId = getRevealIndexByCharacterId(interactionData);
 
+    // createChatHistoryPrompt now derives co-located protagonists internally
     const { chatHistoryPrompt } = createChatHistoryPrompt(interactionData, character, revealIndexByCharacterId, modelId);
 
+    const participantTag = getParticipantTag(character, participants);
+
     const perspectiveInstruction = `${contextStartString}I am ${participantTag}. I am reflecting on what I have experienced. I will express my memory as natural, personal thoughts that others will not hear, read or respond to. I will use this memory in the future. Only I can access this memory. I will never use 'Character #' or 'Character # (Name)' unless I require it.${contextEndString}`;
+
+    // Get co-located protagonists for placeholder replacement
+    const { getCoLocatedProtagonists } = await import('../hooks/locationLogic');
+    const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
+
+    const systemPrompt = character.systemPrompt
+        ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, coLocatedProtagonists, participants, revealIndexByCharacterId)}${contextEndString}`
+        : '';
+    const thinkPrompt = character.thinkPrompt
+        ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, revealIndexByCharacterId)}${contextEndString}`
+        : '';
 
     const memoryInjection = `${contextStartString}`;
 
@@ -153,11 +170,21 @@ export async function generateCharacterMemory(
         useBase64Encoding: false,
         insertionDepth: 0,
         tokenBudget: maxTokens,
+        limitLinksToSubdirectory: false,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
     } as Context;
 }
 
+/**
+ * Generate a location visit summary from a character's perspective.
+ * @param interactionData The current interaction data
+ * @param character The character whose perspective this summary represents
+ * @param modelId The model ID used for resolving existing message summaries
+ * @param startIdx Start index (inclusive) in interactionHistory for the location visit segment
+ * @param endIdx End index (inclusive) in interactionHistory for the location visit segment
+ * @param maxTokens Maximum tokens for the generated summary
+ */
 export async function generateLocationVisitSummary(
     interactionData: InteractionData,
     character: Character,
@@ -170,10 +197,8 @@ export async function generateLocationVisitSummary(
     if (startIdx < 0 || endIdx >= history.length || startIdx > endIdx) return null;
 
     const participants = interactionData.participants;
-    const protagonist = interactionData.protagonist;
+
     const participantTag = getParticipantTag(character, participants);
-    const protagonistTag = getParticipantTag(protagonist, participants);
-    const protagonistName = protagonist.name;
 
     // Use characterSampler for location visit summaries
     const sampler = interactionData.Profile?.characterSampler || character.sampler;
@@ -198,11 +223,16 @@ export async function generateLocationVisitSummary(
     const locIdx = history[startIdx]?.locationIndex;
     const locationName = locIdx !== undefined && locs && locs[locIdx] ? locs[locIdx].name : 'an unknown location';
 
+    // Get co-located protagonists for placeholder replacement
+    const { getCoLocatedProtagonists } = await import('../hooks/locationLogic');
+    const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
+    const revealIndexByCharacterId = getRevealIndexByCharacterId(interactionData);
+
     const systemPrompt = character.systemPrompt
-        ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, protagonistTag, protagonistName)}${contextEndString}`
+        ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, coLocatedProtagonists, participants, revealIndexByCharacterId)}${contextEndString}`
         : '';
     const thinkPrompt = character.thinkPrompt
-        ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, protagonistTag, protagonistName)}${contextEndString}`
+        ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, revealIndexByCharacterId)}${contextEndString}`
         : '';
 
     const scopedHistoryBlock = `${contextStartString}Events at ${locationName}:\n${scopedMessages.join('\n')}${contextEndString}`;
@@ -288,6 +318,7 @@ export async function generatePeriodicCompression(
             useBase64Encoding: false,
             insertionDepth: 0,
             tokenBudget: maxTokens,
+            limitLinksToSubdirectory: false,
             firstCreatedTimestamp: now,
             lastUpdatedTimestamp: now,
         } as Context);
@@ -363,6 +394,7 @@ export async function generateRecursiveSummary(
             useBase64Encoding: false,
             insertionDepth: 2,
             tokenBudget: maxTokens,
+            limitLinksToSubdirectory: false,
             firstCreatedTimestamp: now,
             lastUpdatedTimestamp: now,
         } as Context);
@@ -390,6 +422,7 @@ export async function generateRecursiveSummary(
                     useBase64Encoding: false,
                     insertionDepth: 2 + currentLayerIndex,
                     tokenBudget: maxTokens,
+                    limitLinksToSubdirectory: false,
                     firstCreatedTimestamp: now,
                     lastUpdatedTimestamp: now,
                 } as Context);
@@ -410,6 +443,7 @@ export async function generateRecursiveSummary(
                 useBase64Encoding: false,
                 insertionDepth: 0,
                 tokenBudget: maxTokens,
+                limitLinksToSubdirectory: false,
                 firstCreatedTimestamp: now,
                 lastUpdatedTimestamp: now,
             } as Context);
@@ -424,6 +458,7 @@ export async function generateRecursiveSummary(
             useBase64Encoding: false,
             insertionDepth: 0,
             tokenBudget: maxTokens,
+            limitLinksToSubdirectory: false,
             firstCreatedTimestamp: now,
             lastUpdatedTimestamp: now,
         } as Context);
@@ -434,7 +469,7 @@ export async function generateRecursiveSummary(
 
 export function checkTriggerThreshold(
     interactionData: InteractionData,
-    currentnumberOfTokens: number,
+    currentNumberOfTokens: number,
     languageModelContextLength: number
 ): {
     strategyType: string;
@@ -456,7 +491,7 @@ export function checkTriggerThreshold(
             ? threshold
             : Math.floor(languageModelContextLength * 0.7);
 
-        if (currentnumberOfTokens >= effectiveThreshold) {
+        if (currentNumberOfTokens >= effectiveThreshold) {
             if (step.strategyType === 'Sliding Window Replace') {
                 return {
                     strategyType: step.strategyType,

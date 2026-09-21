@@ -17,9 +17,10 @@ interface ActionMenuProps {
     filteredActions: InterjectableAction[];
     isModelReady: boolean;
     allCharacters: Character[];
+    localProtagonist: Character;
     onAddAction: (label: string) => void;
     onDeleteAction: (label: string) => void;
-    onActionInterject: (label: string, targetChar: Character) => void;
+    onActionInterject: (label: string, targetChar: Character, protagonist: Character) => void;
 }
 
 export function ActionMenu({
@@ -29,14 +30,14 @@ export function ActionMenu({
     actionWrap, setActionWrap,
     actionCase, setActionCase,
     actionPunctuation, setActionPunctuation,
-    filteredActions, isModelReady, allCharacters,
+    filteredActions, isModelReady, allCharacters, localProtagonist,
     onAddAction, onDeleteAction, onActionInterject,
 }: ActionMenuProps) {
     if (!actionMenuTarget || !interactionDataExists) return null;
 
     const handleInterject = (label: string) => {
         const tc = allCharacters.find(c => c.id === actionMenuTarget.charId);
-        if (tc) onActionInterject(label, tc);
+        if (tc) onActionInterject(label, tc, localProtagonist);
     };
 
     return (

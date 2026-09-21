@@ -60,7 +60,7 @@ interface UseActionMenuOptions {
     isModelReady: boolean;
     allCharacters: Character[];
     stopGeneration: () => void;
-    sendActionAndGetResponse: (actionText: string, targetChar: Character) => Promise<void>;
+    sendActionAndGetResponse: (actionText: string, targetChar: Character, protagonist: Character) => Promise<void>;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -133,7 +133,7 @@ export function useActionMenu(options: UseActionMenuOptions) {
         addToast(`Removed action "${label}".`, 'info');
     }, [actions, addToast]);
 
-    const handleActionInterject = useCallback(async (label: string, targetChar: Character) => {
+    const handleActionInterject = useCallback(async (label: string, targetChar: Character, protagonist: Character) => {
         setActionMenuTarget(null);
         setMenuSearchQuery('');
         setShowActionFormat(false);
@@ -141,7 +141,7 @@ export function useActionMenu(options: UseActionMenuOptions) {
         await incrementActionCount(label);
         if (isLoading) { stopGeneration(); await new Promise(r => setTimeout(r, 200)); }
         const formattedAction = formatActionString(label, targetChar.name, actionWrap, actionCase, actionPunctuation);
-        try { await sendActionAndGetResponse(formattedAction, targetChar); }
+        try { await sendActionAndGetResponse(formattedAction, targetChar, protagonist); }
         catch { addToast('Failed to interject action.', 'error'); }
     }, [interactionData, currentCharacter, isLoading, actionWrap, actionCase, actionPunctuation, incrementActionCount, stopGeneration, sendActionAndGetResponse, addToast]);
 

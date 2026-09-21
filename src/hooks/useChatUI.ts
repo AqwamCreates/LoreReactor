@@ -84,11 +84,8 @@ export function useChatUI(
     }, [streamingText, isLoading, isAtBottomRef]);
 
     const playVoice = useCallback((text: string, character: Character) => {
-        // FIX: Added optional chaining (?.) to prevent crash when interactionData is null
-        if (character.id !== interactionData?.protagonist?.id) {
-            speakMessage(text, character);
-        }
-    }, [interactionData?.protagonist?.id, speakMessage]);
+        speakMessage(text, character)
+    }, [speakMessage]);
 
     return {
         chatHistoryRef,

@@ -12,6 +12,7 @@ const tokenEngine = getLanguageModelEngine();
 interface UseChatOperationsOptions {
     interactionData: InteractionData | null;
     currentCharacter: Character | null;
+    localProtagonist: Character | null;
     defaultCharacterId: string | null;
     allCharacters: Character[];
     rawChatShells: RawInteractionData[];
@@ -56,7 +57,9 @@ export function useChatOperations(options: UseChatOperationsOptions) {
 
         if (chat) {
             setInteractionData(chat);
-            if (chat.protagonist) setCurrentCharacter(chat.protagonist);
+            // Derive local protagonist from loaded chat's protagonists array
+            const firstProtagonist = chat.protagonists?.[0] ?? null;
+            if (firstProtagonist) setCurrentCharacter(firstProtagonist);
         } else {
             addToast('Failed to load chat.', 'error');
         }
@@ -70,11 +73,12 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         let c = currentCharacter;
         if (!c && defaultCharacterId) c = allCharacters.find(x => x.id === defaultCharacterId) || null;
         if (!c && rawChatShells.length) {
-            // Load the first raw shell to get its protagonist
+            // Load the first raw shell to get its first protagonist
             const firstId = rawChatShells[0].id;
             if (firstId) {
                 const loaded = await loadRawInteractionData(firstId, allCharacters);
-                if (loaded?.protagonist) c = loaded.protagonist;
+                const firstProtagonist = loaded?.protagonists?.[0];
+                if (firstProtagonist) c = firstProtagonist;
             }
         }
         if (c) startNewChat(c);

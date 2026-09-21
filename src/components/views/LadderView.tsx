@@ -8,7 +8,7 @@ import { resolveDelayedDisplayNameFromCache } from '../../hooks/immersionLogic';
 
 export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
     const {
-        interactionData, displayMessages, currentCharacterId,
+        interactionData, localProtagonist, displayMessages, currentCharacterId,
         editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
         activeToolbarId, portraitUrlCache, displayNameCache,
         formattedStreamingText, isLoading, streamingPortraitUrl,
@@ -136,7 +136,8 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
                         message={message}
                         index={index}
                         viewMode="ladder"
-                        currentCharacterId={currentCharacterId}
+                        protagonists={interactionData.protagonists}
+                        localProtagonist={localProtagonist}
                         editingId={editingId}
                         editDraft={editDraft}
                         massDeleteId={massDeleteId}

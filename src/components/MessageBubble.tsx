@@ -17,7 +17,8 @@ interface MessageBubbleProps {
     message: ChatMessage;
     index: number;
     viewMode: 'ladder' | 'cinematic' | 'vn';
-    currentCharacterId: string | undefined;
+    protagonists: Character[];
+    localProtagonist: Character | null;
     editingId: string | null;
     editDraft: string;
     massDeleteId: string | null;
@@ -36,7 +37,7 @@ interface MessageBubbleProps {
     onRegenerateFromEdit: () => void;
     onResumeGeneration: (id: string) => void;
     onCopyText: (text: string) => void;
-    onRegenerateFromMessage: (id: string, type: 'ai' | 'user') => void;
+    onRegenerateFromMessage: (id: string, protagonists: Character[]) => void;
     onBranch: (id: string) => void;
     onClone: (id: string) => void;
     onDelete: (id: string) => void;
@@ -55,7 +56,7 @@ interface MessageBubbleProps {
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 
 export const MessageBubble = React.memo(function MessageBubble({
-    message, index, viewMode, currentCharacterId,
+    message, index, viewMode, protagonists, localProtagonist,
     editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
     activeToolbarId, portraitUrl, displayName, isStem, beforeBranch,
     parentInteractionDataName,
@@ -86,10 +87,10 @@ export const MessageBubble = React.memo(function MessageBubble({
     const prevIsEditingRef = React.useRef(false);
 
     const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
-    const isProtag = message.character.id === currentCharacterId;
+    const isLocalProtagonist = localProtagonist ? message.character.id === localProtagonist.id : false;
     const isEditing = editingId === message.id;
     const inDelRange = isMassActive && massStartIndex !== null && massStartIndex !== -1 && index >= massStartIndex;
-    const showAvatar = viewMode === 'ladder' && !isProtag && !isAmbient;
+    const showAvatar = viewMode === 'ladder' && !isLocalProtagonist && !isAmbient;
 
     // Only initialize editing state when isEditing first becomes true,
     // not on every editDraft change (which would kill raw editing mode)
@@ -180,14 +181,14 @@ export const MessageBubble = React.memo(function MessageBubble({
 
     const rowClass = [
         'message-row',
-        viewMode === 'cinematic' ? '' : isProtag ? 'message-right' : 'message-left',
+        viewMode === 'cinematic' ? '' : isLocalProtagonist ? 'message-right' : 'message-left',
         inDelRange ? 'message-fading-out' : '',
     ].filter(Boolean).join(' ');
 
     const bubbleClass = [
         'message-bubble',
         viewMode === 'cinematic' ? 'cinematic-bubble' : '',
-        isProtag ? 'bubble-user' : 'bubble-ai',
+        isLocalProtagonist ? 'bubble-user' : 'bubble-ai',
         isAmbient ? 'bubble-ambient' : '',
         isEditing ? 'bubble-editing' : '',
         inDelRange ? 'bubble-marked-for-delete' : '',
@@ -360,7 +361,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                     <span className="toolbar-lock">🔒 Locked</span>
                                 ) : !isMassActive ? (
                                     <>
-                                        {!isProtag && message.isPartial && (
+                                        {!isLocalProtagonist && message.isPartial && (
                                             <button
                                                 type="button"
                                                 onClick={() => onResumeGeneration(message.id)}
@@ -390,10 +391,10 @@ export const MessageBubble = React.memo(function MessageBubble({
                                             ✎
                                         </button>
 
-                                        {!isProtag && (
+                                        {!isLocalProtagonist && (
                                             <button
                                                 type="button"
-                                                onClick={() => onRegenerateFromMessage(message.id, 'ai')}
+                                                onClick={() => onRegenerateFromMessage(message.id, protagonists)}
                                                 disabled={!isModelReady || isLoading}
                                                 className="toolbar-button"
                                                 title={isLoading ? 'Regeneration in progress...' : 'Regenerate this Response'}
@@ -403,10 +404,10 @@ export const MessageBubble = React.memo(function MessageBubble({
                                             </button>
                                         )}
 
-                                        {isProtag && (
+                                        {isLocalProtagonist && (
                                             <button
                                                 type="button"
-                                                onClick={() => onRegenerateFromMessage(message.id, 'user')}
+                                                onClick={() => onRegenerateFromMessage(message.id, protagonists)}
                                                 disabled={!isModelReady || isLoading}
                                                 className="toolbar-button"
                                                 title={isLoading ? 'Regeneration in progress...' : 'Regenerate Your Input'}

@@ -89,6 +89,25 @@ function hasMessagesChanged(a: InteractionData | null, b: InteractionData): bool
     return false;
 }
 
+/** Derive current user's protagonist from interactionData + currentAccountId */
+function deriveCurrentProtagonist(
+    interactionData: InteractionData | null,
+    currentAccountId: string | null,
+): Character | null {
+    if (!interactionData?.protagonists?.length) return null;
+    if (!currentAccountId) {
+        // Single-player: first protagonist is always the local user's
+        return interactionData.protagonists[0] ?? null;
+    }
+    const myCharIds = interactionData.multiplayerData?.accountIdCharacterIds?.[currentAccountId];
+    if (myCharIds?.length) {
+        const found = interactionData.protagonists.find(p => myCharIds.includes(p.id));
+        if (found) return found;
+    }
+    // Multiplayer but no mapping found — cannot determine local protagonist
+    return null;
+}
+
 function App() {
 
     const { addToast } = useToast();
@@ -114,7 +133,7 @@ function App() {
     // ─── Session Hook ────────────────────────────────────────────────
     const session = useChatSession(allCharacters);
     const {
-        interactionData, setInteractionData, currentCharacter, setCurrentCharacter,
+        interactionData, setInteractionData, setCurrentCharacter,
         isLoading, streamingText, streamingCharacter, currentCharacterExpression, sendMessage, stopGeneration,
         resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef,
         startNewChat,
@@ -122,8 +141,18 @@ function App() {
         activeStrategy, budgetData,
     } = session;
 
+    const currentAccountId = useSessionStore(s => s.currentAccountId);
     const defaultCharacterId = useSessionStore(s => s.defaultCharacterId);
     const selectedBudgetStrategyId = useSessionStore(s => s.selectedBudgetStrategyId);
+
+    // Derive localProtagonist from protagonists + accountIdCharacterIds
+    const localProtagonist = useMemo(
+        () => deriveCurrentProtagonist(interactionData, currentAccountId),
+        [interactionData, currentAccountId],
+    );
+
+    // currentCharacter is the same as localProtagonist for backward compatibility
+    const currentCharacter = localProtagonist;
 
     const setDefaultCharacterId = useCallback((id: string | null) => {
         useSessionStore.setState({ defaultCharacterId: id });
@@ -190,7 +219,11 @@ function App() {
         getFilteredActions, handleAvatarClick, closeActionMenu,
     } = useActionMenu({
         interactionData, currentCharacter, isLoading, isModelReady,
-        allCharacters, stopGeneration, sendActionAndGetResponse, addToast,
+        allCharacters, stopGeneration,
+        sendActionAndGetResponse: async (actionText: string, targetChar: Character, protagonist: Character) => {
+            await sendActionAndGetResponse(actionText, targetChar, protagonist.id);
+        },
+        addToast,
     });
 
     const {
@@ -198,9 +231,10 @@ function App() {
         handleSaveEdit, handleRegenerateFromEdit, handleDelete, handleMassDeleteConfirm,
         handleBranch, handleClone, handleCopyText, startEditing, cancelEditing,
     } = useMessageActions({
-        interactionData, currentCharacter, isModelReady, isLoading,
+        interactionData, localProtagonist, isModelReady, isLoading,
         setInteractionData, setCurrentCharacter, refreshChatList,
-        regenerateFromMessage, addToast,
+        regenerateFromMessage,
+        addToast,
     });
 
     const {
@@ -208,7 +242,7 @@ function App() {
         handleSwitchChat, handleNewChat, handleDeleteChat,
         handleStartEditTitle, handleSaveTitle, cancelEditTitle,
     } = useChatOperations({
-        interactionData, currentCharacter, defaultCharacterId,
+        interactionData, currentCharacter, localProtagonist, defaultCharacterId,
         allCharacters, rawChatShells, setInteractionData, setCurrentCharacter,
         refreshChatList, startNewChat, deleteChatFromList, addToast,
     });
@@ -231,7 +265,7 @@ function App() {
         centerAvatar, lastViewedMessageIdRef, suppressAutoScrollRef,
         chatMessages, portraitUrlCache, streamingPortraitUrl, locationBackgroundUrl,
     } = useViewAssets({
-        viewMode, interactionData, currentCharacter,
+        viewMode, interactionData, localProtagonist, currentCharacter,
         streamingCharacter, currentCharacterExpression, chatHistoryRef,
     });
 
@@ -438,8 +472,8 @@ function App() {
         if (!interactionData || !interactionData.id) return;
         
         const historyLength = interactionData.interactionHistory?.length ?? 0;
-        const protagId = interactionData.protagonist?.id;
-        const nonProtagParticipants = interactionData.participants.filter(p => p.id !== protagId);
+        const protagonistIds = new Set(interactionData.protagonists?.map(p => p.id) ?? []);
+        const nonProtagParticipants = interactionData.participants.filter(p => !protagonistIds.has(p.id));
         const hasContent = nonProtagParticipants.length > 0 || historyLength > 0 || (interactionData.contexts?.length ?? 0) > 0 || (interactionData.locations?.length ?? 0) > 0 || (interactionData.audioTracks?.length ?? 0) > 0 || !!interactionData.Profile;
         
         if (!chatModifiedRef.current && hasContent) chatModifiedRef.current = true;
@@ -447,10 +481,15 @@ function App() {
         if (chatModifiedRef.current && historyLength !== previousMessageCountRef.current) {
             const previousData = previousInteractionDataRef.current;
             
+            const prevProtagonistIds = new Set(previousData?.protagonists?.map(p => p.id) ?? []);
+            const currProtagonistIds = new Set(interactionData.protagonists?.map(p => p.id) ?? []);
+            const protagonistsChanged = prevProtagonistIds.size !== currProtagonistIds.size ||
+                [...prevProtagonistIds].some(id => !currProtagonistIds.has(id));
+
             const hasActualChange = !previousData || 
                 previousData.interactionHistory?.length !== historyLength ||
                 previousData.name !== interactionData.name ||
-                previousData.protagonist?.id !== interactionData.protagonist?.id ||
+                protagonistsChanged ||
                 previousData.participants.length !== interactionData.participants.length ||
                 previousData.contexts?.length !== interactionData.contexts?.length ||
                 previousData.locations?.length !== interactionData.locations?.length ||
@@ -492,7 +531,6 @@ function App() {
             try {
                 const participantCounts: Record<string, number> = {};
                 for (const p of interactionData.participants) participantCounts[p.id] = 0;
-                if (interactionData.protagonist && participantCounts[interactionData.protagonist.id] === undefined) participantCounts[interactionData.protagonist.id] = 0;
                 let tokenizerModel: LanguageModel | undefined;
                 if (selectedModelId) tokenizerModel = allModels.find(m => m.id === selectedModelId);
                 if (!tokenizerModel && activeStrategy && activeStrategy.onlineModels.length > 0) tokenizerModel = activeStrategy.onlineModels[0];
@@ -521,7 +559,7 @@ function App() {
             } catch (e) { if ((e as Error).name !== 'AbortError') console.error('Token counting failed:', e); }
         }, 500);
         return () => { if (tokenCountTimerRef.current) { clearTimeout(tokenCountTimerRef.current); tokenCountTimerRef.current = null; } if (tokenCountAbortRef.current) { tokenCountAbortRef.current.abort(); tokenCountAbortRef.current = null; } };
-    }, [safeInteractionMessages, interactionData?.participants, interactionData?.protagonist, selectedModelId, allModels, runningModels, activeStrategy]);
+    }, [safeInteractionMessages, interactionData?.participants, selectedModelId, allModels, runningModels, activeStrategy]);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -541,11 +579,13 @@ function App() {
         }
     }, [isRecording, addToast]);
 
-    const handleSend = () => {
+    const handleSend = useCallback((_protagonist: Character) => {
         if (!inputText.trim() && !pendingFiles.length) return;
-        sendMessage(inputText, pendingFiles); setInputText(''); setPendingFiles([]);
+        sendMessage(inputText, pendingFiles);
+        setInputText('');
+        setPendingFiles([]);
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    };
+    }, [inputText, pendingFiles, sendMessage]);
 
     const toggleViewMode = () => {
         setViewMode(prev => prev === 'ladder' ? 'cinematic' : prev === 'cinematic' ? 'vn' : 'ladder');
@@ -626,10 +666,16 @@ function App() {
         if (!interactionData?.parentInteractionDataId) return;
         try {
             const source = await loadRawInteractionData(interactionData.parentInteractionDataId, allCharacters);
-            if (source) { setInteractionData(source); if (source.protagonist) setCurrentCharacter(source.protagonist); refreshChatList(); addToast(`Returned to source: "${source.name}"`, 'info'); }
+            if (source) {
+                setInteractionData(source);
+                const sourceProtagonist = deriveCurrentProtagonist(source, currentAccountId);
+                if (sourceProtagonist) setCurrentCharacter(sourceProtagonist);
+                refreshChatList();
+                addToast(`Returned to source: "${source.name}"`, 'info');
+            }
             else addToast('Source chat not found.', 'error');
         } catch { addToast('Failed to load source chat.', 'error'); }
-    }, [interactionData, allCharacters, setInteractionData, setCurrentCharacter, refreshChatList, addToast]);
+    }, [interactionData, allCharacters, currentAccountId, setInteractionData, setCurrentCharacter, refreshChatList, addToast]);
 
     const handleLoadWorld = useCallback(async (world: World) => {
         if (!interactionData) return;
@@ -639,7 +685,13 @@ function App() {
         const resolvedAudioTracks = (world.audioTrackIds || []).map(id => allAudioTracks.find(t => t.id === id)).filter((t): t is AudioTrack => !!t);
         const resolvedProfile = world.profileId ? allProfiles.find(p => p.id === world.profileId) : undefined;
         let updated: InteractionData = { ...interactionData, participants: resolvedChars.length > 0 ? resolvedChars : interactionData.participants, contexts: resolvedCtxs, locations: resolvedLocs, audioTracks: resolvedAudioTracks.length > 0 ? resolvedAudioTracks : [], Profile: resolvedProfile, lastUpdatedTimestamp: Date.now() };
-        if (updated.protagonist && !updated.participants.find(p => p.id === updated.protagonist.id)) updated.participants = [updated.protagonist, ...updated.participants];
+        if (updated.protagonists) {
+            for (const protag of updated.protagonists) {
+                if (!updated.participants.find(p => p.id === protag.id)) {
+                    updated.participants = [protag, ...updated.participants];
+                }
+            }
+        }
         updated = assignInitialLocationsIfNeeded(updated);
         setInteractionData(updated);
         await saveRawInteractionData(updated);
@@ -717,6 +769,7 @@ function App() {
 
     const viewProps: ViewModeProps = {
         interactionData: interactionData!,
+        localProtagonist: localProtagonist!,
         displayMessages,
         currentCharacterId: currentCharacter?.id,
         editingId,
@@ -748,7 +801,7 @@ function App() {
         onCancelEditing: cancelEditing,
         onSaveEdit: handleSaveEdit,
         onRegenerateFromEdit: handleRegenerateFromEdit,
-        onResumeGeneration: resumeGeneration,
+        onResumeGeneration: (id: string) => { resumeGeneration(id); },
         onCopyText: handleCopyText,
         onRegenerateFromMessage: regenerateFromMessage,
         onBranch: handleBranch,
@@ -865,7 +918,7 @@ function App() {
                             isModelReady={isModelReady} 
                             isModelLoading={isModelLoading} 
                             modelStatusMessage={modelStatusMessage} 
-                            currentCharacterName={currentCharacter?.name} 
+                            localProtagonist={localProtagonist!} 
                             activeStrategy={activeStrategy ?? undefined} 
                             selectedModelId={selectedModelId} 
                             fileInputRef={fileInputRef} 
@@ -979,7 +1032,8 @@ function App() {
                 setActionPunctuation={setActionPunctuation} 
                 filteredActions={getFilteredActions()} 
                 isModelReady={isModelReady} 
-                allCharacters={allCharacters} 
+                allCharacters={allCharacters}
+                localProtagonist={localProtagonist!}
                 onAddAction={handleAddAction} 
                 onDeleteAction={handleDeleteAction} 
                 onActionInterject={handleActionInterject} 

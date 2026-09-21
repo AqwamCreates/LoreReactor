@@ -180,7 +180,6 @@ function useCharacterPortraits(characters: Character[]): Map<string, string | nu
     const [portraits, setPortraits] = useState<Map<string, string | null>>(new Map());
 
     // Stable dependency: join IDs into a single string
-    const characterIdsKey = characters.map(c => c.id).join(',');
 
     useEffect(() => {
         let cancelled = false;
@@ -195,7 +194,7 @@ function useCharacterPortraits(characters: Character[]): Map<string, string | nu
         })();
 
         return () => { cancelled = true; };
-    }, [characters, characterIdsKey]);
+    }, [characters]);
 
     return portraits;
 }
@@ -237,7 +236,8 @@ export function ChatInspectionModal({
     const canGoBack = internalStack.length > 1;
 
     // ALL derived values and hooks MUST be before the early return
-    const protagonist = chat?.protagonist ?? null;
+    const protagonists = useMemo(() => chat?.protagonists || [], [chat]);
+    const protagonistIds = useMemo(() => new Set(protagonists.map(p => p.id)), [protagonists]);
     const participants = useMemo(() => chat?.participants || [], [chat]);
     const locations = chat?.locations || [];
     const audioTracks = chat?.audioTracks || [];
@@ -247,7 +247,15 @@ export function ChatInspectionModal({
     const hasAudioTracks = audioTracks.length > 0;
     const parentName = canGoBack ? internalStack[1]?.name : undefined;
 
-    const portraits = useCharacterPortraits(participants);
+    // Include both protagonists and participants for portrait loading
+    const allVisibleCharacters = useMemo(() => {
+        const map = new Map<string, Character>();
+        for (const p of protagonists) map.set(p.id, p);
+        for (const p of participants) map.set(p.id, p);
+        return Array.from(map.values());
+    }, [protagonists, participants]);
+
+    const portraits = useCharacterPortraits(allVisibleCharacters);
 
     const handleBack = useCallback(() => {
         setUserNavStack(prev => prev.slice(1));
@@ -290,9 +298,6 @@ export function ChatInspectionModal({
             }
         }
 
-        const SCALE_PX_PER_KM = 3;
-        const MAX_DISTANCE_KM = 200;
-
         const locIndexMap = new Map<string, number>();
         chat.locations.forEach((loc, idx) => locIndexMap.set(loc.id, idx));
 
@@ -320,7 +325,7 @@ export function ChatInspectionModal({
                     const dx = positions[j].x - positions[i].x;
                     const dy = positions[j].y - positions[i].y;
                     const currentDist = Math.sqrt(dx * dx + dy * dy);
-                    const targetDist = Math.min(distKm * SCALE_PX_PER_KM, MAX_DISTANCE_KM * SCALE_PX_PER_KM);
+                    const targetDist = Math.min(distKm * 3, 200 * 3);
 
                     if (currentDist < 0.1) continue;
 
@@ -476,6 +481,7 @@ export function ChatInspectionModal({
                             <span>💬 {chat.interactionHistory.length} message{chat.interactionHistory.length !== 1 ? 's' : ''}</span>
                             <span>🕐 Last active: {getRelativeTime(chat.lastUpdatedTimestamp)}</span>
                             {chat.Profile && <span>👤 Profile: {chat.Profile.name}</span>}
+                            {chat.isMultiplayerEnabled && <span>🌐 Multiplayer</span>}
                             {chat.parentInteractionDataId && (
                                 <button
                                     type="button"
@@ -492,13 +498,65 @@ export function ChatInspectionModal({
                         </div>
                     </div>
 
+                    {/* Protagonists */}
+                    {protagonists.length > 0 && (
+                        <div className="editor-section">
+                            <span className="editor-section-title">Protagonists ({protagonists.length})</span>
+                            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0' }}>
+                                {protagonists.map((p, i) => {
+                                    const pLoc = hasLocations ? getCurrentLocation(chat, p) : undefined;
+                                    const portraitUrl = portraits.get(p.id) ?? null;
+                                    return (
+                                        <div key={p.id} style={{
+                                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+                                            padding: '8px', minWidth: '80px', maxWidth: '100px',
+                                            background: 'var(--accent-dim, rgba(255,255,255,0.08))',
+                                            border: '1px solid var(--accent)',
+                                            borderRadius: '6px', flexShrink: 0,
+                                        }}>
+                                            {portraitUrl ? (
+                                                <img
+                                                    src={portraitUrl}
+                                                    alt={p.name}
+                                                    style={{
+                                                        width: '36px', height: '64px',
+                                                        borderRadius: '4px', objectFit: 'cover',
+                                                        aspectRatio: '9 / 16',
+                                                    }}
+                                                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                />
+                                            ) : (
+                                                <div className="character-avatar placeholder" style={{ width: '36px', height: '64px', borderRadius: '4px', aspectRatio: '9 / 16' }} />
+                                            )}
+                                            <div style={{ fontSize: '0.7rem', fontWeight: 'bold', textAlign: 'center', lineHeight: 1.2 }}>
+                                                {p.name}
+                                            </div>
+                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, textAlign: 'center' }}>
+                                                [Protagonist {i + 1}]
+                                            </div>
+                                            {pLoc && (
+                                                <div style={{
+                                                    fontSize: '0.55rem', opacity: 0.7, textAlign: 'center',
+                                                    padding: '1px 4px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px',
+                                                    marginTop: '2px', maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                }}>
+                                                    📍 {pLoc.name}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Participants */}
                     {participants.length > 0 && (
                         <div className="editor-section">
                             <span className="editor-section-title">Participants ({participants.length})</span>
                             <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0' }}>
                                 {participants.map((p, i) => {
-                                    const isProtag = p.id === protagonist?.id;
+                                    const isProtag = protagonistIds.has(p.id);
                                     const pLoc = hasLocations ? getCurrentLocation(chat, p) : undefined;
                                     const portraitUrl = portraits.get(p.id) ?? null;
                                     return (
@@ -565,8 +623,13 @@ export function ChatInspectionModal({
                                                 <div key={`${pp.name}-${pp.index}`} style={{
                                                     display: 'flex', alignItems: 'center', gap: '4px',
                                                     padding: '3px 8px',
-                                                    background: 'rgba(255,255,255,0.05)',
+                                                    background: protagonistIds.has(participants[pp.index]?.id)
+                                                        ? 'rgba(74, 222, 128, 0.08)'
+                                                        : 'rgba(255,255,255,0.05)',
                                                     borderRadius: '4px',
+                                                    border: protagonistIds.has(participants[pp.index]?.id)
+                                                        ? '1px solid rgba(74, 222, 128, 0.3)'
+                                                        : '1px solid transparent',
                                                 }}>
                                                     {pp.portraitUrl ? (
                                                         <img

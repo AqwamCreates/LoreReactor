@@ -135,6 +135,21 @@ interface AppModalsProps {
 
 type ChatShellWithId = RawInteractionData & { id: string };
 
+/** Derive current user's protagonist from interactionData + currentAccountId */
+function deriveLocalProtagonist(
+    interactionData: InteractionData | null,
+    currentAccountId: string | null,
+): Character | null {
+    if (!interactionData?.protagonists?.length) return null;
+    if (!currentAccountId) return null;
+    const myCharIds = interactionData.multiplayerData?.accountIdCharacterIds?.[currentAccountId];
+    if (myCharIds?.length) {
+        const found = interactionData.protagonists.find(p => myCharIds.includes(p.id));
+        if (found) return found;
+    }
+    return null;
+}
+
 export function AppModals({
     // Modals & data
     modals, runningModels,
@@ -183,6 +198,13 @@ export function AppModals({
     const selectedModelId = useSessionStore(s => s.selectedModel?.id ?? null);
     const lastSelectedModelId = useSessionStore(s => s.lastSelectedModelId);
     const selectedBudgetStrategyId = useSessionStore(s => s.activeStrategy?.id ?? null);
+    const currentAccountId = useSessionStore(s => s.currentAccountId);
+
+    // Derive local protagonist from interactionData + accountId
+    const localProtagonist = useMemo(
+        () => deriveLocalProtagonist(interactionData, currentAccountId),
+        [interactionData, currentAccountId],
+    );
 
     // Resolve effective tokenizer model: explicit selection > last budget engine pick > null
     const effectiveTokenizerModel = useMemo(() => {
@@ -271,7 +293,7 @@ export function AppModals({
                     specialActionIcon="★"
                     onSpecialAction={(c: Character) => onSetProtagonist(c.id)}
                     specialActionTooltip={(c: Character) => `set ${c.name} as the protagonist`}
-                    activeSpecialActionId={interactionData?.protagonist?.id}
+                    activeSpecialActionId={localProtagonist?.id}
                 />
             )}
 

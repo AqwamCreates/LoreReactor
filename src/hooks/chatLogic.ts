@@ -228,12 +228,9 @@ export async function prepareRequestBody(
     existingCharacterText: string,
     allPromptBlocks: PromptBlock[],
     modelId: string,
-    protagonistFileBase64s?: string[],
-    frontCameraBase64?: string,
 ): Promise<{ body: Record<string, unknown>; fetchErrors: string[]; characterClothingWearingStatuses: Record<string, boolean> }> {
 
     const profile = interactionData.Profile;
-    const protagonistId = interactionData.protagonist?.id;
 
     const { prompt, stops, contextImages, locationImages, promptBlockImages, characterClothingWearingStatuses, fetchErrors } = await buildPrompt(interactionData, character, existingCharacterText, allPromptBlocks, modelId);
 
@@ -261,8 +258,10 @@ export async function prepareRequestBody(
             }
         }
 
-        // Inject all co-located participant images (includes protagonist if co-located)
+        // Inject all co-located participant images (includes protagonists if co-located)
         const colocatedParticipants = getCoLocatedParticipants(interactionData, character);
+        const protagonistIds = new Set(interactionData.protagonists?.map(p => p.id) ?? []);
+        const effectiveUseFrontCameraImage = getEffectiveUseFrontCameraImage(character, profile);
 
         for (const participant of colocatedParticipants) {
             // Skip self — already injected above
@@ -275,11 +274,11 @@ export async function prepareRequestBody(
 
             let participantImageBase64: string | null = null;
 
-            const effectiveUseFrontCameraImage = getEffectiveUseFrontCameraImage(character, profile)
-
-            // If this participant is the protagonist and front camera is enabled, use live camera instead of stored image
-            if (participant.id === protagonistId && frontCameraBase64 && effectiveUseFrontCameraImage) {
-                participantImageBase64 = frontCameraBase64;
+            // If this participant is a protagonist and front camera is enabled,
+            // use the front camera image from their last message if available
+            const chatMsg = participantMessage as ChatMessage | null;
+            if (protagonistIds.has(participant.id) && effectiveUseFrontCameraImage && chatMsg?.frontCameraImage) {
+                participantImageBase64 = chatMsg.frontCameraImage;
             } else {
                 const participantImagePath = await getCharacterImageUrlWithFallBack(participant.id, participantExpression);
                 if (participantImagePath) {
@@ -300,11 +299,17 @@ export async function prepareRequestBody(
             initialPrompt = `${initialPrompt}${generalStartString}I understand that the image ${imageIdCounter} is the appearance of ${participantString}.${generalEndString}`;
         }
 
-        // Attach protagonist-uploaded files (attachments, etc.)
-        if (protagonistFileBase64s && protagonistFileBase64s.length > 0) {
-            for (let i = 0; i < protagonistFileBase64s.length; i++) {
-                const rawData = protagonistFileBase64s[i].includes(',') ? protagonistFileBase64s[i].split(',')[1] : protagonistFileBase64s[i];
-                filesBase64.push({ data: rawData, id: imageIdCounter++ });
+        // Attach files from co-located protagonists' most recent messages only
+        for (const participant of colocatedParticipants) {
+            if (!protagonistIds.has(participant.id)) continue;
+            const lastMsg = findPreviousMessage(interactionData, participant.id);
+            if (!lastMsg || lastMsg.messageType !== 'chat') continue;
+            const lastChatMsg = lastMsg as ChatMessage;
+            if (lastChatMsg.files?.length) {
+                for (const fileBase64 of lastChatMsg.files) {
+                    const rawData = fileBase64.includes(',') ? fileBase64.split(',')[1] : fileBase64;
+                    filesBase64.push({ data: rawData, id: imageIdCounter++ });
+                }
             }
         }
     }
@@ -370,17 +375,6 @@ export async function prepareRequestBody(
         });
         const resolvedPromptBlockImages = (await Promise.all(promptBlockImagePromises)).filter(img => img !== null);
         filesBase64.push(...resolvedPromptBlockImages);
-    }
-
-    const lastUserMsg = [...interactionData.interactionHistory].reverse().find(
-        (m): m is ChatMessage => m.character.id === protagonistId && m.messageType === 'chat'
-    );
-
-    if (lastUserMsg?.files?.length) {
-        for (const fileBase64 of lastUserMsg.files) {
-            const rawData = fileBase64.includes(',') ? fileBase64.split(',')[1] : fileBase64;
-            filesBase64.push({ data: rawData, id: imageIdCounter++ });
-        }
     }
 
     const fullPrompt = `${initialPrompt}${prompt}`;
@@ -453,7 +447,7 @@ export function createNewInteractionData(character: Character): InteractionData 
     return {
         id: uuidv4(),
         name: "Untitled Chat",
-        protagonist: character,
+        protagonists: [character],
         participants: [character],
         contexts: [],
         locations: [],
@@ -464,6 +458,7 @@ export function createNewInteractionData(character: Character): InteractionData 
         lastUpdatedTimestamp: now,
         parentInteractionDataId: null,
         parentInteractionMessageId: null,
+        isMultiplayerEnabled: false,
     };
 }
 
@@ -471,7 +466,7 @@ export function createChatMessage(
     interactionData: InteractionData,
     character: Character,
     textContent: string,
-    options?: { isPartial?: boolean; locationIndex?: number; files?: string[]; clothingWearingStatuses?: Record<string, boolean> }
+    options?: { isPartial?: boolean; locationIndex?: number; files?: string[]; frontCameraImage?: string, clothingWearingStatuses?: Record<string, boolean> }
 ): ChatMessage {
     const previousMessage = findPreviousMessage(interactionData, character.id);
     const wasRevealed = previousMessage?.isNameRevealed ?? false;
@@ -485,7 +480,8 @@ export function createChatMessage(
 
     const id = uuidv4();
     const files = options?.files ?? [];
-    const isProtagonist = character.id === interactionData.protagonist?.id;
+    const frontCameraImage = options?.frontCameraImage;
+    const isProtagonist = interactionData.protagonists?.some(p => p.id === character.id) ?? false;
     const isPartial = options?.isPartial ?? !isProtagonist;
 
     let locationIndex = options?.locationIndex;
@@ -503,6 +499,7 @@ export function createChatMessage(
         character: { ...character },
         textContent,
         files,
+        frontCameraImage,
         remainingChatStamina,
         remainingActionStamina,
         isNameRevealed,
@@ -587,7 +584,7 @@ export function branchInteractionMessage(interactionData: InteractionData, branc
     return {
         id: uuidv4(),
         name: `${interactionData.name} [#${branchIndex + 1}]`,
-        protagonist: interactionData.protagonist,
+        protagonists: interactionData.protagonists,
         participants: interactionData.participants,
         contexts: interactionData.contexts,
         locations: interactionData.locations,
@@ -599,5 +596,7 @@ export function branchInteractionMessage(interactionData: InteractionData, branc
         Profile: interactionData.Profile,
         parentInteractionDataId: interactionData.id,
         parentInteractionMessageId: branchPointMessageId,
+        isMultiplayerEnabled: interactionData.isMultiplayerEnabled,
+        multiplayerData: interactionData.multiplayerData,
     };
 }

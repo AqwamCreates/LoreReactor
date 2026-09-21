@@ -24,8 +24,9 @@ export async function markLastMessageAsPartial(currentChat: InteractionData): Pr
     const lastIndex = history.length - 1;
     const lastMsg = history[lastIndex];
 
-    // Only mark AI messages (not user messages) as partial
-    if (lastMsg.character.id === currentChat.protagonist.id) return currentChat;
+    // Only mark AI messages (not protagonist messages) as partial
+    const isProtagonist = currentChat.protagonists.some(p => p.id === lastMsg.character.id);
+    if (isProtagonist) return currentChat;
     if (lastMsg.messageType !== 'chat' || lastMsg.isPartial) return currentChat;
 
     const updatedHistory = [...history];
@@ -124,12 +125,16 @@ export async function branchMessage(currentChat: InteractionData, messageId: str
         id: uuidv4(),
         name: `${currentChat.name} (Branch)`,
         contexts: [...(currentChat.contexts || [])],
+        locations: [...(currentChat.locations || [])],
+        audioTracks: [...(currentChat.audioTracks || [])],
         participants: [...currentChat.participants],
-        protagonist: currentChat.protagonist,
+        protagonists: [...currentChat.protagonists],
         interactionHistory: currentChat.interactionHistory.slice(0, branchIndex + 1),
         parentInteractionDataId: currentChat.id,
         parentInteractionMessageId: messageId,
         Profile: currentChat.Profile,
+        isMultiplayerEnabled: currentChat.isMultiplayerEnabled,
+        multiplayerData: currentChat.multiplayerData ? { ...currentChat.multiplayerData } : undefined,
         firstCreatedTimestamp: Date.now(),
         lastUpdatedTimestamp: Date.now(),
     };
@@ -162,13 +167,15 @@ export async function cloneChatUpToMessage(currentChat: InteractionData, message
     const clonedChat: InteractionData = {
         id: uuidv4(),
         name: `${currentChat.name} (Clone)`,
-        protagonist: { ...currentChat.protagonist },
+        protagonists: currentChat.protagonists.map(p => ({ ...p })),
         participants: currentChat.participants.map(p => ({ ...p })),
         contexts: (currentChat.contexts || []).map(c => ({ ...c })),
         locations: (currentChat.locations || []).map(l => ({ ...l })),
         audioTracks: (currentChat.audioTracks || []).map(a => ({ ...a })),
         interactionHistory: clonedMessages,
         Profile: currentChat.Profile,
+        isMultiplayerEnabled: false,
+        multiplayerData: undefined,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
         parentInteractionDataId: null,

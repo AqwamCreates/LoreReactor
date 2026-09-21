@@ -34,7 +34,7 @@ function finalizeStalePartials(data: InteractionData): InteractionData {
             changed = true;
             return {
                 ...m,
-                textContent: m.textContent.trimEnd(),
+                textContent: (m as ChatMessage).textContent.trimEnd(),
                 isPartial: false,
                 lastUpdatedTimestamp: Date.now(),
             } as ChatMessage;
@@ -50,13 +50,14 @@ function createEmptyChat(): InteractionData {
     return {
         id: uuidv4(),
         name: 'Untitled Chat',
-        protagonist: null as unknown as Character,
+        protagonists: [],
         participants: [],
         contexts: [],
         locations: [],
         audioTracks: [],
         interactionHistory: [],
         numberOfMessages: 0,
+        isMultiplayerEnabled: false,
         firstCreatedTimestamp: Date.now(),
         lastUpdatedTimestamp: Date.now(),
         parentInteractionDataId: null,
@@ -102,37 +103,48 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
             // Finalize any stale partial messages left from a mid-generation refresh
             fullChat = finalizeStalePartials(fullChat);
 
-            if (fullChat.protagonist) {
-                let protagonist = fullChat.protagonist;
-                const freshProtag = allCharacters.find(c => c.id === protagonist.id);
-                if (freshProtag) {
-                    const fullChar = await loadFullCharacter(freshProtag.id);
-                    if (fullChar) protagonist = fullChar;
-                } else {
-                    console.warn(`Protagonist ${protagonist.id} not found in character list after load.`);
-                }
+            // Hydrate all protagonists with full character data
+            const hydratedProtagonists = await Promise.all(
+                fullChat.protagonists.map(async (p) => {
+                    const freshProtag = allCharacters.find(c => c.id === p.id);
+                    if (freshProtag) {
+                        const fullChar = await loadFullCharacter(freshProtag.id);
+                        if (fullChar) return fullChar;
+                    }
+                    console.warn(`Protagonist ${p.id} not found or failed to load. Keeping shell.`);
+                    return p;
+                })
+            );
 
-                const hydratedParticipants = await Promise.all(
-                    fullChat.participants.map(async (p) => {
-                        const exists = allCharacters.some(c => c.id === p.id);
-                        if (!exists) {
-                            console.warn(`Participant ${p.id} not found in character list after load. Keeping shell.`);
-                            return p;
-                        }
-                        if (p.systemPrompt) return p;
-                        const fullChar = await loadFullCharacter(p.id);
-                        return fullChar || p;
-                    })
-                );
+            // Hydrate all participants with full character data
+            const hydratedParticipants = await Promise.all(
+                fullChat.participants.map(async (p) => {
+                    const exists = allCharacters.some(c => c.id === p.id);
+                    if (!exists) {
+                        console.warn(`Participant ${p.id} not found in character list after load. Keeping shell.`);
+                        return p;
+                    }
+                    if (p.systemPrompt) return p;
+                    const fullChar = await loadFullCharacter(p.id);
+                    return fullChar || p;
+                })
+            );
 
-                setInteractionData({
-                    ...fullChat,
-                    protagonist,
-                    participants: hydratedParticipants,
-                });
-                setCurrentCharacter(protagonist);
+            const hydratedChat = {
+                ...fullChat,
+                protagonists: hydratedProtagonists,
+                participants: hydratedParticipants,
+            };
+
+            setInteractionData(hydratedChat);
+
+            // Set current character to the first protagonist, or first participant, or null
+            if (hydratedProtagonists.length > 0) {
+                setCurrentCharacter(hydratedProtagonists[0]);
+            } else if (hydratedParticipants.length > 0) {
+                setCurrentCharacter(hydratedParticipants[0]);
             } else {
-                setInteractionData(fullChat);
+                setCurrentCharacter(null);
             }
         };
 

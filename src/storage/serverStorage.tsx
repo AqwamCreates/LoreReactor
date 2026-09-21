@@ -1,14 +1,17 @@
 // src/storage/serverStorage.tsx
 import type { 
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
-  Character, RawCharacter, InteractionMessage, RawInteractionMessage, InteractionData, RawInteractionData,
+  Character, RawCharacter, RawInteractionMessage, InteractionData, RawInteractionData,
   BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
   SummarizationStep, RawSummarizationStep, Webpage, RawWebpage,
   Memory, RawMemory, Location, RawLocation, World,
   BudgetData, RawBudgetData,
   AudioTrack, RawAudioTrack,
   PromptBlock, RawPromptBlock,
-  tool, textType,
+  Account,
+  tool,
+  HistoryMessage,
+  RawChatMessage,
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -47,6 +50,7 @@ const ENTITY_REGISTRY = {
   memories: { dir: 'memory_data', hasManifest: true },
   audioTracks: { dir: 'audio_track_data', hasManifest: true },
   promptBlocks: { dir: 'prompt_block_data', hasManifest: true },
+  accounts: { dir: 'account_data', hasManifest: true },
 } as const;
 
 type EntityKey = keyof typeof ENTITY_REGISTRY;
@@ -120,16 +124,6 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
         },
     ];
 }
-
-const DEFAULT_NARRATE_TEXTS: Record<textType, boolean> = {
-    normal: true,
-    quoted: false,
-    bolded: false,
-    italicized: false,
-    parenthesized: false,
-    bracketed: false,
-    braced: false,
-};
 
 // =============================================================================
 // SERVER AVAILABILITY & HTTP HELPERS
@@ -336,20 +330,6 @@ function fileToBase64(file: File): Promise<string> {
 
 function getCleanFileName(file: { name: string }): string {
   return file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-}
-
-function migrateNarrateTexts(rawProfile: RawProfile): Record<textType, boolean> {
-    if (rawProfile.narrateTexts) return rawProfile.narrateTexts;
-
-    return {
-        normal: (rawProfile as any).narrateNormalText ?? DEFAULT_NARRATE_TEXTS.normal,
-        quoted: (rawProfile as any).narrateQuotedText ?? DEFAULT_NARRATE_TEXTS.quoted,
-        bolded: (rawProfile as any).narrateBoldedText ?? DEFAULT_NARRATE_TEXTS.bolded,
-        italicized: (rawProfile as any).narrateItalicizedText ?? DEFAULT_NARRATE_TEXTS.italicized,
-        parenthesized: DEFAULT_NARRATE_TEXTS.parenthesized,
-        bracketed: DEFAULT_NARRATE_TEXTS.bracketed,
-        braced: DEFAULT_NARRATE_TEXTS.braced,
-    };
 }
 
 // =============================================================================
@@ -570,9 +550,9 @@ export const deleteRawSampler = samplerRepo.remove;
 // =============================================================================
 
 function createDeletedCharacterStub(id: string): Character {
-    const deletedCharacter = { ...defaultCharacter}
-    deletedCharacter.id = id
-    deletedCharacter.name = 'Deleted Character'
+    const deletedCharacter = { ...defaultCharacter };
+    deletedCharacter.id = id;
+    deletedCharacter.name = 'Deleted Character';
     return deletedCharacter;
 }
 
@@ -844,8 +824,6 @@ const profileRepo = createRepository<Profile, RawProfile>({
       }))
       : getDefaultSummarizationSteps();
 
-    const narrateTexts = migrateNarrateTexts(raw);
-
     return hydrateEntity<Profile, RawProfile>(raw, id, {
         name: 'Unknown Profile',
         forceNameReveal: false,
@@ -873,7 +851,6 @@ const profileRepo = createRepository<Profile, RawProfile>({
         inputStrategy: [...defaultInputStrategy],
     }, {
         summarizationSteps: () => summarizationSteps,
-        narrateTexts: () => narrateTexts,
     });
   },
   serialize: (profile) => {
@@ -932,6 +909,24 @@ export const saveRawWorld = worldRepo.save;
 export const deleteRawWorld = worldRepo.remove;
 
 // =============================================================================
+// ACCOUNT REPOSITORY
+// =============================================================================
+
+const accountRepo = createRepository<Account, Account>({
+  entityKey: 'accounts',
+  hydrate: (raw, id) => hydrateEntity<Account, Account>(raw, id, {
+    username: '',
+    password: '',
+  }),
+});
+
+export const loadRawAccountManifest = accountRepo.loadManifest;
+export const loadRawAccount = accountRepo.loadRaw;
+export const loadAllRawAccounts = accountRepo.loadAll;
+export const saveRawAccount = accountRepo.save;
+export const deleteRawAccount = accountRepo.remove;
+
+// =============================================================================
 // CHAT MESSAGE REPOSITORY
 // =============================================================================
 
@@ -957,16 +952,24 @@ async function buildInteractionDataShell(
   audioTrackMap?: Map<string, AudioTrack>,
 ): Promise<InteractionData | null> {
   
-  let protagonist = charMap.get(rawInteractionData.protagonistId);
-  if (!protagonist) {
-    protagonist = createDeletedCharacterStub(rawInteractionData.protagonistId);
+  // Hydrate protagonists array from protagonistIds
+  const protagonists: Character[] = (rawInteractionData.protagonistIds || [])
+    .map(pid => charMap.get(pid) ?? createDeletedCharacterStub(pid));
+
+  // Fallback: if protagonistIds is empty but legacy protagonistId exists, use it
+  if (protagonists.length === 0 && (rawInteractionData as any).protagonistId) {
+    const legacyId = (rawInteractionData as any).protagonistId as string;
+    protagonists.push(charMap.get(legacyId) ?? createDeletedCharacterStub(legacyId));
   }
 
-  const participants = rawInteractionData.participantIds
+  const participants = (rawInteractionData.participantIds || [])
     .map(pid => charMap.get(pid) ?? createDeletedCharacterStub(pid));
     
-  if (!participants.find(p => p.id === protagonist.id)) {
-    participants.push(protagonist);
+  // Ensure all protagonists are also in participants list
+  for (const protag of protagonists) {
+    if (!participants.find(p => p.id === protag.id)) {
+      participants.push(protag);
+    }
   }
 
   const contexts = (rawInteractionData.contextIds || [])
@@ -988,13 +991,15 @@ async function buildInteractionDataShell(
   return {
     id, 
     name: rawInteractionData.name || "Untitled Chat", 
-    protagonist, 
+    protagonists, 
     participants, 
     contexts,
     locations,
     audioTracks,
     interactionHistory: [],
     numberOfMessages: rawInteractionData.interactionIdHistory?.length ?? 0,
+    isMultiplayerEnabled: rawInteractionData.isMultiplayerEnabled ?? false,
+    multiplayerData: rawInteractionData.multiplayerData,
     firstCreatedTimestamp: rawInteractionData.firstCreatedTimestamp || Date.now(), 
     lastUpdatedTimestamp: rawInteractionData.lastUpdatedTimestamp || Date.now(),
     parentInteractionDataId: rawInteractionData.parentInteractionDataId || null, 
@@ -1012,13 +1017,13 @@ export async function loadInteractionMessages(interactionData: InteractionData):
     }
 
     const charMap = new Map<string, Character>();
-    if (interactionData.protagonist) charMap.set(interactionData.protagonist.id, interactionData.protagonist);
+    for (const p of interactionData.protagonists) charMap.set(p.id, p);
     for (const p of interactionData.participants) {
         charMap.set(p.id, p);
     }
 
     const messagePromises = rawInteractionData.interactionIdHistory.map(async (messageId) => {
-        const rawMessage = await fetchJson<RawInteractionMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
+        const rawMessage = await fetchJson<RawInteractionMessage | RawChatMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
         if (!rawMessage) return null;
 
         const character = charMap.get(rawMessage.characterId);
@@ -1027,36 +1032,11 @@ export async function loadInteractionMessages(interactionData: InteractionData):
         return {
             id: messageId,
             ...messageWithoutCharId,
-            character: character || {
-                id: characterId,
-                name: '[Unknown]',
-                images: {},
-                initiativeWeight: 1,
-                chatProbability: 0.5,
-                maximumChatStamina: 4,
-                nameSensitivity: 1,
-                chatImpatienceSensitivity: 0,
-                skipProbability: 0,
-                memoryRetentionWeight: 1,
-                contextSensitivity: 1,
-                maximumActionStamina: 5,
-                numberOfMessagesToDisableThinkPrompt: 1,
-                numberOfMessagesToDisableMetaThinkInstructions: 1,
-                numberOfMessagesToDisableDialoguePrompt: 1,
-                numberOfMessagesToDisableStarterPrompt: 1,
-                tools: {} as Record<tool, boolean>,
-                enableMemoryWriting: false,
-                enableMemoryReading: false,
-                clothings: [],
-                textCharacterInjections: [],
-                memories: {},
-                firstCreatedTimestamp: Date.now(),
-                lastUpdatedTimestamp: Date.now()
-            } as Character
+            character: character || createDeletedCharacterStub(characterId),
         };
     });
 
-    const interactionHistory = (await Promise.all(messagePromises)).filter((m): m is InteractionMessage => m !== null);
+    const interactionHistory = (await Promise.all(messagePromises)).filter((m): m is HistoryMessage => m !== null);
 
     return { ...interactionData, interactionHistory, numberOfMessages: interactionHistory.length };
 }
@@ -1072,7 +1052,13 @@ export async function loadRawInteractionData(
   if (existingCharShells && existingCharShells.length > 0) {
     for (const c of existingCharShells) charMap.set(c.id, c);
   } else {
-    const neededIds = [...new Set([rawInteractionData.protagonistId, ...(rawInteractionData.participantIds || [])])];
+    // Collect all needed character IDs from both protagonistIds and participantIds
+    const neededIds = [...new Set([
+      ...(rawInteractionData.protagonistIds || []),
+      ...(rawInteractionData.participantIds || []),
+      // Backward compat: include legacy protagonistId if present
+      ...(((rawInteractionData as any).protagonistId) ? [(rawInteractionData as any).protagonistId as string] : []),
+    ])];
     const shells = await Promise.all(neededIds.map(loadCharacterShell));
     for (const s of shells) { if (s) charMap.set(s.id, s); }
   }
@@ -1161,7 +1147,7 @@ export async function loadAllRawInteractionDataShells(): Promise<RawInteractionD
 }
 
 export async function saveRawInteractionData(interactionData: InteractionData): Promise<void> {
-  if (!interactionData.protagonist?.id) return;
+  if (interactionData.protagonists.length === 0) return;
 
   const saveMessagePromises = interactionData.interactionHistory.map(message => {
     const { id, character, ...rawMsg } = message;
@@ -1177,10 +1163,10 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     await Promise.all(saveMessagePromises.slice(i, i + BATCH_SIZE));
   }
 
-  const { id, protagonist, participants, contexts, locations, audioTracks, interactionHistory, parentInteractionDataId, parentInteractionMessageId, Profile, ...rawInteractionData } = interactionData;
+  const { id, protagonists, participants, contexts, locations, audioTracks, interactionHistory, parentInteractionDataId, parentInteractionMessageId, Profile, isMultiplayerEnabled, multiplayerData, ...rawInteractionData } = interactionData;
   const payload: RawInteractionData = {
     ...rawInteractionData, 
-    protagonistId: protagonist.id, 
+    protagonistIds: protagonists.map(p => p.id),
     participantIds: participants.map(p => p.id),
     contextIds: contexts?.map(i => i.id) || [],
     locationIds: locations?.map(l => l.id) || [],
@@ -1189,6 +1175,8 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     parentInteractionDataId: parentInteractionDataId || null, 
     parentInteractionMessageId: parentInteractionMessageId || null,
     ProfileId: Profile?.id,
+    isMultiplayerEnabled: isMultiplayerEnabled ?? false,
+    multiplayerData,
     lastUpdatedTimestamp: Date.now(),
   };
   await putJson(`${PATHS.interactionData}/${id}.json`, payload);
@@ -1203,12 +1191,14 @@ export async function branchRawInteractionData(parentInteractionDataId: string, 
   const newChatId = uuidv4();
   const newPayload: RawInteractionData = {
     name: `${sourceChat.name} (Branch)`, 
-    protagonistId: sourceChat.protagonist.id,
+    protagonistIds: sourceChat.protagonists.map(p => p.id),
     participantIds: sourceChat.participants.map(p => p.id), 
     contextIds: sourceChat.contexts?.map(i => i.id) || [],
     locationIds: sourceChat.locations?.map(l => l.id) || [],
     audioTrackIds: sourceChat.audioTracks?.map(t => t.id) || [],
     interactionIdHistory: sourceChat.interactionHistory.slice(0, branchIndex + 1).map(m => m.id),
+    isMultiplayerEnabled: sourceChat.isMultiplayerEnabled ?? false,
+    multiplayerData: sourceChat.multiplayerData,
     firstCreatedTimestamp: Date.now(), 
     lastUpdatedTimestamp: Date.now(), 
     parentInteractionDataId, 

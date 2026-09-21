@@ -32,6 +32,9 @@ interface SessionState {
     numberOfTokens: number;
     sessionStartTimestamp: number | null;
 
+    // Multiplayer state
+    currentAccountId: string | null;
+
     // UI preferences (persisted to localStorage)
     selectedBudgetStrategyId: string | null;
     defaultCharacterId: string | null;
@@ -58,6 +61,11 @@ export const useSessionStore = create<SessionState>()(() => ({
     costWithoutCacheMisses: 0,
     numberOfTokens: 0,
     sessionStartTimestamp: null,
+
+    // Multiplayer: defaults to '__local__' for single-player
+    currentAccountId: (() => {
+        try { return localStorage.getItem('loreReactor_currentAccountId') || '__local__'; } catch { return '__local__'; }
+    })(),
 
     // Initialize from localStorage
     selectedBudgetStrategyId: (() => {
