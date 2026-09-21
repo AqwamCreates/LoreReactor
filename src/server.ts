@@ -460,12 +460,11 @@ let lastGpuQueryTime = 0;
 const GPU_QUERY_MIN_INTERVAL_MS = 1000;
 
 // ─── Startup Data Sanitizer ──────────────────────────────────────────
-// Cleans orphaned manifest entries and unreferenced/hollow message files
-// on every server boot to prevent repeated 404 errors.
 
 /**
  * Read a manifest.json array, remove IDs whose .json files no longer exist,
- * rewrite the manifest. Returns count of removed entries.
+ * rewrite the manifest. Creates directory and empty manifest if missing.
+ * Returns count of removed entries.
  */
 function sanitizeManifestDir(dirName: string): number {
   const dirPath = path.join(ROOT_DIR, 'user_data', dirName);
@@ -477,10 +476,15 @@ function sanitizeManifestDir(dirName: string): number {
       fs.mkdirSync(dirPath, { recursive: true });
       log.info(`Created directory: ${dirPath}`);
     } catch { /* ignore */ }
-    return 0;
   }
 
-  if (!fs.existsSync(manifestPath)) return 0;
+  // Create empty manifest if missing
+  if (!fs.existsSync(manifestPath)) {
+    try {
+      fs.writeFileSync(manifestPath, '[]', 'utf-8');
+    } catch { /* ignore */ }
+    return 0;
+  }
 
   try {
     const raw = fs.readFileSync(manifestPath, 'utf-8');
@@ -794,6 +798,13 @@ app.use('/user_data', (req, response) => {
     fs.stat(filePath, (error, stats) => {
       if (error) { log.reqError('GET', req.url || '/', 500); return response.status(500).json({ error: 'FS Error' }); }
       if (stats.isDirectory()) {
+        // Auto-create manifest.json if missing
+        const manifestPath = path.join(filePath, 'manifest.json');
+        if (!fs.existsSync(manifestPath)) {
+          try {
+            fs.writeFileSync(manifestPath, '[]', 'utf-8');
+          } catch { /* ignore */ }
+        }
         fs.readdir(filePath, (error, files) => {
           if (error) { log.reqError('GET', req.url || '/', 500); return response.status(500).json({ error: 'Directory Read Error' }); }
           response.json(files);
