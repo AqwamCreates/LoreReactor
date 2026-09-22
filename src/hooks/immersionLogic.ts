@@ -5,8 +5,8 @@ import type { ChatMessage, InteractionData } from "../types";
 export interface DisplayNameCache {
     chatMessages: ChatMessage[];
     chatToFullIndex: Map<ChatMessage, number>;
-    revealThreshold: Map<string, number>;
     participantNameMap: Map<string, string>;
+    participantAliasesMap: Map<string, string[]>;
     participantIndexMap: Map<string, number>;
     forceNameReveal: boolean;
 }
@@ -16,9 +16,11 @@ function buildDisplayNameCache(interactionData: InteractionData): DisplayNameCac
     const forceNameReveal = interactionData.Profile?.forceNameReveal ?? false;
 
     const participantNameMap = new Map<string, string>();
+    const participantAliasesMap = new Map<string, string[]>();
     const participantIndexMap = new Map<string, number>();
     for (let i = 0; i < participants.length; i++) {
         participantNameMap.set(participants[i].id, participants[i].name);
+        participantAliasesMap.set(participants[i].id, participants[i].aliases ?? []);
         participantIndexMap.set(participants[i].id, i);
     }
 
@@ -33,19 +35,11 @@ function buildDisplayNameCache(interactionData: InteractionData): DisplayNameCac
         }
     }
 
-    const revealThreshold = new Map<string, number>();
-    for (let i = 0; i < interactionData.interactionHistory.length; i++) {
-        const msg = interactionData.interactionHistory[i];
-        if (msg.isNameRevealed && !revealThreshold.has(msg.character.id)) {
-            revealThreshold.set(msg.character.id, i);
-        }
-    }
-
     return {
         chatMessages,
         chatToFullIndex,
-        revealThreshold,
         participantNameMap,
+        participantAliasesMap,
         participantIndexMap,
         forceNameReveal,
     };
@@ -58,6 +52,17 @@ export function useDisplayNameCache(interactionData: InteractionData | null): Di
     }, [interactionData]);
 }
 
+/**
+ * Resolve the display name for a character at a given chat message index.
+ * 
+ * Priority logic:
+ * - If forceNameReveal is on, always show the real name.
+ * - Otherwise, walk backwards through chat messages BEFORE the current index
+ *   to find the most recent message whose knownCharacterNames reveals this character.
+ * - Check candidates in order: [name, ...aliases], return the first one marked true.
+ * - Display format: "Character N (KnownName)" — participant tag is always present.
+ * - If nothing is known, display just "Character N".
+ */
 export function resolveDelayedDisplayNameFromCache(
     cache: DisplayNameCache | null,
     chatMessageIndex: number,
@@ -65,30 +70,44 @@ export function resolveDelayedDisplayNameFromCache(
 ): string {
     if (!cache) return 'Unknown';
 
+    const idx = cache.participantIndexMap.get(characterId);
+    const tag = idx !== undefined ? `Character ${idx + 1}` : 'Unknown';
+
     if (cache.forceNameReveal) {
-        return cache.participantNameMap.get(characterId) ?? 'Unknown';
+        const name = cache.participantNameMap.get(characterId);
+        return name ? `${tag} (${name})` : tag;
     }
 
     if (chatMessageIndex < 0 || chatMessageIndex >= cache.chatMessages.length) {
-        const idx = cache.participantIndexMap.get(characterId);
-        return idx !== undefined ? `Character ${idx + 1}` : 'Unknown';
+        return tag;
     }
 
-    const targetMessage = cache.chatMessages[chatMessageIndex];
-    const fullIndex = cache.chatToFullIndex.get(targetMessage);
-
-    if (fullIndex === undefined) {
-        const idx = cache.participantIndexMap.get(characterId);
-        return idx !== undefined ? `Character ${idx + 1}` : 'Unknown';
+    // Build candidate list: [name, ...aliases]
+    const name = cache.participantNameMap.get(characterId);
+    const aliases = cache.participantAliasesMap.get(characterId) ?? [];
+    const candidates: string[] = [];
+    if (name) candidates.push(name);
+    for (const alias of aliases) {
+        if (alias && !candidates.includes(alias)) candidates.push(alias);
     }
 
-    const threshold = cache.revealThreshold.get(characterId);
-    if (threshold !== undefined && threshold < fullIndex) {
-        return cache.participantNameMap.get(characterId) ?? 'Unknown';
+    // Walk backwards through messages BEFORE the current index to find the
+    // most recent knownCharacterNames entry for this character
+    for (let i = chatMessageIndex - 1; i >= 0; i--) {
+        const msg = cache.chatMessages[i];
+        if (!msg.knownCharacterNames) continue;
+        const knownMap = msg.knownCharacterNames[characterId];
+        if (!knownMap) continue;
+
+        // Check candidates in priority order
+        for (const candidate of candidates) {
+            if (knownMap[candidate] === true) {
+                return `${tag} (${candidate})`;
+            }
+        }
     }
 
-    const idx = cache.participantIndexMap.get(characterId);
-    return idx !== undefined ? `Character ${idx + 1}` : 'Unknown';
+    return tag;
 }
 
 export function getDelayedDisplayName(interactionData: InteractionData, interactionMessageIndex: number, characterId: string): string {

@@ -63,6 +63,22 @@ function filterRecordKeysByUuid<T>(record: Record<string, T> | undefined): Recor
 }
 
 /**
+ * Parse a record with numeric keys (e.g., positional indices for textCharacterWeights).
+ * Preserves entries where the key is a valid non-negative integer.
+ */
+function filterRecordKeysByNumber<T>(record: Record<string, T> | Record<number, T> | undefined): Record<number, T> {
+    if (!record) return {};
+    const result: Record<number, T> = {};
+    for (const [key, value] of Object.entries(record)) {
+        const numKey = Number(key);
+        if (Number.isFinite(numKey) && numKey >= 0 && String(numKey) === key) {
+            result[numKey] = value;
+        }
+    }
+    return result;
+}
+
+/**
  * Parses starterPrompts: Record<string, number> from AI-generated JSON.
  * Keys are text strings, values are numeric weights.
  */
@@ -75,6 +91,32 @@ function parseStarterPrompts(raw: unknown): Record<string, number> | undefined {
         }
     }
     return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * Parse knownCharacterNames: Record<string, string[]> from raw data.
+ * Keys are character IDs (UUIDs), values are arrays of name strings.
+ */
+function parseKnownCharacterNames(raw: unknown): Record<string, string[]> {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const result: Record<string, string[]> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (!UUID_REGEX.test(key)) continue;
+        if (Array.isArray(value)) {
+            const names = value.filter((n): n is string => typeof n === 'string' && n.trim().length > 0);
+            if (names.length > 0) result[key] = names;
+        }
+    }
+    return result;
+}
+
+/**
+ * Parse aliases: string[] from raw data.
+ */
+function parseAliases(raw: unknown): string[] | undefined {
+    if (!Array.isArray(raw)) return undefined;
+    const aliases = raw.filter((a): a is string => typeof a === 'string' && a.trim().length > 0);
+    return aliases.length > 0 ? aliases : undefined;
 }
 
 const VALID_TOOL_USAGE_DISPLAY_MODES: toolUsageDisplayMode[] = ['none', 'icon', 'simple', 'detailed', 'full', 'raw'];
@@ -130,7 +172,7 @@ function fillTextCharacterInjectionDefaults(t: Record<string, unknown>): TextCha
         name: (t.name as string) || 'Unnamed Injection',
         description: (t.description as string) || '',
         textCharacters: Array.isArray(t.textCharacters) ? (t.textCharacters as string[]).filter(c => typeof c === 'string') : [],
-        textCharacterWeights: filterRecordKeysByUuid(t.textCharacterWeights as Record<string, number> | undefined),
+        textCharacterWeights: filterRecordKeysByNumber(t.textCharacterWeights as Record<string, number> | undefined),
         textCharacterInjectionBindings: filterValidUuids(t.textCharacterInjectionBindings as string[] | undefined),
         textCharacterInjectionWeight: (t.textCharacterInjectionWeight as number) ?? 1,
         textCharacterBreakProbability: (t.textCharacterBreakProbability as number) ?? 0,
@@ -181,6 +223,7 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
         id: ensureId(c),
         name: (c.name as string) || 'Unnamed',
         description: (c.description as string) || '',
+        aliases: parseAliases(c.aliases),
         images: (c.images && typeof c.images === 'object' ? c.images as Record<string, string> : {}) as Record<string, string>,
         useFrontCameraImage: (c.useFrontCameraImage as boolean) ?? false,
         voice: (c.voice as string) || undefined,
@@ -207,6 +250,7 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
         numberOfMessagesToDisableStarterPrompt: (c.numberOfMessagesToDisableStarterPrompt as number) ?? 0,
         tools: parseToolsRecord(c.tools, defaultCharacterTools) as Record<tool, boolean>,
         clothings: rawClothings.map(item => fillClothingDefaults(item)),
+        knownCharacterNames: parseKnownCharacterNames(c.knownCharacterNames),
         textCharacterInjections: rawTextInjections.map(item => fillTextCharacterInjectionDefaults(item)),
         memories: {},
         firstCreatedTimestamp: now,

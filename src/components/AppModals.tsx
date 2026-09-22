@@ -46,7 +46,6 @@ interface EntityModalState<T> {
 }
 
 interface AppModalsProps {
-    // Modals & data
     modals: Record<string, ModalVisibility>;
     runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     rawChatShells: RawInteractionData[];
@@ -65,7 +64,6 @@ interface AppModalsProps {
     allMemories: Memory[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
-    // Entity modals
     charModal: EntityModalState<Character>;
     contextModal: EntityModalState<Context>;
     locationModal: EntityModalState<Location>;
@@ -79,69 +77,50 @@ interface AppModalsProps {
     worldModal: EntityModalState<World>;
     accountModal: EntityModalState<Account>;
     multiplayerDataModal: EntityModalState<MultiplayerData>;
-    // Chat callbacks
     onSwitchChat: (id: string) => void;
     onInspectChat: (id: string) => void;
     onDeleteChat: (id: string) => void;
     onNewChat: () => void;
     onRenameChat: (id: string, name: string) => void;
-    // Character callbacks
     onDeleteCharacter: (id: string) => void;
     onLoadFullCharacter: (id: string) => Promise<Character | null>;
     onToggleParticipant: (id: string) => void;
     onSetProtagonist: (id: string) => void;
     onSaveCharacter: (c: Character) => void;
-    // Context callbacks
     onDeleteContext: (id: string) => void;
     onToggleContext: (id: string) => void;
     onSaveContext: (c: Context) => void;
-    // Location callbacks
     onDeleteLocation: (id: string) => void;
     onToggleLocation: (id: string) => void;
     onSaveLocation: (l: Location) => void;
-    // Audio track callbacks
     onDeleteAudioTrack: (id: string) => void;
     onToggleAudioTrack: (id: string) => void;
     onSaveAudioTrack: (t: AudioTrack) => void;
-    // Prompt block callbacks
     onDeletePromptBlock: (id: string) => void;
-    // Model callbacks
     onDeleteModel: (id: string) => void;
     onToggleModelLoad: (id: string) => void;
-    // Sampler callbacks
     onDeleteSampler: (id: string) => void;
-    // Stop pattern callbacks
     onDeleteStopPattern: (id: string) => void;
-    // Budget strategy callbacks
     onDeleteBudgetStrategy: (id: string) => void;
     onActivateBudgetStrategy: (id: string) => void;
-    // Profile callbacks
     onDeleteProfile: (id: string) => void;
     onActivateProfile: (id: string) => void;
     onSaveProfile: (p: Profile) => void;
-    // Extension callbacks
     onDeleteExtension: (id: string) => void;
     onToggleExtension: (id: string) => void;
-    // World callbacks
     onSaveWorld: (w: World) => void;
     onLoadWorld: (world: World) => void;
     onDeleteWorld: (id: string) => void;
-    // Memory callbacks
     onDeleteMemory: (id: string) => void;
-    // Account callbacks
     onDeleteAccount: (id: string) => void;
     onToggleAccount: (id: string) => void;
-    // Multiplayer data callbacks
     onDeleteMultiplayerData: (id: string) => void;
-    // Join session callback
-    onOpenJoinSession: () => void;
-    // Interaction data callbacks
+    onJoinSession: (sessionId: string, password: string, protagonist: Character) => void;
     onUpdateInteractionData: (data: InteractionData) => void;
     onForceFirstMessage: (c: Character) => void;
     onSendCustomMessage: (c: Character, t: string) => void;
     onInjectCustomMessage: (c: Character, t: string) => void;
     onInjectFirstMessage: (c: Character) => void;
-    // General callbacks
     onImportComplete: () => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
     ensureChatsLoaded: () => void;
@@ -149,7 +128,6 @@ interface AppModalsProps {
 
 type ChatShellWithId = RawInteractionData & { id: string };
 
-/** Derive current user's protagonist from centralized multiplayerData + interactionData */
 function deriveLocalProtagonist(
     interactionData: InteractionData | null,
     multiplayerData: MultiplayerData | null,
@@ -193,7 +171,7 @@ export function AppModals({
     onDeleteMemory,
     onDeleteAccount, onToggleAccount,
     onDeleteMultiplayerData,
-    onOpenJoinSession,
+    onJoinSession,
     onUpdateInteractionData, onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
     onImportComplete, addToast, ensureChatsLoaded,
 }: AppModalsProps) {
@@ -224,6 +202,7 @@ export function AppModals({
     const [aiProfileSaveRedirect, setAiProfileSaveRedirect] = useState<((p: Profile) => void) | null>(null);
 
     const [gpuMonitorOpen, setGpuMonitorOpen] = useState(false);
+    const [joinSessionOpen, setJoinSessionOpen] = useState(false);
 
     const chatShellsWithIds = useMemo(
         () => rawChatShells.filter((s): s is ChatShellWithId => !!s.id),
@@ -407,7 +386,7 @@ export function AppModals({
                     onOpenParticipantControl={modals.participantControl.open}
                     onOpenAccountData={modals.accountList.open}
                     onOpenMultiplayerData={modals.multiplayerDataList.open}
-                    onOpenJoinSession={onOpenJoinSession}
+                    onOpenJoinSession={() => { modals.settings.close(); setJoinSessionOpen(true); }}
                     onOpenAIRecommendation={modals.aiRecommendation.open}
                     onOpenAlternateTimelines={modals.alternateTimelines.open}
                     onOpenImportCharacterCard={modals.cardImport.open}
@@ -507,7 +486,7 @@ export function AppModals({
             {charModal.isOpen && (
                 <CharacterEditorModal isOpen={charModal.isOpen} onClose={() => { setAiCharacterSaveRedirect(null); charModal.close(); }}
                     onSave={(c: Character) => { if (aiCharacterSaveRedirect) { aiCharacterSaveRedirect(c); addToast('Applied character changes to AI recommendation.', 'success'); } else { charModal.handleSave(c); } }}
-                    existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} selectedModel={effectiveTokenizerModel} runningModels={runningModels} chatNameMap={chatNameMap} />
+                    existingCharacter={charModal.itemToEdit} allSamplers={allSamplers} allCharacters={allCharacters} selectedModel={effectiveTokenizerModel} runningModels={runningModels} chatNameMap={chatNameMap} />
             )}
 
             {contextModal.isOpen && (
@@ -580,6 +559,14 @@ export function AppModals({
                 <MultiplayerEditorModal isOpen={multiplayerDataModal.isOpen} onClose={multiplayerDataModal.close} onSave={multiplayerDataModal.handleSave}
                     existingMultiplayerData={multiplayerDataModal.itemToEdit} allCharacters={allCharacters} rawChatShells={chatShellsWithIds} />
             )}
+
+            {/* ─── Join Session Modal ─── */}
+            <JoinSessionModal
+                isOpen={joinSessionOpen}
+                onClose={() => setJoinSessionOpen(false)}
+                allCharacters={allCharacters}
+                onJoin={onJoinSession}
+            />
         </>
     );
 }

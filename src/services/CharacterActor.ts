@@ -2,6 +2,8 @@
 import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from '../storage/serverStorage';
 import { prepareRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
+import { detectName } from '../hooks/nameDetection';
+import { getFilteredChatMessages } from '../hooks/promptLogic';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { getEffectiveTools, initializeClothingWearingStatuses } from '../hooks/characterLogic';
@@ -157,6 +159,16 @@ export class CharacterActor {
         // Message lifecycle (creation, finalization) is owned by the session layer.
         const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
 
+        // Filter chat messages using message filter triggers from contexts, locations,
+        // and prompt blocks. This is the single source of truth for which messages the
+        // character can "see/hear." Used by both name detection and prompt building.
+        const filteredMessages = getFilteredChatMessages(data, character.id, allPromptBlocks);
+
+        // Detect name reveals from filtered (visible) messages ONCE at the start of the turn.
+        // This produces the character's current accumulated name knowledge, which is used
+        // for both prompt building and stored on the resulting message.
+        const knownCharacterNames = detectName(character, filteredMessages);
+
         // Resolve clothing wearing statuses upfront so they're available for
         // both the prompt build and the message creation. We call prepareRequestBody
         // once here just for the clothing statuses; the actual streaming calls below
@@ -168,13 +180,16 @@ export class CharacterActor {
                 : (selectedModel?.id || '');
             if (probeModelId) {
                 try {
-                    const probeResult = await prepareRequestBody(data, character, '', allPromptBlocks, probeModelId);
+                    const probeResult = await prepareRequestBody(data, character, knownCharacterNames, '', allPromptBlocks, probeModelId);
                     resolvedClothingStatuses = probeResult.characterClothingWearingStatuses;
                 } catch { /* non-critical, keep initializeClothingWearingStatuses fallback */ }
             }
         }
 
-        const aiMessage = isResuming ? null : createChatMessage(data, character, '', { clothingWearingStatuses: resolvedClothingStatuses });
+        const aiMessage = isResuming ? null : createChatMessage(data, character, '', {
+            clothingWearingStatuses: resolvedClothingStatuses,
+            knownCharacterNames,
+        });
 
         try {
             let rawText: string;
@@ -250,7 +265,7 @@ export class CharacterActor {
                     const selection = await bse.selectModelForRequest({ prompt: '' });
                     const activeModelId = selection?.modelId || '';
 
-                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, activeModelId);
+                    const { body } = await prepareRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId);
 
                     const cb = callbacks ? createStreamCallbacks(streamToolParser, accumulator) : undefined;
                     const streamResult = await bse.generateStream(body, { signal } as AbortController, cb);
@@ -328,11 +343,11 @@ export class CharacterActor {
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
-                    const { body } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId);
+                    const { body } = await prepareRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
                     rawText = await doStream(body);
 
                     if ((!rawText || !rawText.trim()) && !signal.aborted) {
-                        const { body: rb } = await prepareRequestBody(data, character, currentExistingText, allPromptBlocks, modelId);
+                        const { body: rb } = await prepareRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
                         rawText = await doStream(rb);
                         if (!rawText || !rawText.trim()) {
                             return { error: { message: 'Empty response from model', type: 'inference' } };
@@ -369,7 +384,8 @@ export class CharacterActor {
             if (isResuming) {
                 updatedData = data;
             } else {
-                // Normal mode: finalize the pre-created message and add to history
+                // Normal mode: finalize the pre-created message and add to history.
+                // knownCharacterNames was already set on aiMessage at creation time.
                 if (aiMessage) {
                     aiMessage.textContent = displayText;
                     aiMessage.characterExpression = latestExpression ?? undefined;

@@ -1,6 +1,6 @@
 // src/hooks/chatLogic.ts
 import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, Location, RegularExpressionTrigger, TextCharacterInjection } from '../types';
-import { detectName } from './nameDetection';
+import { getKnownDisplayName } from './promptLogic';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storage/serverStorage';
 import { getEffectiveUseFrontCameraImage, getEffectiveMaximumChatStamina, initializeClothingWearingStatuses } from './characterLogic';
@@ -225,14 +225,15 @@ function generateInitialCharacterText(character: Character): string {
 export async function prepareRequestBody(
     interactionData: InteractionData,
     character: Character,
+    knownCharacterNames: Record<string, Record<string, boolean>>,
     existingCharacterText: string,
     allPromptBlocks: PromptBlock[],
     modelId: string,
-): Promise<{ body: Record<string, unknown>; fetchErrors: string[]; characterClothingWearingStatuses: Record<string, boolean> }> {
+): Promise<{ body: Record<string, unknown>; knownCharacterNames: Record<string, Record<string, boolean>>; fetchErrors: string[]; characterClothingWearingStatuses: Record<string, boolean> }> {
 
     const profile = interactionData.Profile;
 
-    const { prompt, stops, contextImages, locationImages, promptBlockImages, characterClothingWearingStatuses, fetchErrors } = await buildPrompt(interactionData, character, existingCharacterText, allPromptBlocks, modelId);
+    const { prompt, stops, contextImages, locationImages, promptBlockImages, characterClothingWearingStatuses, fetchErrors } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId);
 
     const sampler = character.sampler;
     const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection;
@@ -289,10 +290,9 @@ export async function prepareRequestBody(
             if (!participantImageBase64) continue;
 
             const rawData = participantImageBase64.includes(',') ? participantImageBase64.split(',')[1] : participantImageBase64;
-            let participantString = getParticipantTag(participant, interactionData.participants);
-            if (participantMessage?.isNameRevealed) {
-                participantString = `${participantString} (${participant.name})`;
-            }
+            const participantTag = getParticipantTag(participant, interactionData.participants);
+            const knownName = getKnownDisplayName(participant, knownCharacterNames);
+            const participantString = knownName ? `${participantTag} (${knownName})` : participantTag;
 
             filesBase64.push({ data: rawData, id: imageIdCounter++ });
 
@@ -416,7 +416,7 @@ export async function prepareRequestBody(
 
     if (filesBase64.length > 0) body.image_data = filesBase64;
 
-    return { body, fetchErrors, characterClothingWearingStatuses };
+    return { body, knownCharacterNames, fetchErrors, characterClothingWearingStatuses };
 }
 
 export function convertIdsToDisplayNames(text: string, interactionData: InteractionData): string {
@@ -434,10 +434,28 @@ export function convertIdsToDisplayNames(text: string, interactionData: Interact
     result = result.replace(/<memory>\}/g, '');
     result = result.replace(/<memory>[\s\S]*?\}/g, '');
 
+    // For display purposes, check if ANY message in history reveals the name
+    // (the user/reader always sees real names regardless of in-character knowledge)
     interactionData.participants.forEach((p, i) => {
-        const id = `Character ${i + 1}`;
-        const isRevealed = interactionData.interactionHistory.some(m => m.character.id === p.id && m.isNameRevealed);
-        if (isRevealed) result = result.replace(new RegExp(`\\b${id}\\b`, 'g'), p.name);
+        const tag = `Character ${i + 1}`;
+        // Check all messages for knownCharacterNames entries for this participant
+        let knownName: string | null = null;
+        for (let mi = interactionData.interactionHistory.length - 1; mi >= 0; mi--) {
+            const msg = interactionData.interactionHistory[mi];
+            if (msg.knownCharacterNames) {
+                const candidates = [p.name, ...(p.aliases ?? [])];
+                for (const candidate of candidates) {
+                    if (msg.knownCharacterNames[p.id]?.[candidate] === true) {
+                        knownName = candidate;
+                        break;
+                    }
+                }
+            }
+            if (knownName) break;
+        }
+        if (knownName) {
+            result = result.replace(new RegExp(`\\b${tag}\\b`, 'g'), `${tag} (${knownName})`);
+        }
     });
     return result;
 }
@@ -465,11 +483,9 @@ export function createChatMessage(
     interactionData: InteractionData,
     character: Character,
     textContent: string,
-    options?: { isPartial?: boolean; locationIndex?: number; files?: string[]; frontCameraImage?: string, clothingWearingStatuses?: Record<string, boolean> }
+    options?: { isPartial?: boolean; locationIndex?: number; files?: string[]; frontCameraImage?: string; knownCharacterNames?: Record<string, Record<string, boolean>>; clothingWearingStatuses?: Record<string, boolean> }
 ): ChatMessage {
     const previousMessage = findPreviousMessage(interactionData, character.id);
-    const wasRevealed = previousMessage?.isNameRevealed ?? false;
-    const isNameRevealed = wasRevealed || detectName(interactionData, character, textContent);
     const effectiveMaximumChatStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
     const effectiveMaximumActionStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
     const remainingChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaximumChatStamina;
@@ -488,6 +504,14 @@ export function createChatMessage(
         locationIndex = detectLocationFromText(textContent, interactionData.locations);
     }
 
+    const knownCharacterNames = options?.knownCharacterNames ??
+        (character.knownCharacterNames
+            ? Object.fromEntries(
+                Object.entries(character.knownCharacterNames).map(([charId, names]) =>
+                    [charId, Object.fromEntries(names.map(n => [n, true] as const))]
+                )
+            )
+            : {});
     const prevClothingStatuses = (previousMessage as ChatMessage)?.characterClothingWearingStatuses;
     const clothingWearingStatuses = options?.clothingWearingStatuses ?? prevClothingStatuses ?? initializeClothingWearingStatuses(character);
     const prevLockedLocations = previousMessage?.characterLockedLocations ?? {};
@@ -501,7 +525,7 @@ export function createChatMessage(
         frontCameraImage,
         remainingChatStamina,
         remainingActionStamina,
-        isNameRevealed,
+        knownCharacterNames,
         locationIndex,
         isPartial,
         characterClothingWearingStatuses: clothingWearingStatuses,

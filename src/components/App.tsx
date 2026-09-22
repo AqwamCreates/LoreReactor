@@ -52,7 +52,6 @@ import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
 import { ChatInspectionModal } from './ChatInspectionModal';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
-import { JoinSessionModal } from './JoinSessionModal';
 import '../main.css';
 import { ChatMinimap } from './ChatMinimap';
 
@@ -93,7 +92,6 @@ function hasMessagesChanged(a: InteractionData | null, b: InteractionData): bool
     return false;
 }
 
-/** Derive current user's protagonist from interactionData + centralized multiplayerData + currentAccountId */
 function deriveCurrentProtagonist(
     interactionData: InteractionData | null,
     multiplayerData: MultiplayerData | null,
@@ -158,14 +156,12 @@ function App() {
     const selectedBudgetStrategyId = useSessionStore(s => s.selectedBudgetStrategyId);
 
     // ─── Join Session State ──────────────────────────────────────────
-    const [joinSessionOpen, setJoinSessionOpen] = useState(false);
     const [joinSessionId, setJoinSessionId] = useState<string | null>(null);
     const [joinPassword, setJoinPassword] = useState<string>('');
     const [joinProtagonist, setJoinProtagonist] = useState<Character | null>(null);
 
     const handleJoinAccepted = useCallback(() => {
         addToast('Joined session successfully.', 'success');
-        setJoinSessionOpen(false);
     }, [addToast]);
 
     const handleJoinRejected = useCallback((reason: string) => {
@@ -199,12 +195,26 @@ function App() {
         onJoinRejected: handleJoinRejected,
     });
 
-    // Wire broadcast bridge to sync hook
     useEffect(() => {
         broadcastMessageRef.current = multiplayerSync.isConnected ? multiplayerSync.broadcastMessage : undefined;
     }, [multiplayerSync.isConnected, multiplayerSync.broadcastMessage]);
 
-    // Derive localProtagonist from centralized multiplayerData
+    // ─── Disconnect On Chat Switch ──────────────────────────────────
+    const previousChatIdRef = useRef<string | null | undefined>(undefined);
+    useEffect(() => {
+        const currentChatId = interactionData?.id ?? null;
+        const previousChatId = previousChatIdRef.current;
+
+        if (previousChatId !== undefined && previousChatId !== null && previousChatId !== currentChatId) {
+            multiplayerSync.disconnect();
+            setJoinSessionId(null);
+            setJoinPassword('');
+            setJoinProtagonist(null);
+        }
+
+        previousChatIdRef.current = currentChatId;
+    }, [interactionData?.id, multiplayerSync]);
+
     const localProtagonist = useMemo(
         () => deriveCurrentProtagonist(interactionData, multiplayerData, currentAccountId),
         [interactionData, multiplayerData, currentAccountId],
@@ -1070,7 +1080,7 @@ function App() {
                     onDeleteAccount={deleteAccount}
                     onToggleAccount={() => {}}
                     onDeleteMultiplayerData={deleteMultiplayerData}
-                    onOpenJoinSession={() => setJoinSessionOpen(true)}
+                    onJoinSession={handleJoinSession}
                     onUpdateInteractionData={(data) => {
                         const withLocations = assignInitialLocationsIfNeeded(data);
                         setInteractionData(withLocations);
@@ -1113,13 +1123,6 @@ function App() {
                 onAddAction={handleAddAction} 
                 onDeleteAction={handleDeleteAction} 
                 onActionInterject={handleActionInterject} 
-            />
-
-            <JoinSessionModal
-                isOpen={joinSessionOpen}
-                onClose={() => setJoinSessionOpen(false)}
-                allCharacters={allCharacters}
-                onJoin={handleJoinSession}
             />
         </>
     );

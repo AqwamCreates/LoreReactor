@@ -20,6 +20,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "id": "string (UUID)",
     "name": "string (required)",
     "description": "string (display only, NOT used as AI input)",
+    "aliases": ["string array of alternate names/aliases for this character. Used for name detection priority: [name, ...aliases]. Characters learn these via knownCharacterNames."],
     "images": {"expression name": "image filename string"},
     "useFrontCameraImage": "boolean (default false). When true and profile allows per-character control, replace stored image with live front camera snapshot.",
     "voice": "string (optional voice ID or path)",
@@ -90,6 +91,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
       "regularExpressionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
       "clothingBindings": ["string array of clothing UUIDs this item covers/hides when worn"]
     }],
+    "knownCharacterNames": {"character UUID": ["string array of name/alias strings this character knows about that other character. Detected automatically during chat via name reveal patterns. Defines baseline persistent knowledge."]},
     "textCharacterInjections": [{
       "id": "string (UUID)",
       "name": "string (required)",

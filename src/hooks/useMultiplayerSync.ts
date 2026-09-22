@@ -1,5 +1,5 @@
 // src/hooks/useMultiplayerSync.ts
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { InteractionData, MultiplayerData, HistoryMessage, Character, ChatMessage, InteractionMessage } from '../types';
 import { useMultiplayerConnection, type MultiplayerMessage, type JoinRequestPayload, type JoinResponsePayload } from './useMultiplayerConnection';
 
@@ -15,7 +15,7 @@ interface SyncChatMessagePayload {
     isPartial?: boolean;
     remainingChatStamina?: number;
     remainingActionStamina?: number;
-    isNameRevealed?: boolean;
+    knownCharacterNames?: Record<string, Record<string, boolean>>;
     locationIndex?: number;
     characterExpression?: string;
     inventory?: Record<string, string | number>;
@@ -30,7 +30,7 @@ interface SyncInteractionMessagePayload {
     messageType: 'interaction';
     remainingChatStamina?: number;
     remainingActionStamina?: number;
-    isNameRevealed?: boolean;
+    knownCharacterNames?: Record<string, Record<string, boolean>>;
     locationIndex?: number;
     characterExpression?: string;
     inventory?: Record<string, string | number>;
@@ -100,22 +100,27 @@ export function useMultiplayerSync({
     const isHost = !!multiplayerData && !joinSessionId;
     const isAdmin = isHost || !!(multiplayerData && currentAccountId && multiplayerData.administratorAccountIds.includes(currentAccountId));
 
-    // Construct synthetic MultiplayerData for peer ID derivation when joining
-    const effectiveMultiplayerData: MultiplayerData | null = multiplayerData ?? (
-        joinSessionId ? {
-            id: joinSessionId,
-            name: '',
-            password: '',
-            interactionDataIds: [],
-            whiteListedAccountIds: [],
-            blacklistedAccountIds: [],
-            pendingAccountIds: [],
-            administratorAccountIds: [],
-            accountIdCharacterIds: {},
-            firstCreatedTimestamp: 0,
-            lastUpdatedTimestamp: 0,
-        } : null
-    );
+    // Construct synthetic MultiplayerData for peer ID derivation when joining.
+    // Memoized so the PeerJS connection effect doesn't re-run every render and tear down the peer.
+    const effectiveMultiplayerData = useMemo<MultiplayerData | null>(() => {
+        if (multiplayerData) return multiplayerData;
+        if (joinSessionId) {
+            return {
+                id: joinSessionId,
+                name: '',
+                password: '',
+                interactionDataIds: [],
+                whiteListedAccountIds: [],
+                blacklistedAccountIds: [],
+                pendingAccountIds: [],
+                administratorAccountIds: [],
+                accountIdCharacterIds: {},
+                firstCreatedTimestamp: 0,
+                lastUpdatedTimestamp: 0,
+            };
+        }
+        return null;
+    }, [multiplayerData, joinSessionId]);
 
     // Track finalized message IDs we've already applied to avoid duplicates
     const appliedMessageIdsRef = useRef<Set<string>>(new Set());
@@ -168,7 +173,7 @@ export function useMultiplayerSync({
                         kvCacheInteractionTextContentSummaries: {},
                         remainingChatStamina: chatPayload.remainingChatStamina,
                         remainingActionStamina: chatPayload.remainingActionStamina,
-                        isNameRevealed: chatPayload.isNameRevealed,
+                        knownCharacterNames: chatPayload.knownCharacterNames,
                         locationIndex: chatPayload.locationIndex,
                         characterExpression: chatPayload.characterExpression,
                         inventory: chatPayload.inventory,
@@ -186,7 +191,7 @@ export function useMultiplayerSync({
                         character,
                         remainingChatStamina: interactionPayload.remainingChatStamina,
                         remainingActionStamina: interactionPayload.remainingActionStamina,
-                        isNameRevealed: interactionPayload.isNameRevealed,
+                        knownCharacterNames: interactionPayload.knownCharacterNames,
                         locationIndex: interactionPayload.locationIndex,
                         characterExpression: interactionPayload.characterExpression,
                         inventory: interactionPayload.inventory,
@@ -387,7 +392,7 @@ export function useMultiplayerSync({
             characterId: message.character.id,
             remainingChatStamina: message.remainingChatStamina,
             remainingActionStamina: message.remainingActionStamina,
-            isNameRevealed: message.isNameRevealed,
+            knownCharacterNames: message.knownCharacterNames,
             locationIndex: message.locationIndex,
             characterExpression: message.characterExpression,
             inventory: message.inventory,
@@ -431,7 +436,7 @@ export function useMultiplayerSync({
         characterMapRef.current.set(character.id, character);
     }, [broadcast]);
 
-    // Clear applied message IDs when switching chats
+    // Clear applied message IDs and peer map when switching chats
     useEffect(() => {
         appliedMessageIdsRef.current.clear();
         peerCharacterMapRef.current.clear();

@@ -146,6 +146,7 @@ export function CharacterCardImportModal({
                 doNotInjectCharacterImage: false,
                 tools: { ...defaultCharacterTools },
                 clothings: [],
+                knownCharacterNames: {},
                 textCharacterInjections: [],
                 memories: {},
                 numberOfMessagesToDisableThinkPrompt: 1,

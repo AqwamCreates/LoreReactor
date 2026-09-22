@@ -125,8 +125,10 @@ function isEntityHollow(
             );
             const hasDialoguePrompts = c.dialoguePrompts && c.dialoguePrompts.length > 0;
             const hasNonEmptyDialoguePrompt = hasDialoguePrompts && c.dialoguePrompts?.some(dp => dp.content?.trim());
+            const hasKnowledgePrompts = c.knowledgePrompts && c.knowledgePrompts.length > 0;
+            const hasNonEmptyKnowledgePrompt = hasKnowledgePrompts && c.knowledgePrompts?.some(kp => kp.content?.trim());
             const hasStarterPrompts = c.starterPrompts && Object.keys(c.starterPrompts).length > 0;
-            return !(c.systemPrompt?.trim() || c.appearancePrompt?.trim() || hasNonEmptyDialoguePrompt || c.thinkPrompt?.trim() || hasStarterPrompts)
+            return !(c.systemPrompt?.trim() || c.appearancePrompt?.trim() || hasNonEmptyDialoguePrompt || hasNonEmptyKnowledgePrompt || c.thinkPrompt?.trim() || hasStarterPrompts)
                 && !(c.images && Object.keys(c.images).length > 0)
                 && !c.voice?.trim()
                 && !(c.memories && Object.values(c.memories).some(arr => arr.length > 0))
@@ -297,7 +299,6 @@ export function DataManagerModal({
         const profileIdSet = new Set(allProfiles.map(p => p.id));
         const memoryIdSet = new Set(allMemories.map(m => m.id));
         const accountIdSet = new Set(allAccounts.map(a => a.id));
-        const multiplayerDataIdSet = new Set(allMultiplayerData.map(md => md.id));
         const chatIdSet = new Set(rawChatShells.filter(s => s.id).map(s => s.id));
 
         const referencedCharIds = new Set<string>();
@@ -351,11 +352,6 @@ export function DataManagerModal({
         for (const bs of allBudgetStrategies) {
             for (const m of (bs.onlineModels || [])) if (modelIdSet.has(m.id)) referencedModelIds.add(m.id);
             for (const m of (bs.localModels || [])) if (modelIdSet.has(m.id)) referencedModelIds.add(m.id);
-        }
-
-        for (const mem of allMemories) {
-            const interactionId = mem.interactionData?.id ?? (mem as unknown as { interactionDataId?: string }).interactionDataId;
-            if (interactionId && chatIdSet.has(interactionId)) referencedMemoryIds.add(mem.id);
         }
 
         for (const ctx of allContexts) {
@@ -463,6 +459,26 @@ export function DataManagerModal({
             for (const ownerId of (loc.ownerBindings || [])) {
                 if (!charIdSet.has(ownerId)) issues.push({ entityType: 'Location', entityName: loc.name, issue: 'References missing owner character', refType: 'Character', refId: ownerId });
             }
+            if (loc.characterWeights) {
+                for (const charId of Object.keys(loc.characterWeights)) {
+                    if (!charIdSet.has(charId)) issues.push({ entityType: 'Location', entityName: loc.name, issue: 'characterWeights references missing character', refType: 'Character', refId: charId });
+                }
+            }
+            if (loc.locationBindingRegularExpressionTriggers) {
+                for (const locId of Object.keys(loc.locationBindingRegularExpressionTriggers)) {
+                    if (!locIdSet.has(locId)) issues.push({ entityType: 'Location', entityName: loc.name, issue: 'locationBindingRegularExpressionTriggers references missing location', refType: 'Location', refId: locId });
+                }
+            }
+            if (loc.playAudioTrackOnEnterWeights) {
+                for (const audioId of Object.keys(loc.playAudioTrackOnEnterWeights)) {
+                    if (!audioIdSet.has(audioId)) issues.push({ entityType: 'Location', entityName: loc.name, issue: 'playAudioTrackOnEnterWeights references missing audio track', refType: 'Audio Track', refId: audioId });
+                }
+            }
+            if (loc.locationDistances) {
+                for (const locId of Object.keys(loc.locationDistances)) {
+                    if (!locIdSet.has(locId)) issues.push({ entityType: 'Location', entityName: loc.name, issue: 'locationDistances references missing location', refType: 'Location', refId: locId });
+                }
+            }
         }
         for (const at of allAudioTracks) {
             for (const binding of (at.locationBindings || [])) {
@@ -521,6 +537,19 @@ export function DataManagerModal({
                     }
                 }
             }
+            if (c.knowledgePrompts && c.knowledgePrompts.length > 0) {
+                const knowledgePromptIdSet = new Set(c.knowledgePrompts.map(kp => kp.id));
+                for (const kp of c.knowledgePrompts) {
+                    for (const boundId of (kp.knowledgePromptBindings || [])) {
+                        if (!knowledgePromptIdSet.has(boundId)) issues.push({ entityType: 'Character', entityName: c.name, issue: `Knowledge prompt "${kp.name}" references missing knowledge prompt binding`, refType: 'Knowledge Prompt', refId: boundId });
+                    }
+                }
+            }
+            if (c.knownCharacterNames) {
+                for (const charId of Object.keys(c.knownCharacterNames)) {
+                    if (!charIdSet.has(charId)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'knownCharacterNames references missing character', refType: 'Character', refId: charId });
+                }
+            }
         }
         for (const s of allSamplers) {
             for (const sp of (s.stopPatterns || [])) {
@@ -532,7 +561,7 @@ export function DataManagerModal({
             for (const m of (bs.localModels || [])) { if (!modelIdSet.has(m.id)) issues.push({ entityType: 'Budget Strategy', entityName: bs.name, issue: 'References missing local model', refType: 'Language Model', refId: m.id }); }
         }
         for (const mem of allMemories) {
-            const interactionId = mem.interactionData?.id ?? (mem as unknown as { interactionDataId?: string }).interactionDataId;
+            const interactionId = mem.interactionData?.id;
             if (interactionId && !chatIdSet.has(interactionId)) {
                 issues.push({ entityType: 'Memory', entityName: mem.name, issue: 'References missing chat session', refType: 'Chat', refId: interactionId });
             }
@@ -682,8 +711,8 @@ export function DataManagerModal({
         return items.filter(i => !alreadyExcluded.has(i.id) && i.name.toLowerCase().includes(q)).slice(0, 20);
     }, [exclusionSearchQuery, exclusionDropdownType, allCharacters, allContexts, allLocations, allAudioTracks, allProfiles, exclusions]);
 
-    // ─── Bulk: Candidate list ────────────────────────────────────────
-    const bulkCandidates = useMemo(() => {
+    // ─── Bulk: Candidate list (computed directly, no useMemo — Date.now() is impure) ────
+    const bulkCandidates = (() => {
         if (!includeStale && !includeLowMessage) return [];
         const staleCutoff = Date.now() - staleDaysThreshold * 86400000;
         return rawChatShells.filter(shell => {
@@ -694,7 +723,7 @@ export function DataManagerModal({
             if (isShellExcluded(shell)) return false;
             return true;
         });
-    }, [rawChatShells, includeStale, includeLowMessage, staleDaysThreshold, minMessagesThreshold, isShellExcluded]);
+    })();
 
     const handleBulkDeleteCandidates = () => {
         let deletedCount = 0;

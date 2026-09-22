@@ -62,6 +62,7 @@ export const defaultCharacter: Character = {
     numberOfMessagesToDisableStarterPrompt: 1,
     tools: { ...defaultCharacterTools },
     clothings: [],
+    knownCharacterNames: {},
     textCharacterInjections: [],
     memories: {},
     firstCreatedTimestamp: now,

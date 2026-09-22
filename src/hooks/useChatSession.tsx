@@ -16,7 +16,6 @@ import { useAmbientNarration } from './useAmbientNarration';
 import { useSessionStore } from './useSessionStore';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { detectName } from './nameDetection';
 import type { Character, InteractionData, PromptBlock, ChatMessage, HistoryMessage } from '../types';
 
 const engine = getLanguageModelEngine();
@@ -37,14 +36,10 @@ function finalizeLastAIMessage(
         lastMsg.character.id !== protagonistId &&
         (lastMsg as ChatMessage).isPartial
     ) {
-        const wasRevealed = lastMsg.isNameRevealed ?? false;
-        const isNameRevealed = wasRevealed || detectName(data, lastMsg.character, lastMsg.textContent);
-
         const finalizedHistory = [...history];
         finalizedHistory[finalizedHistory.length - 1] = {
             ...lastMsg,
             isPartial: false,
-            isNameRevealed,
             lastUpdatedTimestamp: Date.now(),
         } as ChatMessage;
         return { ...data, interactionHistory: finalizedHistory, lastUpdatedTimestamp: Date.now() };
@@ -62,13 +57,9 @@ function finalizeMessageById(
 
     const history = data.interactionHistory.map(m => {
         if (m.id === messageId && m.messageType === 'chat') {
-            const textContent = m.textContent;
-            const wasRevealed = m.isNameRevealed ?? false;
-            const isNameRevealed = wasRevealed || detectName(data, m.character, textContent);
             return {
                 ...m,
                 isPartial: false,
-                isNameRevealed,
                 lastUpdatedTimestamp: Date.now(),
             } as ChatMessage;
         }
@@ -273,7 +264,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             }
         }
         const chatMessage = createChatMessage(base, p.character, dt, { isPartial: true });
-        chatMessage.isNameRevealed = false;
         return addMessageToInteractionData(base, chatMessage);
     }, []);
 

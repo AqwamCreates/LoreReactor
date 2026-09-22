@@ -81,6 +81,7 @@ interface CharacterEditorModalProps {
     onSave: (character: Character) => void;
     existingCharacter?: Character | null;
     allSamplers: Sampler[];
+    allCharacters: Character[];
     isLoadingSamplers?: boolean;
     selectedModel?: LanguageModel | null;
     runningModels?: Record<string, any>;
@@ -89,7 +90,7 @@ interface CharacterEditorModalProps {
 
 export function CharacterEditorModal({
     isOpen, onClose, onSave, existingCharacter,
-    allSamplers, isLoadingSamplers = false,
+    allSamplers, allCharacters, isLoadingSamplers = false,
     selectedModel, runningModels,
     chatNameMap,
 }: CharacterEditorModalProps) {
@@ -104,6 +105,7 @@ export function CharacterEditorModal({
             onSave={onSave}
             existingCharacter={existingCharacter}
             allSamplers={allSamplers}
+            allCharacters={allCharacters}
             isLoadingSamplers={isLoadingSamplers}
             selectedModel={selectedModel}
             runningModels={runningModels}
@@ -114,7 +116,7 @@ export function CharacterEditorModal({
 
 function CharacterEditorModalInner({
     onClose, onSave, existingCharacter,
-    allSamplers, isLoadingSamplers = false,
+    allSamplers, allCharacters, isLoadingSamplers = false,
     selectedModel, runningModels,
     chatNameMap,
 }: Omit<CharacterEditorModalProps, 'isOpen'>) {
@@ -170,6 +172,13 @@ function CharacterEditorModalInner({
     const [dialoguePrompts, setDialoguePrompts] = useState<DialoguePrompt[]>(existingCharacter?.dialoguePrompts ?? []);
     const [knowledgePrompts, setKnowledgePrompts] = useState<KnowledgePrompt[]>(existingCharacter?.knowledgePrompts ?? []);
     const [starterPrompts, setStarterPrompts] = useState<Record<string, number>>(existingCharacter?.starterPrompts ?? {});
+
+    // Aliases
+    const [aliases, setAliases] = useState<string[]>(existingCharacter?.aliases ?? []);
+    const [newAliasInput, setNewAliasInput] = useState('');
+
+    // Known character names
+    const [knownCharacterNames, setKnownCharacterNames] = useState<Record<string, string[]>>(existingCharacter?.knownCharacterNames ?? {});
 
     const [showMemoryManager, setShowMemoryManager] = useState(false);
     const [showImageEditor, setShowImageEditor] = useState(false);
@@ -328,6 +337,8 @@ function CharacterEditorModalInner({
         setTextCharacterInjections([]);
         setDialoguePrompts([]);
         setKnowledgePrompts([]);
+        setAliases([]);
+        setKnownCharacterNames({});
         if (fields.starterPrompt?.trim()) {
             setStarterPrompts({ [fields.starterPrompt.trim()]: 1 });
         } else {
@@ -346,6 +357,50 @@ function CharacterEditorModalInner({
     const handleStopPatternToggle = (id: string) => {
         setSelectedStopPatternIds(prev => prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]);
     };
+
+    // ─── Alias helpers ──────────────────────────────────────────────
+    const handleAddAlias = useCallback(() => {
+        const val = newAliasInput.trim();
+        if (!val || aliases.includes(val)) return;
+        setAliases(prev => [...prev, val]);
+        setNewAliasInput('');
+    }, [newAliasInput, aliases]);
+
+    const handleRemoveAlias = useCallback((alias: string) => {
+        setAliases(prev => prev.filter(a => a !== alias));
+    }, []);
+
+    // ─── Known character names helpers ──────────────────────────────
+    const handleAddKnownName = useCallback((targetCharId: string, nameVariant: string) => {
+        if (!nameVariant.trim()) return;
+        setKnownCharacterNames(prev => {
+            const existing = prev[targetCharId] || [];
+            if (existing.includes(nameVariant.trim())) return prev;
+            return { ...prev, [targetCharId]: [...existing, nameVariant.trim()] };
+        });
+    }, []);
+
+    const handleRemoveKnownName = useCallback((targetCharId: string, nameVariant: string) => {
+        setKnownCharacterNames(prev => {
+            const existing = prev[targetCharId];
+            if (!existing) return prev;
+            const filtered = existing.filter(n => n !== nameVariant);
+            if (filtered.length === 0) {
+                const next = { ...prev };
+                delete next[targetCharId];
+                return next;
+            }
+            return { ...prev, [targetCharId]: filtered };
+        });
+    }, []);
+
+    const handleRemoveAllKnownNames = useCallback((targetCharId: string) => {
+        setKnownCharacterNames(prev => {
+            const next = { ...prev };
+            delete next[targetCharId];
+            return next;
+        });
+    }, []);
 
     const buildCharacterFromForm = async (isNewClone: boolean): Promise<Character | null> => {
         setSubmitError(null);
@@ -455,6 +510,7 @@ function CharacterEditorModalInner({
             dialoguePrompts: dialoguePrompts.length > 0 ? dialoguePrompts : undefined,
             knowledgePrompts: knowledgePrompts.length > 0 ? knowledgePrompts : undefined,
             starterPrompts: Object.keys(starterPrompts).length > 0 ? starterPrompts : undefined,
+            aliases: aliases.length > 0 ? aliases : undefined,
             images: finalImages,
             useFrontCameraImage: useFrontCameraImage || undefined,
             voice: finalVoiceFilename, sampler: finalSampler,
@@ -469,6 +525,7 @@ function CharacterEditorModalInner({
             numberOfMessagesToDisableStarterPrompt: Number.isNaN(rawDisableStarter) ? 0 : Math.max(0, rawDisableStarter),
             tools: { ...tools },
             clothings,
+            knownCharacterNames,
             textCharacterInjections,
             memories,
             firstCreatedTimestamp: isNewClone ? now : (existingCharacter?.firstCreatedTimestamp || now),
@@ -523,6 +580,9 @@ function CharacterEditorModalInner({
         }
         return null;
     };
+
+    // Filter out self from character dropdown for known names
+    const otherCharacters = allCharacters.filter(c => c.id !== (existingCharacter?.id || pendingCharacterId));
 
     const editorTabs: { id: EditorTabId; label: string; icon: string }[] = [
         { id: 'general', label: 'General', icon: '📝' },
@@ -651,6 +711,125 @@ function CharacterEditorModalInner({
                                             <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', padding: '4px 0' }}>No starter prompts. Add above.</div>
                                         )}
                                     </div>
+                                </div>
+
+                                {/* Aliases */}
+                                <div className="editor-section" style={{ margin: 0 }}>
+                                    <div className="editor-section-title">Aliases ({aliases.length})</div>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Alternative names this character is also known by.</div>
+                                    <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                                        <input type="text" value={newAliasInput} onChange={e => setNewAliasInput(e.target.value)} className="editor-input" placeholder="Add alias..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} onKeyDown={e => { if (e.key === 'Enter') handleAddAlias(); }} />
+                                        <button type="button" onClick={handleAddAlias} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading}>+</button>
+                                    </div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                        {aliases.map(alias => (
+                                            <span key={alias} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '12px', background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid var(--accent)', fontSize: '0.65rem', fontWeight: 'bold' }}>
+                                                {alias}
+                                                <button type="button" onClick={() => handleRemoveAlias(alias)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '0.7rem', padding: 0, lineHeight: 1, opacity: 0.6 }} onMouseEnter={e => (e.currentTarget.style.opacity = '1')} onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}>×</button>
+                                            </span>
+                                        ))}
+                                        {aliases.length === 0 && (
+                                            <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic' }}>No aliases.</div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Known Character Names */}
+                                <div className="editor-section" style={{ margin: 0 }}>
+                                    <div className="editor-section-title">Known Character Names ({Object.keys(knownCharacterNames).length})</div>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Which other characters' names/aliases this character knows. Select a character, then type the name variant they know.</div>
+
+                                    {/* Existing mappings */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', marginBottom: '8px' }}>
+                                        {Object.entries(knownCharacterNames).map(([charId, nameVariants]) => {
+                                            const targetChar = allCharacters.find(c => c.id === charId);
+                                            const displayName = targetChar?.name || charId.substring(0, 8);
+                                            return (
+                                                <div key={charId} style={{ padding: '6px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                                        <span style={{ fontSize: '0.7rem', fontWeight: 'bold' }}>{displayName}</span>
+                                                        <button type="button" onClick={() => handleRemoveAllKnownNames(charId)} className="toolbar-button" style={{ fontSize: '0.55rem', padding: '1px 5px', color: '#ff4444' }} title="Remove all">×</button>
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                                                        {nameVariants.map(variant => (
+                                                            <span key={variant} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '1px 6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', fontSize: '0.6rem' }}>
+                                                                {variant}
+                                                                <button type="button" onClick={() => handleRemoveKnownName(charId, variant)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4444', fontSize: '0.6rem', padding: 0, lineHeight: 1 }}>×</button>
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                        {Object.keys(knownCharacterNames).length === 0 && (
+                                            <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic' }}>No known names configured.</div>
+                                        )}
+                                    </div>
+
+                                    {/* Add new mapping */}
+                                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                        <select
+                                            className="editor-select"
+                                            defaultValue=""
+                                            disabled={isUploading || otherCharacters.length === 0}
+                                            style={{ flex: 1, fontSize: '0.7rem' }}
+                                            onChange={e => {
+                                                const charId = e.target.value;
+                                                if (!charId) return;
+                                                // Focus the input after selection
+                                                const input = e.target.nextElementSibling?.nextElementSibling as HTMLInputElement | null;
+                                                input?.focus();
+                                                e.target.value = '';
+                                                // Store selected char ID temporarily via data attribute
+                                                e.target.dataset.selectedCharId = charId;
+                                            }}
+                                        >
+                                            <option value="">Select character...</option>
+                                            {otherCharacters.map(c => (
+                                                <option key={c.id} value={c.id}>{c.name}</option>
+                                            ))}
+                                        </select>
+                                        <input
+                                            type="text"
+                                            className="editor-input"
+                                            placeholder="Name variant..."
+                                            style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }}
+                                            disabled={isUploading}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter') {
+                                                    const select = e.target.previousElementSibling as HTMLSelectElement | null;
+                                                    const charId = select?.dataset.selectedCharId;
+                                                    const variant = (e.target as HTMLInputElement).value.trim();
+                                                    if (charId && variant) {
+                                                        handleAddKnownName(charId, variant);
+                                                        (e.target as HTMLInputElement).value = '';
+                                                        delete select?.dataset.selectedCharId;
+                                                    }
+                                                }
+                                            }}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="toolbar-button"
+                                            style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                                            disabled={isUploading}
+                                            onClick={e => {
+                                                const container = e.target.parentElement;
+                                                const select = container?.querySelector('select') as HTMLSelectElement | null;
+                                                const input = container?.querySelector('input[type="text"]') as HTMLInputElement | null;
+                                                const charId = select?.dataset.selectedCharId;
+                                                const variant = input?.value.trim();
+                                                if (charId && variant) {
+                                                    handleAddKnownName(charId, variant);
+                                                    if (input) input.value = '';
+                                                    if (select) delete select.dataset.selectedCharId;
+                                                }
+                                            }}
+                                        >+</button>
+                                    </div>
+                                    {otherCharacters.length === 0 && (
+                                        <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', marginTop: '4px' }}>No other characters available.</div>
+                                    )}
                                 </div>
 
                                 {/* Behaviour buttons */}

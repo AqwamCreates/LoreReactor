@@ -254,7 +254,8 @@ export interface TextCharacterInjection extends ObjectData {
 }
 
 export interface Character extends ObjectData {
-  images: Record<string, string>;
+  aliases?: string[],
+  images?: Record<string, string>;
   useFrontCameraImage?: boolean; // Default is false.
   voice?: string;
   systemPrompt?: string;
@@ -281,11 +282,13 @@ export interface Character extends ObjectData {
   numberOfMessagesToDisableStarterPrompt: number;
   tools: Record<tool, boolean>
   clothings: Clothing[];
+  knownCharacterNames: Record<string, string[]> // Character Ids -> character names + aliases known by this character.
   textCharacterInjections: TextCharacterInjection[],
   memories: Record<string, Memory[]>;
 }
 
 export interface RawCharacter extends RawData {
+  aliases?: string[],
   images?: Record<string, string>;
   useFrontCameraImage?: boolean; // Default is false.
   voice?: string;
@@ -313,6 +316,7 @@ export interface RawCharacter extends RawData {
   numberOfMessagesToDisableStarterPrompt: number;
   tools: Record<tool, boolean>
   clothings: Clothing[];
+  knownCharacterNames: Record<string, string[]> // Character Ids -> character names + aliases known by this character.
   textCharacterInjections: TextCharacterInjection[],
   memories: Record<string, string[]>;
 }
@@ -326,7 +330,7 @@ export interface BaseMessage {
   character: Character;
   remainingChatStamina?: number;
   remainingActionStamina?: number;
-  isNameRevealed?: boolean;
+  knownCharacterNames?: Record<string, Record<string, boolean>>; // Character Ids -> Character name + aliases -> The character name + aliases that is known by the message holder.
   locationIndex?: number;
   characterExpression?: string;
   inventory?: Inventory,
@@ -360,7 +364,7 @@ export interface RawBaseMessage {
   characterId: string;
   remainingChatStamina?: number;
   remainingActionStamina?: number;
-  isNameRevealed?: boolean;
+  knownCharacterNames?: Record<string, Record<string, boolean>>; // Character Ids -> Character name + aliases -> The character name + aliases that is known by the message holder.
   locationIndex?: number;
   characterExpression?: string;
   inventory?: Inventory,

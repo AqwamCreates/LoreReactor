@@ -1,10 +1,12 @@
 // src/services/ChatMessageSummarizationEngine.ts
-import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler } from '../types';
+import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { createChatHistoryPrompt, getParticipantTag, getRevealIndexByCharacterId, replacePlaceholders, getUniversalMessageFilterFlags } from '../hooks/promptLogic';
+import { createChatHistoryPrompt, getParticipantTag, replacePlaceholders, getUniversalMessageFilterFlags, getFilteredChatMessages } from '../hooks/promptLogic';
+import { detectName } from '../hooks/nameDetection';
 import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, turnStartString, turnEndString } from '../dictionaries/stringList';
 import { buildRequestBody } from '../hooks/genericRequestBuilderLogic';
+import { getCoLocatedProtagonists } from '../hooks/locationLogic';
 
 const startOfMemoryLine = `${contextStartString}The Start Of My Memory${contextEndString}`;
 const endOfMemoryLine = `${contextStartString}The End Of My Memory${contextEndString}`;
@@ -123,24 +125,52 @@ export async function generateCharacterMemory(
     // Use characterSampler for character memory generation
     const sampler = interactionData.Profile?.characterSampler || character.sampler;
 
-    const revealIndexByCharacterId = getRevealIndexByCharacterId(interactionData);
+    // Get filtered messages and detect name knowledge
+    const allPromptBlocks: PromptBlock[] = [];
+    const filteredMessages = getFilteredChatMessages(interactionData, character.id, allPromptBlocks);
+    const knownCharacterNames = detectName(character, filteredMessages);
 
-    // createChatHistoryPrompt now derives co-located protagonists internally
-    const { chatHistoryPrompt } = createChatHistoryPrompt(interactionData, character, revealIndexByCharacterId, modelId);
+    const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
 
-    const participantTag = getParticipantTag(character, participants);
+    // Build a minimal PromptBuildContext for createChatHistoryPrompt
+    const ctx = {
+        interactionData,
+        character,
+        knownNames: knownCharacterNames,
+        modelId,
+        allPromptBlocks,
+        existingCharacterText: '',
+        interactionHistory: history,
+        participants,
+        coLocatedProtagonists,
+        protagonistIds: new Set(coLocatedProtagonists.map(p => p.id)),
+        characterId: character.id,
+        characterParticipantId: participants.findIndex(p => p.id === character.id),
+        characterParticipantTag: getParticipantTag(character, participants),
+        characterName: character.name,
+        profile: interactionData.Profile,
+        cacheLevel: interactionData.Profile?.cacheInvalidationReductionLevel ?? 0,
+        currentLocation: undefined,
+        currentLocationIndex: undefined,
+        characterIdArray: [] as string[],
+        textContentArray: [] as string[],
+        combinationCache: {},
+        numberOfMessagesByParticipant: history.filter(
+            msg => msg.character.id === character.id && msg.messageType === 'chat'
+        ).length,
+    };
+
+    const { chatHistoryPrompt } = createChatHistoryPrompt(ctx);
+
+    const participantTag = ctx.characterParticipantTag;
 
     const perspectiveInstruction = `${contextStartString}I am ${participantTag}. I am reflecting on what I have experienced. I will express my memory as natural, personal thoughts that others will not hear, read or respond to. I will use this memory in the future. Only I can access this memory. I will never use 'Character #' or 'Character # (Name)' unless I require it.${contextEndString}`;
 
-    // Get co-located protagonists for placeholder replacement
-    const { getCoLocatedProtagonists } = await import('../hooks/locationLogic');
-    const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
-
     const systemPrompt = character.systemPrompt
-        ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, coLocatedProtagonists, participants, revealIndexByCharacterId)}${contextEndString}`
+        ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${contextEndString}`
         : '';
     const thinkPrompt = character.thinkPrompt
-        ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, revealIndexByCharacterId)}${contextEndString}`
+        ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${contextEndString}`
         : '';
 
     const memoryInjection = `${contextStartString}`;
@@ -203,6 +233,11 @@ export async function generateLocationVisitSummary(
     // Use characterSampler for location visit summaries
     const sampler = interactionData.Profile?.characterSampler || character.sampler;
 
+    // Get filtered messages and detect name knowledge
+    const allPromptBlocks: PromptBlock[] = [];
+    const filteredMessages = getFilteredChatMessages(interactionData, character.id, allPromptBlocks);
+    const knownCharacterNames = detectName(character, filteredMessages);
+
     const scopedMessages: string[] = [];
     for (let i = startIdx; i <= endIdx; i++) {
         const msg = history[i];
@@ -223,16 +258,13 @@ export async function generateLocationVisitSummary(
     const locIdx = history[startIdx]?.locationIndex;
     const locationName = locIdx !== undefined && locs && locs[locIdx] ? locs[locIdx].name : 'an unknown location';
 
-    // Get co-located protagonists for placeholder replacement
-    const { getCoLocatedProtagonists } = await import('../hooks/locationLogic');
     const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
-    const revealIndexByCharacterId = getRevealIndexByCharacterId(interactionData);
 
     const systemPrompt = character.systemPrompt
-        ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, coLocatedProtagonists, participants, revealIndexByCharacterId)}${contextEndString}`
+        ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${contextEndString}`
         : '';
     const thinkPrompt = character.thinkPrompt
-        ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, revealIndexByCharacterId)}${contextEndString}`
+        ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${contextEndString}`
         : '';
 
     const scopedHistoryBlock = `${contextStartString}Events at ${locationName}:\n${scopedMessages.join('\n')}${contextEndString}`;
