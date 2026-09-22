@@ -633,9 +633,9 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         const ti = history.findIndex(m => m.id === messageId);
         if (ti === -1) { addToast('Message not found.', 'error'); releaseLock(); return; }
         const tm = history[ti];
-        const isUserMessage = protagonistIds.has(tm.character.id);
+        const isProtagonistMessage = protagonistIds.has(tm.character.id);
         let trimIdx = ti;
-        if (isUserMessage) {
+        if (isProtagonistMessage) {
             trimIdx = trimIdx + 1;
         }
         const toDelete = history.slice(trimIdx);
