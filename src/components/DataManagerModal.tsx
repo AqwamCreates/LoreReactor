@@ -261,7 +261,11 @@ export function DataManagerModal({
     const [isScanning, setIsScanning] = useState(false);
     const { addToast } = useToast();
 
-    // ─── Storage Breakdown (derived, no effect needed) ─────────────
+    // ─── Anchor timestamp for stale calculations (captured once at mount via lazy initializer) ────
+    const [anchorTimeMs] = useState(() => Date.now());
+    const staleCutoffMs = anchorTimeMs - staleDaysThreshold * 86400000;
+
+    // ─── Storage Breakdown ──────────────────────────────────────────
     const storageBreakdown = useMemo<StorageBreakdown[]>(() => {
         const estimateKb = (items: unknown[], avgBytesPerItem: number) =>
             Math.round((items.length * avgBytesPerItem) / 1024);
@@ -378,7 +382,6 @@ export function DataManagerModal({
             for (const binding of pb.locationBindings) if (locIdSet.has(binding)) referencedLocIds.add(binding);
         }
 
-        // Accounts referenced by multiplayer data
         for (const md of allMultiplayerData) {
             for (const id of md.whiteListedAccountIds) if (accountIdSet.has(id)) referencedAccountIds.add(id);
             for (const id of md.blacklistedAccountIds) if (accountIdSet.has(id)) referencedAccountIds.add(id);
@@ -387,7 +390,6 @@ export function DataManagerModal({
             for (const id of Object.keys(md.accountIdCharacterIds)) if (accountIdSet.has(id)) referencedAccountIds.add(id);
         }
 
-        // Multiplayer data referenced by chat sessions via interactionDataIds
         for (const md of allMultiplayerData) {
             for (const chatId of md.interactionDataIds) {
                 if (chatIdSet.has(chatId)) referencedMultiplayerDataIds.add(md.id);
@@ -711,19 +713,18 @@ export function DataManagerModal({
         return items.filter(i => !alreadyExcluded.has(i.id) && i.name.toLowerCase().includes(q)).slice(0, 20);
     }, [exclusionSearchQuery, exclusionDropdownType, allCharacters, allContexts, allLocations, allAudioTracks, allProfiles, exclusions]);
 
-    // ─── Bulk: Candidate list (computed directly, no useMemo — Date.now() is impure) ────
-    const bulkCandidates = (() => {
+    // ─── Bulk: Candidate list ────────────────────────────────────────
+    const bulkCandidates = useMemo(() => {
         if (!includeStale && !includeLowMessage) return [];
-        const staleCutoff = Date.now() - staleDaysThreshold * 86400000;
         return rawChatShells.filter(shell => {
             if (!shell.id) return false;
-            const matchesStale = includeStale && (shell.lastUpdatedTimestamp ?? 0) < staleCutoff;
+            const matchesStale = includeStale && (shell.lastUpdatedTimestamp ?? 0) < staleCutoffMs;
             const matchesLow = includeLowMessage && (shell.interactionIdHistory?.length ?? 0) < minMessagesThreshold;
             if (!matchesStale && !matchesLow) return false;
             if (isShellExcluded(shell)) return false;
             return true;
         });
-    })();
+    }, [rawChatShells, includeStale, includeLowMessage, staleCutoffMs, minMessagesThreshold, isShellExcluded]);
 
     const handleBulkDeleteCandidates = () => {
         let deletedCount = 0;
