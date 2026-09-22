@@ -635,9 +635,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         const tm = history[ti];
         const isProtagonistMessage = protagonistIds.has(tm.character.id);
         let trimIdx = ti;
-        if (isProtagonistMessage) {
-            trimIdx = trimIdx + 1;
-        }
+        if (isProtagonistMessage) trimIdx = trimIdx + 1;
         const toDelete = history.slice(trimIdx);
         if (toDelete.length) try { await Promise.all(toDelete.map(m => import('../storage/serverStorage').then(s => s.deleteRawInteractionMessage(m.id)))); } catch (e) { console.error('Delete failed:', e); }
 
