@@ -275,7 +275,7 @@ function CharacterEditorModalInner({
         const crsIsAuto = currentCRS === -1;
         const masIsAuto = currentMAS === -1;
 
-        if (!iwIsAuto && !cpIsAuto && !msIsAuto && !nsIsAuto && !cisIsAuto && !spIsAuto && !mrwIsAuto && !crsIsAuto && !masIsAuto) return;
+        if (!iwIsAuto && !cpIsAuto && !msIsAuto && !nsIsAuto && !cisIsAuto && !spIsAuto && !mrwIsAuto && !masIsAuto) return;
 
         const combinedText = `${name} ${description} ${systemPrompt}`;
         const newDetected = { ...autoDetected };
@@ -776,11 +776,9 @@ function CharacterEditorModalInner({
                                             onChange={e => {
                                                 const charId = e.target.value;
                                                 if (!charId) return;
-                                                // Focus the input after selection
                                                 const input = e.target.nextElementSibling?.nextElementSibling as HTMLInputElement | null;
                                                 input?.focus();
                                                 e.target.value = '';
-                                                // Store selected char ID temporarily via data attribute
                                                 e.target.dataset.selectedCharId = charId;
                                             }}
                                         >
@@ -797,12 +795,13 @@ function CharacterEditorModalInner({
                                             disabled={isUploading}
                                             onKeyDown={e => {
                                                 if (e.key === 'Enter') {
-                                                    const select = e.target.previousElementSibling as HTMLSelectElement | null;
+                                                    const target = e.target as HTMLElement;
+                                                    const select = target.previousElementSibling as HTMLSelectElement | null;
                                                     const charId = select?.dataset.selectedCharId;
-                                                    const variant = (e.target as HTMLInputElement).value.trim();
+                                                    const variant = (target as HTMLInputElement).value.trim();
                                                     if (charId && variant) {
                                                         handleAddKnownName(charId, variant);
-                                                        (e.target as HTMLInputElement).value = '';
+                                                        (target as HTMLInputElement).value = '';
                                                         delete select?.dataset.selectedCharId;
                                                     }
                                                 }
@@ -814,7 +813,8 @@ function CharacterEditorModalInner({
                                             style={{ fontSize: '0.7rem', padding: '2px 8px' }}
                                             disabled={isUploading}
                                             onClick={e => {
-                                                const container = e.target.parentElement;
+                                                const target = e.target as HTMLElement;
+                                                const container = target.parentElement;
                                                 const select = container?.querySelector('select') as HTMLSelectElement | null;
                                                 const input = container?.querySelector('input[type="text"]') as HTMLInputElement | null;
                                                 const charId = select?.dataset.selectedCharId;

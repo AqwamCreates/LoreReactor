@@ -637,12 +637,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         let trimIdx = ti;
         if (isUserMessage) {
             trimIdx = trimIdx + 1;
-        } else {
-            addToast(`Cannot regenerate a ${isUserMessage ? 'user' : 'AI'} message.`, 'error');
-            releaseLock();
-            return;
         }
-
         const toDelete = history.slice(trimIdx);
         if (toDelete.length) try { await Promise.all(toDelete.map(m => import('../storage/serverStorage').then(s => s.deleteRawInteractionMessage(m.id)))); } catch (e) { console.error('Delete failed:', e); }
 
