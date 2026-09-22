@@ -129,7 +129,7 @@ function App() {
     const { extensions: allExtensions, deleteExtension } = useExtensionManager();
     const { memories: allMemories, deleteMemory } = useMemoryManager();
     const { accounts: allAccounts, isLoading: accountsLoading, saveAccount, deleteAccount } = useAccountManager();
-    const { multiplayerDataItems: allMultiplayerData, isLoading: multiplayerDataLoading, saveMultiplayerData, deleteMultiplayerData } = useMultiplayerDataManager();
+    const { multiplayerDatas: allMultiplayerData, isLoading: multiplayerDataLoading, saveMultiplayerData, deleteMultiplayerData } = useMultiplayerDataManager();
 
     const { activeIds: activeExtensionIds, setActiveIds: setActiveExtensionIds } = useActiveExtensions(allExtensions);
 

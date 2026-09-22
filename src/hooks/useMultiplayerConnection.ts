@@ -1,0 +1,273 @@
+// src/hooks/useMultiplayerConnection.ts
+import { useState, useCallback, useRef, useEffect } from 'react';
+import Peer, { type DataConnection } from 'peerjs';
+import type { MultiplayerData, HistoryMessage } from '../types';
+
+// ─── Message Protocol ──────────────────────────────────────────────
+
+type MessageType =
+    | 'chat_message'
+    | 'protagonist_change'
+    | 'typing_indicator'
+    | 'join_request'
+    | 'join_response'
+    | 'state_sync'
+    | 'leave';
+
+interface MultiplayerMessage {
+    type: MessageType;
+    senderAccountId: string;
+    timestamp: number;
+    payload: unknown;
+}
+
+interface ChatMessagePayload {
+    messageId: string;
+    characterId: string;
+    textContent: string;
+    messageType: 'chat' | 'action';
+}
+
+interface JoinRequestPayload {
+    accountId: string;
+    password?: string;
+}
+
+interface JoinResponsePayload {
+    accepted: boolean;
+    reason?: string;
+    initialState?: {
+        interactionHistory: HistoryMessage[];
+        protagonistIds: string[];
+    };
+}
+
+interface StateSyncPayload {
+    interactionHistory: HistoryMessage[];
+    protagonistIds: string[];
+    participantIds: string[];
+}
+
+// ─── Hook ──────────────────────────────────────────────────────────
+
+interface UseMultiplayerConnectionOptions {
+    multiplayerData: MultiplayerData | null;
+    currentAccountId: string | null;
+    isHost: boolean;
+    onReceiveMessage: (msg: MultiplayerMessage) => void;
+    onPeerConnected: (accountId: string) => void;
+    onPeerDisconnected: (accountId: string) => void;
+}
+
+export function useMultiplayerConnection({
+    multiplayerData,
+    currentAccountId,
+    isHost,
+    onReceiveMessage,
+    onPeerConnected,
+    onPeerDisconnected,
+}: UseMultiplayerConnectionOptions) {
+    const [isConnected, setIsConnected] = useState(false);
+    const [connectedPeers, setConnectedPeers] = useState<string[]>([]);
+    const [connectionError, setConnectionError] = useState<string | null>(null);
+
+    const peerRef = useRef<Peer | null>(null);
+    const connectionsRef = useRef<Map<string, DataConnection>>(new Map());
+    const onReceiveMessageRef = useRef(onReceiveMessage);
+    const onPeerConnectedRef = useRef(onPeerConnected);
+    const onPeerDisconnectedRef = useRef(onPeerDisconnected);
+    const isHostRef = useRef(isHost);
+    const currentAccountIdRef = useRef(currentAccountId);
+
+    // Keep refs in sync to avoid stale closures
+    useEffect(() => { onReceiveMessageRef.current = onReceiveMessage; }, [onReceiveMessage]);
+    useEffect(() => { onPeerConnectedRef.current = onPeerConnected; }, [onPeerConnected]);
+    useEffect(() => { onPeerDisconnectedRef.current = onPeerDisconnected; }, [onPeerDisconnected]);
+    useEffect(() => { isHostRef.current = isHost; }, [isHost]);
+    useEffect(() => { currentAccountIdRef.current = currentAccountId; }, [currentAccountId]);
+
+    // Derive peer ID from multiplayer data
+    const peerId = multiplayerData && currentAccountId
+        ? `lr-${multiplayerData.id}-${currentAccountId}`
+        : null;
+
+    const hostPeerId = multiplayerData
+        ? `lr-${multiplayerData.id}-host`
+        : null;
+
+    // Initialize PeerJS connection
+    useEffect(() => {
+        if (!peerId || !multiplayerData) return;
+
+        let destroyed = false;
+        const localConnections = new Map<string, DataConnection>();
+
+        const setupConnection = (conn: DataConnection) => {
+            conn.on('open', () => {
+                const remotePeerId = conn.peer;
+                const remoteAccountId = extractAccountIdFromPeerId(remotePeerId);
+                if (!remoteAccountId) return;
+
+                localConnections.set(remoteAccountId, conn);
+                connectionsRef.current = localConnections;
+                setConnectedPeers(prev => [...prev.filter(id => id !== remoteAccountId), remoteAccountId]);
+                onPeerConnectedRef.current(remoteAccountId);
+
+                // If we're a client connecting to host, send join request
+                const localAcctId = currentAccountIdRef.current;
+                if (localAcctId && !isHostRef.current) {
+                    const joinMsg: MultiplayerMessage = {
+                        type: 'join_request',
+                        senderAccountId: localAcctId,
+                        timestamp: Date.now(),
+                        payload: {
+                            accountId: localAcctId,
+                            password: undefined,
+                        } satisfies JoinRequestPayload,
+                    };
+                    conn.send(joinMsg);
+                }
+            });
+
+            conn.on('data', (data) => {
+                const msg = data as MultiplayerMessage;
+                if (msg?.type && msg?.senderAccountId) {
+                    onReceiveMessageRef.current(msg);
+                }
+            });
+
+            conn.on('close', () => {
+                const remotePeerId = conn.peer;
+                const remoteAccountId = extractAccountIdFromPeerId(remotePeerId);
+                if (remoteAccountId) {
+                    localConnections.delete(remoteAccountId);
+                    connectionsRef.current = localConnections;
+                    setConnectedPeers(prev => prev.filter(id => id !== remoteAccountId));
+                    onPeerDisconnectedRef.current(remoteAccountId);
+                }
+            });
+
+            conn.on('error', (err) => {
+                console.error('DataConnection error:', err);
+            });
+        };
+
+        const peer = new Peer(peerId, {
+            debug: 1,
+        });
+
+        peerRef.current = peer;
+
+        peer.on('open', () => {
+            if (destroyed) return;
+            setIsConnected(true);
+            setConnectionError(null);
+
+            // If not host, connect to host
+            if (!isHostRef.current && hostPeerId) {
+                const conn = peer.connect(hostPeerId, { reliable: true });
+                setupConnection(conn);
+            }
+        });
+
+        peer.on('connection', (conn) => {
+            if (destroyed) return;
+            setupConnection(conn);
+        });
+
+        peer.on('error', (err) => {
+            if (destroyed) return;
+            console.error('PeerJS error:', err);
+            setConnectionError(err.message);
+            setIsConnected(false);
+        });
+
+        peer.on('disconnected', () => {
+            if (destroyed) return;
+            setIsConnected(false);
+        });
+
+        return () => {
+            destroyed = true;
+            for (const [, conn] of localConnections) {
+                conn.close();
+            }
+            localConnections.clear();
+            connectionsRef.current = new Map();
+            peer.destroy();
+            peerRef.current = null;
+            setIsConnected(false);
+            setConnectedPeers([]);
+        };
+    }, [peerId, hostPeerId, multiplayerData]);
+
+    // Send message to all connected peers
+    const broadcast = useCallback((msg: Omit<MultiplayerMessage, 'senderAccountId' | 'timestamp'>) => {
+        const acctId = currentAccountIdRef.current;
+        if (!acctId) return;
+        const fullMsg: MultiplayerMessage = {
+            ...msg,
+            senderAccountId: acctId,
+            timestamp: Date.now(),
+        };
+        for (const [, conn] of connectionsRef.current) {
+            try {
+                conn.send(fullMsg);
+            } catch (e) {
+                console.warn('Failed to send to peer:', e);
+            }
+        }
+    }, []);
+
+    // Send message to a specific peer
+    const sendTo = useCallback((accountId: string, msg: Omit<MultiplayerMessage, 'senderAccountId' | 'timestamp'>) => {
+        const acctId = currentAccountIdRef.current;
+        if (!acctId) return;
+        const conn = connectionsRef.current.get(accountId);
+        if (!conn) return;
+        const fullMsg: MultiplayerMessage = {
+            ...msg,
+            senderAccountId: acctId,
+            timestamp: Date.now(),
+        };
+        try {
+            conn.send(fullMsg);
+        } catch (e) {
+            console.warn(`Failed to send to ${accountId}:`, e);
+        }
+    }, []);
+
+    // Disconnect from session
+    const disconnect = useCallback(() => {
+        if (peerRef.current) {
+            peerRef.current.destroy();
+            peerRef.current = null;
+        }
+        connectionsRef.current.clear();
+        setIsConnected(false);
+        setConnectedPeers([]);
+    }, []);
+
+    return {
+        isConnected,
+        connectedPeers,
+        connectionError,
+        broadcast,
+        sendTo,
+        disconnect,
+        peerId,
+        hostPeerId,
+    };
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────
+
+function extractAccountIdFromPeerId(peerId: string): string | null {
+    // Format: lr-{multiplayerDataId}-{accountId} or lr-{multiplayerDataId}-host
+    const parts = peerId.split('-');
+    if (parts.length < 3 || parts[0] !== 'lr') return null;
+    const accountId = parts.slice(2).join('-');
+    return accountId || null;
+}
+
+export type { MultiplayerMessage, ChatMessagePayload, JoinRequestPayload, JoinResponsePayload, StateSyncPayload, MessageType };
