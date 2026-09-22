@@ -16,6 +16,8 @@ import { useBudgetStrategyManager } from '../hooks/useBudgetStrategyManager';
 import { useProfileManager } from '../hooks/useProfileManager';
 import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useMemoryManager } from '../hooks/useMemoryManager';
+import { useAccountManager } from '../hooks/useAccountManager';
+import { useMultiplayerDataManager } from '../hooks/useMultiplayerDataManager';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
 import { saveRawInteractionData, loadRawInteractionData } from '../storage/serverStorage';
@@ -30,7 +32,7 @@ import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, MultiplayerData, cloudBackend } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, MultiplayerData, Account, cloudBackend } from '../types';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
 import { useActionMenu } from '../hooks/useActionMenu';
@@ -82,7 +84,7 @@ function hasMessagesChanged(a: InteractionData | null, b: InteractionData): bool
         if (aMsg.character.id !== bMsg.character.id) return true;
         
         if ('textContent' in aMsg && 'textContent' in bMsg) {
-            if (aMsg.textContent !== bMsg.textContent) return true;
+            if ((aMsg as ChatMessage).textContent !== (bMsg as ChatMessage).textContent) return true;
         }
     }
     
@@ -97,7 +99,6 @@ function deriveCurrentProtagonist(
 ): Character | null {
     if (!interactionData?.protagonists?.length) return null;
     if (!multiplayerData || !currentAccountId) {
-        // No multiplayer data or no account: first protagonist is the local user's
         return interactionData.protagonists[0] ?? null;
     }
     const myCharIds = multiplayerData.accountIdCharacterIds?.[currentAccountId];
@@ -105,7 +106,6 @@ function deriveCurrentProtagonist(
         const found = interactionData.protagonists.find(p => myCharIds.includes(p.id));
         if (found) return found;
     }
-    // Multiplayer but no mapping found for this account — fall back to first protagonist
     return interactionData.protagonists[0] ?? null;
 }
 
@@ -128,6 +128,8 @@ function App() {
     const { profiles: allProfiles, isLoading: profilesLoading, saveProfile, deleteProfile } = useProfileManager();
     const { extensions: allExtensions, deleteExtension } = useExtensionManager();
     const { memories: allMemories, deleteMemory } = useMemoryManager();
+    const { accounts: allAccounts, isLoading: accountsLoading, saveAccount, deleteAccount } = useAccountManager();
+    const { multiplayerDataItems: allMultiplayerData, isLoading: multiplayerDataLoading, saveMultiplayerData, deleteMultiplayerData } = useMultiplayerDataManager();
 
     const { activeIds: activeExtensionIds, setActiveIds: setActiveExtensionIds } = useActiveExtensions(allExtensions);
 
@@ -179,6 +181,8 @@ function App() {
     const stopModal = useEntityModal<StopPattern>(saveStopPattern, deleteStopPattern, 'Stop Pattern');
     const budgetModal = useEntityModal<BudgetStrategy>(saveBudgetStrategy, deleteBudgetStrategy, 'Budget Strategy');
     const profileModal = useEntityModal<Profile>(saveProfile, deleteProfile, 'Profile');
+    const accountModal = useEntityModal<Account>(saveAccount, deleteAccount, 'Account');
+    const multiplayerDataModal = useEntityModal<MultiplayerData>(saveMultiplayerData, deleteMultiplayerData, 'Multiplayer Data');
 
     const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
     const [isInspectionOpen, setIsInspectionOpen] = useState(false);
@@ -441,7 +445,9 @@ function App() {
         { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopLoading },
         { id: 'budget', label: 'Budget', icon: '💰', done: !budgetLoading },
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profilesLoading },
-    ], [chatsLoading, charsLoading, actionsLoading, contextsLoading, locationsLoading, audioTracksLoading, worldsLoading, promptBlocksLoading, modelsLoading, samplersLoading, stopLoading, budgetLoading, profilesLoading]);
+        { id: 'accounts', label: 'Accounts', icon: '🔑', done: !accountsLoading },
+        { id: 'multiplayerData', label: 'Multiplayer Data', icon: '👥', done: !multiplayerDataLoading },
+    ], [chatsLoading, charsLoading, actionsLoading, contextsLoading, locationsLoading, audioTracksLoading, worldsLoading, promptBlocksLoading, modelsLoading, samplersLoading, stopLoading, budgetLoading, profilesLoading, accountsLoading, multiplayerDataLoading]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
@@ -547,10 +553,10 @@ function App() {
                 for (const msg of safeInteractionMessages) {
                     if (abort.signal.aborted) return;
                     if (prevCountedIds.has(msg.id)) continue;
-                    if (msg.character && msg.textContent) {
+                    if (msg.character && (msg as ChatMessage).textContent) {
                         const charId = msg.character.id;
                         if (participantCounts[charId] !== undefined || charId === '__ambient_narrator__') {
-                            const tokens = await engine.countTokens(msg.textContent);
+                            const tokens = await engine.countTokens((msg as ChatMessage).textContent);
                             if (abort.signal.aborted) return;
                             if (participantCounts[charId] !== undefined) participantCounts[charId] += tokens;
                         }
@@ -952,6 +958,8 @@ function App() {
                     allProfiles={allProfiles}
                     allExtensions={allExtensions}
                     allMemories={allMemories}
+                    allAccounts={allAccounts}
+                    allMultiplayerData={allMultiplayerData}
                     charModal={charModal}
                     contextModal={contextModal}
                     locationModal={locationModal}
@@ -963,6 +971,8 @@ function App() {
                     stopModal={stopModal}
                     budgetModal={budgetModal}
                     profileModal={profileModal}
+                    accountModal={accountModal}
+                    multiplayerDataModal={multiplayerDataModal}
                     onSwitchChat={handleSwitchChat}
                     onInspectChat={handleOpenChatInspection}
                     onDeleteChat={onDeleteChatForModals}
@@ -998,6 +1008,9 @@ function App() {
                     onDeleteExtension={deleteExtension}
                     onToggleExtension={handleToggleExtension}
                     onDeleteMemory={deleteMemory}
+                    onDeleteAccount={deleteAccount}
+                    onToggleAccount={() => {}}
+                    onDeleteMultiplayerData={deleteMultiplayerData}
                     onUpdateInteractionData={(data) => {
                         const withLocations = assignInitialLocationsIfNeeded(data);
                         setInteractionData(withLocations);

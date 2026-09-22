@@ -1,6 +1,6 @@
 // src/components/DataManagerModal.tsx
 import { useState, useCallback, useMemo } from 'react';
-import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData } from '../types';
+import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData } from '../types';
 import { useToast } from '../context/ToastContext';
 import '../main.css';
 
@@ -19,6 +19,8 @@ interface DataManagerModalProps {
     allBudgetStrategies: BudgetStrategy[];
     allProfiles: Profile[];
     allMemories: Memory[];
+    allAccounts: Account[];
+    allMultiplayerData: MultiplayerData[];
     rawChatShells: RawInteractionData[];
     onDeleteCharacter: (id: string) => void;
     onDeleteContext: (id: string) => void;
@@ -32,12 +34,14 @@ interface DataManagerModalProps {
     onDeleteBudgetStrategy: (id: string) => void;
     onDeleteProfile: (id: string) => void;
     onDeleteMemory: (id: string) => void;
+    onDeleteAccount: (id: string) => void;
+    onDeleteMultiplayerData: (id: string) => void;
     onDeleteChat: (id: string) => void;
 }
 
 type TabId = 'storage' | 'cleanup' | 'integrity' | 'cache' | 'bulk' | 'danger';
 
-type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'model' | 'sampler' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'memory';
+type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'model' | 'sampler' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'memory' | 'account' | 'multiplayerData';
 
 type SortField = 'name' | 'type' | 'lastUpdated' | 'flags';
 type SortDirection = 'asc' | 'desc';
@@ -88,6 +92,8 @@ const ENTITY_TYPE_META: Record<EntityType, { icon: string; label: string }> = {
     budgetStrategy: { icon: '💰', label: 'Budget Strategies' },
     profile: { icon: '👤', label: 'Profiles' },
     memory: { icon: '🧠', label: 'Memories' },
+    account: { icon: '🔑', label: 'Accounts' },
+    multiplayerData: { icon: '👥', label: 'Multiplayer Data' },
 };
 
 const EXCLUSION_TYPE_META: Record<ExclusionEntityType, { icon: string; label: string }> = {
@@ -169,6 +175,14 @@ function isEntityHollow(
             const m = entity as Memory;
             return !m.content?.trim();
         }
+        case 'account': {
+            const a = entity as Account;
+            return !a.username?.trim();
+        }
+        case 'multiplayerData': {
+            const md = entity as MultiplayerData;
+            return !(md.interactionDataIds?.length) && !(md.whiteListedAccountIds?.length) && !(md.blacklistedAccountIds?.length) && !(md.administratorAccountIds?.length) && !(md.accountIdCharacterIds && Object.keys(md.accountIdCharacterIds).length > 0);
+        }
         case 'profile':
             return false;
     }
@@ -200,6 +214,8 @@ export function DataManagerModal({
     allBudgetStrategies,
     allProfiles,
     allMemories,
+    allAccounts,
+    allMultiplayerData,
     rawChatShells,
     onDeleteCharacter,
     onDeleteContext,
@@ -213,6 +229,8 @@ export function DataManagerModal({
     onDeleteBudgetStrategy,
     onDeleteProfile,
     onDeleteMemory,
+    onDeleteAccount,
+    onDeleteMultiplayerData,
     onDeleteChat,
 }: DataManagerModalProps) {
     const [activeTab, setActiveTab] = useState<TabId>('storage');
@@ -258,9 +276,11 @@ export function DataManagerModal({
             { label: 'Budget Strategies', icon: '💰', count: allBudgetStrategies.length, estimatedSizeKb: estimateKb(allBudgetStrategies, 1024) },
             { label: 'Profiles', icon: '👤', count: allProfiles.length, estimatedSizeKb: estimateKb(allProfiles, 2048) },
             { label: 'Memories', icon: '🧠', count: allMemories.length, estimatedSizeKb: estimateKb(allMemories, 1024) },
+            { label: 'Accounts', icon: '🔑', count: allAccounts.length, estimatedSizeKb: estimateKb(allAccounts, 512) },
+            { label: 'Multiplayer Data', icon: '👥', count: allMultiplayerData.length, estimatedSizeKb: estimateKb(allMultiplayerData, 1024) },
             { label: 'Chat Sessions', icon: '💬', count: rawChatShells.length, estimatedSizeKb: estimateKb(rawChatShells, 8192) },
         ];
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, rawChatShells]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, rawChatShells]);
 
     // ─── Cleanup Scan ───────────────────────────────────────────────
     const scanCleanup = useCallback(() => {
@@ -276,6 +296,8 @@ export function DataManagerModal({
         const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));
         const profileIdSet = new Set(allProfiles.map(p => p.id));
         const memoryIdSet = new Set(allMemories.map(m => m.id));
+        const accountIdSet = new Set(allAccounts.map(a => a.id));
+        const multiplayerDataIdSet = new Set(allMultiplayerData.map(md => md.id));
         const chatIdSet = new Set(rawChatShells.filter(s => s.id).map(s => s.id));
 
         const referencedCharIds = new Set<string>();
@@ -288,6 +310,8 @@ export function DataManagerModal({
         const referencedStopPatternIds = new Set<string>();
         const referencedProfileIds = new Set<string>();
         const referencedMemoryIds = new Set<string>();
+        const referencedAccountIds = new Set<string>();
+        const referencedMultiplayerDataIds = new Set<string>();
 
         for (const world of allWorlds) {
             for (const id of world.characterIds) if (charIdSet.has(id)) referencedCharIds.add(id);
@@ -358,6 +382,22 @@ export function DataManagerModal({
             for (const binding of pb.locationBindings) if (locIdSet.has(binding)) referencedLocIds.add(binding);
         }
 
+        // Accounts referenced by multiplayer data
+        for (const md of allMultiplayerData) {
+            for (const id of md.whiteListedAccountIds) if (accountIdSet.has(id)) referencedAccountIds.add(id);
+            for (const id of md.blacklistedAccountIds) if (accountIdSet.has(id)) referencedAccountIds.add(id);
+            for (const id of md.pendingAccountIds) if (accountIdSet.has(id)) referencedAccountIds.add(id);
+            for (const id of md.administratorAccountIds) if (accountIdSet.has(id)) referencedAccountIds.add(id);
+            for (const id of Object.keys(md.accountIdCharacterIds)) if (accountIdSet.has(id)) referencedAccountIds.add(id);
+        }
+
+        // Multiplayer data referenced by chat sessions via interactionDataIds
+        for (const md of allMultiplayerData) {
+            for (const chatId of md.interactionDataIds) {
+                if (chatIdSet.has(chatId)) referencedMultiplayerDataIds.add(md.id);
+            }
+        }
+
         const staleCutoff = Date.now() - staleDaysCleanup * 86400000;
         const found: CleanupItem[] = [];
 
@@ -382,12 +422,14 @@ export function DataManagerModal({
         for (const bs of allBudgetStrategies) check('budgetStrategy', bs.id, bs.name, bs.lastUpdatedTimestamp, true, bs);
         for (const p of allProfiles) check('profile', p.id, p.name, p.lastUpdatedTimestamp, referencedProfileIds.has(p.id), p);
         for (const m of allMemories) check('memory', m.id, m.name, m.lastUpdatedTimestamp, referencedMemoryIds.has(m.id), m);
+        for (const a of allAccounts) check('account', a.id, a.name, a.lastUpdatedTimestamp, referencedAccountIds.has(a.id), a);
+        for (const md of allMultiplayerData) check('multiplayerData', md.id, md.name, md.lastUpdatedTimestamp, referencedMultiplayerDataIds.has(md.id), md);
 
         setCleanupItems(found);
         setSelectedIds(new Set());
         setSearchQuery('');
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, rawChatShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, rawChatShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
 
     // ─── Integrity Check ────────────────────────────────────────────
     const scanIntegrity = useCallback(() => {
@@ -403,6 +445,7 @@ export function DataManagerModal({
         const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));
         const profileIdSet = new Set(allProfiles.map(p => p.id));
         const memoryIdSet = new Set(allMemories.map(m => m.id));
+        const accountIdSet = new Set(allAccounts.map(a => a.id));
         const chatIdSet = new Set(rawChatShells.filter(s => s.id).map(s => s.id));
 
         for (const ctx of allContexts) {
@@ -454,7 +497,6 @@ export function DataManagerModal({
                     }
                 }
             }
-            // Validate clothing bindings (internal references within same character)
             if (c.clothings && c.clothings.length > 0) {
                 const clothingIdSet = new Set(c.clothings.map(cl => cl.id));
                 for (const clothing of c.clothings) {
@@ -463,7 +505,6 @@ export function DataManagerModal({
                     }
                 }
             }
-            // Validate text character injection bindings (internal references within same character)
             if (c.textCharacterInjections && c.textCharacterInjections.length > 0) {
                 const injectionIdSet = new Set(c.textCharacterInjections.map(ti => ti.id));
                 for (const injection of c.textCharacterInjections) {
@@ -472,7 +513,6 @@ export function DataManagerModal({
                     }
                 }
             }
-            // Validate dialogue prompt bindings (internal references within same character)
             if (c.dialoguePrompts && c.dialoguePrompts.length > 0) {
                 const dialoguePromptIdSet = new Set(c.dialoguePrompts.map(dp => dp.id));
                 for (const dp of c.dialoguePrompts) {
@@ -497,10 +537,21 @@ export function DataManagerModal({
                 issues.push({ entityType: 'Memory', entityName: mem.name, issue: 'References missing chat session', refType: 'Chat', refId: interactionId });
             }
         }
+        for (const md of allMultiplayerData) {
+            for (const id of md.whiteListedAccountIds) { if (!accountIdSet.has(id)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: 'References missing whitelisted account', refType: 'Account', refId: id }); }
+            for (const id of md.blacklistedAccountIds) { if (!accountIdSet.has(id)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: 'References missing blacklisted account', refType: 'Account', refId: id }); }
+            for (const id of md.pendingAccountIds) { if (!accountIdSet.has(id)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: 'References missing pending account', refType: 'Account', refId: id }); }
+            for (const id of md.administratorAccountIds) { if (!accountIdSet.has(id)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: 'References missing admin account', refType: 'Account', refId: id }); }
+            for (const [acctId, charIds] of Object.entries(md.accountIdCharacterIds)) {
+                if (!accountIdSet.has(acctId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: 'Mapping references missing account', refType: 'Account', refId: acctId });
+                for (const charId of charIds) { if (!charIdSet.has(charId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: `Mapping for account ${acctId.slice(0, 8)}... references missing character`, refType: 'Character', refId: charId }); }
+            }
+            for (const chatId of md.interactionDataIds) { if (!chatIdSet.has(chatId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: 'References missing chat session', refType: 'Chat', refId: chatId }); }
+        }
 
         setIntegrityIssues(issues);
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, rawChatShells]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, rawChatShells]);
 
     // ─── Filtered + sorted cleanup items ────────────────────────────
     const filteredAndSorted = useMemo(() => {
@@ -559,6 +610,8 @@ export function DataManagerModal({
                 case 'budgetStrategy': onDeleteBudgetStrategy(item.id); break;
                 case 'profile': onDeleteProfile(item.id); break;
                 case 'memory': onDeleteMemory(item.id); break;
+                case 'account': onDeleteAccount(item.id); break;
+                case 'multiplayerData': onDeleteMultiplayerData(item.id); break;
             }
             deletedCount++;
         }
@@ -685,6 +738,8 @@ export function DataManagerModal({
             case 'budgetStrategies': for (const bs of allBudgetStrategies) { onDeleteBudgetStrategy(bs.id); count++; } break;
             case 'profiles': for (const p of allProfiles) { onDeleteProfile(p.id); count++; } break;
             case 'memories': for (const m of allMemories) { onDeleteMemory(m.id); count++; } break;
+            case 'accounts': for (const a of allAccounts) { onDeleteAccount(a.id); count++; } break;
+            case 'multiplayerData': for (const md of allMultiplayerData) { onDeleteMultiplayerData(md.id); count++; } break;
             case 'chats': for (const s of rawChatShells) { if (s.id) { onDeleteChat(s.id); count++; } } break;
         }
         addToast(`Wiped ${count} ${entityType}.`, 'success');
@@ -813,7 +868,7 @@ export function DataManagerModal({
                     {/* ─── INTEGRITY TAB ─── */}
                     {activeTab === 'integrity' && (
                         <div>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '12px', lineHeight: 1.5 }}>Cross-reference integrity check. Finds broken bindings where entities reference deleted characters, contexts, locations, audio tracks, worlds, prompt blocks, models, samplers, stop patterns, memories, chat sessions, or profiles.</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '12px', lineHeight: 1.5 }}>Cross-reference integrity check. Finds broken bindings where entities reference deleted characters, contexts, locations, audio tracks, worlds, prompt blocks, models, samplers, stop patterns, memories, chat sessions, accounts, or profiles.</div>
                             <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
                                 <button type="button" className="editor-button editor-button-save" onClick={scanIntegrity} disabled={isScanning} style={{ fontSize: '0.75rem', padding: '8px 16px' }}>{isScanning ? 'Checking...' : 'Run Integrity Check'}</button>
                             </div>
@@ -934,6 +989,8 @@ export function DataManagerModal({
                                         { key: 'budgetStrategies', label: 'All Budget Strategies', count: allBudgetStrategies.length },
                                         { key: 'profiles', label: 'All Profiles', count: allProfiles.length },
                                         { key: 'memories', label: 'All Memories', count: allMemories.length },
+                                        { key: 'accounts', label: 'All Accounts', count: allAccounts.length },
+                                        { key: 'multiplayerData', label: 'All Multiplayer Data', count: allMultiplayerData.length },
                                         { key: 'chats', label: 'All Chats', count: rawChatShells.length },
                                     ].map(entity => (
                                         <button key={entity.key} type="button" className="editor-button"

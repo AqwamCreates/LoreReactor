@@ -28,10 +28,16 @@ const SETTINGS_ITEMS: SettingsItem[] = [
         description: 'Force messages and override staminas for participants.',
     },
     {
-        id: 'multiplayer-settings',
+        id: 'account-data',
+        icon: '🔑',
+        label: 'Account Data',
+        description: 'Manage user accounts for multiplayer sessions.',
+    },
+    {
+        id: 'multiplayer-data',
         icon: '👥',
-        label: 'Multiplayer Settings',
-        description: 'Manage access control, account permissions, password, and protagonist assignments for this chat session.',
+        label: 'Multiplayer Data',
+        description: 'Manage multiplayer session configurations, access control, and account-character mappings.',
     },
     {
         id: 'ai-recommendation',
@@ -77,7 +83,8 @@ interface SettingsModalProps {
     onOpenBudgetControl: () => void;
     onOpenGpuMonitor: () => void;
     onOpenParticipantControl: () => void;
-    onOpenMultiplayerSettings: () => void;
+    onOpenAccountData: () => void;
+    onOpenMultiplayerData: () => void;
     onOpenAIRecommendation: () => void;
     onOpenAlternateTimelines: () => void;
     onOpenImportCharacterCard: () => void;
@@ -92,7 +99,8 @@ export function SettingsModal({
     onOpenBudgetControl,
     onOpenGpuMonitor,
     onOpenParticipantControl,
-    onOpenMultiplayerSettings,
+    onOpenAccountData,
+    onOpenMultiplayerData,
     onOpenAIRecommendation,
     onOpenAlternateTimelines,
     onOpenImportCharacterCard,
@@ -113,8 +121,11 @@ export function SettingsModal({
             case 'participant-control':
                 onOpenParticipantControl();
                 break;
-            case 'multiplayer-settings':
-                onOpenMultiplayerSettings();
+            case 'account-data':
+                onOpenAccountData();
+                break;
+            case 'multiplayer-data':
+                onOpenMultiplayerData();
                 break;
             case 'ai-recommendation':
                 onOpenAIRecommendation();

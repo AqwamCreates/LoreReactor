@@ -1,5 +1,5 @@
 // src/components/AppModals.tsx
-import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World, AudioTrack, PromptBlock, RawInteractionData, Memory, MultiplayerData, cloudBackend } from '../types';
+import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World, AudioTrack, PromptBlock, RawInteractionData, Memory, MultiplayerData, Account, cloudBackend } from '../types';
 import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';
@@ -11,12 +11,13 @@ import { AudioTrackEditorModal } from './AudioTrackEditorModal';
 import { StopPatternEditorModal } from './StopPatternEditorModal';
 import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
+import { AccountEditorModal } from './AccountEditorModal';
+import { MultiplayerEditorModal } from './MultiplayerEditorModal';
 import { SettingsModal } from './SettingsModal';
 import { BudgetControlModal } from './BudgetControlModal';
 import { GpuMonitorModal } from './GpuMonitorModal';
 import { WorldEditorModal } from './WorldEditorModal';
 import { ParticipantControlModal } from './ParticipantControlModal';
-import { MultiplayerSettingsModal } from './MultiplayerSettingsModal';
 import { AIRecommendationModal } from './AIRecommendationModal';
 import { CharacterCardImportModal } from './CharacterCardImportModal';
 import { DataImportModal } from './DataImportModal';
@@ -61,6 +62,8 @@ interface AppModalsProps {
     allExtensions: Extension[];
     allWorlds: World[];
     allMemories: Memory[];
+    allAccounts: Account[];
+    allMultiplayerData: MultiplayerData[];
     // Entity modals
     charModal: EntityModalState<Character>;
     contextModal: EntityModalState<Context>;
@@ -73,6 +76,8 @@ interface AppModalsProps {
     budgetModal: EntityModalState<BudgetStrategy>;
     profileModal: EntityModalState<Profile>;
     worldModal: EntityModalState<World>;
+    accountModal: EntityModalState<Account>;
+    multiplayerDataModal: EntityModalState<MultiplayerData>;
     // Chat callbacks
     onSwitchChat: (id: string) => void;
     onInspectChat: (id: string) => void;
@@ -122,6 +127,11 @@ interface AppModalsProps {
     onDeleteWorld: (id: string) => void;
     // Memory callbacks
     onDeleteMemory: (id: string) => void;
+    // Account callbacks
+    onDeleteAccount: (id: string) => void;
+    onToggleAccount: (id: string) => void;
+    // Multiplayer data callbacks
+    onDeleteMultiplayerData: (id: string) => void;
     // Interaction data callbacks
     onUpdateInteractionData: (data: InteractionData) => void;
     onForceFirstMessage: (c: Character) => void;
@@ -159,9 +169,11 @@ export function AppModals({
     rawChatShells, allCharacters, allContexts, allLocations, allAudioTracks,
     allSamplers, allStopPatterns, allModels, allBudgetStrategies,
     allProfiles, allExtensions, allWorlds, allPromptBlocks, allMemories,
+    allAccounts, allMultiplayerData,
     charModal, contextModal, locationModal, audioTrackModal,
     samplerModal, stopModal, modelModal, budgetModal,
     profileModal, worldModal, promptBlockModal,
+    accountModal, multiplayerDataModal,
     onSwitchChat, onInspectChat, onDeleteChat, onNewChat, onRenameChat,
     onDeleteCharacter, onLoadFullCharacter, onToggleParticipant, onSetProtagonist, onSaveCharacter,
     onDeleteContext, onToggleContext, onSaveContext,
@@ -176,6 +188,8 @@ export function AppModals({
     onSaveWorld, onLoadWorld, onDeleteWorld,
     onDeletePromptBlock,
     onDeleteMemory,
+    onDeleteAccount, onToggleAccount,
+    onDeleteMultiplayerData,
     onUpdateInteractionData, onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
     onImportComplete, addToast, ensureChatsLoaded,
 }: AppModalsProps) {
@@ -387,7 +401,8 @@ export function AppModals({
                     onOpenBudgetControl={modals.budgetControl.open}
                     onOpenGpuMonitor={() => { modals.settings.close(); setGpuMonitorOpen(true); }}
                     onOpenParticipantControl={modals.participantControl.open}
-                    onOpenMultiplayerSettings={modals.multiplayerSettings.open}
+                    onOpenAccountData={modals.accountList.open}
+                    onOpenMultiplayerData={modals.multiplayerDataList.open}
                     onOpenAIRecommendation={modals.aiRecommendation.open}
                     onOpenAlternateTimelines={modals.alternateTimelines.open}
                     onOpenImportCharacterCard={modals.cardImport.open}
@@ -410,9 +425,19 @@ export function AppModals({
                     onInjectCustomMessage={onInjectCustomMessage} onInjectFirstMessage={onInjectFirstMessage} />
             )}
 
-            {modals.multiplayerSettings.isOpen && (
-                <MultiplayerSettingsModal isOpen={modals.multiplayerSettings.isOpen} onClose={modals.multiplayerSettings.close}
-                    interactionData={interactionData} allCharacters={allCharacters} />
+            {modals.accountList.isOpen && (
+                <ManagerModal title="Accounts" items={allAccounts} isOpen={modals.accountList.isOpen} onClose={modals.accountList.close}
+                    onSelect={(a: Account) => accountModal.open(a)} onDelete={onDeleteAccount} onCreateNew={() => accountModal.open()}
+                    renderSubtext={(a: Account) => `👤 ${a.username}${a.url ? ` • 🔗 ${a.url}` : ''}`}
+                    emptyMessage="No accounts found." actionLabel="Delete"
+                    orderedListMode={true} currentOrderIds={[]} onToggleOrder={onToggleAccount} />
+            )}
+
+            {modals.multiplayerDataList.isOpen && (
+                <ManagerModal title="Multiplayer Data" items={allMultiplayerData} isOpen={modals.multiplayerDataList.isOpen} onClose={modals.multiplayerDataList.close}
+                    onSelect={(m: MultiplayerData) => multiplayerDataModal.open(m)} onDelete={onDeleteMultiplayerData} onCreateNew={() => multiplayerDataModal.open()}
+                    renderSubtext={(m: MultiplayerData) => `${m.password ? '🔒' : '🔓'} ${m.whiteListedAccountIds.length} whitelisted • ${m.blacklistedAccountIds.length} blacklisted • ${m.administratorAccountIds.length} admins • ${m.interactionDataIds.length} sessions • ${Object.keys(m.accountIdCharacterIds).length} mappings`}
+                    emptyMessage="No multiplayer data found." actionLabel="Delete" />
             )}
 
             {modals.aiRecommendation.isOpen && (
@@ -464,12 +489,12 @@ export function AppModals({
                     allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} allAudioTracks={allAudioTracks}
                     allWorlds={allWorlds} allModels={allModels} allSamplers={allSamplers} allPromptBlocks={allPromptBlocks}
                     allStopPatterns={allStopPatterns} allBudgetStrategies={allBudgetStrategies} allProfiles={allProfiles}
-                    allMemories={allMemories} rawChatShells={chatShellsWithIds}
+                    allMemories={allMemories} allAccounts={allAccounts} allMultiplayerData={allMultiplayerData} rawChatShells={chatShellsWithIds}
                     onDeleteCharacter={onDeleteCharacter} onDeleteContext={onDeleteContext} onDeleteLocation={onDeleteLocation}
                     onDeleteAudioTrack={onDeleteAudioTrack} onDeleteWorld={onDeleteWorld} onDeleteModel={onDeleteModel}
                     onDeleteSampler={onDeleteSampler} onDeletePromptBlock={onDeletePromptBlock} onDeleteStopPattern={onDeleteStopPattern}
                     onDeleteBudgetStrategy={onDeleteBudgetStrategy} onDeleteProfile={onDeleteProfile} onDeleteMemory={onDeleteMemory}
-                    onDeleteChat={onDeleteChat} />
+                    onDeleteAccount={onDeleteAccount} onDeleteMultiplayerData={onDeleteMultiplayerData} onDeleteChat={onDeleteChat} />
             )}
 
             {/* ─── Editor Modals ─── */}
@@ -539,6 +564,16 @@ export function AppModals({
                 <ProfileEditorModal isOpen={profileModal.isOpen} onClose={() => { setAiProfileSaveRedirect(null); profileModal.close(); }}
                     onSave={(p: Profile) => { if (aiProfileSaveRedirect) { aiProfileSaveRedirect(p); addToast('Applied profile changes to AI recommendation.', 'success'); } else { profileModal.handleSave(p); } }}
                     existingProfile={profileModal.itemToEdit} allPromptBlocks={allPromptBlocks} allSamplers={allSamplers} />
+            )}
+
+            {accountModal.isOpen && (
+                <AccountEditorModal isOpen={accountModal.isOpen} onClose={accountModal.close} onSave={accountModal.handleSave}
+                    existingAccount={accountModal.itemToEdit} />
+            )}
+
+            {multiplayerDataModal.isOpen && (
+                <MultiplayerEditorModal isOpen={multiplayerDataModal.isOpen} onClose={multiplayerDataModal.close} onSave={multiplayerDataModal.handleSave}
+                    existingMultiplayerData={multiplayerDataModal.itemToEdit} allAccounts={allAccounts} />
             )}
         </>
     );
