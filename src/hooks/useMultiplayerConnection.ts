@@ -25,7 +25,7 @@ interface ChatMessagePayload {
     messageId: string;
     characterId: string;
     textContent: string;
-    messageType: 'chat' | 'action';
+    messageType: 'chat' | 'interaction';
 }
 
 interface JoinRequestPayload {
