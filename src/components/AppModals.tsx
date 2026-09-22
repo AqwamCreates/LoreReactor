@@ -573,7 +573,7 @@ export function AppModals({
 
             {multiplayerDataModal.isOpen && (
                 <MultiplayerEditorModal isOpen={multiplayerDataModal.isOpen} onClose={multiplayerDataModal.close} onSave={multiplayerDataModal.handleSave}
-                    existingMultiplayerData={multiplayerDataModal.itemToEdit} allAccounts={allAccounts} />
+                    existingMultiplayerData={multiplayerDataModal.itemToEdit} allCharacters={allCharacters} rawChatShells={chatShellsWithIds} />
             )}
         </>
     );

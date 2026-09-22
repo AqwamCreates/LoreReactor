@@ -1,7 +1,8 @@
 // src/components/MultiplayerEditorModal.tsx
-import { useState, useCallback } from 'react';
-import type { MultiplayerData, Account } from '../types';
+import { useState, useCallback, useRef } from 'react';
+import type { MultiplayerData, Character, RawInteractionData } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
 
 interface MultiplayerEditorModalProps {
@@ -9,7 +10,8 @@ interface MultiplayerEditorModalProps {
     onClose: () => void;
     onSave: (data: MultiplayerData) => void;
     existingMultiplayerData?: MultiplayerData | null;
-    allAccounts: Account[];
+    allCharacters: Character[];
+    rawChatShells: RawInteractionData[];
 }
 
 export function MultiplayerEditorModal({
@@ -17,7 +19,8 @@ export function MultiplayerEditorModal({
     onClose,
     onSave,
     existingMultiplayerData,
-    allAccounts,
+    allCharacters,
+    rawChatShells,
 }: MultiplayerEditorModalProps) {
     if (!isOpen) return null;
 
@@ -29,8 +32,59 @@ export function MultiplayerEditorModal({
             onClose={onClose}
             onSave={onSave}
             existingMultiplayerData={existingMultiplayerData}
-            allAccounts={allAccounts}
+            allCharacters={allCharacters}
+            rawChatShells={rawChatShells}
         />
+    );
+}
+
+function ManualIdInput({
+    label,
+    ids,
+    onAdd,
+    onRemove,
+}: {
+    label: string;
+    ids: string[];
+    onAdd: (id: string) => void;
+    onRemove: (id: string) => void;
+}) {
+    const [inputValue, setInputValue] = useState('');
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            const val = inputValue.trim();
+            if (val && !ids.includes(val)) {
+                onAdd(val);
+                setInputValue('');
+            }
+        }
+    };
+
+    return (
+        <div style={{ marginBottom: '12px' }}>
+            <label className="editor-label editor-label-small">{label} ({ids.length})</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '80px', overflowY: 'auto', marginBottom: '4px' }}>
+                {ids.map(id => (
+                    <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 6px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px' }}>
+                        <span style={{ flex: 1, fontSize: '0.65rem', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{id}</span>
+                        <button type="button" onClick={() => onRemove(id)} className="toolbar-button" style={{ width: '18px', height: '18px', fontSize: '0.6rem', color: '#ff4444', padding: 0 }}>×</button>
+                    </div>
+                ))}
+                {ids.length === 0 && <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic' }}>None added.</div>}
+            </div>
+            <input
+                ref={inputRef}
+                type="text"
+                value={inputValue}
+                onChange={e => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="editor-input"
+                placeholder="Type account ID and press Enter..."
+                style={{ fontSize: '0.7rem', padding: '4px 6px' }}
+            />
+        </div>
     );
 }
 
@@ -38,7 +92,8 @@ function MultiplayerEditorModalInner({
     onClose,
     onSave,
     existingMultiplayerData,
-    allAccounts,
+    allCharacters,
+    rawChatShells,
 }: Omit<MultiplayerEditorModalProps, 'isOpen'>) {
     const [name, setName] = useState(existingMultiplayerData?.name || '');
     const [description, setDescription] = useState(existingMultiplayerData?.description || '');
@@ -51,9 +106,13 @@ function MultiplayerEditorModalInner({
     const [accountIdCharacterIds, setAccountIdCharacterIds] = useState<Record<string, string[]>>(existingMultiplayerData?.accountIdCharacterIds || {});
     const [errors, setErrors] = useState<{ name?: string }>({});
 
+    // Search states for EntitySelectLists
+    const [sessionSearchQuery, setSessionSearchQuery] = useState('');
+    const [mappingCharSearchQuery, setMappingCharSearchQuery] = useState('');
+
     // For adding account-character mappings
-    const [selectedMappingAccountId, setSelectedMappingAccountId] = useState('');
-    const [mappingCharacterIdInput, setMappingCharacterIdInput] = useState('');
+    const [mappingAccountIdInput, setMappingAccountIdInput] = useState('');
+    const [selectedMappingCharIds, setSelectedMappingCharIds] = useState<string[]>([]);
 
     const validate = (): boolean => {
         const newErrors: { name?: string } = {};
@@ -95,15 +154,61 @@ function MultiplayerEditorModalInner({
         onClose();
     };
 
+    // Manual ID list helpers — enforce mutual exclusivity across access control lists
+    const addWhitelist = useCallback((id: string) => {
+        setWhiteListedAccountIds(prev => [...prev, id]);
+        setBlacklistedAccountIds(prev => prev.filter(x => x !== id));
+        setPendingAccountIds(prev => prev.filter(x => x !== id));
+        setAdministratorAccountIds(prev => prev.filter(x => x !== id));
+    }, []);
+
+    const addBlacklist = useCallback((id: string) => {
+        setBlacklistedAccountIds(prev => [...prev, id]);
+        setWhiteListedAccountIds(prev => prev.filter(x => x !== id));
+        setPendingAccountIds(prev => prev.filter(x => x !== id));
+        setAdministratorAccountIds(prev => prev.filter(x => x !== id));
+    }, []);
+
+    const addPending = useCallback((id: string) => {
+        setPendingAccountIds(prev => [...prev, id]);
+        setWhiteListedAccountIds(prev => prev.filter(x => x !== id));
+        setBlacklistedAccountIds(prev => prev.filter(x => x !== id));
+        setAdministratorAccountIds(prev => prev.filter(x => x !== id));
+    }, []);
+
+    const addAdmin = useCallback((id: string) => {
+        setAdministratorAccountIds(prev => [...prev, id]);
+        setWhiteListedAccountIds(prev => prev.filter(x => x !== id));
+        setBlacklistedAccountIds(prev => prev.filter(x => x !== id));
+        setPendingAccountIds(prev => prev.filter(x => x !== id));
+    }, []);
+
+    const removeId = useCallback((setter: React.Dispatch<React.SetStateAction<string[]>>, id: string) => {
+        setter(prev => prev.filter(x => x !== id));
+    }, []);
+
+    // Session toggle for EntitySelectList
+    const toggleSession = useCallback((id: string) => {
+        setInteractionDataIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    }, []);
+
+    // Character toggle for mapping EntitySelectList
+    const toggleMappingChar = useCallback((id: string) => {
+        setSelectedMappingCharIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    }, []);
+
+    // Add mapping from manual account ID + selected character IDs
     const handleAddMapping = useCallback(() => {
-        if (!selectedMappingAccountId || !mappingCharacterIdInput.trim()) return;
+        const acctId = mappingAccountIdInput.trim();
+        if (!acctId || selectedMappingCharIds.length === 0) return;
         setAccountIdCharacterIds(prev => {
-            const existing = prev[selectedMappingAccountId] || [];
-            if (existing.includes(mappingCharacterIdInput.trim())) return prev;
-            return { ...prev, [selectedMappingAccountId]: [...existing, mappingCharacterIdInput.trim()] };
+            const existing = prev[acctId] || [];
+            const merged = [...new Set([...existing, ...selectedMappingCharIds])];
+            return { ...prev, [acctId]: merged };
         });
-        setMappingCharacterIdInput('');
-    }, [selectedMappingAccountId, mappingCharacterIdInput]);
+        setMappingAccountIdInput('');
+        setSelectedMappingCharIds([]);
+    }, [mappingAccountIdInput, selectedMappingCharIds]);
 
     const handleRemoveMappingChar = useCallback((accountId: string, charId: string) => {
         setAccountIdCharacterIds(prev => {
@@ -127,7 +232,13 @@ function MultiplayerEditorModalInner({
         });
     }, []);
 
-    const accountNameMap = new Map(allAccounts.map(a => [a.id, a.name]));
+    // Prepare chat shells as selectable items for EntitySelectList
+    const chatShellItems = rawChatShells.filter(s => s.id).map(s => ({
+        id: s.id!,
+        name: s.name || 'Untitled Chat',
+        description: `${s.interactionIdHistory?.length ?? 0} messages`,
+        lastUpdatedTimestamp: s.lastUpdatedTimestamp,
+    }));
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -183,120 +294,76 @@ function MultiplayerEditorModalInner({
                         </div>
                     </div>
 
-                    {/* Interaction Data IDs */}
+                    {/* Linked Sessions — searchable via EntitySelectList */}
                     <div className="editor-section">
-                        <div className="editor-section-title">Linked Sessions ({interactionDataIds.length})</div>
-                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
-                            Interaction data IDs associated with this multiplayer session.
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '100px', overflowY: 'auto', marginBottom: '6px' }}>
-                            {interactionDataIds.map(id => (
-                                <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 6px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px' }}>
-                                    <span style={{ flex: 1, fontSize: '0.65rem', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{id}</span>
-                                    <button type="button" onClick={() => setInteractionDataIds(prev => prev.filter(x => x !== id))} className="toolbar-button" style={{ width: '18px', height: '18px', fontSize: '0.6rem', color: '#ff4444', padding: 0 }}>×</button>
-                                </div>
-                            ))}
-                            {interactionDataIds.length === 0 && <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic' }}>No linked sessions.</div>}
-                        </div>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                            <input
-                                type="text"
-                                placeholder="Session ID..."
-                                className="editor-input"
-                                style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }}
-                                onKeyDown={e => {
-                                    if (e.key === 'Enter') {
-                                        const val = (e.target as HTMLInputElement).value.trim();
-                                        if (val && !interactionDataIds.includes(val)) {
-                                            setInteractionDataIds(prev => [...prev, val]);
-                                            (e.target as HTMLInputElement).value = '';
-                                        }
-                                    }
-                                }}
-                            />
-                        </div>
+                        <EntitySelectList
+                            label={`Linked Sessions (${interactionDataIds.length})`}
+                            items={chatShellItems}
+                            selectedIds={interactionDataIds}
+                            onToggle={toggleSession}
+                            searchQuery={sessionSearchQuery}
+                            onSearchChange={setSessionSearchQuery}
+                        />
                     </div>
 
-                    {/* Account Lists */}
+                    {/* Access Control — manual text input for account IDs */}
                     <div className="editor-section">
                         <div className="editor-section-title">Access Control</div>
                         <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
-                            Click account names to toggle between lists. Accounts can only be in one list at a time.
+                            Type account IDs manually. An account can only be in one list at a time.
                         </div>
 
-                        {allAccounts.length === 0 && (
-                            <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', padding: '4px 0' }}>No accounts available. Create accounts first.</div>
-                        )}
-
-                        {allAccounts.map(account => {
-                            const isWhitelisted = whiteListedAccountIds.includes(account.id);
-                            const isBlacklisted = blacklistedAccountIds.includes(account.id);
-                            const isPending = pendingAccountIds.includes(account.id);
-                            const isAdmin = administratorAccountIds.includes(account.id);
-
-                            let statusLabel = 'Unassigned';
-                            let statusColor = 'rgba(255,255,255,0.3)';
-                            if (isAdmin) { statusLabel = 'Admin'; statusColor = '#f59e0b'; }
-                            else if (isWhitelisted) { statusLabel = 'Whitelisted'; statusColor = '#4ade80'; }
-                            else if (isBlacklisted) { statusLabel = 'Blacklisted'; statusColor = '#ef4444'; }
-                            else if (isPending) { statusLabel = 'Pending'; statusColor = '#60a5fa'; }
-
-                            return (
-                                <div key={account.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 8px', marginBottom: '4px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
-                                    <span style={{ flex: 1, fontSize: '0.7rem' }}>{account.name}</span>
-                                    <span style={{ fontSize: '0.6rem', color: statusColor, fontWeight: 'bold', minWidth: '70px', textAlign: 'right' }}>{statusLabel}</span>
-                                    <div style={{ display: 'flex', gap: '2px' }}>
-                                        <button type="button" onClick={() => {
-                                            setWhiteListedAccountIds(prev => prev.includes(account.id) ? prev.filter(x => x !== account.id) : [...prev.filter(x => x !== account.id), account.id]);
-                                            setBlacklistedAccountIds(prev => prev.filter(x => x !== account.id));
-                                            setPendingAccountIds(prev => prev.filter(x => x !== account.id));
-                                            setAdministratorAccountIds(prev => prev.filter(x => x !== account.id));
-                                        }} className="toolbar-button" style={{ fontSize: '0.55rem', padding: '1px 5px', color: isWhitelisted ? '#4ade80' : 'rgba(255,255,255,0.4)' }} title="Whitelist">W</button>
-                                        <button type="button" onClick={() => {
-                                            setBlacklistedAccountIds(prev => prev.includes(account.id) ? prev.filter(x => x !== account.id) : [...prev.filter(x => x !== account.id), account.id]);
-                                            setWhiteListedAccountIds(prev => prev.filter(x => x !== account.id));
-                                            setPendingAccountIds(prev => prev.filter(x => x !== account.id));
-                                            setAdministratorAccountIds(prev => prev.filter(x => x !== account.id));
-                                        }} className="toolbar-button" style={{ fontSize: '0.55rem', padding: '1px 5px', color: isBlacklisted ? '#ef4444' : 'rgba(255,255,255,0.4)' }} title="Blacklist">B</button>
-                                        <button type="button" onClick={() => {
-                                            setPendingAccountIds(prev => prev.includes(account.id) ? prev.filter(x => x !== account.id) : [...prev.filter(x => x !== account.id), account.id]);
-                                            setWhiteListedAccountIds(prev => prev.filter(x => x !== account.id));
-                                            setBlacklistedAccountIds(prev => prev.filter(x => x !== account.id));
-                                            setAdministratorAccountIds(prev => prev.filter(x => x !== account.id));
-                                        }} className="toolbar-button" style={{ fontSize: '0.55rem', padding: '1px 5px', color: isPending ? '#60a5fa' : 'rgba(255,255,255,0.4)' }} title="Pending">P</button>
-                                        <button type="button" onClick={() => {
-                                            setAdministratorAccountIds(prev => prev.includes(account.id) ? prev.filter(x => x !== account.id) : [...prev.filter(x => x !== account.id), account.id]);
-                                            setWhiteListedAccountIds(prev => prev.filter(x => x !== account.id));
-                                            setBlacklistedAccountIds(prev => prev.filter(x => x !== account.id));
-                                            setPendingAccountIds(prev => prev.filter(x => x !== account.id));
-                                        }} className="toolbar-button" style={{ fontSize: '0.55rem', padding: '1px 5px', color: isAdmin ? '#f59e0b' : 'rgba(255,255,255,0.4)' }} title="Admin">A</button>
-                                    </div>
-                                </div>
-                            );
-                        })}
+                        <ManualIdInput
+                            label="Whitelisted"
+                            ids={whiteListedAccountIds}
+                            onAdd={addWhitelist}
+                            onRemove={(id) => removeId(setWhiteListedAccountIds, id)}
+                        />
+                        <ManualIdInput
+                            label="Blacklisted"
+                            ids={blacklistedAccountIds}
+                            onAdd={addBlacklist}
+                            onRemove={(id) => removeId(setBlacklistedAccountIds, id)}
+                        />
+                        <ManualIdInput
+                            label="Pending"
+                            ids={pendingAccountIds}
+                            onAdd={addPending}
+                            onRemove={(id) => removeId(setPendingAccountIds, id)}
+                        />
+                        <ManualIdInput
+                            label="Administrators"
+                            ids={administratorAccountIds}
+                            onAdd={addAdmin}
+                            onRemove={(id) => removeId(setAdministratorAccountIds, id)}
+                        />
                     </div>
 
-                    {/* Account-Character Mappings */}
+                    {/* Account-Character Mappings — manual account ID + EntitySelectList for characters */}
                     <div className="editor-section">
                         <div className="editor-section-title">Account → Character Mappings</div>
                         <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
-                            Map each account to the character IDs they control as protagonists.
+                            Type an account ID, then select characters from the list below to map.
                         </div>
 
+                        {/* Existing mappings display */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', marginBottom: '8px' }}>
                             {Object.entries(accountIdCharacterIds).map(([accountId, charIds]) => (
                                 <div key={accountId} style={{ padding: '6px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                        <span style={{ fontSize: '0.7rem', fontWeight: 'bold' }}>{accountNameMap.get(accountId) || accountId}</span>
+                                        <span style={{ fontSize: '0.7rem', fontWeight: 'bold', fontFamily: 'monospace' }}>{accountId}</span>
                                         <button type="button" onClick={() => handleRemoveMappingAccount(accountId)} className="toolbar-button" style={{ fontSize: '0.55rem', padding: '1px 5px', color: '#ff4444' }} title="Remove all mappings for this account">×</button>
                                     </div>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
-                                        {charIds.map(charId => (
-                                            <span key={charId} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '1px 6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', fontSize: '0.6rem', fontFamily: 'monospace' }}>
-                                                {charId.substring(0, 8)}…
-                                                <button type="button" onClick={() => handleRemoveMappingChar(accountId, charId)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4444', fontSize: '0.6rem', padding: 0, lineHeight: 1 }}>×</button>
-                                            </span>
-                                        ))}
+                                        {charIds.map(charId => {
+                                            const charName = allCharacters.find(c => c.id === charId)?.name;
+                                            return (
+                                                <span key={charId} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '1px 6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', fontSize: '0.6rem' }}>
+                                                    {charName || charId.substring(0, 8)}
+                                                    <button type="button" onClick={() => handleRemoveMappingChar(accountId, charId)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4444', fontSize: '0.6rem', padding: 0, lineHeight: 1 }}>×</button>
+                                                </span>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             ))}
@@ -305,29 +372,37 @@ function MultiplayerEditorModalInner({
                             )}
                         </div>
 
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                            <select
-                                value={selectedMappingAccountId}
-                                onChange={e => setSelectedMappingAccountId(e.target.value)}
-                                className="editor-select"
-                                style={{ flex: 1, fontSize: '0.7rem' }}
-                            >
-                                <option value="">Select account...</option>
-                                {allAccounts.map(a => (
-                                    <option key={a.id} value={a.id}>{a.name}</option>
-                                ))}
-                            </select>
+                        {/* New mapping input */}
+                        <div style={{ marginBottom: '8px' }}>
+                            <label className="editor-label editor-label-small">Account ID</label>
                             <input
                                 type="text"
-                                value={mappingCharacterIdInput}
-                                onChange={e => setMappingCharacterIdInput(e.target.value)}
+                                value={mappingAccountIdInput}
+                                onChange={e => setMappingAccountIdInput(e.target.value)}
                                 className="editor-input"
-                                placeholder="Character ID..."
-                                style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }}
-                                onKeyDown={e => { if (e.key === 'Enter') handleAddMapping(); }}
+                                placeholder="Type external account ID..."
+                                style={{ fontSize: '0.7rem', padding: '4px 6px' }}
                             />
-                            <button type="button" onClick={handleAddMapping} className="toolbar-button" style={{ fontSize: '0.7rem', padding: '2px 8px' }}>+</button>
                         </div>
+
+                        <EntitySelectList
+                            label={`Select Characters (${selectedMappingCharIds.length} selected)`}
+                            items={allCharacters}
+                            selectedIds={selectedMappingCharIds}
+                            onToggle={toggleMappingChar}
+                            searchQuery={mappingCharSearchQuery}
+                            onSearchChange={setMappingCharSearchQuery}
+                        />
+
+                        <button
+                            type="button"
+                            onClick={handleAddMapping}
+                            disabled={!mappingAccountIdInput.trim() || selectedMappingCharIds.length === 0}
+                            className="editor-button editor-button-save"
+                            style={{ fontSize: '0.7rem', width: '100%', marginTop: '8px' }}
+                        >
+                            Add Mapping
+                        </button>
                     </div>
                 </div>
             </div>
