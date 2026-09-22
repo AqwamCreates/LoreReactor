@@ -17,7 +17,7 @@ import { useSessionStore } from './useSessionStore';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { detectName } from './nameDetection';
-import type { Character, InteractionData, PromptBlock, ChatMessage } from '../types';
+import type { Character, InteractionData, PromptBlock, ChatMessage, HistoryMessage } from '../types';
 
 const engine = getLanguageModelEngine();
 
@@ -103,8 +103,14 @@ function markLastAIMessageAsPartial(
     return null;
 }
 
-export function useChatSession(allCharacters: Character[]) {
+interface UseChatSessionOptions {
+    onMessageBroadcast?: (message: HistoryMessage) => void;
+}
+
+export function useChatSession(allCharacters: Character[], options?: UseChatSessionOptions) {
     const { addToast } = useToast();
+    const onMessageBroadcastRef = useRef(options?.onMessageBroadcast);
+    useEffect(() => { onMessageBroadcastRef.current = options?.onMessageBroadcast; }, [options?.onMessageBroadcast]);
 
     const state = useChatState();
     const {
@@ -129,6 +135,10 @@ export function useChatSession(allCharacters: Character[]) {
     // Ref to hold resumeGeneration for use in autoResumeOnCutoff (breaks circular dependency)
     const resumeGenerationRef = useRef<(messageId: string, allPromptBlocks?: PromptBlock[]) => Promise<void>>(null);
 
+    // Track the current streaming message ID for broadcast during streaming
+    const streamingMessageIdRef = useRef<string | null>(null);
+    const streamingCharacterRef = useRef<Character | null>(null);
+
     const ui = useChatUI(state.interactionData, state.isLoading, state.streamingText, isAtBottomRef);
 
     const chatEngine = useChatEngine({
@@ -145,6 +155,34 @@ export function useChatSession(allCharacters: Character[]) {
     const { throttledSetStreamingText, setStreamingText, streamingTextRef, resetStream } = useThrottledStream();
     const { acquireLock, releaseLock, isLoadingRef } = useCharacterResponseLock();
     const { generateAmbientNarration } = useAmbientNarration(setStreamingState, setStreamingText, streamingTextRef);
+
+    // Wrapped throttled stream setter that also broadcasts partial messages
+    const throttledSetStreamingTextWithBroadcast = useCallback((text: string) => {
+        throttledSetStreamingText(text);
+        const char = streamingCharacterRef.current;
+        const msgId = streamingMessageIdRef.current;
+        if (char && msgId && onMessageBroadcastRef.current) {
+            const partialMsg: ChatMessage = {
+                id: msgId,
+                messageType: 'chat',
+                character: char,
+                textContent: text,
+                files: [],
+                modelTextContentSummaries: {},
+                modelInteractionTextContentSummaries: {},
+                kvCacheTextContentPaths: {},
+                kvCacheTextContentSummaryPaths: {},
+                kvCacheInteractionTextContentSummaries: {},
+                characterClothingWearingStatuses: {},
+                characterLockedLocations: {},
+                parentInteractionMessageId: null,
+                isPartial: true,
+                firstCreatedTimestamp: Date.now(),
+                lastUpdatedTimestamp: Date.now(),
+            };
+            onMessageBroadcastRef.current(partialMsg);
+        }
+    }, [throttledSetStreamingText]);
 
     // Load budget data once on mount
     useEffect(() => {
@@ -253,6 +291,15 @@ export function useChatSession(allCharacters: Character[]) {
         }, 0);
     }, [setInteractionData]);
 
+    // Helper to broadcast new messages added by a turn
+    const broadcastNewMessages = useCallback((beforeCount: number, afterData: InteractionData) => {
+        if (!onMessageBroadcastRef.current) return;
+        const newMessages = afterData.interactionHistory.slice(beforeCount);
+        for (const msg of newMessages) {
+            onMessageBroadcastRef.current(msg);
+        }
+    }, []);
+
     const sendMessage = useCallback(async (text: string, files?: File[], frontCameraImageBase64?: string, allPromptBlocks?: PromptBlock[]) => {
         const currentState = getState();
         if (!currentState.interactionData || !currentState.currentCharacter || (!text.trim() && (!files || !files.length))) return;
@@ -275,6 +322,9 @@ export function useChatSession(allCharacters: Character[]) {
             const chatMessage = createChatMessage(currentState.interactionData, currentState.currentCharacter, text, { files: encodedFiles, frontCameraImage: frontCameraImageBase64 });
             let td = addMessageToInteractionData(currentState.interactionData, chatMessage);
 
+            // Broadcast user message
+            onMessageBroadcastRef.current?.(chatMessage);
+
             const hasLocations = td.locations && td.locations.length > 0;
             if (hasLocations) {
                 const protagonistMsg = td.interactionHistory[td.interactionHistory.length - 1];
@@ -289,6 +339,11 @@ export function useChatSession(allCharacters: Character[]) {
             setInteractionData(td);
             await saveRawInteractionData(td);
 
+            // Set up streaming broadcast tracking
+            const preTurnCount = td.interactionHistory.length;
+            streamingCharacterRef.current = null;
+            streamingMessageIdRef.current = null;
+
             const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks);
             const ud = turnResult.interactionData;
 
@@ -296,6 +351,7 @@ export function useChatSession(allCharacters: Character[]) {
                 const fd = await applyPendingPartial(ud, currentState.currentCharacter.id);
                 await saveRawInteractionData(fd);
                 setInteractionData(fd);
+                broadcastNewMessages(preTurnCount, fd);
                 return;
             }
 
@@ -305,6 +361,9 @@ export function useChatSession(allCharacters: Character[]) {
 
                 await saveRawInteractionData(finalized);
                 setInteractionData(finalized);
+
+                // Broadcast finalized AI messages
+                broadcastNewMessages(preTurnCount, finalized);
 
                 // Auto-resume if model cut off mid-generation
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
@@ -327,6 +386,7 @@ export function useChatSession(allCharacters: Character[]) {
                 const sd = ad || ud;
                 await saveRawInteractionData(sd);
                 setInteractionData(sd);
+                broadcastNewMessages(preTurnCount, sd);
             }
         } catch (e) {
             if ((e as Error).name !== 'AbortError') {
@@ -335,9 +395,11 @@ export function useChatSession(allCharacters: Character[]) {
             }
         } finally {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
+            streamingCharacterRef.current = null;
+            streamingMessageIdRef.current = null;
             releaseLock();
         }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters, autoResumeOnCutoff]);
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters, autoResumeOnCutoff, broadcastNewMessages]);
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character, protagonistId: string) => {
         const currentState = getState();
@@ -357,8 +419,15 @@ export function useChatSession(allCharacters: Character[]) {
             const chatMessage = createChatMessage(currentState.interactionData, targetChar, actionText);
             const td = addMessageToInteractionData(currentState.interactionData, chatMessage);
 
+            // Broadcast action message
+            onMessageBroadcastRef.current?.(chatMessage);
+
             setInteractionData(td);
             await saveRawInteractionData(td);
+
+            const preTurnCount = td.interactionHistory.length;
+            streamingCharacterRef.current = null;
+            streamingMessageIdRef.current = null;
 
             const turnResult = await chatEngine.runTurn(td, ctrl);
             const ud = turnResult.interactionData;
@@ -367,6 +436,7 @@ export function useChatSession(allCharacters: Character[]) {
                 const fd = await applyPendingPartial(ud, protagonistId);
                 await saveRawInteractionData(fd);
                 setInteractionData(fd);
+                broadcastNewMessages(preTurnCount, fd);
                 return;
             }
 
@@ -375,6 +445,8 @@ export function useChatSession(allCharacters: Character[]) {
                 const finalized = finalizeLastAIMessage(processed, protagonistId, wasStoppedRef.current);
                 await saveRawInteractionData(finalized);
                 setInteractionData(finalized);
+
+                broadcastNewMessages(preTurnCount, finalized);
 
                 // Auto-resume if model cut off mid-generation
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
@@ -393,6 +465,7 @@ export function useChatSession(allCharacters: Character[]) {
                 const sd = ad || ud;
                 await saveRawInteractionData(sd);
                 setInteractionData(sd);
+                broadcastNewMessages(preTurnCount, sd);
             }
         } catch (e) {
             if ((e as Error).name !== 'AbortError') {
@@ -401,9 +474,11 @@ export function useChatSession(allCharacters: Character[]) {
             }
         } finally {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
+            streamingCharacterRef.current = null;
+            streamingMessageIdRef.current = null;
             releaseLock();
         }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters, autoResumeOnCutoff]);
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters, autoResumeOnCutoff, broadcastNewMessages]);
 
     const stopGeneration = useCallback(() => {
         wasStoppedRef.current = true;
@@ -458,6 +533,8 @@ export function useChatSession(allCharacters: Character[]) {
 
         isLoadingRef.current = false;
         resetStream();
+        streamingCharacterRef.current = null;
+        streamingMessageIdRef.current = null;
     }, [resetStream, getState, setState, streamingTextRef, isLoadingRef]);
 
     const resumeGeneration = useCallback(async (messageId: string, allPromptBlocks?: PromptBlock[]) => {
@@ -480,6 +557,10 @@ export function useChatSession(allCharacters: Character[]) {
         wasStoppedRef.current = false;
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
 
+        // Set up streaming broadcast tracking for resume
+        streamingCharacterRef.current = char;
+        streamingMessageIdRef.current = messageId;
+
         setStreamingText(existingText);
         streamingTextRef.current = existingText;
         setStreamingState(char, existingText);
@@ -489,7 +570,7 @@ export function useChatSession(allCharacters: Character[]) {
         try {
             const result = await chatEngine.handleServerResponse(
                 currentInteractionData, char, ctrl.signal,
-                throttledSetStreamingText, undefined, existingText, allPromptBlocks
+                throttledSetStreamingTextWithBroadcast, undefined, existingText, allPromptBlocks
             );
             if (!result) return;
 
@@ -502,6 +583,10 @@ export function useChatSession(allCharacters: Character[]) {
             });
 
             await saveRawInteractionData(finalized);
+
+            // Broadcast finalized resumed message
+            const finalizedMsg = finalized.interactionHistory.find(m => m.id === messageId);
+            if (finalizedMsg) onMessageBroadcastRef.current?.(finalizedMsg);
 
             resumingMessageIdRef.current = null;
             resumingExistingTextRef.current = '';
@@ -534,9 +619,11 @@ export function useChatSession(allCharacters: Character[]) {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             resumingMessageIdRef.current = null;
             resumingExistingTextRef.current = '';
+            streamingCharacterRef.current = null;
+            streamingMessageIdRef.current = null;
             releaseLock();
         }
-    }, [getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine, throttledSetStreamingText, ui, setStreamingState, setStats, setInteractionData]);
+    }, [getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine, throttledSetStreamingTextWithBroadcast, ui, setStreamingState, setStats, setInteractionData]);
 
     // Keep ref in sync so autoResumeOnCutoff always calls latest version
     useEffect(() => {
@@ -582,12 +669,15 @@ export function useChatSession(allCharacters: Character[]) {
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         const preCount = td.interactionHistory.length;
 
+        streamingCharacterRef.current = null;
+        streamingMessageIdRef.current = null;
+
         try {
             const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks);
             const ud = turnResult.interactionData;
             // For pending partial and finalization, use first protagonist ID as reference
             const primaryProtagonistId = protagonists[0]?.id ?? '';
-            if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, primaryProtagonistId); await saveRawInteractionData(fd); setInteractionData(fd); return; }
+            if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, primaryProtagonistId); await saveRawInteractionData(fd); setInteractionData(fd); broadcastNewMessages(preCount, fd); return; }
 
             if (ud.interactionHistory.length > preCount) {
                 const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
@@ -595,6 +685,8 @@ export function useChatSession(allCharacters: Character[]) {
 
                 await saveRawInteractionData(finalized);
                 setInteractionData(finalized);
+
+                broadcastNewMessages(preCount, finalized);
 
                 // Auto-resume if model cut off mid-generation
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
@@ -613,10 +705,16 @@ export function useChatSession(allCharacters: Character[]) {
             } else {
                 const ad = await generateAmbientNarration(ud, ctrl.signal);
                 const sd = ad || ud; await saveRawInteractionData(sd); setInteractionData(sd);
+                broadcastNewMessages(preCount, sd);
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Regen failed:', e); addToast(`Regen error: ${(e as Error).message}`, 'error'); } }
-        finally { if (abortControllerRef.current === ctrl) abortControllerRef.current = null; releaseLock(); }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setInteractionData, setStreamingState, setStats, allCharacters, autoResumeOnCutoff]);
+        finally {
+            if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
+            streamingCharacterRef.current = null;
+            streamingMessageIdRef.current = null;
+            releaseLock();
+        }
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setInteractionData, setStreamingState, setStats, allCharacters, autoResumeOnCutoff, broadcastNewMessages]);
 
     const startNewChat = useCallback((char: Character) => {
         const c = createNewInteractionData(char);

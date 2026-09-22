@@ -18,6 +18,7 @@ import { useExtensionManager } from '../hooks/useExtensionManager';
 import { useMemoryManager } from '../hooks/useMemoryManager';
 import { useAccountManager } from '../hooks/useAccountManager';
 import { useMultiplayerDataManager } from '../hooks/useMultiplayerDataManager';
+import { useMultiplayerSync } from '../hooks/useMultiplayerSync';
 import { useEntityModal } from '../hooks/useEntityModal';
 import { useToast } from '../context/ToastContext';
 import { saveRawInteractionData, loadRawInteractionData } from '../storage/serverStorage';
@@ -32,7 +33,7 @@ import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, MultiplayerData, Account, cloudBackend } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, MultiplayerData, Account, HistoryMessage, cloudBackend } from '../types';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
 import { useActionMenu } from '../hooks/useActionMenu';
@@ -133,8 +134,15 @@ function App() {
 
     const { activeIds: activeExtensionIds, setActiveIds: setActiveExtensionIds } = useActiveExtensions(allExtensions);
 
+    // ─── Multiplayer Broadcast Bridge ────────────────────────────────
+    // Ref bridge to break circular dependency between useChatSession and useMultiplayerSync
+    const broadcastMessageRef = useRef<((message: HistoryMessage) => void) | undefined>(undefined);
+    const onMessageBroadcast = useCallback((message: HistoryMessage) => {
+        broadcastMessageRef.current?.(message);
+    }, []);
+
     // ─── Session Hook ────────────────────────────────────────────────
-    const session = useChatSession(allCharacters);
+    const session = useChatSession(allCharacters, { onMessageBroadcast });
     const {
         interactionData, setInteractionData, setCurrentCharacter,
         isLoading, streamingText, streamingCharacter, currentCharacterExpression, sendMessage, stopGeneration,
@@ -149,13 +157,26 @@ function App() {
     const defaultCharacterId = useSessionStore(s => s.defaultCharacterId);
     const selectedBudgetStrategyId = useSessionStore(s => s.selectedBudgetStrategyId);
 
+    // ─── Multiplayer Sync ────────────────────────────────────────────
+    const multiplayerSync = useMultiplayerSync({
+        interactionData,
+        multiplayerData,
+        currentAccountId,
+        setInteractionData,
+        allCharacters,
+    });
+
+    // Wire broadcast bridge to sync hook
+    useEffect(() => {
+        broadcastMessageRef.current = multiplayerSync.isConnected ? multiplayerSync.broadcastMessage : undefined;
+    }, [multiplayerSync.isConnected, multiplayerSync.broadcastMessage]);
+
     // Derive localProtagonist from centralized multiplayerData
     const localProtagonist = useMemo(
         () => deriveCurrentProtagonist(interactionData, multiplayerData, currentAccountId),
         [interactionData, multiplayerData, currentAccountId],
     );
 
-    // currentCharacter is the same as localProtagonist for backward compatibility
     const currentCharacter = localProtagonist;
 
     const setDefaultCharacterId = useCallback((id: string | null) => {
@@ -194,7 +215,6 @@ function App() {
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
-    // ─── Cross-View Message Sync State ───────────────────────────────
     const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
 
     const { activeChatRestored } = useChatRestoration({
@@ -892,6 +912,12 @@ function App() {
                                             maximumBudget={activeStrategy?.maximumBudget}
                                             timeUntilReset={timeUntilReset}
                                         />
+                                        {multiplayerSync.isConnected && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '12px', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', fontSize: '0.7rem', color: '#22c55e', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                                                <span>🟢</span>
+                                                <span>{multiplayerSync.connectedPeers.length} peer{multiplayerSync.connectedPeers.length !== 1 ? 's' : ''}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
