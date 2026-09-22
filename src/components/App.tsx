@@ -52,6 +52,7 @@ import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
 import { ChatInspectionModal } from './ChatInspectionModal';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
+import { JoinSessionModal } from './JoinSessionModal';
 import '../main.css';
 import { ChatMinimap } from './ChatMinimap';
 
@@ -135,7 +136,6 @@ function App() {
     const { activeIds: activeExtensionIds, setActiveIds: setActiveExtensionIds } = useActiveExtensions(allExtensions);
 
     // ─── Multiplayer Broadcast Bridge ────────────────────────────────
-    // Ref bridge to break circular dependency between useChatSession and useMultiplayerSync
     const broadcastMessageRef = useRef<((message: HistoryMessage) => void) | undefined>(undefined);
     const onMessageBroadcast = useCallback((message: HistoryMessage) => {
         broadcastMessageRef.current?.(message);
@@ -157,6 +157,34 @@ function App() {
     const defaultCharacterId = useSessionStore(s => s.defaultCharacterId);
     const selectedBudgetStrategyId = useSessionStore(s => s.selectedBudgetStrategyId);
 
+    // ─── Join Session State ──────────────────────────────────────────
+    const [joinSessionOpen, setJoinSessionOpen] = useState(false);
+    const [joinSessionId, setJoinSessionId] = useState<string | null>(null);
+    const [joinPassword, setJoinPassword] = useState<string>('');
+    const [joinProtagonist, setJoinProtagonist] = useState<Character | null>(null);
+
+    const handleJoinAccepted = useCallback(() => {
+        addToast('Joined session successfully.', 'success');
+        setJoinSessionOpen(false);
+    }, [addToast]);
+
+    const handleJoinRejected = useCallback((reason: string) => {
+        addToast(`Join rejected: ${reason}`, 'error');
+        setJoinSessionId(null);
+        setJoinPassword('');
+        setJoinProtagonist(null);
+    }, [addToast]);
+
+    const handleJoinSession = useCallback((sessionId: string, password: string, protagonist: Character) => {
+        if (!currentAccountId) {
+            addToast('No account configured. Create an account first.', 'error');
+            return;
+        }
+        setJoinSessionId(sessionId);
+        setJoinPassword(password);
+        setJoinProtagonist(protagonist);
+    }, [currentAccountId, addToast]);
+
     // ─── Multiplayer Sync ────────────────────────────────────────────
     const multiplayerSync = useMultiplayerSync({
         interactionData,
@@ -164,6 +192,11 @@ function App() {
         currentAccountId,
         setInteractionData,
         allCharacters,
+        joinSessionId,
+        joinPassword,
+        joinProtagonist,
+        onJoinAccepted: handleJoinAccepted,
+        onJoinRejected: handleJoinRejected,
     });
 
     // Wire broadcast bridge to sync hook
@@ -1037,6 +1070,7 @@ function App() {
                     onDeleteAccount={deleteAccount}
                     onToggleAccount={() => {}}
                     onDeleteMultiplayerData={deleteMultiplayerData}
+                    onOpenJoinSession={() => setJoinSessionOpen(true)}
                     onUpdateInteractionData={(data) => {
                         const withLocations = assignInitialLocationsIfNeeded(data);
                         setInteractionData(withLocations);
@@ -1079,6 +1113,13 @@ function App() {
                 onAddAction={handleAddAction} 
                 onDeleteAction={handleDeleteAction} 
                 onActionInterject={handleActionInterject} 
+            />
+
+            <JoinSessionModal
+                isOpen={joinSessionOpen}
+                onClose={() => setJoinSessionOpen(false)}
+                allCharacters={allCharacters}
+                onJoin={handleJoinSession}
             />
         </>
     );

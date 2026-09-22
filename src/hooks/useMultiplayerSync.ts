@@ -1,5 +1,5 @@
 // src/hooks/useMultiplayerSync.ts
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { InteractionData, MultiplayerData, HistoryMessage, Character, ChatMessage, InteractionMessage } from '../types';
 import { useMultiplayerConnection, type MultiplayerMessage, type JoinRequestPayload, type JoinResponsePayload } from './useMultiplayerConnection';
 
@@ -41,6 +41,10 @@ interface SyncInteractionMessagePayload {
 
 type SyncMessagePayload = SyncChatMessagePayload | SyncInteractionMessagePayload;
 
+interface SetProtagonistPayload {
+    character: Character;
+}
+
 // ─── Hook ──────────────────────────────────────────────────────────
 
 interface UseMultiplayerSyncOptions {
@@ -49,6 +53,12 @@ interface UseMultiplayerSyncOptions {
     currentAccountId: string | null;
     setInteractionData: (data: InteractionData) => void;
     allCharacters: Character[];
+    // Join mode options
+    joinSessionId?: string | null;
+    joinPassword?: string;
+    joinProtagonist?: Character | null;
+    onJoinAccepted?: () => void;
+    onJoinRejected?: (reason: string) => void;
 }
 
 export function useMultiplayerSync({
@@ -57,6 +67,11 @@ export function useMultiplayerSync({
     currentAccountId,
     setInteractionData,
     allCharacters,
+    joinSessionId,
+    joinPassword,
+    joinProtagonist,
+    onJoinAccepted,
+    onJoinRejected,
 }: UseMultiplayerSyncOptions) {
     const interactionDataRef = useRef(interactionData);
     useEffect(() => { interactionDataRef.current = interactionData; }, [interactionData]);
@@ -64,10 +79,49 @@ export function useMultiplayerSync({
     const multiplayerDataRef = useRef(multiplayerData);
     useEffect(() => { multiplayerDataRef.current = multiplayerData; }, [multiplayerData]);
 
-    const isHost = !!(multiplayerData && currentAccountId && multiplayerData.administratorAccountIds.includes(currentAccountId));
+    const joinPasswordRef = useRef(joinPassword);
+    useEffect(() => { joinPasswordRef.current = joinPassword; }, [joinPassword]);
+
+    const joinProtagonistRef = useRef(joinProtagonist);
+    useEffect(() => { joinProtagonistRef.current = joinProtagonist; }, [joinProtagonist]);
+
+    const onJoinAcceptedRef = useRef(onJoinAccepted);
+    useEffect(() => { onJoinAcceptedRef.current = onJoinAccepted; }, [onJoinAccepted]);
+
+    const onJoinRejectedRef = useRef(onJoinRejected);
+    useEffect(() => { onJoinRejectedRef.current = onJoinRejected; }, [onJoinRejected]);
+
+    // Track whether join has been completed for the current session
+    const [joinCompletedSessionId, setJoinCompletedSessionId] = useState<string | null>(null);
+    const joinCompleted = joinCompletedSessionId === joinSessionId && joinSessionId != null;
+
+    // Host is whoever owns the multiplayer data locally and is not joining someone else's session.
+    // administratorAccountIds in MultiplayerData are additional delegated admins beyond the host.
+    const isHost = !!multiplayerData && !joinSessionId;
+    const isAdmin = isHost || !!(multiplayerData && currentAccountId && multiplayerData.administratorAccountIds.includes(currentAccountId));
+
+    // Construct synthetic MultiplayerData for peer ID derivation when joining
+    const effectiveMultiplayerData: MultiplayerData | null = multiplayerData ?? (
+        joinSessionId ? {
+            id: joinSessionId,
+            name: '',
+            password: '',
+            interactionDataIds: [],
+            whiteListedAccountIds: [],
+            blacklistedAccountIds: [],
+            pendingAccountIds: [],
+            administratorAccountIds: [],
+            accountIdCharacterIds: {},
+            firstCreatedTimestamp: 0,
+            lastUpdatedTimestamp: 0,
+        } : null
+    );
 
     // Track finalized message IDs we've already applied to avoid duplicates
     const appliedMessageIdsRef = useRef<Set<string>>(new Set());
+
+    // Map accountId → characterId for connected peers (host tracks who owns which protagonist)
+    const peerCharacterMapRef = useRef<Map<string, string>>(new Map());
 
     // Build a character lookup map for fast access
     const characterMapRef = useRef<Map<string, Character>>(new Map());
@@ -77,8 +131,9 @@ export function useMultiplayerSync({
         characterMapRef.current = map;
     }, [allCharacters]);
 
-    // Refs for sendTo so handleReceiveMessage can use them without circular deps
+    // Refs for sendTo/broadcast so handleReceiveMessage can use them without circular deps
     const sendToRef = useRef<(accountId: string, msg: Omit<MultiplayerMessage, 'senderAccountId' | 'timestamp'>) => void>(() => {});
+    const broadcastRef = useRef<(msg: Omit<MultiplayerMessage, 'senderAccountId' | 'timestamp'>) => void>(() => {});
 
     const handleReceiveMessage = useCallback((msg: MultiplayerMessage) => {
         const currentData = interactionDataRef.current;
@@ -146,7 +201,6 @@ export function useMultiplayerSync({
                 const isPartial = payload.messageType === 'chat' && (payload as SyncChatMessagePayload).isPartial;
 
                 if (isPartial) {
-                    // Partial message: upsert by ID (replace existing partial or append new)
                     const existingIdx = currentData.interactionHistory.findIndex(m => m.id === payload.messageId);
                     let updatedHistory: HistoryMessage[];
                     if (existingIdx !== -1) {
@@ -162,11 +216,9 @@ export function useMultiplayerSync({
                         lastUpdatedTimestamp: Date.now(),
                     });
                 } else {
-                    // Finalized message: skip if already applied
                     if (appliedMessageIdsRef.current.has(payload.messageId)) return;
                     appliedMessageIdsRef.current.add(payload.messageId);
 
-                    // Replace any existing partial with same ID, or append
                     const existingIdx = currentData.interactionHistory.findIndex(m => m.id === payload.messageId);
                     let updatedHistory: HistoryMessage[];
                     if (existingIdx !== -1) {
@@ -186,6 +238,7 @@ export function useMultiplayerSync({
             }
 
             case 'join_request': {
+                // Only host handles join requests
                 if (!isHost) return;
                 const md = multiplayerDataRef.current;
                 if (!md) return;
@@ -194,19 +247,16 @@ export function useMultiplayerSync({
 
                 const isBlacklisted = md.blacklistedAccountIds.includes(requestingAccountId);
                 const isWhitelisted = md.whiteListedAccountIds.includes(requestingAccountId);
-                const isAdmin = md.administratorAccountIds.includes(requestingAccountId);
+                const isDelegatedAdmin = md.administratorAccountIds.includes(requestingAccountId);
                 const passwordValid = !md.password || payload.password === md.password;
 
-                const accepted = !isBlacklisted && (isWhitelisted || isAdmin || passwordValid);
+                // Whitelisted, delegated admin, or valid password grants access. Blacklist overrides all.
+                const accepted = !isBlacklisted && (isWhitelisted || isDelegatedAdmin || passwordValid);
                 const reason = !accepted ? (isBlacklisted ? 'Account is blacklisted' : 'Invalid password or not whitelisted') : undefined;
 
-                // Send response directly to the requesting peer
                 sendToRef.current(requestingAccountId, {
                     type: 'join_response',
-                    payload: {
-                        accepted,
-                        reason,
-                    } satisfies JoinResponsePayload,
+                    payload: { accepted, reason } satisfies JoinResponsePayload,
                 });
                 break;
             }
@@ -214,8 +264,60 @@ export function useMultiplayerSync({
             case 'join_response': {
                 if (isHost) return;
                 const payload = msg.payload as JoinResponsePayload;
-                if (!payload.accepted) {
-                    console.warn(`Join rejected: ${payload.reason}`);
+                if (payload.accepted) {
+                    setJoinCompletedSessionId(joinSessionId ?? null);
+                    // Send protagonist after acceptance
+                    const protag = joinProtagonistRef.current;
+                    if (protag) {
+                        broadcastRef.current({
+                            type: 'set_protagonist',
+                            payload: { character: protag } satisfies SetProtagonistPayload,
+                        });
+                        characterMapRef.current.set(protag.id, protag);
+                    }
+                    onJoinAcceptedRef.current?.();
+                } else {
+                    onJoinRejectedRef.current?.(payload.reason || 'Unknown reason');
+                }
+                break;
+            }
+
+            case 'set_protagonist': {
+                const payload = msg.payload as SetProtagonistPayload;
+                const char = payload.character;
+                const senderAccountId = msg.senderAccountId;
+
+                // Only host tracks peer→character mapping for cleanup
+                if (isHost) {
+                    peerCharacterMapRef.current.set(senderAccountId, char.id);
+                }
+
+                const hasParticipant = currentData.participants.some(p => p.id === char.id);
+                const hasProtagonist = currentData.protagonists.some(p => p.id === char.id);
+
+                const updatedParticipants = hasParticipant
+                    ? currentData.participants.map(p => p.id === char.id ? char : p)
+                    : [...currentData.participants, char];
+
+                const updatedProtagonists = hasProtagonist
+                    ? currentData.protagonists.map(p => p.id === char.id ? char : p)
+                    : [...currentData.protagonists, char];
+
+                characterMapRef.current.set(char.id, char);
+
+                setInteractionData({
+                    ...currentData,
+                    participants: updatedParticipants,
+                    protagonists: updatedProtagonists,
+                    lastUpdatedTimestamp: Date.now(),
+                });
+
+                // Host re-broadcasts to other peers
+                if (isHost) {
+                    broadcastRef.current({
+                        type: 'set_protagonist',
+                        payload: { character: char } satisfies SetProtagonistPayload,
+                    });
                 }
                 break;
             }
@@ -225,7 +327,7 @@ export function useMultiplayerSync({
             case 'leave':
                 break;
         }
-    }, [currentAccountId, isHost, setInteractionData]);
+    }, [currentAccountId, isHost, joinSessionId, setInteractionData]);
 
     const handlePeerConnected = useCallback((accountId: string) => {
         console.log(`Peer connected: ${accountId}`);
@@ -233,7 +335,28 @@ export function useMultiplayerSync({
 
     const handlePeerDisconnected = useCallback((accountId: string) => {
         console.log(`Peer disconnected: ${accountId}`);
-    }, []);
+
+        if (!isHost) return;
+        const charId = peerCharacterMapRef.current.get(accountId);
+        if (!charId) return;
+        peerCharacterMapRef.current.delete(accountId);
+
+        const currentData = interactionDataRef.current;
+        if (!currentData) return;
+
+        const hasSpoken = currentData.interactionHistory.some(m => m.character.id === charId);
+        if (hasSpoken) return;
+
+        const updatedParticipants = currentData.participants.filter(p => p.id !== charId);
+        const updatedProtagonists = currentData.protagonists.filter(p => p.id !== charId);
+
+        setInteractionData({
+            ...currentData,
+            participants: updatedParticipants,
+            protagonists: updatedProtagonists,
+            lastUpdatedTimestamp: Date.now(),
+        });
+    }, [isHost, setInteractionData]);
 
     const {
         isConnected,
@@ -245,7 +368,7 @@ export function useMultiplayerSync({
         peerId,
         hostPeerId,
     } = useMultiplayerConnection({
-        multiplayerData,
+        multiplayerData: effectiveMultiplayerData,
         currentAccountId,
         isHost,
         onReceiveMessage: handleReceiveMessage,
@@ -253,12 +376,11 @@ export function useMultiplayerSync({
         onPeerDisconnected: handlePeerDisconnected,
     });
 
-    // Keep sendTo ref in sync for use inside handleReceiveMessage
-    useEffect(() => {
-        sendToRef.current = sendTo;
-    }, [sendTo]);
+    // Keep refs in sync
+    useEffect(() => { sendToRef.current = sendTo; }, [sendTo]);
+    useEffect(() => { broadcastRef.current = broadcast; }, [broadcast]);
 
-    // Extract sync-safe payload from a HistoryMessage (strips local-only fields)
+    // Extract sync-safe payload from a HistoryMessage
     const extractSyncPayload = useCallback((message: HistoryMessage): SyncMessagePayload => {
         const base = {
             messageId: message.id,
@@ -300,17 +422,30 @@ export function useMultiplayerSync({
         });
     }, [broadcast, extractSyncPayload]);
 
+    // Send protagonist character to host after join accepted
+    const sendProtagonist = useCallback((character: Character) => {
+        broadcast({
+            type: 'set_protagonist',
+            payload: { character } satisfies SetProtagonistPayload,
+        });
+        characterMapRef.current.set(character.id, character);
+    }, [broadcast]);
+
     // Clear applied message IDs when switching chats
     useEffect(() => {
         appliedMessageIdsRef.current.clear();
-    }, [interactionData?.id]);
+        peerCharacterMapRef.current.clear();
+    }, []);
 
     return {
         isConnected,
         connectedPeers,
         connectionError,
         isHost,
+        isAdmin,
+        joinCompleted,
         broadcastMessage,
+        sendProtagonist,
         disconnect,
         peerId,
         hostPeerId,

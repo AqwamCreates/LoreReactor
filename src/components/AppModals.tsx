@@ -14,6 +14,7 @@ import { ProfileEditorModal } from './ProfileEditorModal';
 import { AccountEditorModal } from './AccountEditorModal';
 import { MultiplayerEditorModal } from './MultiplayerEditorModal';
 import { SettingsModal } from './SettingsModal';
+import { JoinSessionModal } from './JoinSessionModal';
 import { BudgetControlModal } from './BudgetControlModal';
 import { GpuMonitorModal } from './GpuMonitorModal';
 import { WorldEditorModal } from './WorldEditorModal';
@@ -132,6 +133,8 @@ interface AppModalsProps {
     onToggleAccount: (id: string) => void;
     // Multiplayer data callbacks
     onDeleteMultiplayerData: (id: string) => void;
+    // Join session callback
+    onOpenJoinSession: () => void;
     // Interaction data callbacks
     onUpdateInteractionData: (data: InteractionData) => void;
     onForceFirstMessage: (c: Character) => void;
@@ -190,6 +193,7 @@ export function AppModals({
     onDeleteMemory,
     onDeleteAccount, onToggleAccount,
     onDeleteMultiplayerData,
+    onOpenJoinSession,
     onUpdateInteractionData, onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
     onImportComplete, addToast, ensureChatsLoaded,
 }: AppModalsProps) {
@@ -403,6 +407,7 @@ export function AppModals({
                     onOpenParticipantControl={modals.participantControl.open}
                     onOpenAccountData={modals.accountList.open}
                     onOpenMultiplayerData={modals.multiplayerDataList.open}
+                    onOpenJoinSession={onOpenJoinSession}
                     onOpenAIRecommendation={modals.aiRecommendation.open}
                     onOpenAlternateTimelines={modals.alternateTimelines.open}
                     onOpenImportCharacterCard={modals.cardImport.open}

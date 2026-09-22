@@ -6,9 +6,10 @@ import type { MultiplayerData, HistoryMessage } from '../types';
 // ─── Message Protocol ──────────────────────────────────────────────
 
 type MessageType =
-    | 'chat_message'
+    | 'set_protagonist'
     | 'protagonist_change'
     | 'typing_indicator'
+    | 'chat_message'
     | 'join_request'
     | 'join_response'
     | 'state_sync'
