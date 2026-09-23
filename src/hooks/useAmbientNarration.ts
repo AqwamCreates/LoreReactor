@@ -78,9 +78,7 @@ export function useAmbientNarration(
         }
 
         // Fallback to atomic composition if LLM failed or produced nothing
-        if (!selected || selected.length < 5) {
-            selected = composeFallbackSentence(tags, dominantMood, recentAmbient);
-        }
+        if (!selected) selected = composeFallbackSentence(tags, dominantMood, recentAmbient);
 
         // Stream the result character by character
         setStreamingState(AMBIENT_NARRATOR, '');
