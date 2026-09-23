@@ -277,6 +277,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         chatMessages,
         visibleCharacterIds: spriteCharacterIds,
         protagonistId,
+        viewedMessageIndex: viewIndex,
     });
 
     const handleRegenerateFromMessageWithRollback = useCallback((id: string, protagonists: Character[]) => {

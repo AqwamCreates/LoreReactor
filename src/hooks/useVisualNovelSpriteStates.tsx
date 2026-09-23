@@ -13,6 +13,7 @@ export interface VisualNovelSpriteState {
 }
 
 interface VisualNovelMovementEntry {
+    messageId: string;
     messageIndex: number;
     characterId: string;
     previousState: VisualNovelSpriteState;
@@ -24,6 +25,8 @@ interface UseVisualNovelSpriteStatesOptions {
     chatMessages: ChatMessage[];
     visibleCharacterIds: string[];
     protagonistId: string | undefined;
+    /** Index of the message currently being viewed. null = latest (live). */
+    viewedMessageIndex: number | null;
 }
 
 type MovementDirection = 'left' | 'right' | 'closer' | 'away' | 'forward' | 'backward';
@@ -56,92 +59,116 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 // =============================================================================
-// MOVEMENT PARSING (stem-based)
+// MOVEMENT PARSING (sequential multi-action support)
 // =============================================================================
-function parseMovementFromText(text: string, speakerId: string, participantIds: string[]): ParsedMovement[] {
+
+function splitIntoClauses(text: string): string[] {
+    const parts = text.split(/\s*(?:;\s*|\.\s+(?=(?:she|he|they|it|i)\s)|\s+then\s+|\s+before\s+|\s+after\s+)/i);
+    return parts.map(p => p.trim()).filter(p => p.length > 0);
+}
+
+function parseMovementsFromClause(clause: string, speakerId: string, participantIds: string[]): ParsedMovement[] {
     const movements: ParsedMovement[] = [];
-    const lowerText = text.toLowerCase();
+    const lowerClause = clause.toLowerCase();
 
     const mentionedChars = participantIds.filter(id => id !== speakerId && id !== AMBIENT_NARRATOR_ID);
     const firstMentioned = mentionedChars.length > 0 ? mentionedChars[0] : undefined;
 
-    // --- VERTICAL ACTIONS (stem-based) ---
-    if (/\bcrouch|kneel|bow|duck|lower\s+(herself|himself|themselves|down)|bend\s+(her|his|their)\s+knee/i.test(lowerText)) {
+    if (/\bcrouch|kneel|bow|duck|lower\s+(herself|himself|themselves|down)|bend\s+(her|his|their)\s+knee/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'crouch' });
-    } else if (/\bstand\s+up|rise|straighten|get\s+up|push\s+(herself|himself|themselves)\s+up|unfold/i.test(lowerText)) {
+    }
+    if (/\bstand\s+up|rise|straighten|get\s+up|push\s+(herself|himself|themselves)\s+up|unfold/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'stand' });
-    } else if (/\bjump|leap|hop|bounce|vault/i.test(lowerText)) {
+    }
+    if (/\bjump|leap|hop|bounce|vault/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'jump' });
-    } else if (/\bstretch|reach\s+up|raise\s+(her|his|their)\s+arm|extend\s+upward/i.test(lowerText)) {
+    }
+    if (/\bstretch|reach\s+up|raise\s+(her|his|their)\s+arm|extend\s+upward/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'stretch' });
-    } else if (/\bsit|take\s+a\s+seat|settle\s+down|perch|plop\s+down/i.test(lowerText)) {
+    }
+    if (/\bsit|take\s+a\s+seat|settle\s+down|perch|plop\s+down/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'sit' });
-    } else if (/\blie\s+down|collaps|fall|slump|drop\s+to\s+the\s+(ground|floor)|crumple/i.test(lowerText)) {
+    }
+    if (/\blie\s+down|collaps|fall|slump|drop\s+to\s+the\s+(ground|floor)|crumple/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'lie' });
     }
 
-    // --- DEPTH/SCALE ACTIONS (stem-based) ---
-    if (/\blean\s+(forward|in)|tilt\s+forward/i.test(lowerText)) {
+    if (/\blean\s+(forward|in)|tilt\s+forward/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'lean_forward' });
-    } else if (/\blean\s+back|recoil|flinch\s+back|shrink\s+back/i.test(lowerText)) {
+    }
+    if (/\blean\s+back|recoil|flinch\s+back|shrink\s+back/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'lean_back' });
-    } else if (/\btower|loom|stand\s+tall|draw\s+(herself|himself|themselves)\s+up/i.test(lowerText)) {
+    }
+    if (/\btower|loom|stand\s+tall|draw\s+(herself|himself|themselves)\s+up/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'tower' });
-    } else if (/\bshrink|cower|hunch|make\s+(herself|himself|themselves)\s+small|curl\s+up/i.test(lowerText)) {
+    }
+    if (/\bshrink|cower|hunch|make\s+(herself|himself|themselves)\s+small|curl\s+up/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'shrink' });
     }
 
-    // --- HORIZONTAL FINE-TUNING (stem-based) ---
-    if (/\bsidestep|shuffle|edge|slide\s+sideway/i.test(lowerText)) {
-        const dir = /\bleft/i.test(lowerText) ? 'sidestep_left' : 'sidestep_right';
+    if (/\bsidestep|shuffle|edge|slide\s+sideway/i.test(lowerClause)) {
+        const dir = /\bleft/i.test(lowerClause) ? 'sidestep_left' : 'sidestep_right';
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: dir });
-    } else if (/\bstep\s+into\s+(the\s+)?center|take\s+center\s+stage|move\s+to\s+(the\s+)?middle/i.test(lowerText)) {
+    }
+    if (/\bstep\s+into\s+(the\s+)?center|take\s+center\s+stage|move\s+to\s+(the\s+)?middle/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'center' });
-    } else if (/\bturn\s+away|look\s+away|face\s+away|turn\s+(her|his|their)\s+back/i.test(lowerText)) {
+    }
+    if (/\bturn\s+away|look\s+away|face\s+away|turn\s+(her|his|their)\s+back/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'turn_away' });
     }
 
-    // --- RELATIVE MOVEMENT TOWARD/AWAY FROM TARGET (stem-based) ---
     if (firstMentioned) {
-        if (/\b(move|step|walk|go|approach)\s+(closer\s+to|toward|towards|next\s+to|beside)/i.test(lowerText)) {
+        if (/\b(move|step|walk|go|approach)\s+(closer\s+to|toward|towards|next\s+to|beside)/i.test(lowerClause)) {
             movements.push({ characterId: speakerId, type: 'move', direction: 'closer', targetCharacterId: firstMentioned });
-        } else if (/\b(move|step|back|retreat)\s+(away\s+from|back\s+from|from)/i.test(lowerText)) {
+        }
+        if (/\b(move|step|back|retreat)\s+(away\s+from|back\s+from|from)/i.test(lowerClause)) {
             movements.push({ characterId: speakerId, type: 'move', direction: 'away', targetCharacterId: firstMentioned });
-        } else if (/\bhide\s+behind|duck\s+behind|take\s+cover\s+behind/i.test(lowerText)) {
+        }
+        if (/\bhide\s+behind|duck\s+behind|take\s+cover\s+behind/i.test(lowerClause)) {
             movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'hide_behind', targetCharacterId: firstMentioned });
         }
 
-        // --- MULTI-CHARACTER INTERACTIONS (stem-based) ---
-        if (/\bpush|shove|nudge|bump\s+into/i.test(lowerText)) {
+        if (/\bpush|shove|nudge|bump\s+into/i.test(lowerClause)) {
             movements.push({ characterId: speakerId, type: 'interaction', interactionAction: 'push', targetCharacterId: firstMentioned });
-        } else if (/\bpull|drag|grab\s+and\s+pull|tug/i.test(lowerText)) {
+        }
+        if (/\bpull|drag|grab\s+and\s+pull|tug/i.test(lowerClause)) {
             movements.push({ characterId: speakerId, type: 'interaction', interactionAction: 'pull', targetCharacterId: firstMentioned });
-        } else if (/\bblock|stand\s+between|intercept|step\s+in\s+front\s+of/i.test(lowerText)) {
+        }
+        if (/\bblock|stand\s+between|intercept|step\s+in\s+front\s+of/i.test(lowerClause)) {
             movements.push({ characterId: speakerId, type: 'interaction', interactionAction: 'block', targetCharacterId: firstMentioned });
-        } else if (/\bgather|group\s+up|huddle|cluster\s+together/i.test(lowerText)) {
+        }
+        if (/\bgather|group\s+up|huddle|cluster\s+together/i.test(lowerClause)) {
             movements.push({ characterId: speakerId, type: 'interaction', interactionAction: 'gather', targetCharacterId: firstMentioned });
         }
 
-        // --- FACING (stem-based) ---
-        if (/\bface|look\s+at|turn\s+toward|turn\s+to|stare\s+at|glance\s+at|watch|eye/i.test(lowerText)) {
+        if (/\bface|look\s+at|turn\s+toward|turn\s+to|stare\s+at|glance\s+at|watch|eye/i.test(lowerClause)) {
             movements.push({ characterId: speakerId, type: 'face', targetCharacterId: firstMentioned });
         }
     }
 
-    // --- ABSOLUTE LEFT/RIGHT (fallback, stem-based) ---
-    if (movements.length === 0 || movements.every(m => m.type === 'face')) {
-        if (/\b(move|step|walk|go|shift|slide|drift)\s+(to\s+the\s+)?right/i.test(lowerText)) {
-            movements.push({ characterId: speakerId, type: 'move', direction: 'right' });
-        } else if (/\b(move|step|walk|go|shift|slide|drift)\s+(to\s+the\s+)?left/i.test(lowerText)) {
-            movements.push({ characterId: speakerId, type: 'move', direction: 'left' });
-        } else if (/\bstep\s+forward|advance|move\s+forward|close\s+the\s+distance/i.test(lowerText)) {
-            movements.push({ characterId: speakerId, type: 'move', direction: 'forward' });
-        } else if (/\bstep\s+back|retreat|back\s+away|create\s+distance/i.test(lowerText)) {
-            movements.push({ characterId: speakerId, type: 'move', direction: 'backward' });
-        }
+    if (/\b(move|step|walk|go|shift|slide|drift)\s+(to\s+the\s+)?right/i.test(lowerClause)) {
+        movements.push({ characterId: speakerId, type: 'move', direction: 'right' });
+    }
+    if (/\b(move|step|walk|go|shift|slide|drift)\s+(to\s+the\s+)?left/i.test(lowerClause)) {
+        movements.push({ characterId: speakerId, type: 'move', direction: 'left' });
+    }
+    if (/\bstep\s+forward|advance|move\s+forward|close\s+the\s+distance/i.test(lowerClause)) {
+        movements.push({ characterId: speakerId, type: 'move', direction: 'forward' });
+    }
+    if (/\bstep\s+back|retreat|back\s+away|create\s+distance/i.test(lowerClause)) {
+        movements.push({ characterId: speakerId, type: 'move', direction: 'backward' });
     }
 
     return movements;
+}
+
+function parseMovementFromText(text: string, speakerId: string, participantIds: string[]): ParsedMovement[] {
+    const allMovements: ParsedMovement[] = [];
+    const clauses = splitIntoClauses(text);
+    for (const clause of clauses) {
+        allMovements.push(...parseMovementsFromClause(clause, speakerId, participantIds));
+    }
+    return allMovements;
 }
 
 // =============================================================================
@@ -151,25 +178,23 @@ function applyMovement(
     currentState: Map<string, VisualNovelSpriteState>,
     movement: ParsedMovement,
     allCharacterIds: string[]
-): { newState: Map<string, VisualNovelSpriteState>; entries: VisualNovelMovementEntry[] } {
+): { newState: Map<string, VisualNovelSpriteState>; entries: Omit<VisualNovelMovementEntry, 'messageId' | 'messageIndex'>[] } {
     const newState = new Map(currentState);
-    const entries: VisualNovelMovementEntry[] = [];
+    const entries: Omit<VisualNovelMovementEntry, 'messageId' | 'messageIndex'>[] = [];
 
     const charState = newState.get(movement.characterId);
     if (!charState) return { newState, entries };
 
     const previousCharState = cloneState(charState);
 
-    // --- FACE ---
     if (movement.type === 'face' && movement.targetCharacterId) {
         const updatedState = cloneState(charState);
         updatedState.facingTargetId = movement.targetCharacterId;
         newState.set(movement.characterId, updatedState);
-        entries.push({ messageIndex: -1, characterId: movement.characterId, previousState: previousCharState, newState: cloneState(updatedState), type: 'face' });
+        entries.push({ characterId: movement.characterId, previousState: previousCharState, newState: cloneState(updatedState), type: 'face' });
         return { newState, entries };
     }
 
-    // --- VERTICAL ACTIONS ---
     if (movement.type === 'vertical' && movement.verticalAction) {
         const updatedState = cloneState(charState);
 
@@ -235,11 +260,10 @@ function applyMovement(
         }
 
         newState.set(movement.characterId, updatedState);
-        entries.push({ messageIndex: -1, characterId: movement.characterId, previousState: previousCharState, newState: cloneState(updatedState), type: 'vertical' });
+        entries.push({ characterId: movement.characterId, previousState: previousCharState, newState: cloneState(updatedState), type: 'vertical' });
         return { newState, entries };
     }
 
-    // --- MULTI-CHARACTER INTERACTIONS ---
     if (movement.type === 'interaction' && movement.interactionAction && movement.targetCharacterId) {
         const targetState = newState.get(movement.targetCharacterId);
         if (!targetState) return { newState, entries };
@@ -255,7 +279,7 @@ function applyMovement(
                 pushedTarget.depth = clamp(pushedTarget.depth + 0.1, 0, 1);
                 pushedTarget.scale = computeScaleFromDepth(pushedTarget.depth);
                 newState.set(movement.targetCharacterId, pushedTarget);
-                entries.push({ messageIndex: -1, characterId: movement.targetCharacterId, previousState: previousTargetState, newState: cloneState(pushedTarget), type: 'push' });
+                entries.push({ characterId: movement.targetCharacterId, previousState: previousTargetState, newState: cloneState(pushedTarget), type: 'push' });
                 break;
             }
             case 'pull': {
@@ -264,7 +288,7 @@ function applyMovement(
                 pulledTarget.depth = pulledTarget.depth + (updatedState.depth - pulledTarget.depth) * 0.4;
                 pulledTarget.scale = computeScaleFromDepth(pulledTarget.depth);
                 newState.set(movement.targetCharacterId, pulledTarget);
-                entries.push({ messageIndex: -1, characterId: movement.targetCharacterId, previousState: previousTargetState, newState: cloneState(pulledTarget), type: 'push' });
+                entries.push({ characterId: movement.targetCharacterId, previousState: previousTargetState, newState: cloneState(pulledTarget), type: 'push' });
                 break;
             }
             case 'block': {
@@ -285,17 +309,16 @@ function applyMovement(
                 gatheredTarget.screenX = targetState.screenX + (avgScreenX - targetState.screenX) * 0.5;
                 gatheredTarget.scale = computeScaleFromDepth(gatheredTarget.depth);
                 newState.set(movement.targetCharacterId, gatheredTarget);
-                entries.push({ messageIndex: -1, characterId: movement.targetCharacterId, previousState: previousTargetState, newState: cloneState(gatheredTarget), type: 'push' });
+                entries.push({ characterId: movement.targetCharacterId, previousState: previousTargetState, newState: cloneState(gatheredTarget), type: 'push' });
                 break;
             }
         }
 
         newState.set(movement.characterId, updatedState);
-        entries.push({ messageIndex: -1, characterId: movement.characterId, previousState: previousCharState, newState: cloneState(updatedState), type: 'move' });
+        entries.push({ characterId: movement.characterId, previousState: previousCharState, newState: cloneState(updatedState), type: 'move' });
         return { newState, entries };
     }
 
-    // --- STANDARD MOVEMENT ---
     if (movement.type === 'move') {
         const updatedState = cloneState(charState);
 
@@ -350,7 +373,7 @@ function applyMovement(
                         }
                         swappedOther.scale = computeScaleFromDepth(swappedOther.depth);
                         newState.set(otherId, swappedOther);
-                        entries.push({ messageIndex: -1, characterId: otherId, previousState: previousOtherState, newState: cloneState(swappedOther), type: 'swap' });
+                        entries.push({ characterId: otherId, previousState: previousOtherState, newState: cloneState(swappedOther), type: 'swap' });
                     }
                 }
 
@@ -369,27 +392,46 @@ function applyMovement(
 
         updatedState.scale = computeScaleFromDepth(updatedState.depth);
         newState.set(movement.characterId, updatedState);
-        entries.push({ messageIndex: -1, characterId: movement.characterId, previousState: previousCharState, newState: cloneState(updatedState), type: 'move' });
+        entries.push({ characterId: movement.characterId, previousState: previousCharState, newState: cloneState(updatedState), type: 'move' });
     }
 
     return { newState, entries };
 }
 
 // =============================================================================
+// STATE REPLAY (pure function of history up to an index)
+// =============================================================================
+function computeStatesAtHistoryIndex(
+    history: VisualNovelMovementEntry[],
+    upToIndex: number,
+    visibleCharacterIds: string[],
+): Map<string, VisualNovelSpriteState> {
+    const states = new Map<string, VisualNovelSpriteState>();
+    for (const id of visibleCharacterIds) states.set(id, getDefaultState());
+
+    for (const entry of history) {
+        if (entry.messageIndex > upToIndex) break;
+        states.set(entry.characterId, cloneState(entry.newState));
+    }
+    return states;
+}
+
+// =============================================================================
 // HOOK
 // =============================================================================
 export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOptions) {
-    const { chatMessages, visibleCharacterIds } = options;
+    const { chatMessages, visibleCharacterIds, viewedMessageIndex } = options;
 
     const [spriteStates, setSpriteStates] = useState<Map<string, VisualNovelSpriteState>>(new Map());
     const [isInitialLoad, setIsInitialLoad] = useState(true);
     const [jumpingCharacterIds, setJumpingCharacterIds] = useState<Set<string>>(new Set());
+    const [parseVersion, setParseVersion] = useState(0);
 
     const movementHistoryRef = useRef<VisualNovelMovementEntry[]>([]);
     const lastParsedIndexRef = useRef<number>(-1);
     const statesRef = useRef<Map<string, VisualNovelSpriteState>>(new Map());
 
-    // Initialize/reset states when visible characters change (ref-only, no setState)
+    // Initialize/reset states when visible characters change
     useEffect(() => {
         const currentStates = statesRef.current;
         const existingIds = new Set(currentStates.keys());
@@ -400,7 +442,6 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
                 currentStates.set(characterId, getDefaultState());
             }
         }
-
         for (const characterId of existingIds) {
             if (!newIds.has(characterId)) {
                 currentStates.delete(characterId);
@@ -411,7 +452,7 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
         movementHistoryRef.current = [];
     }, [visibleCharacterIds]);
 
-    // Parse messages and update states
+    // Parse messages incrementally and append to history (keyed by messageId)
     useEffect(() => {
         if (chatMessages.length === 0) return;
 
@@ -431,6 +472,7 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
         const participantIds = visibleCharacterIds;
         let currentStates = statesRef.current;
         const newJumpingIds = new Set<string>();
+        let appended = false;
 
         for (let i = lastParsedIndexRef.current; i < chatMessages.length; i++) {
             const message = chatMessages[i];
@@ -445,12 +487,15 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
             for (const movement of movements) {
                 const result = applyMovement(currentStates, movement, participantIds);
                 currentStates = result.newState;
-                for (const entry of result.entries) {
-                    entry.messageIndex = i;
+                for (const partial of result.entries) {
+                    const entry: VisualNovelMovementEntry = {
+                        ...partial,
+                        messageId: message.id,
+                        messageIndex: i,
+                    };
                     movementHistoryRef.current.push(entry);
-                    if (entry.type === 'jump') {
-                        newJumpingIds.add(entry.characterId);
-                    }
+                    appended = true;
+                    if (entry.type === 'jump') newJumpingIds.add(entry.characterId);
                 }
                 if (movement.type === 'vertical' && movement.verticalAction === 'jump') {
                     newJumpingIds.add(movement.characterId);
@@ -460,45 +505,40 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
 
         lastParsedIndexRef.current = chatMessages.length;
         statesRef.current = currentStates;
-        setSpriteStates(new Map(currentStates));
+
+        if (appended) setParseVersion(v => v + 1);
 
         if (newJumpingIds.size > 0 && !isFullReload) {
             setJumpingCharacterIds(newJumpingIds);
-            setTimeout(() => {
-                setJumpingCharacterIds(new Set());
-            }, 600);
+            setTimeout(() => setJumpingCharacterIds(new Set()), 600);
         }
 
         if (isFullReload) {
-            requestAnimationFrame(() => {
-                setIsInitialLoad(false);
-            });
+            requestAnimationFrame(() => setIsInitialLoad(false));
         } else {
             setIsInitialLoad(false);
         }
     }, [chatMessages, visibleCharacterIds]);
 
+    // Displayed states = live (latest) OR replayed up to viewedMessageIndex
+    useEffect(() => {
+        const isLatest = viewedMessageIndex === null || viewedMessageIndex >= chatMessages.length - 1;
+        if (isLatest) {
+            setSpriteStates(new Map(statesRef.current));
+        } else {
+            setSpriteStates(computeStatesAtHistoryIndex(movementHistoryRef.current, viewedMessageIndex, visibleCharacterIds));
+        }
+    }, [viewedMessageIndex, chatMessages.length, visibleCharacterIds]);
+
+    // Rollback for regenerate/branch: truncate history at a message index
     const rollbackToMessage = useCallback((messageIndex: number) => {
-        const history = movementHistoryRef.current;
-        const entriesToRevert: VisualNovelMovementEntry[] = [];
-
-        for (let i = history.length - 1; i >= 0; i--) {
-            if (history[i].messageIndex >= messageIndex) {
-                entriesToRevert.push(history[i]);
-            }
-        }
-
-        const currentStates = new Map(statesRef.current);
-        for (const entry of entriesToRevert) {
-            currentStates.set(entry.characterId, cloneState(entry.previousState));
-        }
-
-        movementHistoryRef.current = history.filter(e => e.messageIndex < messageIndex);
-        statesRef.current = currentStates;
+        movementHistoryRef.current = movementHistoryRef.current.filter(e => e.messageIndex < messageIndex);
+        statesRef.current = computeStatesAtHistoryIndex(movementHistoryRef.current, messageIndex - 1, visibleCharacterIds);
         lastParsedIndexRef.current = messageIndex;
-        setSpriteStates(new Map(currentStates));
+        setSpriteStates(new Map(statesRef.current));
         setJumpingCharacterIds(new Set());
-    }, []);
+        setParseVersion(v => v + 1);
+    }, [visibleCharacterIds]);
 
     return {
         spriteStates,
