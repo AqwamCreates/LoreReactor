@@ -391,7 +391,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         }
     }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters, autoResumeOnCutoff, broadcastNewMessages]);
 
-    const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character, protagonistId: string) => {
+    const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character, protagonist: Character) => {
         const currentState = getState();
         if (!currentState.interactionData) return;
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
@@ -406,7 +406,8 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         isAtBottomRef.current = true;
 
         try {
-            const chatMessage = createChatMessage(currentState.interactionData, targetChar, actionText);
+            // Action message is authored by the PROTAGONIST, not the target character
+            const chatMessage = createChatMessage(currentState.interactionData, protagonist, actionText);
             const td = addMessageToInteractionData(currentState.interactionData, chatMessage);
 
             // Broadcast action message
@@ -423,7 +424,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             const ud = turnResult.interactionData;
 
             if (pendingPartialRef.current) {
-                const fd = await applyPendingPartial(ud, protagonistId);
+                const fd = await applyPendingPartial(ud, protagonist.id);
                 await saveRawInteractionData(fd);
                 setInteractionData(fd);
                 broadcastNewMessages(preTurnCount, fd);
@@ -432,7 +433,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
                 const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
-                const finalized = finalizeLastAIMessage(processed, protagonistId, wasStoppedRef.current);
+                const finalized = finalizeLastAIMessage(processed, protagonist.id, wasStoppedRef.current);
                 await saveRawInteractionData(finalized);
                 setInteractionData(finalized);
 
@@ -440,14 +441,14 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
 
                 // Auto-resume if model cut off mid-generation
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
-                    autoResumeOnCutoff(finalized, protagonistId);
+                    autoResumeOnCutoff(finalized, protagonist.id);
                     return;
                 }
 
                 runSummarization({ data: finalized, setData: setInteractionData, addToast });
 
                 const lm = finalized.interactionHistory[finalized.interactionHistory.length - 1];
-                if (lm && lm.messageType === 'chat' && lm.character.id !== protagonistId) {
+                if (lm && lm.messageType === 'chat' && lm.character.id !== protagonist.id) {
                     ui.playVoice(lm.textContent, lm.character);
                 }
             } else {

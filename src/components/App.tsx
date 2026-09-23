@@ -289,9 +289,7 @@ function App() {
     } = useActionMenu({
         interactionData, currentCharacter, isLoading, isModelReady,
         allCharacters, stopGeneration,
-        sendActionAndGetResponse: async (actionText: string, targetChar: Character, protagonist: Character) => {
-            await sendActionAndGetResponse(actionText, targetChar, protagonist.id);
-        },
+        sendActionAndGetResponse,
         addToast,
     });
 
