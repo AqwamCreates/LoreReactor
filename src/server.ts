@@ -361,10 +361,10 @@ function queryAmdGpu(): GpuStatus | null {
     return {
       vendor: 'amd',
       name: cardKeys[0],
-      utilizationPercent: parseFloat(String(gpuUse))   || 0,
-      memoryUsedMB:       parseFloat(String(memUsed))  || 0,
-      memoryTotalMB:      parseFloat(String(memTotal)) || 0,
-      temperatureC: temp !== null ? parseFloat(String(temp)) : null,
+      utilizationPercent: Number.parseFloat(String(gpuUse))   || 0,
+      memoryUsedMB:       Number.parseFloat(String(memUsed))  || 0,
+      memoryTotalMB:      Number.parseFloat(String(memTotal)) || 0,
+      temperatureC: temp !== null ? Number.parseFloat(String(temp)) : null,
       powerWatts: null,
       timestamp: Date.now(),
     };
@@ -427,7 +427,7 @@ function queryAppleGpu(): GpuStatus | null {
     try {
       const sysctlRaw = execSync('sysctl hw.memsize', { stdio: 'pipe', timeout: 1000, encoding: 'utf-8' }).trim();
       const memMatch = sysctlRaw.match(/(\d+)/);
-      if (memMatch) memTotal = Math.round(parseInt(memMatch[1], 10) / (1024 * 1024));
+      if (memMatch) memTotal = Math.round(Number.parseInt(memMatch[1], 10) / (1024 * 1024));
     } catch { /* ignore */ }
 
     return {
@@ -458,6 +458,40 @@ function queryGpuStatus(): GpuStatus | null {
 let lastGpuStatus: GpuStatus | null = null;
 let lastGpuQueryTime = 0;
 const GPU_QUERY_MIN_INTERVAL_MS = 1000;
+
+// ─── Media file detection helpers ────────────────────────────────────
+
+/** Directories under user_data that store binary media files (not JSON) */
+const MEDIA_DIR_PREFIXES = [
+  'character_images/',
+  'character_voices/',
+  'context_images/',
+  'location_images/',
+  'prompt_block_images/',
+  'audio_track_audio/',
+];
+
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
+const AUDIO_EXTENSIONS = ['.ogg', '.mp3', '.wav', '.flac'];
+const ALL_MEDIA_EXTENSIONS = [...IMAGE_EXTENSIONS, ...AUDIO_EXTENSIONS];
+
+function isMediaUploadPath(relativePath: string): boolean {
+  return MEDIA_DIR_PREFIXES.some(prefix => relativePath.includes(prefix));
+}
+
+function getMimeType(ext: string): string {
+  const mimeMap: Record<string, string> = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.ogg': 'audio/ogg',
+    '.mp3': 'audio/mpeg',
+    '.wav': 'audio/wav',
+    '.flac': 'audio/flac',
+  };
+  return mimeMap[ext] || 'application/octet-stream';
+}
 
 // ─── Startup Data Sanitizer ──────────────────────────────────────────
 
@@ -518,11 +552,11 @@ function sanitizeManifestDir(dirName: string): number {
 }
 
 /**
- * Scan interaction_messages_data/ for .json files not referenced by any chat's
+ * Scan interaction_messages/ for .json files not referenced by any chat's
  * interactionIdHistory. Deletes orphans and rewrites the messages manifest.
  */
 function sanitizeOrphanedMessages(): number {
-  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages_data');
+  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
   const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
 
   if (!fs.existsSync(messagesDir)) return 0;
@@ -591,7 +625,7 @@ function sanitizeOrphanedMessages(): number {
   }
 
   if (orphanedCount > 0) {
-    log.warn(`Sanitized interaction_messages_data/: removed ${orphanedCount} orphaned message file${orphanedCount === 1 ? '' : 's'}`);
+    log.warn(`Sanitized interaction_messages/: removed ${orphanedCount} orphaned message file${orphanedCount === 1 ? '' : 's'}`);
   }
 
   return orphanedCount;
@@ -602,7 +636,7 @@ function sanitizeOrphanedMessages(): number {
  * Interaction-type messages are preserved — they're legitimate silent markers.
  */
 function sanitizeHollowMessages(): number {
-  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages_data');
+  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
   if (!fs.existsSync(messagesDir)) return 0;
 
   const messageFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
@@ -622,7 +656,7 @@ function sanitizeHollowMessages(): number {
   }
 
   if (hollowCount > 0) {
-    log.warn(`Sanitized interaction_messages_data/: removed ${hollowCount} hollow message file${hollowCount === 1 ? '' : 's'}`);
+    log.warn(`Sanitized interaction_messages/: removed ${hollowCount} hollow message file${hollowCount === 1 ? '' : 's'}`);
   }
 
   return hollowCount;
@@ -634,7 +668,7 @@ function sanitizeHollowMessages(): number {
  */
 function sanitizeChatHistories(): number {
   const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
-  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages_data');
+  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
 
   if (!fs.existsSync(chatsDir)) return 0;
 
@@ -681,23 +715,23 @@ function sanitizeChatHistories(): number {
 function runStartupSanitization(): void {
   log.info('Running startup data sanitization...');
 
+  // Must match ENTITY_REGISTRY keys from serverStorage.tsx (data dirs only, not media dirs)
   const manifestDirs = [
-    'interaction_data',
-    'interaction_messages_data',
     'character_data',
+    'sampler_data',
     'context_data',
     'location_data',
+    'model_data',
+    'stop_pattern_data',
+    'interaction_messages',
+    'interaction_data',
+    'budget_strategies',
+    'profile_data',
+    'world_data',
+    'webpage_data',
+    'memory_data',
     'audio_track_data',
     'prompt_block_data',
-    'world_data',
-    'model_data',
-    'sampler_data',
-    'stop_pattern_data',
-    'budget_strategies_data',
-    'profile_data',
-    'memory_data',
-    'webpage_data',
-    'kv_caches',
     'account_data',
     'multiplayer_data',
   ];
@@ -712,7 +746,7 @@ function runStartupSanitization(): void {
   const prunedReferences = sanitizeChatHistories();
 
   // Re-run manifest sanitization after deleting files
-  sanitizeManifestDir('interaction_messages_data');
+  sanitizeManifestDir('interaction_messages');
 
   const totalCleaned = totalManifestOrphans + hollowMessages + orphanedMessages + prunedReferences;
   if (totalCleaned > 0) {
@@ -746,27 +780,23 @@ app.use('/user_data', (req, response) => {
   // ─── HEAD Request Handler (for existence checks) ─────────────────
   if (req.method === 'HEAD') {
     if (!fs.existsSync(filePath)) {
-        // Try common image extensions for extensionless requests
-        const imageExts = ['.png', '.jpg', '.jpeg', '.webp'];
-        for (const ext of imageExts) {
+        // Try common media extensions for extensionless requests
+        for (const ext of ALL_MEDIA_EXTENSIONS) {
             if (fs.existsSync(filePath + ext)) {
+                response.setHeader('Content-Type', getMimeType(ext));
                 response.status(200).end();
                 return;
             }
         }
         return response.status(404).end();
     }
-    
+
     fs.stat(filePath, (error, stats) => {
         if (error) return response.status(500).end();
         response.setHeader('Content-Length', stats.size);
         const ext = path.extname(filePath).toLowerCase();
-        if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
-            const mimeMap: Record<string, string> = {
-                '.png': 'image/png', '.jpg': 'image/jpeg',
-                '.jpeg': 'image/jpeg', '.webp': 'image/webp',
-            };
-            response.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
+        if (ALL_MEDIA_EXTENSIONS.includes(ext)) {
+            response.setHeader('Content-Type', getMimeType(ext));
         }
         response.status(200).end();
     });
@@ -775,18 +805,13 @@ app.use('/user_data', (req, response) => {
 
   if (req.method === 'GET') {
     if (!fs.existsSync(filePath)) {
-      // Try common image extensions for extensionless requests
-      const imageExts = ['.png', '.jpg', '.jpeg', '.webp'];
-      for (const ext of imageExts) {
+      // Try common media extensions for extensionless requests
+      for (const ext of ALL_MEDIA_EXTENSIONS) {
         const withExt = filePath + ext;
         if (fs.existsSync(withExt)) {
-          const mimeMap: Record<string, string> = {
-            '.png': 'image/png', '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg', '.webp': 'image/webp',
-          };
-          response.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
+          response.setHeader('Content-Type', getMimeType(ext));
           fs.readFile(withExt, (ie, buf) => {
-            if (ie) return response.status(500).send('Image Error');
+            if (ie) return response.status(500).send('Media Read Error');
             response.send(buf);
           });
           return;
@@ -810,28 +835,22 @@ app.use('/user_data', (req, response) => {
           response.json(files);
         });
       } else {
-        fs.readFile(filePath, 'utf8', (error, data) => {
-          if (error) { log.reqError('GET', req.url || '/', 500); return response.status(500).json({ error: 'Read Error' }); }
-          const ext = path.extname(filePath).toLowerCase();
-          if (ext === '.json') {
-            response.setHeader('Content-Type', 'application/json');
+        const ext = path.extname(filePath).toLowerCase();
+        if (ALL_MEDIA_EXTENSIONS.includes(ext)) {
+          response.setHeader('Content-Type', getMimeType(ext));
+          fs.readFile(filePath, (ie, buf) => {
+            if (ie) { log.reqError('GET', req.url || '/', 500); return response.status(500).send('Media Read Error'); }
+            response.send(buf);
+          });
+        } else {
+          fs.readFile(filePath, 'utf8', (error, data) => {
+            if (error) { log.reqError('GET', req.url || '/', 500); return response.status(500).json({ error: 'Read Error' }); }
+            if (ext === '.json') {
+              response.setHeader('Content-Type', 'application/json');
+            }
             response.send(data);
-          } else if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
-            const mimeMap: Record<string, string> = {
-              '.png':  'image/png',
-              '.jpg':  'image/jpeg',
-              '.jpeg': 'image/jpeg',
-              '.webp': 'image/webp',
-            };
-            response.setHeader('Content-Type', mimeMap[ext]);
-            fs.readFile(filePath, (ie, buf) => {
-              if (ie) { log.reqError('GET', req.url || '/', 500); return response.status(500).send('Image Error'); }
-              response.send(buf);
-            });
-          } else {
-            response.send(data);
-          }
-        });
+          });
+        }
       }
     });
     return;
@@ -850,17 +869,17 @@ app.use('/user_data', (req, response) => {
       }
     }
     const body: unknown = req.body;
-    const isImage = relativePath.includes('character_images_data/') || relativePath.includes('context_data/') || relativePath.includes('prompt_block_data/');
+    const isMediaUpload = isMediaUploadPath(relativePath);
     const base64 =
       typeof body === 'object' && body !== null && 'base64' in body && typeof (body as Record<string, unknown>).base64 === 'string'
         ? (body as Record<string, string>).base64
         : undefined;
 
-    if (isImage && base64) {
+    if (isMediaUpload && base64) {
       try {
-        const buffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+        const buffer = Buffer.from(base64.replace(/^data:[^;]+;base64,/, ''), 'base64');
         fs.writeFile(filePath, buffer, (error) =>
-          error ? response.status(500).json({ error: 'Write Image Failed' }) : response.json({ success: true }),
+          error ? response.status(500).json({ error: 'Write Media Failed' }) : response.json({ success: true }),
         );
         return;
       } catch {
@@ -919,6 +938,7 @@ app.post('/models/load', async (req, response) => {
     });
   }
 
+  // Validate binary exists at load time rather than blocking config registration
   if (!fs.existsSync(config.binaryPath)) {
     return response.status(500).json({
       error: `${backendName} binary not found at ${config.binaryPath}. Run the backend installer from start.bat / start.sh first.`,
@@ -969,7 +989,7 @@ app.post('/models/load', async (req, response) => {
   proc.stdout?.on('data', (data: Buffer) => {
     const str = data.toString().trim();
     if (str) log.backend(config.logLabel, `[${id}] ${str}`);
-    if (config.readyPattern && config.readyPattern.test(str)) instance.status = 'ready';
+    if (config.readyPattern?.test(str)) instance.status = 'ready';
   });
 
   proc.stderr?.on('data', (data: Buffer) => {
@@ -1039,7 +1059,7 @@ app.post('/models/unload', (req, response) => {
   response.json({ success: true, message: 'Model unloaded' });
 });
 
-app.all('/proxy/:modelId/{*path}', (req, response) => {
+app.all('/proxy/:modelId/{*path}', async (req, response) => {
   const modelId       = req.params.modelId;
   const remainingPath = (req.params as { path?: string }).path || '';
   const instance      = activeModels.get(modelId);
@@ -1050,18 +1070,47 @@ app.all('/proxy/:modelId/{*path}', (req, response) => {
 
   const targetUrl = `http://127.0.0.1:${instance.port}/${remainingPath}`;
 
-  fetch(targetUrl, {
-    method: req.method,
-    headers: Object.fromEntries(
-      Object.entries(req.headers).flatMap(([key, value]) =>
-        value === undefined ? [] : [[key, Array.isArray(value) ? value.join(', ') : value]],
+  try {
+    const proxyRes = await fetch(targetUrl, {
+      method: req.method,
+      headers: Object.fromEntries(
+        Object.entries(req.headers).flatMap(([key, value]) =>
+          value === undefined ? [] : [[key, Array.isArray(value) ? value.join(', ') : value]],
+        ),
       ),
-    ),
-    body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined,
-  })
-    .then(res  => res.json())
-    .then(data => response.json(data))
-    .catch(error => response.status(502).json({ error: 'Proxy error', details: error.message }));
+      body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined,
+    });
+
+    // Forward status and headers
+    response.status(proxyRes.status);
+    proxyRes.headers.forEach((value, key) => {
+      // Skip hop-by-hop headers that shouldn't be forwarded
+      const skipHeaders = ['transfer-encoding', 'connection', 'keep-alive'];
+      if (!skipHeaders.includes(key.toLowerCase())) {
+        response.setHeader(key, value);
+      }
+    });
+
+    // Stream the response body instead of buffering
+    if (proxyRes.body) {
+      const reader = proxyRes.body.getReader();
+      const pump = async (): Promise<void> => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            response.end();
+            return;
+          }
+          response.write(Buffer.from(value));
+        }
+      };
+      await pump();
+    } else {
+      response.end();
+    }
+  } catch (error) {
+    response.status(502).json({ error: 'Proxy error', details: (error as Error).message });
+  }
 });
 
 // --- GPU Status Endpoint ---
