@@ -34,14 +34,14 @@ const BATCH_DELAY_MS = 10;
 
 const ENTITY_REGISTRY = {
   characters: { dir: 'character_data', hasManifest: true },
-  characterImages: { dir: 'character_images', hasManifest: false },
+  characterImages: { dir: 'character_images_data', hasManifest: false },
   characterVoices: { dir: 'character_voices', hasManifest: false },
   samplers: { dir: 'sampler_data', hasManifest: true },
   contexts: { dir: 'context_data', hasManifest: true },
   locations: { dir: 'location_data', hasManifest: true },
   models: { dir: 'model_data', hasManifest: true },
   stopPatterns: { dir: 'stop_pattern_data', hasManifest: true },
-  interactionMessages: { dir: 'interaction_messages', hasManifest: false },
+  interactionMessages: { dir: 'interaction_messages_data', hasManifest: false },
   interactionData: { dir: 'interaction_data', hasManifest: true },
   kvCaches: { dir: 'kv_caches', hasManifest: false },
   budgetStrategies: { dir: 'budget_strategies', hasManifest: true },

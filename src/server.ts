@@ -518,11 +518,11 @@ function sanitizeManifestDir(dirName: string): number {
 }
 
 /**
- * Scan interaction_messages/ for .json files not referenced by any chat's
+ * Scan interaction_messages_data/ for .json files not referenced by any chat's
  * interactionIdHistory. Deletes orphans and rewrites the messages manifest.
  */
 function sanitizeOrphanedMessages(): number {
-  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
+  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages_data');
   const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
 
   if (!fs.existsSync(messagesDir)) return 0;
@@ -591,7 +591,7 @@ function sanitizeOrphanedMessages(): number {
   }
 
   if (orphanedCount > 0) {
-    log.warn(`Sanitized interaction_messages/: removed ${orphanedCount} orphaned message file${orphanedCount === 1 ? '' : 's'}`);
+    log.warn(`Sanitized interaction_messages_data/: removed ${orphanedCount} orphaned message file${orphanedCount === 1 ? '' : 's'}`);
   }
 
   return orphanedCount;
@@ -602,7 +602,7 @@ function sanitizeOrphanedMessages(): number {
  * Interaction-type messages are preserved — they're legitimate silent markers.
  */
 function sanitizeHollowMessages(): number {
-  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
+  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages_data');
   if (!fs.existsSync(messagesDir)) return 0;
 
   const messageFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
@@ -622,7 +622,7 @@ function sanitizeHollowMessages(): number {
   }
 
   if (hollowCount > 0) {
-    log.warn(`Sanitized interaction_messages/: removed ${hollowCount} hollow message file${hollowCount === 1 ? '' : 's'}`);
+    log.warn(`Sanitized interaction_messages_data/: removed ${hollowCount} hollow message file${hollowCount === 1 ? '' : 's'}`);
   }
 
   return hollowCount;
@@ -634,7 +634,7 @@ function sanitizeHollowMessages(): number {
  */
 function sanitizeChatHistories(): number {
   const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
-  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
+  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages_data');
 
   if (!fs.existsSync(chatsDir)) return 0;
 
@@ -683,7 +683,7 @@ function runStartupSanitization(): void {
 
   const manifestDirs = [
     'interaction_data',
-    'interaction_messages',
+    'interaction_messages_data',
     'character_data',
     'context_data',
     'location_data',
@@ -712,7 +712,7 @@ function runStartupSanitization(): void {
   const prunedReferences = sanitizeChatHistories();
 
   // Re-run manifest sanitization after deleting files
-  sanitizeManifestDir('interaction_messages');
+  sanitizeManifestDir('interaction_messages_data');
 
   const totalCleaned = totalManifestOrphans + hollowMessages + orphanedMessages + prunedReferences;
   if (totalCleaned > 0) {
@@ -850,7 +850,7 @@ app.use('/user_data', (req, response) => {
       }
     }
     const body: unknown = req.body;
-    const isImage = relativePath.includes('character_images/') || relativePath.includes('context_data/');
+    const isImage = relativePath.includes('character_images_data/') || relativePath.includes('context_data/') || relativePath.includes('prompt_block_data/');
     const base64 =
       typeof body === 'object' && body !== null && 'base64' in body && typeof (body as Record<string, unknown>).base64 === 'string'
         ? (body as Record<string, string>).base64
