@@ -1,6 +1,7 @@
 // src/hooks/chatLogic.ts
 import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, Location, RegularExpressionTrigger, TextCharacterInjection } from '../types';
 import { getKnownDisplayName } from './promptLogic';
+import type { EntityImageRef } from './promptLogic';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storage/serverStorage';
 import { getEffectiveUseFrontCameraImage, getEffectiveMaximumChatStamina, initializeClothingWearingStatuses } from './characterLogic';
@@ -222,12 +223,6 @@ function generateInitialCharacterText(character: Character): string {
     return result;
 }
 
-/** Represents an image reference tied to its parent entity for URL resolution. */
-interface EntityImageRef {
-    entityId: string;
-    filename: string;
-}
-
 export async function prepareRequestBody(
     interactionData: InteractionData,
     character: Character,
@@ -239,8 +234,6 @@ export async function prepareRequestBody(
 
     const profile = interactionData.Profile;
 
-    // NOTE: buildPrompt must return EntityImageRef[] for contextImages, locationImages, and promptBlockImages
-    // instead of plain string[]. Update buildPrompt accordingly.
     const { prompt, stops, contextImages, locationImages, promptBlockImages, characterClothingWearingStatuses, fetchErrors } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId);
 
     const sampler = character.sampler;
@@ -322,7 +315,6 @@ export async function prepareRequestBody(
         }
     }
 
-    // FIXED: Context images now carry entityId from buildPrompt
     if (!profile?.forceNoContextImageInjection && contextImages.length > 0) {
         const contextImagePromises = contextImages.map(async (imgRef: EntityImageRef) => {
             try {
@@ -344,7 +336,6 @@ export async function prepareRequestBody(
         filesBase64.push(...resolvedContextImages);
     }
 
-    // FIXED: Location images now carry entityId from buildPrompt
     if (!profile?.forceNoContextImageInjection && locationImages.length > 0) {
         const locationImagePromises = locationImages.map(async (imgRef: EntityImageRef) => {
             try {
@@ -366,7 +357,6 @@ export async function prepareRequestBody(
         filesBase64.push(...resolvedLocationImages);
     }
 
-    // FIXED: Prompt block images now carry entityId from buildPrompt
     if (!profile?.forceNoContextImageInjection && promptBlockImages.length > 0) {
         const promptBlockImagePromises = promptBlockImages.map(async (imgRef: EntityImageRef) => {
             try {

@@ -52,6 +52,13 @@ const tokenEngine = getLanguageModelEngine();
 
 type CombinationCache = Record<string, Record<string, { characterIdArray: string[]; textContentArray: string[] }>>;
 
+// ─── Image Reference Type ──────────────────────────────────────────
+
+export interface EntityImageRef {
+    entityId: string;
+    filename: string;
+}
+
 // ─── Prompt Build Context ─────────────────────────────────────────
 
 interface PromptBuildContext {
@@ -1035,9 +1042,9 @@ function buildStarterPromptLines(ctx: PromptBuildContext): string[] {
     return lines;
 }
 
-function buildLocationLines(ctx: PromptBuildContext): { lines: string[]; images: string[] } {
+function buildLocationLines(ctx: PromptBuildContext): { lines: string[]; images: EntityImageRef[] } {
     const lines: string[] = [];
-    const images: string[] = [];
+    const images: EntityImageRef[] = [];
     const location = ctx.currentLocation;
 
     if (location) {
@@ -1061,7 +1068,9 @@ function buildLocationLines(ctx: PromptBuildContext): { lines: string[]; images:
         }
 
         if (location.images && location.images.length > 0) {
-            images.push(...location.images);
+            for (const img of location.images) {
+                images.push({ entityId: location.id, filename: img });
+            }
         }
         lines.push(stuckAtLocationLine);
         lines.push(endOfLocationLine);
@@ -1365,9 +1374,9 @@ export function createChatHistoryPrompt(
 interface BuildResult {
     prompt: string;
     stops: string[];
-    contextImages: string[];
-    locationImages: string[];
-    promptBlockImages: string[];
+    contextImages: EntityImageRef[];
+    locationImages: EntityImageRef[];
+    promptBlockImages: EntityImageRef[];
     characterClothingWearingStatuses: Record<string, boolean>;
     fetchErrors: string[];
 }
@@ -1425,7 +1434,7 @@ export async function buildPrompt(
     }
 
     // ─── Web Context Fetching ───────────────────────────────────────
-    const activeContextImages: string[] = [];
+    const activeContextImages: EntityImageRef[] = [];
     const fetchErrors: string[] = [];
     const fetchedContentMap = new Map<string, string>();
     const contexts = ctx.interactionData.contexts || [];
@@ -1512,7 +1521,9 @@ export async function buildPrompt(
         contextLines.push(line);
 
         if (context.images && context.images.length > 0) {
-            activeContextImages.push(...context.images);
+            for (const img of context.images) {
+                activeContextImages.push({ entityId: context.id, filename: img });
+            }
         }
     }
 
@@ -1687,7 +1698,7 @@ export async function buildPrompt(
         promptBlockById.set(pb.id, pb);
     }
 
-    const activePromptBlockImages: string[] = [];
+    const activePromptBlockImages: EntityImageRef[] = [];
     const protagonistIdSet = ctx.protagonistIds;
     const currentLocationId = ctx.currentLocation?.id;
 
@@ -1713,7 +1724,9 @@ export async function buildPrompt(
         }
 
         if (block.images && block.images.length > 0) {
-            activePromptBlockImages.push(...block.images);
+            for (const img of block.images) {
+                activePromptBlockImages.push({ entityId: block.id, filename: img });
+            }
         }
     }
 
