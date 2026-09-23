@@ -411,10 +411,14 @@ export function AppModals({
 
             {modals.accountList.isOpen && (
                 <ManagerModal title="Accounts" items={allAccounts} isOpen={modals.accountList.isOpen} onClose={modals.accountList.close}
-                    onSelect={(a: Account) => accountModal.open(a)} onDelete={onDeleteAccount} onCreateNew={() => accountModal.open()}
+                    onSelect={(a: Account) => accountModal.open(a)} onDelete={accountModal.handleDelete} onCreateNew={() => accountModal.open()}
                     renderSubtext={(a: Account) => `👤 ${a.username}${a.url ? ` • 🔗 ${a.url}` : ''}`}
                     emptyMessage="No accounts found." actionLabel="Delete"
-                    orderedListMode={true} currentOrderIds={[]} onToggleOrder={onToggleAccount} />
+                    orderedListMode={true} currentOrderIds={[]} onToggleOrder={onToggleAccount}
+                    specialActionIcon="★"
+                    onSpecialAction={(a: Account) => onToggleAccount(a.id)}
+                    specialActionTooltip={(a: Account) => currentAccountId === a.id ? `Deactivate ${a.name}` : `Activate ${a.name}`}
+                    activeSpecialActionId={currentAccountId || undefined} />
             )}
 
             {modals.multiplayerDataList.isOpen && (
