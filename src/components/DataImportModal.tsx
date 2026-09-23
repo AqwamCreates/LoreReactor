@@ -39,6 +39,8 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
     const [selectedBudgetStrategyIds, setSelectedBudgetStrategyIds] = useState<string[]>([]);
     const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
     const [selectedMemoryIds, setSelectedMemoryIds] = useState<string[]>([]);
+    const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
+    const [selectedMultiplayerDataIds, setSelectedMultiplayerDataIds] = useState<string[]>([]);
     const [includeActions, setIncludeActions] = useState(true);
 
     const [chatSearch, setChatSearch] = useState('');
@@ -54,6 +56,8 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
     const [budgetStrategySearch, setBudgetStrategySearch] = useState('');
     const [profileSearch, setProfileSearch] = useState('');
     const [memorySearch, setMemorySearch] = useState('');
+    const [accountSearch, setAccountSearch] = useState('');
+    const [multiplayerDataSearch, setMultiplayerDataSearch] = useState('');
 
     const reset = () => {
         setParsedData(null); setImportResult(null); setError(null); setIsImporting(false);
@@ -61,14 +65,14 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
         setSelectedLocationIds([]); setSelectedAudioTrackIds([]); setSelectedWorldIds([]);
         setSelectedModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
         setSelectedStopPatternIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
-        setSelectedMemoryIds([]);
+        setSelectedMemoryIds([]); setSelectedAccountIds([]); setSelectedMultiplayerDataIds([]);
         setIncludeActions(true);
         setPasteText('');
         setSchemaCopied(false);
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
         setAudioTrackSearch(''); setWorldSearch(''); setModelSearch(''); setSamplerSearch('');
         setPromptBlockSearch(''); setStopPatternSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
-        setMemorySearch('');
+        setMemorySearch(''); setAccountSearch(''); setMultiplayerDataSearch('');
     };
 
     const handleClose = () => { if (isImporting) return; reset(); onClose(); };
@@ -91,6 +95,8 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
         setSelectedBudgetStrategyIds(json.budgetStrategies.map((b: { id: string }) => b.id));
         setSelectedProfileIds(json.profiles.map((p: { id: string }) => p.id));
         setSelectedMemoryIds(json.memories?.map((m: { id: string }) => m.id) ?? []);
+        setSelectedAccountIds(json.accounts?.map((a: { id: string }) => a.id) ?? []);
+        setSelectedMultiplayerDataIds(json.multiplayerData?.map((md: { id: string }) => md.id) ?? []);
         setIncludeActions(json.interjectableActions.length > 0);
     };
 
@@ -143,6 +149,8 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                 budgetStrategies: [],
                 profiles: schemaEntities.includes('Profile') ? "/* see _entitySchema */" : [],
                 memories: [],
+                accounts: [],
+                multiplayerData: [],
                 interjectableActions: [],
                 _entitySchema: JSON.parse(entitySchema),
             };
@@ -183,6 +191,8 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
             budgetStrategies: parsedData.budgetStrategies.filter(b => selectedBudgetStrategyIds.includes(b.id)),
             profiles: parsedData.profiles.filter(p => selectedProfileIds.includes(p.id)),
             memories: parsedData.memories?.filter(m => selectedMemoryIds.includes(m.id)) ?? [],
+            accounts: parsedData.accounts?.filter(a => selectedAccountIds.includes(a.id)) ?? [],
+            multiplayerData: parsedData.multiplayerData?.filter(md => selectedMultiplayerDataIds.includes(md.id)) ?? [],
             interjectableActions: includeActions ? parsedData.interjectableActions : [],
         };
 
@@ -198,7 +208,8 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
         selectedLocationIds.length + selectedAudioTrackIds.length + selectedWorldIds.length +
         selectedModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
         selectedStopPatternIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
-        selectedMemoryIds.length + (includeActions ? 1 : 0);
+        selectedMemoryIds.length + selectedAccountIds.length + selectedMultiplayerDataIds.length +
+        (includeActions ? 1 : 0);
 
     if (!isOpen) return null;
 
@@ -404,6 +415,14 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                     <EntitySelectList label="Memories" items={parsedData.memories} selectedIds={selectedMemoryIds}
                                         onToggle={(id) => toggle(selectedMemoryIds, setSelectedMemoryIds, id)} searchQuery={memorySearch} onSearchChange={setMemorySearch} />
                                 )}
+                                {(parsedData.accounts?.length ?? 0) > 0 && (
+                                    <EntitySelectList label="Accounts" items={parsedData.accounts} selectedIds={selectedAccountIds}
+                                        onToggle={(id) => toggle(selectedAccountIds, setSelectedAccountIds, id)} searchQuery={accountSearch} onSearchChange={setAccountSearch} />
+                                )}
+                                {(parsedData.multiplayerData?.length ?? 0) > 0 && (
+                                    <EntitySelectList label="Multiplayer Data" items={parsedData.multiplayerData} selectedIds={selectedMultiplayerDataIds}
+                                        onToggle={(id) => toggle(selectedMultiplayerDataIds, setSelectedMultiplayerDataIds, id)} searchQuery={multiplayerDataSearch} onSearchChange={setMultiplayerDataSearch} />
+                                )}
 
                                 {parsedData.interjectableActions.length > 0 && (
                                     <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
@@ -449,6 +468,8 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                     <div><strong>Budget Strategies:</strong> {importResult.counts.budgetStrategies}</div>
                                     <div><strong>Profiles:</strong> {importResult.counts.profiles}</div>
                                     <div><strong>Memories:</strong> {importResult.counts.memories ?? 0}</div>
+                                    <div><strong>Accounts:</strong> {importResult.counts.accounts ?? 0}</div>
+                                    <div><strong>Multiplayer Data:</strong> {importResult.counts.multiplayerData ?? 0}</div>
                                     <div><strong>Actions:</strong> {importResult.counts.interjectableActions}</div>
                                 </div>
                             </div>

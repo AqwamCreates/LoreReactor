@@ -2,6 +2,7 @@
 import type {
     Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock,
     StopPattern, BudgetStrategy, Profile, InteractionData, InterjectableAction, Memory,
+    Account, MultiplayerData,
 } from '../types';
 import {
     loadRawCharacter, saveRawCharacter,
@@ -19,6 +20,8 @@ import {
     loadInterjectableActions, saveInterjectableActions,
     loadRawInteractionData, saveRawInteractionData,
     loadInteractionMessages,
+    loadRawAccount, saveRawAccount,
+    loadRawMultiplayerData, saveRawMultiplayerData,
 } from '../storage/serverStorage';
 
 export interface LoreReactorExport {
@@ -37,6 +40,8 @@ export interface LoreReactorExport {
     budgetStrategies: BudgetStrategy[];
     profiles: Profile[];
     memories: Memory[];
+    accounts: Account[];
+    multiplayerData: MultiplayerData[];
     interjectableActions: InterjectableAction[];
 }
 
@@ -45,7 +50,8 @@ export interface ImportResult {
     counts: {
         chats: number; characters: number; contexts: number; locations: number; audioTracks: number;
         worlds: number; models: number; samplers: number; promptBlocks: number; stopPatterns: number;
-        budgetStrategies: number; profiles: number; memories: number; interjectableActions: number;
+        budgetStrategies: number; profiles: number; memories: number; accounts: number;
+        multiplayerData: number; interjectableActions: number;
     };
     errors: string[];
 }
@@ -70,6 +76,9 @@ export function validateExport(data: unknown): data is LoreReactorExport {
     if (!Array.isArray(d.profiles)) return false;
     // memories may be absent in older exports — treat as optional for backward compat
     if (d.memories !== undefined && !Array.isArray(d.memories)) return false;
+    // accounts and multiplayerData may be absent in older exports
+    if (d.accounts !== undefined && !Array.isArray(d.accounts)) return false;
+    if (d.multiplayerData !== undefined && !Array.isArray(d.multiplayerData)) return false;
     if (!Array.isArray(d.interjectableActions)) return false;
     return true;
 }
@@ -102,13 +111,16 @@ export async function exportSelectedData(selection: {
     budgetStrategyIds: string[];
     profileIds: string[];
     memoryIds: string[];
+    accountIds: string[];
+    multiplayerDataIds: string[];
     includeActions: boolean;
 }): Promise<LoreReactorExport> {
     const data: LoreReactorExport = {
         version: 1, exportedAt: Date.now(),
         chats: [], characters: [], contexts: [], locations: [], audioTracks: [],
         worlds: [], models: [], samplers: [], promptBlocks: [], stopPatterns: [],
-        budgetStrategies: [], profiles: [], memories: [], interjectableActions: [],
+        budgetStrategies: [], profiles: [], memories: [], accounts: [],
+        multiplayerData: [], interjectableActions: [],
     };
 
     // Load individual entities by ID
@@ -168,6 +180,14 @@ export async function exportSelectedData(selection: {
         const full = await loadRawMemory(id);
         if (full) data.memories.push(full);
     }
+    for (const id of selection.accountIds) {
+        const full = await loadRawAccount(id);
+        if (full) data.accounts.push(full);
+    }
+    for (const id of selection.multiplayerDataIds) {
+        const full = await loadRawMultiplayerData(id);
+        if (full) data.multiplayerData.push(full);
+    }
 
     if (selection.includeActions) {
         try { data.interjectableActions = await loadInterjectableActions(); } catch { /* empty */ }
@@ -186,7 +206,8 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
         counts: {
             chats: 0, characters: 0, contexts: 0, locations: 0, audioTracks: 0,
             worlds: 0, models: 0, samplers: 0, promptBlocks: 0, stopPatterns: 0,
-            budgetStrategies: 0, profiles: 0, memories: 0, interjectableActions: 0,
+            budgetStrategies: 0, profiles: 0, memories: 0, accounts: 0,
+            multiplayerData: 0, interjectableActions: 0,
         },
         errors: [],
     };
@@ -240,6 +261,14 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
     for (const p of data.profiles) {
         try { await saveRawProfile(p); result.counts.profiles++; }
         catch (e) { result.errors.push(`Profile "${p.name || p.id}": ${(e as Error).message}`); }
+    }
+    for (const acc of (data.accounts ?? [])) {
+        try { await saveRawAccount(acc); result.counts.accounts++; }
+        catch (e) { result.errors.push(`Account "${acc.name || acc.id}": ${(e as Error).message}`); }
+    }
+    for (const md of (data.multiplayerData ?? [])) {
+        try { await saveRawMultiplayerData(md); result.counts.multiplayerData++; }
+        catch (e) { result.errors.push(`Multiplayer Data "${md.name || md.id}": ${(e as Error).message}`); }
     }
     if (data.interjectableActions.length > 0) {
         try { await saveInterjectableActions(data.interjectableActions); result.counts.interjectableActions = data.interjectableActions.length; }

@@ -180,6 +180,8 @@ function CharacterEditorModalInner({
 
     // Known character names
     const [knownCharacterNames, setKnownCharacterNames] = useState<Record<string, string[]>>(existingCharacter?.knownCharacterNames ?? {});
+    const [selectedCharForKnownName, setSelectedCharForKnownName] = useState('');
+    const [selectedAliasForKnownName, setSelectedAliasForKnownName] = useState('');
 
     const [showMemoryManager, setShowMemoryManager] = useState(false);
     const [showImageEditor, setShowImageEditor] = useState(false);
@@ -313,7 +315,7 @@ function CharacterEditorModalInner({
     const handleCardImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]; if (!file) return; e.target.value = '';
         const card = await parseCharacterCard(file);
-        if (!card) { setSubmitError("Not a valid character card PNG."); return; }
+        if (!card) { setSubmitError("Not a valid character card. Ensure it follows TavernAI V1/V2/V3 spec (PNG, CharX, or JSON)."); return; }
         const fields = mapCardToEditorFields(card);
         setName(fields.name);
         setDescription(fields.description);
@@ -321,7 +323,15 @@ function CharacterEditorModalInner({
         setThinkPrompt('');
         setAppearancePrompt(fields.appearancePrompt);
         setFirstMessage(fields.firstMessage);
-        setImageFile(file); setImagePreview(URL.createObjectURL(file));
+
+        // Only set image preview for PNG files — CharX/JSON can't be used as portrait directly
+        const fileNameLower = file.name.toLowerCase();
+        if (fileNameLower.endsWith('.png') || file.type === 'image/png') {
+            setImageFile(file); setImagePreview(URL.createObjectURL(file));
+        } else {
+            setImageFile(null); setImagePreview(null);
+        }
+
         setAutoDetected({ iw: null, cp: null, ms: null });
         setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1');
         setNameSensitivityStr('-1');
@@ -352,6 +362,10 @@ function CharacterEditorModalInner({
         const extended = card as ParsedCharacterCardExtended;
         if (extended.emotionImages && Object.keys(extended.emotionImages).length > 0) {
             setEmotionImages(prev => ({ ...prev, ...extended.emotionImages }));
+        }
+        // Import aliases from V3 nickname
+        if (extended.nickname && extended.nickname !== fields.name) {
+            setAliases([extended.nickname]);
         }
     };
 
@@ -402,6 +416,20 @@ function CharacterEditorModalInner({
             return next;
         });
     }, []);
+
+    // Reset alias dropdown when character selection changes
+    const handleCharacterSelectForKnownName = useCallback((charId: string) => {
+        setSelectedCharForKnownName(charId);
+        setSelectedAliasForKnownName('');
+    }, []);
+
+    // Handle alias dropdown selection — adds immediately and resets
+    const handleAliasSelectForKnownName = useCallback((alias: string) => {
+        if (alias && selectedCharForKnownName) {
+            handleAddKnownName(selectedCharForKnownName, alias);
+        }
+        setSelectedAliasForKnownName('');
+    }, [selectedCharForKnownName, handleAddKnownName]);
 
     const buildCharacterFromForm = async (isNewClone: boolean): Promise<Character | null> => {
         setSubmitError(null);
@@ -512,7 +540,7 @@ function CharacterEditorModalInner({
             knowledgePrompts: knowledgePrompts.length > 0 ? knowledgePrompts : undefined,
             starterPrompts: Object.keys(starterPrompts).length > 0 ? starterPrompts : undefined,
             aliases: aliases.length > 0 ? aliases : undefined,
-            images: finalImages,
+            images: Object.keys(finalImages).length > 0 ? finalImages : undefined,
             useFrontCameraImage: useFrontCameraImage || undefined,
             voice: finalVoiceFilename, sampler: finalSampler,
             initiativeWeight: finalIW, chatProbability: finalCP, maximumChatStamina: finalMS,
@@ -585,6 +613,22 @@ function CharacterEditorModalInner({
     // Filter out self from character dropdown for known names
     const otherCharacters = allCharacters.filter(c => c.id !== (existingCharacter?.id || pendingCharacterId));
 
+    // Get available aliases for selected character, excluding already-known names
+    const selectedCharAliases = useMemo(() => {
+        if (!selectedCharForKnownName) return [];
+        const targetChar = allCharacters.find(c => c.id === selectedCharForKnownName);
+        if (!targetChar) return [];
+        const alreadyKnown = new Set(knownCharacterNames[selectedCharForKnownName] ?? []);
+        const allNames: string[] = [];
+        if (targetChar.name && !alreadyKnown.has(targetChar.name)) allNames.push(targetChar.name);
+        if (targetChar.aliases) {
+            for (const alias of targetChar.aliases) {
+                if (alias && !allNames.includes(alias) && !alreadyKnown.has(alias)) allNames.push(alias);
+            }
+        }
+        return allNames;
+    }, [selectedCharForKnownName, allCharacters, knownCharacterNames]);
+
     // Filtered tools based on search query
     const filteredToolNames = useMemo(() => {
         const allToolNames = Object.keys(tools) as tool[];
@@ -616,7 +660,7 @@ function CharacterEditorModalInner({
                             {existingCharacter && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
                             {!existingCharacter && (<>
                                 <button type="button" className="editor-button editor-button-import" onClick={() => cardImportRef.current?.click()} disabled={isUploading}>Import</button>
-                                <input ref={cardImportRef} type="file" accept="image/png" hidden onChange={handleCardImport} disabled={isUploading} />
+                                <input ref={cardImportRef} type="file" accept=".png,.charx,.json,image/png,application/zip,application/json" hidden onChange={handleCardImport} disabled={isUploading} />
                             </>)}
                             <button type="button" className="editor-button editor-button-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Uploading...' : 'Save'}</button>
                         </div>
@@ -750,7 +794,7 @@ function CharacterEditorModalInner({
                                 {/* Known Character Names */}
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <div className="editor-section-title">Known Character Names ({Object.keys(knownCharacterNames).length})</div>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Which other characters' names/aliases this character knows. Select a character, then type the name variant they know.</div>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Which other characters' names/aliases this character knows. Select a character, then choose the name variant they know.</div>
 
                                     {/* Existing mappings */}
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', marginBottom: '8px' }}>
@@ -779,67 +823,34 @@ function CharacterEditorModalInner({
                                         )}
                                     </div>
 
-                                    {/* Add new mapping */}
+                                    {/* Add new mapping — two dropdowns side by side */}
                                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                                         <select
                                             className="editor-select"
-                                            defaultValue=""
+                                            value={selectedCharForKnownName}
+                                            onChange={e => handleCharacterSelectForKnownName(e.target.value)}
                                             disabled={isUploading || otherCharacters.length === 0}
                                             style={{ flex: 1, fontSize: '0.7rem' }}
-                                            onChange={e => {
-                                                const charId = e.target.value;
-                                                if (!charId) return;
-                                                const input = e.target.nextElementSibling?.nextElementSibling as HTMLInputElement | null;
-                                                input?.focus();
-                                                e.target.value = '';
-                                                e.target.dataset.selectedCharId = charId;
-                                            }}
                                         >
                                             <option value="">Select character...</option>
                                             {otherCharacters.map(c => (
                                                 <option key={c.id} value={c.id}>{c.name}</option>
                                             ))}
                                         </select>
-                                        <input
-                                            type="text"
-                                            className="editor-input"
-                                            placeholder="Name variant..."
-                                            style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }}
-                                            disabled={isUploading}
-                                            onKeyDown={e => {
-                                                if (e.key === 'Enter') {
-                                                    const target = e.target as HTMLElement;
-                                                    const select = target.previousElementSibling as HTMLSelectElement | null;
-                                                    const charId = select?.dataset.selectedCharId;
-                                                    const variant = (target as HTMLInputElement).value.trim();
-                                                    if (charId && variant) {
-                                                        handleAddKnownName(charId, variant);
-                                                        (target as HTMLInputElement).value = '';
-                                                        delete select?.dataset.selectedCharId;
-                                                    }
-                                                }
-                                            }}
-                                        />
-                                        <button
-                                            type="button"
-                                            className="toolbar-button"
-                                            style={{ fontSize: '0.7rem', padding: '2px 8px' }}
-                                            disabled={isUploading}
-                                            onClick={e => {
-                                                const target = e.target as HTMLElement;
-                                                const container = target.parentElement;
-                                                const select = container?.querySelector('select') as HTMLSelectElement | null;
-                                                const input = container?.querySelector('input[type="text"]') as HTMLInputElement | null;
-                                                const charId = select?.dataset.selectedCharId;
-                                                const variant = input?.value.trim();
-                                                if (charId && variant) {
-                                                    handleAddKnownName(charId, variant);
-                                                    if (input) input.value = '';
-                                                    if (select) delete select.dataset.selectedCharId;
-                                                }
-                                            }}
-                                        >+</button>
+                                        <select
+                                            className="editor-select"
+                                            value={selectedAliasForKnownName}
+                                            onChange={e => handleAliasSelectForKnownName(e.target.value)}
+                                            disabled={isUploading || !selectedCharForKnownName || selectedCharAliases.length === 0}
+                                            style={{ flex: 1, fontSize: '0.7rem' }}
+                                        >
+                                            <option value="">Select name/alias...</option>
+                                            {selectedCharAliases.map(alias => (
+                                                <option key={alias} value={alias}>{alias}</option>
+                                            ))}
+                                        </select>
                                     </div>
+
                                     {otherCharacters.length === 0 && (
                                         <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', marginTop: '4px' }}>No other characters available.</div>
                                     )}

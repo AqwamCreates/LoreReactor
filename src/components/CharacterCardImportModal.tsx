@@ -22,6 +22,8 @@ interface ImportPreview {
     lorebookContexts: Context[];
     emotionImageCount: number;
     cardFileName: string;
+    specVersion?: string;
+    nickname?: string;
 }
 
 export function CharacterCardImportModal({
@@ -64,7 +66,7 @@ export function CharacterCardImportModal({
         try {
             const card = await parseCharacterCard(file);
             if (!card) {
-                setError('Not a valid character card PNG. Ensure it follows TavernAI V1/V2/V3 spec.');
+                setError('Not a valid character card. Ensure it follows TavernAI V1/V2/V3 spec (PNG, CharX, or JSON).');
                 setIsProcessing(false);
                 return;
             }
@@ -74,14 +76,17 @@ export function CharacterCardImportModal({
             const now = Date.now();
             const charId = uuidv4();
 
-            // Upload the card image as the neutral portrait
+            // Upload the card image as the neutral portrait (only for PNG files)
             let neutralFilename: string | undefined;
-            try {
-                neutralFilename = await uploadCharacterImage(charId, file);
-            } catch {
-                setError('Failed to upload character image from card.');
-                setIsProcessing(false);
-                return;
+            const fileNameLower = file.name.toLowerCase();
+            if (fileNameLower.endsWith('.png') || file.type === 'image/png') {
+                try {
+                    neutralFilename = await uploadCharacterImage(charId, file);
+                } catch {
+                    setError('Failed to upload character image from card.');
+                    setIsProcessing(false);
+                    return;
+                }
             }
 
             // Build images record with neutral + any extracted emotion images
@@ -121,16 +126,23 @@ export function CharacterCardImportModal({
                 }
             }
 
+            // Use nickname as aliases if present
+            const aliases: string[] = [];
+            if (extended.nickname && extended.nickname !== fields.name) {
+                aliases.push(extended.nickname);
+            }
+
             const character: Character = {
                 id: charId,
                 name: fields.name || 'Unnamed Character',
                 description: fields.description || '',
+                aliases: aliases.length > 0 ? aliases : undefined,
                 systemPrompt: fields.systemPrompt || '',
                 thinkPrompt: undefined,
                 appearancePrompt: fields.appearancePrompt || undefined,
                 dialoguePrompts: undefined,
                 starterPrompts: Object.keys(starterPrompts).length > 0 ? starterPrompts : undefined,
-                images,
+                images: Object.keys(images).length > 0 ? images : undefined,
                 voice: undefined,
                 sampler: defaultSampler,
                 stopPatterns: undefined,
@@ -153,8 +165,8 @@ export function CharacterCardImportModal({
                 numberOfMessagesToDisableMetaThinkInstructions: 1,
                 numberOfMessagesToDisableDialoguePrompt: 1,
                 numberOfMessagesToDisableStarterPrompt: 1,
-                firstCreatedTimestamp: now,
-                lastUpdatedTimestamp: now,
+                firstCreatedTimestamp: extended.creationDate || now,
+                lastUpdatedTimestamp: extended.modificationDate || now,
             };
 
             // Build finalized lorebook contexts using new RegularExpressionTrigger[] format
@@ -195,6 +207,8 @@ export function CharacterCardImportModal({
                 lorebookContexts,
                 emotionImageCount: extended.emotionImages ? Object.keys(extended.emotionImages).length : 0,
                 cardFileName: file.name,
+                specVersion: extended.specVersion,
+                nickname: extended.nickname,
             });
         } catch (error) {
             setError(`Failed to parse character card: ${(error as Error).message}`);
@@ -259,9 +273,10 @@ export function CharacterCardImportModal({
                     {!preview && !isProcessing && (
                         <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                             <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🎴</div>
-                            <div style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '8px' }}>Select a Character Card PNG</div>
+                            <div style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '8px' }}>Select a Character Card</div>
                             <div style={{ fontSize: '0.7rem', opacity: 0.6, marginBottom: '20px' }}>
                                 Supports TavernAI V1, V2, and V3 formats.<br />
+                                Accepts PNG, CharX (.charx), and JSON files.<br />
                                 Characters, emotion images and lorebook entries will be extracted automatically.
                             </div>
                             <button
@@ -274,7 +289,7 @@ export function CharacterCardImportModal({
                             <input
                                 ref={fileInputRef}
                                 type="file"
-                                accept="image/png"
+                                accept=".png,.charx,.json,image/png,application/zip,application/json"
                                 hidden
                                 onChange={handleFileSelected}
                             />
@@ -298,6 +313,8 @@ export function CharacterCardImportModal({
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.75rem' }}>
                                     <div><strong>Name:</strong> {preview.character.name}</div>
                                     <div><strong>Source:</strong> {preview.cardFileName}</div>
+                                    {preview.nickname && <div><strong>Nickname:</strong> {preview.nickname}</div>}
+                                    {preview.specVersion && <div><strong>Spec:</strong> V{preview.specVersion}</div>}
                                     <div><strong>Description:</strong> {preview.character.description?.substring(0, 80) || '(none)'}{preview.character.description && preview.character.description.length > 80 ? '...' : ''}</div>
                                     <div><strong>Emotion Images:</strong> {preview.emotionImageCount}</div>
                                     <div><strong>System Prompt:</strong> {preview.character.systemPrompt ? `${preview.character.systemPrompt.length} chars` : '(none)'}</div>

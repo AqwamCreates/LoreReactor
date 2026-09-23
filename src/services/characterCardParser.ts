@@ -1,6 +1,7 @@
 // src/services/characterCardParser.ts
-// Parses TavernAI / SillyTavern character cards (PNG with embedded JSON)
+// Parses TavernAI / SillyTavern character cards
 // Supports V1, V2, and V3 specs including lorebooks, assets, and extensions
+// Handles both PNG tEXt metadata and CharX (.charx) ZIP containers
 
 import type { ParsedCharacterCard, Context, RegularExpressionTrigger } from "../types";
 
@@ -14,6 +15,16 @@ export interface ParsedCharacterCardExtended extends ParsedCharacterCard {
     nickname?: string;
     /** Greetings only used in group chats */
     groupOnlyGreetings?: string[];
+    /** Multilingual creator notes keyed by language code */
+    creatorNotesMultilingual?: Record<string, string>;
+    /** Source URLs for the character */
+    source?: string[];
+    /** Creation timestamp (unix ms) */
+    creationDate?: number;
+    /** Last modification timestamp (unix ms) */
+    modificationDate?: number;
+    /** Spec version string (e.g. "3.0") */
+    specVersion?: string;
 }
 
 // ─── Raw JSON shapes from card specs ────────────────────────────────
@@ -56,22 +67,177 @@ interface RawV3Data extends RawV2Data {
     nickname?: string;
     group_only_greetings?: string[];
     assets?: V3Asset[];
+    creator_notes_multilingual?: Record<string, string>;
+    source?: string[];
+    creation_date?: number;
+    modification_date?: number;
 }
 
 interface RawCardEnvelope {
     spec?: string;
+    spec_version?: string;
     data?: unknown;
     [key: string]: unknown;
 }
 
+// ─── Lorebook Types ─────────────────────────────────────────────────
+
+interface CharacterBookEntry {
+    keys?: string[];
+    content?: string;
+    enabled?: boolean;
+    insertion_order?: number;
+    case_sensitive?: boolean;
+    selective?: boolean;
+    secondary_keys?: string[];
+    constant?: boolean;
+    name?: string;
+    comment?: string;
+    priority?: number;
+    position?: 'before_char' | 'after_char';
+    use_regex?: boolean;
+    id?: number | string;
+    extensions?: Record<string, unknown>;
+}
+
+interface CharacterBook {
+    name?: string;
+    description?: string;
+    scan_depth?: number;
+    token_budget?: number;
+    recursive_scanning?: boolean;
+    extensions?: Record<string, unknown>;
+    entries?: CharacterBookEntry[];
+}
+
+// ─── V3 Asset Types ─────────────────────────────────────────────────
+
+interface V3Asset {
+    name?: string;
+    type?: string;
+    uri?: string;
+    ext?: string;
+    filename?: string;
+}
+
+// ─── Main Parser ────────────────────────────────────────────────────
+
 /**
- * Reads a PNG file and extracts character data from tEXt metadata chunks.
- * Checks both V2 (`chara`) and V3 (`ccv3`) keywords.
+ * Reads a character card file (PNG or CharX ZIP) and extracts character data.
  * Returns null if no valid character card data is found.
  */
 export async function parseCharacterCard(file: File): Promise<ParsedCharacterCardExtended | null> {
-    if (file.type !== 'image/png') return null;
+    const fileName = file.name.toLowerCase();
 
+    // Try CharX (ZIP) first if extension matches
+    if (fileName.endsWith('.charx') || file.type === 'application/zip') {
+        return parseCharX(file);
+    }
+
+    // Fall back to PNG parsing
+    if (file.type === 'image/png' || fileName.endsWith('.png')) {
+        return parsePngCard(file);
+    }
+
+    // Try JSON import
+    if (file.type === 'application/json' || fileName.endsWith('.json')) {
+        return parseJsonCard(file);
+    }
+
+    return null;
+}
+
+/**
+ * Parse a CharX (.charx) ZIP container.
+ * Extracts the character.json from the ZIP root and processes it.
+ */
+async function parseCharX(file: File): Promise<ParsedCharacterCardExtended | null> {
+    try {
+        // Use JSZip-like manual ZIP parsing for the character.json entry
+        const buffer = await file.arrayBuffer();
+        const view = new DataView(buffer);
+
+        // Verify ZIP signature (PK\x03\x04)
+        if (view.getUint8(0) !== 0x50 || view.getUint8(1) !== 0x4B ||
+            view.getUint8(2) !== 0x03 || view.getUint8(3) !== 0x04) {
+            return null;
+        }
+
+        // Search for character.json in local file headers
+        let offset = 0;
+        while (offset < buffer.byteLength - 4) {
+            if (view.getUint8(offset) === 0x50 && view.getUint8(offset + 1) === 0x4B &&
+                view.getUint8(offset + 2) === 0x03 && view.getUint8(offset + 3) === 0x04) {
+
+                const fileNameLength = view.getUint16(offset + 26, true);
+                const extraFieldLength = view.getUint16(offset + 28, true);
+                const compressedSize = view.getUint32(offset + 18, true);
+                const uncompressedSize = view.getUint32(offset + 22, true);
+                const compressionMethod = view.getUint16(offset + 8, true);
+
+                const fileNameStart = offset + 30;
+                const fileNameBytes = new Uint8Array(buffer, fileNameStart, fileNameLength);
+                const entryName = new TextDecoder('utf-8').decode(fileNameBytes);
+
+                const dataStart = fileNameStart + fileNameLength + extraFieldLength;
+
+                if (entryName === 'character.json' || entryName.endsWith('/character.json')) {
+                    let jsonBytes: Uint8Array;
+
+                    if (compressionMethod === 0) {
+                        // Stored (no compression)
+                        jsonBytes = new Uint8Array(buffer, dataStart, uncompressedSize);
+                    } else if (compressionMethod === 8) {
+                        // Deflate — use DecompressionStream if available
+                        const compressedData = new Uint8Array(buffer, dataStart, compressedSize);
+                        try {
+                            const ds = new DecompressionStream('deflate-raw');
+                            const writer = ds.writable.getWriter();
+                            const reader = ds.readable.getReader();
+                            writer.write(compressedData);
+                            writer.close();
+                            const chunks: Uint8Array[] = [];
+                            while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+                                chunks.push(value);
+                            }
+                            const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+                            jsonBytes = new Uint8Array(totalLength);
+                            let pos = 0;
+                            for (const chunk of chunks) {
+                                jsonBytes.set(chunk, pos);
+                                pos += chunk.length;
+                            }
+                        } catch {
+                            return null;
+                        }
+                    } else {
+                        // Unsupported compression
+                        continue;
+                    }
+
+                    const jsonText = new TextDecoder('utf-8').decode(jsonBytes);
+                    const json = JSON.parse(jsonText) as RawCardEnvelope;
+                    return processCardEnvelope(json);
+                }
+
+                offset = dataStart + compressedSize;
+            } else {
+                offset++;
+            }
+        }
+
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Parse a PNG file with embedded character card data in tEXt chunks.
+ */
+async function parsePngCard(file: File): Promise<ParsedCharacterCardExtended | null> {
     try {
         const buffer = await file.arrayBuffer();
         const view = new DataView(buffer);
@@ -86,6 +252,7 @@ export async function parseCharacterCard(file: File): Promise<ParsedCharacterCar
         let v3Data: RawV3Data | null = null;
         let v2Data: RawV2Data | null = null;
         let v1Data: RawV1Card | null = null;
+        let specVersion: string | undefined;
 
         let offset = 8;
         while (offset < buffer.byteLength) {
@@ -118,6 +285,7 @@ export async function parseCharacterCard(file: File): Promise<ParsedCharacterCar
                         if (keyword === 'ccv3' || keyword === 'CCV3') {
                             if (json.spec === 'chara_card_v3' && json.data) {
                                 v3Data = json.data as RawV3Data;
+                                specVersion = json.spec_version;
                             }
                         }
 
@@ -125,6 +293,7 @@ export async function parseCharacterCard(file: File): Promise<ParsedCharacterCar
                         if (keyword === 'chara' || keyword === 'Chara') {
                             if (json.spec && json.data) {
                                 v2Data = json.data as RawV2Data;
+                                specVersion = json.spec_version;
                             } else if ((json as RawV1Card).name && !json.spec) {
                                 // V1 format — flat object
                                 v1Data = json as unknown as RawV1Card;
@@ -141,8 +310,16 @@ export async function parseCharacterCard(file: File): Promise<ParsedCharacterCar
         }
 
         // Priority: V3 > V2 > V1
-        if (v3Data) return normalizeV3(v3Data);
-        if (v2Data) return normalizeV2(v2Data);
+        if (v3Data) {
+            const result = normalizeV3(v3Data);
+            if (specVersion) result.specVersion = specVersion;
+            return result;
+        }
+        if (v2Data) {
+            const result = normalizeV2(v2Data);
+            if (specVersion) result.specVersion = specVersion;
+            return result;
+        }
         if (v1Data) return normalizeV1(v1Data);
 
         return null;
@@ -150,6 +327,45 @@ export async function parseCharacterCard(file: File): Promise<ParsedCharacterCar
         return null;
     }
 }
+
+/**
+ * Parse a standalone JSON character card file.
+ */
+async function parseJsonCard(file: File): Promise<ParsedCharacterCardExtended | null> {
+    try {
+        const text = await file.text();
+        const json = JSON.parse(text) as RawCardEnvelope;
+        return processCardEnvelope(json);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Process a parsed JSON envelope and return the appropriate normalized result.
+ */
+function processCardEnvelope(json: RawCardEnvelope): ParsedCharacterCardExtended | null {
+    if (json.spec === 'chara_card_v3' && json.data) {
+        const result = normalizeV3(json.data as RawV3Data);
+        if (json.spec_version) result.specVersion = json.spec_version;
+        return result;
+    }
+    if (json.spec === 'chara_card_v2' && json.data) {
+        const result = normalizeV2(json.data as RawV2Data);
+        if (json.spec_version) result.specVersion = json.spec_version;
+        return result;
+    }
+    if ((json as RawV1Card).name && !json.spec) {
+        return normalizeV1(json as unknown as RawV1Card);
+    }
+    // Try treating the whole object as V1
+    if ((json as RawV1Card).name) {
+        return normalizeV1(json as unknown as RawV1Card);
+    }
+    return null;
+}
+
+// ─── Decoding Helpers ───────────────────────────────────────────────
 
 function decodeText(buffer: ArrayBuffer, start: number, end: number): string {
     const bytes = new Uint8Array(buffer, start, end - start);
@@ -181,7 +397,7 @@ function normalizeV1(json: RawV1Card): ParsedCharacterCardExtended {
         scenario: json.scenario || undefined,
         mesExample: json.mes_example || undefined,
         systemPrompt: json.system_prompt || undefined,
-        starterPrompt: undefined,
+        starterPrompt: json.post_history_instructions || undefined,
         tags: json.tags || undefined,
         creator: json.creator || undefined,
         characterVersion: json.character_version || undefined,
@@ -200,7 +416,7 @@ function normalizeV2(data: RawV2Data): ParsedCharacterCardExtended {
         mesExample: data.mes_example || undefined,
         creatorNotes: data.creator_notes || undefined,
         systemPrompt: data.system_prompt || undefined,
-        starterPrompt: undefined,
+        starterPrompt: data.post_history_instructions || undefined,
         alternateGreetings: data.alternate_greetings?.length ? data.alternate_greetings : undefined,
         tags: data.tags || undefined,
         creator: (data.extensions as Record<string, unknown>)?.creator as string | undefined || data.creator || undefined,
@@ -230,8 +446,12 @@ function normalizeV3(data: RawV3Data): ParsedCharacterCardExtended {
     // V3-specific fields
     if (data.nickname) result.nickname = data.nickname;
     if (data.group_only_greetings?.length) result.groupOnlyGreetings = data.group_only_greetings;
+    if (data.creator_notes_multilingual) result.creatorNotesMultilingual = data.creator_notes_multilingual;
+    if (data.source?.length) result.source = data.source;
+    if (data.creation_date) result.creationDate = data.creation_date;
+    if (data.modification_date) result.modificationDate = data.modification_date;
 
-    // V3 assets → emotion images
+    // V3 assets → emotion images and other asset types
     if (data.assets?.length) {
         const assetImages = extractV3Assets(data.assets);
         // Merge with extension images; V3 assets take priority
@@ -243,35 +463,11 @@ function normalizeV3(data: RawV3Data): ParsedCharacterCardExtended {
 
 // ─── Lorebook → Context Extraction ─────────────────────────────────
 
-interface CharacterBookEntry {
-    keys?: string[];
-    content?: string;
-    enabled?: boolean;
-    insertion_order?: number;
-    case_sensitive?: boolean;
-    selective?: boolean;
-    secondary_keys?: string[];
-    constant?: boolean;
-    name?: string;
-    comment?: string;
-    priority?: number;
-    position?: 'before_char' | 'after_char';
-    extensions?: Record<string, unknown>;
-}
-
-interface CharacterBook {
-    name?: string;
-    entries?: CharacterBookEntry[];
-    scan_depth?: number;
-    token_budget?: number;
-    recursive_scanning?: boolean;
-    extensions?: Record<string, unknown>;
-}
-
 /**
  * Converts character_book entries into partial Context objects.
  * Maps lorebook keys → RegularExpressionTrigger arrays, content → text,
  * insertion_order → insertionDepth, constant → always-active context.
+ * Respects V3 use_regex flag — when true, keys are used as-is without escaping.
  */
 function extractLorebookContexts(book: CharacterBook): Partial<Context>[] {
     if (!book.entries?.length) return [];
@@ -287,22 +483,25 @@ function extractLorebookContexts(book: CharacterBook): Partial<Context>[] {
     for (const entry of sorted) {
         const keys = entry.keys || [];
         const secondaryKeys = entry.selective ? (entry.secondary_keys || []) : [];
+        const useRegex = entry.use_regex === true;
 
         // Build regex trigger from keys
         let activationTriggers: RegularExpressionTrigger[] | undefined;
         if (keys.length > 0) {
-            const escaped = keys.map(k => escapeRegex(k));
+            // When use_regex is true, keys are already regex patterns — don't escape
+            const processed = useRegex ? keys : keys.map(k => escapeRegex(k));
             let regexPattern: string;
             if (entry.selective && secondaryKeys.length > 0) {
                 // Selective: need match from BOTH key sets
-                const primaryGroup = escaped.join('|');
-                const secondaryGroup = secondaryKeys.map(k => escapeRegex(k)).join('|');
+                const primaryGroup = processed.join('|');
+                const secondaryProcessed = useRegex ? secondaryKeys : secondaryKeys.map(k => escapeRegex(k));
+                const secondaryGroup = secondaryProcessed.join('|');
                 regexPattern = `(?=.*(?:${primaryGroup}))(?=.*(?:${secondaryGroup}))`;
             } else {
-                regexPattern = escaped.join('|');
+                regexPattern = processed.join('|');
             }
-            // Respect case sensitivity
-            if (!entry.case_sensitive) {
+            // Respect case sensitivity (only apply when NOT using raw regex)
+            if (!entry.case_sensitive && !useRegex) {
                 regexPattern = `(?i)${regexPattern}`;
             }
             activationTriggers = [{
@@ -337,16 +536,10 @@ function escapeRegex(str: string): string {
 
 // ─── V3 Asset Extraction ───────────────────────────────────────────
 
-interface V3Asset {
-    name?: string;
-    type?: string;
-    uri?: string;
-    filename?: string;
-}
-
 /**
  * Extracts emotion/expression images from V3 assets array.
  * Maps asset names to filenames for the Character.images record.
+ * Handles V3 asset types: icon, background, user_icon, emotion.
  * Only processes image-type assets with recognizable emotion names.
  */
 function extractV3Assets(assets: V3Asset[]): Record<string, string> {
@@ -368,12 +561,21 @@ function extractV3Assets(assets: V3Asset[]): Record<string, string> {
     };
 
     for (const asset of assets) {
-        const filename = asset.filename || asset.uri;
+        // V3 spec: uri is required, filename is our fallback
+        const filename = asset.uri || asset.filename;
         if (!filename) continue;
 
-        // Only process image types
         const type = (asset.type || '').toLowerCase();
-        if (type && !['image', 'icon', 'expression', 'sprite', 'emote'].some(t => type.includes(t))) {
+
+        // Handle known V3 asset types
+        if (type === 'icon' || type === 'background' || type === 'user_icon') {
+            // Store these under their type name for potential use
+            images[type] = filename;
+            continue;
+        }
+
+        // Only process emotion/expression/sprite/emote/image types for emotion mapping
+        if (type && !['emotion', 'expression', 'sprite', 'emote', 'image'].some(t => type.includes(t))) {
             continue;
         }
 
@@ -469,8 +671,6 @@ export function mapCardToEditorFields(card: ParsedCharacterCard): {
         if (card.scenario) parts.push(`Scenario: ${card.scenario}`);
         systemPrompt = parts.join('\n\n');
     }
-
-    // Use post_history_instructions as think prompt if available
 
     // Starter prompt: use explicit starterPrompt if present, otherwise
     // fall back to post_history_instructions (common convention in ST cards)

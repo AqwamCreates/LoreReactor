@@ -1,6 +1,6 @@
 // src/components/DataExportModal.tsx
 import { useState } from 'react';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData } from '../types';
 import { exportSelectedData, type LoreReactorExport } from '../services/DataPortabilityEngine';
 import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
@@ -20,6 +20,8 @@ interface DataExportModalProps {
     allBudgetStrategies: BudgetStrategy[];
     allProfiles: Profile[];
     allMemories: Memory[];
+    allAccounts: Account[];
+    allMultiplayerData: MultiplayerData[];
     rawChatShells: RawInteractionData[];
 }
 
@@ -27,7 +29,8 @@ export function DataExportModal({
     isOpen, onClose,
     allCharacters, allContexts, allLocations, allAudioTracks,
     allWorlds, allModels, allSamplers, allPromptBlocks, allStopPatterns,
-    allBudgetStrategies, allProfiles, allMemories, rawChatShells,
+    allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData,
+    rawChatShells,
 }: DataExportModalProps) {
     const [isExporting, setIsExporting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -46,6 +49,8 @@ export function DataExportModal({
     const [selectedBudgetStrategyIds, setSelectedBudgetStrategyIds] = useState<string[]>([]);
     const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
     const [selectedMemoryIds, setSelectedMemoryIds] = useState<string[]>([]);
+    const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
+    const [selectedMultiplayerDataIds, setSelectedMultiplayerDataIds] = useState<string[]>([]);
     const [includeActions, setIncludeActions] = useState(true);
 
     const [chatSearch, setChatSearch] = useState('');
@@ -61,6 +66,8 @@ export function DataExportModal({
     const [budgetStrategySearch, setBudgetStrategySearch] = useState('');
     const [profileSearch, setProfileSearch] = useState('');
     const [memorySearch, setMemorySearch] = useState('');
+    const [accountSearch, setAccountSearch] = useState('');
+    const [multiplayerDataSearch, setMultiplayerDataSearch] = useState('');
 
     const reset = () => {
         setSummary(null); setError(null); setIsExporting(false);
@@ -68,12 +75,12 @@ export function DataExportModal({
         setSelectedLocationIds([]); setSelectedAudioTrackIds([]); setSelectedWorldIds([]);
         setSelectedModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
         setSelectedStopPatternIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
-        setSelectedMemoryIds([]);
+        setSelectedMemoryIds([]); setSelectedAccountIds([]); setSelectedMultiplayerDataIds([]);
         setIncludeActions(true);
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
         setAudioTrackSearch(''); setWorldSearch(''); setModelSearch(''); setSamplerSearch('');
         setPromptBlockSearch(''); setStopPatternSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
-        setMemorySearch('');
+        setMemorySearch(''); setAccountSearch(''); setMultiplayerDataSearch('');
     };
 
     const handleClose = () => { if (isExporting) return; reset(); onClose(); };
@@ -86,7 +93,8 @@ export function DataExportModal({
         selectedLocationIds.length + selectedAudioTrackIds.length + selectedWorldIds.length +
         selectedModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
         selectedStopPatternIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
-        selectedMemoryIds.length + (includeActions ? 1 : 0);
+        selectedMemoryIds.length + selectedAccountIds.length + selectedMultiplayerDataIds.length +
+        (includeActions ? 1 : 0);
 
     const handleExport = async () => {
         if (totalSelected === 0) { setError('Select at least one item to export.'); return; }
@@ -99,7 +107,9 @@ export function DataExportModal({
                 audioTrackIds: selectedAudioTrackIds, worldIds: selectedWorldIds, modelIds: selectedModelIds,
                 samplerIds: selectedSamplerIds, promptBlockIds: selectedPromptBlockIds,
                 stopPatternIds: selectedStopPatternIds, budgetStrategyIds: selectedBudgetStrategyIds,
-                profileIds: selectedProfileIds, memoryIds: selectedMemoryIds, includeActions,
+                profileIds: selectedProfileIds, memoryIds: selectedMemoryIds,
+                accountIds: selectedAccountIds, multiplayerDataIds: selectedMultiplayerDataIds,
+                includeActions,
             });
             setSummary(data);
 
@@ -167,6 +177,10 @@ export function DataExportModal({
                                     onToggle={(id) => toggle(selectedProfileIds, setSelectedProfileIds, id)} searchQuery={profileSearch} onSearchChange={setProfileSearch} />
                                 <EntitySelectList label="Memories" items={allMemories} selectedIds={selectedMemoryIds}
                                     onToggle={(id) => toggle(selectedMemoryIds, setSelectedMemoryIds, id)} searchQuery={memorySearch} onSearchChange={setMemorySearch} />
+                                <EntitySelectList label="Accounts" items={allAccounts} selectedIds={selectedAccountIds}
+                                    onToggle={(id) => toggle(selectedAccountIds, setSelectedAccountIds, id)} searchQuery={accountSearch} onSearchChange={setAccountSearch} />
+                                <EntitySelectList label="Multiplayer Data" items={allMultiplayerData} selectedIds={selectedMultiplayerDataIds}
+                                    onToggle={(id) => toggle(selectedMultiplayerDataIds, setSelectedMultiplayerDataIds, id)} searchQuery={multiplayerDataSearch} onSearchChange={setMultiplayerDataSearch} />
 
                                 <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
                                     <input type="checkbox" checked={includeActions} onChange={e => setIncludeActions(e.target.checked)} className="editor-checkbox-input" />
@@ -207,6 +221,8 @@ export function DataExportModal({
                                     <div><strong>Budget Strategies:</strong> {summary.budgetStrategies.length}</div>
                                     <div><strong>Profiles:</strong> {summary.profiles.length}</div>
                                     <div><strong>Memories:</strong> {summary.memories?.length ?? 0}</div>
+                                    <div><strong>Accounts:</strong> {summary.accounts?.length ?? 0}</div>
+                                    <div><strong>Multiplayer Data:</strong> {summary.multiplayerData?.length ?? 0}</div>
                                     <div><strong>Actions:</strong> {summary.interjectableActions.length}</div>
                                     <div><strong>Exported At:</strong> {new Date(summary.exportedAt).toLocaleString()}</div>
                                 </div>

@@ -465,7 +465,8 @@ export function AppModals({
                     allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} allAudioTracks={allAudioTracks}
                     allWorlds={allWorlds} allModels={allModels} allSamplers={allSamplers} allPromptBlocks={allPromptBlocks}
                     allStopPatterns={allStopPatterns} allBudgetStrategies={allBudgetStrategies} allProfiles={allProfiles}
-                    allMemories={allMemories} rawChatShells={chatShellsWithIds} />
+                    allMemories={allMemories} allAccounts={allAccounts} allMultiplayerData={allMultiplayerData}
+                    rawChatShells={chatShellsWithIds} />
             )}
 
             {modals.dataManager.isOpen && (
