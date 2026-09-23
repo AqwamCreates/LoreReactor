@@ -83,8 +83,11 @@ function AudioTrackEditorModalInner({
     const [errors, setErrors] = useState<Record<string, string | undefined>>({});
     const [audioFile, setAudioFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    // FIXED: Pass both track ID and filename to getAudioTrackUrl
     const [previewUrl, setPreviewUrl] = useState<string | null>(() => {
-        if (existingTrack?.filename) return getAudioTrackUrl(existingTrack.filename);
+        if (existingTrack?.id && existingTrack?.filename) {
+            return getAudioTrackUrl(existingTrack.id, existingTrack.filename);
+        }
         return null;
     });
     const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
@@ -161,12 +164,16 @@ function AudioTrackEditorModalInner({
     const buildTrackFromForm = async (isNewClone: boolean): Promise<AudioTrack | null> => {
         if (!validate()) return null;
 
+        // FIXED: Determine ID upfront so upload has a valid path
+        const trackId = isNewClone ? uuidv4() : (existingTrack?.id || uuidv4());
+
         let finalFilename = filename.trim();
 
         if (audioFile) {
             setIsUploading(true);
             try {
-                finalFilename = await uploadAudioTrack(audioFile);
+                // FIXED: Pass trackId as first argument to uploadAudioTrack
+                finalFilename = await uploadAudioTrack(trackId, audioFile);
             } catch (error) {
                 console.error('Failed to upload audio file:', error);
                 setErrors(prev => ({ ...prev, filename: 'Upload failed.' }));
@@ -190,7 +197,7 @@ function AudioTrackEditorModalInner({
         };
 
         return {
-            id: isNewClone ? uuidv4() : (existingTrack?.id || uuidv4()),
+            id: trackId,
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             filename: finalFilename,

@@ -450,7 +450,7 @@ function CharacterEditorModalInner({
         let finalVoiceFilename: string | undefined = isNewClone ? undefined : existingCharacter?.voice;
         if (voiceFile) {
             setIsUploading(true);
-            try { finalVoiceFilename = await uploadCharacterVoice(voiceFile); }
+            try { finalVoiceFilename = await uploadCharacterVoice(targetCharacterId, voiceFile); }
             catch { setSubmitError("Failed to upload voice."); setIsUploading(false); return null; }
             setIsUploading(false);
         } else if (!isNewClone && voiceName === '' && existingVoiceName !== '') { finalVoiceFilename = undefined; }

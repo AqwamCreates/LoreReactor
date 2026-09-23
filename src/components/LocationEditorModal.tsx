@@ -65,7 +65,7 @@ function LocationEditorModalInner({
     const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [imagePreviews, setImagePreviews] = useState<string[]>(() => {
         if (existingLocation?.images && existingLocation.images.length > 0) {
-            return existingLocation.images.map(img => `/user_data/location_data/${img}`);
+            return existingLocation.images.map(img => `/user_data/location_images/${existingLocation.id}/${img}`);
         }
         return [];
     });
@@ -243,11 +243,17 @@ function LocationEditorModalInner({
     const buildLocationFromForm = async (isNewClone: boolean): Promise<Location | null> => {
         if (!validate()) return null;
 
+        // Determine the location ID upfront so uploads have a valid path
+        const locationId = isNewClone ? uuidv4() : (existingLocation?.id || uuidv4());
+
         let finalImageFilenames: string[] | undefined = isNewClone ? [] : (existingLocation?.images || []);
         if (imageFiles.length > 0) {
             setIsUploading(true);
             try {
-                const uploadedFilenames = await Promise.all(imageFiles.map(file => uploadLocationImage(file)));
+                // FIXED: Pass locationId as first argument to uploadLocationImage
+                const uploadedFilenames = await Promise.all(
+                    imageFiles.map(file => uploadLocationImage(locationId, file))
+                );
                 finalImageFilenames = [...(isNewClone ? [] : (existingLocation?.images || [])), ...uploadedFilenames];
             } catch (error) {
                 console.error("Failed to upload images:", error);
@@ -268,7 +274,7 @@ function LocationEditorModalInner({
         };
 
         return {
-            id: isNewClone ? uuidv4() : (existingLocation?.id || uuidv4()),
+            id: locationId,
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             text: text.trim() || undefined,

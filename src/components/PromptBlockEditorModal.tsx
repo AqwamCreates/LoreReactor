@@ -65,7 +65,8 @@ function PromptBlockEditorModalInner({
     const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [imagePreviews, setImagePreviews] = useState<string[]>(() => {
         if (existingBlock?.images && existingBlock.images.length > 0) {
-            return existingBlock.images.map(img => `/user_data/prompt_block_data/${img}`);
+            // FIXED: Use correct storage path matching ENTITY_REGISTRY.promptBlockImages
+            return existingBlock.images.map(img => `/user_data/prompt_block_images/${existingBlock.id}/${img}`);
         }
         return [];
     });
@@ -171,12 +172,18 @@ function PromptBlockEditorModalInner({
     const buildBlockFromForm = async (isNewClone: boolean): Promise<PromptBlock | null> => {
         if (!validate()) return null;
 
+        // FIXED: Determine ID upfront so uploads have a valid path
+        const blockId = isNewClone ? uuidv4() : (existingBlock?.id || uuidv4());
+
         let finalImageFilenames: string[] = isNewClone ? [] : (existingBlock?.images ?? []);
 
         if (imageFiles.length > 0) {
             setIsUploading(true);
             try {
-                const uploaded = await Promise.all(imageFiles.map(f => uploadPromptBlockImage(f)));
+                // FIXED: Pass blockId as first argument to uploadPromptBlockImage
+                const uploaded = await Promise.all(
+                    imageFiles.map(f => uploadPromptBlockImage(blockId, f))
+                );
                 finalImageFilenames = [...(isNewClone ? [] : (existingBlock?.images ?? [])), ...uploaded];
             } catch (error) {
                 console.error('Failed to upload images:', error);
@@ -195,7 +202,7 @@ function PromptBlockEditorModalInner({
         };
 
         return {
-            id: isNewClone ? uuidv4() : (existingBlock?.id || uuidv4()),
+            id: blockId,
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             textContent: textContent.trim(),

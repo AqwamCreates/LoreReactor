@@ -78,7 +78,7 @@ export function useCharacterVoice() {
                 const context: TextToSpeedLanguageModelContext = { serverUrl: ttsServerUrl || undefined, backend: 'Qwen3-TTS' };
                 const label = character.id;
                 if (!uploadedTtsVoicesRef.current.has(label)) {
-                    const url = getCharacterVoiceUrl(character.voice);
+                    const url = getCharacterVoiceUrl(label, character.voice);
                     if (!url) return;
                     const response = await fetch(url);
                     if (!response.ok) return;

@@ -222,6 +222,12 @@ function generateInitialCharacterText(character: Character): string {
     return result;
 }
 
+/** Represents an image reference tied to its parent entity for URL resolution. */
+interface EntityImageRef {
+    entityId: string;
+    filename: string;
+}
+
 export async function prepareRequestBody(
     interactionData: InteractionData,
     character: Character,
@@ -233,6 +239,8 @@ export async function prepareRequestBody(
 
     const profile = interactionData.Profile;
 
+    // NOTE: buildPrompt must return EntityImageRef[] for contextImages, locationImages, and promptBlockImages
+    // instead of plain string[]. Update buildPrompt accordingly.
     const { prompt, stops, contextImages, locationImages, promptBlockImages, characterClothingWearingStatuses, fetchErrors } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId);
 
     const sampler = character.sampler;
@@ -314,10 +322,11 @@ export async function prepareRequestBody(
         }
     }
 
+    // FIXED: Context images now carry entityId from buildPrompt
     if (!profile?.forceNoContextImageInjection && contextImages.length > 0) {
-        const contextImagePromises = contextImages.map(async (filename) => {
+        const contextImagePromises = contextImages.map(async (imgRef: EntityImageRef) => {
             try {
-                const imageUrl = getContextImageUrl(filename);
+                const imageUrl = getContextImageUrl(imgRef.entityId, imgRef.filename);
                 if (!imageUrl) return null;
                 const response = await fetch(imageUrl);
                 if (!response.ok) return null;
@@ -335,10 +344,11 @@ export async function prepareRequestBody(
         filesBase64.push(...resolvedContextImages);
     }
 
+    // FIXED: Location images now carry entityId from buildPrompt
     if (!profile?.forceNoContextImageInjection && locationImages.length > 0) {
-        const locationImagePromises = locationImages.map(async (filename) => {
+        const locationImagePromises = locationImages.map(async (imgRef: EntityImageRef) => {
             try {
-                const imageUrl = getLocationImageUrl(filename);
+                const imageUrl = getLocationImageUrl(imgRef.entityId, imgRef.filename);
                 if (!imageUrl) return null;
                 const response = await fetch(imageUrl);
                 if (!response.ok) return null;
@@ -350,16 +360,17 @@ export async function prepareRequestBody(
                 });
                 const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
                 return { data: rawData, id: imageIdCounter++ };
-            } catch{ return null; }
+            } catch { return null; }
         });
         const resolvedLocationImages = (await Promise.all(locationImagePromises)).filter(img => img !== null);
         filesBase64.push(...resolvedLocationImages);
     }
 
+    // FIXED: Prompt block images now carry entityId from buildPrompt
     if (!profile?.forceNoContextImageInjection && promptBlockImages.length > 0) {
-        const promptBlockImagePromises = promptBlockImages.map(async (filename) => {
+        const promptBlockImagePromises = promptBlockImages.map(async (imgRef: EntityImageRef) => {
             try {
-                const imageUrl = getPromptBlockImageUrl(filename);
+                const imageUrl = getPromptBlockImageUrl(imgRef.entityId, imgRef.filename);
                 if (!imageUrl) return null;
                 const response = await fetch(imageUrl);
                 if (!response.ok) return null;

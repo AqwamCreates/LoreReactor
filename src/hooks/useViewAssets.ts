@@ -57,7 +57,8 @@ function resolveLocationBackgroundUrl(interactionData: InteractionData, localPro
                 if (regex.test(lastUserText)) {
                     const idx = Number(idxStr);
                     if (idx >= 0 && idx < loc.images.length && loc.images[idx]) {
-                        return getLocationImageUrl(loc.images[idx]);
+                        // FIXED: Pass loc.id as first argument
+                        return getLocationImageUrl(loc.id, loc.images[idx]);
                     }
                 }
             } catch {}
@@ -78,12 +79,15 @@ function resolveLocationBackgroundUrl(interactionData: InteractionData, localPro
             let randomValue = Math.random() * totalWeight;
             for (const entry of pool) {
                 randomValue -= entry.weight;
-                if (randomValue <= 0) return getLocationImageUrl(loc.images[entry.index]);
+                // FIXED: Pass loc.id as first argument
+                if (randomValue <= 0) return getLocationImageUrl(loc.id, loc.images[entry.index]);
             }
-            return getLocationImageUrl(loc.images[pool[pool.length - 1].index]);
+            // FIXED: Pass loc.id as first argument
+            return getLocationImageUrl(loc.id, loc.images[pool[pool.length - 1].index]);
         }
     }
-    if (loc.images[0]) return getLocationImageUrl(loc.images[0]);
+    // FIXED: Pass loc.id as first argument
+    if (loc.images[0]) return getLocationImageUrl(loc.id, loc.images[0]);
     return null;
 }
 

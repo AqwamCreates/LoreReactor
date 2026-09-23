@@ -34,14 +34,16 @@ const BATCH_DELAY_MS = 10;
 
 const ENTITY_REGISTRY = {
   characters: { dir: 'character_data', hasManifest: true },
-  characterImages: { dir: 'character_images_data', hasManifest: false },
+  characterImages: { dir: 'character_images', hasManifest: false },
   characterVoices: { dir: 'character_voices', hasManifest: false },
   samplers: { dir: 'sampler_data', hasManifest: true },
   contexts: { dir: 'context_data', hasManifest: true },
+  contextImages: { dir: 'context_images', hasManifest: false },
   locations: { dir: 'location_data', hasManifest: true },
+  locationImages: { dir: 'location_images', hasManifest: false },
   models: { dir: 'model_data', hasManifest: true },
   stopPatterns: { dir: 'stop_pattern_data', hasManifest: true },
-  interactionMessages: { dir: 'interaction_messages_data', hasManifest: false },
+  interactionMessages: { dir: 'interaction_messages', hasManifest: false },
   interactionData: { dir: 'interaction_data', hasManifest: true },
   kvCaches: { dir: 'kv_caches', hasManifest: false },
   budgetStrategies: { dir: 'budget_strategies', hasManifest: true },
@@ -50,7 +52,9 @@ const ENTITY_REGISTRY = {
   webpages: { dir: 'webpage_data', hasManifest: true },
   memories: { dir: 'memory_data', hasManifest: true },
   audioTracks: { dir: 'audio_track_data', hasManifest: true },
+  audioTrackAudios: { dir: 'audio_track_audio', hasManifest: false },
   promptBlocks: { dir: 'prompt_block_data', hasManifest: true },
+  promptBlockImages: { dir: 'prompt_block_images', hasManifest: false },
   accounts: { dir: 'account_data', hasManifest: true },
   multiplayerData: { dir: 'multiplayer_data', hasManifest: true },
 } as const;
@@ -1327,10 +1331,10 @@ function getImageUrl(entityKey: EntityKey, ...pathParts: string[]): string | nul
   return `${localURL}${cleanPath}/${pathParts.join('/')}`;
 }
 
-async function uploadImage(entityKey: EntityKey, file: File, ...pathParts: string[]): Promise<string> {
+async function uploadImage(entityKey: EntityKey, pathParts: string, file: File): Promise<string> {
   const base64 = await fileToBase64(file);
   const filename = getCleanFileName(file);
-  const imagePath = `${PATHS[entityKey]}/${[...pathParts, filename].join('/')}`;
+  const imagePath = `${PATHS[entityKey]}/${[pathParts, filename].join('/')}`;
   await putJson(imagePath, { base64 });
   return filename;
 }
@@ -1367,50 +1371,50 @@ export async function getCharacterImageUrlWithFallBack(characterId: string, char
 }
 
 export async function uploadCharacterImage(characterId: string, file: File): Promise<string> {
-    return uploadImage('characterImages', file, characterId);
+    return uploadImage('characterImages', characterId, file);
 }
 
-export function getCharacterVoiceUrl(voiceFileName: string | undefined): string | null {
+export function getCharacterVoiceUrl(characterId: string, voiceFileName: string | undefined): string | null {
   if (!voiceFileName) return null;
-  return getImageUrl('characterVoices', voiceFileName);
+  return getImageUrl('characterVoices', characterId, voiceFileName);
 }
 
-export async function uploadCharacterVoice(file: File): Promise<string> {
-  return uploadImage('characterVoices', file);
+export async function uploadCharacterVoice(characterId: string, file: File): Promise<string> {
+  return uploadImage('characterVoices', characterId, file);
 }
 
-export function getContextImageUrl(imageFilename: string | undefined): string | null {
+export function getContextImageUrl(contextId: string, imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  return getImageUrl('contexts', imageFilename);
+  return getImageUrl('contextImages', contextId, imageFilename);
 }
 
-export async function uploadContextImage(file: File): Promise<string> {
-  return uploadImage('contexts', file);
+export async function uploadContextImage(contextId: string, file: File): Promise<string> {
+  return uploadImage('contextImages', contextId, file);
 }
 
-export function getLocationImageUrl(imageFilename: string | undefined): string | null {
+export function getLocationImageUrl(locationId: string, imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  return getImageUrl('locations', imageFilename);
+  return getImageUrl('locationImages', locationId, imageFilename);
 }
 
-export async function uploadLocationImage(file: File): Promise<string> {
-  return uploadImage('locations', file);
+export async function uploadLocationImage(locationId: string, file: File): Promise<string> {
+  return uploadImage('locationImages', locationId, file);
 }
 
-export function getAudioTrackUrl(imageFilename: string | undefined): string | null {
+export function getAudioTrackUrl(audioTrackId: string, imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  return getImageUrl('audioTracks', imageFilename);
+  return getImageUrl('audioTrackAudios', audioTrackId, imageFilename);
 }
 
-export async function uploadAudioTrack(file: File): Promise<string> {
-    return uploadImage('audioTracks', file);
+export async function uploadAudioTrack(audioTrackId: string, file: File): Promise<string> {
+    return uploadImage('audioTrackAudios', audioTrackId, file);
 }
 
-export function getPromptBlockImageUrl(imageFilename: string | undefined): string | null {
+export function getPromptBlockImageUrl(promptBlockId: string, imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  return getImageUrl('promptBlocks', imageFilename);
+  return getImageUrl('promptBlockImages', promptBlockId, imageFilename);
 }
 
-export async function uploadPromptBlockImage(file: File): Promise<string> {
-  return uploadImage('promptBlocks', file);
+export async function uploadPromptBlockImage(promptBlockId: string, file: File): Promise<string> {
+  return uploadImage('promptBlockImages', promptBlockId, file);
 }

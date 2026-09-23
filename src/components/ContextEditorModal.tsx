@@ -60,7 +60,8 @@ function ContextEditorModalInner({
     const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [imagePreviews, setImagePreviews] = useState<string[]>(() => {
         if (existingContext?.images && existingContext.images.length > 0) {
-            return existingContext.images.map(img => `/user_data/context_data/${img}`);
+            // FIXED: Use correct storage path matching ENTITY_REGISTRY.contextImages
+            return existingContext.images.map(img => `/user_data/context_images/${existingContext.id}/${img}`);
         }
         return [];
     });
@@ -239,11 +240,17 @@ function ContextEditorModalInner({
     const buildContextFromForm = async (isNewClone: boolean): Promise<Context | null> => {
         if (!validate()) return null;
 
+        // FIXED: Determine ID upfront so uploads have a valid path
+        const contextId = isNewClone ? uuidv4() : (existingContext?.id || uuidv4());
+
         let finalImageFilenames: string[] | undefined = isNewClone ? [] : (existingContext?.images || []);
         if (imageFiles.length > 0) {
             setIsUploading(true);
             try {
-                const uploadedFilenames = await Promise.all(imageFiles.map(file => uploadContextImage(file)));
+                // FIXED: Pass contextId as first argument to uploadContextImage
+                const uploadedFilenames = await Promise.all(
+                    imageFiles.map(file => uploadContextImage(contextId, file))
+                );
                 finalImageFilenames = [...(isNewClone ? [] : (existingContext?.images || [])), ...uploadedFilenames];
             } catch (error) {
                 console.error("Failed to upload images:", error);
@@ -265,7 +272,7 @@ function ContextEditorModalInner({
         };
 
         return {
-            id: isNewClone ? uuidv4() : (existingContext?.id || uuidv4()),
+            id: contextId,
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             text: text.trim() || undefined,

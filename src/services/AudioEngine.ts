@@ -68,18 +68,24 @@ export class AudioEngine {
         return track.volume;
     }
 
-    private async loadBuffer(filename: string): Promise<AudioBuffer | null> {
-        const cached = this.bufferCache.get(filename);
+    private async loadBuffer(audioTrackId: string, filename: string): Promise<AudioBuffer | null> {
+        // Use composite key for cache to avoid collisions between tracks with same filename
+        const cacheKey = `${audioTrackId}:${filename}`;
+        const cached = this.bufferCache.get(cacheKey);
         if (cached) return cached;
 
         try {
-            const url = getAudioTrackUrl(filename);
-            const response = await fetch(url || "");
+            const url = getAudioTrackUrl(audioTrackId, filename);
+            if (!url) return null;
+
+            const response = await fetch(url);
             if (!response.ok) return null;
+
             const arrayBuffer = await response.arrayBuffer();
             const context = this.ensureContext();
             const buffer = await context.decodeAudioData(arrayBuffer);
-            this.bufferCache.set(filename, buffer);
+
+            this.bufferCache.set(cacheKey, buffer);
             return buffer;
         } catch (e) {
             console.warn(`Failed to load audio buffer for ${filename}:`, e);
@@ -105,7 +111,7 @@ export class AudioEngine {
 
         this.activeTracks.set(track.id, state);
 
-        void this.loadBuffer(track.filename).then(buffer => {
+        void this.loadBuffer(track.id, track.filename).then(buffer => {
             if (!buffer || !this.activeTracks.has(track.id)) return;
 
             const source = context.createBufferSource();
