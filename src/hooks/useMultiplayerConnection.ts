@@ -49,6 +49,38 @@ interface StateSyncPayload {
     participantIds: string[];
 }
 
+// ─── Peer ID Helpers ───────────────────────────────────────────────
+
+/**
+ * Build a PeerJS-safe peer ID.
+ * Format: lr_{mpIdNoHyphens}_{accountIdNoHyphens}
+ * or:     lr_{mpIdNoHyphens}_host
+ *
+ * PeerJS IDs must match /^[A-Za-z0-9_-]+$/. UUIDs contain hyphens,
+ * so we strip them and use underscore as delimiter.
+ */
+function buildPeerId(multiplayerDataId: string, accountId: string): string {
+    const mpId = multiplayerDataId.replace(/[^A-Za-z0-9]/g, '');
+    const acctId = accountId.replace(/[^A-Za-z0-9]/g, '');
+    return `lr_${mpId}_${acctId}`;
+}
+
+function buildHostPeerId(multiplayerDataId: string): string {
+    const mpId = multiplayerDataId.replace(/[^A-Za-z0-9]/g, '');
+    return `lr_${mpId}_host`;
+}
+
+/**
+ * Extract the account ID portion from a peer ID.
+ * Returns the sanitized account ID (without hyphens) or null.
+ */
+function extractAccountIdFromPeerId(peerId: string): string | null {
+    const parts = peerId.split('_');
+    if (parts.length < 3 || parts[0] !== 'lr') return null;
+    const accountId = parts.slice(2).join('_');
+    return accountId || null;
+}
+
 // ─── Hook ──────────────────────────────────────────────────────────
 
 interface UseMultiplayerConnectionOptions {
@@ -87,13 +119,13 @@ export function useMultiplayerConnection({
     useEffect(() => { isHostRef.current = isHost; }, [isHost]);
     useEffect(() => { currentAccountIdRef.current = currentAccountId; }, [currentAccountId]);
 
-    // Derive peer ID from multiplayer data
+    // Derive peer IDs from multiplayer data — sanitized for PeerJS
     const peerId = multiplayerData && currentAccountId
-        ? `lr-${multiplayerData.id}-${currentAccountId}`
+        ? buildPeerId(multiplayerData.id, currentAccountId)
         : null;
 
     const hostPeerId = multiplayerData
-        ? `lr-${multiplayerData.id}-host`
+        ? buildHostPeerId(multiplayerData.id)
         : null;
 
     // Initialize PeerJS connection
@@ -117,12 +149,13 @@ export function useMultiplayerConnection({
                 // If we're a client connecting to host, send join request
                 const localAcctId = currentAccountIdRef.current;
                 if (localAcctId && !isHostRef.current) {
+                    const sanitizedLocalAcctId = localAcctId.replace(/[^A-Za-z0-9]/g, '');
                     const joinMsg: MultiplayerMessage = {
                         type: 'join_request',
-                        senderAccountId: localAcctId,
+                        senderAccountId: sanitizedLocalAcctId,
                         timestamp: Date.now(),
                         payload: {
-                            accountId: localAcctId,
+                            accountId: sanitizedLocalAcctId,
                             password: undefined,
                         } satisfies JoinRequestPayload,
                     };
@@ -206,9 +239,10 @@ export function useMultiplayerConnection({
     const broadcast = useCallback((msg: Omit<MultiplayerMessage, 'senderAccountId' | 'timestamp'>) => {
         const acctId = currentAccountIdRef.current;
         if (!acctId) return;
+        const sanitizedAcctId = acctId.replace(/[^A-Za-z0-9]/g, '');
         const fullMsg: MultiplayerMessage = {
             ...msg,
-            senderAccountId: acctId,
+            senderAccountId: sanitizedAcctId,
             timestamp: Date.now(),
         };
         for (const [, conn] of connectionsRef.current) {
@@ -224,11 +258,13 @@ export function useMultiplayerConnection({
     const sendTo = useCallback((accountId: string, msg: Omit<MultiplayerMessage, 'senderAccountId' | 'timestamp'>) => {
         const acctId = currentAccountIdRef.current;
         if (!acctId) return;
-        const conn = connectionsRef.current.get(accountId);
+        const sanitizedTargetId = accountId.replace(/[^A-Za-z0-9]/g, '');
+        const conn = connectionsRef.current.get(sanitizedTargetId);
         if (!conn) return;
+        const sanitizedAcctId = acctId.replace(/[^A-Za-z0-9]/g, '');
         const fullMsg: MultiplayerMessage = {
             ...msg,
-            senderAccountId: acctId,
+            senderAccountId: sanitizedAcctId,
             timestamp: Date.now(),
         };
         try {
@@ -259,16 +295,6 @@ export function useMultiplayerConnection({
         peerId,
         hostPeerId,
     };
-}
-
-// ─── Helpers ───────────────────────────────────────────────────────
-
-function extractAccountIdFromPeerId(peerId: string): string | null {
-    // Format: lr-{multiplayerDataId}-{accountId} or lr-{multiplayerDataId}-host
-    const parts = peerId.split('-');
-    if (parts.length < 3 || parts[0] !== 'lr') return null;
-    const accountId = parts.slice(2).join('-');
-    return accountId || null;
 }
 
 export type { MultiplayerMessage, ChatMessagePayload, JoinRequestPayload, JoinResponsePayload, StateSyncPayload, MessageType };

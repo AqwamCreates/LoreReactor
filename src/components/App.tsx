@@ -912,7 +912,7 @@ function App() {
                 style={locationBackgroundUrl && viewMode !== 'vn' ? { '--location-bg': `url(${locationBackgroundUrl})` } as React.CSSProperties : undefined} 
                 onClick={() => { closeActionMenu(); deactivateToolbar(); }}
             >
-                {(
+                {interactionData && (
                     <>
                         <header className="app-header">
                             <div className="header-content">
