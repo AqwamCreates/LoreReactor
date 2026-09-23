@@ -382,11 +382,11 @@ export function AppModals({
                     isOpen={modals.settings.isOpen}
                     onClose={modals.settings.close}
                     onOpenBudgetControl={modals.budgetControl.open}
-                    onOpenGpuMonitor={() => { modals.settings.close(); setGpuMonitorOpen(true); }}
+                    onOpenGpuMonitor={() => { setGpuMonitorOpen(true); }}
                     onOpenParticipantControl={modals.participantControl.open}
                     onOpenAccountData={modals.accountList.open}
                     onOpenMultiplayerData={modals.multiplayerDataList.open}
-                    onOpenJoinSession={() => { modals.settings.close(); setJoinSessionOpen(true); }}
+                    onOpenJoinSession={() => { setJoinSessionOpen(true); }}
                     onOpenAIRecommendation={modals.aiRecommendation.open}
                     onOpenAlternateTimelines={modals.alternateTimelines.open}
                     onOpenImportCharacterCard={modals.cardImport.open}
