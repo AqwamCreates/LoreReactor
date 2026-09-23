@@ -1068,7 +1068,7 @@ function App() {
                     onToggleExtension={handleToggleExtension}
                     onDeleteMemory={deleteMemory}
                     onDeleteAccount={accountModal.handleDelete}
-                    onToggleAccount={(id: string) => {
+                    onToggleAccount={(id: string) => { 
                         const newId = currentAccountId === id ? null : id;
                         useSessionStore.setState({ currentAccountId: newId });
                         if (newId) localStorage.setItem('loreReactor_currentAccountId', newId);
