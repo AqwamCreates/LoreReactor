@@ -1,6 +1,6 @@
 // src/components/CharacterEditorModal.tsx
 import type React from 'react';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, tool } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from '../storage/serverStorage';
@@ -165,6 +165,7 @@ function CharacterEditorModalInner({
     const [numberOfMessagesToDisableStarterPromptStr, setNumberOfMessagesToDisableStarterPromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableStarterPrompt ?? 0));
 
     const [tools, setTools] = useState<Record<tool, boolean>>(existingCharacter?.tools ?? { ...defaultCharacterTools });
+    const [toolSearchQuery, setToolSearchQuery] = useState('');
 
     const [memories, setMemories] = useState<Record<string, Memory[]>>(existingCharacter?.memories ?? {});
     const [clothings, setClothings] = useState<Clothing[]>(existingCharacter?.clothings ?? []);
@@ -584,6 +585,18 @@ function CharacterEditorModalInner({
     // Filter out self from character dropdown for known names
     const otherCharacters = allCharacters.filter(c => c.id !== (existingCharacter?.id || pendingCharacterId));
 
+    // Filtered tools based on search query
+    const filteredToolNames = useMemo(() => {
+        const allToolNames = Object.keys(tools) as tool[];
+        const q = toolSearchQuery.toLowerCase().trim();
+        if (!q) return allToolNames;
+        return allToolNames.filter(toolName => {
+            const label = (toolLabels[toolName] ?? toolName).toLowerCase();
+            const desc = (TOOL_DESCRIPTIONS[toolName] ?? '').toLowerCase();
+            return label.includes(q) || desc.includes(q) || toolName.toLowerCase().includes(q);
+        });
+    }, [tools, toolSearchQuery]);
+
     const editorTabs: { id: EditorTabId; label: string; icon: string }[] = [
         { id: 'general', label: 'General', icon: '📝' },
         { id: 'behaviour', label: 'Behaviour', icon: '🧠' },
@@ -946,11 +959,26 @@ function CharacterEditorModalInner({
                         {activeTab === 'tools' && (
                             <div className="editor-section">
                                 <span className="editor-section-title">Character Tools</span>
-                                <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '12px' }}>
+                                <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
                                     Enable runtime tool use during generation for this character. Can be overridden by profile settings.
                                 </div>
 
-                                {(Object.keys(tools) as tool[]).map(toolName => (
+                                <input
+                                    type="text"
+                                    value={toolSearchQuery}
+                                    onChange={e => setToolSearchQuery(e.target.value)}
+                                    className="editor-input"
+                                    placeholder="Search tools..."
+                                    style={{ marginBottom: '12px', fontSize: '0.75rem', padding: '6px 10px' }}
+                                />
+
+                                {filteredToolNames.length === 0 && (
+                                    <div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic', padding: '8px 0' }}>
+                                        No tools match "{toolSearchQuery}".
+                                    </div>
+                                )}
+
+                                {filteredToolNames.map(toolName => (
                                     <div key={toolName} style={{ marginBottom: '8px' }}>
                                         <label className="editor-checkbox-label">
                                             <input

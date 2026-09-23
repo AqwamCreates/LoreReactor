@@ -188,6 +188,7 @@ function ProfileEditorContent({
     const [volume, setVolume] = useState<number>(ep?.volume ?? -1);
     const [stripThinkTokens, setStripThinkTokens] = useState(ep?.stripThinkTokens ?? false);
     const [tools, setTools] = useState<Record<tool, number>>(mergeToolsWithDefaults(ep?.tools));
+    const [toolSearchQuery, setToolSearchQuery] = useState('');
     const [narrateTexts, setNarrateTexts] = useState<Record<textType, boolean>>(ep ? migrateNarrateTexts(ep) : { ...DEFAULT_NARRATE_TEXTS });
     const [inputStrategy, setInputStrategy] = useState<(PromptBlockType | string)[]>(ep?.inputStrategy?.length ? ep.inputStrategy : []);
     const [summarizationSteps, setSummarizationSteps] = useState<SummarizationStep[]>(
@@ -307,6 +308,16 @@ function ProfileEditorContent({
     const narrateTextKeys = Object.keys(NARRATE_TEXT_LABELS) as textType[];
 
     const selectedToolDisplayMode = TOOL_USAGE_DISPLAY_MODES.find(m => m.value === toolUsageDisplayMode) ?? TOOL_USAGE_DISPLAY_MODES[0];
+
+    // Filtered tools based on search query
+    const filteredToolKeys = useMemo(() => {
+        const q = toolSearchQuery.toLowerCase().trim();
+        if (!q) return allToolKeys;
+        return allToolKeys.filter(toolName => {
+            const label = (toolLabels[toolName] ?? toolName).toLowerCase();
+            return label.includes(q) || toolName.toLowerCase().includes(q);
+        });
+    }, [allToolKeys, toolSearchQuery]);
 
     const profileTabs: { id: ProfileTabId; label: string; icon: string }[] = [
         { id: 'general', label: 'General', icon: '📝' },
@@ -440,8 +451,24 @@ function ProfileEditorContent({
                     {activeTab === 'tools' && (
                         <div className="editor-section">
                             <span className="editor-section-title">Tools</span>
-                            <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>-1 = force off for all characters. 0 = defer to each character's own setting. 1 = force on for all characters.</div>
-                            {allToolKeys.map(toolName => (<div key={toolName} style={{ marginBottom: '12px' }}><div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>{toolLabels[toolName]} Override</label><span style={SLIDER_VALUE_STYLE}>{tools[toolName] === -1 ? '(Force Off)' : tools[toolName] === 1 ? '(Force On)' : '(Character default)'}</span></div><SliderInput label="" value={tools[toolName]} minimumValue={-1} maximumValue={1} stepValue={1} decimals={0} onChange={(val) => handleToolChange(toolName, Math.round(val))} description="" /></div>))}
+                            <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '8px' }}>-1 = force off for all characters. 0 = defer to each character's own setting. 1 = force on for all characters.</div>
+
+                            <input
+                                type="text"
+                                value={toolSearchQuery}
+                                onChange={e => setToolSearchQuery(e.target.value)}
+                                className="editor-input"
+                                placeholder="Search tools..."
+                                style={{ marginBottom: '12px', fontSize: '0.75rem', padding: '6px 10px' }}
+                            />
+
+                            {filteredToolKeys.length === 0 && (
+                                <div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic', padding: '8px 0' }}>
+                                    No tools match "{toolSearchQuery}".
+                                </div>
+                            )}
+
+                            {filteredToolKeys.map(toolName => (<div key={toolName} style={{ marginBottom: '12px' }}><div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>{toolLabels[toolName]} Override</label><span style={SLIDER_VALUE_STYLE}>{tools[toolName] === -1 ? '(Force Off)' : tools[toolName] === 1 ? '(Force On)' : '(Character default)'}</span></div><SliderInput label="" value={tools[toolName]} minimumValue={-1} maximumValue={1} stepValue={1} decimals={0} onChange={(val) => handleToolChange(toolName, Math.round(val))} description="" /></div>))}
                         </div>
                     )}
 
