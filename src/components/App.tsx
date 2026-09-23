@@ -1068,7 +1068,13 @@ function App() {
                     onToggleExtension={handleToggleExtension}
                     onDeleteMemory={deleteMemory}
                     onDeleteAccount={accountModal.handleDelete}
-                    onToggleAccount={() => {}}
+                    onToggleAccount={(id: string) => {
+                        const newId = currentAccountId === id ? null : id;
+                        useSessionStore.setState({ currentAccountId: newId });
+                        if (newId) localStorage.setItem('loreReactor_currentAccountId', newId);
+                        else localStorage.removeItem('loreReactor_currentAccountId');
+                        addToast(newId ? `Activated account "${allAccounts.find(a => a.id === newId)?.name || newId}"` : 'Deactivated account.', newId ? 'success' : 'info');
+                    }}
                     onDeleteMultiplayerData={multiplayerDataModal.handleDelete}
                     onJoinSession={handleJoinSession}
                     onUpdateInteractionData={(data) => {
