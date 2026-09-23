@@ -740,7 +740,8 @@ function getVisibleClothingDescriptions(
         if (!wearingStatus[clothing.id]) continue;
         const queue = [...clothing.clothingBindings];
         while (queue.length > 0) {
-            const boundId = queue.shift()!;
+            const boundId = queue.shift();
+            if (boundId === undefined) break;
             if (coveredIds.has(boundId)) continue;
             coveredIds.add(boundId);
             const boundClothing = clothingMap.get(boundId);
