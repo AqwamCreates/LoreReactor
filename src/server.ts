@@ -467,8 +467,8 @@ const MEDIA_DIR_PREFIXES = [
   'character_voices/',
   'context_images/',
   'location_images/',
-  'prompt_block_images/',
   'audio_track_audio/',
+  'prompt_block_images/',
 ];
 
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
