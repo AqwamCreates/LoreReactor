@@ -63,9 +63,9 @@ export const useSessionStore = create<SessionState>()(() => ({
     numberOfTokens: 0,
     sessionStartTimestamp: null,
 
-    // Multiplayer: defaults to '__local__' for single-player
+    // Multiplayer: null until explicitly set by account linking or join flow
     currentAccountId: (() => {
-        try { return localStorage.getItem('loreReactor_currentAccountId') || '__local__'; } catch { return '__local__'; }
+        try { return localStorage.getItem('loreReactor_currentAccountId'); } catch { return null; }
     })(),
     multiplayerData: null,
 

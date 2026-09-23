@@ -1045,7 +1045,7 @@ function App() {
                     onDeleteChat={onDeleteChatForModals}
                     onNewChat={handleNewChat}
                     onRenameChat={handleRenameChat}
-                    onDeleteCharacter={deleteCharacter}
+                    onDeleteCharacter={charModal.handleDelete}
                     onLoadFullCharacter={loadFullCharacter}
                     onToggleParticipant={handleToggleParticipant}
                     onSetProtagonist={handleSetChatProtagonist}
@@ -1061,23 +1061,23 @@ function App() {
                     onSaveAudioTrack={saveAudioTrack}
                     onSaveWorld={saveWorld}
                     onLoadWorld={handleLoadWorld}
-                    onDeleteWorld={deleteWorld}
-                    onDeleteModel={deleteModel}
+                    onDeleteWorld={worldModal.handleDelete}
+                    onDeleteModel={modelModal.handleDelete}
                     onToggleModelLoad={toggleModelLoad}
                     onDeleteSampler={samplerModal.handleDelete}
                     onDeletePromptBlock={promptBlockModal.handleDelete}
                     onDeleteStopPattern={stopModal.handleDelete}
                     onDeleteBudgetStrategy={budgetModal.handleDelete}
                     onActivateBudgetStrategy={handleActivateBudgetStrategy}
-                    onDeleteProfile={deleteProfile}
+                    onDeleteProfile={profileModal.handleDelete}
                     onActivateProfile={handleActivateProfile}
                     onSaveProfile={saveProfile}
                     onDeleteExtension={deleteExtension}
                     onToggleExtension={handleToggleExtension}
                     onDeleteMemory={deleteMemory}
-                    onDeleteAccount={deleteAccount}
+                    onDeleteAccount={accountModal.handleDelete}
                     onToggleAccount={() => {}}
-                    onDeleteMultiplayerData={deleteMultiplayerData}
+                    onDeleteMultiplayerData={multiplayerDataModal.handleDelete}
                     onJoinSession={handleJoinSession}
                     onUpdateInteractionData={(data) => {
                         const withLocations = assignInitialLocationsIfNeeded(data);

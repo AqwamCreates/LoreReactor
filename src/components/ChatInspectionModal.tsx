@@ -179,8 +179,6 @@ function getLocationDistanceKm(locA: Location, locB: Location): number | null {
 function useCharacterPortraits(characters: Character[]): Map<string, string | null> {
     const [portraits, setPortraits] = useState<Map<string, string | null>>(new Map());
 
-    // Stable dependency: join IDs into a single string
-
     useEffect(() => {
         let cancelled = false;
         const resolved = new Map<string, string | null>();
@@ -207,26 +205,21 @@ export function ChatInspectionModal({
     inspectionStack,
     onInspectingParentInteractionData,
 }: ChatInspectionModalProps) {
-    // Track which inspectionStack we've already initialized from.
-    // When it changes (new modal open), reset userNavStack.
     const [initializedFromStack, setInitializedFromStack] = useState<InteractionData[] | null>(null);
     const [userNavStack, setUserNavStack] = useState<InteractionData[]>([]);
+    const [sessionIdCopied, setSessionIdCopied] = useState(false);
 
-    // Derive the effective stack during render — no useEffect setState
     const internalStack = useMemo(() => {
         if (!isOpen) return [];
 
-        // If inspectionStack changed since last initialization, reset
         if (initializedFromStack !== inspectionStack) {
             return inspectionStack.length > 0 ? [...inspectionStack] : [];
         }
 
-        // Use user navigation stack if it has entries, otherwise fall back to inspectionStack
         if (userNavStack.length > 0) return userNavStack;
         return inspectionStack.length > 0 ? [...inspectionStack] : [];
     }, [isOpen, inspectionStack, initializedFromStack, userNavStack]);
 
-    // Sync initializedFromStack when inspectionStack changes (render-time adjustment)
     if (isOpen && initializedFromStack !== inspectionStack) {
         setInitializedFromStack(inspectionStack);
         setUserNavStack([]);
@@ -235,7 +228,6 @@ export function ChatInspectionModal({
     const chat = internalStack[0] ?? null;
     const canGoBack = internalStack.length > 1;
 
-    // ALL derived values and hooks MUST be before the early return
     const protagonists = useMemo(() => chat?.protagonists || [], [chat]);
     const protagonistIds = useMemo(() => new Set(protagonists.map(p => p.id)), [protagonists]);
     const participants = useMemo(() => chat?.participants || [], [chat]);
@@ -247,7 +239,6 @@ export function ChatInspectionModal({
     const hasAudioTracks = audioTracks.length > 0;
     const parentName = canGoBack ? internalStack[1]?.name : undefined;
 
-    // Include both protagonists and participants for portrait loading
     const allVisibleCharacters = useMemo(() => {
         const map = new Map<string, Character>();
         for (const p of protagonists) map.set(p.id, p);
@@ -271,6 +262,16 @@ export function ChatInspectionModal({
             // Parent data unavailable
         }
     }, [internalStack, onInspectingParentInteractionData]);
+
+    const handleCopySessionId = useCallback(() => {
+        if (!chat?.id) return;
+        navigator.clipboard.writeText(chat.id).then(() => {
+            setSessionIdCopied(true);
+            setTimeout(() => setSessionIdCopied(false), 2000);
+        }).catch(() => {
+            // Fallback: select text manually
+        });
+    }, [chat?.id]);
 
     const { nodes, edges } = useMemo(() => {
         if (!chat || !chat.locations || chat.locations.length === 0) {
@@ -316,7 +317,6 @@ export function ChatInspectionModal({
 
         const ITERATIONS = 80;
         for (let iter = 0; iter < ITERATIONS; iter++) {
-            // Distance-based attraction: use locationDistances first, fall back to Haversine
             for (let i = 0; i < chat.locations.length; i++) {
                 for (let j = i + 1; j < chat.locations.length; j++) {
                     const distKm = getLocationDistanceKm(chat.locations[i], chat.locations[j]);
@@ -344,7 +344,6 @@ export function ChatInspectionModal({
                 }
             }
 
-            // Minimum separation repulsion
             for (let i = 0; i < chat.locations.length; i++) {
                 for (let j = i + 1; j < chat.locations.length; j++) {
                     const dx = positions[j].x - positions[i].x;
@@ -430,7 +429,6 @@ export function ChatInspectionModal({
         return { nodes: graphNodes, edges: graphEdges };
     }, [chat]);
 
-    // Occupied locations — MUST be before early return
     const occupiedLocations = useMemo(() => {
         if (!chat || !hasLocations) return [];
         const occupiedMap = new Map<string, { location: Location; participants: { name: string; index: number; portraitUrl: string | null }[] }>();
@@ -449,7 +447,6 @@ export function ChatInspectionModal({
         return Array.from(occupiedMap.values());
     }, [chat, hasLocations, participants, portraits]);
 
-    // Early return AFTER all hooks
     if (!isOpen || !chat) return null;
 
     return (
@@ -475,7 +472,38 @@ export function ChatInspectionModal({
                 </div>
 
                 <div className="modal-body editor-modal-body" style={{ overflowY: 'auto' }}>
-                    {/* Stats (top) */}
+                    {/* Session ID */}
+                    <div className="editor-section" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.65rem', opacity: 0.7, flexShrink: 0 }}>🔗 Session ID:</span>
+                            <code style={{
+                                fontSize: '0.6rem',
+                                padding: '3px 8px',
+                                background: 'var(--social-bg)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '4px',
+                                fontFamily: 'monospace',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                flex: 1,
+                                minWidth: 0,
+                            }}>
+                                {chat.id}
+                            </code>
+                            <button
+                                type="button"
+                                onClick={handleCopySessionId}
+                                className="toolbar-button"
+                                title="Copy Session ID"
+                                style={{ fontSize: '0.65rem', padding: '3px 8px', flexShrink: 0 }}
+                            >
+                                {sessionIdCopied ? '✅ Copied' : '📋 Copy'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Stats */}
                     <div className="editor-section" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '0.65rem', opacity: 0.7 }}>
                             <span>💬 {chat.interactionHistory.length} message{chat.interactionHistory.length !== 1 ? 's' : ''}</span>

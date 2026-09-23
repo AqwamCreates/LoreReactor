@@ -98,6 +98,7 @@ function MultiplayerEditorModalInner({
     const [name, setName] = useState(existingMultiplayerData?.name || '');
     const [description, setDescription] = useState(existingMultiplayerData?.description || '');
     const [password, setPassword] = useState(existingMultiplayerData?.password || '');
+    const [showPassword, setShowPassword] = useState(false);
     const [interactionDataIds, setInteractionDataIds] = useState<string[]>(existingMultiplayerData?.interactionDataIds || []);
     const [whiteListedAccountIds, setWhiteListedAccountIds] = useState<string[]>(existingMultiplayerData?.whiteListedAccountIds || []);
     const [blacklistedAccountIds, setBlacklistedAccountIds] = useState<string[]>(existingMultiplayerData?.blacklistedAccountIds || []);
@@ -282,13 +283,24 @@ function MultiplayerEditorModalInner({
                     {/* Password */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Password</label>
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={e => setPassword(e.target.value)}
-                            className="editor-input"
-                            placeholder="Leave empty for open access"
-                        />
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <input
+                                type={showPassword ? 'text' : 'password'}
+                                value={password}
+                                onChange={e => setPassword(e.target.value)}
+                                className="editor-input"
+                                placeholder="Leave empty for open access"
+                                style={{ flex: 1 }}
+                            />
+                            <button
+                                type="button"
+                                className="editor-button editor-button-cancel"
+                                onClick={() => setShowPassword(!showPassword)}
+                                style={{ fontSize: '0.7rem', padding: '8px 12px', whiteSpace: 'nowrap' }}
+                            >
+                                {showPassword ? '🙈 Hide' : '👁️ Show'}
+                            </button>
+                        </div>
                         <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
                             Invite-only when set. Empty = accessible to all.
                         </div>
