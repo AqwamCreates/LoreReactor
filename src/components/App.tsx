@@ -977,7 +977,7 @@ function App() {
                                         {multiplayerSync.isConnected && (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '12px', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', fontSize: '0.7rem', color: '#22c55e', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
                                                 <span>🟢</span>
-                                                <span>{multiplayerSync.connectedPeers.length} peer{multiplayerSync.connectedPeers.length !== 1 ? 's' : ''}</span>
+                                                <span>{multiplayerSync.connectedPeers.length} Peer{multiplayerSync.connectedPeers.length !== 1 ? 's' : ''}</span>
                                             </div>
                                         )}
                                     </div>
