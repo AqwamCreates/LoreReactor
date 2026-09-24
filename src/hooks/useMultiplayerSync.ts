@@ -45,6 +45,12 @@ interface SetProtagonistPayload {
     character: Character;
 }
 
+export interface PendingJoinRequest {
+    accountId: string;
+    password?: string;
+    timestamp: number;
+}
+
 // ─── Hook ──────────────────────────────────────────────────────────
 
 interface UseMultiplayerSyncOptions {
@@ -94,6 +100,9 @@ export function useMultiplayerSync({
     // Track whether join has been completed for the current session
     const [joinCompletedSessionId, setJoinCompletedSessionId] = useState<string | null>(null);
     const joinCompleted = joinCompletedSessionId === joinSessionId && joinSessionId != null;
+
+    // Track pending join requests that need manual approval
+    const [pendingJoinRequests, setPendingJoinRequests] = useState<PendingJoinRequest[]>([]);
 
     // Host is whoever owns the multiplayer data locally and is not joining someone else's session.
     // administratorAccountIds in MultiplayerData are additional delegated admins beyond the host.
@@ -255,14 +264,29 @@ export function useMultiplayerSync({
                 const isDelegatedAdmin = md.administratorAccountIds.includes(requestingAccountId);
                 const passwordValid = !md.password || payload.password === md.password;
 
-                // Whitelisted, delegated admin, or valid password grants access. Blacklist overrides all.
-                const accepted = !isBlacklisted && (isWhitelisted || isDelegatedAdmin || passwordValid);
-                const reason = !accepted ? (isBlacklisted ? 'Account is blacklisted' : 'Invalid password or not whitelisted') : undefined;
-
-                sendToRef.current(requestingAccountId, {
-                    type: 'join_response',
-                    payload: { accepted, reason } satisfies JoinResponsePayload,
-                });
+                // Auto-accept if whitelisted/admin/valid password, otherwise queue as pending
+                if (!isBlacklisted && (isWhitelisted || isDelegatedAdmin || passwordValid)) {
+                    sendToRef.current(requestingAccountId, {
+                        type: 'join_response',
+                        payload: { accepted: true } satisfies JoinResponsePayload,
+                    });
+                } else if (isBlacklisted) {
+                    sendToRef.current(requestingAccountId, {
+                        type: 'join_response',
+                        payload: { accepted: false, reason: 'Account is blacklisted' } satisfies JoinResponsePayload,
+                    });
+                } else {
+                    // Queue as pending for manual approval
+                    setPendingJoinRequests(prev => {
+                        const exists = prev.some(r => r.accountId === requestingAccountId);
+                        if (exists) return prev;
+                        return [...prev, {
+                            accountId: requestingAccountId,
+                            password: payload.password,
+                            timestamp: msg.timestamp,
+                        }];
+                    });
+                }
                 break;
             }
 
@@ -376,6 +400,7 @@ export function useMultiplayerSync({
         multiplayerData: effectiveMultiplayerData,
         currentAccountId,
         isHost,
+        joinPassword,
         onReceiveMessage: handleReceiveMessage,
         onPeerConnected: handlePeerConnected,
         onPeerDisconnected: handlePeerDisconnected,
@@ -384,6 +409,24 @@ export function useMultiplayerSync({
     // Keep refs in sync
     useEffect(() => { sendToRef.current = sendTo; }, [sendTo]);
     useEffect(() => { broadcastRef.current = broadcast; }, [broadcast]);
+
+    // Accept a pending join request
+    const acceptJoinRequest = useCallback((accountId: string) => {
+        setPendingJoinRequests(prev => prev.filter(r => r.accountId !== accountId));
+        sendToRef.current(accountId, {
+            type: 'join_response',
+            payload: { accepted: true } satisfies JoinResponsePayload,
+        });
+    }, []);
+
+    // Reject a pending join request
+    const rejectJoinRequest = useCallback((accountId: string) => {
+        setPendingJoinRequests(prev => prev.filter(r => r.accountId !== accountId));
+        sendToRef.current(accountId, {
+            type: 'join_response',
+            payload: { accepted: false, reason: 'Request rejected by host' } satisfies JoinResponsePayload,
+        });
+    }, []);
 
     // Extract sync-safe payload from a HistoryMessage
     const extractSyncPayload = useCallback((message: HistoryMessage): SyncMessagePayload => {
@@ -436,12 +479,6 @@ export function useMultiplayerSync({
         characterMapRef.current.set(character.id, character);
     }, [broadcast]);
 
-    // Clear applied message IDs and peer map when switching chats
-    useEffect(() => {
-        appliedMessageIdsRef.current.clear();
-        peerCharacterMapRef.current.clear();
-    }, []);
-
     return {
         isConnected,
         connectedPeers,
@@ -449,6 +486,9 @@ export function useMultiplayerSync({
         isHost,
         isAdmin,
         joinCompleted,
+        pendingJoinRequests,
+        acceptJoinRequest,
+        rejectJoinRequest,
         broadcastMessage,
         sendProtagonist,
         disconnect,

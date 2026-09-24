@@ -87,6 +87,7 @@ interface UseMultiplayerConnectionOptions {
     multiplayerData: MultiplayerData | null;
     currentAccountId: string | null;
     isHost: boolean;
+    joinPassword?: string;
     onReceiveMessage: (msg: MultiplayerMessage) => void;
     onPeerConnected: (accountId: string) => void;
     onPeerDisconnected: (accountId: string) => void;
@@ -96,6 +97,7 @@ export function useMultiplayerConnection({
     multiplayerData,
     currentAccountId,
     isHost,
+    joinPassword,
     onReceiveMessage,
     onPeerConnected,
     onPeerDisconnected,
@@ -111,6 +113,7 @@ export function useMultiplayerConnection({
     const onPeerDisconnectedRef = useRef(onPeerDisconnected);
     const isHostRef = useRef(isHost);
     const currentAccountIdRef = useRef(currentAccountId);
+    const joinPasswordRef = useRef(joinPassword);
 
     // Keep refs in sync to avoid stale closures
     useEffect(() => { onReceiveMessageRef.current = onReceiveMessage; }, [onReceiveMessage]);
@@ -118,6 +121,7 @@ export function useMultiplayerConnection({
     useEffect(() => { onPeerDisconnectedRef.current = onPeerDisconnected; }, [onPeerDisconnected]);
     useEffect(() => { isHostRef.current = isHost; }, [isHost]);
     useEffect(() => { currentAccountIdRef.current = currentAccountId; }, [currentAccountId]);
+    useEffect(() => { joinPasswordRef.current = joinPassword; }, [joinPassword]);
 
     // Derive peer IDs from multiplayer data — sanitized for PeerJS
     const peerId = multiplayerData && currentAccountId
@@ -156,7 +160,7 @@ export function useMultiplayerConnection({
                         timestamp: Date.now(),
                         payload: {
                             accountId: sanitizedLocalAcctId,
-                            password: undefined,
+                            password: joinPasswordRef.current,
                         } satisfies JoinRequestPayload,
                     };
                     conn.send(joinMsg);

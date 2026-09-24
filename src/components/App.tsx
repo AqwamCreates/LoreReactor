@@ -52,6 +52,7 @@ import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
 import { ChatInspectionModal } from './ChatInspectionModal';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
+import { PendingJoinRequests } from './PendingJoinRequests';
 import '../main.css';
 import { ChatMinimap } from './ChatMinimap';
 
@@ -912,6 +913,14 @@ function App() {
                 style={locationBackgroundUrl && viewMode !== 'vn' ? { '--location-bg': `url(${locationBackgroundUrl})` } as React.CSSProperties : undefined} 
                 onClick={() => { closeActionMenu(); deactivateToolbar(); }}
             >
+                {!interactionData && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.5, gap: '12px' }}>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--accent)' }}>⚛️ LoreReactor</div>
+                        <div style={{ fontSize: '0.85rem' }}>Create a character to begin.</div>
+                        <button type="button" onClick={() => charModal.open()} style={{ marginTop: '8px', padding: '8px 20px', fontSize: '0.85rem', fontWeight: 'bold', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>🎭 Create Character</button>
+                    </div>
+                )}
+
                 {interactionData && (
                     <>
                         <header className="app-header">
@@ -1097,6 +1106,12 @@ function App() {
                 onClose={() => { setIsInspectionOpen(false); setInspectionStack([]); }}
                 inspectionStack={inspectionStack}
                 onInspectingParentInteractionData={handleInspectParentInteractionData}
+            />
+
+            <PendingJoinRequests
+                pendingRequests={multiplayerSync.pendingJoinRequests}
+                onAccept={multiplayerSync.acceptJoinRequest}
+                onReject={multiplayerSync.rejectJoinRequest}
             />
 
             <ActionMenu 
