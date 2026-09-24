@@ -104,8 +104,10 @@ export function useMultiplayerSync({
     const isHost = !!multiplayerData && !joinSessionId;
     const isAdmin = isHost || !!(multiplayerData && currentAccountId && multiplayerData.administratorAccountIds.includes(currentAccountId));
 
+    // Construct synthetic MultiplayerData for peer ID derivation when joining.
+    // Prioritize joinSessionId over existing multiplayerData so the joiner
+    // always uses the pasted session ID for peer ID construction.
     const effectiveMultiplayerData = useMemo<MultiplayerData | null>(() => {
-        if (multiplayerData) return multiplayerData;
         if (joinSessionId) {
             return {
                 id: joinSessionId,
@@ -121,8 +123,18 @@ export function useMultiplayerSync({
                 lastUpdatedTimestamp: 0,
             };
         }
-        return null;
+        return multiplayerData;
     }, [multiplayerData, joinSessionId]);
+
+    // Construct synthetic InteractionData for peer ID derivation when joining.
+    // Prioritize joinSessionId over existing interactionData so the joiner
+    // always uses the pasted session ID for peer ID construction.
+    const effectiveInteractionData = useMemo<InteractionData | null>(() => {
+        if (joinSessionId) {
+            return { id: joinSessionId } as InteractionData;
+        }
+        return interactionData;
+    }, [interactionData, joinSessionId]);
 
     const appliedMessageIdsRef = useRef<Set<string>>(new Set());
     const peerCharacterMapRef = useRef<Map<string, string>>(new Map());
@@ -251,7 +263,6 @@ export function useMultiplayerSync({
                 const passwordValid = !md.password || payload.password === md.password;
 
                 if (!isBlacklisted && (isWhitelisted || isDelegatedAdmin || passwordValid)) {
-                    // Use fresh ref data for initial state
                     const freshData = interactionDataRef.current;
                     const initialState = freshData ? {
                         interactionHistory: freshData.interactionHistory,
@@ -287,7 +298,6 @@ export function useMultiplayerSync({
                 if (payload.accepted) {
                     setJoinCompletedSessionId(joinSessionId ?? null);
 
-                    // Apply initial state from host — use fresh ref, not stale closure
                     if (payload.initialState && payload.initialState.interactionHistory.length > 0) {
                         const freshData = interactionDataRef.current;
                         if (freshData) {
@@ -354,7 +364,6 @@ export function useMultiplayerSync({
                     lastUpdatedTimestamp: Date.now(),
                 });
 
-                // Host re-broadcasts to other peers
                 if (isHost) {
                     broadcastRef.current({
                         type: 'set_protagonist',
@@ -411,6 +420,7 @@ export function useMultiplayerSync({
         hostPeerId,
     } = useMultiplayerConnection({
         multiplayerData: effectiveMultiplayerData,
+        interactionData: effectiveInteractionData,
         currentAccountId,
         isHost,
         joinPassword,

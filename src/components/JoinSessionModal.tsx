@@ -61,7 +61,7 @@ export function JoinSessionModal({
                 <div className="modal-body editor-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <div className="editor-section" style={{ margin: 0 }}>
                         <div className="editor-section-title">Session ID</div>
-                        <div style={{ fontSize: '0.7rem', opacity: 0.5, marginBottom: '8px' }}>Paste the multiplayer data UUID from the host.</div>
+                        <div style={{ fontSize: '0.7rem', opacity: 0.5, marginBottom: '8px' }}>Paste the Session ID from the host's Chat Inspection modal.</div>
                         <input
                             type="text"
                             value={sessionId}

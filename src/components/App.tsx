@@ -52,7 +52,6 @@ import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
 import { ChatInspectionModal } from './ChatInspectionModal';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
-import { PendingJoinRequests } from './PendingJoinRequests';
 import '../main.css';
 import { ChatMinimap } from './ChatMinimap';
 
@@ -220,10 +219,8 @@ function App() {
     useEffect(() => {
         if (!interactionData?.id) return;
 
-        // If already loaded and matches current chat, do nothing
         if (multiplayerData?.interactionDataIds?.includes(interactionData.id)) return;
 
-        // Find matching multiplayer session for this chat
         const matchingMpData = allMultiplayerData.find(md =>
             md.interactionDataIds.includes(interactionData.id!)
         );
@@ -231,8 +228,6 @@ function App() {
         if (matchingMpData) {
             useSessionStore.setState({ multiplayerData: matchingMpData });
         } else if (multiplayerData && !joinSessionId) {
-            // Clear multiplayer data when switching to a non-multiplayer chat
-            // (but not when joining — join uses synthetic effectiveMultiplayerData)
             useSessionStore.setState({ multiplayerData: null });
         }
     }, [interactionData?.id, allMultiplayerData, multiplayerData, joinSessionId]);
@@ -850,7 +845,6 @@ function App() {
 
     const massStartIndex = isMassActive ? displayMessages.findIndex(m => m.id === massDeleteId) : -1;
 
-    // Derived state — computed during render, not via effect
     const timeUntilReset = useMemo(() => {
         if (budgetData && activeStrategy && budgetData.resetDuration > 0) {
             return Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp));
@@ -1118,6 +1112,9 @@ function App() {
                     onImportComplete={handleImportComplete}
                     addToast={addToast}
                     ensureChatsLoaded={ensureChatsLoaded}
+                    pendingJoinRequests={multiplayerSync.pendingJoinRequests}
+                    onAcceptJoinRequest={multiplayerSync.acceptJoinRequest}
+                    onRejectJoinRequest={multiplayerSync.rejectJoinRequest}
                 />
             </div>
 
@@ -1126,12 +1123,6 @@ function App() {
                 onClose={() => { setIsInspectionOpen(false); setInspectionStack([]); }}
                 inspectionStack={inspectionStack}
                 onInspectingParentInteractionData={handleInspectParentInteractionData}
-            />
-
-            <PendingJoinRequests
-                pendingRequests={multiplayerSync.pendingJoinRequests}
-                onAccept={multiplayerSync.acceptJoinRequest}
-                onReject={multiplayerSync.rejectJoinRequest}
             />
 
             <ActionMenu 

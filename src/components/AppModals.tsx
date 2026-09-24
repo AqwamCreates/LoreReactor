@@ -1,5 +1,6 @@
 // src/components/AppModals.tsx
 import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World, AudioTrack, PromptBlock, RawInteractionData, Memory, MultiplayerData, Account, cloudBackend } from '../types';
+import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';
 import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';
@@ -124,6 +125,9 @@ interface AppModalsProps {
     onImportComplete: () => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
     ensureChatsLoaded: () => void;
+    pendingJoinRequests?: PendingJoinRequest[];
+    onAcceptJoinRequest?: (accountId: string) => void;
+    onRejectJoinRequest?: (accountId: string) => void;
 }
 
 type ChatShellWithId = RawInteractionData & { id: string };
@@ -174,6 +178,7 @@ export function AppModals({
     onJoinSession,
     onUpdateInteractionData, onForceFirstMessage, onSendCustomMessage, onInjectCustomMessage, onInjectFirstMessage,
     onImportComplete, addToast, ensureChatsLoaded,
+    pendingJoinRequests, onAcceptJoinRequest, onRejectJoinRequest,
 }: AppModalsProps) {
     const interactionData = useSessionStore(s => s.interactionData);
     const activeStrategy = useSessionStore(s => s.activeStrategy);
@@ -560,8 +565,17 @@ export function AppModals({
             )}
 
             {multiplayerDataModal.isOpen && (
-                <MultiplayerEditorModal isOpen={multiplayerDataModal.isOpen} onClose={multiplayerDataModal.close} onSave={multiplayerDataModal.handleSave}
-                    existingMultiplayerData={multiplayerDataModal.itemToEdit} allCharacters={allCharacters} rawChatShells={chatShellsWithIds} />
+                <MultiplayerEditorModal
+                    isOpen={multiplayerDataModal.isOpen}
+                    onClose={multiplayerDataModal.close}
+                    onSave={multiplayerDataModal.handleSave}
+                    existingMultiplayerData={multiplayerDataModal.itemToEdit}
+                    allCharacters={allCharacters}
+                    rawChatShells={chatShellsWithIds}
+                    pendingJoinRequests={pendingJoinRequests}
+                    onAcceptJoinRequest={onAcceptJoinRequest}
+                    onRejectJoinRequest={onRejectJoinRequest}
+                />
             )}
 
             {/* ─── Join Session Modal ─── */}
