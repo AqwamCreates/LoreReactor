@@ -11,11 +11,14 @@ interface PendingJoinRequestsProps {
 export function PendingJoinRequests({ pendingRequests, onAccept, onReject }: PendingJoinRequestsProps) {
     const [visible, setVisible] = useState(false);
 
+    // Show panel when new requests arrive, hide when all cleared
     useEffect(() => {
         if (pendingRequests.length > 0) {
             setVisible(true);
+        } else {
+            setVisible(false);
         }
-    }, [pendingRequests]);
+    }, [pendingRequests.length]);
 
     if (!visible || pendingRequests.length === 0) return null;
 
@@ -38,7 +41,7 @@ export function PendingJoinRequests({ pendingRequests, onAccept, onReject }: Pen
                 </h3>
                 <button
                     onClick={() => setVisible(false)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px' }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: 'var(--text)' }}
                 >
                     ×
                 </button>
