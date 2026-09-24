@@ -52,9 +52,8 @@ interface StateSyncPayload {
 // ─── Peer ID Helpers ───────────────────────────────────────────────
 
 /**
- * Build a PeerJS-safe peer ID.
+ * Build a PeerJS-safe individual peer ID.
  * Format: lr_{mpIdNoHyphens}_{accountIdNoHyphens}
- * or:     lr_{mpIdNoHyphens}_host
  *
  * PeerJS IDs must match /^[A-Za-z0-9_-]+$/. UUIDs contain hyphens,
  * so we strip them and use underscore as delimiter.
@@ -65,6 +64,13 @@ function buildPeerId(multiplayerDataId: string, accountId: string): string {
     return `lr_${mpId}_${acctId}`;
 }
 
+/**
+ * Build a PeerJS-safe host peer ID.
+ * Format: lr_{mpIdNoHyphens}_host
+ *
+ * The host always registers under this session-wide ID so joiners
+ * know where to connect regardless of which account is hosting.
+ */
 function buildHostPeerId(multiplayerDataId: string): string {
     const mpId = multiplayerDataId.replace(/[^A-Za-z0-9]/g, '');
     return `lr_${mpId}_host`;
@@ -72,7 +78,9 @@ function buildHostPeerId(multiplayerDataId: string): string {
 
 /**
  * Extract the account ID portion from a peer ID.
- * Returns the sanitized account ID (without hyphens) or null.
+ * For individual peers: lr_{mpId}_{acctId} → returns acctId
+ * For host peer: lr_{mpId}_host → returns 'host'
+ * Returns null for malformed peer IDs.
  */
 function extractAccountIdFromPeerId(peerId: string): string | null {
     const parts = peerId.split('_');
@@ -123,12 +131,20 @@ export function useMultiplayerConnection({
     useEffect(() => { currentAccountIdRef.current = currentAccountId; }, [currentAccountId]);
     useEffect(() => { joinPasswordRef.current = joinPassword; }, [joinPassword]);
 
-    // Derive peer IDs from multiplayer data — sanitized for PeerJS
-    const peerId = multiplayerData && currentAccountId
-        ? buildPeerId(multiplayerData.id, currentAccountId)
+    // Derive the peer ID this instance registers under:
+    // - Host: registers as lr_{mpId}_host (session-wide stable ID)
+    // - Joiner: registers as lr_{mpId}_{accountId} (individual ID)
+    const peerId = multiplayerData
+        ? (isHost
+            ? buildHostPeerId(multiplayerData.id)
+            : currentAccountId
+                ? buildPeerId(multiplayerData.id, currentAccountId)
+                : null)
         : null;
 
-    const hostPeerId = multiplayerData
+    // Joiner always knows the host peer ID to connect to.
+    // Host doesn't need this (it receives incoming connections).
+    const hostPeerId = multiplayerData && !isHost
         ? buildHostPeerId(multiplayerData.id)
         : null;
 
@@ -201,7 +217,7 @@ export function useMultiplayerConnection({
             setIsConnected(true);
             setConnectionError(null);
 
-            // If not host, connect to host
+            // If not host, connect to the host's session-wide peer ID
             if (!isHostRef.current && hostPeerId) {
                 const conn = peer.connect(hostPeerId, { reliable: true });
                 setupConnection(conn);

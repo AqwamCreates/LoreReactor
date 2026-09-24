@@ -140,9 +140,6 @@ function getRelativeTime(timestamp: number): string {
     return new Date(timestamp).toLocaleDateString();
 }
 
-/**
- * Haversine distance in km between two coordinate pairs.
- */
 function haversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -154,20 +151,13 @@ function haversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: num
     return R * c;
 }
 
-/**
- * Get distance between two locations.
- * Prioritizes author-defined locationDistances, falls back to Haversine from lat/lng.
- * Returns null if neither source is available.
- */
 function getLocationDistanceKm(locA: Location, locB: Location): number | null {
-    // Priority 1: explicit locationDistances
     const explicitAB = locA.locationDistances?.[locB.id];
     if (explicitAB !== undefined) return explicitAB;
 
     const explicitBA = locB.locationDistances?.[locA.id];
     if (explicitBA !== undefined) return explicitBA;
 
-    // Priority 2: Haversine from coordinates
     if (locA.latitude != null && locA.longitude != null &&
         locB.latitude != null && locB.longitude != null) {
         return haversineDistanceKm(locA.latitude, locA.longitude, locB.latitude, locB.longitude);
@@ -475,22 +465,9 @@ export function ChatInspectionModal({
                     {/* Session ID */}
                     <div className="editor-section" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '0.65rem', opacity: 0.7, flexShrink: 0 }}>🔗 Session ID:</span>
-                            <code style={{
-                                fontSize: '0.6rem',
-                                padding: '3px 8px',
-                                background: 'var(--social-bg)',
-                                border: '1px solid var(--border)',
-                                borderRadius: '4px',
-                                fontFamily: 'monospace',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                flex: 1,
-                                minWidth: 0,
-                            }}>
-                                {chat.id}
-                            </code>
+                            <div style={{ fontSize: '0.65rem', opacity: 0.7, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, textAlign: 'left' }}>
+                                🔗 Session ID: {chat.id}
+                            </div>
                             <button
                                 type="button"
                                 onClick={handleCopySessionId}
