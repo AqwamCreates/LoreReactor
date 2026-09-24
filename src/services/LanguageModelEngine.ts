@@ -381,11 +381,11 @@ export class LanguageModelEngine {
 
   private extractContent(data: OpenAICompletionResponse): string | null {
     if (data.choices?.[0]?.message?.content !== undefined) {
-      const content = data.choices[0].message.content?;
+      const content = data.choices[0].message.content
       return content && content.length > 0 ? content : null;
     }
     if (data.content !== undefined) {
-      const content = data.content?;
+      const content = data.content
       return content && content.length > 0 ? content : null;
     }
     return null;
