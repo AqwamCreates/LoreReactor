@@ -112,6 +112,9 @@ export function useMultiplayerConnection({
     useEffect(() => { currentAccountIdRef.current = currentAccountId; }, [currentAccountId]);
     useEffect(() => { joinPasswordRef.current = joinPassword; }, [joinPassword]);
 
+    // peerId and hostPeerId are string primitives derived from interactionData.id.
+    // They only change when the chat session ID changes — which is exactly when
+    // we need to tear down and recreate the PeerJS connection.
     const peerId = multiplayerData && interactionData
         ? (isHost
             ? buildHostPeerId(interactionData.id)
@@ -124,7 +127,12 @@ export function useMultiplayerConnection({
         ? buildHostPeerId(interactionData.id)
         : null;
 
-    // Initialize PeerJS connection
+    // Initialize PeerJS connection.
+    // IMPORTANT: Do NOT include interactionData in the dependency array.
+    // interactionData changes on every synced message (setInteractionData),
+    // which would destroy and recreate the peer in an infinite loop.
+    // peerId/hostPeerId already encode interactionData.id, so the effect
+    // correctly re-runs only when the chat session ID changes.
     useEffect(() => {
         if (!peerId || !multiplayerData) return;
 
@@ -143,9 +151,11 @@ export function useMultiplayerConnection({
                 setIsConnected(true);
                 onPeerConnectedRef.current(remoteAccountId);
 
+                // If we're a client connecting to host, send join request
                 const localAcctId = currentAccountIdRef.current;
                 if (localAcctId && !isHostRef.current) {
                     const sanitizedLocalAcctId = localAcctId.replace(/[^A-Za-z0-9]/g, '');
+                    console.log('[MP] Client sending join_request:', sanitizedLocalAcctId);
                     const joinMsg: MultiplayerMessage = {
                         type: 'join_request',
                         senderAccountId: sanitizedLocalAcctId,
@@ -162,6 +172,7 @@ export function useMultiplayerConnection({
             conn.on('data', (data) => {
                 const msg = data as MultiplayerMessage;
                 if (msg?.type && msg?.senderAccountId) {
+                    console.log('[MP] Received message:', msg.type, 'from:', msg.senderAccountId);
                     onReceiveMessageRef.current(msg);
                 }
             });
@@ -179,7 +190,7 @@ export function useMultiplayerConnection({
             });
 
             conn.on('error', (err) => {
-                console.error('DataConnection error:', err);
+                console.error('[MP] DataConnection error:', err);
             });
         };
 
@@ -191,7 +202,7 @@ export function useMultiplayerConnection({
 
         peer.on('open', (id) => {
             if (destroyed) return;
-            console.log(`[Multiplayer] Registered as peer: ${id} (isHost: ${isHostRef.current})`);
+            console.log(`[MP] Registered as peer: ${id} (isHost: ${isHostRef.current})`);
             setConnectionError(null);
 
             if (!isHostRef.current && hostPeerId) {
@@ -201,16 +212,19 @@ export function useMultiplayerConnection({
 
                 const tryConnect = () => {
                     if (destroyed) return;
+                    console.log('[MP] Attempting to connect to host:', hostPeerId);
                     const conn = peer.connect(hostPeerId, { reliable: true });
 
-                    conn.on('open', () => {
-                        setupConnection(conn);
-                    });
+                    // Register all handlers BEFORE the connection opens.
+                    // setupConnection internally registers conn.on('open') which
+                    // handles the join request send.
+                    setupConnection(conn);
 
-                    conn.on('error', () => {
+                    conn.on('error', (err) => {
+                        console.error('[MP] Connection attempt error:', err);
                         retries++;
                         if (retries < maxRetries && !destroyed) {
-                            console.warn(`Failed to connect to host, retry ${retries}/${maxRetries}...`);
+                            console.warn(`[MP] Failed to connect to host, retry ${retries}/${maxRetries}...`);
                             setTimeout(tryConnect, retryDelayMs);
                         } else if (!destroyed) {
                             setConnectionError('Could not connect to host after multiple attempts');
@@ -224,6 +238,7 @@ export function useMultiplayerConnection({
 
         peer.on('connection', (conn) => {
             if (destroyed) return;
+            console.log('[MP] Incoming connection from:', conn.peer);
             setupConnection(conn);
         });
 
@@ -251,7 +266,7 @@ export function useMultiplayerConnection({
             setIsConnected(false);
             setConnectedPeers([]);
         };
-    }, [peerId, hostPeerId, multiplayerData, interactionData]);
+    }, [peerId, hostPeerId, multiplayerData]);
 
     const broadcast = useCallback((msg: Omit<MultiplayerMessage, 'senderAccountId' | 'timestamp'>) => {
         const acctId = currentAccountIdRef.current;
@@ -280,7 +295,10 @@ export function useMultiplayerConnection({
             const sanitizedTargetId = accountId.replace(/[^A-Za-z0-9]/g, '');
             conn = connectionsRef.current.get(sanitizedTargetId);
         }
-        if (!conn) return;
+        if (!conn) {
+            console.warn(`[MP] sendTo: No connection found for ${accountId}`);
+            return;
+        }
 
         const sanitizedAcctId = acctId.replace(/[^A-Za-z0-9]/g, '');
         const fullMsg: MultiplayerMessage = {

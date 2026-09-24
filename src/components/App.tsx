@@ -50,7 +50,6 @@ import { AppModals } from './AppModals';
 import { ChatInput } from './ChatInput';
 import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
-import { ChatInspectionModal } from './ChatInspectionModal';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import '../main.css';
 import { ChatMinimap } from './ChatMinimap';
@@ -265,9 +264,6 @@ function App() {
     const accountModal = useEntityModal<Account>(saveAccount, deleteAccount, 'Account');
     const multiplayerDataModal = useEntityModal<MultiplayerData>(saveMultiplayerData, deleteMultiplayerData, 'Multiplayer Data');
 
-    const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
-    const [isInspectionOpen, setIsInspectionOpen] = useState(false);
-
     const { modals } = useModalVisibility();
     const [maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens, setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens] = useState<number>(0);
     const [isRecording, setIsRecording] = useState(false);
@@ -290,12 +286,14 @@ function App() {
     });
 
     const isModelReady = useMemo(() => {
+        // Multiplayer clients don't need a local model — the host handles generation
+        if (multiplayerSync.isConnected && !multiplayerSync.isHost) return true;
         if (activeStrategy) return true;
         if (!selectedModelId) return false;
         const selectedModel = allModels.find(m => m.id === selectedModelId);
         if (selectedModel?.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend as cloudBackend)) return true;
         return runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle === true;
-    }, [selectedModelId, allModels, runningModels, activeStrategy]);
+    }, [selectedModelId, allModels, runningModels, activeStrategy, multiplayerSync.isConnected, multiplayerSync.isHost]);
 
     const {
         actionMenuTarget, menuSearchQuery, setMenuSearchQuery,
@@ -367,13 +365,16 @@ function App() {
     }, [streamingText]);
 
     const isModelLoading = useMemo(() => {
+        if (multiplayerSync.isConnected && !multiplayerSync.isHost) return false;
         if (!selectedModelId) return false;
         const selectedModel = allModels.find(m => m.id === selectedModelId);
         if (selectedModel?.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend as cloudBackend)) return false;
         return runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle !== true;
-    }, [selectedModelId, allModels, runningModels]);
+    }, [selectedModelId, allModels, runningModels, multiplayerSync.isConnected, multiplayerSync.isHost]);
 
-    const modelStatusMessage = !selectedModelId ? 'No model selected — open Language Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '';
+    const modelStatusMessage = (multiplayerSync.isConnected && !multiplayerSync.isHost)
+        ? ''
+        : (!selectedModelId ? 'No model selected — open Language Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '');
     const isMassActive = massDeleteId !== null;
     const safeInteractionMessages = useMemo(() => chatMessages || [], [chatMessages]);
 
@@ -785,19 +786,6 @@ function App() {
         addToast(`Loaded world "${world.name}"`, 'success');
     }, [interactionData, allCharacters, allContexts, allLocations, allAudioTracks, allProfiles, setInteractionData, addToast]);
 
-    const handleInspectParentInteractionData = useCallback(async (parentId: string): Promise<InteractionData> => {
-        const loaded = await loadRawInteractionData(parentId, allCharacters);
-        if (!loaded) throw new Error(`Failed to load parent chat ${parentId}`);
-        return loaded;
-    }, [allCharacters]);
-
-    const handleOpenChatInspection = useCallback(async (chatId: string) => {
-        const loaded = await loadRawInteractionData(chatId, allCharacters);
-        if (!loaded) { addToast('Failed to load chat for inspection.', 'error'); return; }
-        setInspectionStack([loaded]);
-        setIsInspectionOpen(true);
-    }, [allCharacters, addToast]);
-
     // ─── Render ────────────────────────────────────────────────────
 
     const displayMessages = useMemo(() => {
@@ -1056,7 +1044,6 @@ function App() {
                     accountModal={accountModal}
                     multiplayerDataModal={multiplayerDataModal}
                     onSwitchChat={handleSwitchChat}
-                    onInspectChat={handleOpenChatInspection}
                     onDeleteChat={onDeleteChatForModals}
                     onNewChat={handleNewChat}
                     onRenameChat={handleRenameChat}
@@ -1117,13 +1104,6 @@ function App() {
                     onRejectJoinRequest={multiplayerSync.rejectJoinRequest}
                 />
             </div>
-
-            <ChatInspectionModal
-                isOpen={isInspectionOpen}
-                onClose={() => { setIsInspectionOpen(false); setInspectionStack([]); }}
-                inspectionStack={inspectionStack}
-                onInspectingParentInteractionData={handleInspectParentInteractionData}
-            />
 
             <ActionMenu 
                 actionMenuTarget={actionMenuTarget} 

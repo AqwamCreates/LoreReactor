@@ -104,9 +104,6 @@ export function useMultiplayerSync({
     const isHost = !!multiplayerData && !joinSessionId;
     const isAdmin = isHost || !!(multiplayerData && currentAccountId && multiplayerData.administratorAccountIds.includes(currentAccountId));
 
-    // Construct synthetic MultiplayerData for peer ID derivation when joining.
-    // Prioritize joinSessionId over existing multiplayerData so the joiner
-    // always uses the pasted session ID for peer ID construction.
     const effectiveMultiplayerData = useMemo<MultiplayerData | null>(() => {
         if (joinSessionId) {
             return {
@@ -126,9 +123,6 @@ export function useMultiplayerSync({
         return multiplayerData;
     }, [multiplayerData, joinSessionId]);
 
-    // Construct synthetic InteractionData for peer ID derivation when joining.
-    // Prioritize joinSessionId over existing interactionData so the joiner
-    // always uses the pasted session ID for peer ID construction.
     const effectiveInteractionData = useMemo<InteractionData | null>(() => {
         if (joinSessionId) {
             return { id: joinSessionId } as InteractionData;
@@ -251,18 +245,29 @@ export function useMultiplayerSync({
             }
 
             case 'join_request': {
-                if (!isHost) return;
+                if (!isHost) {
+                    console.log('[MP] Ignoring join_request — not host. isHost:', isHost);
+                    return;
+                }
                 const md = multiplayerDataRef.current;
-                if (!md) return;
+                if (!md) {
+                    console.log('[MP] Ignoring join_request — no multiplayerData');
+                    return;
+                }
                 const payload = msg.payload as JoinRequestPayload;
                 const requestingAccountId = payload.accountId;
+
+                console.log('[MP] Host received join_request from:', requestingAccountId);
 
                 const isBlacklisted = md.blacklistedAccountIds.includes(requestingAccountId);
                 const isWhitelisted = md.whiteListedAccountIds.includes(requestingAccountId);
                 const isDelegatedAdmin = md.administratorAccountIds.includes(requestingAccountId);
                 const passwordValid = !md.password || payload.password === md.password;
 
+                console.log('[MP] Access check:', { isBlacklisted, isWhitelisted, isDelegatedAdmin, passwordValid, hasPassword: !!md.password });
+
                 if (!isBlacklisted && (isWhitelisted || isDelegatedAdmin || passwordValid)) {
+                    console.log('[MP] Auto-accepting join request for:', requestingAccountId);
                     const freshData = interactionDataRef.current;
                     const initialState = freshData ? {
                         interactionHistory: freshData.interactionHistory,
@@ -274,11 +279,13 @@ export function useMultiplayerSync({
                         payload: { accepted: true, initialState } satisfies JoinResponsePayload,
                     });
                 } else if (isBlacklisted) {
+                    console.log('[MP] Rejecting blacklisted account:', requestingAccountId);
                     sendToRef.current(requestingAccountId, {
                         type: 'join_response',
                         payload: { accepted: false, reason: 'Account is blacklisted' } satisfies JoinResponsePayload,
                     });
                 } else {
+                    console.log('[MP] Adding to pending requests:', requestingAccountId);
                     setPendingJoinRequests(prev => {
                         const exists = prev.some(r => r.accountId === requestingAccountId);
                         if (exists) return prev;
@@ -295,6 +302,7 @@ export function useMultiplayerSync({
             case 'join_response': {
                 if (isHost) return;
                 const payload = msg.payload as JoinResponsePayload;
+                console.log('[MP] Client received join_response:', payload.accepted ? 'accepted' : 'rejected');
                 if (payload.accepted) {
                     setJoinCompletedSessionId(joinSessionId ?? null);
 
@@ -381,11 +389,11 @@ export function useMultiplayerSync({
     }, [currentAccountId, isHost, joinSessionId, setInteractionData]);
 
     const handlePeerConnected = useCallback((accountId: string) => {
-        console.log(`Peer connected: ${accountId}`);
+        console.log(`[MP] Peer connected: ${accountId}`);
     }, []);
 
     const handlePeerDisconnected = useCallback((accountId: string) => {
-        console.log(`Peer disconnected: ${accountId}`);
+        console.log(`[MP] Peer disconnected: ${accountId}`);
 
         if (!isHost) return;
         const charId = peerCharacterMapRef.current.get(accountId);

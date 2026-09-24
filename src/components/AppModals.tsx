@@ -1,6 +1,7 @@
 // src/components/AppModals.tsx
 import type { Character, Context, Location, Sampler, StopPattern, LanguageModel, BudgetStrategy, Profile, Extension, InteractionData, World, AudioTrack, PromptBlock, RawInteractionData, Memory, MultiplayerData, Account, cloudBackend } from '../types';
 import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';
+import { loadRawInteractionData } from '../storage/serverStorage';
 import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';
@@ -26,10 +27,11 @@ import { DataImportModal } from './DataImportModal';
 import { DataExportModal } from './DataExportModal';
 import { DataManagerModal } from './DataManagerModal';
 import { AlternateTimelinesModal } from './AlternateTimelinesModal';
+import { ChatInspectionModal } from './ChatInspectionModal';
 import { renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext } from './renderHelpers';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useSessionStore } from '../hooks/useSessionStore';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 
 interface ModalVisibility {
     isOpen: boolean;
@@ -79,7 +81,6 @@ interface AppModalsProps {
     accountModal: EntityModalState<Account>;
     multiplayerDataModal: EntityModalState<MultiplayerData>;
     onSwitchChat: (id: string) => void;
-    onInspectChat: (id: string) => void;
     onDeleteChat: (id: string) => void;
     onNewChat: () => void;
     onRenameChat: (id: string, name: string) => void;
@@ -159,7 +160,7 @@ export function AppModals({
     samplerModal, stopModal, modelModal, budgetModal,
     profileModal, worldModal, promptBlockModal,
     accountModal, multiplayerDataModal,
-    onSwitchChat, onInspectChat, onDeleteChat, onNewChat, onRenameChat,
+    onSwitchChat, onDeleteChat, onNewChat, onRenameChat,
     onDeleteCharacter, onLoadFullCharacter, onToggleParticipant, onSetProtagonist, onSaveCharacter,
     onDeleteContext, onToggleContext, onSaveContext,
     onDeleteLocation, onToggleLocation, onSaveLocation,
@@ -209,6 +210,9 @@ export function AppModals({
     const [gpuMonitorOpen, setGpuMonitorOpen] = useState(false);
     const [joinSessionOpen, setJoinSessionOpen] = useState(false);
 
+    const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
+    const [isInspectionOpen, setIsInspectionOpen] = useState(false);
+
     const chatShellsWithIds = useMemo(
         () => rawChatShells.filter((s): s is ChatShellWithId => !!s.id),
         [rawChatShells],
@@ -228,6 +232,19 @@ export function AppModals({
         }
     }, [modals.chatList.isOpen, ensureChatsLoaded]);
 
+    const handleOpenChatInspection = useCallback(async (chatId: string) => {
+        const loaded = await loadRawInteractionData(chatId, allCharacters);
+        if (!loaded) { addToast('Failed to load chat for inspection.', 'error'); return; }
+        setInspectionStack([loaded]);
+        setIsInspectionOpen(true);
+    }, [allCharacters, addToast]);
+
+    const handleInspectParentInteractionData = useCallback(async (parentId: string): Promise<InteractionData> => {
+        const loaded = await loadRawInteractionData(parentId, allCharacters);
+        if (!loaded) throw new Error(`Failed to load parent chat ${parentId}`);
+        return loaded;
+    }, [allCharacters]);
+
     return (
         <>
             {/* ─── Manager Lists ─── */}
@@ -238,7 +255,7 @@ export function AppModals({
                     items={chatShellsWithIds}
                     isOpen={modals.chatList.isOpen}
                     onClose={modals.chatList.close}
-                    onSelect={(item) => { onInspectChat(item.id); modals.chatList.close(); }}
+                    onSelect={(item) => { handleOpenChatInspection(item.id); modals.chatList.close(); }}
                     onDelete={(id: string) => onDeleteChat(id)}
                     onCreateNew={onNewChat}
                     renderSubtext={renderChatSubtext}
@@ -454,7 +471,7 @@ export function AppModals({
             {modals.alternateTimelines.isOpen && (
                 <AlternateTimelinesModal isOpen={modals.alternateTimelines.isOpen} onClose={modals.alternateTimelines.close}
                     currentInteractionId={interactionData?.id ?? ''} rawChatShells={chatShellsWithIds}
-                    onSwitchChat={onSwitchChat} onDeleteChat={onDeleteChat} onInspectChat={onInspectChat} onRenameChat={onRenameChat} />
+                    onSwitchChat={onSwitchChat} onDeleteChat={onDeleteChat} onInspectChat={handleOpenChatInspection} onRenameChat={onRenameChat} />
             )}
 
             {modals.cardImport.isOpen && (
@@ -584,6 +601,14 @@ export function AppModals({
                 onClose={() => setJoinSessionOpen(false)}
                 allCharacters={allCharacters}
                 onJoin={onJoinSession}
+            />
+
+            {/* ─── Chat Inspection Modal ─── */}
+            <ChatInspectionModal
+                isOpen={isInspectionOpen}
+                onClose={() => { setIsInspectionOpen(false); setInspectionStack([]); }}
+                inspectionStack={inspectionStack}
+                onInspectingParentInteractionData={handleInspectParentInteractionData}
             />
         </>
     );
