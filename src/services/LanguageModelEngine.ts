@@ -333,7 +333,7 @@ export class LanguageModelEngine {
     params: ResolvedParams,
     existingText?: string,
   ): ResolvedRequest {
-    const finalPrompt = existingText && existingText.trim().length > 0
+    const finalPrompt = existingText && existingText.length > 0
       ? `${prompt}${existingText}`
       : prompt;
 
@@ -381,11 +381,11 @@ export class LanguageModelEngine {
 
   private extractContent(data: OpenAICompletionResponse): string | null {
     if (data.choices?.[0]?.message?.content !== undefined) {
-      const content = data.choices[0].message.content?.trim();
+      const content = data.choices[0].message.content?;
       return content && content.length > 0 ? content : null;
     }
     if (data.content !== undefined) {
-      const content = data.content?.trim();
+      const content = data.content?;
       return content && content.length > 0 ? content : null;
     }
     return null;
@@ -654,7 +654,7 @@ export class LanguageModelEngine {
     let lastMsPerToken = 0;
     let lastTimeToFirstToken = 0;
 
-    if (existingText && existingText.trim().length > 0) {
+    if (existingText && existingText.length > 0) {
       paragraphCount = (existingText.match(/\n\n/g) || []).length;
     }
 
@@ -665,7 +665,7 @@ export class LanguageModelEngine {
         // Stream ended naturally — generation is complete
         if (done) {
           return {
-            text: fullContent.trim(),
+            text: fullContent,
             isCompleted: true,
             msPerToken: lastMsPerToken || undefined,
             timeToFirstToken: lastTimeToFirstToken || undefined,
@@ -682,9 +682,9 @@ export class LanguageModelEngine {
           const jsonStr = line.slice(6);
 
           // [DONE] sentinel — generation is complete
-          if (jsonStr.trim() === '[DONE]') {
+          if (jsonStr === '[DONE]') {
             return {
-              text: fullContent.trim(),
+              text: fullContent,
               isCompleted: true,
               msPerToken: lastMsPerToken || undefined,
               timeToFirstToken: lastTimeToFirstToken || undefined,
@@ -719,7 +719,7 @@ export class LanguageModelEngine {
               }
 
               return {
-                text: fullContent.trim(),
+                text: fullContent,
                 isCompleted: true,
                 msPerToken: lastMsPerToken || undefined,
                 timeToFirstToken: lastTimeToFirstToken || undefined,
@@ -762,7 +762,7 @@ export class LanguageModelEngine {
               if (paragraphCount >= paragraphLimit) {
                 abortController.abort();
                 return {
-                  text: fullContent.trim(),
+                  text: fullContent,
                   isCompleted: true,
                   msPerToken: lastMsPerToken || undefined,
                   timeToFirstToken: lastTimeToFirstToken || undefined,
@@ -790,7 +790,7 @@ export class LanguageModelEngine {
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
         return {
-          text: fullContent.trim(),
+          text: fullContent,
           isCompleted: false,
           msPerToken: lastMsPerToken || undefined,
           timeToFirstToken: lastTimeToFirstToken || undefined,

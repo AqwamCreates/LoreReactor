@@ -94,9 +94,9 @@ function isInputFilterError(e: unknown): boolean {
 }
 
 function isCensorshipRefusal(text: string): boolean {
-    if (!text || text.trim().length === 0) return false;
+    if (!text || text.length === 0) return false;
 
-    const lower = text.toLowerCase().trim();
+    const lower = text.toLowerCase();
     const refusalPatterns = [
         /^i can'?t (help|assist|provide|generate|create|write|produce|fulfill)/,
         /^i'?m (unable|not able|sorry)/,
@@ -350,7 +350,7 @@ export class BudgetStrategyEngine {
 
                     const fullOutput = accumulatedPartialText + result.text;
 
-                    if (!fullOutput.trim()) {
+                    if (!fullOutput) {
                         this.recordBroken(selectedModel.id);
                         primaryFailedSet.add(selectedModel.id);
                         console.warn(`Model ${selectedModel.name} returned empty/broken response, rotating.`);
@@ -445,7 +445,7 @@ export class BudgetStrategyEngine {
 
                         const fullOutput = accumulatedPartialText + result.text;
 
-                        if (!fullOutput.trim()) {
+                        if (!fullOutput) {
                             this.recordBroken(selectedModel.id);
                             fallbackFailedSet.add(selectedModel.id);
                             console.warn(`Fallback model ${selectedModel.name} returned empty/broken response, rotating.`);
@@ -539,7 +539,7 @@ export class BudgetStrategyEngine {
 
                         const fullOutput = accumulatedPartialText + result.text;
 
-                        if (!fullOutput.trim()) {
+                        if (!fullOutput) {
                             this.recordBroken(freeModel.id);
                             allFailedIds.add(freeModel.id);
                             console.warn(`Free model ${freeModel.name} returned empty/broken response, rotating.`);
@@ -568,7 +568,7 @@ export class BudgetStrategyEngine {
             }
         }
 
-        if (accumulatedPartialText.trim()) return {text: accumulatedPartialText, isCompleted: false};
+        if (accumulatedPartialText) return {text: accumulatedPartialText, isCompleted: false};
 
         console.warn('[BudgetEngine] All models exhausted. Returning empty response.');
         return {text: "", isCompleted: false};
@@ -619,7 +619,7 @@ export class BudgetStrategyEngine {
                     const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
                     this.recordSuccess(selectedModel.id, cost.totalCost);
 
-                    if (!result.text.trim()) {
+                    if (!result.text) {
                         this.recordBroken(selectedModel.id);
                         primaryFailedSet.add(selectedModel.id);
                         console.warn(`Completion model ${selectedModel.name} returned empty/broken response, rotating.`);
@@ -685,7 +685,7 @@ export class BudgetStrategyEngine {
                         const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
                         this.recordSuccess(selectedModel.id, cost.totalCost);
 
-                        if (!result.text.trim()) {
+                        if (!result.text) {
                             this.recordBroken(selectedModel.id);
                             fallbackFailedSet.add(selectedModel.id);
                             console.warn(`Fallback completion model ${selectedModel.name} returned empty/broken response, rotating.`);
@@ -748,7 +748,7 @@ export class BudgetStrategyEngine {
                     this.recordSessionDuration(freeModel.id, sessionDuration);
                     this.recordSuccess(freeModel.id, 0);
 
-                    if (!result.text.trim()) {
+                    if (!result.text) {
                         this.recordBroken(freeModel.id);
                         allFailedIds.add(freeModel.id);
                         console.warn(`Free completion model ${freeModel.name} returned empty/broken response, rotating.`);

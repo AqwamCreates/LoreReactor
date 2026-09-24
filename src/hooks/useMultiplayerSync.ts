@@ -12,7 +12,6 @@ interface SyncChatMessagePayload {
     textContent: string;
     files?: string[];
     frontCameraImage?: string;
-    isPartial?: boolean;
     remainingChatStamina?: number;
     remainingActionStamina?: number;
     knownCharacterNames?: Record<string, Record<string, boolean>>;
@@ -130,7 +129,6 @@ export function useMultiplayerSync({
         return interactionData;
     }, [interactionData, joinSessionId]);
 
-    const appliedMessageIdsRef = useRef<Set<string>>(new Set());
     const peerCharacterMapRef = useRef<Map<string, string>>(new Map());
 
     const characterMapRef = useRef<Map<string, Character>>(new Map());
@@ -167,7 +165,6 @@ export function useMultiplayerSync({
                         textContent: chatPayload.textContent,
                         files: chatPayload.files ?? [],
                         frontCameraImage: chatPayload.frontCameraImage,
-                        isPartial: chatPayload.isPartial,
                         modelTextContentSummaries: {},
                         modelInteractionTextContentSummaries: {},
                         kvCacheTextContentPaths: {},
@@ -205,42 +202,22 @@ export function useMultiplayerSync({
                     } satisfies InteractionMessage;
                 }
 
-                const isPartial = payload.messageType === 'chat' && (payload as SyncChatMessagePayload).isPartial;
-
-                if (isPartial) {
-                    const existingIdx = currentData.interactionHistory.findIndex(m => m.id === payload.messageId);
-                    let updatedHistory: HistoryMessage[];
-                    if (existingIdx !== -1) {
-                        updatedHistory = [...currentData.interactionHistory];
-                        updatedHistory[existingIdx] = newMessage;
-                    } else {
-                        updatedHistory = [...currentData.interactionHistory, newMessage];
-                    }
-                    setInteractionData({
-                        ...currentData,
-                        interactionHistory: updatedHistory,
-                        numberOfMessages: updatedHistory.length,
-                        lastUpdatedTimestamp: Date.now(),
-                    });
+                // Always update by ID: if the message already exists, replace it
+                // (handles streaming updates); if not, append it.
+                const existingIdx = currentData.interactionHistory.findIndex(m => m.id === payload.messageId);
+                let updatedHistory: HistoryMessage[];
+                if (existingIdx !== -1) {
+                    updatedHistory = [...currentData.interactionHistory];
+                    updatedHistory[existingIdx] = newMessage;
                 } else {
-                    if (appliedMessageIdsRef.current.has(payload.messageId)) return;
-                    appliedMessageIdsRef.current.add(payload.messageId);
-
-                    const existingIdx = currentData.interactionHistory.findIndex(m => m.id === payload.messageId);
-                    let updatedHistory: HistoryMessage[];
-                    if (existingIdx !== -1) {
-                        updatedHistory = [...currentData.interactionHistory];
-                        updatedHistory[existingIdx] = newMessage;
-                    } else {
-                        updatedHistory = [...currentData.interactionHistory, newMessage];
-                    }
-                    setInteractionData({
-                        ...currentData,
-                        interactionHistory: updatedHistory,
-                        numberOfMessages: updatedHistory.length,
-                        lastUpdatedTimestamp: Date.now(),
-                    });
+                    updatedHistory = [...currentData.interactionHistory, newMessage];
                 }
+                setInteractionData({
+                    ...currentData,
+                    interactionHistory: updatedHistory,
+                    numberOfMessages: updatedHistory.length,
+                    lastUpdatedTimestamp: Date.now(),
+                });
                 break;
             }
 
@@ -483,7 +460,6 @@ export function useMultiplayerSync({
                 textContent: message.textContent,
                 files: message.files,
                 frontCameraImage: message.frontCameraImage,
-                isPartial: message.isPartial,
             } satisfies SyncChatMessagePayload;
         }
 
@@ -494,7 +470,6 @@ export function useMultiplayerSync({
     }, []);
 
     const broadcastMessage = useCallback((message: HistoryMessage) => {
-        appliedMessageIdsRef.current.add(message.id);
         broadcast({
             type: 'chat_message',
             payload: extractSyncPayload(message),
