@@ -216,6 +216,27 @@ function App() {
         previousChatIdRef.current = currentChatId;
     }, [interactionData?.id, multiplayerSync]);
 
+    // ─── Auto-load Multiplayer Data For Active Chat ─────────────────
+    useEffect(() => {
+        if (!interactionData?.id) return;
+
+        // If already loaded and matches current chat, do nothing
+        if (multiplayerData?.interactionDataIds?.includes(interactionData.id)) return;
+
+        // Find matching multiplayer session for this chat
+        const matchingMpData = allMultiplayerData.find(md =>
+            md.interactionDataIds.includes(interactionData.id!)
+        );
+
+        if (matchingMpData) {
+            useSessionStore.setState({ multiplayerData: matchingMpData });
+        } else if (multiplayerData && !joinSessionId) {
+            // Clear multiplayer data when switching to a non-multiplayer chat
+            // (but not when joining — join uses synthetic effectiveMultiplayerData)
+            useSessionStore.setState({ multiplayerData: null });
+        }
+    }, [interactionData?.id, allMultiplayerData, multiplayerData, joinSessionId]);
+
     const localProtagonist = useMemo(
         () => deriveCurrentProtagonist(interactionData, multiplayerData, currentAccountId),
         [interactionData, multiplayerData, currentAccountId],
@@ -829,13 +850,12 @@ function App() {
 
     const massStartIndex = isMassActive ? displayMessages.findIndex(m => m.id === massDeleteId) : -1;
 
-    const [timeUntilReset, setTimeUntilReset] = useState<number | undefined>(undefined);
-    useEffect(() => {
+    // Derived state — computed during render, not via effect
+    const timeUntilReset = useMemo(() => {
         if (budgetData && activeStrategy && budgetData.resetDuration > 0) {
-            setTimeUntilReset(Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp)));
-        } else {
-            setTimeUntilReset(undefined);
+            return Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp));
         }
+        return undefined;
     }, [budgetData, activeStrategy]);
 
     const viewProps: ViewModeProps = {
