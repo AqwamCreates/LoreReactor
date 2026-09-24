@@ -266,9 +266,15 @@ export function useMultiplayerSync({
 
                 // Auto-accept if whitelisted/admin/valid password, otherwise queue as pending
                 if (!isBlacklisted && (isWhitelisted || isDelegatedAdmin || passwordValid)) {
+                    // Include initial state so joiner gets full chat history
+                    const initialState = currentData ? {
+                        interactionHistory: currentData.interactionHistory,
+                        protagonistIds: currentData.protagonists.map(p => p.id),
+                    } : undefined;
+
                     sendToRef.current(requestingAccountId, {
                         type: 'join_response',
-                        payload: { accepted: true } satisfies JoinResponsePayload,
+                        payload: { accepted: true, initialState } satisfies JoinResponsePayload,
                     });
                 } else if (isBlacklisted) {
                     sendToRef.current(requestingAccountId, {
@@ -295,6 +301,28 @@ export function useMultiplayerSync({
                 const payload = msg.payload as JoinResponsePayload;
                 if (payload.accepted) {
                     setJoinCompletedSessionId(joinSessionId ?? null);
+
+                    // Apply initial state from host
+                    if (payload.initialState && payload.initialState.interactionHistory.length > 0) {
+                        const existingIds = new Set(currentData.interactionHistory.map(m => m.id));
+                        const newMessages = payload.initialState.interactionHistory.filter(m => !existingIds.has(m.id));
+
+                        // Resolve character references from local character map
+                        const resolvedMessages = newMessages.map(msg => {
+                            const char = characterMapRef.current.get(msg.character.id);
+                            return char ? { ...msg, character: char } : msg;
+                        });
+
+                        if (resolvedMessages.length > 0) {
+                            setInteractionData({
+                                ...currentData,
+                                interactionHistory: [...currentData.interactionHistory, ...resolvedMessages],
+                                numberOfMessages: currentData.interactionHistory.length + resolvedMessages.length,
+                                lastUpdatedTimestamp: Date.now(),
+                            });
+                        }
+                    }
+
                     // Send protagonist after acceptance
                     const protag = joinProtagonistRef.current;
                     if (protag) {
@@ -410,12 +438,17 @@ export function useMultiplayerSync({
     useEffect(() => { sendToRef.current = sendTo; }, [sendTo]);
     useEffect(() => { broadcastRef.current = broadcast; }, [broadcast]);
 
-    // Accept a pending join request
+    // Accept a pending join request — include initial state
     const acceptJoinRequest = useCallback((accountId: string) => {
         setPendingJoinRequests(prev => prev.filter(r => r.accountId !== accountId));
+        const currentData = interactionDataRef.current;
+        const initialState = currentData ? {
+            interactionHistory: currentData.interactionHistory,
+            protagonistIds: currentData.protagonists.map(p => p.id),
+        } : undefined;
         sendToRef.current(accountId, {
             type: 'join_response',
-            payload: { accepted: true } satisfies JoinResponsePayload,
+            payload: { accepted: true, initialState } satisfies JoinResponsePayload,
         });
     }, []);
 
