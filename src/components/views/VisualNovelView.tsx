@@ -52,7 +52,7 @@ function detectFormatSegments(text: string): DetectedSegment[] {
             allMatches.push({ start: match.index, end: match.index + match[0].length, category, innerText: match[innerGroup] || '', rawMatch: match[0] });
         }
     }
-    allMatches.sort((a, b) => a.start !== b.start ? a.start - b.start : (b.end - b.start) - (a.end - a.start));
+    allMatches.sort((a, b) => a.start !== b.start ? a.start - b.start : (b.end - b.start) - (a.end - b.start));
     const accepted: RawMatch[] = [];
     let cursor = 0;
     for (const match of allMatches) {
@@ -194,7 +194,8 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     }, [chatMessages.length, focusedMessageId, setFocusedMessageId]);
 
     const lastMsg = displayMessages[displayMessages.length - 1];
-    const isStreamingInList = lastMsg?.isPartial === true;
+    // Determine if the last message in the list is currently streaming based on global state
+    const isStreamingInList = isLoading && streamingCharacter !== null && lastMsg?.character?.id === streamingCharacter.id;
 
     const activeStreamingText: string | null = isStreamingInList
         ? lastMsg.textContent
@@ -503,11 +504,8 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                 {displayedMessage && (
                                     <>
                                         <button type="button" className="vn-toolbar-btn" onClick={() => onCopyText(displayedMessage.textContent)} title="Copy Text">📋</button>
-                                        {displayedMessage.isPartial ? (
-                                            <button type="button" className="vn-toolbar-btn" onClick={() => onResumeGeneration(displayedMessage.id)} title="Resume Generation">▶</button>
-                                        ) : (
-                                            <button type="button" className="vn-toolbar-btn" onClick={() => handleRegenerateFromMessageWithRollback(displayedMessage.id, interactionData.protagonists)} title="Regenerate">↻</button>
-                                        )}
+                                        <button type="button" className="vn-toolbar-btn" onClick={() => onResumeGeneration(displayedMessage.id)} title="Continue Generation">▶</button>
+                                        <button type="button" className="vn-toolbar-btn" onClick={() => handleRegenerateFromMessageWithRollback(displayedMessage.id, interactionData.protagonists)} title="Regenerate">↻</button>
                                         <button type="button" className="vn-toolbar-btn" onClick={() => onStartEditing(displayedMessage.id, displayedMessage.textContent)} title="Edit Message">✎</button>
                                         <button type="button" className="vn-toolbar-btn" onClick={() => handleBranchWithRollback(displayedMessage.id)} title="Branch Timeline">🌿</button>
                                         <button type="button" className="vn-toolbar-btn" onClick={() => onClone(displayedMessage.id)} title="Clone Chat">⑂</button>

@@ -350,7 +350,6 @@ export interface ChatMessage extends BaseMessage {
   textContent: string;
   files?: string[];
   frontCameraImage?: string;
-  isPartial?: boolean;
   modelTextContentSummaries: Record<string, string>;
   modelInteractionTextContentSummaries: Record<string, string>;
   kvCacheTextContentPaths: Record<string, string>;
@@ -382,7 +381,6 @@ export interface RawChatMessage extends RawBaseMessage {
   textContent: string;
   files?: string[];
   frontCameraImage?: string;
-  isPartial?: boolean;
   modelTextContentSummaries: Record<string, string>;
   modelInteractionTextContentSummaries: Record<string, string>;
   kvCacheTextContentPaths: Record<string, string>;

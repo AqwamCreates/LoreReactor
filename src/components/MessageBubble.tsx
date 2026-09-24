@@ -361,7 +361,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                     <span className="toolbar-lock">🔒 Locked</span>
                                 ) : !isMassActive ? (
                                     <>
-                                        {!isLocalProtagonist && message.isPartial && (
+                                        {!isLocalProtagonist && (
                                             <button
                                                 type="button"
                                                 onClick={() => onResumeGeneration(message.id)}

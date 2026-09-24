@@ -20,34 +20,6 @@ import type { Character, InteractionData, PromptBlock, ChatMessage, HistoryMessa
 
 const engine = getLanguageModelEngine();
 
-function finalizeLastAIMessage(
-    data: InteractionData,
-    protagonistId: string,
-    wasAborted: boolean
-): InteractionData {
-    if (wasAborted) return data;
-
-    const history = data.interactionHistory;
-    if (history.length === 0) return data;
-
-    const lastMsg = history[history.length - 1];
-    if (
-        lastMsg.messageType === 'chat' &&
-        lastMsg.character.id !== protagonistId &&
-        (lastMsg as ChatMessage).isPartial
-    ) {
-        const finalizedHistory = [...history];
-        finalizedHistory[finalizedHistory.length - 1] = {
-            ...lastMsg,
-            isPartial: false,
-            lastUpdatedTimestamp: Date.now(),
-        } as ChatMessage;
-        return { ...data, interactionHistory: finalizedHistory, lastUpdatedTimestamp: Date.now() };
-    }
-
-    return data;
-}
-
 function finalizeMessageById(
     data: InteractionData,
     messageId: string,
@@ -59,7 +31,6 @@ function finalizeMessageById(
         if (m.id === messageId && m.messageType === 'chat') {
             return {
                 ...m,
-                isPartial: false,
                 lastUpdatedTimestamp: Date.now(),
             } as ChatMessage;
         }
@@ -69,26 +40,18 @@ function finalizeMessageById(
 }
 
 /**
- * Find the last AI chat message and mark it as partial for resumption.
- * Returns the updated data and the message ID, or null if no suitable message found.
+ * Find the last AI chat message ID for resumption.
+ * Returns the message ID, or null if no suitable message found.
  */
-function markLastAIMessageAsPartial(
+function findLastAIMessageId(
     data: InteractionData,
     protagonistId: string,
-): { data: InteractionData; messageId: string } | null {
-    const history = [...data.interactionHistory];
+): string | null {
+    const history = data.interactionHistory;
     for (let i = history.length - 1; i >= 0; i--) {
         const msg = history[i];
         if (msg.messageType === 'chat' && msg.character.id !== protagonistId) {
-            history[i] = {
-                ...msg,
-                isPartial: true,
-                lastUpdatedTimestamp: Date.now(),
-            } as ChatMessage;
-            return {
-                data: { ...data, interactionHistory: history, lastUpdatedTimestamp: Date.now() },
-                messageId: msg.id,
-            };
+            return msg.id;
         }
     }
     return null;
@@ -167,7 +130,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                 characterClothingWearingStatuses: {},
                 characterLockedLocations: {},
                 parentInteractionMessageId: null,
-                isPartial: true,
                 firstCreatedTimestamp: Date.now(),
                 lastUpdatedTimestamp: Date.now(),
             };
@@ -258,28 +220,24 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                 ph[ph.length - 1] = {
                     ...lastMsg,
                     textContent: dt,
-                    isPartial: true,
                 };
                 return { ...base, interactionHistory: ph, lastUpdatedTimestamp: Date.now() };
             }
         }
-        const chatMessage = createChatMessage(base, p.character, dt, { isPartial: true });
+        const chatMessage = createChatMessage(base, p.character, dt);
         return addMessageToInteractionData(base, chatMessage);
     }, []);
 
-    // Auto-resume helper: marks last AI message as partial and triggers resumeGeneration
+    // Auto-resume helper: finds last AI message and triggers resumeGeneration
     const autoResumeOnCutoff = useCallback((data: InteractionData, protagonistId: string, allPromptBlocks?: PromptBlock[]) => {
-        const marked = markLastAIMessageAsPartial(data, protagonistId);
-        if (!marked) return;
-
-        setInteractionData(marked.data);
-        saveRawInteractionData(marked.data);
+        const messageId = findLastAIMessageId(data, protagonistId);
+        if (!messageId) return;
 
         // Use setTimeout to avoid re-entrancy issues with the current callback stack
         setTimeout(() => {
-            resumeGenerationRef.current?.(marked.messageId, allPromptBlocks);
+            resumeGenerationRef.current?.(messageId, allPromptBlocks);
         }, 0);
-    }, [setInteractionData]);
+    }, []);
 
     // Helper to broadcast new messages added by a turn
     const broadcastNewMessages = useCallback((beforeCount: number, afterData: InteractionData) => {
@@ -347,27 +305,26 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
                 const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
-                const finalized = finalizeLastAIMessage(processed, currentState.currentCharacter.id, wasStoppedRef.current);
 
-                await saveRawInteractionData(finalized);
-                setInteractionData(finalized);
+                await saveRawInteractionData(processed);
+                setInteractionData(processed);
 
                 // Broadcast finalized AI messages
-                broadcastNewMessages(preTurnCount, finalized);
+                broadcastNewMessages(preTurnCount, processed);
 
                 // Auto-resume if model cut off mid-generation
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
-                    autoResumeOnCutoff(finalized, currentState.currentCharacter.id, allPromptBlocks);
+                    autoResumeOnCutoff(processed, currentState.currentCharacter.id, allPromptBlocks);
                     return;
                 }
 
                 runSummarization({
-                    data: finalized,
+                    data: processed,
                     setData: setInteractionData,
                     addToast,
                 });
 
-                const lm = finalized.interactionHistory[finalized.interactionHistory.length - 1];
+                const lm = processed.interactionHistory[processed.interactionHistory.length - 1];
                 if (lm && lm.messageType === 'chat' && lm.character.id !== currentState.currentCharacter?.id) {
                     ui.playVoice(lm.textContent, lm.character);
                 }
@@ -433,21 +390,20 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
                 const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
-                const finalized = finalizeLastAIMessage(processed, protagonist.id, wasStoppedRef.current);
-                await saveRawInteractionData(finalized);
-                setInteractionData(finalized);
+                await saveRawInteractionData(processed);
+                setInteractionData(processed);
 
-                broadcastNewMessages(preTurnCount, finalized);
+                broadcastNewMessages(preTurnCount, processed);
 
                 // Auto-resume if model cut off mid-generation
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
-                    autoResumeOnCutoff(finalized, protagonist.id);
+                    autoResumeOnCutoff(processed, protagonist.id);
                     return;
                 }
 
-                runSummarization({ data: finalized, setData: setInteractionData, addToast });
+                runSummarization({ data: processed, setData: setInteractionData, addToast });
 
-                const lm = finalized.interactionHistory[finalized.interactionHistory.length - 1];
+                const lm = processed.interactionHistory[processed.interactionHistory.length - 1];
                 if (lm && lm.messageType === 'chat' && lm.character.id !== protagonist.id) {
                     ui.playVoice(lm.textContent, lm.character);
                 }
@@ -487,18 +443,17 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                 const textContent = targetMsg.textContent;
                 const paragraphs = (textContent.match(/\n\n/g) || []).length + 1;
 
-                const withPartial = [...currentData.interactionHistory];
-                withPartial[idx] = {
+                const updatedHistory = [...currentData.interactionHistory];
+                updatedHistory[idx] = {
                     ...targetMsg,
                     textContent,
-                    isPartial: true,
                     lastUpdatedTimestamp: Date.now()
                 } as ChatMessage;
 
-                if (paragraphs > 0) consumeChatStaminaForMessage(withPartial[idx], paragraphs);
+                if (paragraphs > 0) consumeChatStaminaForMessage(updatedHistory[idx], paragraphs);
 
                 setState({
-                    interactionData: { ...currentData, interactionHistory: withPartial, lastUpdatedTimestamp: Date.now() },
+                    interactionData: { ...currentData, interactionHistory: updatedHistory, lastUpdatedTimestamp: Date.now() },
                     streamingCharacter: null,
                     streamingText: '',
                     isLoading: false,
@@ -534,7 +489,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         const msgIndex = currentInteractionData.interactionHistory.findIndex(m => m.id === messageId);
         if (msgIndex === -1) { addToast('Message not found.', 'error'); return; }
         const msg = currentInteractionData.interactionHistory[msgIndex];
-        if (msg.messageType !== 'chat' || !msg.isPartial) { addToast('Not partial — use Regenerate.', 'info'); return; }
 
         if (isLoadingRef.current) { abortControllerRef.current?.abort(); abortControllerRef.current = null; await new Promise(r => setTimeout(r, 100)); }
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
@@ -585,11 +539,9 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             // Auto-resume if model cut off again during resume
             if (!result.isCompleted && !wasStoppedRef.current) {
                 setTimeout(() => {
-                    const reMarked = markLastAIMessageAsPartial(finalized, char.id);
-                    if (reMarked) {
-                        setInteractionData(reMarked.data);
-                        saveRawInteractionData(reMarked.data);
-                        resumeGenerationRef.current?.(reMarked.messageId, allPromptBlocks);
+                    const reMarkedId = findLastAIMessageId(finalized, char.id);
+                    if (reMarkedId) {
+                        resumeGenerationRef.current?.(reMarkedId, allPromptBlocks);
                     }
                 }, 0);
                 return;
@@ -665,26 +617,25 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
 
             if (ud.interactionHistory.length > preCount) {
                 const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
-                const finalized = finalizeLastAIMessage(processed, primaryProtagonistId, wasStoppedRef.current);
 
-                await saveRawInteractionData(finalized);
-                setInteractionData(finalized);
+                await saveRawInteractionData(processed);
+                setInteractionData(processed);
 
-                broadcastNewMessages(preCount, finalized);
+                broadcastNewMessages(preCount, processed);
 
                 // Auto-resume if model cut off mid-generation
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
-                    autoResumeOnCutoff(finalized, primaryProtagonistId, allPromptBlocks);
+                    autoResumeOnCutoff(processed, primaryProtagonistId, allPromptBlocks);
                     return;
                 }
 
                 runSummarization({
-                    data: finalized,
+                    data: processed,
                     setData: setInteractionData,
                     addToast,
                 });
 
-                const lm = finalized.interactionHistory[finalized.interactionHistory.length - 1];
+                const lm = processed.interactionHistory[processed.interactionHistory.length - 1];
                 if (lm && lm.messageType === 'chat' && !protagonistIds.has(lm.character.id)) ui.playVoice(lm.textContent, lm.character);
             } else {
                 const ad = await generateAmbientNarration(ud, ctrl.signal);

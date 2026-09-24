@@ -17,31 +17,6 @@ async function getParentInteractionMessageIds(chatId: string): Promise<Set<strin
     return points;
 }
 
-export async function markLastMessageAsPartial(currentChat: InteractionData): Promise<InteractionData> {
-    const history = currentChat.interactionHistory;
-    if (history.length === 0) return currentChat;
-
-    const lastIndex = history.length - 1;
-    const lastMsg = history[lastIndex];
-
-    // Only mark AI messages (not protagonist messages) as partial
-    const isProtagonist = currentChat.protagonists.some(p => p.id === lastMsg.character.id);
-    if (isProtagonist) return currentChat;
-    if (lastMsg.messageType !== 'chat' || lastMsg.isPartial) return currentChat;
-
-    const updatedHistory = [...history];
-    updatedHistory[lastIndex] = { ...lastMsg, isPartial: true };
-
-    const updatedChat = {
-        ...currentChat,
-        interactionHistory: updatedHistory,
-        lastUpdatedTimestamp: Date.now(),
-    };
-
-    await saveRawInteractionData(updatedChat);
-    return updatedChat;
-}
-
 /**
  * Clears the partial flag on a message after successful resume completion.
  */
@@ -50,10 +25,10 @@ export async function clearPartialFlag(currentChat: InteractionData, messageId: 
     if (index === -1) return currentChat;
 
     const msg = currentChat.interactionHistory[index];
-    if (msg.messageType !== 'chat' || !msg.isPartial) return currentChat;
+    if (msg.messageType !== 'chat') return currentChat;
 
     const updatedHistory = [...currentChat.interactionHistory];
-    updatedHistory[index] = { ...msg, isPartial: false };
+    updatedHistory[index] = { ...msg};
 
     const updatedChat = {
         ...currentChat,

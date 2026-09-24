@@ -484,7 +484,7 @@ export function createChatMessage(
     interactionData: InteractionData,
     character: Character,
     textContent: string,
-    options?: { isPartial?: boolean; locationIndex?: number; files?: string[]; frontCameraImage?: string; knownCharacterNames?: Record<string, Record<string, boolean>>; clothingWearingStatuses?: Record<string, boolean> }
+    options?: { locationIndex?: number; files?: string[]; frontCameraImage?: string; knownCharacterNames?: Record<string, Record<string, boolean>>; clothingWearingStatuses?: Record<string, boolean> }
 ): ChatMessage {
     const previousMessage = findPreviousMessage(interactionData, character.id);
     const effectiveMaximumChatStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
@@ -497,8 +497,6 @@ export function createChatMessage(
     const id = uuidv4();
     const files = options?.files ?? [];
     const frontCameraImage = options?.frontCameraImage;
-    const isProtagonist = interactionData.protagonists?.some(p => p.id === character.id) ?? false;
-    const isPartial = options?.isPartial ?? !isProtagonist;
 
     let locationIndex = options?.locationIndex;
     if (locationIndex === undefined && interactionData.locations && interactionData.locations.length > 0) {
@@ -528,7 +526,6 @@ export function createChatMessage(
         remainingActionStamina,
         knownCharacterNames,
         locationIndex,
-        isPartial,
         characterClothingWearingStatuses: clothingWearingStatuses,
         characterLockedLocations: { ...prevLockedLocations },
         modelTextContentSummaries: {},
@@ -576,9 +573,10 @@ export function updatePartialMessageInInteractionData(
     characterExpression?: string,
 ): InteractionData {
     const history = [...interactionData.interactionHistory];
+    // Find the last message by this character and update its text.
     for (let i = history.length - 1; i >= 0; i--) {
         const m = history[i];
-        if (m.character.id === characterId && m.messageType === 'chat' && (m as ChatMessage).isPartial) {
+        if (m.character.id === characterId && m.messageType === 'chat') {
             history[i] = { ...m, textContent: newText, characterExpression: characterExpression ?? (m as ChatMessage).characterExpression, lastUpdatedTimestamp: Date.now() } as ChatMessage;
             return { ...interactionData, interactionHistory: history, lastUpdatedTimestamp: Date.now() };
         }

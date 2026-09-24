@@ -1,6 +1,6 @@
 // src/hooks/useChatRestoration.ts
 import { useState, useRef, useEffect } from 'react';
-import type { Character, InteractionData, RawInteractionData, ChatMessage } from '../types';
+import type { Character, InteractionData, RawInteractionData } from '../types';
 import { loadRawInteractionData } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -20,30 +20,6 @@ interface UseChatRestorationOptions {
     setCurrentCharacter: (char: Character | null) => void;
     setSelectedModelId: (id: string | null) => void;
     startNewChat: (char: Character) => void;
-}
-
-/**
- * Finalizes any messages that were left in a partial state due to
- * a browser refresh or crash mid-generation. After a reload, there is
- * no active stream to complete them, so they must be treated as finished.
- */
-function finalizeStalePartials(data: InteractionData): InteractionData {
-    let changed = false;
-    const history = data.interactionHistory.map(m => {
-        if (m.messageType === 'chat' && (m as ChatMessage).isPartial) {
-            changed = true;
-            return {
-                ...m,
-                textContent: (m as ChatMessage).textContent.trimEnd(),
-                isPartial: false,
-                lastUpdatedTimestamp: Date.now(),
-            } as ChatMessage;
-        }
-        return m;
-    });
-
-    if (!changed) return data;
-    return { ...data, interactionHistory: history, lastUpdatedTimestamp: Date.now() };
 }
 
 function createEmptyChat(): InteractionData {
@@ -98,9 +74,6 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                     console.warn('Failed to reload chat messages:', e);
                 }
             }
-
-            // Finalize any stale partial messages left from a mid-generation refresh
-            fullChat = finalizeStalePartials(fullChat);
 
             // Hydrate all protagonists with full character data
             const hydratedProtagonists = await Promise.all(

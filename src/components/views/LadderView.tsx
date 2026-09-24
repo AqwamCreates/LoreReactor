@@ -11,7 +11,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
         interactionData, localProtagonist, displayMessages, currentCharacterId,
         editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
         activeToolbarId, portraitUrlCache, displayNameCache,
-        formattedStreamingText, isLoading, streamingPortraitUrl,
+        formattedStreamingText, isLoading, streamingPortraitUrl, streamingCharacter,
         chatHistoryRef, messageEndRef, editTextareaRef,
         parentInteractionMessageId, parentInteractionDataName,
         focusedMessageId, setFocusedMessageId,
@@ -24,7 +24,9 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
     } = props;
 
     const lastMsg = displayMessages[displayMessages.length - 1];
-    const isStreamingInList = lastMsg?.isPartial === true;
+    // Determine if the last message in the list is currently streaming based on global state
+    const isStreamingInList = isLoading && streamingCharacter !== null && lastMsg?.character.id === streamingCharacter.id;
+    
     const isScrollingRef = useRef(false);
     const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const skipNextFocusScrollRef = useRef(false);

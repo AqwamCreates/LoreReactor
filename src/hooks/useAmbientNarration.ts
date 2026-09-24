@@ -92,7 +92,7 @@ export function useAmbientNarration(
             await new Promise(r => setTimeout(r, 20));
         }
 
-        const chatMessage = createChatMessage(data, AMBIENT_NARRATOR, selected, { isPartial: false })
+        const chatMessage = createChatMessage(data, AMBIENT_NARRATOR, selected)
 
         return addMessageToInteractionData(data, chatMessage);
     }, [setStreamingState, setStreamingText, streamingTextRef]);
