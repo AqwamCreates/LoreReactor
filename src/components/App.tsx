@@ -793,10 +793,11 @@ function App() {
 
         if (isLoading && streamingText && streamingCharacter) {
             const last = base[base.length - 1];
-            const isLastMessagePartial = last?.isPartial && last.character.id === streamingCharacter.id;
+            // Determine if the last message in the list is currently streaming based on global state
+            const isLastMessageStreaming = last?.character.id === streamingCharacter.id;
             const isNewTurn = !last || last.character.id !== streamingCharacter.id;
 
-            if (isLastMessagePartial) {
+            if (isLastMessageStreaming) {
                 const lastIndex = base.length - 1;
                 const resolvedName = resolveDelayedDisplayNameFromCache(
                     displayNameCache,
@@ -818,7 +819,6 @@ function App() {
                     messageType: 'chat',
                     character: { ...streamingCharacter, name: resolvedName },
                     textContent: streamingText,
-                    isPartial: true,
                     files: [],
                     firstCreatedTimestamp: 0,
                     lastUpdatedTimestamp: 0,
