@@ -51,37 +51,17 @@ interface StateSyncPayload {
 
 // ─── Peer ID Helpers ───────────────────────────────────────────────
 
-/**
- * Build a PeerJS-safe individual peer ID.
- * Format: lr_{mpIdNoHyphens}_{accountIdNoHyphens}
- *
- * PeerJS IDs must match /^[A-Za-z0-9_-]+$/. UUIDs contain hyphens,
- * so we strip them and use underscore as delimiter.
- */
 function buildPeerId(multiplayerDataId: string, accountId: string): string {
     const mpId = multiplayerDataId.replace(/[^A-Za-z0-9]/g, '');
     const acctId = accountId.replace(/[^A-Za-z0-9]/g, '');
     return `lr_${mpId}_${acctId}`;
 }
 
-/**
- * Build a PeerJS-safe host peer ID.
- * Format: lr_{mpIdNoHyphens}_host
- *
- * The host always registers under this session-wide ID so joiners
- * know where to connect regardless of which account is hosting.
- */
 function buildHostPeerId(multiplayerDataId: string): string {
     const mpId = multiplayerDataId.replace(/[^A-Za-z0-9]/g, '');
     return `lr_${mpId}_host`;
 }
 
-/**
- * Extract the account ID portion from a peer ID.
- * For individual peers: lr_{mpId}_{acctId} → returns acctId
- * For host peer: lr_{mpId}_host → returns 'host'
- * Returns null for malformed peer IDs.
- */
 function extractAccountIdFromPeerId(peerId: string): string | null {
     const parts = peerId.split('_');
     if (parts.length < 3 || parts[0] !== 'lr') return null;
@@ -123,7 +103,6 @@ export function useMultiplayerConnection({
     const currentAccountIdRef = useRef(currentAccountId);
     const joinPasswordRef = useRef(joinPassword);
 
-    // Keep refs in sync to avoid stale closures
     useEffect(() => { onReceiveMessageRef.current = onReceiveMessage; }, [onReceiveMessage]);
     useEffect(() => { onPeerConnectedRef.current = onPeerConnected; }, [onPeerConnected]);
     useEffect(() => { onPeerDisconnectedRef.current = onPeerDisconnected; }, [onPeerDisconnected]);
@@ -131,9 +110,6 @@ export function useMultiplayerConnection({
     useEffect(() => { currentAccountIdRef.current = currentAccountId; }, [currentAccountId]);
     useEffect(() => { joinPasswordRef.current = joinPassword; }, [joinPassword]);
 
-    // Derive the peer ID this instance registers under:
-    // - Host: registers as lr_{mpId}_host (session-wide stable ID)
-    // - Joiner: registers as lr_{mpId}_{accountId} (individual ID)
     const peerId = multiplayerData
         ? (isHost
             ? buildHostPeerId(multiplayerData.id)
@@ -142,8 +118,6 @@ export function useMultiplayerConnection({
                 : null)
         : null;
 
-    // Joiner always knows the host peer ID to connect to.
-    // Host doesn't need this (it receives incoming connections).
     const hostPeerId = multiplayerData && !isHost
         ? buildHostPeerId(multiplayerData.id)
         : null;
@@ -217,10 +191,32 @@ export function useMultiplayerConnection({
             setIsConnected(true);
             setConnectionError(null);
 
-            // If not host, connect to the host's session-wide peer ID
+            // If not host, connect to host with retry
             if (!isHostRef.current && hostPeerId) {
-                const conn = peer.connect(hostPeerId, { reliable: true });
-                setupConnection(conn);
+                let retries = 0;
+                const maxRetries = 5;
+                const retryDelayMs = 2000;
+
+                const tryConnect = () => {
+                    if (destroyed) return;
+                    const conn = peer.connect(hostPeerId, { reliable: true });
+
+                    conn.on('open', () => {
+                        setupConnection(conn);
+                    });
+
+                    conn.on('error', () => {
+                        retries++;
+                        if (retries < maxRetries && !destroyed) {
+                            console.warn(`Failed to connect to host, retry ${retries}/${maxRetries}...`);
+                            setTimeout(tryConnect, retryDelayMs);
+                        } else if (!destroyed) {
+                            setConnectionError('Could not connect to host after multiple attempts');
+                        }
+                    });
+                };
+
+                tryConnect();
             }
         });
 
@@ -274,13 +270,19 @@ export function useMultiplayerConnection({
         }
     }, []);
 
-    // Send message to a specific peer
+    // Send message to a specific peer — try both raw and sanitized key lookup
     const sendTo = useCallback((accountId: string, msg: Omit<MultiplayerMessage, 'senderAccountId' | 'timestamp'>) => {
         const acctId = currentAccountIdRef.current;
         if (!acctId) return;
-        const sanitizedTargetId = accountId.replace(/[^A-Za-z0-9]/g, '');
-        const conn = connectionsRef.current.get(sanitizedTargetId);
+
+        // Try exact match first, then sanitized match
+        let conn = connectionsRef.current.get(accountId);
+        if (!conn) {
+            const sanitizedTargetId = accountId.replace(/[^A-Za-z0-9]/g, '');
+            conn = connectionsRef.current.get(sanitizedTargetId);
+        }
         if (!conn) return;
+
         const sanitizedAcctId = acctId.replace(/[^A-Za-z0-9]/g, '');
         const fullMsg: MultiplayerMessage = {
             ...msg,
