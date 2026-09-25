@@ -10,6 +10,8 @@ import { parseSlashCommand } from '../services/ToolInvocationParser';
 import { runSummarization } from '../services/SummarizationEngine';
 import { consumeChatStaminaForMessage } from './characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from './locationLogic';
+import { detectName } from './nameDetection';
+import { getFilteredChatMessages } from './promptLogic';
 import { saveRawInteractionData, loadRawBudgetData } from '../storage/serverStorage';
 import { useThrottledStream } from './useThrottledStream';
 import { useCharacterResponseLock } from './useCharacterResponseLock';
@@ -411,7 +413,15 @@ export function useChatSession(options?: UseChatSessionOptions) {
                 const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error); });
                 const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
-                const chatMessage = createChatMessage(currentState.interactionData, activeCharacter, text, { files: encodedFiles, frontCameraImage: frontCameraImageBase64 });
+                // Detect names for protagonist from filtered messages
+                const filteredMessages = getFilteredChatMessages(currentState.interactionData, activeCharacter.id, allPromptBlocks || []);
+                const knownCharacterNames = detectName(activeCharacter, filteredMessages);
+
+                const chatMessage = createChatMessage(currentState.interactionData, activeCharacter, text, { 
+                    files: encodedFiles, 
+                    frontCameraImage: frontCameraImageBase64,
+                    knownCharacterNames
+                });
                 let td = addMessageToInteractionData(currentState.interactionData, chatMessage);
 
                 // Broadcast user message to host
@@ -456,7 +466,15 @@ export function useChatSession(options?: UseChatSessionOptions) {
                 const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error); });
                 const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
-                const chatMessage = createChatMessage(td, activeCharacter, text, { files: encodedFiles, frontCameraImage: frontCameraImageBase64 });
+                // Detect names for protagonist from filtered messages
+                const filteredMessages = getFilteredChatMessages(td, activeCharacter.id, allPromptBlocks || []);
+                const knownCharacterNames = detectName(activeCharacter, filteredMessages);
+
+                const chatMessage = createChatMessage(td, activeCharacter, text, { 
+                    files: encodedFiles, 
+                    frontCameraImage: frontCameraImageBase64,
+                    knownCharacterNames
+                });
                 td = addMessageToInteractionData(td, chatMessage);
 
                 // Broadcast user message
@@ -674,7 +692,11 @@ export function useChatSession(options?: UseChatSessionOptions) {
 
         if (isMultiplayerClient) {
             try {
-                const chatMessage = createChatMessage(currentState.interactionData, activeProtagonist, actionText);
+                // Detect names for protagonist from filtered messages
+                const filteredMessages = getFilteredChatMessages(currentState.interactionData, activeProtagonist.id, allPromptBlocksRef.current || []);
+                const knownCharacterNames = detectName(activeProtagonist, filteredMessages);
+
+                const chatMessage = createChatMessage(currentState.interactionData, activeProtagonist, actionText, { knownCharacterNames });
                 const td = addMessageToInteractionData(currentState.interactionData, chatMessage);
 
                 onMessageBroadcastRef.current?.(chatMessage);
@@ -698,7 +720,11 @@ export function useChatSession(options?: UseChatSessionOptions) {
         isAtBottomRef.current = true;
 
         try {
-            const chatMessage = createChatMessage(currentState.interactionData, protagonist, actionText);
+            // Detect names for protagonist from filtered messages
+            const filteredMessages = getFilteredChatMessages(currentState.interactionData, protagonist.id, allPromptBlocksRef.current || []);
+            const knownCharacterNames = detectName(protagonist, filteredMessages);
+
+            const chatMessage = createChatMessage(currentState.interactionData, protagonist, actionText, { knownCharacterNames });
             const td = addMessageToInteractionData(currentState.interactionData, chatMessage);
 
             onMessageBroadcastRef.current?.(chatMessage);

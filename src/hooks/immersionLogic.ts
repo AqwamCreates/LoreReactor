@@ -55,13 +55,14 @@ export function useDisplayNameCache(interactionData: InteractionData | null): Di
 /**
  * Resolve the display name for a character at a given chat message index.
  * 
- * Priority logic:
+ * Logic:
  * - If forceNameReveal is on, always show the real name.
- * - Otherwise, walk backwards through chat messages BEFORE the current index
- *   to find the most recent message whose knownCharacterNames reveals this character.
- * - Check candidates in order: [name, ...aliases], return the first one marked true.
- * - Display format: "Character N (KnownName)" — participant tag is always present.
- * - If nothing is known, display just "Character N".
+ * - Check the current message's knownCharacterNames to see if the author knows this character.
+ * - If yes, show the name in format "Character N (KnownName)".
+ * - If no, show just "Character N".
+ * 
+ * Each message carries its own knownCharacterNames snapshot from when it was sent,
+ * so we don't need to walk backwards through history.
  */
 export function resolveDelayedDisplayNameFromCache(
     cache: DisplayNameCache | null,
@@ -82,6 +83,17 @@ export function resolveDelayedDisplayNameFromCache(
         return tag;
     }
 
+    // Check the current message's knownCharacterNames
+    const currentMsg = cache.chatMessages[chatMessageIndex];
+    if (!currentMsg.knownCharacterNames) {
+        return tag;
+    }
+
+    const knownMap = currentMsg.knownCharacterNames[characterId];
+    if (!knownMap) {
+        return tag;
+    }
+
     // Build candidate list: [name, ...aliases]
     const name = cache.participantNameMap.get(characterId);
     const aliases = cache.participantAliasesMap.get(characterId) ?? [];
@@ -91,19 +103,10 @@ export function resolveDelayedDisplayNameFromCache(
         if (alias && !candidates.includes(alias)) candidates.push(alias);
     }
 
-    // Walk backwards through messages BEFORE the current index to find the
-    // most recent knownCharacterNames entry for this character
-    for (let i = chatMessageIndex - 1; i >= 0; i--) {
-        const msg = cache.chatMessages[i];
-        if (!msg.knownCharacterNames) continue;
-        const knownMap = msg.knownCharacterNames[characterId];
-        if (!knownMap) continue;
-
-        // Check candidates in priority order
-        for (const candidate of candidates) {
-            if (knownMap[candidate] === true) {
-                return `${tag} (${candidate})`;
-            }
+    // Check candidates in priority order
+    for (const candidate of candidates) {
+        if (knownMap[candidate] === true) {
+            return `${tag} (${candidate})`;
         }
     }
 
