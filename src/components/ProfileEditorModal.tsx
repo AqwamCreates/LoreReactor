@@ -157,6 +157,7 @@ function ProfileEditorContent({
     const [autonomousMode, setAutonomousMode] = useState(ep?.autonomousMode ?? false);
     const [autonomousInteractionIntervalMs, setAutonomousInteractionIntervalMs] = useState<number>(ep?.autonomousInteractionIntervalMs ?? 10000);
     const [forceNameReveal, setForceNameReveal] = useState(ep?.forceNameReveal ?? false);
+    const [enableAmbientNarration, setEnableAmbientNarration] = useState(ep?.enableAmbientNarration ?? false);
     const [toolUsageDisplayMode, setToolUsageDisplayMode] = useState<toolUsageDisplayMode>(ep?.toolUsageDisplayMode ?? 'none');
     const [enableCharacterExpression, setEnableCharacterExpression] = useState(ep?.enableCharacterExpression ?? false);
     const [randomizeTextCharacterInjection, setRandomizeTextCharacterInjection] = useState<boolean>(ep?.randomizeTextCharacterInjection ?? false);
@@ -236,7 +237,7 @@ function ProfileEditorContent({
         return {
             id, name: profileName, description: description.trim() || undefined,
             autonomousMode, autonomousInteractionIntervalMs,
-            forceNameReveal, toolUsageDisplayMode, enableCharacterExpression,
+            forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, enableCharacterExpression,
             randomizeTextCharacterInjection,
             randomizeTextCharacterInjectionOnRetry,
             maximumNumberOfTextCharacterRandomizationPerModel,
@@ -364,13 +365,18 @@ function ProfileEditorContent({
                             <div className="editor-section"><span className="editor-section-title">Agentic Roleplay</span><ProfileCheckbox checked={autonomousMode} onChange={setAutonomousMode} label="Autonomous Mode" hint="When enabled, characters act independently in the background using weighted sampling based on initiative, stamina ratios, and skip probability." />{autonomousMode && (<div style={{ marginTop: '12px' }}><div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Interaction Interval</label><span style={SLIDER_VALUE_STYLE}>{(autonomousInteractionIntervalMs / 1000).toFixed(1)}s</span></div><SliderInput label="" value={autonomousInteractionIntervalMs} minimumValue={1000} maximumValue={60000} stepValue={1000} decimals={0} onChange={(val) => setAutonomousInteractionIntervalMs(Math.round(val))} description="How often the engine evaluates characters for autonomous actions. Lower = more frequent activity, higher token usage." /></div>)}</div>
 
                             <div className="editor-section">
-                                <span className="editor-section-title">Display</span>
+                                <span className="editor-section-title">Volume</span>
                                 <div style={{ marginBottom: '12px' }}>
                                     <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Global Volume Override</label><span style={SLIDER_VALUE_STYLE}>{volume === -1 ? '(Per-track default)' : `${Math.round(volume * 100)}%`}</span></div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="range" min="-1" max="1" step="0.01" value={volume} onChange={(e) => setVolume(Number(e.target.value))} style={{ flex: 1 }} /></div>
                                     <div style={FIELD_HINT_STYLE}>-1 = use each track's own volume. ≥0 = override all tracks uniformly.</div>
                                 </div>
+                            </div>
+
+                            <div className="editor-section">
+                                <span className="editor-section-title">Display</span>
                                 <ProfileCheckbox checked={forceNameReveal} onChange={setForceNameReveal} label="Force Name Reveal" hint='Always show character names instead of "Character X".' />
+                                <ProfileCheckbox checked={enableAmbientNarration} onChange={setEnableAmbientNarration} label="Enable Ambient Narration" hint="When no character responds, generate environmental/atmospheric narration to fill silence." spaced />
                                 <div style={{ marginTop: '12px', marginBottom: '12px' }}>
                                     <label className="editor-label editor-label-small">Tool Usage Display Mode</label>
                                     <select value={toolUsageDisplayMode} onChange={(e) => setToolUsageDisplayMode(e.target.value as toolUsageDisplayMode)} className="editor-select" style={{ width: '100%' }}>
