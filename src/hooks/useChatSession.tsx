@@ -5,7 +5,7 @@ import { useChatEngine } from './useChatEngine';
 import { useChatUI } from './useChatUI';
 import { useToast } from '../context/ToastContext';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData } from './chatLogic';
-import { processPendingToolActions, executeTool, translateToolResultToProse } from '../services/ToolExecutor';
+import { processPendingToolActions, executeTool } from '../services/ToolExecutor';
 import { parseSlashCommand } from '../services/ToolInvocationParser';
 import { runSummarization } from '../services/SummarizationEngine';
 import { consumeChatStaminaForMessage } from './characterLogic';
@@ -267,7 +267,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         }
     }, []);
 
-    const sendMessage = useCallback(async (text: string, files?: File[], frontCameraImageBase64?: string, allPromptBlocks?: PromptBlock[]) => {
+    const sendMessage = useCallback(async (text: string, allPromptBlocks?: PromptBlock[], files?: File[], frontCameraImageBase64?: string) => {
         const currentState = getState();
         
         // LOCK: Force multiplayer clients to use their assigned protagonist, ignoring local UI state
@@ -283,7 +283,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
 
         if (isSlashCommand && slashInvocation) {
             // ─── VALIDATE ARGS ──────────────────────────────────────
-            // Tools like coin/date are valid without args. Everything else requires args.
             if (!slashInvocation.args.trim() && !NO_ARG_TOOLS.includes(slashInvocation.toolType)) {
                 addToast(`/${slashInvocation.toolType} requires arguments.`, 'error');
                 return;
@@ -301,17 +300,8 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                     currentState.interactionData.Profile?.toolUsageDisplayMode
                 );
 
-                // Get the raw mechanical result
-                const rawResult = toolResult.displayReplacement || toolResult.content || `[${slashInvocation.toolType}]`;
-
-                // Translate mechanical result into natural in-character prose using filtered messages
-                const naturalProse = await translateToolResultToProse(
-                    rawResult,
-                    activeCharacter,
-                    currentState.interactionData,
-                    allPromptBlocks,
-                );
-                slashMessage.textContent = naturalProse;
+                // Use the raw mechanical display replacement directly
+                slashMessage.textContent = toolResult.displayReplacement || toolResult.content || `[${slashInvocation.toolType}]`;
 
                 const updatedData = addMessageToInteractionData(currentState.interactionData, slashMessage);
                 setInteractionData(updatedData);
@@ -335,7 +325,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
 
             // ─── FALL THROUGH TO AI GENERATION ─────────────────────
             // Tool result is already in chat history. AI will see it and respond.
-            // Lock is still held — will be released at the end of AI generation.
         }
 
         // ─── NORMAL MESSAGE OR POST-SLASH AI GENERATION ─────────────
@@ -466,7 +455,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                     setInteractionData(sd);
                     broadcastNewMessages(preTurnCount, sd);
                 } else {
-                    // Ambient narration disabled, just save the current state
                     await saveRawInteractionData(ud);
                     setInteractionData(ud);
                     broadcastNewMessages(preTurnCount, ud);
@@ -526,7 +514,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         try {
             const td = currentState.interactionData;
             
-            // Set up streaming broadcast tracking
             const preTurnCount = td.interactionHistory.length;
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
@@ -548,10 +535,8 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                 await saveRawInteractionData(processed);
                 setInteractionData(processed);
 
-                // Broadcast finalized AI messages to all peers
                 broadcastNewMessages(preTurnCount, processed);
 
-                // Auto-resume if model cut off mid-generation
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
                     autoResumeOnCutoff(processed, currentState.currentCharacter.id);
                     return;
@@ -568,7 +553,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                     ui.playVoice(lm.textContent, lm.character);
                 }
             } else {
-                // Check if ambient narration is enabled in the profile
                 const enableAmbientNarration = currentState.interactionData?.Profile?.enableAmbientNarration ?? false;
                 
                 if (enableAmbientNarration) {
@@ -578,7 +562,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                     setInteractionData(sd);
                     broadcastNewMessages(preTurnCount, sd);
                 } else {
-                    // Ambient narration disabled, just save the current state
                     await saveRawInteractionData(ud);
                     setInteractionData(ud);
                     broadcastNewMessages(preTurnCount, ud);
@@ -611,18 +594,15 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         if (!currentState.interactionData) return;
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         
-        // LOCK: Force multiplayer clients to use their assigned protagonist
         const activeProtagonist = isMultiplayerClient 
             ? (joinProtagonistRef.current || protagonist) 
             : protagonist;
 
-        // Multiplayer clients only send the action message, host handles generation
         if (isMultiplayerClient) {
             try {
                 const chatMessage = createChatMessage(currentState.interactionData, activeProtagonist, actionText);
                 const td = addMessageToInteractionData(currentState.interactionData, chatMessage);
 
-                // Broadcast action message to host
                 onMessageBroadcastRef.current?.(chatMessage);
 
                 setInteractionData(td);
@@ -644,11 +624,9 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         isAtBottomRef.current = true;
 
         try {
-            // Action message is authored by the PROTAGONIST, not the target character
             const chatMessage = createChatMessage(currentState.interactionData, protagonist, actionText);
             const td = addMessageToInteractionData(currentState.interactionData, chatMessage);
 
-            // Broadcast action message
             onMessageBroadcastRef.current?.(chatMessage);
 
             setInteractionData(td);
@@ -676,7 +654,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
 
                 broadcastNewMessages(preTurnCount, processed);
 
-                // Auto-resume if model cut off mid-generation
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
                     autoResumeOnCutoff(processed, protagonist.id);
                     return;
@@ -689,7 +666,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                     ui.playVoice(lm.textContent, lm.character);
                 }
             } else {
-                // Check if ambient narration is enabled in the profile
                 const enableAmbientNarration = currentState.interactionData?.Profile?.enableAmbientNarration ?? false;
                 
                 if (enableAmbientNarration) {
@@ -699,7 +675,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                     setInteractionData(sd);
                     broadcastNewMessages(preTurnCount, sd);
                 } else {
-                    // Ambient narration disabled, just save the current state
                     await saveRawInteractionData(ud);
                     setInteractionData(ud);
                     broadcastNewMessages(preTurnCount, ud);
@@ -784,7 +759,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
     }, [resetStream, getState, setState, streamingTextRef, isLoadingRef]);
 
     const resumeGeneration = useCallback(async (messageId: string, allPromptBlocks?: PromptBlock[]) => {
-        // Multiplayer clients cannot resume locally - host handles generation
         if (isMultiplayerClient) {
             addToast('Generation is handled by the host.', 'info');
             return;
@@ -813,7 +787,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         wasStoppedRef.current = false;
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
 
-        // Set up streaming broadcast tracking for resume
         streamingCharacterRef.current = char;
         streamingMessageIdRef.current = messageId;
 
@@ -840,14 +813,12 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
 
             await saveRawInteractionData(finalized);
 
-            // Broadcast finalized resumed message
             const finalizedMsg = finalized.interactionHistory.find(m => m.id === messageId);
             if (finalizedMsg) onMessageBroadcastRef.current?.(finalizedMsg);
 
             resumingMessageIdRef.current = null;
             resumingExistingTextRef.current = '';
 
-            // Auto-resume if model cut off again during resume
             if (!result.isCompleted && !wasStoppedRef.current) {
                 setTimeout(() => {
                     const reMarkedId = findLastAIMessageId(finalized, char.id);
@@ -860,7 +831,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
 
             const finalMsg = finalized.interactionHistory.find(m => m.id === messageId);
             const finalText = finalMsg && finalMsg.messageType === 'chat' ? finalMsg.textContent : '';
-            // Play voice for non-protagonist characters
             const protagonistIds = new Set(currentInteractionData.protagonists?.map(p => p.id) ?? []);
             if (!protagonistIds.has(char.id)) ui.playVoice(finalText, char);
         } catch (e) {
@@ -888,7 +858,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         }
     }, [getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine, throttledSetStreamingTextWithBroadcast, ui, setStreamingState, setStats, setInteractionData, isMultiplayerClient]);
 
-    // Keep ref in sync so autoResumeOnCutoff always calls latest version
     useEffect(() => {
         resumeGenerationRef.current = resumeGeneration;
     }, [resumeGeneration]);
@@ -898,7 +867,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
     }, [triggerHostResponse]);
 
     const regenerateFromMessage = useCallback(async (messageId: string, protagonists: Character[], allPromptBlocks?: PromptBlock[]) => {
-        // Multiplayer clients cannot regenerate locally - host handles generation
         if (isMultiplayerClient) {
             addToast('Generation is handled by the host.', 'info');
             return;
@@ -941,7 +909,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         try {
             const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks);
             const ud = turnResult.interactionData;
-            // For pending partial and finalization, use first protagonist ID as reference
             const primaryProtagonistId = protagonists[0]?.id ?? '';
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, primaryProtagonistId); await saveRawInteractionData(fd); setInteractionData(fd); broadcastNewMessages(preCount, fd); return; }
 
@@ -953,7 +920,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
 
                 broadcastNewMessages(preCount, processed);
 
-                // Auto-resume if model cut off mid-generation
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
                     autoResumeOnCutoff(processed, primaryProtagonistId, allPromptBlocks);
                     return;
@@ -968,7 +934,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                 const lm = processed.interactionHistory[processed.interactionHistory.length - 1];
                 if (lm && lm.messageType === 'chat' && !protagonistIds.has(lm.character.id)) ui.playVoice(lm.textContent, lm.character);
             } else {
-                // Check if ambient narration is enabled in the profile
                 const enableAmbientNarration = currentState.interactionData?.Profile?.enableAmbientNarration ?? false;
                 
                 if (enableAmbientNarration) {
@@ -978,7 +943,6 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                     setInteractionData(sd);
                     broadcastNewMessages(preCount, sd);
                 } else {
-                    // Ambient narration disabled, just save the current state
                     await saveRawInteractionData(ud);
                     setInteractionData(ud);
                     broadcastNewMessages(preCount, ud);

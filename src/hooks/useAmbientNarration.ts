@@ -24,7 +24,7 @@ export function useAmbientNarration(
         // Use the protagonist's current location as the reference point.
         const protagonist = data.protagonists?.[0];
         const coLocatedCount = protagonist ? getCoLocatedParticipants(data, protagonist).length : 0;
-        const messageWindow = Math.max(1, coLocatedCount);
+        const messageWindow = coLocatedCount + 1;
 
         // Get all chat messages
         const allChatMessages = data.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');

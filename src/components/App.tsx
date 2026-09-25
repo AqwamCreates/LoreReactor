@@ -785,11 +785,11 @@ function App() {
 
     const handleSend = useCallback(() => {
         if (!inputText.trim() && !pendingFiles.length) return;
-        sendMessage(inputText, pendingFiles);
+        sendMessage(inputText, allPromptBlocks, pendingFiles, "");
         setInputText('');
         setPendingFiles([]);
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    }, [inputText, pendingFiles, sendMessage]);
+    }, [inputText, pendingFiles, sendMessage, allPromptBlocks]);
 
     const toggleViewMode = () => {
         setViewMode(prev => prev === 'ladder' ? 'cinematic' : prev === 'cinematic' ? 'vn' : 'ladder');
