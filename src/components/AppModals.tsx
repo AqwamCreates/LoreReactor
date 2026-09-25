@@ -321,8 +321,8 @@ export function AppModals({
                             w.characterIds.length > 0 ? `${w.characterIds.length} characters` : null,
                             w.contextIds.length > 0 ? `${w.contextIds.length} contexts` : null,
                             w.locationIds.length > 0 ? `${w.locationIds.length} locations` : null,
-                            (w.audioTrackIds?.length ?? 0) > 0 ? `${w.audioTrackIds.length} audios` : null,
-                            (w.promptBlockIds?.length ?? 0) > 0 ? `${w.promptBlockIds.length} prompts` : null,
+                            w.audioTrackIds?.length > 0 ? `${w.audioTrackIds.length} audios` : null,
+                            w.promptBlockIds?.length > 0 ? `${w.promptBlockIds.length} prompts` : null,
                             w.profileId ? 'Has profile' : null,
                             w.description ? `— ${w.description}` : null,
                         ].filter(Boolean);
