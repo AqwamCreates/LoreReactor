@@ -389,6 +389,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         autonomousInteractionIntervalMs: (p.autonomousInteractionIntervalMs as number) ?? 10000,
         volume: (p.volume as number) ?? -1,
         forceNameReveal: (p.forceNameReveal as boolean) ?? false,
+        enableAmbientNarration: (p.enableAmbientNarration as boolean) ?? false,
         toolUsageDisplayMode: parseToolUsageDisplayMode(p.toolUsageDisplayMode),
         enableCharacterExpression: (p.enableCharacterExpression as boolean) ?? false,
         randomizeTextCharacterInjection: (p.randomizeTextCharacterInjection as boolean) ?? false,
