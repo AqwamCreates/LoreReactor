@@ -243,14 +243,12 @@ function LocationEditorModalInner({
     const buildLocationFromForm = async (isNewClone: boolean): Promise<Location | null> => {
         if (!validate()) return null;
 
-        // Determine the location ID upfront so uploads have a valid path
         const locationId = isNewClone ? uuidv4() : (existingLocation?.id || uuidv4());
 
         let finalImageFilenames: string[] | undefined = isNewClone ? [] : (existingLocation?.images || []);
         if (imageFiles.length > 0) {
             setIsUploading(true);
             try {
-                // FIXED: Pass locationId as first argument to uploadLocationImage
                 const uploadedFilenames = await Promise.all(
                     imageFiles.map(file => uploadLocationImage(locationId, file))
                 );
@@ -503,7 +501,7 @@ function LocationEditorModalInner({
                                 <span className="editor-section-title">Movement Triggers</span>
                                 <RegularExpressionTriggerEditor
                                     label="Activation"
-                                    description="The user moves to this location when their message matches any trigger."
+                                    description="Characters move to this location when their message matches any trigger."
                                     triggers={regexActivationTriggers}
                                     onChange={setRegexActivationTriggers}
                                     error={errors.regex}
@@ -628,28 +626,37 @@ function LocationEditorModalInner({
                             <div className="editor-section">
                                 <span className="editor-section-title">Location Bindings</span>
                                 <div className="context-field-group">
-                                    <div className="context-binding-hint">The user can only reach this location from these connected locations. Empty = reachable from anywhere.</div>
+                                    <div className="context-binding-hint">
+                                        This location is accessible to characters from the locations listed below.
+                                        Each entry declares: "From [listed location], this location is reachable."
+                                        Empty = this location is reachable from anywhere.
+                                    </div>
                                     <div className="context-character-binding-list">
                                         {locationBindings.map(id => {
                                             const loc = getLocationById(id);
                                             if (!loc) return null;
                                             return (
                                                 <div key={id} className="context-character-binding-chip">
-                                                    <span className="context-character-binding-name">{loc.name}</span>
+                                                    <span className="context-character-binding-name">← {loc.name}</span>
                                                     <button type="button" onClick={() => { setLocationBindings(prev => prev.filter(lid => lid !== id)); setLocationBindingRegexTriggers(prev => { const next = { ...prev }; delete next[id]; return next; }); }} className="context-character-binding-remove" title="Remove binding">×</button>
                                                 </div>
                                             );
                                         })}
                                     </div>
                                     <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
-                                        <option value="" disabled>+ Connect from a location</option>
+                                        <option value="" disabled>+ Accessible from a location</option>
                                         {availableLocationsForBinding.filter(l => !locationBindings.includes(l.id)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
                                     </select>
                                 </div>
                                 {locationBindings.length > 0 && (
                                     <div className="context-field-group" style={{ marginTop: '8px' }}>
                                         <span className="editor-label editor-label-small">Conditional Access Triggers</span>
-                                        <div className="context-binding-hint">Optional regex per binding. If set, the connection only works when the user's recent messages match. Leave empty for unconditional access.</div>
+                                        <div className="context-binding-hint">
+                                            Optional regex per origin location. If set, the path from that location
+                                            to here only opens when the character's message matches the pattern
+                                            (e.g., "unlock the gate", "find the hidden passage").
+                                            Leave empty for unconditional access from that location.
+                                        </div>
                                         {locationBindings.map(id => {
                                             const loc = getLocationById(id);
                                             if (!loc) return null;
@@ -657,7 +664,7 @@ function LocationEditorModalInner({
                                             const hasError = errors.bindingRegex?.[id];
                                             return (
                                                 <div key={id} style={{ marginBottom: '6px' }}>
-                                                    <label className="editor-label editor-label-small" style={{ display: 'block', marginBottom: '2px' }}>{loc.name}</label>
+                                                    <label className="editor-label editor-label-small" style={{ display: 'block', marginBottom: '2px' }}>From {loc.name}</label>
                                                     <input type="text" value={currentRegex} onChange={(e) => {
                                                         const val = e.target.value;
                                                         setLocationBindingRegexTriggers(prev => { const next = { ...prev }; if (val.trim()) next[id] = val; else delete next[id]; return next; });
@@ -675,12 +682,12 @@ function LocationEditorModalInner({
                             <div className="editor-section">
                                 <span className="editor-section-title">Character Bindings</span>
                                 <div className="context-field-group">
-                                    <div className="context-binding-hint">Only these characters can move to this location. Empty = all characters.</div>
+                                    <div className="context-binding-hint">Only these characters can enter this location. Empty = all characters can enter.</div>
                                     <div className="context-character-binding-list">
                                         {characterBindings.map(id => { const char = getCharacterById(id); if (!char) return null; return (<div key={id} className="context-character-binding-chip"><span className="context-character-binding-name">{char.name}</span><button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button></div>); })}
                                     </div>
                                     <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
-                                        <option value="" disabled>+ Bind to a character</option>
+                                        <option value="" disabled>+ Restrict to a character</option>
                                         {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                                     </select>
                                 </div>
@@ -690,7 +697,7 @@ function LocationEditorModalInner({
                             <div className="editor-section">
                                 <span className="editor-section-title">Owner Bindings</span>
                                 <div className="context-field-group">
-                                    <div className="context-binding-hint">Characters that own this location. Ownership grants exclusivity bonuses during turn selection. Empty = no owners.</div>
+                                    <div className="context-binding-hint">Characters that own this location. Owners receive exclusivity bonuses during turn selection, faster stamina regen, reduced speech cost, and always feel at home. Empty = no owners.</div>
                                     <div className="context-character-binding-list">
                                         {ownerBindings.map(id => { const char = getCharacterById(id); if (!char) return null; return (<div key={id} className="context-character-binding-chip"><span className="context-character-binding-name">👑 {char.name}</span><button type="button" onClick={() => setOwnerBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove owner">×</button></div>); })}
                                     </div>

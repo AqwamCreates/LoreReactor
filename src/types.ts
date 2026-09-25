@@ -121,7 +121,7 @@ export interface Location extends ObjectData {
   backgroundImageRegularExpressionActivationTriggers: Record<number, string>
   backgroundImageWeights: Record<number, number>
   playAudioTrackOnEnterWeights?: Record<string, number>;
-  locationBindings: string[];
+  locationBindings: string[]; // Accessible to target X from current location Y.
   locationBindingRegularExpressionTriggers?: Record<string, string>
   characterBindings: string[];
   globalWeight: number;
@@ -148,7 +148,7 @@ export interface RawLocation extends RawData {
   backgroundImageRegularExpressionActivationTriggers: Record<number, string>
   backgroundImageWeights: Record<number, number>
   playAudioTrackOnEnterWeights?: Record<string, number>;
-  locationBindings: string[];
+  locationBindings: string[]; // Accessible to target X from current location Y.
   locationBindingRegularExpressionTriggers?: Record<string, string>
   characterBindings: string[];
   globalWeight: number;

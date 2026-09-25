@@ -69,8 +69,72 @@ export function isCharacterLockedFromLocation(interactionData: InteractionData, 
 }
 
 /**
- * Get reachable locations for a character, filtering out locations they are locked from.
- * Combines structural reachability (locationBindings) with lock state (characterLockedLocations).
+ * Get structurally reachable locations from a given origin.
+ *
+ * Directional semantics: "Accessible to [character] from [currentLocation]"
+ * A target location is reachable if its `locationBindings` array includes
+ * the current location's ID (i.e., the target declares the origin as a valid
+ * departure point). If `locationBindings` is empty/undefined, the location
+ * is universally reachable from anywhere.
+ *
+ * Optional conditional regex: If the target location has a
+ * `locationBindingRegularExpressionTriggers` entry keyed by the current
+ * location's ID, the regex must match `messageText` for the connection to
+ * be considered open (e.g., "the door is unlocked").
+ *
+ * @param locations - All locations in the interaction
+ * @param currentLocationIndex - The origin location index (where the character currently is)
+ * @param messageText - Optional text to test against conditional regex triggers
+ * @returns Array of reachable locations with their indices, excluding the current location
+ */
+export function getReachableLocations(
+    locations: Location[],
+    currentLocationIndex: number | undefined,
+    messageText?: string,
+): { location: Location; locationIndex: number }[] {
+    const currentLocation = currentLocationIndex !== undefined ? locations[currentLocationIndex] : undefined;
+    return locations
+        .map((loc, i) => ({ location: loc, locationIndex: i }))
+        .filter(({ location, locationIndex }) => {
+            // Exclude the current location itself
+            if (locationIndex === currentLocationIndex) return false;
+
+            // No bindings = universally reachable from anywhere
+            if (!location.locationBindings || location.locationBindings.length === 0) return true;
+
+            // No known current location = can't evaluate bindings, treat as reachable
+            if (!currentLocation) return true;
+
+            // Target must declare current location as a valid origin ("accessible FROM here")
+            if (!location.locationBindings.includes(currentLocation.id)) return false;
+
+            // Check conditional regex gate (e.g., "door is unlocked", "bridge is repaired")
+            const conditionalRegex = location.locationBindingRegularExpressionTriggers?.[currentLocation.id];
+            if (!conditionalRegex || !conditionalRegex.trim()) return true;
+            if (!messageText) return false;
+            try {
+                const regex = new RegExp(conditionalRegex, 'i');
+                return regex.test(messageText);
+            } catch {
+                console.warn(`Invalid conditional regex on location ${location.id} for binding ${currentLocation.id}: ${conditionalRegex}`);
+                return false;
+            }
+        });
+}
+
+/**
+ * Get reachable locations for a specific character, combining structural
+ * reachability with lock state.
+ *
+ * Directional semantics: "Accessible to [character] from [currentLocation]"
+ * First computes structurally reachable locations via `getReachableLocations`,
+ * then filters out any locations the character is currently locked out of
+ * (via `characterLockedLocations` on their most recent message).
+ *
+ * @param interactionData - The full interaction state
+ * @param character - The character whose reachability is being evaluated
+ * @param messageText - Optional text to test against conditional regex triggers
+ * @returns Array of locations accessible to this character from their current position
  */
 export function getReachableLocationsByCharacter(
     interactionData: InteractionData,
@@ -126,31 +190,6 @@ export function sampleLocationByWeight(locations: Location[], character: Charact
     let randomValue = Math.random() * totalWeight;
     for (const entry of pool) { randomValue -= entry.weight; if (randomValue <= 0) return entry.index; }
     return pool[pool.length - 1].index;
-}
-
-export function getReachableLocations(
-    locations: Location[],
-    currentLocationIndex: number | undefined,
-    messageText?: string,
-): { location: Location; locationIndex: number }[] {
-    const currentLocation = currentLocationIndex !== undefined ? locations[currentLocationIndex] : undefined;
-    return locations
-        .map((loc, i) => ({ location: loc, locationIndex: i }))
-        .filter(({ location }) => {
-            if (!location.locationBindings || location.locationBindings.length === 0) return true;
-            if (!currentLocation) return true;
-            if (!location.locationBindings.includes(currentLocation.id)) return false;
-            const conditionalRegex = location.locationBindingRegularExpressionTriggers?.[currentLocation.id];
-            if (!conditionalRegex || !conditionalRegex.trim()) return true;
-            if (!messageText) return false;
-            try {
-                const regex = new RegExp(conditionalRegex, 'i');
-                return regex.test(messageText);
-            } catch {
-                console.warn(`Invalid conditional regex on location ${location.id} for binding ${currentLocation.id}: ${conditionalRegex}`);
-                return false;
-            }
-        });
 }
 
 export function sampleReachableLocationByWeight(

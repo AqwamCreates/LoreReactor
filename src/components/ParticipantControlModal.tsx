@@ -1,5 +1,5 @@
 // src/components/ParticipantControlModal.tsx
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import type { Character, InteractionData } from '../types';
 import { getCurrentLocationIndex } from '../hooks/locationLogic';
 import '../main.css';
@@ -15,6 +15,26 @@ interface ParticipantControlModalProps {
     onInjectFirstMessage: (character: Character) => void;
 }
 
+function deriveInitialOverrides(interactionData: InteractionData): {
+    chatStamina: Record<string, number>;
+    actionStamina: Record<string, number>;
+    location: Record<string, number | ''>;
+} {
+    const chatStamina: Record<string, number> = {};
+    const actionStamina: Record<string, number> = {};
+    const location: Record<string, number | ''> = {};
+
+    for (const p of interactionData.participants) {
+        const lastMsg = [...interactionData.interactionHistory].reverse().find(m => m.character.id === p.id);
+        chatStamina[p.id] = lastMsg?.remainingChatStamina ?? p.maximumChatStamina ?? 4;
+        actionStamina[p.id] = lastMsg?.remainingActionStamina ?? p.maximumActionStamina ?? 5;
+        const locIdx = getCurrentLocationIndex(interactionData, p);
+        location[p.id] = locIdx !== undefined ? locIdx : '';
+    }
+
+    return { chatStamina, actionStamina, location };
+}
+
 export function ParticipantControlModal({
     isOpen,
     onClose,
@@ -25,36 +45,46 @@ export function ParticipantControlModal({
     onInjectCustomMessage,
     onInjectFirstMessage,
 }: ParticipantControlModalProps) {
-    const [staminaOverrides, setStaminaOverrides] = useState<Record<string, number>>({});
-    const [actionStaminaOverrides, setActionStaminaOverrides] = useState<Record<string, number>>({});
-    const [locationOverrides, setLocationOverrides] = useState<Record<string, number | ''>>({});
+    // Original null guard restored — inner component only renders when data is guaranteed non-null
+    if (!isOpen || !interactionData) return null;
+
+    // Key-based reset: when interactionData identity changes, React remounts
+    // the inner component with fresh initial state. No synchronous setState in effects.
+    const resetKey = `${interactionData.id}-${interactionData.lastUpdatedTimestamp}`;
+
+    return (
+        <ParticipantControlModalInner
+            key={resetKey}
+            interactionData={interactionData}
+            onClose={onClose}
+            onUpdateInteractionData={onUpdateInteractionData}
+            onForceFirstMessage={onForceFirstMessage}
+            onSendCustomMessage={onSendCustomMessage}
+            onInjectCustomMessage={onInjectCustomMessage}
+            onInjectFirstMessage={onInjectFirstMessage}
+        />
+    );
+}
+
+function ParticipantControlModalInner({
+    interactionData,
+    onClose,
+    onUpdateInteractionData,
+    onForceFirstMessage,
+    onSendCustomMessage,
+    onInjectCustomMessage,
+    onInjectFirstMessage,
+}: Omit<ParticipantControlModalProps, 'isOpen' | 'interactionData'> & { interactionData: InteractionData }) {
+    const initials = useMemo(() => deriveInitialOverrides(interactionData), [interactionData]);
+
+    const [chatStaminaOverrides, setChatStaminaOverrides] = useState<Record<string, number>>(initials.chatStamina);
+    const [actionStaminaOverrides, setActionStaminaOverrides] = useState<Record<string, number>>(initials.actionStamina);
+    const [locationOverrides, setLocationOverrides] = useState<Record<string, number | ''>>(initials.location);
     const [selectedCharId, setSelectedCharId] = useState<string>('');
     const [customMessageText, setCustomMessageText] = useState('');
 
-    useEffect(() => {
-        if (isOpen && interactionData) {
-            const staminaOv: Record<string, number> = {};
-            const actionStaminaOv: Record<string, number> = {};
-            const locationOv: Record<string, number | ''> = {};
-            for (const p of interactionData.participants) {
-                const lastMsg = [...interactionData.interactionHistory].reverse().find(m => m.character.id === p.id);
-                staminaOv[p.id] = lastMsg?.remainingChatStamina ?? p.maximumChatStamina ?? 4;
-                actionStaminaOv[p.id] = lastMsg?.remainingActionStamina ?? p.maximumActionStamina ?? 5;
-                const locIdx = getCurrentLocationIndex(interactionData, p);
-                locationOv[p.id] = locIdx !== undefined ? locIdx : '';
-            }
-            setStaminaOverrides(staminaOv);
-            setActionStaminaOverrides(actionStaminaOv);
-            setLocationOverrides(locationOv);
-            setSelectedCharId('');
-            setCustomMessageText('');
-        }
-    }, [isOpen, interactionData]);
-
-    if (!isOpen || !interactionData) return null;
-
-    const handleStaminaChange = (charId: string, value: number) => {
-        setStaminaOverrides(prev => ({ ...prev, [charId]: value }));
+    const handleChatStaminaChange = (charId: string, value: number) => {
+        setChatStaminaOverrides(prev => ({ ...prev, [charId]: value }));
     };
 
     const handleActionStaminaChange = (charId: string, value: number) => {
@@ -66,17 +96,17 @@ export function ParticipantControlModal({
     };
 
     const applyOverrides = () => {
-        if (!interactionData) return;
-
         const updatedHistory = [...interactionData.interactionHistory];
 
-        // Apply stamina overrides to latest message per character
-        const lastMsgInrolls: Record<string, number> = {};
+        // Build map of last message index per character
+        const lastMsgIndices: Record<string, number> = {};
         for (let i = 0; i < updatedHistory.length; i++) {
-            lastMsgInrolls[updatedHistory[i].character.id] = i;
+            lastMsgIndices[updatedHistory[i].character.id] = i;
         }
-        for (const [charId, stamina] of Object.entries(staminaOverrides)) {
-            const idx = lastMsgInrolls[charId];
+
+        // Apply chat stamina overrides to latest message per character
+        for (const [charId, stamina] of Object.entries(chatStaminaOverrides)) {
+            const idx = lastMsgIndices[charId];
             if (idx !== undefined) {
                 updatedHistory[idx] = { ...updatedHistory[idx], remainingChatStamina: stamina };
             }
@@ -84,7 +114,7 @@ export function ParticipantControlModal({
 
         // Apply action stamina overrides to latest message per character
         for (const [charId, actionStamina] of Object.entries(actionStaminaOverrides)) {
-            const idx = lastMsgInrolls[charId];
+            const idx = lastMsgIndices[charId];
             if (idx !== undefined) {
                 updatedHistory[idx] = { ...updatedHistory[idx], remainingActionStamina: actionStamina };
             }
@@ -92,7 +122,7 @@ export function ParticipantControlModal({
 
         // Apply location overrides to latest message per character
         for (const [charId, locIdx] of Object.entries(locationOverrides)) {
-            const idx = lastMsgInrolls[charId];
+            const idx = lastMsgIndices[charId];
             if (idx !== undefined) {
                 updatedHistory[idx] = {
                     ...updatedHistory[idx],
@@ -242,7 +272,7 @@ export function ParticipantControlModal({
                         <div className="participant-control-stamina-list">
                             {interactionData.participants.map(p => {
                                 const maxStamina = p.maximumChatStamina ?? 4;
-                                const current = staminaOverrides[p.id] ?? maxStamina;
+                                const current = chatStaminaOverrides[p.id] ?? maxStamina;
 
                                 return (
                                     <div key={p.id} className="participant-control-stamina-row">
@@ -252,7 +282,7 @@ export function ParticipantControlModal({
                                             <input
                                                 type="number"
                                                 value={current}
-                                                onChange={e => handleStaminaChange(p.id, Number(e.target.value) || 0)}
+                                                onChange={e => handleChatStaminaChange(p.id, Number(e.target.value) || 0)}
                                                 className="editor-input participant-control-stamina-input"
                                                 min="0"
                                                 max={maxStamina * 2}

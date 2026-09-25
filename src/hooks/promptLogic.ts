@@ -6,7 +6,7 @@ import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
 import { toolStartSring, toolEndString } from '../dictionaries/stringList';
 import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
-import { getCoLocatedProtagonists } from './locationLogic';
+import { getCoLocatedProtagonists, getReachableLocationsByCharacter } from './locationLogic';
 import { defaultInputStrategy } from '../dictionaries/defaults';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { generateLocationVisitSummary } from '../services/ChatMessageSummarizationEngine';
@@ -1079,12 +1079,19 @@ function buildLocationLines(ctx: PromptBuildContext): { lines: string[]; images:
             }
         }
 
+        // Inject reachable locations using "Accessible to X from location Y" semantics
+        const reachable = getReachableLocationsByCharacter(ctx.interactionData, ctx.character);
+        if (reachable.length > 0) {
+            const reachableNames = reachable.map(r => r.location.name || 'Unknown Location');
+            lines.push(`${ctx.delimiters.blockStart('system')}From ${locationName}, I can travel to: ${reachableNames.join(', ')}.${ctx.delimiters.blockEnd}`);
+        }
+
         if (location.images && location.images.length > 0) {
             for (const img of location.images) {
                 images.push({ entityId: location.id, filename: img });
             }
         }
-        lines.push(`${ctx.delimiters.blockStart('system')}If I am at the same location after moving to a different one, I understand that I cannot access that location.${ctx.delimiters.blockEnd}`);
+
         lines.push(`${ctx.delimiters.blockStart('system')}End Of Current Location.${ctx.delimiters.blockEnd}`);
     }
 
