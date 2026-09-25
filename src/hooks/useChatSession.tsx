@@ -5,10 +5,9 @@ import { useChatEngine } from './useChatEngine';
 import { useChatUI } from './useChatUI';
 import { useToast } from '../context/ToastContext';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData } from './chatLogic';
-import { processPendingToolActions, executeTool } from '../services/ToolExecutor';
+import { processPendingToolActions, executeTool, translateToolResultToProse } from '../services/ToolExecutor';
 import { parseSlashCommand } from '../services/ToolInvocationParser';
 import { runSummarization } from '../services/SummarizationEngine';
-import { translateToolResultToProse } from '../services/ChatMessageSummarizationEngine';
 import { consumeChatStaminaForMessage } from './characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from './locationLogic';
 import { saveRawInteractionData, loadRawBudgetData } from '../storage/serverStorage';
@@ -305,12 +304,12 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                 // Get the raw mechanical result
                 const rawResult = toolResult.displayReplacement || toolResult.content || `[${slashInvocation.toolType}]`;
 
-                // Translate mechanical result into natural in-character prose
+                // Translate mechanical result into natural in-character prose using filtered messages
                 const naturalProse = await translateToolResultToProse(
                     rawResult,
                     activeCharacter,
                     currentState.interactionData,
-                    currentState.selectedModel?.id || '',
+                    allPromptBlocks,
                 );
                 slashMessage.textContent = naturalProse;
 

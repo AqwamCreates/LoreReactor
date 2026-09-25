@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { buildRequestBody } from '../hooks/genericRequestBuilderLogic';
 import { detectName } from '../hooks/nameDetection';
-import { getParticipantTag, getFilteredChatMessages, deriveDelimiters, replacePlaceholders } from '../hooks/promptLogic';
+import { getParticipantTag, getFilteredChatMessages, deriveDelimiters, replacePlaceholders, getUniversalMessageFilterFlags } from '../hooks/promptLogic';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 
@@ -1941,38 +1941,42 @@ export function processPendingToolActions(
     return { ...updatedData, interactionHistory: cleanedHistory, lastUpdatedTimestamp: Date.now() };
 }
 
-// Add to src/services/ChatMessageSummarizationEngine.ts
-
-const TOOL_RESULT_TRANSLATION_PROMPT = "You are a character in a roleplay. Below is a mechanical action result from a game system. Translate this into natural first-person prose as if you were performing this action yourself. Keep it brief (1-2 sentences). Write in your character's voice and style. Do not include meta-commentary, explanations, or mechanical details. Just describe the action as you would experience it. Output ONLY your natural prose with no preamble, no markdown, no quotes.";
-
 /**
  * Translate a mechanical tool result into natural in-character prose.
  * Uses the same infrastructure as summarization (buildRequestBody + budget engine).
  */
+const TOOL_RESULT_TRANSLATION_PROMPT = "You are a character in a roleplay. Below is a mechanical action result from a game system. Translate this into natural first-person prose as if you were performing this action yourself. Keep it brief (1-2 sentences). Write in your character's voice and style. Do not include meta-commentary, explanations, or mechanical details. Just describe the action as you would experience it. Output ONLY your natural prose with no preamble, no markdown, no quotes.";
+
 export async function translateToolResultToProse(
     rawResult: string,
     character: Character,
     interactionData: InteractionData,
-    modelId: string,
-    maxTokens = 256,
+    allPromptBlocks: PromptBlock[] | undefined,
 ): Promise<string> {
-    const history = interactionData.interactionHistory;
     const participants = interactionData.participants;
     const participantTag = getParticipantTag(character, participants);
     const sampler = interactionData.Profile?.characterSampler || character.sampler;
 
-    const allPromptBlocks: PromptBlock[] = [];
-    const filteredMessages = getFilteredChatMessages(interactionData, character.id, allPromptBlocks);
+    const effectiveAllPromptBlocks = allPromptBlocks || []
+
+    // Use getUniversalMessageFilterFlags to respect all message filters
+    const allChatMessages = interactionData.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
+    const filterFlags = getUniversalMessageFilterFlags(
+        allChatMessages,
+        interactionData.contexts || [],
+        interactionData.locations || [],
+        effectiveAllPromptBlocks,
+    );
+    const filteredMessages = allChatMessages.filter((_, i) => !filterFlags[i]);
+
     const knownCharacterNames = detectName(character, filteredMessages);
     const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
 
-    // ─── Get Dynamic Delimiters & Stop Tokens ───────────────────────
     const activeModel = getLanguageModelEngine().getContext();
     const effectiveChatTemplateKey = activeModel?.chatTemplate;
     const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
     const delimiters = deriveDelimiters(resolvedChatTemplate);
 
-    // Build minimal chat history for context (last 5 messages)
     const recentMessages = filteredMessages.slice(-5);
     const scopedMessages: string[] = [];
     for (const msg of recentMessages) {
@@ -1999,7 +2003,6 @@ export async function translateToolResultToProse(
     const promptLines = [systemPrompt, recentHistoryBlock, mechanicalResult, perspectiveInstruction];
     const prompt = promptLines.filter(l => l.length > 0).join('\n\n');
 
-    // Use dynamic model-specific stop tokens
     const templateStops = resolvedChatTemplate?.stopPatterns || [];
     const turnEndStop = delimiters.turnEnd.trim();
     const stops = [
@@ -2009,15 +2012,19 @@ export async function translateToolResultToProse(
         delimiters.thinkEnd.trim(),
     ].filter(s => s.length > 0);
 
-    const requestBody = buildRequestBody(prompt, maxTokens, sampler, stops);
+    const requestBody = buildRequestBody(prompt, 256, sampler, stops);
 
-    const bse = getBudgetStrategyEngine();
-    const { text } = await bse.generateCompletion(requestBody);
-    
-    // Fallback to raw result if translation failed or is empty
-    if (!text || !text.trim()) {
+    try {
+        const bse = getBudgetStrategyEngine();
+        const { text } = await bse.generateCompletion(requestBody);
+
+        if (!text || !text.trim()) {
+            return rawResult;
+        }
+
+        return text.trim();
+    } catch (error) {
+        console.warn('Failed to translate tool result to prose, using raw result:', error);
         return rawResult;
     }
-
-    return text.trim();
 }
