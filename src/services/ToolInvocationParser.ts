@@ -16,7 +16,7 @@ web: For expressing curiosity or ignorance.
 
 */
 
-const validTools = [...characterAgnosticTools, ...characterSpecificTools, ...metaTools]
+export const validTools = [...characterAgnosticTools, ...characterSpecificTools, ...metaTools]
 
 export interface ToolInvocation {
     /** The full matched string including markers, e.g. "${toolStartSring}web: weather in Tokyo:tool|" */
@@ -229,5 +229,60 @@ function parseToolContent(content: string): ToolInvocation | null {
     }
 
     console.warn(`Unknown tool type in invocation: "${trimmed}"`);
+    return null;
+}
+
+/**
+ * Parse slash command input into a tool invocation.
+ * Format: "/tool args" or "/tool: args"
+ * Returns null if input is not a valid slash command.
+ */
+export function parseSlashCommand(input: string): ToolInvocation | null {
+    const trimmed = input.trim();
+
+    // Must start with /
+    if (!trimmed.startsWith('/')) return null;
+
+    const withoutSlash = trimmed.slice(1).trim();
+    if (!withoutSlash) return null;
+
+    // Try colon-separated: "/search: weather in Tokyo"
+    const colonIdx = withoutSlash.indexOf(':');
+    if (colonIdx > 0) {
+        const toolType = withoutSlash.slice(0, colonIdx).trim().toLowerCase();
+        const args = withoutSlash.slice(colonIdx + 1).trim();
+        if (toolType && isValidToolType(toolType)) {
+            return {
+                rawMatch: trimmed,
+                toolType,
+                args,
+            };
+        }
+    }
+
+    // Try space-separated: "/calculator 2+2*3"
+    const spaceIdx = withoutSlash.indexOf(' ');
+    if (spaceIdx > 0) {
+        const toolType = withoutSlash.slice(0, spaceIdx).trim().toLowerCase();
+        const args = withoutSlash.slice(spaceIdx + 1).trim();
+        if (toolType && isValidToolType(toolType)) {
+            return {
+                rawMatch: trimmed,
+                toolType,
+                args,
+            };
+        }
+    }
+
+    // Single word with no args: "/date"
+    const singleWord = withoutSlash.toLowerCase();
+    if (isValidToolType(singleWord)) {
+        return {
+            rawMatch: trimmed,
+            toolType: singleWord,
+            args: '',
+        };
+    }
+
     return null;
 }

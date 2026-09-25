@@ -5,6 +5,8 @@ import { createChatMessage, addMessageToInteractionData } from './chatLogic';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { useSessionStore } from './useSessionStore';
+import { getCoLocatedParticipants } from './locationLogic';
+import { getUniversalMessageFilterFlags } from './promptLogic';
 import { detectContext, composeFallbackSentence } from '../ambientNarration/composer';
 import { AMBIENT_NARRATOR } from '../ambientNarration/narrator';
 
@@ -18,23 +20,40 @@ export function useAmbientNarration(
     streamingTextRef: React.MutableRefObject<string>,
 ) {
     const generateAmbientNarration = useCallback(async (data: InteractionData, signal: AbortSignal): Promise<InteractionData | null> => {
-        const recentMessages = data.interactionHistory
+        // Determine message window size based on co-located participants.
+        // Use the protagonist's current location as the reference point.
+        const protagonist = data.protagonists?.[0];
+        const coLocatedCount = protagonist ? getCoLocatedParticipants(data, protagonist).length : 0;
+        const messageWindow = Math.max(1, coLocatedCount);
+
+        // Get all chat messages
+        const allChatMessages = data.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
+
+        // Apply universal message filter flags to exclude filtered messages
+        const filterFlags = getUniversalMessageFilterFlags(
+            allChatMessages,
+            data.contexts || [],
+            data.locations || [],
+            [],
+        );
+        const visibleChatMessages = allChatMessages.filter((_, i) => !filterFlags[i]);
+
+        // Filter out ambient narrator messages and slice to message window
+        const recentMessages = visibleChatMessages
             .filter(m => m.character.id !== '__ambient_narrator__')
-            .filter((m): m is ChatMessage => m.messageType === 'chat')
-            .slice(-8);
+            .slice(-messageWindow);
 
         const recentText = recentMessages.map(m => m.textContent).join('\n');
         const { tags, dominantMood } = detectContext(recentText);
 
-        const recentAmbient = data.interactionHistory
+        const recentAmbient = visibleChatMessages
             .filter(m => m.character.id === '__ambient_narrator__')
-            .filter((m): m is ChatMessage => m.messageType === 'chat')
             .slice(-5)
             .map(m => m.textContent);
 
         // Build context summary for the LLM
         const tagList = [...tags].slice(0, 10).join(', ');
-        const userPrompt = `Recent conversation context:\n${recentText.slice(-2000)}\n\nDetected environmental cues: ${tagList || 'none'}\nDominant mood: ${dominantMood}\n\nWrite one ambient narration sentence for this moment. Do NOT repeat any of these previous narrations: ${recentAmbient.join(' | ')}`;
+        const userPrompt = `Recent conversation context:\n${recentText}\n\nDetected environmental cues: ${tagList || 'none'}\nDominant mood: ${dominantMood}\n\nWrite one ambient narration sentence for this moment. Do NOT repeat any of these previous narrations: ${recentAmbient.join(' | ')}`;
 
         let selected: string | null = null;
 

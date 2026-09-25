@@ -5,8 +5,10 @@ import { useChatEngine } from './useChatEngine';
 import { useChatUI } from './useChatUI';
 import { useToast } from '../context/ToastContext';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData } from './chatLogic';
-import { processPendingToolActions } from '../services/ToolExecutor';
+import { processPendingToolActions, executeTool } from '../services/ToolExecutor';
+import { parseSlashCommand } from '../services/ToolInvocationParser';
 import { runSummarization } from '../services/SummarizationEngine';
+import { translateToolResultToProse } from '../services/ChatMessageSummarizationEngine';
 import { consumeChatStaminaForMessage } from './characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from './locationLogic';
 import { saveRawInteractionData, loadRawBudgetData } from '../storage/serverStorage';
@@ -19,6 +21,9 @@ import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import type { Character, InteractionData, PromptBlock, ChatMessage, HistoryMessage } from '../types';
 
 const engine = getLanguageModelEngine();
+
+/** Tools that are valid without any arguments */
+const NO_ARG_TOOLS = ['coin', 'date'];
 
 function finalizeMessageById(
     data: InteractionData,
@@ -272,10 +277,74 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             : currentState.currentCharacter;
 
         if (!currentState.interactionData || !activeCharacter || (!text.trim() && (!files || !files.length))) return;
-        if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
+
+        // ─── SLASH COMMAND DETECTION ───────────────────────────────
+        const slashInvocation = parseSlashCommand(text);
+        const isSlashCommand = !!(slashInvocation && !files?.length && !frontCameraImageBase64);
+
+        if (isSlashCommand && slashInvocation) {
+            // ─── VALIDATE ARGS ──────────────────────────────────────
+            // Tools like coin/date are valid without args. Everything else requires args.
+            if (!slashInvocation.args.trim() && !NO_ARG_TOOLS.includes(slashInvocation.toolType)) {
+                addToast(`/${slashInvocation.toolType} requires arguments.`, 'error');
+                return;
+            }
+
+            // ─── EXECUTE TOOL ────────────────────────────────────────
+            if (!acquireLock()) { addToast('Already processing...', 'info'); return; }
+            try {
+                const slashMessage = createChatMessage(currentState.interactionData, activeCharacter, '', {});
+                const toolResult = await executeTool(
+                    slashInvocation,
+                    slashMessage,
+                    currentState.interactionData,
+                    undefined,
+                    currentState.interactionData.Profile?.toolUsageDisplayMode
+                );
+
+                // Get the raw mechanical result
+                const rawResult = toolResult.displayReplacement || toolResult.content || `[${slashInvocation.toolType}]`;
+
+                // Translate mechanical result into natural in-character prose
+                const naturalProse = await translateToolResultToProse(
+                    rawResult,
+                    activeCharacter,
+                    currentState.interactionData,
+                    currentState.selectedModel?.id || '',
+                );
+                slashMessage.textContent = naturalProse;
+
+                const updatedData = addMessageToInteractionData(currentState.interactionData, slashMessage);
+                setInteractionData(updatedData);
+                await saveRawInteractionData(updatedData);
+
+                if (isMultiplayerClient) {
+                    onMessageBroadcastRef.current?.(slashMessage);
+                }
+            } catch (e) {
+                console.error('Slash command failed:', e);
+                addToast(`Command failed: ${(e as Error).message}`, 'error');
+                releaseLock();
+                return;
+            }
+
+            // ─── MULTIPLAYER: tool executed locally, host handles AI ─
+            if (isMultiplayerClient) {
+                releaseLock();
+                return;
+            }
+
+            // ─── FALL THROUGH TO AI GENERATION ─────────────────────
+            // Tool result is already in chat history. AI will see it and respond.
+            // Lock is still held — will be released at the end of AI generation.
+        }
+
+        // ─── NORMAL MESSAGE OR POST-SLASH AI GENERATION ─────────────
+
+        if (!isSlashCommand && !acquireLock()) { addToast('Already generating...', 'info'); return; }
         
         // Multiplayer clients only send the user message, host handles generation
-        if (isMultiplayerClient) {
+        if (isMultiplayerClient && !isSlashCommand) {
             try {
                 const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error); });
                 const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
@@ -316,29 +385,35 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         isAtBottomRef.current = true;
 
         try {
-            const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error); });
-            const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
+            // Get the latest interaction data (may have been updated by slash command)
+            const latestState = getState();
+            let td = latestState.interactionData!;
 
-            // Store front camera image on the outgoing message so all subsequent AI generations can see it
-            const chatMessage = createChatMessage(currentState.interactionData, activeCharacter, text, { files: encodedFiles, frontCameraImage: frontCameraImageBase64 });
-            let td = addMessageToInteractionData(currentState.interactionData, chatMessage);
+            // If NOT a slash command, add the user's text as a chat message
+            if (!isSlashCommand) {
+                const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error); });
+                const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
-            // Broadcast user message
-            onMessageBroadcastRef.current?.(chatMessage);
+                const chatMessage = createChatMessage(td, activeCharacter, text, { files: encodedFiles, frontCameraImage: frontCameraImageBase64 });
+                td = addMessageToInteractionData(td, chatMessage);
 
-            const hasLocations = td.locations && td.locations.length > 0;
-            if (hasLocations) {
-                const protagonistMsg = td.interactionHistory[td.interactionHistory.length - 1];
-                if (protagonistMsg && protagonistMsg.character.id === activeCharacter.id && protagonistMsg.messageType === 'chat') {
-                    const currentLoc = getCurrentLocationIndex(td, activeCharacter);
-                    const regexLoc = findLocationByRegex(td.locations, protagonistMsg.textContent, activeCharacter);
-                    const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
-                    td = { ...td, interactionHistory: td.interactionHistory.map((m, i) => i === td.interactionHistory.length - 1 ? { ...m, locationIndex: finalLoc } : m) };
+                // Broadcast user message
+                onMessageBroadcastRef.current?.(chatMessage);
+
+                const hasLocations = td.locations && td.locations.length > 0;
+                if (hasLocations) {
+                    const protagonistMsg = td.interactionHistory[td.interactionHistory.length - 1];
+                    if (protagonistMsg && protagonistMsg.character.id === activeCharacter.id && protagonistMsg.messageType === 'chat') {
+                        const currentLoc = getCurrentLocationIndex(td, activeCharacter);
+                        const regexLoc = findLocationByRegex(td.locations, protagonistMsg.textContent, activeCharacter);
+                        const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
+                        td = { ...td, interactionHistory: td.interactionHistory.map((m, i) => i === td.interactionHistory.length - 1 ? { ...m, locationIndex: finalLoc } : m) };
+                    }
                 }
-            }
 
-            setInteractionData(td);
-            await saveRawInteractionData(td);
+                setInteractionData(td);
+                await saveRawInteractionData(td);
+            }
 
             // Set up streaming broadcast tracking
             const preTurnCount = td.interactionHistory.length;
@@ -383,7 +458,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                 }
             } else {
                 // Check if ambient narration is enabled in the profile
-                const enableAmbientNarration = currentState.interactionData?.Profile?.enableAmbientNarration ?? false;
+                const enableAmbientNarration = td?.Profile?.enableAmbientNarration ?? false;
                 
                 if (enableAmbientNarration) {
                     const ad = await generateAmbientNarration(ud, ctrl.signal);
