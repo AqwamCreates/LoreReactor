@@ -33,6 +33,7 @@ import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
+import { useFrontCamera } from '../hooks/useFrontCamera';
 import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, MultiplayerData, Account, HistoryMessage, cloudBackend } from '../types';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
@@ -122,6 +123,7 @@ function clearJoinState() {
 function App() {
 
     const { addToast } = useToast();
+    const { captureImage: captureFrontCameraImage } = useFrontCamera(addToast);
 
     // ─── Manager Hooks ───────────────────────────────────────────────
     const { rawChatShells, isLoading: chatsLoading, deleteChat: deleteChatFromList, refresh: refreshChatList, ensureLoaded: ensureChatsLoaded } = useChatListManager();
@@ -182,7 +184,7 @@ function App() {
     const isMultiplayerClient = !!joinSessionId;
 
     // ─── Session Hook ────────────────────────────────────────────────
-    const session = useChatSession(allCharacters, { onMessageBroadcast, isMultiplayerClient, joinProtagonist });
+    const session = useChatSession({ onMessageBroadcast, isMultiplayerClient, joinProtagonist });
     const {
         interactionData, setInteractionData, setCurrentCharacter,
         isLoading, streamingText, streamingCharacter, currentCharacterExpression, sendMessage, stopGeneration,
@@ -783,13 +785,32 @@ function App() {
         }
     }, [isRecording, addToast]);
 
-    const handleSend = useCallback(() => {
+    const handleSend = useCallback(async () => {
         if (!inputText.trim() && !pendingFiles.length) return;
-        sendMessage(inputText, allPromptBlocks, pendingFiles, "");
+        
+        // Determine if front camera should be captured based on three-state logic
+        let frontCameraImage: string | undefined = undefined;
+        const profileUseFrontCamera = interactionData?.Profile?.useFrontCameraImage;
+        
+        if (profileUseFrontCamera === 1) {
+            // Force on for all characters
+            const captured = await captureFrontCameraImage();
+            if (captured) frontCameraImage = captured;
+        } else if (profileUseFrontCamera === 0) {
+            // Per-character setting - check current character's setting
+            const characterUseFrontCamera = currentCharacter?.useFrontCameraImage;
+            if (characterUseFrontCamera) {
+                const captured = await captureFrontCameraImage();
+                if (captured) frontCameraImage = captured;
+            }
+        }
+        // If -1 or undefined, skip capture (frontCameraImage remains undefined)
+        
+        sendMessage(inputText, allPromptBlocks, pendingFiles, frontCameraImage);
         setInputText('');
         setPendingFiles([]);
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    }, [inputText, pendingFiles, sendMessage, allPromptBlocks]);
+    }, [inputText, pendingFiles, sendMessage, allPromptBlocks, captureFrontCameraImage, interactionData, currentCharacter]);
 
     const toggleViewMode = () => {
         setViewMode(prev => prev === 'ladder' ? 'cinematic' : prev === 'cinematic' ? 'vn' : 'ladder');
@@ -949,11 +970,34 @@ function App() {
 
     const massStartIndex = isMassActive ? displayMessages.findIndex(m => m.id === massDeleteId) : -1;
 
-    const timeUntilReset = useMemo(() => {
-        if (budgetData && activeStrategy && budgetData.resetDuration > 0) {
-            return Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp));
+    // Budget reset timer — ref stores mutable value, setState only called inside interval callback
+    const timeUntilResetRef = useRef<number | undefined>(undefined);
+    const [timeUntilReset, setTimeUntilReset] = useState<number | undefined>(undefined);
+
+    useEffect(() => {
+        if (!budgetData || !activeStrategy || budgetData.resetDuration <= 0) {
+            timeUntilResetRef.current = undefined;
+            return;
         }
-        return undefined;
+
+        const computeRemaining = () => Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp));
+
+        timeUntilResetRef.current = computeRemaining();
+
+        const intervalId = setInterval(() => {
+            const remaining = computeRemaining();
+            timeUntilResetRef.current = remaining;
+            setTimeUntilReset(remaining);
+        }, 1000);
+
+        const rafId = requestAnimationFrame(() => {
+            setTimeUntilReset(timeUntilResetRef.current);
+        });
+
+        return () => {
+            clearInterval(intervalId);
+            cancelAnimationFrame(rafId);
+        };
     }, [budgetData, activeStrategy]);
 
     const viewProps: ViewModeProps = {
@@ -990,7 +1034,7 @@ function App() {
         onCancelEditing: cancelEditing,
         onSaveEdit: handleSaveEdit,
         onRegenerateFromEdit: handleRegenerateFromEdit,
-        onResumeGeneration: (id: string) => { resumeGeneration(id); },
+        onResumeGeneration: (id: string) => { resumeGeneration(id, allPromptBlocks); },
         onCopyText: handleCopyText,
         onRegenerateFromMessage: regenerateFromMessage,
         onBranch: handleBranch,
@@ -1116,6 +1160,17 @@ function App() {
                             localProtagonist={localProtagonist} 
                             activeStrategy={activeStrategy ?? undefined} 
                             selectedModelId={selectedModelId} 
+                            interactionData={interactionData}
+                            allCharacters={allCharacters}
+                            allLocations={allLocations}
+                            allContexts={allContexts}
+                            allAudioTracks={allAudioTracks}
+                            allWorlds={allWorlds}
+                            allPromptBlocks={allPromptBlocks}
+                            allSamplers={allSamplers}
+                            allStopPatterns={allStopPatterns}
+                            allProfiles={allProfiles}
+                            allMemories={allMemories}
                             fileInputRef={fileInputRef} 
                             textareaRef={textareaRef} 
                             onFileSelected={handleFileSelected} 

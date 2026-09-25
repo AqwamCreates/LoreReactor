@@ -1,5 +1,5 @@
 // src/dictionaries/defaults.ts
-import type { BudgetData, BudgetStrategy, Character, InterjectableAction, LanguageModel, MultiplayerData, PromptBlockType, Sampler, textType, tool } from '../types';
+import type { BudgetData, BudgetStrategy, Character, InterjectableAction, LanguageModel, MultiplayerData, PromptBlockType, Sampler, textType, tool, tristateInteger } from '../types';
 
 export const DEFAULT_BUDGET_RESET_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -137,7 +137,7 @@ export const defaultInputStrategy: PromptBlockType[] = [
     'Fatigue Information', 'Starter Prompt', 'Tool Instructions', 'Text Injection',
 ];
 
-export const defaultProfileTools: Record<tool, number> = {
+export const defaultProfileTools: Record<tool, tristateInteger> = {
     think: 0, pick: 0, date: 0, coin: 0, dice: 0, random: 0, rng: 0,
     move: 0, timer: 0, stopwatch: 0, schedule: 0, calculator: 0, web: 0, 
     dialogue: 0, knowledge: 0, memory: 0,

@@ -13,6 +13,7 @@ import type {
   tool,
   HistoryMessage,
   RawChatMessage,
+  tristateInteger,
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -903,7 +904,7 @@ const profileRepo = createRepository<Profile, RawProfile>({
         cacheInvalidationReductionLevel: 0,
         doNotInjectDefaultStopTokens: false,
         stripThinkTokens: false,
-        tools: {} as Record<tool, number>,
+        tools: {} as Record<tool, tristateInteger>,
         inputStrategy: [...defaultInputStrategy],
     }, {
         summarizationSteps: () => summarizationSteps,

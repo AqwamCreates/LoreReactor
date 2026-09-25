@@ -1,5 +1,7 @@
 // src/types.ts
 
+export type tristateInteger = -1 | 0 | 1
+
 export type regularExpressionContext = 'global' | 'local' | 'previous';
 
 export type regularExpressionTarget = 'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator';
@@ -394,6 +396,7 @@ export interface Account extends ObjectData {
   username: string
   password: string
   url?: string
+  shareLanguageModel: boolean;
 
 }
 
@@ -402,6 +405,7 @@ export interface RawAccount extends RawData {
   username: string
   password: string
   url?: string
+  shareLanguageModel: boolean;
 
 }
 
@@ -415,6 +419,8 @@ export interface MultiplayerDataAccountConfiguration {
   canUseHosterCharacterId: boolean;
   joinerCharacterIdRequiresHosterApproval: boolean;
   hosterCharacterIdRequiresHosterApproval: boolean;
+
+  useJoinerLanguageModel: tristateInteger; // -1 - Disabled, use hoster's language model only. 0 - Use Joiner's when given. 1 - Mandatory for the joiner to give access for the language model or they cannot join.
 
   whitelistedCharacterIds: string[];
   blacklistedCharacterIds: string[];
@@ -655,7 +661,7 @@ export interface Profile extends ObjectData {
   useWeather: boolean;
   weatherApiKey?: string;
   useTimeElapsed: boolean;
-  useFrontCameraImage: number; // -1 -> Disabled for all character, 0 -> Per-Character (Default), 1 -> Enabled for all character.
+  useFrontCameraImage: tristateInteger; // -1 -> Disabled for all character, 0 -> Per-Character (Default), 1 -> Enabled for all character.
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
   numberOfMessagesToDisableDialoguePrompt: number;
@@ -673,7 +679,7 @@ export interface Profile extends ObjectData {
   doNotInjectDefaultStopTokens: boolean;
   narrateTexts: Record<textType, boolean>;
   stripThinkTokens: boolean;
-  tools: Record<tool, number>;
+  tools: Record<tool, tristateInteger>;
   inputStrategy: (PromptBlockType | string)[];
   summarizationSteps: SummarizationStep[];
   characterSampler?: Sampler;
@@ -704,7 +710,7 @@ export interface RawProfile extends RawData {
   useWeather: boolean;
   weatherApiKey?: string;
   useTimeElapsed: boolean;
-  useFrontCameraImage: number; // -1 -> Disabled for all character, 0 -> Per-Character (Default), 1 -> Enabled for all character.
+  useFrontCameraImage: tristateInteger; // -1 -> Disabled for all character, 0 -> Per-Character (Default), 1 -> Enabled for all character.
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
   numberOfMessagesToDisableDialoguePrompt: number;
@@ -722,7 +728,7 @@ export interface RawProfile extends RawData {
   doNotInjectDefaultStopTokens: boolean;
   narrateTexts: Record<textType, boolean>;
   stripThinkTokens: boolean;
-  tools: Record<tool, number>;
+  tools: Record<tool, tristateInteger>;
   inputStrategy: (PromptBlockType | string)[];
   summarizationSteps: RawSummarizationStep[];
   characterSamplerId?: string;

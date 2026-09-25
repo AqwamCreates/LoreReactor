@@ -1,5 +1,5 @@
 // src/services/dataConverters.ts
-import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StopPattern, tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StopPattern, tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget, tristateInteger } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';
 import type { GeneratedOutput } from './dataTypes';
@@ -402,7 +402,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         useWeather: (p.useWeather as boolean) ?? false,
         weatherApiKey: (p.weatherApiKey as string) || undefined,
         useTimeElapsed: (p.useTimeElapsed as boolean) ?? false,
-        useFrontCameraImage: (p.useFrontCameraImage as number) ?? 0,
+        useFrontCameraImage: (p.useFrontCameraImage as tristateInteger) ?? 0,
         numberOfMessagesToDisableThinkPrompt: (p.numberOfMessagesToDisableThinkPrompt as number) ?? 0,
         numberOfMessagesToDisableMetaThinkInstructions: (p.numberOfMessagesToDisableMetaThinkInstructions as number) ?? 0,
         numberOfMessagesToDisableDialoguePrompt: (p.numberOfMessagesToDisableDialoguePrompt as number) ?? 0,
@@ -428,7 +428,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
             braced: (rawNarrateTexts.braced as boolean) ?? defaultNarrateTexts.braced,
         },
         stripThinkTokens: (p.stripThinkTokens as boolean) ?? true,
-        tools: parseToolsRecord(p.tools, defaultProfileTools) as Record<tool, number>,
+        tools: parseToolsRecord(p.tools, defaultProfileTools) as Record<tool, tristateInteger>,
         inputStrategy: (p.inputStrategy as Profile['inputStrategy']) || ['System Prompt', 'Chat History', 'Context', 'Location'],
         summarizationSteps: ((p.summarizationSteps as Record<string, unknown>[]) || []).map(s => ({
             id: ensureId(s),

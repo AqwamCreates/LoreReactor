@@ -1,7 +1,7 @@
 // src/components/ChatInput.tsx
 import type React from 'react';
 import { useState, useEffect, useRef, useMemo } from 'react';
-import type { BudgetStrategy, Character, InteractionData } from '../types';
+import type { BudgetStrategy, InteractionData, Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory } from '../types';
 
 interface ChatInputProps {
     inputText: string;
@@ -18,6 +18,15 @@ interface ChatInputProps {
     selectedModelId: string | null;
     interactionData: InteractionData | null;
     allCharacters: Character[];
+    allLocations: Location[];
+    allContexts: Context[];
+    allAudioTracks: AudioTrack[];
+    allWorlds: World[];
+    allPromptBlocks: PromptBlock[];
+    allSamplers: Sampler[];
+    allStopPatterns: StopPattern[];
+    allProfiles: Profile[];
+    allMemories: Memory[];
     fileInputRef: React.RefObject<HTMLInputElement | null>;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     onFileSelected: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -28,11 +37,13 @@ interface ChatInputProps {
 }
 
 // ─── Tree Data Structures ─────────────────────────────────────────
-type ArgType = 'text' | 'location' | 'character' | 'clothing' | 'audio' | 'item' | 'context' | 'rng_table' | 'dialogue' | 'knowledge' | 'memory';
+type ArgType = 'text' | 'location' | 'character' | 'clothing' | 'audio' | 'item' | 'context' | 'rng_table' | 'dialogue' | 'knowledge' | 'memory' | 'entity_type' | 'prompt_block' | 'sampler' | 'stop_pattern' | 'profile' | 'world';
 
 interface SlashArg { name: string; type: ArgType; desc: string; optional?: boolean; example?: string; }
 interface SlashSub { name: string; desc: string; args?: SlashArg[]; }
 interface SlashCmd { name: string; desc: string; subs?: SlashSub[]; args?: SlashArg[]; }
+
+const VALID_ENTITY_TYPES = ['character', 'context', 'location', 'audio_track', 'prompt_block', 'stop_pattern', 'sampler', 'budget_strategy', 'profile', 'world', 'memory'];
 
 const COMMAND_TREE: SlashCmd[] = [
     { name: 'dice', desc: 'Roll dice', args: [{ name: 'notation', type: 'text', desc: 'Dice notation', example: '2d6+3' }] },
@@ -53,7 +64,7 @@ const COMMAND_TREE: SlashCmd[] = [
         { name: 'character', type: 'character', desc: 'Character to kick' },
         { name: 'location', type: 'location', desc: 'Destination (optional)', optional: true }
     ]},
-    { name: 'summon', desc: 'Add character to session', args: [{ name: 'character', type: 'character', desc: 'Character from library' }] },
+    { name: 'summon', desc: 'Add character to session', args: [{ name: 'character', type: 'character', desc: 'Character' }] },
     { name: 'audio', desc: 'Play/stop audio', subs: [
         { name: 'play', desc: 'Play audio track', args: [{ name: 'track', type: 'audio', desc: 'Audio track to play' }] },
         { name: 'stop', desc: 'Stop audio track', args: [{ name: 'track', type: 'audio', desc: 'Audio track to stop', optional: true }] },
@@ -168,48 +179,86 @@ const COMMAND_TREE: SlashCmd[] = [
         { name: 'recall', desc: 'Recall memory', args: [{ name: 'memory', type: 'memory', desc: 'Memory', optional: true }] },
         { name: 'save', desc: 'Save conversation as memory' },
     ]},
+    { name: 'creator', desc: 'Create new entity', args: [
+        { name: 'entity_type', type: 'entity_type', desc: 'Type of entity to create' },
+        { name: 'name', type: 'text', desc: 'Name for the new entity', example: 'Forest Guardian' }
+    ]},
+    { name: 'destroyer', desc: 'Delete entity permanently', args: [
+        { name: 'entity_type', type: 'entity_type', desc: 'Type of entity to delete' },
+        { name: 'entity', type: 'character', desc: 'Entity to delete (type-specific)' }
+    ]},
 ];
 
 interface EntityOption { value: string; label: string; id: string; extra?: string; }
 
-function getEntityOptions(type: ArgType, data: InteractionData | null, allChars: Character[], localChar: Character | null): EntityOption[] {
+function truncateDesc(desc: string | undefined, maxLen = 60): string {
+    if (!desc) return '';
+    const trimmed = desc.trim();
+    if (trimmed.length <= maxLen) return trimmed;
+    return trimmed.substring(0, maxLen) + '…';
+}
+
+function getEntityOptions(
+    type: ArgType, 
+    data: InteractionData | null, 
+    allChars: Character[],
+    allLocs: Location[],
+    allCtxs: Context[],
+    allAudio: AudioTrack[],
+    allPrompts: PromptBlock[],
+    allSamplers: Sampler[],
+    allStops: StopPattern[],
+    allProfiles: Profile[],
+    allWorlds: World[],
+    allMems: Memory[],
+    localChar: Character | null
+): EntityOption[] {
+    if (type === 'entity_type') {
+        return VALID_ENTITY_TYPES.map(t => ({
+            value: t,
+            label: t,
+            id: '',
+            extra: ''
+        }));
+    }
+    
     if (!data) return [];
     
     if (type === 'location') {
-        const locations = data.locations || [];
+        // Use allLocs for the full library list
         const currentLocIndex = [...data.interactionHistory].reverse().find(m => m.locationIndex !== undefined)?.locationIndex;
-        const currentLoc = currentLocIndex !== undefined ? locations[currentLocIndex] : null;
+        const sessionLocs = data.locations || [];
+        const currentLoc = currentLocIndex !== undefined ? sessionLocs[currentLocIndex] : null;
         
-        return locations.map(l => {
+        return allLocs.map(l => {
+            const isInSession = sessionLocs.some(sl => sl.id === l.id);
             const isCurrent = currentLoc && l.id === currentLoc.id;
             const adjacent = currentLoc?.locationBindings?.includes(l.id) || l.locationBindings?.includes(currentLoc?.id || '');
+            const statusTag = isCurrent ? '(current) ' : adjacent ? '(adjacent) ' : isInSession ? '(in session) ' : '';
             return {
                 value: l.id,
                 label: l.name,
                 id: l.id.substring(0, 8),
-                extra: isCurrent ? '(current)' : adjacent ? '(adjacent)' : ''
+                extra: statusTag + truncateDesc(l.description)
             };
         });
     }
     
     if (type === 'character') {
-        const participants = data.participants || [];
-        const protagonistIds = new Set((data.protagonists || []).map(p => p.id));
-        
-        return participants.map(c => ({
+        return allChars.map(c => ({
             value: c.id,
             label: c.name,
             id: c.id.substring(0, 8),
-            extra: protagonistIds.has(c.id) ? '(protagonist)' : ''
+            extra: truncateDesc(c.description)
         }));
     }
     
     if (type === 'audio') {
-        return (data.audioTracks || []).map(t => ({
+        return allAudio.map(t => ({
             value: t.id,
             label: t.name,
             id: t.id.substring(0, 8),
-            extra: t.audioCategory
+            extra: `[${t.audioCategory}] ${t.filename}`
         }));
     }
     
@@ -218,7 +267,7 @@ function getEntityOptions(type: ArgType, data: InteractionData | null, allChars:
             value: c.id,
             label: c.name,
             id: c.id.substring(0, 8),
-            extra: c.description ? c.description.substring(0, 30) : ''
+            extra: truncateDesc(c.description)
         }));
     }
     
@@ -226,7 +275,7 @@ function getEntityOptions(type: ArgType, data: InteractionData | null, allChars:
         const lastMsg = [...data.interactionHistory].reverse().find(m => 
             m.character.id === localChar?.id && m.messageType === 'chat' && m.inventory
         );
-        if (lastMsg && lastMsg.inventory) {
+        if (lastMsg?.inventory) {
             return Object.entries(lastMsg.inventory)
                 .filter(([k]) => !k.startsWith('__'))
                 .map(([k, v]) => ({
@@ -239,20 +288,76 @@ function getEntityOptions(type: ArgType, data: InteractionData | null, allChars:
     }
     
     if (type === 'context') {
-        return (data.contexts || []).map(c => ({
+        return allCtxs.map(c => ({
             value: c.id,
             label: c.name,
-            id: c.id.substring(0, 8)
+            id: c.id.substring(0, 8),
+            extra: truncateDesc(c.description)
+        }));
+    }
+    
+    if (type === 'prompt_block') {
+        return allPrompts.map(p => ({
+            value: p.id,
+            label: p.name,
+            id: p.id.substring(0, 8),
+            extra: truncateDesc(p.description)
+        }));
+    }
+    
+    if (type === 'sampler') {
+        return allSamplers.map(s => ({
+            value: s.id,
+            label: s.name,
+            id: s.id.substring(0, 8),
+            extra: truncateDesc(s.description)
+        }));
+    }
+    
+    if (type === 'stop_pattern') {
+        return allStops.map(s => ({
+            value: s.id,
+            label: s.name,
+            id: s.id.substring(0, 8),
+            extra: truncateDesc(s.description)
+        }));
+    }
+    
+    if (type === 'profile') {
+        return allProfiles.map(p => ({
+            value: p.id,
+            label: p.name,
+            id: p.id.substring(0, 8),
+            extra: truncateDesc(p.description)
+        }));
+    }
+    
+    if (type === 'world') {
+        return allWorlds.map(w => ({
+            value: w.id,
+            label: w.name,
+            id: w.id.substring(0, 8),
+            extra: truncateDesc(w.description)
+        }));
+    }
+    
+    if (type === 'memory') {
+        return allMems.map(m => ({
+            value: m.id,
+            label: m.name,
+            id: m.id.substring(0, 8),
+            extra: truncateDesc(m.content, 80)
         }));
     }
     
     if (type === 'rng_table') {
-        return (data.contexts || [])
+        return allCtxs
             .filter(c => c.text && /^\d+[-:]/.test(c.text || ''))
             .map(c => ({
                 value: c.name || c.id,
                 label: c.name || 'Unnamed RNG',
-                id: c.id.substring(0, 8)
+                id: c.id.substring(0, 8),
+                extra: truncateDesc(c.description)
             }));
     }
     
@@ -261,7 +366,8 @@ function getEntityOptions(type: ArgType, data: InteractionData | null, allChars:
         return dialogues.map(d => ({
             value: d.id,
             label: d.name,
-            id: d.id.substring(0, 8)
+            id: d.id.substring(0, 8),
+            extra: truncateDesc(d.description)
         }));
     }
     
@@ -270,24 +376,9 @@ function getEntityOptions(type: ArgType, data: InteractionData | null, allChars:
         return knowledge.map(k => ({
             value: k.id,
             label: k.name,
-            id: k.id.substring(0, 8)
+            id: k.id.substring(0, 8),
+            extra: truncateDesc(k.description)
         }));
-    }
-    
-    if (type === 'memory') {
-        const memories = localChar?.memories || {};
-        const result: EntityOption[] = [];
-        for (const [key, mems] of Object.entries(memories)) {
-            for (const mem of mems) {
-                result.push({
-                    value: mem.id,
-                    label: mem.name || key,
-                    id: mem.id.substring(0, 8),
-                    extra: mem.content.substring(0, 40) + '...'
-                });
-            }
-        }
-        return result;
     }
     
     return [];
@@ -297,7 +388,8 @@ export function ChatInput({
     inputText, setInputText, pendingFiles, setPendingFiles,
     isRecording, isLoading, isModelReady, isModelLoading, modelStatusMessage,
     localProtagonist, activeStrategy, selectedModelId,
-    interactionData, allCharacters,
+    interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allWorlds,
+    allPromptBlocks, allSamplers, allStopPatterns, allProfiles, allMemories,
     fileInputRef, textareaRef,
     onFileSelected, onToggleMicrophone, onSend, onStopGeneration, onOpenModels,
 }: ChatInputProps) {
@@ -359,7 +451,11 @@ export function ChatInput({
                         isComplete: false,
                     };
                 } else {
-                    const entities = getEntityOptions(arg.type, interactionData, allCharacters, localProtagonist);
+                    const entities = getEntityOptions(
+                        arg.type, interactionData, allCharacters, allLocations, allContexts,
+                        allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
+                        allProfiles, allWorlds, allMemories, localProtagonist
+                    );
                     const filtered = entities.filter(e => 
                         e.label.toLowerCase().includes(effectiveQuery) || 
                         e.id.toLowerCase().includes(effectiveQuery) ||
@@ -407,7 +503,11 @@ export function ChatInput({
                     isComplete: false,
                 };
             } else {
-                const entities = getEntityOptions(arg.type, interactionData, allCharacters, localProtagonist);
+                const entities = getEntityOptions(
+                    arg.type, interactionData, allCharacters, allLocations, allContexts,
+                    allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
+                    allProfiles, allWorlds, allMemories, localProtagonist
+                );
                 const filtered = entities.filter(e => 
                     e.label.toLowerCase().includes(effectiveQuery) || 
                     e.id.toLowerCase().includes(effectiveQuery) ||
@@ -428,7 +528,7 @@ export function ChatInput({
         }
 
         return { breadcrumbs: [cmd.name, ...(sub ? [sub.name] : []), 'Complete ✓'], options: [], isComplete: true };
-    }, [isSlash, parts, activeIndex, currentQuery, isTypingNewToken, interactionData, allCharacters, localProtagonist]);
+    }, [isSlash, parts, activeIndex, currentQuery, isTypingNewToken, interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns, allProfiles, allWorlds, allMemories, localProtagonist]);
 
     const showAutocomplete = isSlash && !isComplete;
 

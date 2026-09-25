@@ -5,7 +5,7 @@ import { useChatEngine } from './useChatEngine';
 import { useChatUI } from './useChatUI';
 import { useToast } from '../context/ToastContext';
 import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayNames, createNewInteractionData } from './chatLogic';
-import { processPendingToolActions, executeTool } from '../services/ToolExecutor';
+import { processPendingToolActions, executeTool, type ToolExecutionContext } from '../services/ToolExecutor';
 import { parseSlashCommand } from '../services/ToolInvocationParser';
 import { runSummarization } from '../services/SummarizationEngine';
 import { consumeChatStaminaForMessage } from './characterLogic';
@@ -17,12 +17,15 @@ import { useAmbientNarration } from './useAmbientNarration';
 import { useSessionStore } from './useSessionStore';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import type { Character, InteractionData, PromptBlock, ChatMessage, HistoryMessage } from '../types';
+import type { Character, Context, Location, AudioTrack, World, PromptBlock, Sampler, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, HistoryMessage, Memory, Extension } from '../types';
 
 const engine = getLanguageModelEngine();
 
 /** Tools that are valid without any arguments */
 const NO_ARG_TOOLS = ['coin', 'date'];
+
+/** Meta-tools that require administrator privileges for joiners */
+const HOST_ONLY_TOOLS = ['administrator', 'creator', 'destroyer'];
 
 function finalizeMessageById(
     data: InteractionData,
@@ -67,9 +70,22 @@ interface UseChatSessionOptions {
     isMultiplayerClient?: boolean;
     /** The character assigned to this client by the host. Used to lock message authoring. */
     joinProtagonist?: Character | null;
+    /** All entity collections for tool execution context */
+    allCharacters?: Character[];
+    allContexts?: Context[];
+    allLocations?: Location[];
+    allAudioTracks?: AudioTrack[];
+    allPromptBlocks?: PromptBlock[];
+    allSamplers?: Sampler[];
+    allStopPatterns?: StopPattern[];
+    allBudgetStrategies?: BudgetStrategy[];
+    allProfiles?: Profile[];
+    allWorlds?: World[];
+    allMemories?: Memory[];
+    allExtensions?: Extension[];
 }
 
-export function useChatSession(allCharacters: Character[], options?: UseChatSessionOptions) {
+export function useChatSession(options?: UseChatSessionOptions) {
     const { addToast } = useToast();
     const onMessageBroadcastRef = useRef(options?.onMessageBroadcast);
     const isMultiplayerClient = options?.isMultiplayerClient ?? false;
@@ -79,6 +95,33 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
     // LOCK: Keep the assigned multiplayer character in a ref so callbacks always use the locked identity
     const joinProtagonistRef = useRef(options?.joinProtagonist ?? null);
     useEffect(() => { joinProtagonistRef.current = options?.joinProtagonist ?? null; }, [options?.joinProtagonist]);
+
+    // ─── Entity Collections (refs to avoid stale closures) ──────────
+    const allCharactersRef = useRef(options?.allCharacters ?? []);
+    const allContextsRef = useRef(options?.allContexts ?? []);
+    const allLocationsRef = useRef(options?.allLocations ?? []);
+    const allAudioTracksRef = useRef(options?.allAudioTracks ?? []);
+    const allPromptBlocksRef = useRef(options?.allPromptBlocks ?? []);
+    const allSamplersRef = useRef(options?.allSamplers ?? []);
+    const allStopPatternsRef = useRef(options?.allStopPatterns ?? []);
+    const allBudgetStrategiesRef = useRef(options?.allBudgetStrategies ?? []);
+    const allProfilesRef = useRef(options?.allProfiles ?? []);
+    const allWorldsRef = useRef(options?.allWorlds ?? []);
+    const allMemoriesRef = useRef(options?.allMemories ?? []);
+    const allExtensionsRef = useRef(options?.allExtensions ?? []);
+
+    useEffect(() => { allCharactersRef.current = options?.allCharacters ?? []; }, [options?.allCharacters]);
+    useEffect(() => { allContextsRef.current = options?.allContexts ?? []; }, [options?.allContexts]);
+    useEffect(() => { allLocationsRef.current = options?.allLocations ?? []; }, [options?.allLocations]);
+    useEffect(() => { allAudioTracksRef.current = options?.allAudioTracks ?? []; }, [options?.allAudioTracks]);
+    useEffect(() => { allPromptBlocksRef.current = options?.allPromptBlocks ?? []; }, [options?.allPromptBlocks]);
+    useEffect(() => { allSamplersRef.current = options?.allSamplers ?? []; }, [options?.allSamplers]);
+    useEffect(() => { allStopPatternsRef.current = options?.allStopPatterns ?? []; }, [options?.allStopPatterns]);
+    useEffect(() => { allBudgetStrategiesRef.current = options?.allBudgetStrategies ?? []; }, [options?.allBudgetStrategies]);
+    useEffect(() => { allProfilesRef.current = options?.allProfiles ?? []; }, [options?.allProfiles]);
+    useEffect(() => { allWorldsRef.current = options?.allWorlds ?? []; }, [options?.allWorlds]);
+    useEffect(() => { allMemoriesRef.current = options?.allMemories ?? []; }, [options?.allMemories]);
+    useEffect(() => { allExtensionsRef.current = options?.allExtensions ?? []; }, [options?.allExtensions]);
 
     const state = useChatState();
     const {
@@ -267,7 +310,24 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         }
     }, []);
 
-    const sendMessage = useCallback(async (text: string, allPromptBlocks?: PromptBlock[], files?: File[], frontCameraImageBase64?: string) => {
+    /** Build the ToolExecutionContext from current refs */
+    const buildToolContext = useCallback((): ToolExecutionContext => ({
+        allCharacters: allCharactersRef.current,
+        allContexts: allContextsRef.current,
+        allLocations: allLocationsRef.current,
+        allAudioTracks: allAudioTracksRef.current,
+        allPromptBlocks: allPromptBlocksRef.current,
+        allSamplers: allSamplersRef.current,
+        allStopPatterns: allStopPatternsRef.current,
+        allBudgetStrategies: allBudgetStrategiesRef.current,
+        allProfiles: allProfilesRef.current,
+        allWorlds: allWorldsRef.current,
+        allMemories: allMemoriesRef.current,
+        allExtensions: allExtensionsRef.current,
+        addToast,
+    }), [addToast]);
+
+    const sendMessage = useCallback(async (text: string, allPromptBlocks: PromptBlock[] | undefined, files: File[] | undefined, frontCameraImageBase64: string | undefined) => {
         const currentState = getState();
         
         // LOCK: Force multiplayer clients to use their assigned protagonist, ignoring local UI state
@@ -282,6 +342,19 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         const isSlashCommand = !!(slashInvocation && !files?.length && !frontCameraImageBase64);
 
         if (isSlashCommand && slashInvocation) {
+            // ─── GATE HOST-ONLY META-TOOLS FROM NON-ADMIN JOINERS ─────────────
+            if (isMultiplayerClient && HOST_ONLY_TOOLS.includes(slashInvocation.toolType)) {
+                const mpData = useSessionStore.getState().multiplayerData;
+                const accountId = useSessionStore.getState().currentAccountId;
+                const accountConfig = accountId ? mpData?.multiplayerDataAccountConfigurations[accountId] : undefined;
+                const isAdmin = accountConfig?.isAdministrator === true;
+                
+                if (!isAdmin) {
+                    addToast(`/${slashInvocation.toolType} requires administrator privileges.`, 'error');
+                    return;
+                }
+            }
+
             // ─── VALIDATE ARGS ──────────────────────────────────────
             if (!slashInvocation.args.trim() && !NO_ARG_TOOLS.includes(slashInvocation.toolType)) {
                 addToast(`/${slashInvocation.toolType} requires arguments.`, 'error');
@@ -292,11 +365,12 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             if (!acquireLock()) { addToast('Already processing...', 'info'); return; }
             try {
                 const slashMessage = createChatMessage(currentState.interactionData, activeCharacter, '', {});
+                const toolContext = buildToolContext();
                 const toolResult = await executeTool(
                     slashInvocation,
                     slashMessage,
                     currentState.interactionData,
-                    undefined,
+                    toolContext,
                     currentState.interactionData.Profile?.toolUsageDisplayMode
                 );
 
@@ -420,7 +494,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             }
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
-                const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
+                const processed = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
 
                 await saveRawInteractionData(processed);
                 setInteractionData(processed);
@@ -472,15 +546,15 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             releaseLock();
             
             if (pendingResumeRef.current) {
-                const { messageId, allPromptBlocks } = pendingResumeRef.current;
+                const { messageId, allPromptBlocks: blocks } = pendingResumeRef.current;
                 pendingResumeRef.current = null;
-                setTimeout(() => resumeGenerationRef.current?.(messageId, allPromptBlocks), 0);
+                setTimeout(() => resumeGenerationRef.current?.(messageId, blocks), 0);
             } else if (pendingHostResponseRef.current) {
                 pendingHostResponseRef.current = false;
                 setTimeout(() => triggerHostResponseRef.current?.(), 0);
             }
         }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters, autoResumeOnCutoff, broadcastNewMessages, isMultiplayerClient]);
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, autoResumeOnCutoff, broadcastNewMessages, isMultiplayerClient, buildToolContext]);
 
     // Trigger host response when a peer sends a message
     const triggerHostResponse = useCallback(async () => {
@@ -530,7 +604,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             }
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
-                const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
+                const processed = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
 
                 await saveRawInteractionData(processed);
                 setInteractionData(processed);
@@ -579,15 +653,15 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             releaseLock();
             
             if (pendingResumeRef.current) {
-                const { messageId, allPromptBlocks } = pendingResumeRef.current;
+                const { messageId, allPromptBlocks: blocks } = pendingResumeRef.current;
                 pendingResumeRef.current = null;
-                setTimeout(() => resumeGenerationRef.current?.(messageId, allPromptBlocks), 0);
+                setTimeout(() => resumeGenerationRef.current?.(messageId, blocks), 0);
             } else if (pendingHostResponseRef.current) {
                 pendingHostResponseRef.current = false;
                 setTimeout(() => triggerHostResponseRef.current?.(), 0);
             }
         }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters, autoResumeOnCutoff, broadcastNewMessages]);
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, autoResumeOnCutoff, broadcastNewMessages]);
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, _targetChar: Character, protagonist: Character) => {
         const currentState = getState();
@@ -648,7 +722,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             }
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
-                const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
+                const processed = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
                 await saveRawInteractionData(processed);
                 setInteractionData(processed);
 
@@ -692,15 +766,15 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             releaseLock();
             
             if (pendingResumeRef.current) {
-                const { messageId, allPromptBlocks } = pendingResumeRef.current;
+                const { messageId, allPromptBlocks: blocks } = pendingResumeRef.current;
                 pendingResumeRef.current = null;
-                setTimeout(() => resumeGenerationRef.current?.(messageId, allPromptBlocks), 0);
+                setTimeout(() => resumeGenerationRef.current?.(messageId, blocks), 0);
             } else if (pendingHostResponseRef.current) {
                 pendingHostResponseRef.current = false;
                 setTimeout(() => triggerHostResponseRef.current?.(), 0);
             }
         }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters, autoResumeOnCutoff, broadcastNewMessages, isMultiplayerClient]);
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, autoResumeOnCutoff, broadcastNewMessages, isMultiplayerClient]);
 
     const stopGeneration = useCallback(() => {
         wasStoppedRef.current = true;
@@ -758,7 +832,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         streamingMessageIdRef.current = null;
     }, [resetStream, getState, setState, streamingTextRef, isLoadingRef]);
 
-    const resumeGeneration = useCallback(async (messageId: string, allPromptBlocks?: PromptBlock[]) => {
+    const resumeGeneration = useCallback(async (messageId: string, allPromptBlocks: PromptBlock[] | undefined) => {
         if (isMultiplayerClient) {
             addToast('Generation is handled by the host.', 'info');
             return;
@@ -848,15 +922,15 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             releaseLock();
             
             if (pendingResumeRef.current) {
-                const { messageId, allPromptBlocks } = pendingResumeRef.current;
+                const { messageId, allPromptBlocks: blocks } = pendingResumeRef.current;
                 pendingResumeRef.current = null;
-                setTimeout(() => resumeGenerationRef.current?.(messageId, allPromptBlocks), 0);
+                setTimeout(() => resumeGenerationRef.current?.(messageId, blocks), 0);
             } else if (pendingHostResponseRef.current) {
                 pendingHostResponseRef.current = false;
                 setTimeout(() => triggerHostResponseRef.current?.(), 0);
             }
         }
-    }, [getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine, throttledSetStreamingTextWithBroadcast, ui, setStreamingState, setStats, setInteractionData, isMultiplayerClient]);
+    }, [getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine, throttledSetStreamingTextWithBroadcast, ui, setStreamingState, setStats, isMultiplayerClient]);
 
     useEffect(() => {
         resumeGenerationRef.current = resumeGeneration;
@@ -913,7 +987,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, primaryProtagonistId); await saveRawInteractionData(fd); setInteractionData(fd); broadcastNewMessages(preCount, fd); return; }
 
             if (ud.interactionHistory.length > preCount) {
-                const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
+                const processed = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
 
                 await saveRawInteractionData(processed);
                 setInteractionData(processed);
@@ -956,15 +1030,15 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             releaseLock();
             
             if (pendingResumeRef.current) {
-                const { messageId, allPromptBlocks } = pendingResumeRef.current;
+                const { messageId, allPromptBlocks: blocks } = pendingResumeRef.current;
                 pendingResumeRef.current = null;
-                setTimeout(() => resumeGenerationRef.current?.(messageId, allPromptBlocks), 0);
+                setTimeout(() => resumeGenerationRef.current?.(messageId, blocks), 0);
             } else if (pendingHostResponseRef.current) {
                 pendingHostResponseRef.current = false;
                 setTimeout(() => triggerHostResponseRef.current?.(), 0);
             }
         }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setInteractionData, setStreamingState, setStats, allCharacters, autoResumeOnCutoff, broadcastNewMessages, isMultiplayerClient]);
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setInteractionData, setStreamingState, setStats, autoResumeOnCutoff, broadcastNewMessages, isMultiplayerClient]);
 
     const startNewChat = useCallback((char: Character) => {
         const c = createNewInteractionData(char);

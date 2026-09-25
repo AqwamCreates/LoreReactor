@@ -1,6 +1,6 @@
 // src/components/MultiplayerEditorModal.tsx
 import { useState, useCallback } from 'react';
-import type { MultiplayerData, Character, RawInteractionData, MultiplayerDataAccountConfiguration } from '../types';
+import type { MultiplayerData, Character, RawInteractionData, MultiplayerDataAccountConfiguration, tristateInteger } from '../types';
 import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';
 import { v4 as uuidv4 } from 'uuid';
 import { EntitySelectList } from './EntitySelectList';
@@ -18,6 +18,28 @@ interface MultiplayerEditorModalProps {
     pendingJoinRequests?: PendingJoinRequest[];
     onAcceptJoinRequest?: (accountId: string) => void;
     onRejectJoinRequest?: (accountId: string) => void;
+}
+
+const USE_JOINER_LM_OPTIONS: { value: tristateInteger; label: string; description: string }[] = [
+    { value: -1, label: 'Disabled', description: 'Use hoster\'s language model only. Joiner cannot use their own.' },
+    { value: 0, label: 'Optional', description: 'Use joiner\'s language model when provided. Falls back to hoster\'s model.' },
+    { value: 1, label: 'Mandatory', description: 'Joiner must provide access to their language model or they cannot join.' },
+];
+
+function createDefaultAccountConfig(): MultiplayerDataAccountConfiguration {
+    return {
+        isWhitelisted: true,
+        isBlacklisted: false,
+        isAdministrator: false,
+        canUseJoinerCharacterId: true,
+        canUseHosterCharacterId: true,
+        joinerCharacterIdRequiresHosterApproval: false,
+        hosterCharacterIdRequiresHosterApproval: false,
+        useJoinerLanguageModel: 0,
+        whitelistedCharacterIds: [],
+        blacklistedCharacterIds: [],
+        pendingCharacterIds: [],
+    };
 }
 
 export function MultiplayerEditorModal({
@@ -56,7 +78,7 @@ function MultiplayerEditorModalInner({
     existingMultiplayerData,
     allCharacters,
     rawChatShells,
-    pendingJoinRequests = [], // <-- FIXED: Added default value to satisfy strict null checks
+    pendingJoinRequests = [],
     onAcceptJoinRequest,
     onRejectJoinRequest,
 }: Omit<MultiplayerEditorModalProps, 'isOpen'>) {
@@ -68,7 +90,6 @@ function MultiplayerEditorModalInner({
     const [showPassword, setShowPassword] = useState(false);
     const [interactionDataIds, setInteractionDataIds] = useState<string[]>(existingMultiplayerData?.interactionDataIds || []);
     
-    // NEW: Unified account configurations
     const [accountConfigs, setAccountConfigs] = useState<Record<string, MultiplayerDataAccountConfiguration>>(
         existingMultiplayerData?.multiplayerDataAccountConfigurations || {}
     );
@@ -125,18 +146,7 @@ function MultiplayerEditorModalInner({
         if (id && !accountConfigs[id]) {
             setAccountConfigs(prev => ({
                 ...prev,
-                [id]: {
-                    isWhitelisted: true,
-                    isBlacklisted: false,
-                    isAdministrator: false,
-                    canUseJoinerCharacterId: true,
-                    canUseHosterCharacterId: true,
-                    joinerCharacterIdRequiresHosterApproval: false,
-                    hosterCharacterIdRequiresHosterApproval: false,
-                    whitelistedCharacterIds: [],
-                    blacklistedCharacterIds: [],
-                    pendingCharacterIds: [],
-                }
+                [id]: createDefaultAccountConfig(),
             }));
         }
     }, [accountConfigs]);
@@ -165,7 +175,7 @@ function MultiplayerEditorModalInner({
         });
     }, []);
 
-    const updateCfg = useCallback((id: string, key: keyof MultiplayerDataAccountConfiguration, value: any) => {
+    const updateCfg = useCallback(<K extends keyof MultiplayerDataAccountConfiguration>(id: string, key: K, value: MultiplayerDataAccountConfiguration[K]) => {
         setAccountConfigs(prev => {
             const cfg = prev[id];
             if (!cfg) return prev;
@@ -195,18 +205,7 @@ function MultiplayerEditorModalInner({
         if (!accountConfigs[accountId]) {
             setAccountConfigs(prev => ({
                 ...prev,
-                [accountId]: {
-                    isWhitelisted: true,
-                    isBlacklisted: false,
-                    isAdministrator: false,
-                    canUseJoinerCharacterId: true,
-                    canUseHosterCharacterId: true,
-                    joinerCharacterIdRequiresHosterApproval: false,
-                    hosterCharacterIdRequiresHosterApproval: false,
-                    whitelistedCharacterIds: [],
-                    blacklistedCharacterIds: [],
-                    pendingCharacterIds: [],
-                }
+                [accountId]: createDefaultAccountConfig(),
             }));
         }
     }, [onAcceptJoinRequest, accountConfigs]);
@@ -404,78 +403,98 @@ function MultiplayerEditorModalInner({
                                 </div>
 
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
-                                    {Object.entries(accountConfigs).map(([acctId, cfg]) => (
-                                        <div key={acctId} style={{ border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', background: 'rgba(255,255,255,0.02)' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <span style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                    {acctId}
-                                                    {cfg.activeCharacterId && (
-                                                        <span style={{ color: '#22c55e', marginLeft: '8px', fontSize: '0.65rem', fontWeight: 'bold' }}>
-                                                            ▶ Playing: {allCharacters.find(c => c.id === cfg.activeCharacterId)?.name || cfg.activeCharacterId.substring(0, 8)}
-                                                        </span>
-                                                    )}
-                                                </span>
-                                                <select 
-                                                    value={cfg.isAdministrator ? 'admin' : cfg.isBlacklisted ? 'blacklist' : 'whitelist'} 
-                                                    onChange={e => setAccountStatus(acctId, e.target.value as any)}
-                                                    style={{ background: 'var(--social-bg)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '4px', padding: '2px 4px', fontSize: '0.7rem' }}
-                                                >
-                                                    <option value="whitelist">Whitelisted</option>
-                                                    <option value="blacklist">Blacklisted</option>
-                                                    <option value="admin">Administrator</option>
-                                                </select>
-                                                <button type="button" onClick={() => removeAccount(acctId)} className="toolbar-button" style={{ fontSize: '0.7rem', color: '#ff4444' }} title="Remove Account">×</button>
-                                            </div>
-                                            
-                                            {expandedAccountId === acctId ? (
-                                                <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px', padding: '8px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
-                                                    <div>
-                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-                                                            <input type="checkbox" checked={cfg.canUseJoinerCharacterId} onChange={e => updateCfg(acctId, 'canUseJoinerCharacterId', e.target.checked)} /> 
-                                                            Allow Custom Characters (Joiner's Upload)
-                                                        </label>
-                                                        {cfg.canUseJoinerCharacterId && (
-                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', marginLeft: '16px', marginTop: '4px', opacity: 0.8 }}>
-                                                                <input type="checkbox" checked={cfg.joinerCharacterIdRequiresHosterApproval} onChange={e => updateCfg(acctId, 'joinerCharacterIdRequiresHosterApproval', e.target.checked)} /> 
-                                                                Requires Host Approval
-                                                            </label>
+                                    {Object.entries(accountConfigs).map(([acctId, cfg]) => {
+                                        const useJoinerLmOption = USE_JOINER_LM_OPTIONS.find(o => o.value === (cfg.useJoinerLanguageModel ?? 0)) ?? USE_JOINER_LM_OPTIONS[1];
+                                        return (
+                                            <div key={acctId} style={{ border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', background: 'rgba(255,255,255,0.02)' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        {acctId}
+                                                        {cfg.activeCharacterId && (
+                                                            <span style={{ color: '#22c55e', marginLeft: '8px', fontSize: '0.65rem', fontWeight: 'bold' }}>
+                                                                ▶ Playing: {allCharacters.find(c => c.id === cfg.activeCharacterId)?.name || cfg.activeCharacterId.substring(0, 8)}
+                                                            </span>
                                                         )}
-                                                    </div>
-                                                    
-                                                    <div>
-                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-                                                            <input type="checkbox" checked={cfg.canUseHosterCharacterId} onChange={e => updateCfg(acctId, 'canUseHosterCharacterId', e.target.checked)} /> 
-                                                            Allow Host Characters (Pick from Room)
-                                                        </label>
-                                                        {cfg.canUseHosterCharacterId && (
-                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', marginLeft: '16px', marginTop: '4px', opacity: 0.8 }}>
-                                                                <input type="checkbox" checked={cfg.hosterCharacterIdRequiresHosterApproval} onChange={e => updateCfg(acctId, 'hosterCharacterIdRequiresHosterApproval', e.target.checked)} /> 
-                                                                Requires Host Approval
-                                                            </label>
-                                                        )}
-                                                    </div>
-                                                    
-                                                    {cfg.canUseHosterCharacterId && (
-                                                        <div style={{ marginTop: '4px' }}>
-                                                            <div style={{fontSize: '0.7rem', marginBottom: '4px', fontWeight: 'bold'}}>Whitelisted Host Characters:</div>
-                                                            <EntitySelectList
-                                                                label=" "
-                                                                items={allCharacters}
-                                                                selectedIds={cfg.whitelistedCharacterIds}
-                                                                onToggle={(charId) => toggleCharForAccount(acctId, charId)}
-                                                                searchQuery={mappingCharSearchQuery}
-                                                                onSearchChange={setMappingCharSearchQuery}
-                                                            />
-                                                        </div>
-                                                    )}
-                                                    
-                                                    <button type="button" onClick={() => setExpandedAccountId(null)} className="editor-button editor-button-cancel" style={{ fontSize: '0.7rem', padding: '4px' }}>Collapse ▲</button>
+                                                    </span>
+                                                    <select 
+                                                        value={cfg.isAdministrator ? 'admin' : cfg.isBlacklisted ? 'blacklist' : 'whitelist'} 
+                                                        onChange={e => setAccountStatus(acctId, e.target.value as 'whitelist' | 'blacklist' | 'admin')}
+                                                        style={{ background: 'var(--social-bg)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '4px', padding: '2px 4px', fontSize: '0.7rem' }}
+                                                    >
+                                                        <option value="whitelist">Whitelisted</option>
+                                                        <option value="blacklist">Blacklisted</option>
+                                                        <option value="admin">Administrator</option>
+                                                    </select>
+                                                    <button type="button" onClick={() => removeAccount(acctId)} className="toolbar-button" style={{ fontSize: '0.7rem', color: '#ff4444' }} title="Remove Account">×</button>
                                                 </div>
-                                            ) : (
-                                                <button type="button" onClick={() => setExpandedAccountId(acctId)} className="editor-button" style={{marginTop: '6px', fontSize: '0.7rem', padding: '4px 8px', width: '100%'}}>Configure Permissions & Characters ▼</button>
-                                            )}
-                                        </div>
-                                    ))}
+                                                
+                                                {expandedAccountId === acctId ? (
+                                                    <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px', padding: '8px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
+                                                        <div>
+                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
+                                                                <input type="checkbox" checked={cfg.canUseJoinerCharacterId} onChange={e => updateCfg(acctId, 'canUseJoinerCharacterId', e.target.checked)} /> 
+                                                                Allow Custom Characters (Joiner's Upload)
+                                                            </label>
+                                                            {cfg.canUseJoinerCharacterId && (
+                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', marginLeft: '16px', marginTop: '4px', opacity: 0.8 }}>
+                                                                    <input type="checkbox" checked={cfg.joinerCharacterIdRequiresHosterApproval} onChange={e => updateCfg(acctId, 'joinerCharacterIdRequiresHosterApproval', e.target.checked)} /> 
+                                                                    Requires Host Approval
+                                                                </label>
+                                                            )}
+                                                        </div>
+                                                        
+                                                        <div>
+                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
+                                                                <input type="checkbox" checked={cfg.canUseHosterCharacterId} onChange={e => updateCfg(acctId, 'canUseHosterCharacterId', e.target.checked)} /> 
+                                                                Allow Host Characters (Pick from Room)
+                                                            </label>
+                                                            {cfg.canUseHosterCharacterId && (
+                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', marginLeft: '16px', marginTop: '4px', opacity: 0.8 }}>
+                                                                    <input type="checkbox" checked={cfg.hosterCharacterIdRequiresHosterApproval} onChange={e => updateCfg(acctId, 'hosterCharacterIdRequiresHosterApproval', e.target.checked)} /> 
+                                                                    Requires Host Approval
+                                                                </label>
+                                                            )}
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="editor-label editor-label-small" style={{ marginBottom: '4px' }}>Use Joiner's Language Model</label>
+                                                            <select
+                                                                value={cfg.useJoinerLanguageModel ?? 0}
+                                                                onChange={e => updateCfg(acctId, 'useJoinerLanguageModel', Number(e.target.value) as tristateInteger)}
+                                                                className="editor-select"
+                                                                style={{ width: '100%' }}
+                                                            >
+                                                                {USE_JOINER_LM_OPTIONS.map(opt => (
+                                                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                                ))}
+                                                            </select>
+                                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                                                {useJoinerLmOption.description}
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        {cfg.canUseHosterCharacterId && (
+                                                            <div style={{ marginTop: '4px' }}>
+                                                                <div style={{fontSize: '0.7rem', marginBottom: '4px', fontWeight: 'bold'}}>Whitelisted Host Characters:</div>
+                                                                <EntitySelectList
+                                                                    label=" "
+                                                                    items={allCharacters}
+                                                                    selectedIds={cfg.whitelistedCharacterIds}
+                                                                    onToggle={(charId) => toggleCharForAccount(acctId, charId)}
+                                                                    searchQuery={mappingCharSearchQuery}
+                                                                    onSearchChange={setMappingCharSearchQuery}
+                                                                />
+                                                            </div>
+                                                        )}
+                                                        
+                                                        <button type="button" onClick={() => setExpandedAccountId(null)} className="editor-button editor-button-cancel" style={{ fontSize: '0.7rem', padding: '4px' }}>Collapse ▲</button>
+                                                    </div>
+                                                ) : (
+                                                    <button type="button" onClick={() => setExpandedAccountId(acctId)} className="editor-button" style={{marginTop: '6px', fontSize: '0.7rem', padding: '4px 8px', width: '100%'}}>Configure Permissions & Characters ▼</button>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                     {Object.keys(accountConfigs).length === 0 && <div style={{opacity: 0.5, fontSize: '0.8rem', textAlign: 'center', padding: '12px'}}>No accounts configured. Add an account ID above.</div>}
                                 </div>
                             </div>

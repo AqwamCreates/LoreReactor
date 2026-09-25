@@ -533,6 +533,7 @@ export function useMultiplayerSync({
                             canUseHosterCharacterId: !req.requestedCharacterData,
                             joinerCharacterIdRequiresHosterApproval: false,
                             hosterCharacterIdRequiresHosterApproval: false,
+                            useJoinerLanguageModel: 0,
                             whitelistedCharacterIds: req.requestedCharacterId ? [req.requestedCharacterId] : [],
                             blacklistedCharacterIds: [],
                             pendingCharacterIds: [],

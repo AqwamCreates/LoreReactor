@@ -40,6 +40,7 @@ function AccountEditorModalInner({
     const [username, setUsername] = useState(existingAccount?.username || '');
     const [password, setPassword] = useState(existingAccount?.password || '');
     const [url, setUrl] = useState(existingAccount?.url || '');
+    const [shareLanguageModel, setShareLanguageModel] = useState(existingAccount?.shareLanguageModel ?? false);
     const [errors, setErrors] = useState<{ name?: string; username?: string }>({});
 
     const validate = (): boolean => {
@@ -59,6 +60,7 @@ function AccountEditorModalInner({
             username: username.trim(),
             password: password,
             url: url.trim() || undefined,
+            shareLanguageModel,
             firstCreatedTimestamp: isNewClone ? now : (existingAccount?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
@@ -138,6 +140,21 @@ function AccountEditorModalInner({
                         />
                         <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
                             Optional server URL for this account.
+                        </div>
+                    </div>
+
+                    <div style={{ marginBottom: '16px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                            <input
+                                type="checkbox"
+                                checked={shareLanguageModel}
+                                onChange={e => setShareLanguageModel(e.target.checked)}
+                                className="editor-checkbox-input"
+                            />
+                            <span className="editor-label" style={{ margin: 0 }}>Share Language Model</span>
+                        </label>
+                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '4px', marginLeft: '26px' }}>
+                            When enabled, this account's language model access is shared with multiplayer joiners based on session configuration.
                         </div>
                     </div>
                 </div>
