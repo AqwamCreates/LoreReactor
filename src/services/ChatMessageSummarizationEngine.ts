@@ -1,15 +1,13 @@
 // src/services/ChatMessageSummarizationEngine.ts
 import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
+import { getLanguageModelEngine } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { createChatHistoryPrompt, getParticipantTag, replacePlaceholders, getUniversalMessageFilterFlags, getFilteredChatMessages } from '../hooks/promptLogic';
+import { createChatHistoryPrompt, getParticipantTag, replacePlaceholders, getUniversalMessageFilterFlags, getFilteredChatMessages, deriveDelimiters } from '../hooks/promptLogic';
 import { detectName } from '../hooks/nameDetection';
-import { contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, turnStartString, turnEndString } from '../dictionaries/stringList';
 import { buildRequestBody } from '../hooks/genericRequestBuilderLogic';
 import { getCoLocatedProtagonists } from '../hooks/locationLogic';
-
-const startOfMemoryLine = `${contextStartString}The Start Of My Memory${contextEndString}`;
-const endOfMemoryLine = `${contextStartString}The End Of My Memory${contextEndString}`;
+import { getModelTemplate } from '../dictionaries/modelTemplates';
 
 const SUMMARIZE_SYSTEM_PROMPT = "You are a concise summarizer for roleplay chat messages. Given a single chat message, produce a brief summary that preserves: character actions, key dialogue points, emotional tone, and plot-relevant details. Output ONLY the summary text with no preamble, no markdown, no quotes.";
 
@@ -106,10 +104,6 @@ async function compressChunk(
 
 /**
  * Generate a character-specific memory as a Context object.
- * @param interactionData The current interaction data
- * @param character The character whose perspective this memory represents
- * @param modelId The model ID used for generating summaries within chat history
- * @param maxTokens Maximum tokens for the generated memory
  */
 export async function generateCharacterMemory(
     interactionData: InteractionData,
@@ -121,18 +115,19 @@ export async function generateCharacterMemory(
     if (history.length === 0) return null;
 
     const participants = interactionData.participants;
-
-    // Use characterSampler for character memory generation
     const sampler = interactionData.Profile?.characterSampler || character.sampler;
 
-    // Get filtered messages and detect name knowledge
     const allPromptBlocks: PromptBlock[] = [];
     const filteredMessages = getFilteredChatMessages(interactionData, character.id, allPromptBlocks);
     const knownCharacterNames = detectName(character, filteredMessages);
-
     const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
 
-    // Build a minimal PromptBuildContext for createChatHistoryPrompt
+    // ─── Get Dynamic Delimiters & Stop Tokens ───────────────────────
+    const activeModel = getLanguageModelEngine().getContext();
+    const effectiveChatTemplateKey = activeModel?.chatTemplate;
+    const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
+    const delimiters = deriveDelimiters(resolvedChatTemplate);
+
     const ctx = {
         interactionData,
         character,
@@ -158,33 +153,37 @@ export async function generateCharacterMemory(
         numberOfMessagesByParticipant: history.filter(
             msg => msg.character.id === character.id && msg.messageType === 'chat'
         ).length,
+        delimiters, // Added to satisfy PromptBuildContext
     };
 
     const { chatHistoryPrompt } = createChatHistoryPrompt(ctx);
-
     const participantTag = ctx.characterParticipantTag;
 
-    const perspectiveInstruction = `${contextStartString}I am ${participantTag}. I am reflecting on what I have experienced. I will express my memory as natural, personal thoughts that others will not hear, read or respond to. I will use this memory in the future. Only I can access this memory. I will never use 'Character #' or 'Character # (Name)' unless I require it.${contextEndString}`;
+    const perspectiveInstruction = `${delimiters.blockStart('system')}I am ${participantTag}. I am reflecting on what I have experienced. I will express my memory as natural, personal thoughts that others will not hear, read or respond to. I will use this memory in the future. Only I can access this memory. I will never use 'Character #' or 'Character # (Name)' unless I require it.${delimiters.blockEnd}`;
 
     const systemPrompt = character.systemPrompt
-        ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${contextEndString}`
+        ? `${delimiters.blockStart('system')}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}`
         : '';
     const thinkPrompt = character.thinkPrompt
-        ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${contextEndString}`
+        ? `${delimiters.blockStart('system')}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}`
         : '';
 
-    const memoryInjection = `${contextStartString}`;
+    const memoryInjection = `${delimiters.turnStart(participantTag)}`;
 
-    const promptLines = [systemPrompt, thinkPrompt, startOfMemoryLine, chatHistoryPrompt, endOfMemoryLine, perspectiveInstruction, memoryInjection];
-
+    const promptLines = [systemPrompt, thinkPrompt, `${delimiters.blockStart('system')}The Start Of My Memory${delimiters.blockEnd}`, chatHistoryPrompt, `${delimiters.blockStart('system')}The End Of My Memory${delimiters.blockEnd}`, perspectiveInstruction, memoryInjection];
     const prompt = promptLines.join('\n\n');
 
-    const requestBody = buildRequestBody(
-        prompt,
-        maxTokens,
-        sampler,
-        [contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkStartString, gemmaThinkEndString],
-    );
+    // Use dynamic model-specific stop tokens
+    const templateStops = resolvedChatTemplate?.stopPatterns || [];
+    const turnEndStop = delimiters.turnEnd.trim();
+    const stops = [
+        ...templateStops,
+        turnEndStop,
+        delimiters.thinkStart.trim(),
+        delimiters.thinkEnd.trim(),
+    ].filter(s => s.length > 0);
+
+    const requestBody = buildRequestBody(prompt, maxTokens, sampler, stops);
 
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
@@ -208,12 +207,6 @@ export async function generateCharacterMemory(
 
 /**
  * Generate a location visit summary from a character's perspective.
- * @param interactionData The current interaction data
- * @param character The character whose perspective this summary represents
- * @param modelId The model ID used for resolving existing message summaries
- * @param startIdx Start index (inclusive) in interactionHistory for the location visit segment
- * @param endIdx End index (inclusive) in interactionHistory for the location visit segment
- * @param maxTokens Maximum tokens for the generated summary
  */
 export async function generateLocationVisitSummary(
     interactionData: InteractionData,
@@ -227,16 +220,18 @@ export async function generateLocationVisitSummary(
     if (startIdx < 0 || endIdx >= history.length || startIdx > endIdx) return null;
 
     const participants = interactionData.participants;
-
     const participantTag = getParticipantTag(character, participants);
-
-    // Use characterSampler for location visit summaries
     const sampler = interactionData.Profile?.characterSampler || character.sampler;
 
-    // Get filtered messages and detect name knowledge
     const allPromptBlocks: PromptBlock[] = [];
     const filteredMessages = getFilteredChatMessages(interactionData, character.id, allPromptBlocks);
     const knownCharacterNames = detectName(character, filteredMessages);
+
+    // ─── Get Dynamic Delimiters & Stop Tokens ───────────────────────
+    const activeModel = getLanguageModelEngine().getContext();
+    const effectiveChatTemplateKey = activeModel?.chatTemplate;
+    const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
+    const delimiters = deriveDelimiters(resolvedChatTemplate);
 
     const scopedMessages: string[] = [];
     for (let i = startIdx; i <= endIdx; i++) {
@@ -249,7 +244,8 @@ export async function generateLocationVisitSummary(
 
         const text = chatMsg.modelTextContentSummaries?.[modelId] || chatMsg.textContent;
 
-        scopedMessages.push(`${turnStartString}${tag} (${charName}): ${text}${turnEndString}`);
+        // Use dynamic turn delimiters
+        scopedMessages.push(`${delimiters.turnStart(`${tag} (${charName})`)}${text}${delimiters.turnEnd}`);
     }
 
     if (scopedMessages.length === 0) return null;
@@ -261,25 +257,30 @@ export async function generateLocationVisitSummary(
     const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
 
     const systemPrompt = character.systemPrompt
-        ? `${contextStartString}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${contextEndString}`
+        ? `${delimiters.blockStart('system')}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}`
         : '';
     const thinkPrompt = character.thinkPrompt
-        ? `${contextStartString}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${contextEndString}`
+        ? `${delimiters.blockStart('system')}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}`
         : '';
 
-    const scopedHistoryBlock = `${contextStartString}Events at ${locationName}:\n${scopedMessages.join('\n')}${contextEndString}`;
+    const scopedHistoryBlock = `${delimiters.blockStart('system')}Events at ${locationName}:\n${scopedMessages.join('\n')}${delimiters.blockEnd}`;
 
-    const perspectiveInstruction = `${contextStartString}I am ${participantTag}. ${LOCATION_VISIT_MEMORY_PROMPT} I will never use 'Character #' or 'Character # (Name)' unless I require it.${contextEndString}`;
+    const perspectiveInstruction = `${delimiters.blockStart('system')}I am ${participantTag}. ${LOCATION_VISIT_MEMORY_PROMPT} I will never use 'Character #' or 'Character # (Name)' unless I require it.${delimiters.blockEnd}`;
 
     const promptLines = [systemPrompt, thinkPrompt, scopedHistoryBlock, perspectiveInstruction];
     const prompt = promptLines.filter(l => l.length > 0).join('\n\n');
 
-    const requestBody = buildRequestBody(
-        prompt,
-        maxTokens,
-        sampler,
-        [contextStartString, contextEndString, commonThinkStartString, commonThinkEndString, gemmaThinkStartString, gemmaThinkEndString],
-    );
+    // Use dynamic model-specific stop tokens
+    const templateStops = resolvedChatTemplate?.stopPatterns || [];
+    const turnEndStop = delimiters.turnEnd.trim();
+    const stops = [
+        ...templateStops,
+        turnEndStop,
+        delimiters.thinkStart.trim(),
+        delimiters.thinkEnd.trim(),
+    ].filter(s => s.length > 0);
+
+    const requestBody = buildRequestBody(prompt, maxTokens, sampler, stops);
 
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
@@ -297,7 +298,6 @@ export async function generatePeriodicCompression(
     const history = interactionData.interactionHistory;
     const existingContexts = interactionData.contexts || [];
 
-    // Use interactionDataSummarizationSampler for periodic compression
     const sampler = interactionData.Profile?.interactionDataSummarizationSampler;
 
     const compressedRanges = new Set<string>();
@@ -390,7 +390,6 @@ export async function generateRecursiveSummary(
     const existingContexts = interactionData.contexts || [];
     const now = Date.now();
 
-    // Use interactionDataSummarizationSampler for recursive summarization
     const sampler = interactionData.Profile?.interactionDataSummarizationSampler;
 
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');

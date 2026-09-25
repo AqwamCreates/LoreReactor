@@ -1,5 +1,6 @@
 // src/hooks/promptLogic.ts
 import type { Character, InteractionData, HistoryMessage, ChatMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger, Clothing, Profile } from '../types';
+import type { ModelTemplate } from '../dictionaries/modelTemplates';
 import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
@@ -51,15 +52,19 @@ interface PromptDelimiters {
     thinkEnd: string;
 }
 
-function deriveDelimiters(chatTemplate?: string): PromptDelimiters {
+export function deriveDelimiters(template?: ModelTemplate): PromptDelimiters {
+    const thinkStart = template?.thinkStart || '<think>';
+    const thinkEnd = template?.thinkEnd || '</think>';
+    const chatTemplate = template?.chatTemplate;
+
     if (!chatTemplate) {
         return {
             blockStart: (role) => `[${role}]\n`,
-            blockEnd: `\n`,
+            blockEnd: "\n",
             turnStart: (role) => `${role}: `,
-            turnEnd: `\n`,
-            thinkStart: `<think>`,
-            thinkEnd: `</think>`,
+            turnEnd: "\n",
+            thinkStart,
+            thinkEnd,
         };
     }
 
@@ -82,8 +87,8 @@ function deriveDelimiters(chatTemplate?: string): PromptDelimiters {
         blockEnd: afterContent,
         turnStart: blockStart,
         turnEnd: afterContent,
-        thinkStart: `<think>`,
-        thinkEnd: `</think>`,
+        thinkStart,
+        thinkEnd,
     };
 }
 
@@ -234,10 +239,10 @@ export function getFatigueContext(currentChatStamina: number, maximumChatStamina
     const ratio = currentChatStamina / maximumChatStamina;
     if (ratio > 0.7) return "";
 
-    if (ratio > 0.5) return `I am starting to feel slightly winded, but still have plenty of energy to speak.`;
-    if (ratio > 0.3) return `I am somewhat exhausted from talking, but somewhat have the energy to speak.`;
-    if (ratio > 0.1) return `I am quite drained from talking and barely have the energy to speak.`;
-    return `I have no energy left to speak.`;
+    if (ratio > 0.5) return "I am starting to feel slightly winded, but still have plenty of energy to speak.";
+    if (ratio > 0.3) return "I am somewhat exhausted from talking, but somewhat have the energy to speak.";
+    if (ratio > 0.1) return "I am quite drained from talking and barely have the energy to speak.";
+    return "I have no energy left to speak.";
 }
 
 export function findAllMessages(interactionData: InteractionData, characterId: string): HistoryMessage[] {
@@ -1401,7 +1406,7 @@ export async function buildPrompt(
     const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
     
     // Derive delimiters BEFORE building context so all builders can use them
-    const delimiters = deriveDelimiters(resolvedChatTemplate?.chatTemplate);
+    const delimiters = deriveDelimiters(resolvedChatTemplate);
 
     const ctx = buildPromptContext(interactionData, character, knownNames, modelId, allPromptBlocks, existingCharacterText, delimiters);
 

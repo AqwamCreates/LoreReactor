@@ -1,13 +1,14 @@
 // src/hooks/chatLogic.ts
 import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, Location, RegularExpressionTrigger, TextCharacterInjection } from '../types';
-import { getKnownDisplayName } from './promptLogic';
+import { getKnownDisplayName, deriveDelimiters } from './promptLogic';
 import type { EntityImageRef } from './promptLogic';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storage/serverStorage';
 import { getEffectiveUseFrontCameraImage, getEffectiveMaximumChatStamina, initializeClothingWearingStatuses } from './characterLogic';
-import { generalStartString, generalEndString } from '../dictionaries/stringList';
 import { buildPrompt, getParticipantTag } from './promptLogic';
 import { getCoLocatedParticipants } from './locationLogic';
+import { getModelTemplate } from '../dictionaries/modelTemplates';
+import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 
 // ─── Front Camera Capture ──────────────────────────────────────────
 
@@ -21,7 +22,11 @@ function scheduleCameraCleanup(): void {
     if (_cameraCleanupTimer) clearTimeout(_cameraCleanupTimer);
     _cameraCleanupTimer = setTimeout(() => {
         if (_cameraStream) {
-            _cameraStream.getTracks().forEach(t => t.stop());
+            // FIX: Safe track stopping to satisfy strict TypeScript MediaStreamTrack checks
+            const tracks = _cameraStream.getTracks();
+            for (const track of tracks) {
+                track.stop();
+            }
             _cameraStream = null;
         }
         if (_cameraVideo) {
@@ -243,6 +248,12 @@ export async function prepareRequestBody(
     let imageIdCounter = 1;
     let initialPrompt = "";
 
+    // ─── Get Dynamic Delimiters ─────────────────────────────────────
+    const activeModel = getLanguageModelEngine().getContext();
+    const effectiveChatTemplateKey = activeModel?.chatTemplate;
+    const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
+    const delimiters = deriveDelimiters(resolvedChatTemplate);
+
     if (!forceNoCharacterImageInjection) {
 
         if (!character.doNotInjectCharacterImage) {
@@ -255,7 +266,7 @@ export async function prepareRequestBody(
                 if (characterImageBase64) {
                     const rawData = characterImageBase64.includes(',') ? characterImageBase64.split(',')[1] : characterImageBase64;
                     filesBase64.push({ data: rawData, id: imageIdCounter++ });
-                    initialPrompt = `${generalStartString}I understand that the image ${imageIdCounter} is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${generalEndString}`;
+                    initialPrompt = `${delimiters.blockStart('system')}I understand that the image ${imageIdCounter} is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${delimiters.blockEnd}`;
                 }
             }
         }
@@ -297,7 +308,7 @@ export async function prepareRequestBody(
 
             filesBase64.push({ data: rawData, id: imageIdCounter++ });
 
-            initialPrompt = `${initialPrompt}${generalStartString}I understand that the image ${imageIdCounter} is the appearance of ${participantString}.${generalEndString}`;
+            initialPrompt = `${initialPrompt}${delimiters.blockStart('system')}I understand that the image ${imageIdCounter} is the appearance of ${participantString}.${delimiters.blockEnd}`;
         }
 
         // Attach files from co-located protagonists' most recent messages only
@@ -405,9 +416,12 @@ export async function prepareRequestBody(
 
         body._basePrompt = fullPrompt;
 
+        // FIX: Replaced forbidden non-null assertion (!) with safe undefined check
         if (!profile.randomizeTextCharacterInjectionOnRetry && injections.length > 0) {
-            const firstInjection = injections.shift()!;
-            body.prompt = firstInjection + (body.prompt as string);
+            const firstInjection = injections.shift();
+            if (firstInjection !== undefined) {
+                body.prompt = firstInjection + (body.prompt as string);
+            }
         }
 
         if (injections.length > 0) {

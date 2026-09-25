@@ -1,22 +1,6 @@
 // src/dictionaries/stringLists.ts
 
-export const contextStartString = "{";
-export const contextEndString = "}";
-export const turnStartString = "{";
-export const turnEndString = "}";
-
 export const toolStartSring = ":|tool:"
 export const toolEndString = ":tool|:"
 
-export const memoryWriteTrigger = "<memory>";
-
-export const commonThinkStartString = "<think>";
-export const commonThinkEndString = "</think>";
-export const gemmaThinkStartString = "<|channel>";
-export const gemmaThinkEndString = "<channel|>";
-
-export const thinkStartString = `${gemmaThinkStartString}${commonThinkStartString}`;
-export const thinkEndString = `${commonThinkEndString}${gemmaThinkEndString}`;
-
-export const generalStartString = `${contextStartString}${thinkStartString}`
-export const generalEndString = `${thinkEndString}${contextEndString}`
+export const memoryWriteTrigger = ":|memory|:";

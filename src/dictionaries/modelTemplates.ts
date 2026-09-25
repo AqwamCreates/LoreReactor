@@ -13,79 +13,168 @@ export interface ModelTemplate {
     modelFamilies: string[];
     /** Model-specific stop tokens/patterns to prevent the model from generating into the next turn or template boundary. */
     stopPatterns?: string[];
+    /** The token/string used to start a thinking/reasoning block. */
+    thinkStart?: string;
+    /** The token/string used to end a thinking/reasoning block. */
+    thinkEnd?: string;
 }
 
-/**
- * Comprehensive collection of chat and instruction templates for open-weight LLMs.
- * Sources: HuggingFace tokenizer configs, jndiogo/LLM-chat-templates, mbrenndoerfer.com
- *
- * Chat-Instruct mode is composed at runtime from instructionTemplate + chatTemplate.
- * No separate chatInstructionTemplate field needed.
- */
 export const MODEL_TEMPLATES: ModelTemplate[] = [
-    // ─── ChatML (OpenAI-style) ──────────────────────────────────────
+    // ─── ChatML (OpenAI-style / Qwen / Hermes / Dolphin) ─────────────
+    // No native thinking tokens. Qwen3 uses <think>/</think> only in its
+    // dedicated reasoning template (see qwen-3.5-3.6 below).
     {
         key: 'chatml',
-        label: 'ChatML',
-        instructionTemplate: '### Instruction:\n{instruction}\n\n### Response:\n',
+        label: 'ChatML (Qwen, Hermes, Dolphin)',
+        instructionTemplate: '<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n{instruction}<|im_end|>\n<|im_start|>assistant\n',
         chatTemplate: '<|im_start|>{role}\n{content}<|im_end|>\n',
         supportsSystemRole: true,
-        modelFamilies: ['Qwen', 'Qwen2', 'Qwen2.5', 'Hermes-2', 'Dolphin', 'Orca2', 'Yi', 'StableLM-2', 'Rocket', 'NousHermes'],
+        modelFamilies: ['Qwen', 'Qwen2', 'Qwen2.5', 'Hermes-2', 'Hermes-3', 'Dolphin', 'Orca2', 'Yi', 'StableLM-2', 'Rocket', 'NousHermes'],
         stopPatterns: ['<|im_end|>'],
     },
 
-    // ─── Llama 3.x ──────────────────────────────────────────────────
+    // ─── Qwen 3.5 / 3.6 (Reasoning toggle) ─────────────────────────
+    // Uses <think>/</think>. Reasoning is OFF by default; enable with
+    // <|reasoning|> in system/user message, disable with <|no_reasoning|>.
+    {
+        key: 'qwen-3.5-3.6',
+        label: 'Qwen 3.5 / 3.6',
+        instructionTemplate: '<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n{instruction}<|im_end|>\n<|im_start|>assistant\n',
+        chatTemplate: '<|im_start|>{role}\n{content}<|im_end|>\n',
+        supportsSystemRole: true,
+        modelFamilies: ['Qwen3.5', 'Qwen3.6', 'Qwen3', 'Qwen2.5'],
+        stopPatterns: ['<|im_end|>'],
+        thinkStart: '<think>',
+        thinkEnd: '</think>',
+    },
+
+    // ─── Llama 3.x / Llama 3.2 Vision / Llama 3.3 ───────────────────
+    // Not a reasoning model. No thinking tokens.
     {
         key: 'llama3',
         label: 'Llama 3 / 3.1 / 3.2 / 3.3',
-        instructionTemplate: '<|start_header_id|>user<|end_header_id|>\n\n{instruction}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n',
+        instructionTemplate: '<|start_header_id|>system<|end_header_id|>\n\n{system}<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{instruction}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n',
         chatTemplate: '<|start_header_id|>{role}<|end_header_id|>\n\n{content}<|eot_id|>',
         supportsSystemRole: true,
-        modelFamilies: ['Llama-3', 'Llama-3.1', 'Llama-3.2', 'Llama-3.3', 'Llama-3-Vision'],
-        stopPatterns: ['<|eot_id|>'],
+        modelFamilies: ['Llama-3', 'Llama-3.1', 'Llama-3.2', 'Llama-3.3'],
+        stopPatterns: ['<|eot_id|>', '<|eom_id|>'],
     },
 
-    // ─── Llama 2 / CodeLlama ────────────────────────────────────────
+    // ─── Llama 4 (Scout / Maverick) ─────────────────────────────────
+    // NOT a reasoning model. No thinking tokens. Token names renamed from Llama 3.
     {
-        key: 'llama2',
-        label: 'Llama 2 / CodeLlama',
-        instructionTemplate: '[INST] <<SYS>>\n{system}\n<</SYS>>\n\n{instruction} [/INST]',
-        chatTemplate: '[INST] {content} [/INST]',
-        supportsSystemRole: false,
-        modelFamilies: ['Llama-2', 'CodeLlama'],
-        stopPatterns: ['[/INST]'],
+        key: 'llama4',
+        label: 'Llama 4 (Scout / Maverick)',
+        instructionTemplate: '<|begin_of_text|><|header_start|>system<|header_end|>\n\n{system}<|eot|><|header_start|>user<|header_end|>\n\n{instruction}<|eot|><|header_start|>assistant<|header_end|>\n\n',
+        chatTemplate: '<|header_start|>{role}<|header_end|>\n\n{content}<|eot|>',
+        supportsSystemRole: true,
+        modelFamilies: ['Llama-4', 'Llama-4-Scout', 'Llama-4-Maverick', 'Llama-4.1'],
+        stopPatterns: ['<|eot|>'],
     },
 
-    // ─── Mistral / Mixtral ──────────────────────────────────────────
+    // ─── DeepSeek V4 / V3.1 / R1 (Unicode tokens) ───────────────────
+    // Uses <think>/</think>. Reasoning disabled by default; enable via
+    // chat_template_kwargs: {thinking: true}. Unicode full-width pipe ｜ (U+FF5C)
+    // and separator ▁ (U+2581) are REQUIRED — ASCII | or _ will break parsing.
     {
-        key: 'mistral',
-        label: 'Mistral / Mixtral Instruct',
-        instructionTemplate: '[INST] {instruction} [/INST]',
-        chatTemplate: '[INST] {content} [/INST]',
-        supportsSystemRole: false,
-        modelFamilies: ['Mistral', 'Mixtral', 'Mistral-Nemo'],
-        stopPatterns: ['[/INST]'],
+        key: 'deepseek-v4',
+        label: 'DeepSeek V4 / V3.1 (Hybrid Thinking)',
+        instructionTemplate: '<｜begin▁of▁sentence｜><｜User｜>{instruction}<｜Assistant｜>',
+        chatTemplate: '<｜begin▁of▁sentence｜><｜{role}｜>{content}<｜end▁of▁sentence｜>',
+        supportsSystemRole: true,
+        modelFamilies: ['DeepSeek-V4', 'DeepSeek-V3.1', 'DeepSeek-R1-0528', 'DeepSeek-V3', 'DeepSeek-R1', 'DeepSeek-V2', 'DeepSeek-Coder'],
+        stopPatterns: ['<｜end▁of▁sentence｜>', '<｜User｜>'],
+        thinkStart: '<think>',
+        thinkEnd: '</think>',
     },
 
-    // ─── Gemma ──────────────────────────────────────────────────────
+    // ─── DeepSeek V3 / R1 (Legacy ASCII format - kept for compat) ──
+    {
+        key: 'deepseek-r1-legacy',
+        label: 'DeepSeek V3 / R1 (Legacy ASCII)',
+        instructionTemplate: '<|begin_of_sentence|><|user|>{instruction}<|assistant|>',
+        chatTemplate: '<|{role}|>{content}<|end|>\n',
+        supportsSystemRole: true,
+        modelFamilies: ['DeepSeek-R1-Legacy', 'DeepSeek-V3-Legacy'],
+        stopPatterns: ['<|end|>', '<|eot_id|>'],
+        thinkStart: '<think>',
+        thinkEnd: '</think>',
+    },
+
+    // ─── Gemma / Gemma 2 / Gemma 3 ──────────────────────────────────
+    // Not reasoning models. No thinking tokens.
     {
         key: 'gemma',
         label: 'Gemma / Gemma 2 / Gemma 3',
         instructionTemplate: '<start_of_turn>user\n{instruction}<end_of_turn>\n<start_of_turn>model\n',
         chatTemplate: '<start_of_turn>{role}\n{content}<end_of_turn>\n',
         supportsSystemRole: false,
-        modelFamilies: ['Gemma', 'Gemma-2', 'Gemma-3'],
+        modelFamilies: ['Gemma', 'Gemma-2', 'Gemma-3', 'CodeGemma', 'Paligemma'],
         stopPatterns: ['<end_of_turn>'],
     },
 
-    // ─── Phi-3 / Phi-3.5 ───────────────────────────────────────────
+    // ─── Gemma 4 (Channel-based thinking) ───────────────────────────
+    // Thinking uses <|channel>thought ... <channel|>, NOT <think>/</think>.
+    // Activated via <|think|> in system prompt.
+    {
+        key: 'gemma4',
+        label: 'Gemma 4',
+        instructionTemplate: '<|turn>system\n{system}<turn|><|turn>user\n{instruction}<turn|><|turn>model\n',
+        chatTemplate: '<|turn>{role}\n{content}<turn|>',
+        supportsSystemRole: true,
+        modelFamilies: ['Gemma-4'],
+        stopPatterns: ['<turn|>', '<|tool_response>'],
+        thinkStart: '<|channel>thought',
+        thinkEnd: '<channel|>',
+    },
+
+    // ─── Phi-3 / Phi-3.5 ────────────────────────────────────────────
+    // Not reasoning models. No thinking tokens.
     {
         key: 'phi3',
         label: 'Phi-3 / Phi-3.5',
-        instructionTemplate: '<|user|>\n{instruction}<|end|>\n<|assistant|>\n',
-        chatTemplate: '<|{role}|>\n{content}<|end|>\n',
+        instructionTemplate: '<|im_start|>system<|im_sep|>{system}<|im_end|><|im_start|>user<|im_sep|>{instruction}<|im_end|><|im_start|>assistant<|im_sep|>',
+        chatTemplate: '<|im_start|>{role}<|im_sep|>{content}<|im_end|>',
         supportsSystemRole: true,
         modelFamilies: ['Phi-3', 'Phi-3.5'],
+        stopPatterns: ['<|im_end|>'],
+    },
+
+    // ─── Phi-4 (Base, no reasoning) ─────────────────────────────────
+    // Not a reasoning model. EOS is <|im_end|>, NOT <|endoftext|>.
+    {
+        key: 'phi4',
+        label: 'Phi-4',
+        instructionTemplate: '<|im_start|>system<|im_sep|>{system}<|im_end|><|im_start|>user<|im_sep|>{instruction}<|im_end|><|im_start|>assistant<|im_sep|>',
+        chatTemplate: '<|im_start|>{role}<|im_sep|>{content}<|im_end|>',
+        supportsSystemRole: true,
+        modelFamilies: ['Phi-4'],
+        stopPatterns: ['<|im_end|>'],
+    },
+
+    // ─── Phi-4 Reasoning / Reasoning-Plus ───────────────────────────
+    // Uses <think>/</think>.
+    {
+        key: 'phi4-reasoning',
+        label: 'Phi-4 Reasoning / Reasoning-Plus',
+        instructionTemplate: '<|im_start|>system<|im_sep|>{system}<|im_end|><|im_start|>user<|im_sep|>{instruction}<|im_end|><|im_start|>assistant<|im_sep|>',
+        chatTemplate: '<|im_start|>{role}<|im_sep|>{content}<|im_end|>',
+        supportsSystemRole: true,
+        modelFamilies: ['Phi-4-reasoning', 'Phi-4-reasoning-plus'],
+        stopPatterns: ['<|im_end|>'],
+        thinkStart: '<think>',
+        thinkEnd: '</think>',
+    },
+
+    // ─── Phi-4 Mini (Different format from base Phi-4) ──────────────
+    // Uses <|system|>/<|end|>, NOT <|im_start|>.
+    {
+        key: 'phi4-mini',
+        label: 'Phi-4 Mini',
+        instructionTemplate: '<|system|>{system}<|end|><|user|>{instruction}<|end|><|assistant|>',
+        chatTemplate: '<|{role}|>{content}<|end|>',
+        supportsSystemRole: true,
+        modelFamilies: ['Phi-4-mini'],
         stopPatterns: ['<|end|>'],
     },
 
@@ -100,22 +189,11 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         stopPatterns: ['\nInstruct:'],
     },
 
-    // ─── DeepSeek V2 / V3 ──────────────────────────────────────────
-    {
-        key: 'deepseek',
-        label: 'DeepSeek V2 / V3',
-        instructionTemplate: '<|user|>{instruction}<|end|>\n<|assistant|>',
-        chatTemplate: '<|{role}|>{content}<|end|>\n',
-        supportsSystemRole: true,
-        modelFamilies: ['DeepSeek-V2', 'DeepSeek-V3', 'DeepSeek-Coder'],
-        stopPatterns: ['<|end|>'],
-    },
-
-    // ─── Command-R / Command-R+ ─────────────────────────────────────
+    // ─── Command-R / Command-R+ / Aya ───────────────────────────────
     {
         key: 'command-r',
-        label: 'Command-R / Command-R+',
-        instructionTemplate: '<|START_OF_TURN_TOKEN|><|USER_TOKEN|>{instruction}<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>',
+        label: 'Command-R / Command-R+ / Aya',
+        instructionTemplate: '<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{system}<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|USER_TOKEN|>{instruction}<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>',
         chatTemplate: '<|START_OF_TURN_TOKEN|><|{role}_TOKEN|>{content}<|END_OF_TURN_TOKEN|>',
         supportsSystemRole: true,
         modelFamilies: ['Command-R', 'Command-R-Plus', 'Aya'],
@@ -126,33 +204,22 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
     {
         key: 'zephyr',
         label: 'Zephyr',
-        instructionTemplate: '<|user|>\n{instruction}</s>\n<|assistant|>\n',
+        instructionTemplate: '<|system|>\n{system}</s>\n<|user|>\n{instruction}</s>\n<|assistant|>\n',
         chatTemplate: '<|{role}|>\n{content}</s>\n',
         supportsSystemRole: true,
         modelFamilies: ['Zephyr', 'Zephyr-Gemma'],
         stopPatterns: ['</s>'],
     },
 
-    // ─── OpenChat 3.5 ──────────────────────────────────────────────
+    // ─── OpenChat 3.5 / Starling ────────────────────────────────────
     {
         key: 'openchat35',
         label: 'OpenChat 3.5 / Starling',
         instructionTemplate: 'GPT4 Correct User: {instruction}<|end_of_turn|>GPT4 Correct Assistant:',
-        chatTemplate: 'GPT4 Correct {Role}: {content}<|end_of_turn|>',
+        chatTemplate: 'GPT4 Correct {role}: {content}<|end_of_turn|>',
         supportsSystemRole: false,
         modelFamilies: ['OpenChat-3.5', 'Starling-LM'],
         stopPatterns: ['<|end_of_turn|>'],
-    },
-
-    // ─── OpenChat 3.6 ──────────────────────────────────────────────
-    {
-        key: 'openchat36',
-        label: 'OpenChat 3.6',
-        instructionTemplate: '<|start_header_id|>GPT4 Correct User<|end_header_id|>\n\n{instruction}<|eot_id|><|start_header_id|>GPT4 Correct Assistant<|end_header_id|>\n\n',
-        chatTemplate: '<|start_header_id|>GPT4 Correct {Role}<|end_header_id|>\n\n{content}<|eot_id|>',
-        supportsSystemRole: true,
-        modelFamilies: ['OpenChat-3.6'],
-        stopPatterns: ['<|eot_id|>'],
     },
 
     // ─── Alpaca ─────────────────────────────────────────────────────
@@ -165,48 +232,63 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         stopPatterns: ['### Instruction:', '### Response:'],
     },
 
-    // ─── Vicuna v1.1 ───────────────────────────────────────────────
+    // ─── Vicuna v1.1 / Wizard-Vicuna ────────────────────────────────
     {
         key: 'vicuna',
         label: 'Vicuna v1.1 / Wizard-Vicuna',
         instructionTemplate: 'USER: {instruction}\nASSISTANT:',
-        chatTemplate: '{ROLE}: {content}\n',
+        chatTemplate: '{role}: {content}\n',
         supportsSystemRole: false,
         modelFamilies: ['Vicuna', 'Wizard-Vicuna'],
         stopPatterns: ['USER:'],
     },
 
-    // ─── Falcon ─────────────────────────────────────────────────────
+    // ─── Falcon Instruct ────────────────────────────────────────────
     {
         key: 'falcon',
         label: 'Falcon Instruct',
         instructionTemplate: 'User: {instruction}\nAssistant:',
-        chatTemplate: '{Role}: {content}',
+        chatTemplate: '{role}: {content}',
         supportsSystemRole: false,
         modelFamilies: ['Falcon', 'Falcon-Instruct'],
         stopPatterns: ['User:'],
     },
 
-    // ─── AmberChat ──────────────────────────────────────────────────
+    // ─── Mistral / Mixtral / Mistral-Nemo ───────────────────────────
     {
-        key: 'amberchat',
-        label: 'AmberChat',
-        instructionTemplate: '### Human: {instruction}\n### Assistant:',
-        chatTemplate: '### {Role}: {content}\n',
+        key: 'mistral',
+        label: 'Mistral / Mixtral / Mistral-Nemo',
+        instructionTemplate: '<s>[INST] {instruction} [/INST]',
+        chatTemplate: '[INST] {content} [/INST]',
         supportsSystemRole: false,
-        modelFamilies: ['AmberChat'],
-        stopPatterns: ['### Human:'],
+        modelFamilies: ['Mistral', 'Mixtral', 'Mistral-Nemo', 'Codestral'],
+        stopPatterns: ['[/INST]'],
     },
 
-    // ─── Qwen (legacy, pre-ChatML) ─────────────────────────────────
+    // ─── Mistral Magistral / Ministral Reasoning ────────────────────
+    // Official 2509 format uses [THINK]/[/THINK] (square brackets).
+    // The <think> format is legacy-only and NOT the official instruction format.
     {
-        key: 'qwen-legacy',
-        label: 'Qwen Legacy (Pre-ChatML)',
-        instructionTemplate: '<|im_start|>user\n{instruction}<|im_end|>\n<|im_start|>assistant\n',
-        chatTemplate: '<|im_start|>{role}\n{content}<|im_end|>\n',
-        supportsSystemRole: true,
-        modelFamilies: ['Qwen-1', 'Qwen-1.5'],
-        stopPatterns: ['<|im_end|>'],
+        key: 'mistral-reasoning',
+        label: 'Mistral Magistral / Ministral Reasoning',
+        instructionTemplate: '[INST] {instruction} [/INST]',
+        chatTemplate: '[INST] {content} [/INST]',
+        supportsSystemRole: false,
+        modelFamilies: ['Magistral', 'Ministral-3-Reasoning'],
+        stopPatterns: ['[/INST]', '[/THINK]'],
+        thinkStart: '[THINK]',
+        thinkEnd: '[/THINK]',
+    },
+
+    // ─── Llama 2 / CodeLlama ────────────────────────────────────────
+    {
+        key: 'llama2',
+        label: 'Llama 2 / CodeLlama',
+        instructionTemplate: '[INST] <<SYS>>\n{system}\n<</SYS>>\n\n{instruction} [/INST]',
+        chatTemplate: '[INST] {content} [/INST]',
+        supportsSystemRole: false,
+        modelFamilies: ['Llama-2', 'CodeLlama'],
+        stopPatterns: ['[/INST]'],
     },
 ];
 
@@ -217,16 +299,10 @@ export function getModelTemplate(key: string): ModelTemplate | undefined {
 
 /**
  * Auto-detect the best matching template for a given model name/path.
- * Matches against modelFamilies using case-insensitive substring search.
- * Returns the template key, or empty string if no match found.
  */
 export function autoDetectTemplate(modelNameOrPath: string): string {
     if (!modelNameOrPath || !modelNameOrPath.trim()) return '';
-
     const normalized = modelNameOrPath.toLowerCase();
-
-    // Check each template's model families — first match wins
-    // Templates are ordered by specificity (newer/more specific first)
     for (const template of MODEL_TEMPLATES) {
         for (const family of template.modelFamilies) {
             if (normalized.includes(family.toLowerCase())) {
@@ -234,28 +310,21 @@ export function autoDetectTemplate(modelNameOrPath: string): string {
             }
         }
     }
-
     return '';
 }
 
-/** Get dropdown options for instruction template selector. Includes Auto as first option. */
 export function getInstructionTemplateOptions(): { value: string; label: string }[] {
     return [
         { value: '', label: 'None' },
         { value: 'auto', label: 'Auto (detect from model name)' },
-        ...MODEL_TEMPLATES
-            .filter(t => t.instructionTemplate)
-            .map(t => ({ value: t.key, label: t.label })),
+        ...MODEL_TEMPLATES.filter(t => t.instructionTemplate).map(t => ({ value: t.key, label: t.label })),
     ];
 }
 
-/** Get dropdown options for chat template selector. Includes Auto as first option. */
 export function getChatTemplateOptions(): { value: string; label: string }[] {
     return [
         { value: '', label: 'None' },
         { value: 'auto', label: 'Auto (detect from model name)' },
-        ...MODEL_TEMPLATES
-            .filter(t => t.chatTemplate)
-            .map(t => ({ value: t.key, label: t.label })),
+        ...MODEL_TEMPLATES.filter(t => t.chatTemplate).map(t => ({ value: t.key, label: t.label })),
     ];
 }
