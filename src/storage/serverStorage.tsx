@@ -1,7 +1,7 @@
 // src/storage/serverStorage.tsx
 import type { 
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
-  Character, RawCharacter, RawInteractionMessage, InteractionData, RawInteractionData,
+  Character, RawCharacter, RawInteractionMessage, RawWhisperMessage, InteractionData, RawInteractionData,
   BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
   SummarizationStep, RawSummarizationStep, Webpage, RawWebpage,
   Memory, RawMemory, Location, RawLocation, World,
@@ -1092,7 +1092,7 @@ export async function loadInteractionMessages(interactionData: InteractionData):
     }
 
     const messagePromises = rawInteractionData.interactionIdHistory.map(async (messageId) => {
-        const rawMessage = await fetchJson<RawInteractionMessage | RawChatMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
+        const rawMessage = await fetchJson<RawInteractionMessage | RawChatMessage | RawWhisperMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
         if (!rawMessage) return null;
 
         const character = charMap.get(rawMessage.characterId);
@@ -1102,7 +1102,7 @@ export async function loadInteractionMessages(interactionData: InteractionData):
             id: messageId,
             ...messageWithoutCharId,
             character: character || createDeletedCharacterStub(characterId),
-        };
+        } as HistoryMessage;
     });
 
     const interactionHistory = (await Promise.all(messagePromises)).filter((m): m is HistoryMessage => m !== null);

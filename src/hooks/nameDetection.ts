@@ -1,5 +1,7 @@
 // src/hooks/nameDetection.ts
-import type { Character, ChatMessage } from '../types';
+import type { Character, ChatMessage, WhisperMessage } from '../types';
+
+type TextMessage = ChatMessage | WhisperMessage;
 
 const NAME_TERMINATOR = String.raw`(?:\s+and|\s+but|\s+who|\.|,|!|\?|$)`;
 const NAME_CAPTURE = String.raw`([\w\s]{1,50}?)`;
@@ -159,7 +161,7 @@ function detectNameQuestion(text: string): boolean {
 }
 
 function detectNamePermissionSequenceVariant(
-    filteredMessages: ChatMessage[],
+    filteredMessages: TextMessage[],
     authorCharacter: Character,
     targetCharacter: Character,
     text: string,
@@ -167,8 +169,7 @@ function detectNamePermissionSequenceVariant(
     if (!containsAnyCharacterName(text, targetCharacter)) return null;
     if (isFalsePositive(text)) return null;
 
-    // Search within the already-filtered messages for the author's previous message
-    let previousMessageBySameCharacter: ChatMessage | null = null;
+    let previousMessageBySameCharacter: TextMessage | null = null;
     for (let i = filteredMessages.length - 1; i >= 0; i--) {
         if (filteredMessages[i].character.id === authorCharacter.id) {
             previousMessageBySameCharacter = filteredMessages[i];
@@ -204,12 +205,12 @@ function detectNamePermissionSequenceVariant(
  * Uses character.knownCharacterNames as the baseline for existing persistent knowledge.
  *
  * @param character The character whose knowledge is being updated
- * @param filteredMessages Pre-filtered chat messages scoped to co-located participants.
+ * @param filteredMessages Pre-filtered text messages scoped to visible messages.
  *   The caller is responsible for filtering; this function only processes what it receives.
  */
 export function detectName(
     character: Character,
-    filteredMessages: ChatMessage[],
+    filteredMessages: TextMessage[],
 ): Record<string, Record<string, boolean>> {
     // Start from the character's persistent knowledge as baseline
     const result: Record<string, Record<string, boolean>> = {};
@@ -222,8 +223,8 @@ export function detectName(
         }
     }
 
-    // Get the latest chat message by this character from the filtered messages
-    let latestMessage: ChatMessage | null = null;
+    // Get the latest text message by this character from the filtered messages
+    let latestMessage: TextMessage | null = null;
     for (let i = filteredMessages.length - 1; i >= 0; i--) {
         if (filteredMessages[i].character.id === character.id) {
             latestMessage = filteredMessages[i];

@@ -30,6 +30,7 @@ const DEFAULT_MAXIMUM_ACTION_STAMINA = 5;
 const MAX_VOICE_FILE_SIZE = 5 * 1024 * 1024;
 
 const TOOL_DESCRIPTIONS: Record<tool, string> = {
+    whisper: 'Allow this character to give private messages',
     think: 'Allow this character to think before committing to an output.',
     pick: 'Allow this character to randomly pick from a list of options.',
     date: 'Allow this character to check the current date and time during conversation.',

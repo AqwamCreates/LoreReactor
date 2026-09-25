@@ -215,7 +215,7 @@ export interface RawMemory extends RawData {
   interactionDataId: string;
 }
 
-export type tool = "think" | "pick" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"
+export type tool = "whisper" | "think" | "pick" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"
 
 export interface DialoguePrompt extends ObjectData {
   content: string;
@@ -359,7 +359,20 @@ export interface ChatMessage extends BaseMessage {
   kvCacheInteractionTextContentSummaries: Record<string, string>;
 }
 
-export type HistoryMessage = InteractionMessage | ChatMessage;
+export interface WhisperMessage extends BaseMessage {
+  messageType: 'whisper';
+  textContent: string;
+  targetCharacterIds: string[];
+  files?: string[];
+  frontCameraImage?: string;
+  modelTextContentSummaries: Record<string, string>;
+  modelInteractionTextContentSummaries: Record<string, string>;
+  kvCacheTextContentPaths: Record<string, string>;
+  kvCacheTextContentSummaryPaths: Record<string, string>;
+  kvCacheInteractionTextContentSummaries: Record<string, string>;
+}
+
+export type HistoryMessage = InteractionMessage | ChatMessage | WhisperMessage;
 
 export interface RawBaseMessage {
   characterId: string;
@@ -390,7 +403,20 @@ export interface RawChatMessage extends RawBaseMessage {
   kvCacheInteractionTextContentSummaries: Record<string, string>;
 }
 
-export type RawHistoryMessage = RawInteractionMessage | RawChatMessage;
+export interface RawWhisperMessage extends RawBaseMessage {
+  messageType: 'whisper';
+  textContent: string;
+  targetCharacterIds: string[];
+  files?: string[];
+  frontCameraImage?: string;
+  modelTextContentSummaries: Record<string, string>;
+  modelInteractionTextContentSummaries: Record<string, string>;
+  kvCacheTextContentPaths: Record<string, string>;
+  kvCacheTextContentSummaryPaths: Record<string, string>;
+  kvCacheInteractionTextContentSummaries: Record<string, string>;
+}
+
+export type RawHistoryMessage = RawInteractionMessage | RawChatMessage | RawWhisperMessage;
 export interface Account extends ObjectData {
 
   username: string
@@ -598,6 +624,7 @@ export type PromptBlockType =
   | 'Context'
   | 'Location'
   | 'Weather'
+  | 'Inventory'
   | 'Date And Time'
   | 'Time Elapsed'
   | 'Fatigue Information'

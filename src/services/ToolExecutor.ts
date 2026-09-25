@@ -3,7 +3,7 @@
 import type { ToolInvocation } from '../services/ToolInvocationParser';
 import { fetchLinkContent, buildSearchUrl } from '../services/linkFetcher';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from '../hooks/dialoguePromptLogic';
-import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension, toolUsageDisplayMode } from '../types';
+import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, WhisperMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension, toolUsageDisplayMode } from '../types';
 import { findPreviousMessage } from '../hooks/chatLogic';
 import { getAudioEngine } from './AudioEngine';
 import { getCurrentLocationIndex, getReachableLocationsByCharacter, isCharacterLockedFromLocation, getCoLocatedParticipants } from '../hooks/locationLogic';
@@ -35,7 +35,7 @@ export interface ToolExecutionContext {
 }
 
 export interface PendingToolAction {
-    type: 'summon' | 'kick' | 'invite' | 'administrator_move_protagonist' | 'administrator_switch_model' | 'creator' | 'destroyer';
+    type: 'summon' | 'kick' | 'invite' | 'administrator_move_protagonist' | 'administrator_switch_model' | 'creator' | 'destroyer' | 'whisper';
     payload: Record<string, string>;
 }
 
@@ -57,6 +57,7 @@ function appendPendingAction(nextMessage: BaseMessage, action: PendingToolAction
 }
 
 const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, displayMode?: toolUsageDisplayMode) => ToolResult | Promise<ToolResult>> = {
+    "whisper": executeWhisper,
     "think": executeThink,
     "pick": executeRandomPick,
     "date": executeDate,
@@ -142,7 +143,7 @@ export function formatToolDisplay(
         case 'none':
             return result.displayReplacement;
         case 'icon': {
-            const iconMatch = result.displayReplacement.match(/^\[?([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}⚡🔧💀🛠️✨📨👢🔒🔓👕🎙️📝📦🗺️🌐🔍🎲🪙📅⏱️❓💭])/u);
+            const iconMatch = result.displayReplacement.match(/^\[?([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}⚡🔧💀🛠️✨📨👢🔒🔓👕🎙️📝📦🗺️🌐🔍🎲🪙📅⏱️❓💭🤫])/u);
             return iconMatch ? iconMatch[1] : result.displayReplacement;
         }
         case 'simple':
@@ -156,6 +157,58 @@ export function formatToolDisplay(
         default:
             return result.displayReplacement;
     }
+}
+
+// ─── Whisper ────────────────────────────────────────────────────────
+
+function executeWhisper(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
+    const trimmed = args.trim();
+    if (!trimmed) {
+        return helpResult('whisper', args, 'whisper <target_char_id[,target2_id]> <text> — send a private message visible only to the target(s)');
+    }
+    
+    const firstSpace = trimmed.indexOf(' ');
+    if (firstSpace === -1) {
+        return { toolType: 'whisper', args, content: '[Error: Usage: whisper <target_char_id> <text>]', displayReplacement: '[Error: Missing text]' };
+    }
+    
+    const targetIdsStr = trimmed.substring(0, firstSpace);
+    const text = trimmed.substring(firstSpace + 1).trim();
+    
+    if (!text) {
+        return { toolType: 'whisper', args, content: '[Error: Missing text]', displayReplacement: '[Error: Missing text]' };
+    }
+    
+    const targetIds = targetIdsStr.split(',').map(id => id.trim()).filter(id => id.length > 0);
+    if (targetIds.length === 0) {
+        return { toolType: 'whisper', args, content: '[Error: No valid targets]', displayReplacement: '[Error: No valid targets]' };
+    }
+    
+    const allChars = context?.allCharacters || interactionData.participants || [];
+    const validTargetIds: string[] = [];
+    const validTargetNames: string[] = [];
+    for (const tid of targetIds) {
+        const targetChar = allChars.find(c => c.id === tid);
+        if (targetChar) {
+            validTargetIds.push(targetChar.id);
+            validTargetNames.push(targetChar.name);
+        }
+    }
+    
+    if (validTargetIds.length === 0) {
+        return { toolType: 'whisper', args, content: '[Error: No valid targets found]', displayReplacement: '[Error: No valid targets]' };
+    }
+    
+    appendPendingAction(nextMessage, { 
+        type: 'whisper', 
+        payload: { 
+            targetCharacterIds: validTargetIds.join(','),
+            text: text
+        } 
+    });
+    
+    const display = `[🤫 Whispered to ${validTargetNames.join(', ')}]`;
+    return { toolType: 'whisper', args, content: text, displayReplacement: display };
 }
 
 // ─── Think ──────────────────────────────────────────────────────────
@@ -1914,6 +1967,31 @@ export function processPendingToolActions(
                     changed = true;
                     options?.onToast?.(`📨 ${action.payload.characterName} arrived.`, 'info');
                 }
+                break;
+            }
+            case 'whisper': {
+                const targetIds = action.payload.targetCharacterIds.split(',');
+                const text = action.payload.text;
+                const whisperMsg: WhisperMessage = {
+                    messageType: 'whisper',
+                    id: uuidv4(),
+                    character: { ...charLastMsg.character },
+                    textContent: text,
+                    targetCharacterIds: targetIds,
+                    files: [],
+                    modelTextContentSummaries: {},
+                    modelInteractionTextContentSummaries: {},
+                    kvCacheTextContentPaths: {},
+                    kvCacheTextContentSummaryPaths: {},
+                    kvCacheInteractionTextContentSummaries: {},
+                    characterClothingWearingStatuses: (charLastMsg as ChatMessage)?.characterClothingWearingStatuses ?? {},
+                    characterLockedLocations: charLastMsg.characterLockedLocations ?? {},
+                    parentInteractionMessageId: charLastMsg.id,
+                    firstCreatedTimestamp: Date.now(),
+                    lastUpdatedTimestamp: Date.now(),
+                };
+                updatedData = { ...updatedData, interactionHistory: [...updatedData.interactionHistory, whisperMsg] };
+                changed = true;
                 break;
             }
             case 'administrator_move_protagonist': options?.onToast?.(`🔧 Transfer to "${action.payload.chatId}" requested.`, 'info'); break;

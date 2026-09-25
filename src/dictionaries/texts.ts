@@ -1,7 +1,7 @@
 import type { tool } from "../types";
 
 export const toolLabels: Record<tool, string> = {
-    think: "Think", pick: 'Random Pick', date: 'Current Date & Time', coin: 'Coin Flip', dice: 'Roll Dice',
+    whisper: "Whisper", think: "Think", pick: 'Random Pick', date: 'Current Date & Time', coin: 'Coin Flip', dice: 'Roll Dice',
     random: 'Random Number', rng: 'RNG Table', move: 'Move', timer: 'Timer',
     stopwatch: 'Stopwatch', schedule: 'Schedule', calculator: 'Calculator', web: 'Web Search', dialogue: 'Dialogue',
     knowledge: 'Knowledge', memory: 'Memory', lookup: 'Look Up',
