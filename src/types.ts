@@ -642,6 +642,7 @@ export interface Profile extends ObjectData {
   autonomousInteractionIntervalMs: number;
   volume: number;
   forceNameReveal: boolean;
+  enableAmbientNarration: boolean; // Default is false.
   toolUsageDisplayMode: toolUsageDisplayMode;
   enableCharacterExpression: boolean;
   randomizeTextCharacterInjection: boolean;
@@ -690,6 +691,7 @@ export interface RawProfile extends RawData {
   autonomousInteractionIntervalMs: number;
   volume: number;
   forceNameReveal: boolean;
+  enableAmbientNarration: boolean; // Default is false.
   toolUsageDisplayMode: toolUsageDisplayMode;
   enableCharacterExpression: boolean;
   randomizeTextCharacterInjection: boolean;

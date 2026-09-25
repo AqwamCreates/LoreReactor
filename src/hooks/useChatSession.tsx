@@ -382,11 +382,21 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                     ui.playVoice(lm.textContent, lm.character);
                 }
             } else {
-                const ad = await generateAmbientNarration(ud, ctrl.signal);
-                const sd = ad || ud;
-                await saveRawInteractionData(sd);
-                setInteractionData(sd);
-                broadcastNewMessages(preTurnCount, sd);
+                // Check if ambient narration is enabled in the profile
+                const enableAmbientNarration = currentState.interactionData?.Profile?.enableAmbientNarration ?? false;
+                
+                if (enableAmbientNarration) {
+                    const ad = await generateAmbientNarration(ud, ctrl.signal);
+                    const sd = ad || ud;
+                    await saveRawInteractionData(sd);
+                    setInteractionData(sd);
+                    broadcastNewMessages(preTurnCount, sd);
+                } else {
+                    // Ambient narration disabled, just save the current state
+                    await saveRawInteractionData(ud);
+                    setInteractionData(ud);
+                    broadcastNewMessages(preTurnCount, ud);
+                }
             }
         } catch (e) {
             if ((e as Error).name !== 'AbortError') {
@@ -484,11 +494,21 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                     ui.playVoice(lm.textContent, lm.character);
                 }
             } else {
-                const ad = await generateAmbientNarration(ud, ctrl.signal);
-                const sd = ad || ud;
-                await saveRawInteractionData(sd);
-                setInteractionData(sd);
-                broadcastNewMessages(preTurnCount, sd);
+                // Check if ambient narration is enabled in the profile
+                const enableAmbientNarration = currentState.interactionData?.Profile?.enableAmbientNarration ?? false;
+                
+                if (enableAmbientNarration) {
+                    const ad = await generateAmbientNarration(ud, ctrl.signal);
+                    const sd = ad || ud;
+                    await saveRawInteractionData(sd);
+                    setInteractionData(sd);
+                    broadcastNewMessages(preTurnCount, sd);
+                } else {
+                    // Ambient narration disabled, just save the current state
+                    await saveRawInteractionData(ud);
+                    setInteractionData(ud);
+                    broadcastNewMessages(preTurnCount, ud);
+                }
             }
         } catch (e) {
             if ((e as Error).name !== 'AbortError') {
@@ -595,11 +615,21 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                     ui.playVoice(lm.textContent, lm.character);
                 }
             } else {
-                const ad = await generateAmbientNarration(ud, ctrl.signal);
-                const sd = ad || ud;
-                await saveRawInteractionData(sd);
-                setInteractionData(sd);
-                broadcastNewMessages(preTurnCount, sd);
+                // Check if ambient narration is enabled in the profile
+                const enableAmbientNarration = currentState.interactionData?.Profile?.enableAmbientNarration ?? false;
+                
+                if (enableAmbientNarration) {
+                    const ad = await generateAmbientNarration(ud, ctrl.signal);
+                    const sd = ad || ud;
+                    await saveRawInteractionData(sd);
+                    setInteractionData(sd);
+                    broadcastNewMessages(preTurnCount, sd);
+                } else {
+                    // Ambient narration disabled, just save the current state
+                    await saveRawInteractionData(ud);
+                    setInteractionData(ud);
+                    broadcastNewMessages(preTurnCount, ud);
+                }
             }
         } catch (e) {
             if ((e as Error).name !== 'AbortError') {
@@ -864,9 +894,21 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
                 const lm = processed.interactionHistory[processed.interactionHistory.length - 1];
                 if (lm && lm.messageType === 'chat' && !protagonistIds.has(lm.character.id)) ui.playVoice(lm.textContent, lm.character);
             } else {
-                const ad = await generateAmbientNarration(ud, ctrl.signal);
-                const sd = ad || ud; await saveRawInteractionData(sd); setInteractionData(sd);
-                broadcastNewMessages(preCount, sd);
+                // Check if ambient narration is enabled in the profile
+                const enableAmbientNarration = currentState.interactionData?.Profile?.enableAmbientNarration ?? false;
+                
+                if (enableAmbientNarration) {
+                    const ad = await generateAmbientNarration(ud, ctrl.signal);
+                    const sd = ad || ud;
+                    await saveRawInteractionData(sd);
+                    setInteractionData(sd);
+                    broadcastNewMessages(preCount, sd);
+                } else {
+                    // Ambient narration disabled, just save the current state
+                    await saveRawInteractionData(ud);
+                    setInteractionData(ud);
+                    broadcastNewMessages(preCount, ud);
+                }
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Regen failed:', e); addToast(`Regen error: ${(e as Error).message}`, 'error'); } }
         finally {

@@ -223,6 +223,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "autonomousInteractionIntervalMs": "number (1000-60000, default 10000)",
     "volume": "number (-1 to 1, default -1 means per-track default)",
     "forceNameReveal": "boolean (default false)",
+    "enableAmbientNarration": "boolean (default false). When true and no character responds, generates environmental/atmospheric narration to fill silence.",
     "toolUsageDisplayMode": "'none' | 'icon' | 'simple' | 'detailed' | 'full' | 'raw' (default 'none'). Controls how tool invocations appear in chat output.",
     "enableCharacterExpression": "boolean (default false)",
     "randomizeTextCharacterInjection": "boolean (default false, master toggle for text character injection across all characters)",

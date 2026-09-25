@@ -288,8 +288,9 @@ export function ModelEditorModal({
                     setCacheHitCostPerMillion(0);
                     setCacheMissCostPerMillion(0);
                     setOutputGenerationCostPerMillion(0);
-                    setChatTemplate('');
-                    setInstructionTemplate('');
+                    // Default to 'auto' for newly created models so templates are auto-detected from the model name
+                    setChatTemplate('auto');
+                    setInstructionTemplate('auto');
                     setSettings({ ...DEFAULT_SETTINGS });
                     setSelectedStopPatternIds([]);
                 }
