@@ -1633,11 +1633,11 @@ MODE: CINEMATIC (Centered Avatar View)
 MODE: VISUAL NOVEL (Sprite Stage View)
 ============================================================================= */
 .vn-stage-container {
-    position: absolute;
+    position: fixed;  /* Changed from absolute to fixed */
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
+    width: 100vw;  /* Changed from 100% to 100vw */
+    height: 100vh;  /* Changed from 100% to 100vh */
     overflow: hidden;
     pointer-events: none;
     display: flex;
@@ -2111,19 +2111,21 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 }
 
 .mode-vn .input-wrapper {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    background: rgba(10, 10, 20, 0.8);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)) 12px;
-    max-width: 100%;
-    margin: 0 auto;
-    box-sizing: border-box;
+    position: fixed !important;
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 100 !important;
+    background: rgba(10, 10, 20, 0.8) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)) 12px !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
 }
 
 .mode-vn .chat-input {

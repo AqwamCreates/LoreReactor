@@ -8,10 +8,6 @@ import type { FormatCategory } from '../../utilities/textReformatter';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 
-// =============================================================================
-// TEXT REFORMAT SYSTEM (unchanged - keep your existing functions)
-// =============================================================================
-
 interface DetectedSegment { start: number; end: number; category: FormatCategory; innerText: string; rawMatch: string; }
 interface CategoryConversion { detected: FormatCategory; label: string; target: FormatCategory; count: number; }
 

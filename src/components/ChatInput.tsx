@@ -161,6 +161,10 @@ const COMMAND_TREE: SlashCmd[] = [
             { name: 'character', type: 'character', desc: 'Character (all if omitted)', optional: true }
         ]},
     ]},
+    { name: 'whisper', desc: 'Send a private message', args: [
+        { name: 'targets', type: 'character', desc: 'Target character(s), comma-separated', example: 'char1,char2' },
+        { name: 'text', type: 'text', desc: 'Whisper content', example: 'Meet me at' }
+    ]},
     { name: 'think', desc: 'Reasoning step', args: [{ name: 'reasoning', type: 'text', desc: 'Your thought process', example: 'Should I trust this stranger?' }] },
     { name: 'narrate', desc: 'Inject narration', args: [{ name: 'text', type: 'text', desc: 'Narration text', example: 'The wind howls through the trees.' }] },
     { name: 'web', desc: 'Search or fetch', args: [{ name: 'query', type: 'text', desc: 'Search query or URL', example: 'medieval sword types' }] },
@@ -225,7 +229,6 @@ function getEntityOptions(
     if (!data) return [];
     
     if (type === 'location') {
-        // Use allLocs for the full library list
         const currentLocIndex = [...data.interactionHistory].reverse().find(m => m.locationIndex !== undefined)?.locationIndex;
         const sessionLocs = data.locations || [];
         const currentLoc = currentLocIndex !== undefined ? sessionLocs[currentLocIndex] : null;
@@ -456,10 +459,17 @@ export function ChatInput({
                         allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
                         allProfiles, allWorlds, allMemories, localProtagonist
                     );
+                    
+                    let queryForFilter = effectiveQuery;
+                    if (effectiveQuery.includes(',')) {
+                        const lastComma = effectiveQuery.lastIndexOf(',');
+                        queryForFilter = effectiveQuery.substring(lastComma + 1).trim();
+                    }
+
                     const filtered = entities.filter(e => 
-                        e.label.toLowerCase().includes(effectiveQuery) || 
-                        e.id.toLowerCase().includes(effectiveQuery) ||
-                        (e.extra && e.extra.toLowerCase().includes(effectiveQuery))
+                        e.label.toLowerCase().includes(queryForFilter.toLowerCase()) || 
+                        e.id.toLowerCase().includes(queryForFilter.toLowerCase()) ||
+                        (e.extra && e.extra.toLowerCase().includes(queryForFilter.toLowerCase()))
                     );
                     return {
                         breadcrumbs: [cmd.name, `${arg.name} (${filtered.length}/${entities.length})`],
@@ -508,10 +518,17 @@ export function ChatInput({
                     allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
                     allProfiles, allWorlds, allMemories, localProtagonist
                 );
+
+                let queryForFilter = effectiveQuery;
+                if (effectiveQuery.includes(',')) {
+                    const lastComma = effectiveQuery.lastIndexOf(',');
+                    queryForFilter = effectiveQuery.substring(lastComma + 1).trim();
+                }
+
                 const filtered = entities.filter(e => 
-                    e.label.toLowerCase().includes(effectiveQuery) || 
-                    e.id.toLowerCase().includes(effectiveQuery) ||
-                    (e.extra && e.extra.toLowerCase().includes(effectiveQuery))
+                    e.label.toLowerCase().includes(queryForFilter.toLowerCase()) || 
+                    e.id.toLowerCase().includes(queryForFilter.toLowerCase()) ||
+                    (e.extra && e.extra.toLowerCase().includes(queryForFilter.toLowerCase()))
                 );
                 return {
                     breadcrumbs: [...breadcrumbTrail, `${arg.name} (${filtered.length}/${entities.length}${arg.optional ? ', optional' : ''})`],
@@ -550,13 +567,44 @@ export function ChatInput({
         const afterSlash = rawText.slice(1);
         const currentParts = afterSlash.split(/\s+/).filter(p => p.length > 0);
         
-        if (isTypingNewToken || activeIndex >= currentParts.length) {
-            currentParts.push(opt.value);
-        } else {
-            currentParts[activeIndex] = opt.value;
+        let newValue = opt.value;
+        let isTargetsArg = false;
+
+        if (!isTypingNewToken && activeIndex < currentParts.length) {
+            const currentPart = currentParts[activeIndex];
+            const lastComma = currentPart.lastIndexOf(',');
+            if (lastComma !== -1) {
+                newValue = currentPart.substring(0, lastComma + 1) + opt.value;
+            }
         }
         
-        setInputText('/' + currentParts.join(' ') + ' ');
+        const cmd = COMMAND_TREE.find(c => c.name === currentParts[0]);
+        if (cmd) {
+            const pastCommand = isTypingNewToken || activeIndex > 0;
+            const effectiveIndex = pastCommand ? activeIndex : 1;
+            const sub = cmd.subs ? cmd.subs.find(s => s.name === currentParts[1]) : undefined;
+            const args = sub ? sub.args : cmd.args;
+            const argOffset = sub ? 2 : 1;
+            const argIndex = effectiveIndex - argOffset;
+            if (args && argIndex >= 0 && argIndex < args.length) {
+                if (args[argIndex].name === 'targets') {
+                    isTargetsArg = true;
+                }
+            }
+        }
+
+        if (isTargetsArg) {
+            newValue += ',';
+        }
+
+        if (isTypingNewToken || activeIndex >= currentParts.length) {
+            currentParts.push(newValue);
+        } else {
+            currentParts[activeIndex] = newValue;
+        }
+        
+        const trailingSpace = isTargetsArg ? '' : ' ';
+        setInputText('/' + currentParts.join(' ') + trailingSpace);
         textareaRef.current?.focus();
     };
 
