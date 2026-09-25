@@ -405,15 +405,31 @@ export interface RawAccount extends RawData {
 
 }
 
+export interface MultiplayerDataAccountConfiguration {
+
+  isWhitelisted: boolean; // If not whitelisted, it must go through the pendingAccountIds for joining again.
+  isBlacklisted: boolean;
+  isAdministrator: boolean;
+
+  canUseJoinerCharacterId: boolean;
+  canUseHosterCharacterId: boolean;
+  joinerCharacterIdRequiresHosterApproval: boolean;
+  hosterCharacterIdRequiresHosterApproval: boolean;
+
+  whitelistedCharacterIds: string[];
+  blacklistedCharacterIds: string[];
+  pendingCharacterIds: string[];
+
+  activeCharacterId?: string; // Currently active Id that is chosen by the joiner.
+
+}
+
 export interface MultiplayerData extends ObjectData {
 
   password: string // Password - invite only. No password - accessible for all.
   interactionDataIds: string[]
-  whiteListedAccountIds: string[] // Hoster automatically accepts this user to join.
-  blacklistedAccountIds: string[] // Hoster automatically blocks this user from joining.
+  multiplayerDataAccountConfigurations: Record<string, MultiplayerDataAccountConfiguration> // Account Id -> MultiplayerDataAccountConfiguration
   pendingAccountIds: string[] // Received the join request, and is waiting for the hoster's decision.
-  administratorAccountIds: string[]
-  accountIdCharacterIds: Record<string, string[]> // Each account id can map to several character Ids.
 
 }
 
@@ -421,11 +437,8 @@ export interface RawMultiplayerData extends RawData {
 
   password: string // Password - invite only. No password - accessible for all.
   interactionDataIds: string[]
-  whiteListedAccountIds: string[] // Hoster automatically accepts this user to join.
-  blacklistedAccountIds: string[] // Hoster automatically blocks this user from joining.
+  multiplayerDataAccountConfigurations: Record<string, MultiplayerDataAccountConfiguration> // Account Id -> MultiplayerDataAccountConfiguration
   pendingAccountIds: string[] // Received the join request, and is waiting for the hoster's decision.
-  administratorAccountIds: string[]
-  accountIdCharacterIds: Record<string, string[]> // Each account id can map to several character Ids.
 
 }
 

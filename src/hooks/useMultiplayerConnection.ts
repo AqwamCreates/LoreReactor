@@ -1,7 +1,7 @@
 // src/hooks/useMultiplayerConnection.ts
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Peer, { type DataConnection } from 'peerjs';
-import type { MultiplayerData, InteractionData, HistoryMessage } from '../types';
+import type { MultiplayerData, InteractionData, HistoryMessage, Character, Context, Location, AudioTrack, Profile } from '../types';
 
 // ─── Message Protocol ──────────────────────────────────────────────
 
@@ -12,6 +12,7 @@ type MessageType =
     | 'chat_message'
     | 'join_request'
     | 'join_response'
+    | 'join_pending'
     | 'state_sync'
     | 'leave';
 
@@ -32,15 +33,26 @@ interface ChatMessagePayload {
 interface JoinRequestPayload {
     accountId: string;
     password?: string;
+    requestedCharacterId?: string;
+    requestedCharacterData?: Character;
 }
 
 interface JoinResponsePayload {
     accepted: boolean;
     reason?: string;
     initialState?: {
-        interactionHistory: HistoryMessage[];
-        protagonistIds: string[];
+        protagonists: Character[];
+        participants: Character[];
+        contexts: Context[];
+        locations: Location[];
+        audioTracks: AudioTrack[];
+        Profile?: Profile;
     };
+    assignedCharacter?: Character;
+}
+
+interface JoinPendingPayload {
+    message?: string;
 }
 
 interface StateSyncPayload {
@@ -77,9 +89,12 @@ interface UseMultiplayerConnectionOptions {
     currentAccountId: string | null;
     isHost: boolean;
     joinPassword?: string;
+    joinRequestedCharacterId?: string | null;
+    joinRequestedCharacterData?: Character | null;
     onReceiveMessage: (msg: MultiplayerMessage) => void;
     onPeerConnected: (accountId: string) => void;
     onPeerDisconnected: (accountId: string) => void;
+    onConnectionFailed?: () => void;
 }
 
 export function useMultiplayerConnection({
@@ -88,9 +103,12 @@ export function useMultiplayerConnection({
     currentAccountId,
     isHost,
     joinPassword,
+    joinRequestedCharacterId,
+    joinRequestedCharacterData,
     onReceiveMessage,
     onPeerConnected,
     onPeerDisconnected,
+    onConnectionFailed,
 }: UseMultiplayerConnectionOptions) {
     const [isConnected, setIsConnected] = useState(false);
     const [connectedPeers, setConnectedPeers] = useState<string[]>([]);
@@ -101,40 +119,41 @@ export function useMultiplayerConnection({
     const onReceiveMessageRef = useRef(onReceiveMessage);
     const onPeerConnectedRef = useRef(onPeerConnected);
     const onPeerDisconnectedRef = useRef(onPeerDisconnected);
+    const onConnectionFailedRef = useRef(onConnectionFailed);
     const isHostRef = useRef(isHost);
     const currentAccountIdRef = useRef(currentAccountId);
     const joinPasswordRef = useRef(joinPassword);
+    const joinRequestedCharacterIdRef = useRef(joinRequestedCharacterId);
+    const joinRequestedCharacterDataRef = useRef(joinRequestedCharacterData);
 
     useEffect(() => { onReceiveMessageRef.current = onReceiveMessage; }, [onReceiveMessage]);
     useEffect(() => { onPeerConnectedRef.current = onPeerConnected; }, [onPeerConnected]);
     useEffect(() => { onPeerDisconnectedRef.current = onPeerDisconnected; }, [onPeerDisconnected]);
+    useEffect(() => { onConnectionFailedRef.current = onConnectionFailed; }, [onConnectionFailed]);
     useEffect(() => { isHostRef.current = isHost; }, [isHost]);
     useEffect(() => { currentAccountIdRef.current = currentAccountId; }, [currentAccountId]);
     useEffect(() => { joinPasswordRef.current = joinPassword; }, [joinPassword]);
+    useEffect(() => { joinRequestedCharacterIdRef.current = joinRequestedCharacterId; }, [joinRequestedCharacterId]);
+    useEffect(() => { joinRequestedCharacterDataRef.current = joinRequestedCharacterData; }, [joinRequestedCharacterData]);
 
-    // peerId and hostPeerId are string primitives derived from interactionData.id.
-    // They only change when the chat session ID changes — which is exactly when
-    // we need to tear down and recreate the PeerJS connection.
-    const peerId = multiplayerData && interactionData
+    const effectiveChatId = interactionData?.id;
+
+    const peerId = effectiveChatId
         ? (isHost
-            ? buildHostPeerId(interactionData.id)
+            ? (multiplayerData ? buildHostPeerId(effectiveChatId) : null)
             : currentAccountId
-                ? buildPeerId(interactionData.id, currentAccountId)
+                ? buildPeerId(effectiveChatId, currentAccountId)
                 : null)
         : null;
 
-    const hostPeerId = multiplayerData && interactionData && !isHost
-        ? buildHostPeerId(interactionData.id)
+    const hostPeerId = effectiveChatId && !isHost
+        ? buildHostPeerId(effectiveChatId)
         : null;
 
-    // Initialize PeerJS connection.
-    // IMPORTANT: Do NOT include interactionData in the dependency array.
-    // interactionData changes on every synced message (setInteractionData),
-    // which would destroy and recreate the peer in an infinite loop.
-    // peerId/hostPeerId already encode interactionData.id, so the effect
-    // correctly re-runs only when the chat session ID changes.
     useEffect(() => {
-        if (!peerId || !multiplayerData) return;
+        if (!peerId) {
+            return;
+        }
 
         let destroyed = false;
         const localConnections = new Map<string, DataConnection>();
@@ -151,7 +170,6 @@ export function useMultiplayerConnection({
                 setIsConnected(true);
                 onPeerConnectedRef.current(remoteAccountId);
 
-                // If we're a client connecting to host, send join request
                 const localAcctId = currentAccountIdRef.current;
                 if (localAcctId && !isHostRef.current) {
                     const sanitizedLocalAcctId = localAcctId.replace(/[^A-Za-z0-9]/g, '');
@@ -163,6 +181,8 @@ export function useMultiplayerConnection({
                         payload: {
                             accountId: sanitizedLocalAcctId,
                             password: joinPasswordRef.current,
+                            requestedCharacterId: joinRequestedCharacterIdRef.current ?? undefined,
+                            requestedCharacterData: joinRequestedCharacterDataRef.current ?? undefined,
                         } satisfies JoinRequestPayload,
                     };
                     conn.send(joinMsg);
@@ -189,62 +209,54 @@ export function useMultiplayerConnection({
                 }
             });
 
-            conn.on('error', (err) => {
-                console.error('[MP] DataConnection error:', err);
+            conn.on('error', () => {
+                console.error('[MP] DataConnection error');
             });
         };
 
-        const peer = new Peer(peerId, {
-            debug: 1,
-        });
+        const peerConfig: Record<string, unknown> = { debug: 1 };
+        if (import.meta.env.VITE_PEERJS_HOST) peerConfig.host = import.meta.env.VITE_PEERJS_HOST;
+        if (import.meta.env.VITE_PEERJS_PORT) peerConfig.port = parseInt(import.meta.env.VITE_PEERJS_PORT, 10);
+        if (import.meta.env.VITE_PEERJS_SECURE !== undefined && import.meta.env.VITE_PEERJS_SECURE !== '') peerConfig.secure = import.meta.env.VITE_PEERJS_SECURE === 'true';
+        if (import.meta.env.VITE_PEERJS_PATH) peerConfig.path = import.meta.env.VITE_PEERJS_PATH;
 
+        const peer = new Peer(peerId, peerConfig);
         peerRef.current = peer;
 
-        peer.on('open', (id) => {
+        peer.on('open', () => {
             if (destroyed) return;
-            console.log(`[MP] Registered as peer: ${id} (isHost: ${isHostRef.current})`);
             setConnectionError(null);
-
             if (!isHostRef.current && hostPeerId) {
                 let retries = 0;
                 const maxRetries = 15;
-                const retryDelayMs = 2000;
+                let retryDelayMs = 1000;
 
                 const tryConnect = () => {
                     if (destroyed) return;
-                    console.log('[MP] Attempting to connect to host:', hostPeerId);
                     const conn = peer.connect(hostPeerId, { reliable: true });
-
-                    // Register all handlers BEFORE the connection opens.
-                    // setupConnection internally registers conn.on('open') which
-                    // handles the join request send.
                     setupConnection(conn);
-
-                    conn.on('error', (err) => {
-                        console.error('[MP] Connection attempt error:', err);
+                    conn.on('error', () => {
                         retries++;
                         if (retries < maxRetries && !destroyed) {
-                            console.warn(`[MP] Failed to connect to host, retry ${retries}/${maxRetries}...`);
+                            retryDelayMs = Math.min(retryDelayMs * 2, 30000);
                             setTimeout(tryConnect, retryDelayMs);
                         } else if (!destroyed) {
                             setConnectionError('Could not connect to host after multiple attempts');
+                            onConnectionFailedRef.current?.();
                         }
                     });
                 };
-
-                tryConnect();
+                setTimeout(tryConnect, 500);
             }
         });
 
         peer.on('connection', (conn) => {
             if (destroyed) return;
-            console.log('[MP] Incoming connection from:', conn.peer);
             setupConnection(conn);
         });
 
         peer.on('error', (err) => {
             if (destroyed) return;
-            console.error('PeerJS error:', err);
             setConnectionError(err.message);
             setIsConnected(false);
         });
@@ -256,9 +268,7 @@ export function useMultiplayerConnection({
 
         return () => {
             destroyed = true;
-            for (const [, conn] of localConnections) {
-                conn.close();
-            }
+            for (const [, conn] of localConnections) conn.close();
             localConnections.clear();
             connectionsRef.current = new Map();
             peer.destroy();
@@ -272,67 +282,30 @@ export function useMultiplayerConnection({
         const acctId = currentAccountIdRef.current;
         if (!acctId) return;
         const sanitizedAcctId = acctId.replace(/[^A-Za-z0-9]/g, '');
-        const fullMsg: MultiplayerMessage = {
-            ...msg,
-            senderAccountId: sanitizedAcctId,
-            timestamp: Date.now(),
-        };
+        const fullMsg: MultiplayerMessage = { ...msg, senderAccountId: sanitizedAcctId, timestamp: Date.now() };
         for (const [, conn] of connectionsRef.current) {
-            try {
-                conn.send(fullMsg);
-            } catch (e) {
-                console.warn('Failed to send to peer:', e);
-            }
+            try { conn.send(fullMsg); } catch (e) { console.warn('Failed to send to peer:', e); }
         }
     }, []);
 
     const sendTo = useCallback((accountId: string, msg: Omit<MultiplayerMessage, 'senderAccountId' | 'timestamp'>) => {
         const acctId = currentAccountIdRef.current;
         if (!acctId) return;
-
-        let conn = connectionsRef.current.get(accountId);
-        if (!conn) {
-            const sanitizedTargetId = accountId.replace(/[^A-Za-z0-9]/g, '');
-            conn = connectionsRef.current.get(sanitizedTargetId);
-        }
-        if (!conn) {
-            console.warn(`[MP] sendTo: No connection found for ${accountId}`);
-            return;
-        }
-
+        let conn = connectionsRef.current.get(accountId) || connectionsRef.current.get(accountId.replace(/[^A-Za-z0-9]/g, ''));
+        if (!conn) return;
         const sanitizedAcctId = acctId.replace(/[^A-Za-z0-9]/g, '');
-        const fullMsg: MultiplayerMessage = {
-            ...msg,
-            senderAccountId: sanitizedAcctId,
-            timestamp: Date.now(),
-        };
-        try {
-            conn.send(fullMsg);
-        } catch (e) {
-            console.warn(`Failed to send to ${accountId}:`, e);
-        }
+        const fullMsg: MultiplayerMessage = { ...msg, senderAccountId: sanitizedAcctId, timestamp: Date.now() };
+        try { conn.send(fullMsg); } catch (e) { console.warn(`Failed to send to ${accountId}:`, e); }
     }, []);
 
     const disconnect = useCallback(() => {
-        if (peerRef.current) {
-            peerRef.current.destroy();
-            peerRef.current = null;
-        }
+        if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
         connectionsRef.current.clear();
         setIsConnected(false);
         setConnectedPeers([]);
     }, []);
 
-    return {
-        isConnected,
-        connectedPeers,
-        connectionError,
-        broadcast,
-        sendTo,
-        disconnect,
-        peerId,
-        hostPeerId,
-    };
+    return { isConnected, connectedPeers, connectionError, broadcast, sendTo, disconnect, peerId, hostPeerId };
 }
 
-export type { MultiplayerMessage, ChatMessagePayload, JoinRequestPayload, JoinResponsePayload, StateSyncPayload, MessageType };
+export type { MultiplayerMessage, ChatMessagePayload, JoinRequestPayload, JoinResponsePayload, JoinPendingPayload, StateSyncPayload, MessageType };

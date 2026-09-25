@@ -425,7 +425,7 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
     const [spriteStates, setSpriteStates] = useState<Map<string, VisualNovelSpriteState>>(new Map());
     const [isInitialLoad, setIsInitialLoad] = useState(true);
     const [jumpingCharacterIds, setJumpingCharacterIds] = useState<Set<string>>(new Set());
-    const [parseVersion, setParseVersion] = useState(0);
+    const [_parseVersion, setParseVersion] = useState(0);
 
     const movementHistoryRef = useRef<VisualNovelMovementEntry[]>([]);
     const lastParsedIndexRef = useRef<number>(-1);

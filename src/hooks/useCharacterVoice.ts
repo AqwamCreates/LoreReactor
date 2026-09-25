@@ -1,20 +1,15 @@
 // src/hooks/useCharacterVoice.ts
 import { useCallback, useRef } from 'react';
 import type { Character, textType } from '../types';
-import { getCharacterVoiceUrl } from '../storage/serverStorage';
+import { getCharacterVoiceUrl, getMultiplayerCharacterVoiceUrl } from '../storage/serverStorage';
 import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
 import { localAddress } from '../configurations';
 import { useSessionStore } from './useSessionStore';
 
 const textToSpeechModelEngine = new TextToSpeechModelEngine();
 
-/**
- * Extracts text segments by format type from RP-formatted text.
- * Each extractor returns an array of cleaned (unformatted) strings.
- */
 const TEXT_EXTRACTORS: Record<textType, (text: string) => string[]> = {
     normal: (text) => {
-        // Remove quoted, bolded, italicized, parenthesized, bracketed, braced content
         const stripped = text
             .replace(/"[^"]*"|'[^']*'/g, '')
             .replace(/\*\*[^*]+\*\*/g, '')
@@ -55,6 +50,12 @@ export function useCharacterVoice() {
     const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
     const ttsServerUrl = `${localAddress}:7860`;
 
+    // Derive the multiplayer context variable directly from the store and localStorage
+    const isMultiplayerClient = !!localStorage.getItem('loreReactor_joinSessionId');
+    const multiplayerData = useSessionStore(s => s.multiplayerData);
+    const interactionDataId = useSessionStore(s => s.interactionData?.id ?? null);
+    const isMultiplayerChat = isMultiplayerClient || !!(multiplayerData && interactionDataId && multiplayerData.interactionDataIds.includes(interactionDataId));
+
     const speakMessage = useCallback((text: string, character: Character) => {
         if (!character.voice) return;
         const profile = useSessionStore.getState().interactionData?.Profile;
@@ -78,7 +79,8 @@ export function useCharacterVoice() {
                 const context: TextToSpeedLanguageModelContext = { serverUrl: ttsServerUrl || undefined, backend: 'Qwen3-TTS' };
                 const label = character.id;
                 if (!uploadedTtsVoicesRef.current.has(label)) {
-                    const url = getCharacterVoiceUrl(label, character.voice);
+                    // YOUR EXACT LOGIC: Try main folder, fallback to multiplayer folder if session is multiplayer
+                    const url = getCharacterVoiceUrl(label, character.voice) || (isMultiplayerChat ? getMultiplayerCharacterVoiceUrl(label, character.voice) : null);
                     if (!url) return;
                     const response = await fetch(url);
                     if (!response.ok) return;
@@ -99,7 +101,7 @@ export function useCharacterVoice() {
                 console.warn('TTS speak failed:', e);
             }
         })();
-    }, [ttsServerUrl]);
+    }, [ttsServerUrl, isMultiplayerChat]);
 
     return { speakMessage };
 }

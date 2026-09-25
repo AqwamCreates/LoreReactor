@@ -20,6 +20,8 @@ interface UseChatRestorationOptions {
     setCurrentCharacter: (char: Character | null) => void;
     setSelectedModelId: (id: string | null) => void;
     startNewChat: (char: Character) => void;
+    /** Skip active chat loading (e.g., when joiner has persisted join state) */
+    skipRestoration?: boolean;
 }
 
 function createEmptyChat(): InteractionData {
@@ -45,6 +47,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading,
         allCharacters, rawChatShells, loadFullCharacter,
         setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat,
+        skipRestoration = false,
     } = options;
 
     const [activeChatRestored, setActiveChatRestored] = useState(false);
@@ -55,7 +58,6 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         if (charsLoading || chatsLoading || contextsLoading || locationsLoading || profilesLoading) return;
         restorationDoneRef.current = true;
 
-        const savedChatId = localStorage.getItem(STORAGE_KEY_ACTIVE_CHAT);
         const savedModelId = localStorage.getItem(STORAGE_KEY_SELECTED_MODEL);
 
         if (savedModelId) {
@@ -65,7 +67,6 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         const activateChat = async (chat: InteractionData) => {
             let fullChat = chat;
 
-            // Reload full message history if the shell has messages but empty history
             if (!fullChat.interactionHistory.length && (fullChat.numberOfMessages ?? 0) > 0) {
                 try {
                     const reloaded = await loadRawInteractionData(fullChat.id, allCharacters);
@@ -75,7 +76,6 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                 }
             }
 
-            // Hydrate all protagonists with full character data
             const hydratedProtagonists = await Promise.all(
                 fullChat.protagonists.map(async (p) => {
                     const freshProtag = allCharacters.find(c => c.id === p.id);
@@ -88,7 +88,6 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                 })
             );
 
-            // Hydrate all participants with full character data
             const hydratedParticipants = await Promise.all(
                 fullChat.participants.map(async (p) => {
                     const exists = allCharacters.some(c => c.id === p.id);
@@ -110,7 +109,6 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
 
             setInteractionData(hydratedChat);
 
-            // Set current character to the first protagonist, or first participant, or null
             if (hydratedProtagonists.length > 0) {
                 setCurrentCharacter(hydratedProtagonists[0]);
             } else if (hydratedParticipants.length > 0) {
@@ -122,12 +120,23 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
 
         const restore = async () => {
             try {
+                // If skipRestoration is true (joiner with persisted join state),
+                // create an empty chat and wait for the host to send initial state
+                if (skipRestoration) {
+                    console.log('[Restoration] Skipping active chat restoration (joiner mode)');
+                    setInteractionData(createEmptyChat());
+                    setActiveChatRestored(true);
+                    return;
+                }
+
+                const savedChatId = localStorage.getItem(STORAGE_KEY_ACTIVE_CHAT);
+
                 if (!savedChatId) {
                     if (rawChatShells.length > 0) {
                         const firstChatId = rawChatShells[0].id;
                         if (firstChatId) {
                             const loaded = await loadRawInteractionData(firstChatId, allCharacters);
-                            if (loaded) { await activateChat(loaded); return; }
+                            if (loaded) { await activateChat(loaded); setActiveChatRestored(true); return; }
                         }
                     }
                     if (allCharacters.length > 0) {
@@ -136,6 +145,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                         setCurrentCharacter(null);
                         setInteractionData(createEmptyChat());
                     }
+                    setActiveChatRestored(true);
                     return;
                 }
 
@@ -149,7 +159,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                         const firstChatId = rawChatShells[0].id;
                         if (firstChatId) {
                             const loaded = await loadRawInteractionData(firstChatId, allCharacters);
-                            if (loaded) { await activateChat(loaded); return; }
+                            if (loaded) { await activateChat(loaded); setActiveChatRestored(true); return; }
                         }
                     }
                     if (allCharacters.length > 0) { startNewChat(allCharacters[0]); }
@@ -165,7 +175,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                     const firstChatId = rawChatShells[0].id;
                     if (firstChatId) {
                         const loaded = await loadRawInteractionData(firstChatId, allCharacters);
-                        if (loaded) { await activateChat(loaded); return; }
+                        if (loaded) { await activateChat(loaded); setActiveChatRestored(true); return; }
                     }
                 }
                 if (allCharacters.length > 0) { startNewChat(allCharacters[0]); }
@@ -179,7 +189,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         };
 
         restore();
-    }, [charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading, allCharacters, rawChatShells, loadFullCharacter, setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat]);
+    }, [charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading, allCharacters, rawChatShells, loadFullCharacter, setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat, skipRestoration]);
 
     return { activeChatRestored };
 }

@@ -64,6 +64,9 @@ const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
 const STORAGE_KEY_BUDGET_STRATEGY = 'loreReactor_selectedBudgetStrategyId';
 const STORAGE_KEY_DEFAULT_CHARACTER = 'loreReactor_defaultCharacterId';
 const STORAGE_KEY_SELECTED_MODEL = 'loreReactor_selectedModelId';
+const STORAGE_KEY_JOIN_SESSION_ID = 'loreReactor_joinSessionId';
+const STORAGE_KEY_JOIN_PASSWORD = 'loreReactor_joinPassword';
+const STORAGE_KEY_JOIN_PROTAGONIST = 'loreReactor_joinProtagonist';
 const MIN_LOADING_SCREEN_MS = 900;
 
 interface LoadStep { id: string; label: string; icon: string; done: boolean }
@@ -100,12 +103,20 @@ function deriveCurrentProtagonist(
     if (!multiplayerData || !currentAccountId) {
         return interactionData.protagonists[0] ?? null;
     }
-    const myCharIds = multiplayerData.accountIdCharacterIds?.[currentAccountId];
-    if (myCharIds?.length) {
-        const found = interactionData.protagonists.find(p => myCharIds.includes(p.id));
+    const myCharIds = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.activeCharacterId;
+    if (myCharIds) {
+        const found = interactionData.protagonists.find(p => p.id === myCharIds) || interactionData.participants.find(p => p.id === myCharIds);
         if (found) return found;
     }
     return interactionData.protagonists[0] ?? null;
+}
+
+function clearJoinState() {
+    localStorage.removeItem(STORAGE_KEY_JOIN_SESSION_ID);
+    localStorage.removeItem(STORAGE_KEY_JOIN_PASSWORD);
+    localStorage.removeItem(STORAGE_KEY_JOIN_PROTAGONIST);
+    localStorage.removeItem('loreReactor_joinCharId');
+    localStorage.removeItem('loreReactor_joinCharData');
 }
 
 function App() {
@@ -138,47 +149,122 @@ function App() {
         broadcastMessageRef.current?.(message);
     }, []);
 
-    // ─── Session Hook ────────────────────────────────────────────────
-    const session = useChatSession(allCharacters, { onMessageBroadcast });
-    const {
-        interactionData, setInteractionData, setCurrentCharacter,
-        isLoading, streamingText, streamingCharacter, currentCharacterExpression, sendMessage, stopGeneration,
-        resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef,
-        startNewChat,
-        sendActionAndGetResponse, setActiveBudgetStrategy, setSelectedGlobalModel,
-        activeStrategy, budgetData,
-    } = session;
-
     const currentAccountId = useSessionStore(s => s.currentAccountId);
     const multiplayerData = useSessionStore(s => s.multiplayerData);
     const defaultCharacterId = useSessionStore(s => s.defaultCharacterId);
     const selectedBudgetStrategyId = useSessionStore(s => s.selectedBudgetStrategyId);
 
-    // ─── Join Session State ──────────────────────────────────────────
-    const [joinSessionId, setJoinSessionId] = useState<string | null>(null);
-    const [joinPassword, setJoinPassword] = useState<string>('');
-    const [joinProtagonist, setJoinProtagonist] = useState<Character | null>(null);
+    // ─── Join Session State (persisted to localStorage) ──────────────
+    const [joinSessionId, setJoinSessionId] = useState<string | null>(() => {
+        return localStorage.getItem(STORAGE_KEY_JOIN_SESSION_ID);
+    });
+    const [joinPassword, setJoinPassword] = useState<string>(() => {
+        return localStorage.getItem(STORAGE_KEY_JOIN_PASSWORD) || '';
+    });
+    
+    // Assigned character (result from host)
+    const [joinProtagonist, setJoinProtagonist] = useState<Character | null>(() => {
+        const stored = localStorage.getItem(STORAGE_KEY_JOIN_PROTAGONIST);
+        if (stored) {
+            try { return JSON.parse(stored); } catch { return null; }
+        }
+        return null;
+    });
 
-    const handleJoinAccepted = useCallback(() => {
-        addToast('Joined session successfully.', 'success');
-    }, [addToast]);
+    // Requested character (what we sent to host)
+    const [joinRequestedCharacterId, setJoinRequestedCharacterId] = useState<string | null>(() => localStorage.getItem('loreReactor_joinCharId'));
+    const [joinRequestedCharacterData, setJoinRequestedCharacterData] = useState<Character | null>(() => {
+        const stored = localStorage.getItem('loreReactor_joinCharData');
+        try { return stored ? JSON.parse(stored) : null; } catch { return null; }
+    });
+
+    // Determine if this client is a multiplayer joiner (should not generate locally)
+    const isMultiplayerClient = !!joinSessionId;
+
+    // ─── Session Hook ────────────────────────────────────────────────
+    const session = useChatSession(allCharacters, { onMessageBroadcast, isMultiplayerClient, joinProtagonist });
+    const {
+        interactionData, setInteractionData, setCurrentCharacter,
+        isLoading, streamingText, streamingCharacter, currentCharacterExpression, sendMessage, stopGeneration,
+        resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef,
+        startNewChat,
+        sendActionAndGetResponse, triggerHostResponse, setActiveBudgetStrategy, setSelectedGlobalModel,
+        activeStrategy, budgetData,
+    } = session;
+
+    const handleJoinAccepted = useCallback((assignedCharacter: Character) => {
+        addToast(`Joined session as ${assignedCharacter.name}.`, 'success');
+
+        if (joinSessionId) {
+            localStorage.setItem(STORAGE_KEY_JOIN_SESSION_ID, joinSessionId);
+        }
+        if (joinPassword) {
+            localStorage.setItem(STORAGE_KEY_JOIN_PASSWORD, joinPassword);
+        }
+        
+        setJoinProtagonist(assignedCharacter);
+        setCurrentCharacter(assignedCharacter);
+        localStorage.setItem(STORAGE_KEY_JOIN_PROTAGONIST, JSON.stringify(assignedCharacter));
+    }, [addToast, joinSessionId, joinPassword, setCurrentCharacter]);
 
     const handleJoinRejected = useCallback((reason: string) => {
         addToast(`Join rejected: ${reason}`, 'error');
         setJoinSessionId(null);
         setJoinPassword('');
         setJoinProtagonist(null);
+        setJoinRequestedCharacterId(null);
+        setJoinRequestedCharacterData(null);
+        clearJoinState();
     }, [addToast]);
 
-    const handleJoinSession = useCallback((sessionId: string, password: string, protagonist: Character) => {
+    const handleJoinSession = useCallback((sessionId: string, password: string, reqCharId: string | null, reqCharData: Character | null) => {
         if (!currentAccountId) {
             addToast('No account configured. Create an account first.', 'error');
             return;
         }
         setJoinSessionId(sessionId);
         setJoinPassword(password);
-        setJoinProtagonist(protagonist);
+        setJoinRequestedCharacterId(reqCharId);
+        setJoinRequestedCharacterData(reqCharData);
+
+        localStorage.setItem(STORAGE_KEY_JOIN_SESSION_ID, sessionId);
+        if (password) localStorage.setItem(STORAGE_KEY_JOIN_PASSWORD, password);
+        
+        if (reqCharId) localStorage.setItem('loreReactor_joinCharId', reqCharId);
+        else localStorage.removeItem('loreReactor_joinCharId');
+        
+        if (reqCharData) localStorage.setItem('loreReactor_joinCharData', JSON.stringify(reqCharData));
+        else localStorage.removeItem('loreReactor_joinCharData');
     }, [currentAccountId, addToast]);
+
+    const handlePeerChatMessage = useCallback((message: ChatMessage, senderAccountId: string) => {
+        if (!message?.id || message.messageType !== 'chat') return;
+
+        const localAccountId = currentAccountId
+            ? currentAccountId.replace(/[^A-Za-z0-9]/g, '')
+            : null;
+
+        if (localAccountId && senderAccountId === localAccountId) return;
+
+        const hasContent =
+            (message.textContent?.trim().length ?? 0) > 0 ||
+            (message.files?.length ?? 0) > 0 ||
+            Boolean(message.frontCameraImage);
+
+        if (!hasContent) return;
+
+        triggerHostResponse();
+    }, [currentAccountId, triggerHostResponse]);
+
+    const handleConnectionFailed = useCallback(() => {
+        addToast('Could not connect to host. Returning to local mode.', 'error');
+        setJoinSessionId(null);
+        setJoinPassword('');
+        setJoinProtagonist(null);
+        setJoinRequestedCharacterId(null);
+        setJoinRequestedCharacterData(null);
+        clearJoinState();
+    }, [addToast]);
 
     // ─── Multiplayer Sync ────────────────────────────────────────────
     const multiplayerSync = useMultiplayerSync({
@@ -189,18 +275,42 @@ function App() {
         allCharacters,
         joinSessionId,
         joinPassword,
-        joinProtagonist,
+        joinRequestedCharacterId,
+        joinRequestedCharacterData,
         onJoinAccepted: handleJoinAccepted,
         onJoinRejected: handleJoinRejected,
+        onPeerChatMessage: handlePeerChatMessage,
+        onSaveMultiplayerData: saveMultiplayerData,
+        onConnectionFailed: handleConnectionFailed,
     });
 
     useEffect(() => {
         broadcastMessageRef.current = multiplayerSync.isConnected ? multiplayerSync.broadcastMessage : undefined;
     }, [multiplayerSync.isConnected, multiplayerSync.broadcastMessage]);
 
+    // ─── Restore Joiner's Character After App Load ───────────────────
+    const { activeChatRestored } = useChatRestoration({
+        charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading,
+        allCharacters, rawChatShells, loadFullCharacter,
+        setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat,
+        skipRestoration: isMultiplayerClient,
+    });
+
+    useEffect(() => {
+        if (!activeChatRestored) return;
+        if (!isMultiplayerClient || !joinProtagonist) return;
+
+        const storeChar = useSessionStore.getState().currentCharacter;
+        if (!storeChar || storeChar.id !== joinProtagonist.id) {
+            setCurrentCharacter(joinProtagonist);
+        }
+    }, [activeChatRestored, isMultiplayerClient, joinProtagonist, setCurrentCharacter]);
+
     // ─── Disconnect On Chat Switch ──────────────────────────────────
     const previousChatIdRef = useRef<string | null | undefined>(undefined);
     useEffect(() => {
+        if (!activeChatRestored) return;
+
         const currentChatId = interactionData?.id ?? null;
         const previousChatId = previousChatIdRef.current;
 
@@ -209,14 +319,18 @@ function App() {
             setJoinSessionId(null);
             setJoinPassword('');
             setJoinProtagonist(null);
+            setJoinRequestedCharacterId(null);
+            setJoinRequestedCharacterData(null);
+            clearJoinState();
         }
 
         previousChatIdRef.current = currentChatId;
-    }, [interactionData?.id, multiplayerSync]);
+    }, [interactionData?.id, multiplayerSync, activeChatRestored]);
 
     // ─── Auto-load Multiplayer Data For Active Chat ─────────────────
     useEffect(() => {
         if (!interactionData?.id) return;
+        if (joinSessionId) return;
 
         if (multiplayerData?.interactionDataIds?.includes(interactionData.id)) return;
 
@@ -226,8 +340,8 @@ function App() {
 
         if (matchingMpData) {
             useSessionStore.setState({ multiplayerData: matchingMpData });
-        } else if (multiplayerData && !joinSessionId) {
-            useSessionStore.setState({ multiplayerData: null });
+        } else if (!multiplayerData && allMultiplayerData.length > 0) {
+            useSessionStore.setState({ multiplayerData: allMultiplayerData[0] });
         }
     }, [interactionData?.id, allMultiplayerData, multiplayerData, joinSessionId]);
 
@@ -236,7 +350,7 @@ function App() {
         [interactionData, multiplayerData, currentAccountId],
     );
 
-    const currentCharacter = localProtagonist;
+    const currentCharacter = isMultiplayerClient && joinProtagonist ? joinProtagonist : localProtagonist;
 
     const setDefaultCharacterId = useCallback((id: string | null) => {
         useSessionStore.setState({ defaultCharacterId: id });
@@ -273,12 +387,6 @@ function App() {
 
     const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
 
-    const { activeChatRestored } = useChatRestoration({
-        charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading,
-        allCharacters, rawChatShells, loadFullCharacter,
-        setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat,
-    });
-
     useEntitySync({
         activeChatRestored,
         allCharacters, allContexts, allProfiles,
@@ -286,14 +394,13 @@ function App() {
     });
 
     const isModelReady = useMemo(() => {
-        // Multiplayer clients don't need a local model — the host handles generation
-        if (multiplayerSync.isConnected && !multiplayerSync.isHost) return true;
+        if (isMultiplayerClient) return true;
         if (activeStrategy) return true;
         if (!selectedModelId) return false;
         const selectedModel = allModels.find(m => m.id === selectedModelId);
         if (selectedModel?.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend as cloudBackend)) return true;
         return runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle === true;
-    }, [selectedModelId, allModels, runningModels, activeStrategy, multiplayerSync.isConnected, multiplayerSync.isHost]);
+    }, [selectedModelId, allModels, runningModels, activeStrategy, isMultiplayerClient]);
 
     const {
         actionMenuTarget, menuSearchQuery, setMenuSearchQuery,
@@ -343,12 +450,16 @@ function App() {
         loadFullCharacter, addToast,
     });
 
+    // Derive the variable that identifies if this chat session is part of multiplayer
+    const isMultiplayerChat = isMultiplayerClient || !!(multiplayerData && interactionData?.id && multiplayerData.interactionDataIds.includes(interactionData.id));
+
     const {
         centerAvatar, lastViewedMessageIdRef, suppressAutoScrollRef,
         chatMessages, portraitUrlCache, streamingPortraitUrl, locationBackgroundUrl,
     } = useViewAssets({
         viewMode, interactionData, localProtagonist, currentCharacter,
         streamingCharacter, currentCharacterExpression, chatHistoryRef,
+        isMultiplayerChat,
     });
 
     const {
@@ -365,14 +476,14 @@ function App() {
     }, [streamingText]);
 
     const isModelLoading = useMemo(() => {
-        if (multiplayerSync.isConnected && !multiplayerSync.isHost) return false;
+        if (isMultiplayerClient) return false;
         if (!selectedModelId) return false;
         const selectedModel = allModels.find(m => m.id === selectedModelId);
         if (selectedModel?.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend as cloudBackend)) return false;
         return runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle !== true;
-    }, [selectedModelId, allModels, runningModels, multiplayerSync.isConnected, multiplayerSync.isHost]);
+    }, [selectedModelId, allModels, runningModels, isMultiplayerClient]);
 
-    const modelStatusMessage = (multiplayerSync.isConnected && !multiplayerSync.isHost)
+    const modelStatusMessage = isMultiplayerClient
         ? ''
         : (!selectedModelId ? 'No model selected — open Language Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '');
     const isMassActive = massDeleteId !== null;
@@ -442,7 +553,12 @@ function App() {
     }, [interactionData?.Profile?.enableCharacterExpression]);
 
     useEffect(() => { void selectedModelId; void runningModels; getLanguageModelEngine().clearTokenCache(); }, [selectedModelId, runningModels]);
-    useEffect(() => { if (interactionData?.id) localStorage.setItem(STORAGE_KEY_ACTIVE_CHAT, interactionData.id); }, [interactionData?.id]);
+    
+    useEffect(() => {
+        if (isMultiplayerClient) return;
+        if (interactionData?.id) localStorage.setItem(STORAGE_KEY_ACTIVE_CHAT, interactionData.id);
+    }, [interactionData?.id, isMultiplayerClient]);
+    
     useEffect(() => { if (selectedModelId) localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, selectedModelId); else localStorage.removeItem(STORAGE_KEY_SELECTED_MODEL); }, [selectedModelId]);
 
     useEffect(() => {
@@ -465,11 +581,12 @@ function App() {
     }, [selectedModelId, allModels, runningModels, setSelectedModelId]);
 
     useEffect(() => {
+        if (isMultiplayerClient) return;
         if (defaultCharacterId && allCharacters.length > 0) {
             const c = allCharacters.find(x => x.id === defaultCharacterId);
             if (c && currentCharacter?.id !== c.id) setCurrentCharacter(c);
         }
-    }, [defaultCharacterId, allCharacters, currentCharacter?.id, setCurrentCharacter]);
+    }, [defaultCharacterId, allCharacters, currentCharacter?.id, setCurrentCharacter, isMultiplayerClient]);
 
     useEffect(() => {
         if (selectedModelId && runningModels[selectedModelId]?.isRunning) {
@@ -793,7 +910,6 @@ function App() {
 
         if (isLoading && streamingText && streamingCharacter) {
             const last = base[base.length - 1];
-            // Determine if the last message in the list is currently streaming based on global state
             const isLastMessageStreaming = last?.character.id === streamingCharacter.id;
             const isNewTurn = !last || last.character.id !== streamingCharacter.id;
 
@@ -1012,6 +1128,7 @@ function App() {
                 )}
 
                 <AppModals
+                    isMultiplayerClient={isMultiplayerClient}
                     modals={modals}
                     runningModels={runningModels}
                     rawChatShells={rawChatShells}

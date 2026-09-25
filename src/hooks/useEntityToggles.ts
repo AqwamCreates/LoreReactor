@@ -46,11 +46,10 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             // No multiplayer data or no account: first protagonist
             return [interactionData.protagonists[0].id];
         }
-        const myCharIds = multiplayerData.accountIdCharacterIds?.[currentAccountId];
-        if (myCharIds?.length) {
-            return interactionData.protagonists
-                .filter(p => myCharIds.includes(p.id))
-                .map(p => p.id);
+        const myCharId = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.activeCharacterId;
+        if (myCharId) {
+            const found = interactionData.protagonists.find(p => p.id === myCharId);
+            if (found) return [found.id];
         }
         // Multiplayer but no mapping for this account: first protagonist
         return [interactionData.protagonists[0].id];
@@ -151,22 +150,29 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             updatedProtagonists.push(ch);
         }
 
-        // Update accountIdCharacterIds mapping in centralized multiplayerData
+        // Update multiplayerDataAccountConfigurations mapping in centralized multiplayerData
         let updatedMultiplayerData: MultiplayerData | undefined = multiplayerData ? { ...multiplayerData } : undefined;
         if (currentAccountId) {
             if (!updatedMultiplayerData) {
                 updatedMultiplayerData = createDefaultMultiplayerData();
             }
-            const existingIds = updatedMultiplayerData.accountIdCharacterIds?.[currentAccountId] ?? [];
-            if (!existingIds.includes(charId)) {
-                updatedMultiplayerData = {
-                    ...updatedMultiplayerData,
-                    accountIdCharacterIds: {
-                        ...(updatedMultiplayerData.accountIdCharacterIds ?? {}),
-                        [currentAccountId]: [...existingIds, charId],
-                    },
-                };
-            }
+            const existingCfg = updatedMultiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId] || {
+                isWhitelisted: true, isBlacklisted: false, isAdministrator: false,
+                canUseJoinerCharacterId: true, canUseHosterCharacterId: true,
+                joinerCharacterIdRequiresHosterApproval: false, hosterCharacterIdRequiresHosterApproval: false,
+                whitelistedCharacterIds: [], blacklistedCharacterIds: [], pendingCharacterIds: []
+            };
+            
+            updatedMultiplayerData = {
+                ...updatedMultiplayerData,
+                multiplayerDataAccountConfigurations: {
+                    ...(updatedMultiplayerData.multiplayerDataAccountConfigurations ?? {}),
+                    [currentAccountId]: {
+                        ...existingCfg,
+                        activeCharacterId: charId,
+                    }
+                },
+            };
         }
 
         // Persist updated multiplayerData to store

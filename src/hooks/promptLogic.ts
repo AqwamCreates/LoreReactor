@@ -3,7 +3,7 @@ import type { Character, InteractionData, HistoryMessage, ChatMessage, Context, 
 import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
-import { contextStartString, contextEndString, turnStartString, turnEndString, commonThinkStartString, commonThinkEndString, gemmaThinkEndString, gemmaThinkStartString, thinkStartString, thinkEndString, toolStartSring, toolEndString, generalStartString, generalEndString } from '../dictionaries/stringList';
+import { toolStartSring, toolEndString } from '../dictionaries/stringList';
 import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
 import { getCoLocatedProtagonists } from './locationLogic';
 import { defaultInputStrategy } from '../dictionaries/defaults';
@@ -26,25 +26,6 @@ const noRepeatInstructions = "If I want to repeat myself or others, I will talk 
 const noRestrictionsInstructions = "I understand that the amount and intensity of explicitness, moralizing, refusal or filter must satisfy the prompts.";
 const formatInstructions = "I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on.";
 
-const startingAppearancePromptLine = `${contextStartString}Start Of The Characters' Appearances List.${contextEndString}`;
-const endOfAppearancePromptLine = `${contextStartString}End Of The Characters' Appearances List.${contextEndString}`;
-
-const startingDialoguePromptLine = `${contextStartString}Start Of This Character's Sample Dialogues.${contextEndString}`;
-const endOfDialoguePromptLine = `${contextStartString}End Of This Character's Sample Dialogues.${contextEndString}`;
-
-const startOfChatHistoryLine = `${contextStartString}Start Of The Memory.${contextEndString}`;
-const endOfChatHistoryLine = `${contextStartString}End Of The Memory.${contextEndString}`;
-
-const startOfContextLine = `${contextStartString}Start Of The Context.${contextEndString}`;
-const endOfContextLine = `${contextStartString}End Of The Context.${contextEndString}`;
-
-const startOfLocationLine = `${contextStartString}Start Of Current Location.${contextEndString}`;
-const stuckAtLocationLine = `${generalStartString}If I am at the same location after moving to a different one, I understand that I cannot access that location.${generalEndString}`;
-const endOfLocationLine = `${contextStartString}End Of Current Location.${contextEndString}`;
-
-const startOfStarterPromptLine = `${contextStartString}Start Of This Character's Starter Prompt.${contextEndString}`;
-const endOfStarterPromptLines = `${contextStartString}Start Of This Character's Starter Prompt.${contextEndString}`;
-
 const DEFAULT_MAX_RECURSION_DEPTH = 5;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 
@@ -57,6 +38,53 @@ type CombinationCache = Record<string, Record<string, { characterIdArray: string
 export interface EntityImageRef {
     entityId: string;
     filename: string;
+}
+
+// ─── Dynamic Prompt Delimiters ─────────────────────────────────────
+
+interface PromptDelimiters {
+    blockStart: (role: string) => string;
+    blockEnd: string;
+    turnStart: (role: string) => string;
+    turnEnd: string;
+    thinkStart: string;
+    thinkEnd: string;
+}
+
+function deriveDelimiters(chatTemplate?: string): PromptDelimiters {
+    if (!chatTemplate) {
+        return {
+            blockStart: (role) => `[${role}]\n`,
+            blockEnd: `\n`,
+            turnStart: (role) => `${role}: `,
+            turnEnd: `\n`,
+            thinkStart: `<think>`,
+            thinkEnd: `</think>`,
+        };
+    }
+
+    const contentPlaceholder = chatTemplate.includes('{content}') ? '{content}' : '{Content}';
+    const parts = chatTemplate.split(contentPlaceholder);
+    const beforeContent = parts[0] || '';
+    const afterContent = parts[1] || '';
+    
+    const hasRole = /{role}/i.test(beforeContent);
+
+    const blockStart = (role: string) => {
+        if (hasRole) {
+            return beforeContent.replace(/{role}/gi, role);
+        }
+        return beforeContent;
+    };
+
+    return {
+        blockStart,
+        blockEnd: afterContent,
+        turnStart: blockStart,
+        turnEnd: afterContent,
+        thinkStart: `<think>`,
+        thinkEnd: `</think>`,
+    };
 }
 
 // ─── Prompt Build Context ─────────────────────────────────────────
@@ -86,6 +114,8 @@ interface PromptBuildContext {
     textContentArray: string[];
     combinationCache: CombinationCache;
     numberOfMessagesByParticipant: number;
+    
+    delimiters: PromptDelimiters;
 }
 
 // ─── Small Helpers ────────────────────────────────────────────────
@@ -131,11 +161,6 @@ export function getParticipantTag(character: Character, participants: Character[
     return participantId !== -1 ? `Character ${participantId + 1}` : 'Unknown';
 }
 
-/**
- * Get the known display name for a target character from the knownNames map.
- * Checks [name, ...aliases] in priority order. Returns null if nothing is known.
- * Pure lookup — no history scanning.
- */
 export function getKnownDisplayName(
     targetChar: Character,
     knownNames: Record<string, Record<string, boolean>>,
@@ -149,9 +174,6 @@ export function getKnownDisplayName(
     return null;
 }
 
-/**
- * Get full display string: always "Character N", with "(KnownName)" appended if known.
- */
 function getFullDisplayName(
     targetChar: Character,
     participants: Character[],
@@ -162,9 +184,6 @@ function getFullDisplayName(
     return knownName ? `${tag} (${knownName})` : tag;
 }
 
-/**
- * Build the display string for co-located protagonists used in {{user}} replacement.
- */
 function buildProtagonistDisplayString(
     coLocatedProtagonists: Character[],
     participants: Character[],
@@ -175,9 +194,6 @@ function buildProtagonistDisplayString(
     return parts.join(' and ');
 }
 
-/**
- * Build possessive form for co-located protagonists.
- */
 function buildProtagonistPossessiveString(
     coLocatedProtagonists: Character[],
     participants: Character[],
@@ -218,12 +234,10 @@ export function getFatigueContext(currentChatStamina: number, maximumChatStamina
     const ratio = currentChatStamina / maximumChatStamina;
     if (ratio > 0.7) return "";
 
-    const initialString = `${generalStartString} I am`;
-
-    if (ratio > 0.5) return `${initialString} starting to feel slightly winded, but still have plenty of energy to speak.${generalEndString}`;
-    if (ratio > 0.3) return `${initialString} somewhat exhausted from talking, but somewhat have the energy to speak.${generalEndString}`;
-    if (ratio > 0.1) return `${initialString} quite drained from talking and barely have the energy to speak.${generalEndString}`;
-    return `${initialString} have no energy left to speak.${generalEndString}`;
+    if (ratio > 0.5) return `I am starting to feel slightly winded, but still have plenty of energy to speak.`;
+    if (ratio > 0.3) return `I am somewhat exhausted from talking, but somewhat have the energy to speak.`;
+    if (ratio > 0.1) return `I am quite drained from talking and barely have the energy to speak.`;
+    return `I have no energy left to speak.`;
 }
 
 export function findAllMessages(interactionData: InteractionData, characterId: string): HistoryMessage[] {
@@ -511,12 +525,6 @@ function getMessageFilterFlags(
     return excluded;
 }
 
-/**
- * Get filtered chat messages for a character using message filter triggers
- * from contexts, locations, and prompt blocks. This is the single source of
- * truth for which messages a character can "see/hear." Used by both name
- * detection and chat history prompt building.
- */
 export function getFilteredChatMessages(
     interactionData: InteractionData,
     characterId: string,
@@ -545,7 +553,7 @@ async function resolveContextEntries(
     combinationCache: CombinationCache,
     fetchedContentMap?: Map<string, string>,
     contextSensitivity?: number
-): Promise<{ context: Context; formattedLine: string }[]> {
+): Promise<{ context: Context; combinedText: string }[]> {
     const sensitivityForCharacter = contextSensitivity ?? 1;
     const activated = new Set<string>();
     const activatedMap = new Map<string, Context>();
@@ -624,7 +632,7 @@ async function resolveContextEntries(
         }
     }
 
-    const formattedEntries: { context: Context; formattedLine: string; numberOfTokens: number }[] = [];
+    const formattedEntries: { context: Context; combinedText: string; numberOfTokens: number }[] = [];
 
     for (const context of orderedActivated) {
         const fetchedContent = fetchedContentMap?.get(context.id);
@@ -640,16 +648,14 @@ async function resolveContextEntries(
             continue;
         }
 
-        const formattedLine = `${contextStartString}${combinedText}${contextEndString}`;
-
         let numberOfTokens: number;
         if (context.tokenBudget && context.tokenBudget > 0) {
             numberOfTokens = context.tokenBudget;
         } else {
-            numberOfTokens = await tokenEngine.countTokens(formattedLine);
+            numberOfTokens = await tokenEngine.countTokens(combinedText);
         }
 
-        formattedEntries.push({ context, formattedLine, numberOfTokens });
+        formattedEntries.push({ context, combinedText, numberOfTokens });
     }
 
     let totalTokens = 0;
@@ -668,7 +674,7 @@ async function resolveContextEntries(
         return depthA - depthB;
     });
 
-    return budgetEntries.map(e => ({ context: e.context, formattedLine: e.formattedLine }));
+    return budgetEntries.map(e => ({ context: e.context, combinedText: e.combinedText }));
 }
 
 // ─── Clothing ─────────────────────────────────────────────────────
@@ -851,6 +857,7 @@ function buildPromptContext(
     modelId: string,
     allPromptBlocks: PromptBlock[],
     existingCharacterText: string,
+    delimiters: PromptDelimiters,
 ): PromptBuildContext {
     const interactionHistory = interactionData.interactionHistory;
     const participants = interactionData.participants;
@@ -912,6 +919,7 @@ function buildPromptContext(
         textContentArray,
         combinationCache: {},
         numberOfMessagesByParticipant,
+        delimiters,
     };
 }
 
@@ -922,7 +930,7 @@ function buildAppearanceLines(ctx: PromptBuildContext): string[] {
     const hasAnyAppearance = ctx.participants.some(p => p.appearancePrompt?.trim());
     if (!hasAnyAppearance) return lines;
 
-    lines.push(startingAppearancePromptLine);
+    lines.push(`${ctx.delimiters.blockStart('system')}Start Of The Characters' Appearances List.${ctx.delimiters.blockEnd}`);
 
     for (const participant of ctx.participants) {
         const appearancePrompt = participant.appearancePrompt;
@@ -937,17 +945,15 @@ function buildAppearanceLines(ctx: PromptBuildContext): string[] {
             ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
         );
 
-        let appearanceText = `${contextStartString}${otherTag}`;
+        const roleStr = (ctx.cacheLevel > 0 || isCurrent || knownName) 
+            ? `${otherTag} (${knownName ?? participant.name})` 
+            : otherTag;
 
-        if (ctx.cacheLevel > 0 || isCurrent || knownName) {
-            appearanceText = `${appearanceText} (${knownName ?? participant.name})`;
-        }
-
-        appearanceText = `${appearanceText}: ${finalAppearancePrompt}${contextEndString}`;
+        const appearanceText = `${ctx.delimiters.blockStart(roleStr)}${finalAppearancePrompt}${ctx.delimiters.blockEnd}`;
         lines.push(appearanceText);
     }
 
-    lines.push(endOfAppearancePromptLine);
+    lines.push(`${ctx.delimiters.blockStart('system')}End Of The Characters' Appearances List.${ctx.delimiters.blockEnd}`);
     return lines;
 }
 
@@ -958,12 +964,12 @@ function buildSystemPromptLines(ctx: PromptBuildContext): string[] {
     if (ctx.cacheLevel >= 2) {
         for (const p of ctx.participants) {
             if (p.systemPrompt) {
-                lines.push(`${contextStartString}${getParticipantTag(p, ctx.participants)} Prompt: ${replacePlaceholders(p.systemPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames)}${contextEndString}`);
+                lines.push(`${ctx.delimiters.blockStart('system')}${getParticipantTag(p, ctx.participants)} Prompt: ${replacePlaceholders(p.systemPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames)}${ctx.delimiters.blockEnd}`);
             }
         }
     } else if (systemPrompt) {
         systemPrompt = replacePlaceholders(systemPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
-        lines.push(`${contextStartString}${ctx.characterParticipantTag} Prompt: ${systemPrompt}${contextEndString}`);
+        lines.push(`${ctx.delimiters.blockStart('system')}${ctx.characterParticipantTag} Prompt: ${systemPrompt}${ctx.delimiters.blockEnd}`);
     }
 
     return lines;
@@ -976,12 +982,12 @@ function buildThinkPromptLines(ctx: PromptBuildContext): string[] {
     if (ctx.cacheLevel >= 3) {
         for (const p of ctx.interactionData.participants) {
             if (p.thinkPrompt) {
-                lines.push(`${generalStartString}I am keeping this in mind as ${getParticipantTag(p, ctx.participants)}: ${replacePlaceholders(p.thinkPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames)}${generalEndString}`);
+                lines.push(`${ctx.delimiters.blockStart('system')}I am keeping this in mind as ${getParticipantTag(p, ctx.participants)}: ${replacePlaceholders(p.thinkPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames)}${ctx.delimiters.blockEnd}`);
             }
         }
     } else if (thinkPrompt) {
         thinkPrompt = replacePlaceholders(thinkPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
-        lines.push(`${generalStartString}${thinkPrompt}${generalEndString}`);
+        lines.push(`${ctx.delimiters.blockStart('system')}${thinkPrompt}${ctx.delimiters.blockEnd}`);
     }
 
     return lines;
@@ -991,7 +997,7 @@ function buildMetaThinkLines(ctx: PromptBuildContext): string[] {
     const lines: string[] = [];
     const characterInstructions = `I will respond exclusively as ${ctx.characterParticipantTag}, expressing only this character's perspective, actions, and speech. I will also match the vocabulary, grammar, formality and verbosity for the spoken dialogue that ${ctx.characterParticipantTag} is likely to use.`;
 
-    const constructed = `${generalStartString}${topicExpansionInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions} ${generalEndString}`;
+    const constructed = `${ctx.delimiters.blockStart('system')}${topicExpansionInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions}${ctx.delimiters.blockEnd}`;
     lines.push(constructed);
     return lines;
 }
@@ -1002,12 +1008,12 @@ function buildDialoguePromptLines(ctx: PromptBuildContext): string[] {
     const activeDialogueContents = collectActiveDialoguePromptContent(ctx.character.dialoguePrompts, dialogueSearchSpace);
 
     if (activeDialogueContents.length > 0) {
-        lines.push(startingDialoguePromptLine);
+        lines.push(`${ctx.delimiters.blockStart('system')}Start Of This Character's Sample Dialogues.${ctx.delimiters.blockEnd}`);
         for (const content of activeDialogueContents) {
             const replacedDialogue = replacePlaceholders(content, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
-            lines.push(`${contextStartString}${replacedDialogue}${contextEndString}`);
+            lines.push(`${ctx.delimiters.blockStart('system')}${replacedDialogue}${ctx.delimiters.blockEnd}`);
         }
-        lines.push(endOfDialoguePromptLine);
+        lines.push(`${ctx.delimiters.blockStart('system')}End Of This Character's Sample Dialogues.${ctx.delimiters.blockEnd}`);
     }
 
     return lines;
@@ -1032,10 +1038,10 @@ function buildStarterPromptLines(ctx: PromptBuildContext): string[] {
             if (!selectedText) selectedText = entries[entries.length - 1][0];
 
             if (selectedText.trim()) {
-                lines.push(startOfStarterPromptLine);
+                lines.push(`${ctx.delimiters.blockStart('system')}Start Of This Character's Starter Prompt.${ctx.delimiters.blockEnd}`);
                 const replacedStarter = replacePlaceholders(selectedText, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
-                lines.push(`${contextStartString}${replacedStarter}${contextEndString}`);
-                lines.push(endOfStarterPromptLines);
+                lines.push(`${ctx.delimiters.blockStart('system')}${replacedStarter}${ctx.delimiters.blockEnd}`);
+                lines.push(`${ctx.delimiters.blockStart('system')}End Of This Character's Starter Prompt.${ctx.delimiters.blockEnd}`);
             }
         }
     }
@@ -1049,14 +1055,14 @@ function buildLocationLines(ctx: PromptBuildContext): { lines: string[]; images:
     const location = ctx.currentLocation;
 
     if (location) {
-        lines.push(startOfLocationLine);
+        lines.push(`${ctx.delimiters.blockStart('system')}Start Of Current Location.${ctx.delimiters.blockEnd}`);
 
         const locationName = location.name || 'Unknown Location';
         const locationText = location.text?.trim();
 
-        let locationContent = `${contextStartString}Current Location: ${locationName}`;
+        let locationContent = `${ctx.delimiters.blockStart('system')}Current Location: ${locationName}`;
         if (locationText) locationContent += `\n\n${locationText}`;
-        locationContent += `${contextEndString}`;
+        locationContent += `${ctx.delimiters.blockEnd}`;
         lines.push(locationContent);
 
         if (location.ownerBindings && location.ownerBindings.length > 0) {
@@ -1064,7 +1070,7 @@ function buildLocationLines(ctx: PromptBuildContext): { lines: string[]; images:
                 .map(id => ctx.participants.find(p => p.id === id)?.name)
                 .filter((n): n is string => !!n);
             if (ownerNames.length > 0) {
-                lines.push(`${generalStartString}This location is owned by: ${ownerNames.join(', ')}.${generalEndString}`);
+                lines.push(`${ctx.delimiters.blockStart('system')}This location is owned by: ${ownerNames.join(', ')}.${ctx.delimiters.blockEnd}`);
             }
         }
 
@@ -1073,8 +1079,8 @@ function buildLocationLines(ctx: PromptBuildContext): { lines: string[]; images:
                 images.push({ entityId: location.id, filename: img });
             }
         }
-        lines.push(stuckAtLocationLine);
-        lines.push(endOfLocationLine);
+        lines.push(`${ctx.delimiters.blockStart('system')}If I am at the same location after moving to a different one, I understand that I cannot access that location.${ctx.delimiters.blockEnd}`);
+        lines.push(`${ctx.delimiters.blockStart('system')}End Of Current Location.${ctx.delimiters.blockEnd}`);
     }
 
     return { lines, images };
@@ -1113,13 +1119,13 @@ function buildInventoryLines(ctx: PromptBuildContext): string[] {
         }
 
         if (userInventoryEntries.length > 0) {
-            lines.push(`${contextStartString}[Current Inventory]\n${userInventoryEntries.join('\n')}${contextEndString}`);
+            lines.push(`${ctx.delimiters.blockStart('system')}[Current Inventory]\n${userInventoryEntries.join('\n')}${ctx.delimiters.blockEnd}`);
         }
 
         const noteEntries = Object.entries(notes);
         if (noteEntries.length > 0) {
             const formattedNotes = noteEntries.map(([k, v]) => `${k}: ${v}`).join('\n');
-            lines.push(`${contextStartString}[Active Notes]\n${formattedNotes}${contextEndString}`);
+            lines.push(`${ctx.delimiters.blockStart('system')}[Active Notes]\n${formattedNotes}${ctx.delimiters.blockEnd}`);
         }
 
         if (timers.length > 0) {
@@ -1127,7 +1133,7 @@ function buildInventoryLines(ctx: PromptBuildContext): string[] {
                 const remaining = t.targetTimestamp - now;
                 return remaining <= 0 ? `${t.name}: EXPIRED` : `${t.name}: ${formatTimerDuration(remaining)} remaining`;
             });
-            lines.push(`${contextStartString}[Active Timers]\n${timerStatuses.join('\n')}${contextEndString}`);
+            lines.push(`${ctx.delimiters.blockStart('system')}[Active Timers]\n${timerStatuses.join('\n')}${ctx.delimiters.blockEnd}`);
         }
 
         if (stopwatches.length > 0) {
@@ -1136,7 +1142,7 @@ function buildInventoryLines(ctx: PromptBuildContext): string[] {
                 const status = s.pausedElapsedMs !== undefined ? 'PAUSED' : 'RUNNING';
                 return `${s.name}: ${formatTimerDuration(elapsed)} (${status})`;
             });
-            lines.push(`${contextStartString}[Active Stopwatches]\n${swStatuses.join('\n')}${contextEndString}`);
+            lines.push(`${ctx.delimiters.blockStart('system')}[Active Stopwatches]\n${swStatuses.join('\n')}${ctx.delimiters.blockEnd}`);
         }
     }
 
@@ -1150,7 +1156,7 @@ function buildToolInstructionLines(ctx: PromptBuildContext): string[] {
 
     if (enabledToolNames.length > 0) {
         const firstTool = enabledToolNames[0];
-        lines.push(`${generalStartString}I understand that I can access the tools by calling the ${toolStartSring} marker followed by the tool name and arguments, then closing with ${toolEndString} like ${toolStartSring}${firstTool}}${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results. Tool invocation markers are completely invisible to the user. Writing a tool name without arguments returns usage instructions for that tool. Available tools: ${enabledToolNames.join(', ')}.${generalEndString}`);
+        lines.push(`${ctx.delimiters.blockStart('system')}I understand that I can access the tools by calling the ${toolStartSring} marker followed by the tool name and arguments, then closing with ${toolEndString} like ${toolStartSring}${firstTool}}${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results. Tool invocation markers are completely invisible to the user. Writing a tool name without arguments returns usage instructions for that tool. Available tools: ${enabledToolNames.join(', ')}.${ctx.delimiters.blockEnd}`);
     }
 
     return lines;
@@ -1164,10 +1170,10 @@ function buildFatigueLines(ctx: PromptBuildContext): string[] {
     const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
 
     if (currentChatStamina !== undefined && effectiveMaxStamina !== Number.POSITIVE_INFINITY) {
-        const remainingChatStaminaInstructions = `${generalStartString}I understand that I can create a minimum of 1 paragraph and a maximum of ${currentChatStamina} ${paragraphText}. If I exceed this, I will naturally stop my paragraphs.${generalEndString}`;
+        const remainingChatStaminaInstructions = `${ctx.delimiters.blockStart('system')}I understand that I can create a minimum of 1 paragraph and a maximum of ${currentChatStamina} ${paragraphText}. If I exceed this, I will naturally stop my paragraphs.${ctx.delimiters.blockEnd}`;
         if (remainingChatStaminaInstructions) lines.push(remainingChatStaminaInstructions);
         const fatigue = getFatigueContext(currentChatStamina, effectiveMaxStamina);
-        if (fatigue) lines.push(fatigue);
+        if (fatigue) lines.push(`${ctx.delimiters.blockStart('system')}${fatigue}${ctx.delimiters.blockEnd}`);
     }
 
     return lines;
@@ -1177,14 +1183,14 @@ function buildTextInjectionLines(ctx: PromptBuildContext, hasBeenSummarized: boo
     const lines: string[] = [];
 
     if (contextLines.length > 0) {
-        lines.push(contextAuthorityInstructions);
+        lines.push(`${ctx.delimiters.blockStart('system')}${contextAuthorityInstructions}${ctx.delimiters.blockEnd}`);
     }
 
-    if (hasBeenSummarized) lines.push(summarizationAwarenessInstructions);
+    if (hasBeenSummarized) lines.push(`${ctx.delimiters.blockStart('system')}${summarizationAwarenessInstructions}${ctx.delimiters.blockEnd}`);
 
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${ctx.characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${ctx.characterParticipantTag} requires it.`;
-    const characterResponsePriming = `${generalStartString}${noRepeatInstructions} ${noRestrictionsInstructions} ${callingOtherCharacterInstructions} ${formatInstructions} I am now responding as ${ctx.characterParticipantTag} with the format I am given and I will follow all the prompts given to me.${generalEndString}`;
-    const characterTextInjection = `${turnStartString}${ctx.characterParticipantTag}: {{text}}`;
+    const characterResponsePriming = `${ctx.delimiters.blockStart('system')}${noRepeatInstructions} ${noRestrictionsInstructions} ${callingOtherCharacterInstructions} ${formatInstructions} I am now responding as ${ctx.characterParticipantTag} with the format I am given and I will follow all the prompts given to me.${ctx.delimiters.blockEnd}`;
+    const characterTextInjection = `${ctx.delimiters.turnStart(ctx.characterParticipantTag)}{{text}}`;
 
     lines.push(characterResponsePriming);
     lines.push(characterTextInjection);
@@ -1328,17 +1334,17 @@ export function createChatHistoryPrompt(
     });
 
     const chatHistoryLines: string[] = [];
-    chatHistoryLines.push(startOfChatHistoryLine);
+    chatHistoryLines.push(`${ctx.delimiters.blockStart('system')}Start Of The Memory.${ctx.delimiters.blockEnd}`);
 
     if (locationVisitSummaries.length > 0) {
         for (const lvs of locationVisitSummaries) {
-            chatHistoryLines.push(`${contextStartString}[Memory of ${lvs.locationName}] As ${lvs.characterName}: ${lvs.summary}${contextEndString}`);
+            chatHistoryLines.push(`${ctx.delimiters.blockStart('system')}[Memory of ${lvs.locationName}] As ${lvs.characterName}: ${lvs.summary}${ctx.delimiters.blockEnd}`);
         }
         hasBeenSummarized = true;
     }
 
     if (currentLocation) {
-        chatHistoryLines.push(`${turnStartString}[Scene: ${currentLocation.name}]${turnEndString}`);
+        chatHistoryLines.push(`${ctx.delimiters.turnStart('system')}[Scene: ${currentLocation.name}]${ctx.delimiters.turnEnd}`);
     }
 
     for (const p of outputMessages) {
@@ -1346,9 +1352,8 @@ export function createChatHistoryPrompt(
         const otherTag = getParticipantTag(otherCharacter, participants);
         const knownName = getKnownDisplayName(otherCharacter, ctx.knownNames);
 
-        let chatHistoryText = knownName
-            ? `${turnStartString}${otherTag} (${knownName})`
-            : `${turnStartString}${otherTag}`;
+        const roleStr = knownName ? `${otherTag} (${knownName})` : otherTag;
+        let chatHistoryText = ctx.delimiters.turnStart(roleStr);
 
         const replacedText = replacePlaceholders(
             p.text,
@@ -1359,11 +1364,11 @@ export function createChatHistoryPrompt(
             ctx.knownNames,
         );
 
-        chatHistoryText = `${chatHistoryText}: ${replacedText}${turnEndString}`;
+        chatHistoryText = `${chatHistoryText}${replacedText}${ctx.delimiters.turnEnd}`;
         chatHistoryLines.push(chatHistoryText);
     }
 
-    chatHistoryLines.push(endOfChatHistoryLine);
+    chatHistoryLines.push(`${ctx.delimiters.blockStart('system')}End Of The Memory.${ctx.delimiters.blockEnd}`);
 
     const chatHistoryPrompt = chatHistoryLines.join('\n');
 
@@ -1391,7 +1396,14 @@ export async function buildPrompt(
     modelId: string,
 ): Promise<BuildResult> {
 
-    const ctx = buildPromptContext(interactionData, character, knownNames, modelId, allPromptBlocks, existingCharacterText);
+    const activeModel = tokenEngine.getContext();
+    const effectiveChatTemplateKey = activeModel?.chatTemplate;
+    const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
+    
+    // Derive delimiters BEFORE building context so all builders can use them
+    const delimiters = deriveDelimiters(resolvedChatTemplate?.chatTemplate);
+
+    const ctx = buildPromptContext(interactionData, character, knownNames, modelId, allPromptBlocks, existingCharacterText, delimiters);
 
     const sampler = character.sampler;
     const samplerStopPatterns = sampler?.stopPatterns || [];
@@ -1444,8 +1456,6 @@ export async function buildPrompt(
         (c.urls && c.urls.length > 0) ||
         (c.searchTerms && c.searchTerms.length > 0)
     );
-
-    const activeModel = tokenEngine.getContext();
 
     if (webContexts.length > 0) {
         const fetchPromises = webContexts.map(async (context) => {
@@ -1507,16 +1517,15 @@ export async function buildPrompt(
 
     let contextLines: string[] = [];
 
-    for (const { context, formattedLine } of resolvedContextsWithWeb) {
-        const innerContent = formattedLine.slice(contextStartString.length, -contextEndString.length);
-        const replacedText = replacePlaceholders(innerContent, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
+    for (const { context, combinedText } of resolvedContextsWithWeb) {
+        const replacedText = replacePlaceholders(combinedText, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
 
         let line: string;
         if (context.useBase64Encoding) {
             const encodedText = btoa(unescape(encodeURIComponent(replacedText)));
-            line = `${contextStartString}[base64:${encodedText}]${contextEndString}`;
+            line = `${delimiters.blockStart('system')}[base64:${encodedText}]${delimiters.blockEnd}`;
         } else {
-            line = `${contextStartString}${replacedText}${contextEndString}`;
+            line = `${delimiters.blockStart('system')}${replacedText}${delimiters.blockEnd}`;
         }
 
         contextLines.push(line);
@@ -1562,14 +1571,14 @@ export async function buildPrompt(
     );
     if (visibleClothingDescriptions.length > 0) {
         const clothingLines = visibleClothingDescriptions.map(desc =>
-            `${contextStartString}${desc}${contextEndString}`
+            `${delimiters.blockStart('system')}${desc}${delimiters.blockEnd}`
         );
         if (appearancePromptLines.length >= 2) {
             appearancePromptLines.splice(appearancePromptLines.length - 1, 0, ...clothingLines);
         } else {
-            appearancePromptLines.push(startingAppearancePromptLine);
+            appearancePromptLines.push(`${delimiters.blockStart('system')}Start Of The Characters' Appearances List.${delimiters.blockEnd}`);
             appearancePromptLines.push(...clothingLines);
-            appearancePromptLines.push(endOfAppearancePromptLine);
+            appearancePromptLines.push(`${delimiters.blockStart('system')}End Of The Characters' Appearances List.${delimiters.blockEnd}`);
         }
     }
 
@@ -1590,11 +1599,9 @@ export async function buildPrompt(
     let hasBeenSummarized = false;
 
     if (ctx.interactionHistory.length > 0) {
-        chatHistoryLines.push(startOfChatHistoryLine);
         const chatHistoryPrompt = createChatHistoryPrompt(ctx);
         chatHistoryLines.push(chatHistoryPrompt.chatHistoryPrompt);
         hasBeenSummarized = chatHistoryPrompt.hasBeenSummarized;
-        chatHistoryLines.push(endOfChatHistoryLine);
     }
 
     // ─── Date/Time, Weather, Time Elapsed ───────────────────────────
@@ -1615,14 +1622,14 @@ export async function buildPrompt(
     const dateAndTimeLines: string[] = [];
     if (useCurrentDateAndTime && localTimestamp) {
         const dateAndTime = getDateAndTimeString(localTimestamp);
-        dateAndTimeLines.push(`${generalStartString}Today's date and time is ${dateAndTime}.${generalEndString}`);
+        dateAndTimeLines.push(`${delimiters.blockStart('system')}Today's date and time is ${dateAndTime}.${delimiters.blockEnd}`);
     }
 
     const weatherLines: string[] = [];
     if (useWeather && weatherApiKey && latitude && longitude) {
         const weatherLine = await fetchCurrentWeather(latitude, longitude, weatherApiKey);
         if (weatherLine) {
-            weatherLines.push(`${generalStartString}${weatherLine}${generalEndString}`);
+            weatherLines.push(`${delimiters.blockStart('system')}${weatherLine}${delimiters.blockEnd}`);
         }
     }
 
@@ -1645,12 +1652,12 @@ export async function buildPrompt(
 
         const timeSinceLastMessageString = (parts.length > 0) ? parts.join(', ') : 'just now';
 
-        timeElapsedLines.push(`${generalStartString}It has been ${timeSinceLastMessageString} since the last message in the real world. I may or may not acknowledge the time elapsed. I will update relevant information according to this information. For example, a previous time must be subtracted or added with the elapsed time to get current time.${generalEndString}`);
+        timeElapsedLines.push(`${delimiters.blockStart('system')}It has been ${timeSinceLastMessageString} since the last message in the real world. I may or may not acknowledge the time elapsed. I will update relevant information according to this information. For example, a previous time must be subtracted or added with the elapsed time to get current time.${delimiters.blockEnd}`);
     }
 
     // ─── Text Injection ─────────────────────────────────────────────
     if (contextLines.length > 0) {
-        contextLines = [startOfContextLine, ...contextLines, endOfContextLine];
+        contextLines = [`${delimiters.blockStart('system')}Start Of The Context.${delimiters.blockEnd}`, ...contextLines, `${delimiters.blockStart('system')}End Of The Context.${delimiters.blockEnd}`];
     }
     const textInjectionLines = buildTextInjectionLines(ctx, hasBeenSummarized, contextLines);
 
@@ -1732,9 +1739,7 @@ export async function buildPrompt(
     }
 
     // ─── Apply Input Strategy ───────────────────────────────────────
-    const effectiveChatTemplateKey = activeModel?.chatTemplate;
     const effectiveInstructionTemplateKey = activeModel?.instructionTemplate;
-    const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
     const resolvedInstructionTemplate = effectiveInstructionTemplateKey ? getModelTemplate(effectiveInstructionTemplateKey) : undefined;
 
     const promptLines: string[] = [];
@@ -1845,7 +1850,7 @@ export async function buildPrompt(
                 ctx.knownNames,
             );
 
-            promptLines.push(`${contextStartString}${replacedText}${contextEndString}`);
+            promptLines.push(`${delimiters.blockStart('system')}${replacedText}${delimiters.blockEnd}`);
         }
     }
 
@@ -1856,15 +1861,16 @@ export async function buildPrompt(
     let defaultStops: string[] = [];
 
     if (!profile?.doNotInjectDefaultStopTokens) {
+        // Pull model-specific stop tokens from the resolved template
+        const templateStops = resolvedChatTemplate?.stopPatterns || [];
+        
+        // Use the model's native turn end token as a stop if available
+        const turnEndStop = delimiters.turnEnd.trim();
+        
         defaultStops = [
-            turnStartString,
-            commonThinkStartString,
-            commonThinkEndString,
-            gemmaThinkStartString,
-            gemmaThinkEndString,
-            thinkEndString,
-            thinkStartString,
-        ];
+            ...templateStops,
+            turnEndStop,
+        ].filter(s => s.length > 0);
     }
 
     const stops = [

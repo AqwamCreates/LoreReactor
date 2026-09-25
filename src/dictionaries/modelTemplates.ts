@@ -11,6 +11,8 @@ export interface ModelTemplate {
     supportsSystemRole: boolean;
     /** Model families that use this template. Used for auto-detection only, not shown in UI. */
     modelFamilies: string[];
+    /** Model-specific stop tokens/patterns to prevent the model from generating into the next turn or template boundary. */
+    stopPatterns?: string[];
 }
 
 /**
@@ -29,6 +31,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: '<|im_start|>{role}\n{content}<|im_end|>\n',
         supportsSystemRole: true,
         modelFamilies: ['Qwen', 'Qwen2', 'Qwen2.5', 'Hermes-2', 'Dolphin', 'Orca2', 'Yi', 'StableLM-2', 'Rocket', 'NousHermes'],
+        stopPatterns: ['<|im_end|>'],
     },
 
     // ─── Llama 3.x ──────────────────────────────────────────────────
@@ -39,6 +42,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: '<|start_header_id|>{role}<|end_header_id|>\n\n{content}<|eot_id|>',
         supportsSystemRole: true,
         modelFamilies: ['Llama-3', 'Llama-3.1', 'Llama-3.2', 'Llama-3.3', 'Llama-3-Vision'],
+        stopPatterns: ['<|eot_id|>'],
     },
 
     // ─── Llama 2 / CodeLlama ────────────────────────────────────────
@@ -49,6 +53,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: '[INST] {content} [/INST]',
         supportsSystemRole: false,
         modelFamilies: ['Llama-2', 'CodeLlama'],
+        stopPatterns: ['[/INST]'],
     },
 
     // ─── Mistral / Mixtral ──────────────────────────────────────────
@@ -59,6 +64,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: '[INST] {content} [/INST]',
         supportsSystemRole: false,
         modelFamilies: ['Mistral', 'Mixtral', 'Mistral-Nemo'],
+        stopPatterns: ['[/INST]'],
     },
 
     // ─── Gemma ──────────────────────────────────────────────────────
@@ -69,6 +75,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: '<start_of_turn>{role}\n{content}<end_of_turn>\n',
         supportsSystemRole: false,
         modelFamilies: ['Gemma', 'Gemma-2', 'Gemma-3'],
+        stopPatterns: ['<end_of_turn>'],
     },
 
     // ─── Phi-3 / Phi-3.5 ───────────────────────────────────────────
@@ -79,6 +86,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: '<|{role}|>\n{content}<|end|>\n',
         supportsSystemRole: true,
         modelFamilies: ['Phi-3', 'Phi-3.5'],
+        stopPatterns: ['<|end|>'],
     },
 
     // ─── Phi-2 ──────────────────────────────────────────────────────
@@ -89,6 +97,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: '{role}: {content}\n',
         supportsSystemRole: false,
         modelFamilies: ['Phi-2'],
+        stopPatterns: ['\nInstruct:'],
     },
 
     // ─── DeepSeek V2 / V3 ──────────────────────────────────────────
@@ -99,6 +108,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: '<|{role}|>{content}<|end|>\n',
         supportsSystemRole: true,
         modelFamilies: ['DeepSeek-V2', 'DeepSeek-V3', 'DeepSeek-Coder'],
+        stopPatterns: ['<|end|>'],
     },
 
     // ─── Command-R / Command-R+ ─────────────────────────────────────
@@ -109,6 +119,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: '<|START_OF_TURN_TOKEN|><|{role}_TOKEN|>{content}<|END_OF_TURN_TOKEN|>',
         supportsSystemRole: true,
         modelFamilies: ['Command-R', 'Command-R-Plus', 'Aya'],
+        stopPatterns: ['<|END_OF_TURN_TOKEN|>'],
     },
 
     // ─── Zephyr ─────────────────────────────────────────────────────
@@ -119,6 +130,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: '<|{role}|>\n{content}</s>\n',
         supportsSystemRole: true,
         modelFamilies: ['Zephyr', 'Zephyr-Gemma'],
+        stopPatterns: ['</s>'],
     },
 
     // ─── OpenChat 3.5 ──────────────────────────────────────────────
@@ -129,6 +141,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: 'GPT4 Correct {Role}: {content}<|end_of_turn|>',
         supportsSystemRole: false,
         modelFamilies: ['OpenChat-3.5', 'Starling-LM'],
+        stopPatterns: ['<|end_of_turn|>'],
     },
 
     // ─── OpenChat 3.6 ──────────────────────────────────────────────
@@ -139,6 +152,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: '<|start_header_id|>GPT4 Correct {Role}<|end_header_id|>\n\n{content}<|eot_id|>',
         supportsSystemRole: true,
         modelFamilies: ['OpenChat-3.6'],
+        stopPatterns: ['<|eot_id|>'],
     },
 
     // ─── Alpaca ─────────────────────────────────────────────────────
@@ -148,6 +162,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         instructionTemplate: '### Instruction:\n{instruction}\n\n### Response:\n',
         supportsSystemRole: false,
         modelFamilies: ['Alpaca', 'WizardLM-Alpaca'],
+        stopPatterns: ['### Instruction:', '### Response:'],
     },
 
     // ─── Vicuna v1.1 ───────────────────────────────────────────────
@@ -158,6 +173,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: '{ROLE}: {content}\n',
         supportsSystemRole: false,
         modelFamilies: ['Vicuna', 'Wizard-Vicuna'],
+        stopPatterns: ['USER:'],
     },
 
     // ─── Falcon ─────────────────────────────────────────────────────
@@ -168,6 +184,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: '{Role}: {content}',
         supportsSystemRole: false,
         modelFamilies: ['Falcon', 'Falcon-Instruct'],
+        stopPatterns: ['User:'],
     },
 
     // ─── AmberChat ──────────────────────────────────────────────────
@@ -178,6 +195,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: '### {Role}: {content}\n',
         supportsSystemRole: false,
         modelFamilies: ['AmberChat'],
+        stopPatterns: ['### Human:'],
     },
 
     // ─── Qwen (legacy, pre-ChatML) ─────────────────────────────────
@@ -188,6 +206,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         chatTemplate: '<|im_start|>{role}\n{content}<|im_end|>\n',
         supportsSystemRole: true,
         modelFamilies: ['Qwen-1', 'Qwen-1.5'],
+        stopPatterns: ['<|im_end|>'],
     },
 ];
 

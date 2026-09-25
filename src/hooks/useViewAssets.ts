@@ -1,7 +1,7 @@
 // src/hooks/useViewAssets.ts
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Character, InteractionData, ChatMessage } from '../types';
-import { getCharacterImageUrl, getLocationImageUrl } from '../storage/serverStorage';
+import { getCharacterImageUrl, getLocationImageUrl, getMultiplayerCharacterImageUrl } from '../storage/serverStorage';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 
@@ -13,13 +13,17 @@ interface UseViewAssetsOptions {
     streamingCharacter: Character | null;
     currentCharacterExpression: string;
     chatHistoryRef: React.RefObject<HTMLDivElement | null>;
+    isMultiplayerChat?: boolean; // <-- ADDED
 }
 
-function resolvePortrait(characterId: string, images: Record<string, string> | undefined, expression?: string): string | null {
+// UPDATED: Added isMultiplayerChat for the || fallback chain
+function resolvePortrait(characterId: string, images: Record<string, string> | undefined, expression?: string, isMultiplayerChat?: boolean): string | null {
     const expr = expression || 'neutral';
     const filename = images?.[expr] || images?.neutral;
     if (!filename) return null;
-    return getCharacterImageUrl(characterId, filename);
+    
+    // YOUR EXACT LOGIC: Try main folder, fallback to multiplayer folder if session is multiplayer
+    return getCharacterImageUrl(characterId, filename) || (isMultiplayerChat ? getMultiplayerCharacterImageUrl(characterId, filename) : null);
 }
 
 function resolveLocationBackgroundUrl(interactionData: InteractionData, localProtagonist: Character): string | null {
@@ -57,7 +61,6 @@ function resolveLocationBackgroundUrl(interactionData: InteractionData, localPro
                 if (regex.test(lastUserText)) {
                     const idx = Number(idxStr);
                     if (idx >= 0 && idx < loc.images.length && loc.images[idx]) {
-                        // FIXED: Pass loc.id as first argument
                         return getLocationImageUrl(loc.id, loc.images[idx]);
                     }
                 }
@@ -79,14 +82,11 @@ function resolveLocationBackgroundUrl(interactionData: InteractionData, localPro
             let randomValue = Math.random() * totalWeight;
             for (const entry of pool) {
                 randomValue -= entry.weight;
-                // FIXED: Pass loc.id as first argument
                 if (randomValue <= 0) return getLocationImageUrl(loc.id, loc.images[entry.index]);
             }
-            // FIXED: Pass loc.id as first argument
             return getLocationImageUrl(loc.id, loc.images[pool[pool.length - 1].index]);
         }
     }
-    // FIXED: Pass loc.id as first argument
     if (loc.images[0]) return getLocationImageUrl(loc.id, loc.images[0]);
     return null;
 }
@@ -95,6 +95,7 @@ export function useViewAssets(options: UseViewAssetsOptions) {
     const {
         viewMode, interactionData, currentCharacter, localProtagonist,
         streamingCharacter, currentCharacterExpression, chatHistoryRef,
+        isMultiplayerChat, // <-- ADDED
     } = options;
 
     const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
@@ -102,7 +103,6 @@ export function useViewAssets(options: UseViewAssetsOptions) {
     const lastViewedMessageIdRef = useRef<string | null>(null);
     const suppressAutoScrollRef = useRef(false);
 
-    // Keep ref in sync without triggering effect re-runs
     useEffect(() => { centerAvatarRef.current = centerAvatar; }, [centerAvatar]);
 
     const chatMessages = useMemo(() => {
@@ -110,39 +110,35 @@ export function useViewAssets(options: UseViewAssetsOptions) {
         return interactionData.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
     }, [interactionData]);
 
-    // Single unified portrait cache: one key per character ID
     const portraitUrlCache = useMemo(() => {
         const cache = new Map<string, string | null>();
 
-        // All participants — always present
         if (interactionData) {
             for (const participant of interactionData.participants) {
-                const url = resolvePortrait(participant.id, participant.images, 'neutral');
+                // Pass isMultiplayerChat to all resolvePortrait calls
+                const url = resolvePortrait(participant.id, participant.images, 'neutral', isMultiplayerChat);
                 cache.set(`character:${participant.id}`, url);
             }
         }
 
-        // History messages — update with expression-specific portraits
         for (const msg of chatMessages) {
-            const url = resolvePortrait(msg.character.id, msg.character.images, msg.characterExpression);
+            const url = resolvePortrait(msg.character.id, msg.character.images, msg.characterExpression, isMultiplayerChat);
             cache.set(`character:${msg.character.id}`, url);
             cache.set(msg.id, url);
         }
 
-        // Center Avatar
         if (centerAvatar) {
-            const url = resolvePortrait(centerAvatar.id, centerAvatar.images, 'neutral');
+            const url = resolvePortrait(centerAvatar.id, centerAvatar.images, 'neutral', isMultiplayerChat);
             cache.set(`character:${centerAvatar.id}`, url);
         }
 
-        // Streaming Character — highest priority, live expression
         if (streamingCharacter) {
-            const url = resolvePortrait(streamingCharacter.id, streamingCharacter.images, currentCharacterExpression);
+            const url = resolvePortrait(streamingCharacter.id, streamingCharacter.images, currentCharacterExpression, isMultiplayerChat);
             cache.set(`character:${streamingCharacter.id}`, url);
         }
 
         return cache;
-    }, [chatMessages, centerAvatar, streamingCharacter, currentCharacterExpression, interactionData]);
+    }, [chatMessages, centerAvatar, streamingCharacter, currentCharacterExpression, interactionData, isMultiplayerChat]);
 
     const streamingPortraitUrl = useMemo(() => {
         if (!streamingCharacter) return null;
@@ -153,7 +149,6 @@ export function useViewAssets(options: UseViewAssetsOptions) {
         ? resolveLocationBackgroundUrl(interactionData, localProtagonist)
         : null;
 
-    // Center avatar selection — only active in cinematic mode
     useEffect(() => {
         const chatHistoryElement = chatHistoryRef.current;
         if (viewMode !== 'cinematic' || !chatHistoryElement || !interactionData || chatMessages.length === 0) {
@@ -170,7 +165,6 @@ export function useViewAssets(options: UseViewAssetsOptions) {
 
             for (const el of elements) {
                 const rect = el.getBoundingClientRect();
-                // Calculate how much of this bubble overlaps the visible container area
                 const overlapTop = Math.max(rect.top, containerRect.top);
                 const overlapBottom = Math.min(rect.bottom, containerRect.bottom);
                 const overlap = overlapBottom - overlapTop;
@@ -186,13 +180,11 @@ export function useViewAssets(options: UseViewAssetsOptions) {
             const msg = chatMessages.find(m => m.id === bestId);
             if (!msg?.character) return;
 
-            // Update active class
             for (const el of document.querySelectorAll('.message-row')) el.classList.remove('is-active');
             const activeEl = chatHistoryElement.querySelector(`[data-message-id="${bestId}"]`);
             if (activeEl) activeEl.classList.add('is-active');
             lastViewedMessageIdRef.current = bestId;
 
-            // Protagonist and ambient narrator: hide portrait
             if (msg.character.id === currentCharacter?.id || msg.character.id === AMBIENT_NARRATOR_ID) {
                 setCenterAvatar(null);
             } else {
@@ -200,11 +192,9 @@ export function useViewAssets(options: UseViewAssetsOptions) {
             }
         };
 
-        // Initial calculation after DOM is ready
         const rafId = requestAnimationFrame(() => {
             updateAvatarFromScroll();
 
-            // Fallback if nothing was found
             if (!centerAvatarRef.current) {
                 for (let i = chatMessages.length - 1; i >= 0; i--) {
                     const m = chatMessages[i];

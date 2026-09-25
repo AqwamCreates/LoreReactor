@@ -57,6 +57,9 @@ const ENTITY_REGISTRY = {
   promptBlockImages: { dir: 'prompt_block_images', hasManifest: false },
   accounts: { dir: 'account_data', hasManifest: true },
   multiplayerData: { dir: 'multiplayer_data', hasManifest: true },
+  multiplayerCharacters: { dir: 'multiplayer_character_data', hasManifest: true },
+  multiplayerCharacterImages: { dir: 'multiplayer_character_images', hasManifest: false },
+  multiplayerCharacterVoices: { dir: 'multiplayer_character_voices', hasManifest: false },
 } as const;
 
 type EntityKey = keyof typeof ENTITY_REGISTRY;
@@ -640,6 +643,53 @@ export async function loadAllCharacterShells(): Promise<Character[]> {
 }
 
 // =============================================================================
+// MULTIPLAYER CHARACTER REPOSITORY (Isolated from Host Library)
+// =============================================================================
+
+const multiplayerCharacterRepo = createRepository<Character, RawCharacter>({
+  entityKey: 'multiplayerCharacters',
+  hydrate: async (raw, id) => {
+    const samplerId = raw.samplerId;
+    let sampler: Sampler = defaultSampler;
+    if (samplerId) {
+      const loadedSampler = await loadRawSampler(samplerId);
+      if (loadedSampler) sampler = loadedSampler;
+    }
+    const memories = await hydrateMemories(raw.memories);
+    const images: Record<string, string> = raw.images ?? {};
+    const legacyImage = ('image' in raw && typeof raw.image === 'string') ? raw.image : undefined;
+    if (Object.keys(images).length === 0 && legacyImage) {
+      images.neutral = legacyImage;
+    }
+    
+    return hydrateEntity<Character, RawCharacter>(raw, id, {
+        name: 'Unknown Multiplayer Character',
+        images: {},
+        tools: { ...defaultCharacterTools },
+        memories: {},
+    }, {
+        sampler: () => sampler,
+        memories: () => memories,
+        images: () => images,
+    });
+  },
+  serialize: async (character) => {
+    const { sampler, memories, ...rest } = character;
+    const serializedMemories = await serializeMemories(memories);
+    return {
+      ...rest,
+      samplerId: sampler?.id,
+      memories: serializedMemories,
+      lastUpdatedTimestamp: Date.now(),
+    } as RawCharacter;
+  },
+});
+
+export const loadRawMultiplayerCharacter = multiplayerCharacterRepo.loadRaw;
+export const saveRawMultiplayerCharacter = multiplayerCharacterRepo.save;
+export const deleteRawMultiplayerCharacter = multiplayerCharacterRepo.remove;
+
+// =============================================================================
 // CONTEXT REPOSITORY
 // =============================================================================
 
@@ -941,11 +991,8 @@ const multiplayerDataRepo = createRepository<MultiplayerData, MultiplayerData>({
   hydrate: (raw, id) => hydrateEntity<MultiplayerData, MultiplayerData>(raw, id, {
     password: '',
     interactionDataIds: [],
-    whiteListedAccountIds: [],
-    blacklistedAccountIds: [],
+    multiplayerDataAccountConfigurations: {},
     pendingAccountIds: [],
-    administratorAccountIds: [],
-    accountIdCharacterIds: {},
   }),
 });
 
@@ -1077,10 +1124,14 @@ export async function loadRawInteractionData(
     const neededIds = [...new Set([
       ...(rawInteractionData.protagonistIds || []),
       ...(rawInteractionData.participantIds || []),
-      // Backward compat: include legacy protagonistId if present
-      ...(((rawInteractionData as any).protagonistId) ? [(rawInteractionData as any).protagonistId as string] : []),
     ])];
-    const shells = await Promise.all(neededIds.map(loadCharacterShell));
+    
+    // ISOLATION: Check main library first, fallback to isolated multiplayer storage
+    const shells = await Promise.all(neededIds.map(async (cid) => {
+        let shell = await loadCharacterShell(cid);
+        if (!shell) shell = await loadRawMultiplayerCharacter(cid);
+        return shell;
+    }));
     for (const s of shells) { if (s) charMap.set(s.id, s); }
   }
 
@@ -1417,4 +1468,23 @@ export function getPromptBlockImageUrl(promptBlockId: string, imageFilename: str
 
 export async function uploadPromptBlockImage(promptBlockId: string, file: File): Promise<string> {
   return uploadImage('promptBlockImages', promptBlockId, file);
+}
+
+// --- Isolated Multiplayer Character Assets ---
+
+export function getMultiplayerCharacterImageUrl(characterId: string, characterExpression?: string): string | null {
+    return getImageUrl('multiplayerCharacterImages', characterId, characterExpression || 'neutral');
+}
+
+export async function uploadMultiplayerCharacterImage(characterId: string, file: File): Promise<string> {
+    return uploadImage('multiplayerCharacterImages', characterId, file);
+}
+
+export function getMultiplayerCharacterVoiceUrl(characterId: string, voiceFileName: string | undefined): string | null {
+  if (!voiceFileName) return null;
+  return getImageUrl('multiplayerCharacterVoices', characterId, voiceFileName);
+}
+
+export async function uploadMultiplayerCharacterVoice(characterId: string, file: File): Promise<string> {
+  return uploadImage('multiplayerCharacterVoices', characterId, file);
 }

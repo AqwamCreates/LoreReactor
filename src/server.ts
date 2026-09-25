@@ -330,11 +330,11 @@ function queryNvidiaGpu(): GpuStatus | null {
     return {
       vendor: 'nvidia',
       name: parts[0],
-      utilizationPercent: parseFloat(parts[1]) || 0,
-      memoryUsedMB: parseFloat(parts[2]) || 0,
-      memoryTotalMB: parseFloat(parts[3]) || 0,
-      temperatureC: parts[4] ? parseFloat(parts[4]) : null,
-      powerWatts: parts[5] ? parseFloat(parts[5]) : null,
+      utilizationPercent: Number.parseFloat(parts[1]) || 0,
+      memoryUsedMB: Number.parseFloat(parts[2]) || 0,
+      memoryTotalMB: Number.parseFloat(parts[3]) || 0,
+      temperatureC: parts[4] ? Number.parseFloat(parts[4]) : null,
+      powerWatts: parts[5] ? Number.parseFloat(parts[5]) : null,
       timestamp: Date.now(),
     };
   } catch {
@@ -465,6 +465,8 @@ const GPU_QUERY_MIN_INTERVAL_MS = 1000;
 const MEDIA_DIR_PREFIXES = [
   'character_images/',
   'character_voices/',
+  'multiplayer_character_images/',
+  'multiplayer_character_voices/',
   'context_images/',
   'location_images/',
   'audio_track_audio/',
@@ -718,6 +720,7 @@ function runStartupSanitization(): void {
   // Must match ENTITY_REGISTRY keys from serverStorage.tsx (data dirs only, not media dirs)
   const manifestDirs = [
     'character_data',
+    'multiplayer_character_data',
     'sampler_data',
     'context_data',
     'location_data',

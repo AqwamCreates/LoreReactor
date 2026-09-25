@@ -37,7 +37,7 @@ export interface TurnResult {
 
 export interface TurnError {
     message: string;
-    type: 'network' | 'inference' | 'budget' | 'no_model' | 'aborted';
+    type: 'network' | 'inference' | 'budget' | 'no_model' | 'aborted' | 'client_no_generate';
 }
 
 export interface TurnStreamCallbacks {
@@ -58,6 +58,8 @@ export interface TurnExecutionParams {
     existingCharacterText?: string;
     allPromptBlocks: PromptBlock[];
     callbacks?: TurnStreamCallbacks;
+    /** When true, this client is a multiplayer joiner and must not generate locally */
+    isMultiplayerClient?: boolean;
 }
 
 
@@ -136,7 +138,14 @@ export class CharacterActor {
             data, character, signal,
             selectedModel, runningModels, activeStrategy,
             strategyOverride, existingCharacterText, allPromptBlocks, callbacks,
+            isMultiplayerClient,
         } = params;
+
+        // Multiplayer clients must never generate locally.
+        // Generation is handled exclusively by the host and synced via PeerJS.
+        if (isMultiplayerClient) {
+            return { error: { message: 'Multiplayer client cannot generate locally', type: 'client_no_generate' } };
+        }
 
         const strat = strategyOverride ?? activeStrategy;
         const pricing: ModelPricing = { cacheHitPerMillion: 0, cacheMissPerMillion: 0, outputPerMillion: 0 };

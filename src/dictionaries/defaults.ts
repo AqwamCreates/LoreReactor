@@ -159,11 +159,8 @@ export function createDefaultMultiplayerData(): MultiplayerData {
         name: '',
         password: '',
         interactionDataIds: [],
-        whiteListedAccountIds: [],
-        blacklistedAccountIds: [],
+        multiplayerDataAccountConfigurations: {},
         pendingAccountIds: [],
-        administratorAccountIds: [],
-        accountIdCharacterIds: {},
         lastUpdatedTimestamp: now,
         firstCreatedTimestamp: now,
     };

@@ -59,12 +59,22 @@ function findLastAIMessageId(
 
 interface UseChatSessionOptions {
     onMessageBroadcast?: (message: HistoryMessage) => void;
+    /** When true, this client is a multiplayer joiner and should not generate locally */
+    isMultiplayerClient?: boolean;
+    /** The character assigned to this client by the host. Used to lock message authoring. */
+    joinProtagonist?: Character | null;
 }
 
 export function useChatSession(allCharacters: Character[], options?: UseChatSessionOptions) {
     const { addToast } = useToast();
     const onMessageBroadcastRef = useRef(options?.onMessageBroadcast);
+    const isMultiplayerClient = options?.isMultiplayerClient ?? false;
+    
     useEffect(() => { onMessageBroadcastRef.current = options?.onMessageBroadcast; }, [options?.onMessageBroadcast]);
+
+    // LOCK: Keep the assigned multiplayer character in a ref so callbacks always use the locked identity
+    const joinProtagonistRef = useRef(options?.joinProtagonist ?? null);
+    useEffect(() => { joinProtagonistRef.current = options?.joinProtagonist ?? null; }, [options?.joinProtagonist]);
 
     const state = useChatState();
     const {
@@ -92,6 +102,11 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
     // Track the current streaming message ID for broadcast during streaming
     const streamingMessageIdRef = useRef<string | null>(null);
     const streamingCharacterRef = useRef<Character | null>(null);
+
+    // ─── Lock Queueing Refs ──────────────────────────────────────────
+    const pendingHostResponseRef = useRef(false);
+    const triggerHostResponseRef = useRef<() => Promise<void>>(null);
+    const pendingResumeRef = useRef<{messageId: string, allPromptBlocks?: PromptBlock[]} | null>(null);
 
     const ui = useChatUI(state.interactionData, state.isLoading, state.streamingText, isAtBottomRef);
 
@@ -185,7 +200,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
 
     // Autonomous mode — depends on autonomousMode flag only
     useEffect(() => {
-        if (autonomousMode && interactionData) {
+        if (autonomousMode && interactionData && !isMultiplayerClient) {
             const checkCanAct = () => !isLoadingRef.current && !abortControllerRef.current;
             chatEngine.startAutonomousMode(
                 checkCanAct,
@@ -197,7 +212,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             chatEngine.stopAutonomousMode();
         }
         return () => { chatEngine.stopAutonomousMode(); };
-    }, [autonomousMode, interactionData, chatEngine, isLoadingRef, resetStream, getState, setState]);
+    }, [autonomousMode, interactionData, chatEngine, isLoadingRef, resetStream, getState, setState, isMultiplayerClient]);
 
     const isModelReadyForGeneration = useCallback((): boolean => {
         const m = getState().selectedModel;
@@ -250,8 +265,46 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
 
     const sendMessage = useCallback(async (text: string, files?: File[], frontCameraImageBase64?: string, allPromptBlocks?: PromptBlock[]) => {
         const currentState = getState();
-        if (!currentState.interactionData || !currentState.currentCharacter || (!text.trim() && (!files || !files.length))) return;
+        
+        // LOCK: Force multiplayer clients to use their assigned protagonist, ignoring local UI state
+        const activeCharacter = isMultiplayerClient 
+            ? (joinProtagonistRef.current || currentState.currentCharacter)
+            : currentState.currentCharacter;
+
+        if (!currentState.interactionData || !activeCharacter || (!text.trim() && (!files || !files.length))) return;
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
+        
+        // Multiplayer clients only send the user message, host handles generation
+        if (isMultiplayerClient) {
+            try {
+                const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error); });
+                const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
+
+                const chatMessage = createChatMessage(currentState.interactionData, activeCharacter, text, { files: encodedFiles, frontCameraImage: frontCameraImageBase64 });
+                let td = addMessageToInteractionData(currentState.interactionData, chatMessage);
+
+                // Broadcast user message to host
+                onMessageBroadcastRef.current?.(chatMessage);
+
+                const hasLocations = td.locations && td.locations.length > 0;
+                if (hasLocations) {
+                    const protagonistMsg = td.interactionHistory[td.interactionHistory.length - 1];
+                    if (protagonistMsg && protagonistMsg.character.id === activeCharacter.id && protagonistMsg.messageType === 'chat') {
+                        const currentLoc = getCurrentLocationIndex(td, activeCharacter);
+                        const regexLoc = findLocationByRegex(td.locations, protagonistMsg.textContent, activeCharacter);
+                        const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
+                        td = { ...td, interactionHistory: td.interactionHistory.map((m, i) => i === td.interactionHistory.length - 1 ? { ...m, locationIndex: finalLoc } : m) };
+                    }
+                }
+
+                setInteractionData(td);
+                await saveRawInteractionData(td);
+            } finally {
+                releaseLock();
+            }
+            return;
+        }
+        
         if (!currentState.activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
         const ctrl = new AbortController();
@@ -267,7 +320,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
             // Store front camera image on the outgoing message so all subsequent AI generations can see it
-            const chatMessage = createChatMessage(currentState.interactionData, currentState.currentCharacter, text, { files: encodedFiles, frontCameraImage: frontCameraImageBase64 });
+            const chatMessage = createChatMessage(currentState.interactionData, activeCharacter, text, { files: encodedFiles, frontCameraImage: frontCameraImageBase64 });
             let td = addMessageToInteractionData(currentState.interactionData, chatMessage);
 
             // Broadcast user message
@@ -276,9 +329,9 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             const hasLocations = td.locations && td.locations.length > 0;
             if (hasLocations) {
                 const protagonistMsg = td.interactionHistory[td.interactionHistory.length - 1];
-                if (protagonistMsg && protagonistMsg.character.id === currentState.currentCharacter.id && protagonistMsg.messageType === 'chat') {
-                    const currentLoc = getCurrentLocationIndex(td, currentState.currentCharacter);
-                    const regexLoc = findLocationByRegex(td.locations, protagonistMsg.textContent, currentState.currentCharacter);
+                if (protagonistMsg && protagonistMsg.character.id === activeCharacter.id && protagonistMsg.messageType === 'chat') {
+                    const currentLoc = getCurrentLocationIndex(td, activeCharacter);
+                    const regexLoc = findLocationByRegex(td.locations, protagonistMsg.textContent, activeCharacter);
                     const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
                     td = { ...td, interactionHistory: td.interactionHistory.map((m, i) => i === td.interactionHistory.length - 1 ? { ...m, locationIndex: finalLoc } : m) };
                 }
@@ -296,7 +349,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             const ud = turnResult.interactionData;
 
             if (pendingPartialRef.current) {
-                const fd = await applyPendingPartial(ud, currentState.currentCharacter.id);
+                const fd = await applyPendingPartial(ud, activeCharacter.id);
                 await saveRawInteractionData(fd);
                 setInteractionData(fd);
                 broadcastNewMessages(preTurnCount, fd);
@@ -314,7 +367,109 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
 
                 // Auto-resume if model cut off mid-generation
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
-                    autoResumeOnCutoff(processed, currentState.currentCharacter.id, allPromptBlocks);
+                    autoResumeOnCutoff(processed, activeCharacter.id, allPromptBlocks);
+                    return;
+                }
+
+                runSummarization({
+                    data: processed,
+                    setData: setInteractionData,
+                    addToast,
+                });
+
+                const lm = processed.interactionHistory[processed.interactionHistory.length - 1];
+                if (lm && lm.messageType === 'chat' && lm.character.id !== activeCharacter.id) {
+                    ui.playVoice(lm.textContent, lm.character);
+                }
+            } else {
+                const ad = await generateAmbientNarration(ud, ctrl.signal);
+                const sd = ad || ud;
+                await saveRawInteractionData(sd);
+                setInteractionData(sd);
+                broadcastNewMessages(preTurnCount, sd);
+            }
+        } catch (e) {
+            if ((e as Error).name !== 'AbortError') {
+                console.error('Send failed:', e);
+                addToast(`Send failed: ${(e as Error).message}`, 'error');
+            }
+        } finally {
+            if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
+            streamingCharacterRef.current = null;
+            streamingMessageIdRef.current = null;
+            releaseLock();
+            
+            if (pendingResumeRef.current) {
+                const { messageId, allPromptBlocks } = pendingResumeRef.current;
+                pendingResumeRef.current = null;
+                setTimeout(() => resumeGenerationRef.current?.(messageId, allPromptBlocks), 0);
+            } else if (pendingHostResponseRef.current) {
+                pendingHostResponseRef.current = false;
+                setTimeout(() => triggerHostResponseRef.current?.(), 0);
+            }
+        }
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters, autoResumeOnCutoff, broadcastNewMessages, isMultiplayerClient]);
+
+    // Trigger host response when a peer sends a message
+    const triggerHostResponse = useCallback(async () => {
+        console.log('[MP] triggerHostResponse called');
+        const currentState = getState();
+        if (!currentState.interactionData || !currentState.currentCharacter) {
+            console.log('[MP] triggerHostResponse: No interactionData or currentCharacter');
+            return;
+        }
+        if (!acquireLock()) { 
+            console.warn('[MP] Host: Already generating, queueing peer response'); 
+            pendingHostResponseRef.current = true;
+            return; 
+        }
+        if (!currentState.activeStrategy && !isModelReadyForGeneration()) { 
+            console.log('[MP] triggerHostResponse: Model not ready');
+            addToast('Model not ready.', 'error'); 
+            releaseLock(); 
+            return; 
+        }
+
+        console.log('[MP] triggerHostResponse: Starting generation...');
+        const ctrl = new AbortController();
+        abortControllerRef.current = ctrl;
+        wasStoppedRef.current = false;
+        resetStream();
+        setStreamingState(null, '');
+        setStats({ latency: 0, timeToFirstToken: 0 });
+        isAtBottomRef.current = true;
+
+        try {
+            const td = currentState.interactionData;
+            
+            // Set up streaming broadcast tracking
+            const preTurnCount = td.interactionHistory.length;
+            streamingCharacterRef.current = null;
+            streamingMessageIdRef.current = null;
+
+            const turnResult = await chatEngine.runTurn(td, ctrl);
+            const ud = turnResult.interactionData;
+
+            if (pendingPartialRef.current) {
+                const fd = await applyPendingPartial(ud, currentState.currentCharacter.id);
+                await saveRawInteractionData(fd);
+                setInteractionData(fd);
+                broadcastNewMessages(preTurnCount, fd);
+                return;
+            }
+
+            if (ud.interactionHistory.length > td.interactionHistory.length) {
+                const processed = processPendingToolActions(ud, allCharacters, { onToast: addToast });
+
+                await saveRawInteractionData(processed);
+                setInteractionData(processed);
+
+                // Broadcast finalized AI messages to all peers
+                broadcastNewMessages(preTurnCount, processed);
+
+                // Auto-resume if model cut off mid-generation
+                if (!turnResult.isCompleted && !wasStoppedRef.current) {
+                    autoResumeOnCutoff(processed, currentState.currentCharacter.id);
                     return;
                 }
 
@@ -337,21 +492,53 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             }
         } catch (e) {
             if ((e as Error).name !== 'AbortError') {
-                console.error('Send failed:', e);
-                addToast(`Send failed: ${(e as Error).message}`, 'error');
+                console.error('[MP] Host response failed:', e);
+                addToast(`Host response failed: ${(e as Error).message}`, 'error');
             }
         } finally {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
             releaseLock();
+            
+            if (pendingResumeRef.current) {
+                const { messageId, allPromptBlocks } = pendingResumeRef.current;
+                pendingResumeRef.current = null;
+                setTimeout(() => resumeGenerationRef.current?.(messageId, allPromptBlocks), 0);
+            } else if (pendingHostResponseRef.current) {
+                pendingHostResponseRef.current = false;
+                setTimeout(() => triggerHostResponseRef.current?.(), 0);
+            }
         }
     }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters, autoResumeOnCutoff, broadcastNewMessages]);
 
-    const sendActionAndGetResponse = useCallback(async (actionText: string, targetChar: Character, protagonist: Character) => {
+    const sendActionAndGetResponse = useCallback(async (actionText: string, _targetChar: Character, protagonist: Character) => {
         const currentState = getState();
         if (!currentState.interactionData) return;
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
+        
+        // LOCK: Force multiplayer clients to use their assigned protagonist
+        const activeProtagonist = isMultiplayerClient 
+            ? (joinProtagonistRef.current || protagonist) 
+            : protagonist;
+
+        // Multiplayer clients only send the action message, host handles generation
+        if (isMultiplayerClient) {
+            try {
+                const chatMessage = createChatMessage(currentState.interactionData, activeProtagonist, actionText);
+                const td = addMessageToInteractionData(currentState.interactionData, chatMessage);
+
+                // Broadcast action message to host
+                onMessageBroadcastRef.current?.(chatMessage);
+
+                setInteractionData(td);
+                await saveRawInteractionData(td);
+            } finally {
+                releaseLock();
+            }
+            return;
+        }
+        
         if (!currentState.activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
         const ctrl = new AbortController();
@@ -424,8 +611,17 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
             releaseLock();
+            
+            if (pendingResumeRef.current) {
+                const { messageId, allPromptBlocks } = pendingResumeRef.current;
+                pendingResumeRef.current = null;
+                setTimeout(() => resumeGenerationRef.current?.(messageId, allPromptBlocks), 0);
+            } else if (pendingHostResponseRef.current) {
+                pendingHostResponseRef.current = false;
+                setTimeout(() => triggerHostResponseRef.current?.(), 0);
+            }
         }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters, autoResumeOnCutoff, broadcastNewMessages]);
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, allCharacters, autoResumeOnCutoff, broadcastNewMessages, isMultiplayerClient]);
 
     const stopGeneration = useCallback(() => {
         wasStoppedRef.current = true;
@@ -484,14 +680,25 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
     }, [resetStream, getState, setState, streamingTextRef, isLoadingRef]);
 
     const resumeGeneration = useCallback(async (messageId: string, allPromptBlocks?: PromptBlock[]) => {
+        // Multiplayer clients cannot resume locally - host handles generation
+        if (isMultiplayerClient) {
+            addToast('Generation is handled by the host.', 'info');
+            return;
+        }
+        
         const currentInteractionData = getState().interactionData;
         if (!currentInteractionData) return;
         const msgIndex = currentInteractionData.interactionHistory.findIndex(m => m.id === messageId);
         if (msgIndex === -1) { addToast('Message not found.', 'error'); return; }
         const msg = currentInteractionData.interactionHistory[msgIndex];
+        if (msg.messageType !== "chat") return;
 
         if (isLoadingRef.current) { abortControllerRef.current?.abort(); abortControllerRef.current = null; await new Promise(r => setTimeout(r, 100)); }
-        if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
+        if (!acquireLock()) { 
+            addToast('Already generating...', 'info'); 
+            pendingResumeRef.current = { messageId, allPromptBlocks };
+            return; 
+        }
         const currentState = getState();
         if (!currentState.activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
@@ -565,15 +772,34 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
             releaseLock();
+            
+            if (pendingResumeRef.current) {
+                const { messageId, allPromptBlocks } = pendingResumeRef.current;
+                pendingResumeRef.current = null;
+                setTimeout(() => resumeGenerationRef.current?.(messageId, allPromptBlocks), 0);
+            } else if (pendingHostResponseRef.current) {
+                pendingHostResponseRef.current = false;
+                setTimeout(() => triggerHostResponseRef.current?.(), 0);
+            }
         }
-    }, [getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine, throttledSetStreamingTextWithBroadcast, ui, setStreamingState, setStats, setInteractionData]);
+    }, [getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine, throttledSetStreamingTextWithBroadcast, ui, setStreamingState, setStats, setInteractionData, isMultiplayerClient]);
 
     // Keep ref in sync so autoResumeOnCutoff always calls latest version
     useEffect(() => {
         resumeGenerationRef.current = resumeGeneration;
     }, [resumeGeneration]);
+    
+    useEffect(() => {
+        triggerHostResponseRef.current = triggerHostResponse;
+    }, [triggerHostResponse]);
 
     const regenerateFromMessage = useCallback(async (messageId: string, protagonists: Character[], allPromptBlocks?: PromptBlock[]) => {
+        // Multiplayer clients cannot regenerate locally - host handles generation
+        if (isMultiplayerClient) {
+            addToast('Generation is handled by the host.', 'info');
+            return;
+        }
+        
         const currentInteractionData = getState().interactionData;
         if (!currentInteractionData) { addToast('Chat data missing.', 'error'); return; }
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
@@ -648,8 +874,17 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
             releaseLock();
+            
+            if (pendingResumeRef.current) {
+                const { messageId, allPromptBlocks } = pendingResumeRef.current;
+                pendingResumeRef.current = null;
+                setTimeout(() => resumeGenerationRef.current?.(messageId, allPromptBlocks), 0);
+            } else if (pendingHostResponseRef.current) {
+                pendingHostResponseRef.current = false;
+                setTimeout(() => triggerHostResponseRef.current?.(), 0);
+            }
         }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setInteractionData, setStreamingState, setStats, allCharacters, autoResumeOnCutoff, broadcastNewMessages]);
+    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setInteractionData, setStreamingState, setStats, allCharacters, autoResumeOnCutoff, broadcastNewMessages, isMultiplayerClient]);
 
     const startNewChat = useCallback((char: Character) => {
         const c = createNewInteractionData(char);
@@ -669,6 +904,7 @@ export function useChatSession(allCharacters: Character[], options?: UseChatSess
         regenerateFromMessage,
         startNewChat,
         sendActionAndGetResponse,
+        triggerHostResponse,
         setActiveBudgetStrategy: setActiveStrategy,
         setSelectedGlobalModel: setSelectedModel,
         updateRunningModels,

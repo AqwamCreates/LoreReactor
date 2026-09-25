@@ -49,6 +49,7 @@ interface EntityModalState<T> {
 }
 
 interface AppModalsProps {
+    isMultiplayerClient?: boolean;
     modals: Record<string, ModalVisibility>;
     runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     rawChatShells: RawInteractionData[];
@@ -117,7 +118,7 @@ interface AppModalsProps {
     onDeleteAccount: (id: string) => void;
     onToggleAccount: (id: string) => void;
     onDeleteMultiplayerData: (id: string) => void;
-    onJoinSession: (sessionId: string, password: string, protagonist: Character) => void;
+    onJoinSession: (sessionId: string, password: string, reqCharId: string | null, reqCharData: Character | null) => void;
     onUpdateInteractionData: (data: InteractionData) => void;
     onForceFirstMessage: (c: Character) => void;
     onSendCustomMessage: (c: Character, t: string) => void;
@@ -142,15 +143,16 @@ function deriveLocalProtagonist(
     if (!multiplayerData || !currentAccountId) {
         return interactionData.protagonists[0] ?? null;
     }
-    const myCharIds = multiplayerData.accountIdCharacterIds?.[currentAccountId];
-    if (myCharIds?.length) {
-        const found = interactionData.protagonists.find(p => myCharIds.includes(p.id));
+    const myCharIds = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.activeCharacterId;
+    if (myCharIds) {
+        const found = interactionData.protagonists.find(p => p.id === myCharIds) || interactionData.participants.find(p => p.id === myCharIds);
         if (found) return found;
     }
     return interactionData.protagonists[0] ?? null;
 }
 
 export function AppModals({
+    isMultiplayerClient,
     modals, runningModels,
     rawChatShells, allCharacters, allContexts, allLocations, allAudioTracks,
     allSamplers, allStopPatterns, allModels, allBudgetStrategies,
@@ -273,17 +275,17 @@ export function AppModals({
                     items={allCharacters}
                     isOpen={modals.charList.isOpen}
                     onClose={modals.charList.close}
-                    onSelect={async (c: Character) => { const f = c.sampler ? c : await onLoadFullCharacter(c.id); charModal.open(f || c); }}
-                    onDelete={onDeleteCharacter}
-                    onCreateNew={() => charModal.open()}
+                    onSelect={isMultiplayerClient ? undefined : async (c: Character) => { const f = c.sampler ? c : await onLoadFullCharacter(c.id); charModal.open(f || c); }}
+                    onDelete={isMultiplayerClient ? undefined : onDeleteCharacter}
+                    onCreateNew={isMultiplayerClient ? () => {} : () => charModal.open()}
                     renderSubtext={(c: Character) => c.description || 'No description'}
                     emptyMessage="No characters found."
                     actionLabel="Delete"
-                    orderedListMode={!!interactionData}
+                    orderedListMode={!!interactionData && !isMultiplayerClient}
                     currentOrderIds={interactionData?.participants.map(p => p.id) || []}
-                    onToggleOrder={onToggleParticipant}
+                    onToggleOrder={isMultiplayerClient ? undefined : onToggleParticipant}
                     specialActionIcon="★"
-                    onSpecialAction={(c: Character) => onSetProtagonist(c.id)}
+                    onSpecialAction={isMultiplayerClient ? undefined : (c: Character) => onSetProtagonist(c.id)}
                     specialActionTooltip={(c: Character) => `set ${c.name} as the protagonist`}
                     activeSpecialActionId={localProtagonist?.id}
                 />
@@ -445,7 +447,7 @@ export function AppModals({
             {modals.multiplayerDataList.isOpen && (
                 <ManagerModal title="Multiplayer Data" items={allMultiplayerData} isOpen={modals.multiplayerDataList.isOpen} onClose={modals.multiplayerDataList.close}
                     onSelect={(m: MultiplayerData) => multiplayerDataModal.open(m)} onDelete={onDeleteMultiplayerData} onCreateNew={() => multiplayerDataModal.open()}
-                    renderSubtext={(m: MultiplayerData) => `${m.password ? '🔒' : '🔓'} ${m.whiteListedAccountIds.length} whitelisted • ${m.blacklistedAccountIds.length} blacklisted • ${m.administratorAccountIds.length} admins • ${m.interactionDataIds.length} sessions • ${Object.keys(m.accountIdCharacterIds).length} mappings`}
+                    renderSubtext={(m: MultiplayerData) => `${m.password ? '🔒' : '🔓'} ${Object.keys(m.multiplayerDataAccountConfigurations || {}).length} accounts • ${m.interactionDataIds.length} sessions`}
                     emptyMessage="No multiplayer data found." actionLabel="Delete" />
             )}
 
