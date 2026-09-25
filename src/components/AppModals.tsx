@@ -316,7 +316,19 @@ export function AppModals({
             {modals.worldManager.isOpen && (
                 <ManagerModal title="Worlds" items={allWorlds} isOpen={modals.worldManager.isOpen} onClose={modals.worldManager.close}
                     onSelect={(w: World) => worldModal.open(w)} onDelete={onDeleteWorld} onCreateNew={() => worldModal.open()}
-                    renderSubtext={(w: World) => `${w.characterIds.length} char • ${w.contextIds.length} context • ${w.locationIds.length} loc${(w.audioTrackIds?.length ?? 0) > 0 ? ` • 🔊${w.audioTrackIds.length}` : ''}${(w.promptBlockIds?.length ?? 0) > 0 ? ` • 🧱${w.promptBlockIds.length}` : ''}${w.profileId ? ' • 📋' : ''}${w.description ? ` — ${w.description}` : ''}`}
+                    renderSubtext={(w: World) => {
+                        const parts = [
+                            w.characterIds.length > 0 ? `${w.characterIds.length} characters` : null,
+                            w.contextIds.length > 0 ? `${w.contextIds.length} contexts` : null,
+                            w.locationIds.length > 0 ? `${w.locationIds.length} locations` : null,
+                            (w.audioTrackIds?.length ?? 0) > 0 ? `${w.audioTrackIds.length} audios` : null,
+                            (w.promptBlockIds?.length ?? 0) > 0 ? `${w.promptBlockIds.length} prompts` : null,
+                            w.profileId ? 'Has profile' : null,
+                            w.description ? `— ${w.description}` : null,
+                        ].filter(Boolean);
+
+                        return parts.join(' • ');
+                    }}
                     emptyMessage="No worlds saved yet." actionLabel="Delete" />
             )}
 
