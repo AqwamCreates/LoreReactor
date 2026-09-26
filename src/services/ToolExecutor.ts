@@ -1051,8 +1051,8 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
 
         let summaryText: string | null = null;
         try {
-            const summaryResult = await generateCharacterMemory(interactionData, character, '', 512);
-            if (summaryResult?.text) summaryText = summaryResult.text;
+            const text = await generateCharacterMemory(interactionData, character, '', 512);
+            if (text) summaryText = text;
         } catch {
             // Fall through
         }

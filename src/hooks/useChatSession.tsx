@@ -19,7 +19,7 @@ import { useAmbientNarration } from './useAmbientNarration';
 import { useSessionStore } from './useSessionStore';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import type { Character, Context, Location, AudioTrack, World, PromptBlock, Sampler, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, HistoryMessage, Memory, Extension } from '../types';
+import type { Character, Context, Location, AudioTrack, World, PromptBlock, Sampler, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, HistoryMessage, Memory, Extension, WhisperMessage } from '../types';
 
 const engine = getLanguageModelEngine();
 
@@ -385,6 +385,15 @@ export function useChatSession(options?: UseChatSessionOptions) {
 
                 if (isMultiplayerClient) {
                     onMessageBroadcastRef.current?.(slashMessage);
+                }
+
+                // ─── PROCESS WHISPER ACTIONS IMMEDIATELY ─────────────────────────
+                // Whisper messages need to be created before the AI turn so the AI can see them in history
+                const processedData = processPendingToolActions(updatedData, allCharactersRef.current, { onToast: addToast });
+                if (processedData !== updatedData) {
+                    setInteractionData(processedData);
+                    await saveRawInteractionData(processedData);
+                    broadcastNewMessages(updatedData.interactionHistory.length, processedData);
                 }
             } catch (e) {
                 console.error('Slash command failed:', e);

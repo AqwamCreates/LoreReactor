@@ -1,4 +1,3 @@
-// src/services/CharacterActor.ts
 import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from '../storage/serverStorage';
 import { prepareRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
@@ -60,6 +59,8 @@ export interface TurnExecutionParams {
     callbacks?: TurnStreamCallbacks;
     /** When true, this client is a multiplayer joiner and must not generate locally */
     isMultiplayerClient?: boolean;
+    /** Optional borrowed model from a peer for shared language model feature */
+    borrowedModel?: LanguageModel | null;
 }
 
 
@@ -138,7 +139,7 @@ export class CharacterActor {
             data, character, signal,
             selectedModel, runningModels, activeStrategy,
             strategyOverride, existingCharacterText, allPromptBlocks, callbacks,
-            isMultiplayerClient,
+            isMultiplayerClient, borrowedModel,
         } = params;
 
         // Multiplayer clients must never generate locally.
@@ -184,9 +185,11 @@ export class CharacterActor {
         // will call it again with potentially updated state after tool processing.
         let resolvedClothingStatuses: Record<string, boolean> = initializeClothingWearingStatuses(character);
         if (!isResuming) {
-            const probeModelId = strat
-                ? ((await getBudgetStrategyEngine().selectModelForRequest({ prompt: '' }))?.modelId || '')
-                : (selectedModel?.id || '');
+            const probeModelId = borrowedModel
+                ? borrowedModel.id
+                : strat
+                    ? ((await getBudgetStrategyEngine().selectModelForRequest({ prompt: '' }))?.modelId || '')
+                    : (selectedModel?.id || '');
             if (probeModelId) {
                 try {
                     const probeResult = await prepareRequestBody(data, character, knownCharacterNames, '', allPromptBlocks, probeModelId);
@@ -239,7 +242,66 @@ export class CharacterActor {
                 },
             });
 
-            if (strat) {
+            // ─── Borrowed Model Path (Shared Language Model) ─────────
+            if (borrowedModel) {
+                this.engine.setRunningModels(runningModels);
+                this.engine.setContext(borrowedModel);
+
+                const streamToolParser = new ToolInvocationParser();
+                const accumulator = new StreamingAccumulator();
+
+                if (currentExistingText) {
+                    accumulator.initializeWithExisting(currentExistingText);
+                }
+
+                const doStream = async (reqBody: Record<string, unknown>) => {
+                    const result = await this.engine.generateStream(reqBody, { signal } as AbortController, {
+                        ...createStreamCallbacks(streamToolParser, accumulator),
+                        onFinish: (rs: { promptTokens?: number; completionTokens?: number; cacheMiss?: boolean }): void => {
+                            const cr = calculateRequestCost(rs.promptTokens || 0, rs.completionTokens || 0, rs.cacheMiss || false, pricing);
+                            statsDelta.numberOfRequests++;
+                            if (rs.cacheMiss) statsDelta.numberOfCacheInvalidations++;
+                            statsDelta.totalCost += cr.totalCost;
+                            statsDelta.costWithoutCacheMisses += cr.potentialMaxCost;
+                        },
+                    });
+                    lastIsCompleted = result.isCompleted;
+                    return result.text;
+                };
+
+                const modelId = borrowedModel.id;
+
+                while (true) {
+                    if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
+
+                    const { body } = await prepareRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
+                    rawText = await doStream(body);
+
+                    if ((!rawText || !rawText.trim()) && !signal.aborted) {
+                        const { body: rb } = await prepareRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
+                        rawText = await doStream(rb);
+                        if (!rawText || !rawText.trim()) {
+                            return { error: { message: 'Empty response from borrowed model', type: 'inference' } };
+                        }
+                    }
+
+                    const toolResult = await processToolInvocations(rawText, character, data.Profile, aiMessage!, data);
+                    if (!toolResult) {
+                        accumulatedDisplayText = accumulator.getDisplayText();
+                        break;
+                    }
+
+                    accumulator.commitLive();
+                    for (const rep of toolResult.displayReplacements) {
+                        if (rep.type === 'calculator') accumulator.appendCommitted(rep.value);
+                    }
+                    callbacks?.onDisplayText(accumulator.getDisplayText());
+
+                    accumulator.resetLive();
+                    streamToolParser.reset();
+                    currentExistingText = toolResult.resumeText;
+                }
+            } else if (strat) {
                 // ─── Budget Strategy Path ────────────────────────────
                 const bse = getBudgetStrategyEngine();
                 bse.setStrategy(strat);

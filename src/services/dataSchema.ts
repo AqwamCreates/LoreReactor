@@ -68,7 +68,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "numberOfMessagesToDisableDialoguePrompt": "number (≥0, default 1)",
     "numberOfMessagesToDisableStarterPrompt": "number (≥0, default 1)",
     "tools": {
-      "think": "boolean (default false)", "pick": "boolean (default true)", "date": "boolean (default false)", "coin": "boolean (default true)",
+      "think": "boolean (default true)", "think": "boolean (default false)", "pick": "boolean (default true)", "date": "boolean (default false)", "coin": "boolean (default true)",
       "dice": "boolean (default true)", "random": "boolean (default true)", "rng": "boolean (default false)",
       "move": "boolean (default true)", "timer": "boolean (default false)", "stopwatch": "boolean (default false)",
       "schedule": "boolean (default false)",
@@ -259,7 +259,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     },
     "stripThinkTokens": "boolean (default true)",
     "tools": {
-      "think": "number (-1, 0, or 1, default 0)", "pick": "number (-1, 0, or 1, default 0)", "date": "number (-1, 0, or 1, default 0)", "coin": "number (-1, 0, or 1, default 0)",
+      "whisper": "number (-1, 0, or 1, default 0)", "think": "number (-1, 0, or 1, default 0)", "pick": "number (-1, 0, or 1, default 0)", "date": "number (-1, 0, or 1, default 0)", "coin": "number (-1, 0, or 1, default 0)",
       "dice": "number (-1, 0, or 1, default 0)", "random": "number (-1, 0, or 1, default 0)", "rng": "number (-1, 0, or 1, default 0)",
       "move": "number (-1, 0, or 1, default 0)", "timer": "number (-1, 0, or 1, default 0)", "stopwatch": "number (-1, 0, or 1, default 0)",
       "schedule": "number (-1, 0, or 1, default 0)",

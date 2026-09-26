@@ -215,10 +215,6 @@ export function useMultiplayerConnection({
         };
 
         const peerConfig: Record<string, unknown> = { debug: 1 };
-        if (import.meta.env.VITE_PEERJS_HOST) peerConfig.host = import.meta.env.VITE_PEERJS_HOST;
-        if (import.meta.env.VITE_PEERJS_PORT) peerConfig.port = parseInt(import.meta.env.VITE_PEERJS_PORT, 10);
-        if (import.meta.env.VITE_PEERJS_SECURE !== undefined && import.meta.env.VITE_PEERJS_SECURE !== '') peerConfig.secure = import.meta.env.VITE_PEERJS_SECURE === 'true';
-        if (import.meta.env.VITE_PEERJS_PATH) peerConfig.path = import.meta.env.VITE_PEERJS_PATH;
 
         const peer = new Peer(peerId, peerConfig);
         peerRef.current = peer;
