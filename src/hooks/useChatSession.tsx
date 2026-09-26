@@ -19,11 +19,14 @@ import { useAmbientNarration } from './useAmbientNarration';
 import { useSessionStore } from './useSessionStore';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import type { Character, Context, Location, AudioTrack, World, PromptBlock, Sampler, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, HistoryMessage, Memory, Extension, WhisperMessage, LanguageModel } from '../types';
+import type { Character, Context, Location, AudioTrack, World, PromptBlock, Sampler, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, HistoryMessage, Memory, Extension, LanguageModel } from '../types';
 
 const engine = getLanguageModelEngine();
 
+/** Tools that are valid without any arguments */
 const NO_ARG_TOOLS = ['coin', 'date'];
+
+/** Meta-tools that require administrator privileges for joiners */
 const HOST_ONLY_TOOLS = ['administrator', 'creator', 'destroyer'];
 
 function finalizeMessageById(
@@ -45,6 +48,10 @@ function finalizeMessageById(
     return { ...data, interactionHistory: history, lastUpdatedTimestamp: Date.now() };
 }
 
+/**
+ * Find the last AI chat message ID for resumption.
+ * Returns the message ID, or null if no suitable message found.
+ */
 function findLastAIMessageId(
     data: InteractionData,
     protagonistId: string,
@@ -61,8 +68,11 @@ function findLastAIMessageId(
 
 interface UseChatSessionOptions {
     onMessageBroadcast?: (message: HistoryMessage) => void;
+    /** When true, this client is a multiplayer joiner and should not generate locally */
     isMultiplayerClient?: boolean;
+    /** The character assigned to this client by the host. Used to lock message authoring. */
     joinProtagonist?: Character | null;
+    /** All entity collections for tool execution context */
     allCharacters?: Character[];
     allContexts?: Context[];
     allLocations?: Location[];
@@ -86,9 +96,11 @@ export function useChatSession(options?: UseChatSessionOptions) {
     
     useEffect(() => { onMessageBroadcastRef.current = options?.onMessageBroadcast; }, [options?.onMessageBroadcast]);
 
+    // LOCK: Keep the assigned multiplayer character in a ref so callbacks always use the locked identity
     const joinProtagonistRef = useRef(options?.joinProtagonist ?? null);
     useEffect(() => { joinProtagonistRef.current = options?.joinProtagonist ?? null; }, [options?.joinProtagonist]);
 
+    // ─── Entity Collections (refs to avoid stale closures) ──────────
     const allCharactersRef = useRef(options?.allCharacters ?? []);
     const allContextsRef = useRef(options?.allContexts ?? []);
     const allLocationsRef = useRef(options?.allLocations ?? []);
@@ -123,6 +135,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
         getState, setState, setActiveStrategy, setSelectedModel, setCurrentCharacter,
     } = state;
 
+    // Direct Zustand selectors for stable effect dependencies
     const interactionData = useSessionStore(s => s.interactionData);
     const selectedModel = useSessionStore(s => s.selectedModel);
     const autonomousMode = useSessionStore(s => s.interactionData?.Profile?.autonomousMode ?? false);
@@ -134,11 +147,14 @@ export function useChatSession(options?: UseChatSessionOptions) {
     const isAtBottomRef = useRef(true);
     const wasStoppedRef = useRef(false);
 
+    // Ref to hold resumeGeneration for use in autoResumeOnCutoff (breaks circular dependency)
     const resumeGenerationRef = useRef<(messageId: string, allPromptBlocks?: PromptBlock[]) => Promise<void>>(null);
 
+    // Track the current streaming message ID for broadcast during streaming
     const streamingMessageIdRef = useRef<string | null>(null);
     const streamingCharacterRef = useRef<Character | null>(null);
 
+    // ─── Lock Queueing Refs ──────────────────────────────────────────
     const pendingHostResponseRef = useRef(false);
     const triggerHostResponseRef = useRef<() => Promise<void>>(null);
     const pendingResumeRef = useRef<{messageId: string, allPromptBlocks?: PromptBlock[]} | null>(null);
@@ -161,6 +177,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
     const { acquireLock, releaseLock, isLoadingRef } = useCharacterResponseLock();
     const { generateAmbientNarration } = useAmbientNarration(setStreamingState, setStreamingText, streamingTextRef);
 
+    // Wrapped throttled stream setter that also broadcasts partial messages
     const throttledSetStreamingTextWithBroadcast = useCallback((text: string) => {
         throttledSetStreamingText(text);
         const char = streamingCharacterRef.current;
@@ -187,6 +204,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
         }
     }, [throttledSetStreamingText]);
 
+    // Load budget data once on mount
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -198,6 +216,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
         return () => { cancelled = true; };
     }, [setBudgetData]);
 
+    // Fetch model status once on mount
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -217,6 +236,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
         if (selectedModel) engine.setContext(selectedModel);
     }, [selectedModel]);
 
+    // Token counting — depends on interactionData changes only
     useEffect(() => {
         if (!interactionData) return;
         let cancelled = false;
@@ -230,6 +250,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
         return () => { cancelled = true; };
     }, [interactionData, setNumberOfTokens]);
 
+    // Autonomous mode — depends on autonomousMode flag only
     useEffect(() => {
         if (autonomousMode && interactionData && !isMultiplayerClient) {
             const checkCanAct = () => !isLoadingRef.current && !abortControllerRef.current;
@@ -274,15 +295,18 @@ export function useChatSession(options?: UseChatSessionOptions) {
         return addMessageToInteractionData(base, chatMessage);
     }, []);
 
+    // Auto-resume helper: finds last AI message and triggers resumeGeneration
     const autoResumeOnCutoff = useCallback((data: InteractionData, protagonistId: string, allPromptBlocks?: PromptBlock[]) => {
         const messageId = findLastAIMessageId(data, protagonistId);
         if (!messageId) return;
 
+        // Use setTimeout to avoid re-entrancy issues with the current callback stack
         setTimeout(() => {
             resumeGenerationRef.current?.(messageId, allPromptBlocks);
         }, 0);
     }, []);
 
+    // Helper to broadcast new messages added by a turn
     const broadcastNewMessages = useCallback((beforeCount: number, afterData: InteractionData) => {
         if (!onMessageBroadcastRef.current) return;
         const newMessages = afterData.interactionHistory.slice(beforeCount);
@@ -291,6 +315,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
         }
     }, []);
 
+    /** Build the ToolExecutionContext from current refs */
     const buildToolContext = useCallback((): ToolExecutionContext => ({
         allCharacters: allCharactersRef.current,
         allContexts: allContextsRef.current,
@@ -310,16 +335,19 @@ export function useChatSession(options?: UseChatSessionOptions) {
     const sendMessage = useCallback(async (text: string, allPromptBlocks: PromptBlock[] | undefined, files: File[] | undefined, frontCameraImageBase64: string | undefined) => {
         const currentState = getState();
         
+        // LOCK: Force multiplayer clients to use their assigned protagonist, ignoring local UI state
         const activeCharacter = isMultiplayerClient 
             ? (joinProtagonistRef.current || currentState.currentCharacter)
             : currentState.currentCharacter;
 
         if (!currentState.interactionData || !activeCharacter || (!text.trim() && (!files || !files.length))) return;
 
+        // ─── SLASH COMMAND DETECTION ───────────────────────────────
         const slashInvocation = parseSlashCommand(text);
         const isSlashCommand = !!(slashInvocation && !files?.length && !frontCameraImageBase64);
 
         if (isSlashCommand && slashInvocation) {
+            // ─── GATE HOST-ONLY META-TOOLS FROM NON-ADMIN JOINERS ─────────────
             if (isMultiplayerClient && HOST_ONLY_TOOLS.includes(slashInvocation.toolType)) {
                 const mpData = useSessionStore.getState().multiplayerData;
                 const accountId = useSessionStore.getState().currentAccountId;
@@ -332,11 +360,13 @@ export function useChatSession(options?: UseChatSessionOptions) {
                 }
             }
 
+            // ─── VALIDATE ARGS ──────────────────────────────────────
             if (!slashInvocation.args.trim() && !NO_ARG_TOOLS.includes(slashInvocation.toolType)) {
                 addToast(`/${slashInvocation.toolType} requires arguments.`, 'error');
                 return;
             }
 
+            // ─── EXECUTE TOOL ────────────────────────────────────────
             if (!acquireLock()) { addToast('Already processing...', 'info'); return; }
             try {
                 const slashMessage = createChatMessage(currentState.interactionData, activeCharacter, '', {});
@@ -349,6 +379,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
                     currentState.interactionData.Profile?.toolUsageDisplayMode
                 );
 
+                // Use the raw mechanical display replacement directly
                 slashMessage.textContent = toolResult.displayReplacement || toolResult.content || `[${slashInvocation.toolType}]`;
 
                 const updatedData = addMessageToInteractionData(currentState.interactionData, slashMessage);
@@ -358,13 +389,6 @@ export function useChatSession(options?: UseChatSessionOptions) {
                 if (isMultiplayerClient) {
                     onMessageBroadcastRef.current?.(slashMessage);
                 }
-
-                const processedData = processPendingToolActions(updatedData, allCharactersRef.current, { onToast: addToast });
-                if (processedData !== updatedData) {
-                    setInteractionData(processedData);
-                    await saveRawInteractionData(processedData);
-                    broadcastNewMessages(updatedData.interactionHistory.length, processedData);
-                }
             } catch (e) {
                 console.error('Slash command failed:', e);
                 addToast(`Command failed: ${(e as Error).message}`, 'error');
@@ -372,19 +396,27 @@ export function useChatSession(options?: UseChatSessionOptions) {
                 return;
             }
 
+            // ─── MULTIPLAYER: tool executed locally, host handles AI ─
             if (isMultiplayerClient) {
                 releaseLock();
                 return;
             }
+
+            // ─── FALL THROUGH TO AI GENERATION ─────────────────────
+            // Tool result is already in chat history. AI will see it and respond.
         }
+
+        // ─── NORMAL MESSAGE OR POST-SLASH AI GENERATION ─────────────
 
         if (!isSlashCommand && !acquireLock()) { addToast('Already generating...', 'info'); return; }
         
+        // Multiplayer clients only send the user message, host handles generation
         if (isMultiplayerClient && !isSlashCommand) {
             try {
                 const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error); });
                 const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
+                // Detect names for protagonist from filtered messages
                 const filteredMessages = getFilteredChatMessages(currentState.interactionData, activeCharacter.id, allPromptBlocks || []);
                 const knownCharacterNames = detectName(activeCharacter, filteredMessages);
 
@@ -395,6 +427,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
                 });
                 let td = addMessageToInteractionData(currentState.interactionData, chatMessage);
 
+                // Broadcast user message to host
                 onMessageBroadcastRef.current?.(chatMessage);
 
                 const hasLocations = td.locations && td.locations.length > 0;
@@ -427,13 +460,16 @@ export function useChatSession(options?: UseChatSessionOptions) {
         isAtBottomRef.current = true;
 
         try {
+            // Get the latest interaction data (may have been updated by slash command)
             const latestState = getState();
             let td = latestState.interactionData!;
 
+            // If NOT a slash command, add the user's text as a chat message
             if (!isSlashCommand) {
                 const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error); });
                 const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
+                // Detect names for protagonist from filtered messages
                 const filteredMessages = getFilteredChatMessages(td, activeCharacter.id, allPromptBlocks || []);
                 const knownCharacterNames = detectName(activeCharacter, filteredMessages);
 
@@ -444,6 +480,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
                 });
                 td = addMessageToInteractionData(td, chatMessage);
 
+                // Broadcast user message
                 onMessageBroadcastRef.current?.(chatMessage);
 
                 const hasLocations = td.locations && td.locations.length > 0;
@@ -461,6 +498,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
                 await saveRawInteractionData(td);
             }
 
+            // Set up streaming broadcast tracking
             const preTurnCount = td.interactionHistory.length;
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
@@ -482,8 +520,10 @@ export function useChatSession(options?: UseChatSessionOptions) {
                 await saveRawInteractionData(processed);
                 setInteractionData(processed);
 
+                // Broadcast finalized AI messages
                 broadcastNewMessages(preTurnCount, processed);
 
+                // Auto-resume if model cut off mid-generation
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
                     autoResumeOnCutoff(processed, activeCharacter.id, allPromptBlocks);
                     return;
@@ -500,6 +540,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
                     ui.playVoice(lm.textContent, lm.character);
                 }
             } else {
+                // Check if ambient narration is enabled in the profile
                 const enableAmbientNarration = td?.Profile?.enableAmbientNarration ?? false;
                 
                 if (enableAmbientNarration) {
@@ -536,6 +577,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
         }
     }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, autoResumeOnCutoff, broadcastNewMessages, isMultiplayerClient, buildToolContext]);
 
+    // Trigger host response when a peer sends a message
     const triggerHostResponse = useCallback(async () => {
         console.log('[MP] triggerHostResponse called');
         const currentState = getState();
@@ -653,6 +695,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
 
         if (isMultiplayerClient) {
             try {
+                // Detect names for protagonist from filtered messages
                 const filteredMessages = getFilteredChatMessages(currentState.interactionData, activeProtagonist.id, allPromptBlocksRef.current || []);
                 const knownCharacterNames = detectName(activeProtagonist, filteredMessages);
 
@@ -680,6 +723,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
         isAtBottomRef.current = true;
 
         try {
+            // Detect names for protagonist from filtered messages
             const filteredMessages = getFilteredChatMessages(currentState.interactionData, protagonist.id, allPromptBlocksRef.current || []);
             const knownCharacterNames = detectName(protagonist, filteredMessages);
 
