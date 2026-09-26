@@ -390,7 +390,9 @@ export function useChatSession(options: UseChatSessionOptions) {
                 // Use the raw mechanical display replacement directly
                 slashMessage.textContent = toolResult.displayReplacement || toolResult.content || `[${slashInvocation.toolType}]`;
 
-                const updatedData = addMessageToInteractionData(currentState.interactionData, slashMessage);
+                let updatedData = addMessageToInteractionData(currentState.interactionData, slashMessage);
+                updatedData = processPendingToolActions(updatedData, allCharactersRef.current, { onToast: addToast });
+                
                 setInteractionData(updatedData);
                 await saveRawInteractionData(updatedData);
 
@@ -512,7 +514,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             streamingMessageIdRef.current = null;
 
             const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks);
-            const ud = turnResult.interactionData;
+            let ud = turnResult.interactionData;
 
             if (pendingPartialRef.current) {
                 const fd = await applyPendingPartial(ud, activeCharacter.id);
@@ -522,34 +524,35 @@ export function useChatSession(options: UseChatSessionOptions) {
                 return;
             }
 
-            if (ud.interactionHistory.length > td.interactionHistory.length) {
-                const processed = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
+            // Always process pending tool actions and bind back into 'ud'
+            ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
 
-                await saveRawInteractionData(processed);
-                setInteractionData(processed);
+            if (ud.interactionHistory.length > td.interactionHistory.length) {
+                await saveRawInteractionData(ud);
+                setInteractionData(ud);
 
                 // Broadcast finalized AI messages
-                broadcastNewMessages(preTurnCount, processed);
+                broadcastNewMessages(preTurnCount, ud);
 
                 // Auto-resume if model cut off mid-generation
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
-                    autoResumeOnCutoff(processed, activeCharacter.id, allPromptBlocks);
+                    autoResumeOnCutoff(ud, activeCharacter.id, allPromptBlocks);
                     return;
                 }
 
                 runSummarization({
-                    data: processed,
+                    data: ud,
                     setData: setInteractionData,
                     addToast,
                 });
 
-                const lm = processed.interactionHistory[processed.interactionHistory.length - 1];
+                const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
                 if (lm && lm.messageType === 'chat' && lm.character.id !== activeCharacter.id) {
                     ui.playVoice(lm.textContent, lm.character);
                 }
             } else {
                 // Check if ambient narration is enabled in the profile
-                const enableAmbientNarration = td?.Profile?.enableAmbientNarration ?? false;
+                const enableAmbientNarration = ud?.Profile?.enableAmbientNarration ?? false;
                 
                 if (enableAmbientNarration) {
                     const ad = await generateAmbientNarration(ud, ctrl.signal);
@@ -622,7 +625,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             streamingMessageIdRef.current = null;
 
             const turnResult = await chatEngine.runTurn(td, ctrl);
-            const ud = turnResult.interactionData;
+            let ud = turnResult.interactionData;
 
             if (pendingPartialRef.current) {
                 const fd = await applyPendingPartial(ud, currentState.currentCharacter.id);
@@ -632,26 +635,26 @@ export function useChatSession(options: UseChatSessionOptions) {
                 return;
             }
 
+            ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
+
             if (ud.interactionHistory.length > td.interactionHistory.length) {
-                const processed = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
+                await saveRawInteractionData(ud);
+                setInteractionData(ud);
 
-                await saveRawInteractionData(processed);
-                setInteractionData(processed);
-
-                broadcastNewMessages(preTurnCount, processed);
+                broadcastNewMessages(preTurnCount, ud);
 
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
-                    autoResumeOnCutoff(processed, currentState.currentCharacter.id);
+                    autoResumeOnCutoff(ud, currentState.currentCharacter.id);
                     return;
                 }
 
                 runSummarization({
-                    data: processed,
+                    data: ud,
                     setData: setInteractionData,
                     addToast,
                 });
 
-                const lm = processed.interactionHistory[processed.interactionHistory.length - 1];
+                const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
                 if (lm && lm.messageType === 'chat' && lm.character.id !== currentState.currentCharacter?.id) {
                     ui.playVoice(lm.textContent, lm.character);
                 }
@@ -748,7 +751,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             streamingMessageIdRef.current = null;
 
             const turnResult = await chatEngine.runTurn(td, ctrl);
-            const ud = turnResult.interactionData;
+            let ud = turnResult.interactionData;
 
             if (pendingPartialRef.current) {
                 const fd = await applyPendingPartial(ud, protagonist.id);
@@ -758,21 +761,22 @@ export function useChatSession(options: UseChatSessionOptions) {
                 return;
             }
 
-            if (ud.interactionHistory.length > td.interactionHistory.length) {
-                const processed = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
-                await saveRawInteractionData(processed);
-                setInteractionData(processed);
+            ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
 
-                broadcastNewMessages(preTurnCount, processed);
+            if (ud.interactionHistory.length > td.interactionHistory.length) {
+                await saveRawInteractionData(ud);
+                setInteractionData(ud);
+
+                broadcastNewMessages(preTurnCount, ud);
 
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
-                    autoResumeOnCutoff(processed, protagonist.id);
+                    autoResumeOnCutoff(ud, protagonist.id);
                     return;
                 }
 
-                runSummarization({ data: processed, setData: setInteractionData, addToast });
+                runSummarization({ data: ud, setData: setInteractionData, addToast });
 
-                const lm = processed.interactionHistory[processed.interactionHistory.length - 1];
+                const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
                 if (lm && lm.messageType === 'chat' && lm.character.id !== protagonist.id) {
                     ui.playVoice(lm.textContent, lm.character);
                 }
@@ -1019,30 +1023,30 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         try {
             const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks);
-            const ud = turnResult.interactionData;
+            let ud = turnResult.interactionData;
             const primaryProtagonistId = protagonists[0]?.id ?? '';
             if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, primaryProtagonistId); await saveRawInteractionData(fd); setInteractionData(fd); broadcastNewMessages(preCount, fd); return; }
 
+            ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
+
             if (ud.interactionHistory.length > preCount) {
-                const processed = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
+                await saveRawInteractionData(ud);
+                setInteractionData(ud);
 
-                await saveRawInteractionData(processed);
-                setInteractionData(processed);
-
-                broadcastNewMessages(preCount, processed);
+                broadcastNewMessages(preCount, ud);
 
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
-                    autoResumeOnCutoff(processed, primaryProtagonistId, allPromptBlocks);
+                    autoResumeOnCutoff(ud, primaryProtagonistId, allPromptBlocks);
                     return;
                 }
 
                 runSummarization({
-                    data: processed,
+                    data: ud,
                     setData: setInteractionData,
                     addToast,
                 });
 
-                const lm = processed.interactionHistory[processed.interactionHistory.length - 1];
+                const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
                 if (lm && lm.messageType === 'chat' && !protagonistIds.has(lm.character.id)) ui.playVoice(lm.textContent, lm.character);
             } else {
                 const enableAmbientNarration = currentState.interactionData?.Profile?.enableAmbientNarration ?? false;
@@ -1056,7 +1060,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 } else {
                     await saveRawInteractionData(ud);
                     setInteractionData(ud);
-                    broadcastNewMessages(preCount, ud);
+                    broadcastNewMessages(preCount, sd);
                 }
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Regen failed:', e); addToast(`Regen error: ${(e as Error).message}`, 'error'); } }
