@@ -141,6 +141,7 @@ interface UseMultiplayerSyncOptions {
     onConnectionFailed?: () => void;
     onHostMigration?: (payload: HostMigrationPayload) => void;
     onBorrowModelRequest?: () => Promise<LanguageModel | null>;
+    onCharacterSelectionRequired?: (initialState: any, sessionRules: any) => void;
 }
 
 export function useMultiplayerSync({
@@ -162,6 +163,7 @@ export function useMultiplayerSync({
     onConnectionFailed,
     onHostMigration,
     onBorrowModelRequest,
+    onCharacterSelectionRequired,
 }: UseMultiplayerSyncOptions) {
     const interactionDataRef = useRef(interactionData);
     useEffect(() => { interactionDataRef.current = interactionData; }, [interactionData]);
@@ -196,6 +198,9 @@ export function useMultiplayerSync({
     const onBorrowModelRequestRef = useRef(onBorrowModelRequest);
     useEffect(() => { onBorrowModelRequestRef.current = onBorrowModelRequest; }, [onBorrowModelRequest]);
 
+    const onCharacterSelectionRequiredRef = useRef(onCharacterSelectionRequired);
+    useEffect(() => { onCharacterSelectionRequiredRef.current = onCharacterSelectionRequired; }, [onCharacterSelectionRequired]);
+
     const [joinCompletedSessionId, setJoinCompletedSessionId] = useState<string | null>(null);
     const joinCompleted = joinCompletedSessionId === joinSessionId && joinSessionId != null;
 
@@ -211,6 +216,10 @@ export function useMultiplayerSync({
                 name: '',
                 password: '',
                 interactionDataIds: [],
+                canUseJoinerCharacterId: false,
+                canUseHosterCharacterId: false,
+                joinerCharacterIdRequiresHosterApproval: false,
+                hosterCharacterIdRequiresHosterApproval: false,
                 useJoinerLanguageModel: 0,
                 multiplayerDataAccountConfigurations: {},
                 pendingAccountIds: [],
@@ -492,11 +501,8 @@ export function useMultiplayerSync({
                 const currentData = interactionDataRef.current;
 
                 if (payload.requestedCharacterData) {
-                    if (acctConfig.canUseJoinerCharacterId) {
+                    if (md.canUseJoinerCharacterId) {
                         assignedCharacter = payload.requestedCharacterData;
-                    } else if (acctConfig.joinerCharacterIdRequiresHosterApproval) {
-                        sendToRef.current(requestingAccountId, { type: 'join_pending', payload: { message: 'Character requires approval' } });
-                        return;
                     } else {
                         sendToRef.current(requestingAccountId, { type: 'join_response', payload: { accepted: false, reason: 'Custom characters not allowed' } });
                         return;
@@ -510,21 +516,15 @@ export function useMultiplayerSync({
                         return;
                     }
 
-                    if (acctConfig.canUseHosterCharacterId && (acctConfig.isAdministrator || isCharWhitelisted || acctConfig.whitelistedCharacterIds.length === 0)) {
+                    if (md.canUseHosterCharacterId && (acctConfig.isAdministrator || isCharWhitelisted || acctConfig.whitelistedCharacterIds.length === 0)) {
                         assignedCharacter = currentData?.participants.find(p => p.id === payload.requestedCharacterId) || null;
-                    } else if (acctConfig.hosterCharacterIdRequiresHosterApproval) {
-                        sendToRef.current(requestingAccountId, { type: 'join_pending', payload: { message: 'Character requires approval' } });
-                        return;
                     } else {
                         sendToRef.current(requestingAccountId, { type: 'join_response', payload: { accepted: false, reason: 'Character not allowed' } });
                         return;
                     }
                 }
-
-                if (!assignedCharacter) {
-                     sendToRef.current(requestingAccountId, { type: 'join_response', payload: { accepted: false, reason: 'No valid character selected' } });
-                     return;
-                }
+                // If no character was requested, assignedCharacter remains null.
+                // We accept them and they will select a character later.
 
                 const updatedMd = {
                     ...md,
@@ -532,7 +532,7 @@ export function useMultiplayerSync({
                         ...md.multiplayerDataAccountConfigurations,
                         [requestingAccountId]: {
                             ...acctConfig,
-                            activeCharacterId: assignedCharacter.id,
+                            activeCharacterId: assignedCharacter?.id,
                         }
                     },
                     lastUpdatedTimestamp: Date.now(),
@@ -552,7 +552,17 @@ export function useMultiplayerSync({
 
                 sendToRef.current(requestingAccountId, {
                     type: 'join_response',
-                    payload: { accepted: true, initialState, assignedCharacter }
+                    payload: { 
+                        accepted: true, 
+                        initialState, 
+                        assignedCharacter,
+                        sessionRules: {
+                            canUseJoinerCharacterId: md.canUseJoinerCharacterId,
+                            canUseHosterCharacterId: md.canUseHosterCharacterId,
+                            joinerCharacterIdRequiresHosterApproval: md.joinerCharacterIdRequiresHosterApproval,
+                            hosterCharacterIdRequiresHosterApproval: md.hosterCharacterIdRequiresHosterApproval,
+                        }
+                    }
                 });
                 
                 if (payload.requestedCharacterData && currentData) {
@@ -576,7 +586,7 @@ export function useMultiplayerSync({
                 if (payload.accepted) {
                     setJoinCompletedSessionId(joinSessionId ?? null);
 
-                    if (payload.initialState && payload.assignedCharacter) {
+                    if (payload.initialState) {
                         const freshData = interactionDataRef.current;
                         if (freshData) {
                             setInteractionData({
@@ -587,7 +597,13 @@ export function useMultiplayerSync({
                                 lastUpdatedTimestamp: Date.now(),
                             });
                         }
-                        onJoinAcceptedRef.current?.(payload.assignedCharacter);
+                        
+                        if (payload.assignedCharacter) {
+                            onJoinAcceptedRef.current?.(payload.assignedCharacter);
+                        } else {
+                            // Trigger character selection UI
+                            onCharacterSelectionRequiredRef.current?.(payload.initialState, payload.sessionRules);
+                        }
                     }
                 } else {
                     onJoinRejectedRef.current?.(payload.reason || 'Unknown reason');
@@ -715,7 +731,6 @@ export function useMultiplayerSync({
         const md = multiplayerDataRef.current;
         if (!md) return null;
 
-        // Session-level check: if disabled (-1), don't borrow
         if (md.useJoinerLanguageModel === -1) return null;
 
         const eligiblePeers: string[] = [];
@@ -798,7 +813,17 @@ export function useMultiplayerSync({
 
                 sendToRef.current(accountId, {
                     type: 'join_response',
-                    payload: { accepted: true, initialState, assignedCharacter }
+                    payload: { 
+                        accepted: true, 
+                        initialState, 
+                        assignedCharacter,
+                        sessionRules: {
+                            canUseJoinerCharacterId: multiplayerData.canUseJoinerCharacterId,
+                            canUseHosterCharacterId: multiplayerData.canUseHosterCharacterId,
+                            joinerCharacterIdRequiresHosterApproval: multiplayerData.joinerCharacterIdRequiresHosterApproval,
+                            hosterCharacterIdRequiresHosterApproval: multiplayerData.hosterCharacterIdRequiresHosterApproval,
+                        }
+                    }
                 });
             }
             return prev.filter(r => r.accountId !== accountId);

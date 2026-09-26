@@ -43,7 +43,7 @@ interface JoinRequestPayload {
     requestedCharacterData?: Character;
 }
 
-interface JoinResponsePayload {
+export interface JoinResponsePayload {
     accepted: boolean;
     reason?: string;
     initialState?: {
@@ -54,7 +54,13 @@ interface JoinResponsePayload {
         audioTracks: AudioTrack[];
         Profile?: Profile;
     };
-    assignedCharacter?: Character;
+    assignedCharacter?: Character | null;
+    sessionRules?: {
+        canUseJoinerCharacterId: boolean;
+        canUseHosterCharacterId: boolean;
+        joinerCharacterIdRequiresHosterApproval: boolean;
+        hosterCharacterIdRequiresHosterApproval: boolean;
+    };
 }
 
 interface JoinPendingPayload {
@@ -325,4 +331,4 @@ export function useMultiplayerConnection({
     return { isConnected, connectedPeers, connectionError, broadcast, sendTo, disconnect, peerId, hostPeerId };
 }
 
-export type { MultiplayerMessage, ChatMessagePayload, JoinRequestPayload, JoinResponsePayload, JoinPendingPayload, StateSyncPayload, MessageEditPayload, MessageDeletePayload, HostMigrationPayload, MessageType };
+export type { MultiplayerMessage, ChatMessagePayload, JoinRequestPayload, JoinPendingPayload, StateSyncPayload, MessageEditPayload, MessageDeletePayload, HostMigrationPayload, MessageType };

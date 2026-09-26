@@ -26,15 +26,20 @@ const USE_JOINER_LM_OPTIONS: { value: tristateInteger; label: string; descriptio
     { value: 1, label: 'Mandatory', description: 'Joiner must provide access to their language model or they cannot join.' },
 ];
 
-function createDefaultAccountConfig(): MultiplayerDataAccountConfiguration {
+function createDefaultAccountConfig(sessionDefaults: {
+    canUseJoinerCharacterId: boolean;
+    canUseHosterCharacterId: boolean;
+    joinerCharacterIdRequiresHosterApproval: boolean;
+    hosterCharacterIdRequiresHosterApproval: boolean;
+}): MultiplayerDataAccountConfiguration {
     return {
         isWhitelisted: true,
         isBlacklisted: false,
         isAdministrator: false,
-        canUseJoinerCharacterId: true,
-        canUseHosterCharacterId: true,
-        joinerCharacterIdRequiresHosterApproval: false,
-        hosterCharacterIdRequiresHosterApproval: false,
+        canUseJoinerCharacterId: sessionDefaults.canUseJoinerCharacterId,
+        canUseHosterCharacterId: sessionDefaults.canUseHosterCharacterId,
+        joinerCharacterIdRequiresHosterApproval: sessionDefaults.joinerCharacterIdRequiresHosterApproval,
+        hosterCharacterIdRequiresHosterApproval: sessionDefaults.hosterCharacterIdRequiresHosterApproval,
         whitelistedCharacterIds: [],
         blacklistedCharacterIds: [],
         pendingCharacterIds: [],
@@ -88,6 +93,12 @@ function MultiplayerEditorModalInner({
     const [password, setPassword] = useState(existingMultiplayerData?.password || '');
     const [showPassword, setShowPassword] = useState(false);
     const [interactionDataIds, setInteractionDataIds] = useState<string[]>(existingMultiplayerData?.interactionDataIds || []);
+    
+    // Session-level defaults
+    const [canUseJoinerCharacterId, setCanUseJoinerCharacterId] = useState(existingMultiplayerData?.canUseJoinerCharacterId ?? true);
+    const [canUseHosterCharacterId, setCanUseHosterCharacterId] = useState(existingMultiplayerData?.canUseHosterCharacterId ?? true);
+    const [joinerCharacterIdRequiresHosterApproval, setJoinerCharacterIdRequiresHosterApproval] = useState(existingMultiplayerData?.joinerCharacterIdRequiresHosterApproval ?? false);
+    const [hosterCharacterIdRequiresHosterApproval, setHosterCharacterIdRequiresHosterApproval] = useState(existingMultiplayerData?.hosterCharacterIdRequiresHosterApproval ?? false);
     const [useJoinerLanguageModel, setUseJoinerLanguageModel] = useState<tristateInteger>(existingMultiplayerData?.useJoinerLanguageModel ?? 0);
     
     const [accountConfigs, setAccountConfigs] = useState<Record<string, MultiplayerDataAccountConfiguration>>(
@@ -116,8 +127,12 @@ function MultiplayerEditorModalInner({
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             password,
-            interactionDataIds,
+            canUseJoinerCharacterId,
+            canUseHosterCharacterId,
+            joinerCharacterIdRequiresHosterApproval,
+            hosterCharacterIdRequiresHosterApproval,
             useJoinerLanguageModel,
+            interactionDataIds,
             multiplayerDataAccountConfigurations: accountConfigs,
             pendingAccountIds: existingMultiplayerData?.pendingAccountIds || [],
             firstCreatedTimestamp: isNewClone ? now : (existingMultiplayerData?.firstCreatedTimestamp || now),
@@ -147,10 +162,15 @@ function MultiplayerEditorModalInner({
         if (id && !accountConfigs[id]) {
             setAccountConfigs(prev => ({
                 ...prev,
-                [id]: createDefaultAccountConfig(),
+                [id]: createDefaultAccountConfig({
+                    canUseJoinerCharacterId,
+                    canUseHosterCharacterId,
+                    joinerCharacterIdRequiresHosterApproval,
+                    hosterCharacterIdRequiresHosterApproval,
+                }),
             }));
         }
-    }, [accountConfigs]);
+    }, [accountConfigs, canUseJoinerCharacterId, canUseHosterCharacterId, joinerCharacterIdRequiresHosterApproval, hosterCharacterIdRequiresHosterApproval]);
 
     const removeAccount = useCallback((id: string) => {
         setAccountConfigs(prev => {
@@ -206,10 +226,15 @@ function MultiplayerEditorModalInner({
         if (!accountConfigs[accountId]) {
             setAccountConfigs(prev => ({
                 ...prev,
-                [accountId]: createDefaultAccountConfig(),
+                [accountId]: createDefaultAccountConfig({
+                    canUseJoinerCharacterId,
+                    canUseHosterCharacterId,
+                    joinerCharacterIdRequiresHosterApproval,
+                    hosterCharacterIdRequiresHosterApproval,
+                }),
             }));
         }
-    }, [onAcceptJoinRequest, accountConfigs]);
+    }, [onAcceptJoinRequest, accountConfigs, canUseJoinerCharacterId, canUseHosterCharacterId, joinerCharacterIdRequiresHosterApproval, hosterCharacterIdRequiresHosterApproval]);
 
     const handleRejectLiveRequest = useCallback((accountId: string) => {
         onRejectJoinRequest?.(accountId);
@@ -319,6 +344,40 @@ function MultiplayerEditorModalInner({
                                 </div>
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
                                     Invite-only when set. Empty = accessible to all.
+                                </div>
+                            </div>
+
+                            <div className="editor-section" style={{ marginBottom: '16px' }}>
+                                <div className="editor-section-title">Default Character Permissions</div>
+                                <div style={{ fontSize: '0.6rem', opacity: 0.6, marginBottom: '12px' }}>
+                                    These settings apply to all new accounts. You can override them per-account in the Accounts tab.
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    <div>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
+                                            <input type="checkbox" checked={canUseJoinerCharacterId} onChange={e => setCanUseJoinerCharacterId(e.target.checked)} /> 
+                                            Allow Custom Characters (Joiner's Upload)
+                                        </label>
+                                        {canUseJoinerCharacterId && (
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', marginLeft: '24px', marginTop: '6px', opacity: 0.8 }}>
+                                                <input type="checkbox" checked={joinerCharacterIdRequiresHosterApproval} onChange={e => setJoinerCharacterIdRequiresHosterApproval(e.target.checked)} /> 
+                                                Requires Host Approval
+                                            </label>
+                                        )}
+                                    </div>
+                                    
+                                    <div>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
+                                            <input type="checkbox" checked={canUseHosterCharacterId} onChange={e => setCanUseHosterCharacterId(e.target.checked)} /> 
+                                            Allow Host Characters (Pick from Session)
+                                        </label>
+                                        {canUseHosterCharacterId && (
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', marginLeft: '24px', marginTop: '6px', opacity: 0.8 }}>
+                                                <input type="checkbox" checked={hosterCharacterIdRequiresHosterApproval} onChange={e => setHosterCharacterIdRequiresHosterApproval(e.target.checked)} /> 
+                                                Requires Host Approval
+                                            </label>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
@@ -462,7 +521,7 @@ function MultiplayerEditorModalInner({
                                                         <div>
                                                             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
                                                                 <input type="checkbox" checked={cfg.canUseHosterCharacterId} onChange={e => updateCfg(acctId, 'canUseHosterCharacterId', e.target.checked)} /> 
-                                                                Allow Host Characters (Pick from Room)
+                                                                Allow Host Characters (Pick from Session)
                                                             </label>
                                                             {cfg.canUseHosterCharacterId && (
                                                                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', marginLeft: '16px', marginTop: '4px', opacity: 0.8 }}>

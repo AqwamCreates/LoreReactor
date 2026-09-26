@@ -4568,7 +4568,6 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
 
 .chat-minimap-item:hover,
 .chat-minimap-item-hovered { background: var(--social-bg); }
-.chat-minimap-item-protagonist { border-left-color: var(--accent-border); }
 
 .chat-minimap-text {
     font-size: 0.65rem;
