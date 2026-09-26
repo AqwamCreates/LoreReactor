@@ -160,6 +160,7 @@ export function createDefaultMultiplayerData(): MultiplayerData {
         name: '',
         password: '',
         interactionDataIds: [],
+        useJoinerLanguageModel: 0,
         multiplayerDataAccountConfigurations: {},
         pendingAccountIds: [],
         lastUpdatedTimestamp: now,

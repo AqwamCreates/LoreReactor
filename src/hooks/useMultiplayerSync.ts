@@ -211,6 +211,7 @@ export function useMultiplayerSync({
                 name: '',
                 password: '',
                 interactionDataIds: [],
+                useJoinerLanguageModel: 0,
                 multiplayerDataAccountConfigurations: {},
                 pendingAccountIds: [],
                 firstCreatedTimestamp: 0,
@@ -714,9 +715,12 @@ export function useMultiplayerSync({
         const md = multiplayerDataRef.current;
         if (!md) return null;
 
+        // Session-level check: if disabled (-1), don't borrow
+        if (md.useJoinerLanguageModel === -1) return null;
+
         const eligiblePeers: string[] = [];
-        for (const [acctId, config] of Object.entries(md.multiplayerDataAccountConfigurations)) {
-            if (config.useJoinerLanguageModel !== -1 && connectedPeers.includes(acctId)) {
+        for (const acctId of Object.keys(md.multiplayerDataAccountConfigurations)) {
+            if (connectedPeers.includes(acctId)) {
                 eligiblePeers.push(acctId);
             }
         }
@@ -770,7 +774,6 @@ export function useMultiplayerSync({
                             canUseHosterCharacterId: !req.requestedCharacterData,
                             joinerCharacterIdRequiresHosterApproval: false,
                             hosterCharacterIdRequiresHosterApproval: false,
-                            useJoinerLanguageModel: 0,
                             whitelistedCharacterIds: req.requestedCharacterId ? [req.requestedCharacterId] : [],
                             blacklistedCharacterIds: [],
                             pendingCharacterIds: [],

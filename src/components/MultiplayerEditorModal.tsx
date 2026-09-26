@@ -35,7 +35,6 @@ function createDefaultAccountConfig(): MultiplayerDataAccountConfiguration {
         canUseHosterCharacterId: true,
         joinerCharacterIdRequiresHosterApproval: false,
         hosterCharacterIdRequiresHosterApproval: false,
-        useJoinerLanguageModel: 0,
         whitelistedCharacterIds: [],
         blacklistedCharacterIds: [],
         pendingCharacterIds: [],
@@ -89,6 +88,7 @@ function MultiplayerEditorModalInner({
     const [password, setPassword] = useState(existingMultiplayerData?.password || '');
     const [showPassword, setShowPassword] = useState(false);
     const [interactionDataIds, setInteractionDataIds] = useState<string[]>(existingMultiplayerData?.interactionDataIds || []);
+    const [useJoinerLanguageModel, setUseJoinerLanguageModel] = useState<tristateInteger>(existingMultiplayerData?.useJoinerLanguageModel ?? 0);
     
     const [accountConfigs, setAccountConfigs] = useState<Record<string, MultiplayerDataAccountConfiguration>>(
         existingMultiplayerData?.multiplayerDataAccountConfigurations || {}
@@ -117,6 +117,7 @@ function MultiplayerEditorModalInner({
             description: description.trim() || undefined,
             password,
             interactionDataIds,
+            useJoinerLanguageModel,
             multiplayerDataAccountConfigurations: accountConfigs,
             pendingAccountIds: existingMultiplayerData?.pendingAccountIds || [],
             firstCreatedTimestamp: isNewClone ? now : (existingMultiplayerData?.firstCreatedTimestamp || now),
@@ -321,6 +322,22 @@ function MultiplayerEditorModalInner({
                                 </div>
                             </div>
 
+                            <div style={{ marginBottom: '16px' }}>
+                                <label className="editor-label">Shared Language Model Policy</label>
+                                <select
+                                    value={useJoinerLanguageModel}
+                                    onChange={e => setUseJoinerLanguageModel(Number(e.target.value) as tristateInteger)}
+                                    className="editor-select"
+                                >
+                                    {USE_JOINER_LM_OPTIONS.map(opt => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                </select>
+                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
+                                    {USE_JOINER_LM_OPTIONS.find(o => o.value === useJoinerLanguageModel)?.description}
+                                </div>
+                            </div>
+
                             <div className="editor-section">
                                 <EntitySelectList
                                     label={`Linked Sessions (${interactionDataIds.length})`}
@@ -404,7 +421,6 @@ function MultiplayerEditorModalInner({
 
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
                                     {Object.entries(accountConfigs).map(([acctId, cfg]) => {
-                                        const useJoinerLmOption = USE_JOINER_LM_OPTIONS.find(o => o.value === (cfg.useJoinerLanguageModel ?? 0)) ?? USE_JOINER_LM_OPTIONS[1];
                                         return (
                                             <div key={acctId} style={{ border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', background: 'rgba(255,255,255,0.02)' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -454,23 +470,6 @@ function MultiplayerEditorModalInner({
                                                                     Requires Host Approval
                                                                 </label>
                                                             )}
-                                                        </div>
-
-                                                        <div>
-                                                            <label className="editor-label editor-label-small" style={{ marginBottom: '4px' }}>Use Joiner's Language Model</label>
-                                                            <select
-                                                                value={cfg.useJoinerLanguageModel ?? 0}
-                                                                onChange={e => updateCfg(acctId, 'useJoinerLanguageModel', Number(e.target.value) as tristateInteger)}
-                                                                className="editor-select"
-                                                                style={{ width: '100%' }}
-                                                            >
-                                                                {USE_JOINER_LM_OPTIONS.map(opt => (
-                                                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                                                ))}
-                                                            </select>
-                                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                                                {useJoinerLmOption.description}
-                                                            </div>
                                                         </div>
                                                         
                                                         {cfg.canUseHosterCharacterId && (
