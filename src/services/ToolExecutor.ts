@@ -2052,7 +2052,12 @@ export function processPendingToolActions(
                 if (sessionParticipants.some(p => p.id === charId)) break;
                 const realCharacter = allCharacters.find(c => c.id === charId);
                 if (!realCharacter) { options?.onToast?.(`⚠️ Cannot summon "${action.payload.characterName}": not found.`, 'error'); break; }
-                updatedData = { ...updatedData, participants: [...sessionParticipants, { ...realCharacter }] };
+                
+                updatedData = { 
+                    ...updatedData, 
+                    participants: [...sessionParticipants, { ...realCharacter }],
+                    lastUpdatedTimestamp: Date.now()
+                };
                 changed = true;
                 options?.onToast?.(`✨ ${realCharacter.name} joined.`, 'info');
                 break;
@@ -2072,29 +2077,50 @@ export function processPendingToolActions(
                         parentInteractionMessageId: updatedData.interactionHistory[updatedData.interactionHistory.length - 1]?.id ?? null,
                         firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
                     };
-                    updatedData = { ...updatedData, interactionHistory: [...updatedData.interactionHistory, kickMsg] };
+                    updatedData = { 
+                        ...updatedData, 
+                        interactionHistory: [...updatedData.interactionHistory, kickMsg], 
+                        lastUpdatedTimestamp: Date.now() 
+                    };
                     changed = true;
                     options?.onToast?.(`👢 ${action.payload.characterName} kicked to ${action.payload.destinationLocationName || 'unknown'}.`, 'info');
                 }
                 break;
             }
             case 'invite': {
+                const charId = action.payload.characterId;
                 const sessionParticipants = getSessionCharacters(updatedData);
-                const invitedChar = sessionParticipants.find(p => p.id === action.payload.characterId);
+                
+                let invitedChar = sessionParticipants.find(p => p.id === charId);
+                if (!invitedChar) {
+                    const foundGlobal = allCharacters.find(c => c.id === charId);
+                    if (foundGlobal) invitedChar = foundGlobal;
+                }
+
                 if (invitedChar) {
+                    const charToInvite = invitedChar;
                     let currentLocIdx: number | undefined;
                     for (let i = updatedData.interactionHistory.length - 1; i >= 0; i--) { if (updatedData.interactionHistory[i].locationIndex !== undefined) { currentLocIdx = updatedData.interactionHistory[i].locationIndex; break; } }
-                    const prevInvitedMsg = findPrevMsg(updatedData, invitedChar.id);
+                    const prevInvitedMsg = findPrevMsg(updatedData, charToInvite.id);
                     const prevLockedLocations = prevInvitedMsg?.characterLockedLocations ?? {};
                     const inviteMsg = {
-                        messageType: 'interaction' as const, id: uuidv4(), character: { ...invitedChar },
+                        messageType: 'interaction' as const, id: uuidv4(), character: { ...charToInvite },
                         locationIndex: currentLocIdx,
                         characterClothingWearingStatuses: (prevInvitedMsg as ChatMessage)?.characterClothingWearingStatuses ?? {},
                         characterLockedLocations: { ...prevLockedLocations },
                         parentInteractionMessageId: updatedData.interactionHistory[updatedData.interactionHistory.length - 1]?.id ?? null,
                         firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
                     };
-                    updatedData = { ...updatedData, interactionHistory: [...updatedData.interactionHistory, inviteMsg] };
+
+                    const isAlreadyPart = sessionParticipants.some(p => p.id === charToInvite.id);
+                    const newParticipants = isAlreadyPart ? sessionParticipants : [...sessionParticipants, { ...charToInvite }];
+
+                    updatedData = { 
+                        ...updatedData, 
+                        participants: newParticipants,
+                        interactionHistory: [...updatedData.interactionHistory, inviteMsg],
+                        lastUpdatedTimestamp: Date.now()
+                    };
                     changed = true;
                     options?.onToast?.(`📨 ${action.payload.characterName} arrived.`, 'info');
                 }
@@ -2121,7 +2147,7 @@ export function processPendingToolActions(
                     firstCreatedTimestamp: Date.now(),
                     lastUpdatedTimestamp: Date.now(),
                 };
-                updatedData = { ...updatedData, interactionHistory: [...updatedData.interactionHistory, whisperMsg] };
+                updatedData = { ...updatedData, interactionHistory: [...updatedData.interactionHistory, whisperMsg], lastUpdatedTimestamp: Date.now() };
                 changed = true;
                 break;
             }
