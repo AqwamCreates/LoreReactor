@@ -17,6 +17,9 @@ type MessageType =
     | 'message_edit'
     | 'message_delete'
     | 'host_migration'
+    | 'borrow_model_request'
+    | 'borrow_model_response'
+    | 'shared_model_usage'
     | 'leave';
 
 interface MultiplayerMessage {
