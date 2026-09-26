@@ -348,7 +348,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             ? (joinProtagonistRef.current || currentState.currentCharacter)
             : currentState.currentCharacter;
 
-        if (!currentState.interactionData || !activeCharacter || (!text.trim() && (!files || !files.length))) return;
+        if (!currentState.interactionData || !activeCharacter || (!text && (!files || !files.length))) return;
 
         // ─── SLASH COMMAND DETECTION ───────────────────────────────
         const slashInvocation = parseSlashCommand(text);
@@ -369,7 +369,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             }
 
             // ─── VALIDATE ARGS ──────────────────────────────────────
-            if (!slashInvocation.args.trim() && !NO_ARG_TOOLS.includes(slashInvocation.toolType)) {
+            if (!slashInvocation.args && !NO_ARG_TOOLS.includes(slashInvocation.toolType)) {
                 addToast(`/${slashInvocation.toolType} requires arguments.`, 'error');
                 return;
             }
@@ -857,7 +857,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         } else {
             const t = streamingTextRef.current;
             const c = getState().streamingCharacter;
-            pendingPartialRef.current = (t?.trim() && c) ? { text: t, character: c } : null;
+            pendingPartialRef.current = (t && c) ? { text: t, character: c } : null;
             setState({
                 streamingCharacter: null,
                 streamingText: '',

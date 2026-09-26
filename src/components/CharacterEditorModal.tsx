@@ -1,7 +1,7 @@
 // src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, tool } from '../types';
+import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, tool, InteractionData } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from '../storage/serverStorage';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getChatImpatienceSensitivityValueFromText, getSkipProbabilityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText, getMaximumActionStaminaValueFromText } from '../hooks/chatTraitsDetection';
@@ -13,6 +13,7 @@ import { CharacterClothingEditorModal } from './CharacterClothingEditorModal';
 import { CharacterTextCharacterInjectionEditorModal } from './CharacterTextCharacterInjectionEditorModal';
 import { CharacterDialoguePromptEditorModal } from './CharacterDialoguePromptEditorModal';
 import { CharacterKnowledgePromptEditorModal } from './CharacterKnowledgePromptEditorModal';
+import { getCoLocatedParticipants, getCoLocatedProtagonists } from '../hooks/locationLogic';
 import '../main.css';
 import { defaultCharacterTools } from '../dictionaries/defaults';
 import { toolLabels } from '../dictionaries/texts';
@@ -74,7 +75,7 @@ interface TokenCounts {
     appearancePrompt: number | null;
 }
 
-type EditorTabId = 'general' | 'behaviour' | 'stats' | 'tools' | 'model';
+type EditorTabId = 'general' | 'behaviour' | 'stats' | 'tools' | 'model' | 'quick-config';
 
 interface CharacterEditorModalProps {
     isOpen: boolean;
@@ -87,13 +88,15 @@ interface CharacterEditorModalProps {
     selectedModel?: LanguageModel | null;
     runningModels?: Record<string, any>;
     chatNameMap?: Map<string, string>;
+    interactionData?: InteractionData | null;
+    localProtagonist?: Character | null;
 }
 
 export function CharacterEditorModal({
     isOpen, onClose, onSave, existingCharacter,
     allSamplers, allCharacters, isLoadingSamplers = false,
     selectedModel, runningModels,
-    chatNameMap,
+    chatNameMap, interactionData, localProtagonist,
 }: CharacterEditorModalProps) {
     if (!isOpen) return null;
 
@@ -111,6 +114,8 @@ export function CharacterEditorModal({
             selectedModel={selectedModel}
             runningModels={runningModels}
             chatNameMap={chatNameMap}
+            interactionData={interactionData}
+            localProtagonist={localProtagonist}
         />
     );
 }
@@ -119,7 +124,7 @@ function CharacterEditorModalInner({
     onClose, onSave, existingCharacter,
     allSamplers, allCharacters, isLoadingSamplers = false,
     selectedModel, runningModels,
-    chatNameMap,
+    chatNameMap, interactionData, localProtagonist,
 }: Omit<CharacterEditorModalProps, 'isOpen'>) {
     const [activeTab, setActiveTab] = useState<EditorTabId>('general');
 
@@ -208,9 +213,142 @@ function CharacterEditorModalInner({
     const voiceInputRef = useRef<HTMLInputElement>(null);
     const tokenCountTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
+    // ─── Tool Helpers ──────────────────────────────────────────────
     const handleToolToggle = useCallback((toolName: tool) => {
         setTools(prev => ({ ...prev, [toolName]: !prev[toolName] }));
     }, []);
+
+    const handleSelectAllTools = useCallback(() => {
+        setTools(prev => {
+            const next = { ...prev };
+            for (const key of Object.keys(next) as tool[]) next[key] = true;
+            return next;
+        });
+    }, []);
+
+    const handleDeselectAllTools = useCallback(() => {
+        setTools(prev => {
+            const next = { ...prev };
+            for (const key of Object.keys(next) as tool[]) next[key] = false;
+            return next;
+        });
+    }, []);
+
+    // ─── Quick Config Helpers ──────────────────────────────────────
+    const effectiveCharacterIdForConfig = existingCharacter?.id || pendingCharacterId || '';
+
+    const mergeKnownNames = useCallback((targets: Character[]) => {
+        setKnownCharacterNames(prev => {
+            const next = { ...prev };
+            let changed = false;
+            for (const target of targets) {
+                if (target.id === effectiveCharacterIdForConfig) continue;
+                const existing = next[target.id] || [];
+                const existingSet = new Set(existing);
+                const candidates = [target.name, ...(target.aliases ?? [])];
+                const toAdd: string[] = [];
+                for (const c of candidates) {
+                    if (c && !existingSet.has(c)) {
+                        toAdd.push(c);
+                        existingSet.add(c);
+                    }
+                }
+                if (toAdd.length > 0) {
+                    next[target.id] = [...existing, ...toAdd];
+                    changed = true;
+                }
+            }
+            return changed ? next : prev;
+        });
+    }, [effectiveCharacterIdForConfig]);
+
+    const handleKnowCurrentProtagonist = useCallback(() => {
+        if (!localProtagonist) return;
+        mergeKnownNames([localProtagonist]);
+    }, [localProtagonist, mergeKnownNames]);
+
+    const handleKnowCoLocatedProtagonists = useCallback(() => {
+        if (!interactionData || !existingCharacter) return;
+        const coLocated = getCoLocatedProtagonists(interactionData, existingCharacter);
+        if (coLocated.length > 0) mergeKnownNames(coLocated);
+    }, [interactionData, existingCharacter, mergeKnownNames]);
+
+    const handleKnowAllProtagonists = useCallback(() => {
+        if (!interactionData?.protagonists?.length) return;
+        mergeKnownNames(interactionData.protagonists);
+    }, [interactionData, mergeKnownNames]);
+
+    const handleKnowCoLocatedParticipants = useCallback(() => {
+        if (!interactionData || !existingCharacter) return;
+        const coLocated = getCoLocatedParticipants(interactionData, existingCharacter);
+        if (coLocated.length > 0) mergeKnownNames(coLocated);
+    }, [interactionData, existingCharacter, mergeKnownNames]);
+
+    const handleKnowAllParticipants = useCallback(() => {
+        if (!interactionData?.participants?.length) return;
+        mergeKnownNames(interactionData.participants);
+    }, [interactionData, mergeKnownNames]);
+
+    const handleKnowAllCharacters = useCallback(() => {
+        if (allCharacters.length === 0) return;
+        mergeKnownNames(allCharacters);
+    }, [allCharacters, mergeKnownNames]);
+
+    const handleAutoDetectStats = useCallback(() => {
+        const combinedText = `${name} ${description} ${systemPrompt}`;
+        const newDetected = { ...autoDetected };
+
+        const iw = getInitiativeWeightValueFromText(combinedText);
+        const cp = getChatProbabilityValue(combinedText);
+        const ms = Math.round(getMaximumChatStaminaValueFromText(combinedText));
+        const ns = getNameSensitivityValueFromText(combinedText);
+        const cis = getChatImpatienceSensitivityValueFromText(combinedText);
+        const sp = getSkipProbabilityValueFromText(combinedText);
+        const mrw = getMemoryRetentionWeightValueFromText(combinedText);
+        const crs = getContextSensitivityValueFromText(combinedText);
+        const mas = Math.round(getMaximumActionStaminaValueFromText(combinedText));
+
+        setInitiativeWeightStr(String(iw)); newDetected.iw = iw;
+        setChatProbabilityStr(String(cp)); newDetected.cp = cp;
+        setMaximumChatStaminaStr(String(ms)); newDetected.ms = ms;
+        setNameSensitivityStr(String(ns));
+        setChatImpatienceSensitivityStr(String(cis));
+        setSkipProbabilityStr(String(sp));
+        setMemoryRetentionWeightStr(String(mrw));
+        setContextSensitivityStr(String(crs));
+        setMaximumActionStaminaStr(String(mas));
+
+        setAutoDetected(newDetected);
+    }, [name, description, systemPrompt, autoDetected]);
+
+    const handleResetStatsToDefaults = useCallback(() => {
+        setInitiativeWeightStr(String(DEFAULT_INITIATIVE_WEIGHT));
+        setChatProbabilityStr(String(DEFAULT_CHAT_PROBABILITY));
+        setMaximumChatStaminaStr(String(DEFAULT_MAXIMUM_CHAT_STAMINA));
+        setNameSensitivityStr(String(DEFAULT_NAME_SENSITIVITY));
+        setChatImpatienceSensitivityStr(String(DEFAULT_CHAT_IMPATIENCE_SENSITIVITY));
+        setSkipProbabilityStr(String(DEFAULT_SKIP_PROBABILITY));
+        setMemoryRetentionWeightStr(String(DEFAULT_MEMORY_RETENTION_WEIGHT));
+        setContextSensitivityStr(String(DEFAULT_CONTEXT_SENSITIVITY));
+        setMaximumActionStaminaStr(String(DEFAULT_MAXIMUM_ACTION_STAMINA));
+        setAutoDetected({ iw: null, cp: null, ms: null });
+    }, []);
+
+    // Derived state for quick config button availability
+    const hasSession = !!interactionData;
+    const hasLocalProtagonist = !!localProtagonist;
+    const hasProtagonists = (interactionData?.protagonists?.length ?? 0) > 0;
+    const hasParticipants = (interactionData?.participants?.length ?? 0) > 0;
+
+    const coLocatedProtagonistCount = useMemo(() => {
+        if (!interactionData || !existingCharacter) return 0;
+        return getCoLocatedProtagonists(interactionData, existingCharacter).length;
+    }, [interactionData, existingCharacter]);
+
+    const coLocatedParticipantCount = useMemo(() => {
+        if (!interactionData || !existingCharacter) return 0;
+        return getCoLocatedParticipants(interactionData, existingCharacter).length;
+    }, [interactionData, existingCharacter]);
 
     const countFieldTokens = useCallback(async (field: keyof TokenCounts, text: string) => {
         if (!text.trim()) { setTokenCounts(prev => ({ ...prev, [field]: 0 })); return; }
@@ -648,6 +786,7 @@ function CharacterEditorModalInner({
         { id: 'stats', label: 'Stats', icon: '📊' },
         { id: 'tools', label: 'Tools', icon: '🔧' },
         { id: 'model', label: 'Model', icon: '⚙️' },
+        { id: 'quick-config', label: 'Quick Config', icon: '⚡' },
     ];
 
     return (
@@ -975,6 +1114,27 @@ function CharacterEditorModalInner({
                                     Enable runtime tool use during generation for this character. Can be overridden by profile settings.
                                 </div>
 
+                                <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                                    <button
+                                        type="button"
+                                        className="toolbar-button"
+                                        onClick={handleSelectAllTools}
+                                        disabled={isUploading}
+                                        style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}
+                                    >
+                                        ✓ Select All
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="toolbar-button"
+                                        onClick={handleDeselectAllTools}
+                                        disabled={isUploading}
+                                        style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}
+                                    >
+                                        ✗ Deselect All
+                                    </button>
+                                </div>
+
                                 <input
                                     type="text"
                                     value={toolSearchQuery}
@@ -1077,6 +1237,106 @@ function CharacterEditorModalInner({
                                                 </option>
                                             ))}
                                     </select>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ─── QUICK CONFIG TAB ─── */}
+                        {activeTab === 'quick-config' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div className="editor-section" style={{ margin: 0 }}>
+                                    <span className="editor-section-title">Knowledge Shortcuts</span>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
+                                        Batch-add known names/aliases to this character's knowledge. Merges with existing entries; never overwrites.
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        <button
+                                            type="button"
+                                            className="editor-button editor-button-cancel"
+                                            onClick={handleKnowCurrentProtagonist}
+                                            disabled={isUploading || !hasLocalProtagonist}
+                                            title={!hasLocalProtagonist ? 'No active local protagonist' : 'Add current protagonist name + aliases'}
+                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
+                                        >
+                                            🎯 Know Current Protagonist's Names
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="editor-button editor-button-cancel"
+                                            onClick={handleKnowCoLocatedProtagonists}
+                                            disabled={isUploading || !hasSession || coLocatedProtagonistCount === 0}
+                                            title={!hasSession ? 'No active session' : coLocatedProtagonistCount === 0 ? 'No co-located protagonists' : `Add ${coLocatedProtagonistCount} co-located protagonist(s) names`}
+                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
+                                        >
+                                            📍 Know Co-Located Protagonists' Names {coLocatedProtagonistCount > 0 && `(${coLocatedProtagonistCount})`}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="editor-button editor-button-cancel"
+                                            onClick={handleKnowAllProtagonists}
+                                            disabled={isUploading || !hasSession || !hasProtagonists}
+                                            title={!hasSession ? 'No active session' : 'Add all protagonists names + aliases'}
+                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
+                                        >
+                                            👥 Know All The Protagonists' Names
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="editor-button editor-button-cancel"
+                                            onClick={handleKnowCoLocatedParticipants}
+                                            disabled={isUploading || !hasSession || coLocatedParticipantCount === 0}
+                                            title={!hasSession ? 'No active session' : coLocatedParticipantCount === 0 ? 'No co-located participants' : `Add ${coLocatedParticipantCount} co-located participant(s) names`}
+                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
+                                        >
+                                            📍 Know Co-Located Participants' Names {coLocatedParticipantCount > 0 && `(${coLocatedParticipantCount})`}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="editor-button editor-button-cancel"
+                                            onClick={handleKnowAllParticipants}
+                                            disabled={isUploading || !hasSession || !hasParticipants}
+                                            title={!hasSession ? 'No active session' : 'Add all session participants names + aliases'}
+                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
+                                        >
+                                            🎭 Know All Participants' Names
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="editor-button editor-button-cancel"
+                                            onClick={handleKnowAllCharacters}
+                                            disabled={isUploading || allCharacters.length === 0}
+                                            title="Add every character in the global registry"
+                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
+                                        >
+                                            🌐 Know All Characters' Names
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="editor-section" style={{ margin: 0 }}>
+                                    <span className="editor-section-title">Stat Utilities</span>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        <button
+                                            type="button"
+                                            className="editor-button editor-button-cancel"
+                                            onClick={handleAutoDetectStats}
+                                            disabled={isUploading}
+                                            title="Re-run auto-detection on name + description + system prompt"
+                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
+                                        >
+                                            🔍 Auto-Detect Stats from Prompts
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="editor-button editor-button-cancel"
+                                            onClick={handleResetStatsToDefaults}
+                                            disabled={isUploading}
+                                            title="Reset all stats to their default values"
+                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
+                                        >
+                                            ↩️ Reset Stats to Defaults
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         )}

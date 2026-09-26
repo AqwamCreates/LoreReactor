@@ -277,10 +277,10 @@ export class CharacterActor {
                     const { body } = await prepareRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
                     rawText = await doStream(body);
 
-                    if ((!rawText || !rawText.trim()) && !signal.aborted) {
+                    if ((!rawText || !rawText) && !signal.aborted) {
                         const { body: rb } = await prepareRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
                         rawText = await doStream(rb);
-                        if (!rawText || !rawText.trim()) {
+                        if (!rawText || !rawText) {
                             return { error: { message: 'Empty response from borrowed model', type: 'inference' } };
                         }
                     }
@@ -417,10 +417,10 @@ export class CharacterActor {
                     const { body } = await prepareRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
                     rawText = await doStream(body);
 
-                    if ((!rawText || !rawText.trim()) && !signal.aborted) {
+                    if ((!rawText || !rawText) && !signal.aborted) {
                         const { body: rb } = await prepareRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
                         rawText = await doStream(rb);
-                        if (!rawText || !rawText.trim()) {
+                        if (!rawText || !rawText) {
                             return { error: { message: 'Empty response from model', type: 'inference' } };
                         }
                     }
@@ -443,7 +443,7 @@ export class CharacterActor {
                 }
             }
 
-            if (!rawText || !rawText.trim()) {
+            if (!rawText || !rawText) {
                 return { error: { message: 'Empty response from model', type: 'inference' } };
             }
 

@@ -1,5 +1,5 @@
 // src/components/ProfileEditorModal.tsx
-import { useState, useMemo, type CSSProperties } from 'react';
+import { useState, useMemo, useCallback, type CSSProperties } from 'react';
 import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, Sampler, StopPattern, tristateInteger } from '../types';
 import { SliderInput } from './SliderInput';
 import '../main.css';
@@ -222,6 +222,27 @@ function ProfileEditorContent({
 
     const handleToolChange = (toolName: tool, value: tristateInteger) => setTools(prev => ({ ...prev, [toolName]: value }));
     const handleNarrateToggle = (type: textType, checked: boolean) => setNarrateTexts(prev => ({ ...prev, [type]: checked }));
+
+    // ─── Tool Bulk Actions ──────────────────────────────────────────
+    const handleSelectAllTools = useCallback(() => {
+        setTools(prev => {
+            const next = { ...prev };
+            for (const key of Object.keys(next) as tool[]) next[key] = 1;
+            return next;
+        });
+    }, []);
+
+    const handleDeselectAllTools = useCallback(() => {
+        setTools(prev => {
+            const next = { ...prev };
+            for (const key of Object.keys(next) as tool[]) next[key] = -1;
+            return next;
+        });
+    }, []);
+
+    const handleResetToolsToDefaults = useCallback(() => {
+        setTools({ ...defaultProfileTools });
+    }, []);
 
     const validate = (): boolean => {
         const newErrors: { name?: string } = {};
@@ -458,6 +479,33 @@ function ProfileEditorContent({
                         <div className="editor-section">
                             <span className="editor-section-title">Tools</span>
                             <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '8px' }}>-1 = force off for all characters. 0 = defer to each character's own setting. 1 = force on for all characters.</div>
+
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                                <button
+                                    type="button"
+                                    className="toolbar-button"
+                                    onClick={handleSelectAllTools}
+                                    style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}
+                                >
+                                    Force All On
+                                </button>
+                                <button
+                                    type="button"
+                                    className="toolbar-button"
+                                    onClick={handleResetToolsToDefaults}
+                                    style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}
+                                >
+                                    Reset to Defaults
+                                </button>
+                                <button
+                                    type="button"
+                                    className="toolbar-button"
+                                    onClick={handleDeselectAllTools}
+                                    style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}
+                                >
+                                    Force All Off
+                                </button>
+                            </div>
 
                             <input
                                 type="text"

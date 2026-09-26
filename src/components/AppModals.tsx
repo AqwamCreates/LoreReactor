@@ -767,7 +767,9 @@ export function AppModals({
                     }}
                     existingCharacter={characterModalProperties.edit} 
                     allSamplers={allSamplers} 
-                    allCharacters={allCharacters} 
+                    allCharacters={allCharacters}
+                    localProtagonist={localProtagonist}
+                    interactionData={interactionData}
                     selectedModel={effectiveTokenizerModel} 
                     runningModels={runningModels} 
                     chatNameMap={chatNameMap} 
