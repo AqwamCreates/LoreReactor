@@ -1,6 +1,6 @@
 // src/hooks/useMultiplayerSync.ts
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { InteractionData, MultiplayerData, HistoryMessage, Character, ChatMessage, InteractionMessage, WhisperMessage } from '../types';
+import type { InteractionData, MultiplayerData, HistoryMessage, Character, ChatMessage, InteractionMessage, WhisperMessage, LanguageModel } from '../types';
 import { useMultiplayerConnection, type MultiplayerMessage, type JoinRequestPayload, type JoinResponsePayload, type MessageEditPayload, type MessageDeletePayload, type HostMigrationPayload } from './useMultiplayerConnection';
 import { useSessionStore } from './useSessionStore';
 import { saveRawMultiplayerCharacter } from '../storage/serverStorage';
@@ -56,6 +56,25 @@ interface SyncWhisperMessagePayload {
     parentInteractionMessageId?: string | null;
 }
 
+interface BorrowModelResponsePayload {
+    modelName: string;
+    modelConfig: {
+        backend: string;
+        contextLength: number;
+        model?: string;
+        apiKey?: string;
+        parameters?: Record<string, unknown>;
+        instructionTemplate?: string;
+        chatTemplate?: string;
+    };
+}
+
+interface SharedModelUsagePayload {
+    accountId: string;
+    modelName: string;
+    timestamp: number;
+}
+
 type SyncMessagePayload = SyncChatMessagePayload | SyncInteractionMessagePayload | SyncWhisperMessagePayload;
 
 interface SetProtagonistPayload {
@@ -69,6 +88,39 @@ export interface PendingJoinRequest {
     requestedCharacterId?: string;
     requestedCharacterData?: Character;
 }
+
+class SharedModelTracker {
+    private usageMap: Map<string, { count: number; lastUsed: number }> = new Map();
+    
+    recordUsage(accountId: string) {
+        const existing = this.usageMap.get(accountId);
+        if (existing) {
+            existing.count++;
+            existing.lastUsed = Date.now();
+        } else {
+            this.usageMap.set(accountId, { count: 1, lastUsed: Date.now() });
+        }
+    }
+
+    selectNextUser(availableUsers: string[]): string | null {
+        if (availableUsers.length === 0) return null;
+        if (availableUsers.length === 1) return availableUsers[0];
+
+        const counts = availableUsers.map(id => ({ id, count: this.usageMap.get(id)?.count ?? 0 }));
+        const maxCount = Math.max(...counts.map(c => c.count));
+        const weights = counts.map(c => ({ id: c.id, weight: maxCount - c.count + 1 }));
+        
+        const totalWeight = weights.reduce((sum, w) => sum + w.weight, 0);
+        let random = Math.random() * totalWeight;
+
+        for (const w of weights) {
+            random -= w.weight;
+            if (random <= 0) return w.id;
+        }
+        return availableUsers[0];
+    }
+}
+const sharedModelTracker = new SharedModelTracker();
 
 interface UseMultiplayerSyncOptions {
     interactionData: InteractionData | null;
@@ -88,6 +140,7 @@ interface UseMultiplayerSyncOptions {
     onSaveMultiplayerData?: (data: MultiplayerData) => void;
     onConnectionFailed?: () => void;
     onHostMigration?: (payload: HostMigrationPayload) => void;
+    onBorrowModelRequest?: () => Promise<LanguageModel | null>;
 }
 
 export function useMultiplayerSync({
@@ -108,6 +161,7 @@ export function useMultiplayerSync({
     onSaveMultiplayerData,
     onConnectionFailed,
     onHostMigration,
+    onBorrowModelRequest,
 }: UseMultiplayerSyncOptions) {
     const interactionDataRef = useRef(interactionData);
     useEffect(() => { interactionDataRef.current = interactionData; }, [interactionData]);
@@ -138,6 +192,9 @@ export function useMultiplayerSync({
 
     const onHostMigrationRef = useRef(onHostMigration);
     useEffect(() => { onHostMigrationRef.current = onHostMigration; }, [onHostMigration]);
+
+    const onBorrowModelRequestRef = useRef(onBorrowModelRequest);
+    useEffect(() => { onBorrowModelRequestRef.current = onBorrowModelRequest; }, [onBorrowModelRequest]);
 
     const [joinCompletedSessionId, setJoinCompletedSessionId] = useState<string | null>(null);
     const joinCompleted = joinCompletedSessionId === joinSessionId && joinSessionId != null;
@@ -173,6 +230,7 @@ export function useMultiplayerSync({
     const peerCharacterMapRef = useRef<Map<string, string>>(new Map());
     const characterMapRef = useRef<Map<string, Character>>(new Map());
     const peerJoinTimesRef = useRef<Map<string, number>>(new Map());
+    const pendingBorrowRequestsRef = useRef<Map<string, (model: LanguageModel | null) => void>>(new Map());
 
     useEffect(() => {
         const map = new Map<string, Character>();
@@ -291,6 +349,75 @@ export function useMultiplayerSync({
                 break;
             }
 
+            case 'borrow_model_request': {
+                if (isHost) return;
+                if (onBorrowModelRequestRef.current) {
+                    onBorrowModelRequestRef.current().then(model => {
+                        if (model) {
+                            sendToRef.current(msg.senderAccountId, {
+                                type: 'borrow_model_response',
+                                payload: {
+                                    modelName: model.name,
+                                    modelConfig: {
+                                        backend: model.backend,
+                                        contextLength: model.contextLength,
+                                        model: model.model,
+                                        apiKey: model.apiKey,
+                                        parameters: model.parameters,
+                                        instructionTemplate: model.instructionTemplate,
+                                        chatTemplate: model.chatTemplate,
+                                    }
+                                } satisfies BorrowModelResponsePayload
+                            });
+                        }
+                    }).catch(() => { /* Host will timeout */ });
+                }
+                break;
+            }
+
+            case 'borrow_model_response': {
+                if (!isHost) return;
+                const payload = msg.payload as BorrowModelResponsePayload;
+                const resolver = pendingBorrowRequestsRef.current.get(msg.senderAccountId);
+                
+                if (resolver) {
+                    pendingBorrowRequestsRef.current.delete(msg.senderAccountId);
+                    
+                    const model: LanguageModel = {
+                        id: `borrowed-${msg.senderAccountId}-${Date.now()}`,
+                        name: payload.modelName,
+                        backend: payload.modelConfig.backend as any,
+                        contextLength: payload.modelConfig.contextLength,
+                        model: payload.modelConfig.model,
+                        apiKey: payload.modelConfig.apiKey,
+                        parameters: payload.modelConfig.parameters,
+                        instructionTemplate: payload.modelConfig.instructionTemplate,
+                        chatTemplate: payload.modelConfig.chatTemplate,
+                        firstCreatedTimestamp: Date.now(),
+                        lastUpdatedTimestamp: Date.now(),
+                    };
+                    
+                    resolver(model);
+                    sharedModelTracker.recordUsage(msg.senderAccountId);
+                    
+                    broadcastRef.current({
+                        type: 'shared_model_usage',
+                        payload: { 
+                            accountId: msg.senderAccountId, 
+                            modelName: payload.modelName, 
+                            timestamp: Date.now() 
+                        } satisfies SharedModelUsagePayload
+                    });
+                }
+                break;
+            }
+
+            case 'shared_model_usage': {
+                const payload = msg.payload as SharedModelUsagePayload;
+                sharedModelTracker.recordUsage(payload.accountId);
+                break;
+            }
+
             case 'message_edit': {
                 const payload = msg.payload as MessageEditPayload;
                 const currentData = interactionDataRef.current;
@@ -330,7 +457,6 @@ export function useMultiplayerSync({
 
                 console.log('[MP] Host received join_request from:', requestingAccountId);
 
-                // 1. Password Check
                 if (md.password && payload.password !== md.password) {
                     sendToRef.current(requestingAccountId, { type: 'join_response', payload: { accepted: false, reason: 'Invalid password' } });
                     return;
@@ -338,9 +464,7 @@ export function useMultiplayerSync({
 
                 const acctConfig = md.multiplayerDataAccountConfigurations?.[requestingAccountId];
 
-                // 2. Account Status Check
                 if (!acctConfig) {
-                    // Unknown account -> Add to pending
                     if (!md.pendingAccountIds.includes(requestingAccountId)) {
                         const updatedMd = { ...md, pendingAccountIds: [...md.pendingAccountIds, requestingAccountId] };
                         multiplayerDataRef.current = updatedMd;
@@ -363,7 +487,6 @@ export function useMultiplayerSync({
                     return;
                 }
 
-                // 3. Character Permissions Check (Whitelisted/Admin path)
                 let assignedCharacter: Character | null = null;
                 const currentData = interactionDataRef.current;
 
@@ -402,7 +525,6 @@ export function useMultiplayerSync({
                      return;
                 }
 
-                // UPDATE ACTIVE CHARACTER ID IN CONFIG
                 const updatedMd = {
                     ...md,
                     multiplayerDataAccountConfigurations: {
@@ -418,7 +540,6 @@ export function useMultiplayerSync({
                 useSessionStore.setState({ multiplayerData: updatedMd });
                 onSaveMultiplayerDataRef.current?.(updatedMd);
 
-                // 4. ACCEPTED -> Send Fresh State (No History)
                 const initialState = currentData ? {
                     protagonists: currentData.protagonists,
                     participants: currentData.participants,
@@ -433,7 +554,6 @@ export function useMultiplayerSync({
                     payload: { accepted: true, initialState, assignedCharacter }
                 });
                 
-                // Add to participants on host side if it's a new custom character AND save to isolated storage
                 if (payload.requestedCharacterData && currentData) {
                      const isAlreadyParticipant = currentData.participants.some(p => p.id === assignedCharacter.id);
                      if (!isAlreadyParticipant) {
@@ -458,16 +578,14 @@ export function useMultiplayerSync({
                     if (payload.initialState && payload.assignedCharacter) {
                         const freshData = interactionDataRef.current;
                         if (freshData) {
-                            // Apply Fresh State (No history)
                             setInteractionData({
                                 ...freshData,
                                 ...payload.initialState,
-                                interactionHistory: [], // FRESH START
+                                interactionHistory: [],
                                 numberOfMessages: 0,
                                 lastUpdatedTimestamp: Date.now(),
                             });
                         }
-                        // Notify App.tsx to set the assigned character
                         onJoinAcceptedRef.current?.(payload.assignedCharacter);
                     }
                 } else {
@@ -591,6 +709,41 @@ export function useMultiplayerSync({
     useEffect(() => { sendToRef.current = sendTo; }, [sendTo]);
     useEffect(() => { broadcastRef.current = broadcast; }, [broadcast]);
 
+    const requestAndAwaitBorrowedModel = useCallback(async (): Promise<LanguageModel | null> => {
+        if (!isHost) return null;
+        const md = multiplayerDataRef.current;
+        if (!md) return null;
+
+        const eligiblePeers: string[] = [];
+        for (const [acctId, config] of Object.entries(md.multiplayerDataAccountConfigurations)) {
+            if (config.useJoinerLanguageModel !== -1 && connectedPeers.includes(acctId)) {
+                eligiblePeers.push(acctId);
+            }
+        }
+
+        if (eligiblePeers.length === 0) return null;
+
+        const selectedPeer = sharedModelTracker.selectNextUser(eligiblePeers);
+        if (!selectedPeer) return null;
+
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                pendingBorrowRequestsRef.current.delete(selectedPeer);
+                resolve(null);
+            }, 5000);
+
+            pendingBorrowRequestsRef.current.set(selectedPeer, (model) => {
+                clearTimeout(timeout);
+                resolve(model);
+            });
+
+            sendToRef.current(selectedPeer, {
+                type: 'borrow_model_request',
+                payload: {}
+            });
+        });
+    }, [connectedPeers]);
+
     const acceptJoinRequest = useCallback((accountId: string) => {
         setPendingJoinRequests(prev => {
             const req = prev.find(r => r.accountId === accountId);
@@ -600,7 +753,6 @@ export function useMultiplayerSync({
                 
                 if (req.requestedCharacterData) {
                     assignedCharacter = req.requestedCharacterData;
-                    // ISOLATED SAVE
                     saveRawMultiplayerCharacter(assignedCharacter).catch(e => console.error('Failed to save uploaded multiplayer character:', e));
                 } else if (req.requestedCharacterId && currentData) {
                     assignedCharacter = currentData.participants.find(p => p.id === req.requestedCharacterId) || null;
@@ -730,7 +882,6 @@ export function useMultiplayerSync({
             type: 'message_edit',
             payload: { messageId, newText } satisfies MessageEditPayload,
         });
-        // Also apply locally
         const currentData = interactionDataRef.current;
         if (currentData) {
             const updatedHistory = currentData.interactionHistory.map(m => {
@@ -748,7 +899,6 @@ export function useMultiplayerSync({
             type: 'message_delete',
             payload: { messageId } satisfies MessageDeletePayload,
         });
-        // Also apply locally
         const currentData = interactionDataRef.current;
         if (currentData) {
             const updatedHistory = currentData.interactionHistory.filter(m => m.id !== messageId);
@@ -758,7 +908,6 @@ export function useMultiplayerSync({
 
     const initiateBranch = useCallback(() => {
         if (isHost) {
-            // Find oldest peer
             let oldestPeerId: string | null = null;
             let oldestTime = Infinity;
             peerJoinTimesRef.current.forEach((time, id) => {
@@ -769,7 +918,6 @@ export function useMultiplayerSync({
             });
 
             if (!oldestPeerId) {
-                // No peers, just branch locally (disconnect)
                 disconnect();
                 return;
             }
@@ -789,12 +937,10 @@ export function useMultiplayerSync({
                 } satisfies HostMigrationPayload,
             });
 
-            // Disconnect after a short delay to ensure message is sent
             setTimeout(() => {
                 disconnect();
             }, 100);
         } else {
-            // Joiner branching: just disconnect and fork locally
             disconnect();
         }
     }, [isHost, disconnect, broadcast]);
@@ -817,5 +963,6 @@ export function useMultiplayerSync({
         disconnect,
         peerId,
         hostPeerId,
+        requestAndAwaitBorrowedModel,
     };
 }

@@ -151,6 +151,9 @@ function App() {
         broadcastMessageRef.current?.(message);
     }, []);
 
+    // Bridge for shared model borrowing (resolves hook order dependency)
+    const requestBorrowedModelRef = useRef<() => Promise<LanguageModel | null>>(async () => null);
+
     const currentAccountId = useSessionStore(s => s.currentAccountId);
     const multiplayerData = useSessionStore(s => s.multiplayerData);
     const defaultCharacterId = useSessionStore(s => s.defaultCharacterId);
@@ -184,7 +187,12 @@ function App() {
     const isMultiplayerClient = !!joinSessionId;
 
     // ─── Session Hook ────────────────────────────────────────────────
-    const session = useChatSession({ onMessageBroadcast, isMultiplayerClient, joinProtagonist });
+    const session = useChatSession({ 
+        onMessageBroadcast, 
+        isMultiplayerClient, 
+        joinProtagonist,
+        requestBorrowedModel: () => requestBorrowedModelRef.current(),
+    });
     const {
         interactionData, setInteractionData, setCurrentCharacter,
         isLoading, streamingText, streamingCharacter, currentCharacterExpression, sendMessage, stopGeneration,
@@ -285,6 +293,11 @@ function App() {
         onSaveMultiplayerData: saveMultiplayerData,
         onConnectionFailed: handleConnectionFailed,
     });
+
+    // Keep the ref synced with the actual multiplayer sync function
+    useEffect(() => {
+        requestBorrowedModelRef.current = multiplayerSync.requestAndAwaitBorrowedModel;
+    }, [multiplayerSync.requestAndAwaitBorrowedModel]);
 
     useEffect(() => {
         broadcastMessageRef.current = multiplayerSync.isConnected ? multiplayerSync.broadcastMessage : undefined;
@@ -462,14 +475,14 @@ function App() {
         if (isMultiplayerChat && editingId) {
             multiplayerSync.broadcastMessageEdit(editingId, editDraft);
         }
-    }, [handleSaveEdit, editingId, editDraft, isMultiplayerChat, multiplayerSync.broadcastMessageEdit]);
+    }, [handleSaveEdit, editingId, editDraft, isMultiplayerChat, multiplayerSync]);
 
     const wrappedHandleDelete = useCallback(async (id: string) => {
         await handleDelete(id);
         if (isMultiplayerChat) {
             multiplayerSync.broadcastMessageDelete(id);
         }
-    }, [handleDelete, isMultiplayerChat, multiplayerSync.broadcastMessageDelete]);
+    }, [handleDelete, isMultiplayerChat, multiplayerSync]);
 
     const wrappedHandleBranch = useCallback((id: string) => {
         if (isMultiplayerChat) {
@@ -477,7 +490,7 @@ function App() {
         } else {
             handleBranch(id);
         }
-    }, [handleBranch, isMultiplayerChat, multiplayerSync.initiateBranch]);
+    }, [handleBranch, isMultiplayerChat, multiplayerSync]);
 
     const {
         centerAvatar, lastViewedMessageIdRef, suppressAutoScrollRef,
@@ -951,7 +964,7 @@ function App() {
     // ─── Render ────────────────────────────────────────────────────
 
     const displayMessages = useMemo(() => {
-        let base = [...safeInteractionMessages];
+        let base = [...safeInteractionMessages] as (ChatMessage | WhisperMessage)[];
 
         // Filter whispers: only show if current user is sender or target
         if (isMultiplayerChat && localProtagonist) {
@@ -1040,7 +1053,7 @@ function App() {
     const viewProps: ViewModeProps & { canDelete: boolean } = {
         interactionData: interactionData!,
         localProtagonist: localProtagonist!,
-        displayMessages,
+        displayMessages: displayMessages as ChatMessage[],
         currentCharacterId: currentCharacter?.id,
         editingId,
         editDraft,

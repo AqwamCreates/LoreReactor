@@ -4968,3 +4968,24 @@ REGEX TRIGGER EDITOR
         font-size: 0.6rem !important;
     }
 }
+
+/* --- Whisper Message Styling --- */
+.bubble-whisper {
+    border: 1px dashed var(--accent-border) !important;
+    background: rgba(170, 59, 255, 0.05) !important;
+    font-style: italic;
+    opacity: 0.85;
+}
+.mode-cinematic .bubble-whisper {
+    background: rgba(15, 15, 15, 0.6) !important;
+    border: 1px dashed rgba(192, 132, 252, 0.4) !important;
+    font-style: italic;
+}
+.vn-dialogue-box.vn-dialogue-whisper {
+    border: 1px dashed var(--accent-border) !important;
+    background: rgba(10, 10, 20, 0.8) !important;
+}
+.vn-dialogue-box.vn-dialogue-whisper .vn-name-plate {
+    background: rgba(170, 59, 255, 0.8);
+    font-style: italic;
+}
