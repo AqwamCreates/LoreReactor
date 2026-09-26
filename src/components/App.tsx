@@ -34,7 +34,7 @@ import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useFrontCamera } from '../hooks/useFrontCamera';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, MultiplayerData, Account, HistoryMessage, cloudBackend } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, MultiplayerData, Account, HistoryMessage, cloudBackend, WhisperMessage } from '../types';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
 import { useActionMenu } from '../hooks/useActionMenu';
@@ -454,6 +454,30 @@ function App() {
 
     // Derive the variable that identifies if this chat session is part of multiplayer
     const isMultiplayerChat = isMultiplayerClient || !!(multiplayerData && interactionData?.id && multiplayerData.interactionDataIds.includes(interactionData.id));
+    const canDelete = !isMultiplayerChat || multiplayerSync.isHost || multiplayerSync.isAdmin;
+
+    // Wrap handlers to sync multiplayer actions
+    const wrappedHandleSaveEdit = useCallback(async () => {
+        await handleSaveEdit();
+        if (isMultiplayerChat && editingId) {
+            multiplayerSync.broadcastMessageEdit(editingId, editDraft);
+        }
+    }, [handleSaveEdit, editingId, editDraft, isMultiplayerChat, multiplayerSync.broadcastMessageEdit]);
+
+    const wrappedHandleDelete = useCallback(async (id: string) => {
+        await handleDelete(id);
+        if (isMultiplayerChat) {
+            multiplayerSync.broadcastMessageDelete(id);
+        }
+    }, [handleDelete, isMultiplayerChat, multiplayerSync.broadcastMessageDelete]);
+
+    const wrappedHandleBranch = useCallback((id: string) => {
+        if (isMultiplayerChat) {
+            multiplayerSync.initiateBranch();
+        } else {
+            handleBranch(id);
+        }
+    }, [handleBranch, isMultiplayerChat, multiplayerSync.initiateBranch]);
 
     const {
         centerAvatar, lastViewedMessageIdRef, suppressAutoScrollRef,
@@ -927,7 +951,20 @@ function App() {
     // ─── Render ────────────────────────────────────────────────────
 
     const displayMessages = useMemo(() => {
-        const base = [...safeInteractionMessages];
+        let base = [...safeInteractionMessages];
+
+        // Filter whispers: only show if current user is sender or target
+        if (isMultiplayerChat && localProtagonist) {
+            base = base.filter(m => {
+                if (m.messageType === 'whisper') {
+                    const whisper = m as WhisperMessage;
+                    const isSender = whisper.character.id === localProtagonist.id;
+                    const isTarget = whisper.targetCharacterIds.includes(localProtagonist.id);
+                    return isSender || isTarget;
+                }
+                return true;
+            });
+        }
 
         if (isLoading && streamingText && streamingCharacter) {
             const last = base[base.length - 1];
@@ -966,7 +1003,7 @@ function App() {
             }
         }
         return base;
-    }, [safeInteractionMessages, isLoading, streamingText, streamingCharacter, displayNameCache]);
+    }, [safeInteractionMessages, isLoading, streamingText, streamingCharacter, displayNameCache, isMultiplayerChat, localProtagonist]);
 
     const massStartIndex = isMassActive ? displayMessages.findIndex(m => m.id === massDeleteId) : -1;
 
@@ -1000,7 +1037,7 @@ function App() {
         };
     }, [budgetData, activeStrategy]);
 
-    const viewProps: ViewModeProps = {
+    const viewProps: ViewModeProps & { canDelete: boolean } = {
         interactionData: interactionData!,
         localProtagonist: localProtagonist!,
         displayMessages,
@@ -1032,14 +1069,14 @@ function App() {
         onAvatarClick: handleAvatarClick,
         onStartEditing: startEditing,
         onCancelEditing: cancelEditing,
-        onSaveEdit: handleSaveEdit,
+        onSaveEdit: wrappedHandleSaveEdit,
         onRegenerateFromEdit: handleRegenerateFromEdit,
         onResumeGeneration: (id: string) => { resumeGeneration(id, allPromptBlocks); },
         onCopyText: handleCopyText,
         onRegenerateFromMessage: regenerateFromMessage,
-        onBranch: handleBranch,
+        onBranch: wrappedHandleBranch,
         onClone: handleClone,
-        onDelete: handleDelete,
+        onDelete: wrappedHandleDelete,
         onSetMassDelete: setMassDeleteId,
         onMassDeleteConfirm: handleMassDeleteConfirm,
         onCancelMassDelete: () => setMassDeleteId(null),
@@ -1056,6 +1093,7 @@ function App() {
         closeActionMenu,
         deactivateToolbar,
         onStopGeneration: stopGeneration,
+        canDelete,
     };
 
     const containerClass = [

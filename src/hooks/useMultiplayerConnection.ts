@@ -14,6 +14,9 @@ type MessageType =
     | 'join_response'
     | 'join_pending'
     | 'state_sync'
+    | 'message_edit'
+    | 'message_delete'
+    | 'host_migration'
     | 'leave';
 
 interface MultiplayerMessage {
@@ -59,6 +62,21 @@ interface StateSyncPayload {
     interactionHistory: HistoryMessage[];
     protagonistIds: string[];
     participantIds: string[];
+}
+
+interface MessageEditPayload {
+    messageId: string;
+    newText: string;
+}
+
+interface MessageDeletePayload {
+    messageId: string;
+}
+
+interface HostMigrationPayload {
+    newHostId: string;
+    newHostPeerId: string;
+    finalState: InteractionData;
 }
 
 // ─── Peer ID Helpers ───────────────────────────────────────────────
@@ -304,4 +322,4 @@ export function useMultiplayerConnection({
     return { isConnected, connectedPeers, connectionError, broadcast, sendTo, disconnect, peerId, hostPeerId };
 }
 
-export type { MultiplayerMessage, ChatMessagePayload, JoinRequestPayload, JoinResponsePayload, JoinPendingPayload, StateSyncPayload, MessageType };
+export type { MultiplayerMessage, ChatMessagePayload, JoinRequestPayload, JoinResponsePayload, JoinPendingPayload, StateSyncPayload, MessageEditPayload, MessageDeletePayload, HostMigrationPayload, MessageType };

@@ -1,7 +1,7 @@
 // src/hooks/useMultiplayerSync.ts
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { InteractionData, MultiplayerData, HistoryMessage, Character, ChatMessage, InteractionMessage } from '../types';
-import { useMultiplayerConnection, type MultiplayerMessage, type JoinRequestPayload, type JoinResponsePayload } from './useMultiplayerConnection';
+import type { InteractionData, MultiplayerData, HistoryMessage, Character, ChatMessage, InteractionMessage, WhisperMessage } from '../types';
+import { useMultiplayerConnection, type MultiplayerMessage, type JoinRequestPayload, type JoinResponsePayload, type MessageEditPayload, type MessageDeletePayload, type HostMigrationPayload } from './useMultiplayerConnection';
 import { useSessionStore } from './useSessionStore';
 import { saveRawMultiplayerCharacter } from '../storage/serverStorage';
 
@@ -38,7 +38,25 @@ interface SyncInteractionMessagePayload {
     parentInteractionMessageId?: string | null;
 }
 
-type SyncMessagePayload = SyncChatMessagePayload | SyncInteractionMessagePayload;
+interface SyncWhisperMessagePayload {
+    messageId: string;
+    characterId: string;
+    messageType: 'whisper';
+    textContent: string;
+    targetCharacterIds: string[];
+    files?: string[];
+    remainingChatStamina?: number;
+    remainingActionStamina?: number;
+    knownCharacterNames?: Record<string, Record<string, boolean>>;
+    locationIndex?: number;
+    characterExpression?: string;
+    inventory?: Record<string, string | number>;
+    characterClothingWearingStatuses: Record<string, boolean>;
+    characterLockedLocations: Record<string, string[]>;
+    parentInteractionMessageId?: string | null;
+}
+
+type SyncMessagePayload = SyncChatMessagePayload | SyncInteractionMessagePayload | SyncWhisperMessagePayload;
 
 interface SetProtagonistPayload {
     character: Character;
@@ -69,6 +87,7 @@ interface UseMultiplayerSyncOptions {
     onPeerChatMessage?: (message: ChatMessage, senderAccountId: string) => void;
     onSaveMultiplayerData?: (data: MultiplayerData) => void;
     onConnectionFailed?: () => void;
+    onHostMigration?: (payload: HostMigrationPayload) => void;
 }
 
 export function useMultiplayerSync({
@@ -88,6 +107,7 @@ export function useMultiplayerSync({
     onPeerChatMessage,
     onSaveMultiplayerData,
     onConnectionFailed,
+    onHostMigration,
 }: UseMultiplayerSyncOptions) {
     const interactionDataRef = useRef(interactionData);
     useEffect(() => { interactionDataRef.current = interactionData; }, [interactionData]);
@@ -115,6 +135,9 @@ export function useMultiplayerSync({
 
     const onSaveMultiplayerDataRef = useRef(onSaveMultiplayerData);
     useEffect(() => { onSaveMultiplayerDataRef.current = onSaveMultiplayerData; }, [onSaveMultiplayerData]);
+
+    const onHostMigrationRef = useRef(onHostMigration);
+    useEffect(() => { onHostMigrationRef.current = onHostMigration; }, [onHostMigration]);
 
     const [joinCompletedSessionId, setJoinCompletedSessionId] = useState<string | null>(null);
     const joinCompleted = joinCompletedSessionId === joinSessionId && joinSessionId != null;
@@ -149,6 +172,7 @@ export function useMultiplayerSync({
 
     const peerCharacterMapRef = useRef<Map<string, string>>(new Map());
     const characterMapRef = useRef<Map<string, Character>>(new Map());
+    const peerJoinTimesRef = useRef<Map<string, number>>(new Map());
 
     useEffect(() => {
         const map = new Map<string, Character>();
@@ -173,7 +197,33 @@ export function useMultiplayerSync({
 
                 let newMessage: HistoryMessage;
 
-                if (payload.messageType === 'chat') {
+                if (payload.messageType === 'whisper') {
+                    const whisperPayload = payload as SyncWhisperMessagePayload;
+                    newMessage = {
+                        id: whisperPayload.messageId,
+                        messageType: 'whisper',
+                        character,
+                        textContent: whisperPayload.textContent,
+                        targetCharacterIds: whisperPayload.targetCharacterIds,
+                        files: whisperPayload.files ?? [],
+                        modelTextContentSummaries: {},
+                        modelInteractionTextContentSummaries: {},
+                        kvCacheTextContentPaths: {},
+                        kvCacheTextContentSummaryPaths: {},
+                        kvCacheInteractionTextContentSummaries: {},
+                        remainingChatStamina: whisperPayload.remainingChatStamina,
+                        remainingActionStamina: whisperPayload.remainingActionStamina,
+                        knownCharacterNames: whisperPayload.knownCharacterNames,
+                        locationIndex: whisperPayload.locationIndex,
+                        characterExpression: whisperPayload.characterExpression,
+                        inventory: whisperPayload.inventory,
+                        characterClothingWearingStatuses: whisperPayload.characterClothingWearingStatuses,
+                        characterLockedLocations: whisperPayload.characterLockedLocations,
+                        parentInteractionMessageId: whisperPayload.parentInteractionMessageId ?? null,
+                        firstCreatedTimestamp: msg.timestamp,
+                        lastUpdatedTimestamp: msg.timestamp,
+                    } satisfies WhisperMessage;
+                } else if (payload.messageType === 'chat') {
                     const chatPayload = payload as SyncChatMessagePayload;
                     newMessage = {
                         id: chatPayload.messageId,
@@ -238,6 +288,36 @@ export function useMultiplayerSync({
                 if (isNewMessage && payload.messageType === 'chat' && isHost) {
                     onPeerChatMessageRef.current?.(newMessage as ChatMessage, msg.senderAccountId);
                 }
+                break;
+            }
+
+            case 'message_edit': {
+                const payload = msg.payload as MessageEditPayload;
+                const currentData = interactionDataRef.current;
+                if (!currentData) break;
+                const updatedHistory = currentData.interactionHistory.map(m => {
+                    if (m.id === payload.messageId && m.messageType === 'chat') {
+                        return { ...m, textContent: payload.newText, lastUpdatedTimestamp: Date.now() } as ChatMessage;
+                    }
+                    return m;
+                });
+                setInteractionData({ ...currentData, interactionHistory: updatedHistory, lastUpdatedTimestamp: Date.now() });
+                break;
+            }
+
+            case 'message_delete': {
+                const payload = msg.payload as MessageDeletePayload;
+                const currentData = interactionDataRef.current;
+                if (!currentData) break;
+                const updatedHistory = currentData.interactionHistory.filter(m => m.id !== payload.messageId);
+                setInteractionData({ ...currentData, interactionHistory: updatedHistory, lastUpdatedTimestamp: Date.now() });
+                break;
+            }
+
+            case 'host_migration': {
+                const payload = msg.payload as HostMigrationPayload;
+                console.log(`[MP] Host migration initiated. New host: ${payload.newHostId}`);
+                onHostMigrationRef.current?.(payload);
                 break;
             }
 
@@ -453,31 +533,36 @@ export function useMultiplayerSync({
 
     const handlePeerConnected = useCallback((accountId: string) => {
         console.log(`[MP] Peer connected: ${accountId}`);
-    }, []);
+        if (isHost) {
+            peerJoinTimesRef.current.set(accountId, Date.now());
+        }
+    }, [isHost]);
 
     const handlePeerDisconnected = useCallback((accountId: string) => {
         console.log(`[MP] Peer disconnected: ${accountId}`);
 
         if (!isHost) return;
         const charId = peerCharacterMapRef.current.get(accountId);
-        if (!charId) return;
-        peerCharacterMapRef.current.delete(accountId);
+        if (charId) {
+            peerCharacterMapRef.current.delete(accountId);
+            peerJoinTimesRef.current.delete(accountId);
 
-        const currentData = interactionDataRef.current;
-        if (!currentData) return;
+            const currentData = interactionDataRef.current;
+            if (currentData) {
+                const hasSpoken = currentData.interactionHistory.some(m => m.character.id === charId);
+                if (!hasSpoken) {
+                    const updatedParticipants = currentData.participants.filter(p => p.id !== charId);
+                    const updatedProtagonists = currentData.protagonists.filter(p => p.id !== charId);
 
-        const hasSpoken = currentData.interactionHistory.some(m => m.character.id === charId);
-        if (hasSpoken) return;
-
-        const updatedParticipants = currentData.participants.filter(p => p.id !== charId);
-        const updatedProtagonists = currentData.protagonists.filter(p => p.id !== charId);
-
-        setInteractionData({
-            ...currentData,
-            participants: updatedParticipants,
-            protagonists: updatedProtagonists,
-            lastUpdatedTimestamp: Date.now(),
-        });
+                    setInteractionData({
+                        ...currentData,
+                        participants: updatedParticipants,
+                        protagonists: updatedProtagonists,
+                        lastUpdatedTimestamp: Date.now(),
+                    });
+                }
+            }
+        }
     }, [isHost, setInteractionData]);
 
     const {
@@ -600,6 +685,15 @@ export function useMultiplayerSync({
             parentInteractionMessageId: message.parentInteractionMessageId ?? null,
         };
 
+        if (message.messageType === 'whisper') {
+            return {
+                ...base,
+                messageType: 'whisper',
+                textContent: message.textContent,
+                targetCharacterIds: message.targetCharacterIds,
+            } satisfies SyncWhisperMessagePayload;
+        }
+
         if (message.messageType === 'chat') {
             return {
                 ...base,
@@ -631,6 +725,80 @@ export function useMultiplayerSync({
         characterMapRef.current.set(character.id, character);
     }, [broadcast]);
 
+    const broadcastMessageEdit = useCallback((messageId: string, newText: string) => {
+        broadcast({
+            type: 'message_edit',
+            payload: { messageId, newText } satisfies MessageEditPayload,
+        });
+        // Also apply locally
+        const currentData = interactionDataRef.current;
+        if (currentData) {
+            const updatedHistory = currentData.interactionHistory.map(m => {
+                if (m.id === messageId && m.messageType === 'chat') {
+                    return { ...m, textContent: newText, lastUpdatedTimestamp: Date.now() } as ChatMessage;
+                }
+                return m;
+            });
+            setInteractionData({ ...currentData, interactionHistory: updatedHistory, lastUpdatedTimestamp: Date.now() });
+        }
+    }, [broadcast]);
+
+    const broadcastMessageDelete = useCallback((messageId: string) => {
+        broadcast({
+            type: 'message_delete',
+            payload: { messageId } satisfies MessageDeletePayload,
+        });
+        // Also apply locally
+        const currentData = interactionDataRef.current;
+        if (currentData) {
+            const updatedHistory = currentData.interactionHistory.filter(m => m.id !== messageId);
+            setInteractionData({ ...currentData, interactionHistory: updatedHistory, lastUpdatedTimestamp: Date.now() });
+        }
+    }, [broadcast]);
+
+    const initiateBranch = useCallback(() => {
+        if (isHost) {
+            // Find oldest peer
+            let oldestPeerId: string | null = null;
+            let oldestTime = Infinity;
+            peerJoinTimesRef.current.forEach((time, id) => {
+                if (time < oldestTime) {
+                    oldestTime = time;
+                    oldestPeerId = id;
+                }
+            });
+
+            if (!oldestPeerId) {
+                // No peers, just branch locally (disconnect)
+                disconnect();
+                return;
+            }
+
+            const currentData = interactionDataRef.current;
+            if (!currentData) return;
+
+            const chatId = currentData.id.replace(/[^A-Za-z0-9]/g, '');
+            const newHostPeerId = `lr_${chatId}_host`;
+
+            broadcast({
+                type: 'host_migration',
+                payload: {
+                    newHostId: oldestPeerId,
+                    newHostPeerId,
+                    finalState: currentData,
+                } satisfies HostMigrationPayload,
+            });
+
+            // Disconnect after a short delay to ensure message is sent
+            setTimeout(() => {
+                disconnect();
+            }, 100);
+        } else {
+            // Joiner branching: just disconnect and fork locally
+            disconnect();
+        }
+    }, [isHost, disconnect, broadcast]);
+
     return {
         isConnected,
         connectedPeers,
@@ -642,6 +810,9 @@ export function useMultiplayerSync({
         acceptJoinRequest,
         rejectJoinRequest,
         broadcastMessage,
+        broadcastMessageEdit,
+        broadcastMessageDelete,
+        initiateBranch,
         sendProtagonist,
         disconnect,
         peerId,

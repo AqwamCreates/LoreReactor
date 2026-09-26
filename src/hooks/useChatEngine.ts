@@ -1,6 +1,6 @@
 // src/hooks/useChatEngine.ts
 import { useCallback } from 'react';
-import type { Character, InteractionData, PromptBlock, BudgetStrategy, BudgetData } from '../types';
+import type { Character, InteractionData, PromptBlock, BudgetStrategy, BudgetData, LanguageModel } from '../types';
 import { CharacterActor } from '../services/CharacterActor';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngine';
@@ -25,13 +25,15 @@ interface EngineDependencies {
     setCurrentCharacterExpression: (e: string) => void;
     setLastSelectedModelId: (id: string | null) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
+    /** Optional callback to request a borrowed model from a peer for shared inference */
+    requestBorrowedModel?: () => Promise<LanguageModel | null>;
 }
 
 export function useChatEngine(deps: EngineDependencies) {
     const { 
         getState, setInteractionData, setStreamingState, 
         setBudgetData, setStats, setCurrentCharacterExpression,
-        setLastSelectedModelId, addToast,
+        setLastSelectedModelId, addToast, requestBorrowedModel,
     } = deps;
 
     const handleServerResponse = useCallback(async (
@@ -48,6 +50,16 @@ export function useChatEngine(deps: EngineDependencies) {
         const activeStrategy = getState().activeStrategy;
 
         const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
+
+        // --- SHARED MODEL BORROWING ---
+        let borrowedModel: LanguageModel | null = null;
+        if (requestBorrowedModel) {
+            try {
+                borrowedModel = await requestBorrowedModel();
+            } catch (e) {
+                console.warn('Failed to borrow model from peer:', e);
+            }
+        }
 
         const callbacks = {
             onDisplayText: (text: string) => {
@@ -76,6 +88,7 @@ export function useChatEngine(deps: EngineDependencies) {
             data, character, signal, selectedModel, runningModels, activeStrategy,
             strategyOverride, existingCharacterText, allPromptBlocks: allPromptBlocks ?? [], 
             callbacks,
+            borrowedModel,
         });
 
         if ('error' in outcome) {
@@ -112,7 +125,7 @@ export function useChatEngine(deps: EngineDependencies) {
             : result.updatedData;
         
         return { interactionData: effectiveData, isCompleted: result.isCompleted };
-    }, [getState, setStreamingState, setStats, setCurrentCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast]);
+    }, [getState, setStreamingState, setStats, setCurrentCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast, requestBorrowedModel]);
 
     const runTurn = useCallback(async (
         initialData: InteractionData,
