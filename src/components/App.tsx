@@ -191,6 +191,20 @@ function App() {
         onMessageBroadcast, 
         isMultiplayerClient, 
         joinProtagonist,
+        allCharacters,
+        allContexts,
+        allLocations,
+        allAudioTracks,
+        allPromptBlocks,
+        allSamplers,
+        allStopPatterns,
+        allBudgetStrategies,
+        allProfiles,
+        allWorlds,
+        allMemories,
+        allExtensions,
+        allAccounts,
+        allMultiplayerData,
         requestBorrowedModel: () => requestBorrowedModelRef.current(),
     });
     const {
@@ -1222,6 +1236,8 @@ function App() {
                             allStopPatterns={allStopPatterns}
                             allProfiles={allProfiles}
                             allMemories={allMemories}
+                            allAccounts={allAccounts}
+                            allMultiplayerData={allMultiplayerData}
                             fileInputRef={fileInputRef} 
                             textareaRef={textareaRef} 
                             onFileSelected={handleFileSelected} 

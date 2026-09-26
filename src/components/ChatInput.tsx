@@ -1,7 +1,7 @@
 // src/components/ChatInput.tsx
 import type React from 'react';
 import { useState, useEffect, useRef, useMemo } from 'react';
-import type { BudgetStrategy, InteractionData, Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory } from '../types';
+import type { BudgetStrategy, InteractionData, Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData } from '../types';
 
 interface ChatInputProps {
     inputText: string;
@@ -27,6 +27,8 @@ interface ChatInputProps {
     allStopPatterns: StopPattern[];
     allProfiles: Profile[];
     allMemories: Memory[];
+    allAccounts: Account[];
+    allMultiplayerData: MultiplayerData[];
     fileInputRef: React.RefObject<HTMLInputElement | null>;
     textareaRef: React.RefObject<HTMLTextAreaElement | null>;
     onFileSelected: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -37,13 +39,13 @@ interface ChatInputProps {
 }
 
 // ─── Tree Data Structures ─────────────────────────────────────────
-type ArgType = 'text' | 'location' | 'character' | 'clothing' | 'audio' | 'item' | 'context' | 'rng_table' | 'dialogue' | 'knowledge' | 'memory' | 'entity_type' | 'prompt_block' | 'sampler' | 'stop_pattern' | 'profile' | 'world';
+type ArgType = 'text' | 'session_location' | 'global_location' | 'session_character' | 'global_character' | 'clothing' | 'audio' | 'item' | 'context' | 'rng_table' | 'dialogue' | 'knowledge' | 'memory' | 'entity_type' | 'prompt_block' | 'sampler' | 'stop_pattern' | 'profile' | 'world' | 'account' | 'multiplayer_session';
 
 interface SlashArg { name: string; type: ArgType; desc: string; optional?: boolean; example?: string; }
 interface SlashSub { name: string; desc: string; args?: SlashArg[]; }
 interface SlashCmd { name: string; desc: string; subs?: SlashSub[]; args?: SlashArg[]; }
 
-const VALID_ENTITY_TYPES = ['character', 'context', 'location', 'audio_track', 'prompt_block', 'stop_pattern', 'sampler', 'budget_strategy', 'profile', 'world', 'memory'];
+const VALID_ENTITY_TYPES = ['character', 'context', 'location', 'audio_track', 'prompt_block', 'stop_pattern', 'sampler', 'budget_strategy', 'profile', 'world', 'memory', 'account', 'multiplayer_data'];
 
 const COMMAND_TREE: SlashCmd[] = [
     { name: 'dice', desc: 'Roll dice', args: [{ name: 'notation', type: 'text', desc: 'Dice notation', example: '2d6+3' }] },
@@ -52,30 +54,30 @@ const COMMAND_TREE: SlashCmd[] = [
     { name: 'pick', desc: 'Pick from list', args: [{ name: 'options', type: 'text', desc: 'Comma-separated choices', example: 'sword, shield, potion' }] },
     { name: 'date', desc: 'Current date/time', args: [{ name: 'format', type: 'text', desc: 'Date format', example: 'iso', optional: true }] },
     { name: 'calculator', desc: 'Evaluate math', args: [{ name: 'expression', type: 'text', desc: 'Math expression', example: '15*7+3' }] },
-    { name: 'move', desc: 'Move to adjacent location', args: [{ name: 'location', type: 'location', desc: 'Destination location' }] },
-    { name: 'teleport', desc: 'Instant movement', args: [{ name: 'location', type: 'location', desc: 'Any location' }] },
+    { name: 'move', desc: 'Move to adjacent location', args: [{ name: 'location', type: 'session_location', desc: 'Destination location' }] },
+    { name: 'teleport', desc: 'Instant movement', args: [{ name: 'location', type: 'session_location', desc: 'Any session location' }] },
     { name: 'map', desc: 'Show distance', args: [
-        { name: 'from', type: 'location', desc: 'Start location', optional: true },
-        { name: 'to', type: 'location', desc: 'End location' }
+        { name: 'from', type: 'session_location', desc: 'Start location', optional: true },
+        { name: 'to', type: 'session_location', desc: 'End location' }
     ]},
-    { name: 'inspect', desc: 'Examine character', args: [{ name: 'character', type: 'character', desc: 'Target character' }] },
-    { name: 'invite', desc: 'Bring to current location', args: [{ name: 'character', type: 'character', desc: 'Character to invite' }] },
+    { name: 'inspect', desc: 'Examine character', args: [{ name: 'character', type: 'session_character', desc: 'Target character' }] },
+    { name: 'invite', desc: 'Bring to current location', args: [{ name: 'character', type: 'session_character', desc: 'Character to invite' }] },
     { name: 'kick', desc: 'Kick to location', args: [
-        { name: 'character', type: 'character', desc: 'Character to kick' },
-        { name: 'location', type: 'location', desc: 'Destination (optional)', optional: true }
+        { name: 'character', type: 'session_character', desc: 'Character to kick' },
+        { name: 'location', type: 'session_location', desc: 'Destination (optional)', optional: true }
     ]},
-    { name: 'summon', desc: 'Add character to session', args: [{ name: 'character', type: 'character', desc: 'Character' }] },
+    { name: 'summon', desc: 'Add character to session', args: [{ name: 'character', type: 'global_character', desc: 'Character' }] },
     { name: 'audio', desc: 'Play/stop audio', subs: [
         { name: 'play', desc: 'Play audio track', args: [{ name: 'track', type: 'audio', desc: 'Audio track to play' }] },
         { name: 'stop', desc: 'Stop audio track', args: [{ name: 'track', type: 'audio', desc: 'Audio track to stop', optional: true }] },
     ]},
     { name: 'clothing', desc: 'Equip/remove clothing', subs: [
         { name: 'wear', desc: 'Equip clothing', args: [
-            { name: 'character', type: 'character', desc: 'Character' },
+            { name: 'character', type: 'session_character', desc: 'Character' },
             { name: 'clothing', type: 'clothing', desc: 'Clothing item' }
         ]},
         { name: 'remove', desc: 'Remove clothing', args: [
-            { name: 'character', type: 'character', desc: 'Character' },
+            { name: 'character', type: 'session_character', desc: 'Character' },
             { name: 'clothing', type: 'clothing', desc: 'Clothing item' }
         ]},
     ]},
@@ -92,15 +94,15 @@ const COMMAND_TREE: SlashCmd[] = [
     ]},
     { name: 'trade', desc: 'Trade items', subs: [
         { name: 'give', desc: 'Give item to character', args: [
-            { name: 'character', type: 'character', desc: 'Recipient' },
+            { name: 'character', type: 'session_character', desc: 'Recipient' },
             { name: 'items', type: 'text', desc: 'item:qty,item2:qty2', example: 'Iron Sword:1, Potion:3' }
         ]},
         { name: 'take', desc: 'Take item from character', args: [
-            { name: 'character', type: 'character', desc: 'Source character' },
+            { name: 'character', type: 'session_character', desc: 'Source character' },
             { name: 'items', type: 'text', desc: 'item:qty,item2:qty2', example: 'Gold Coin:50' }
         ]},
         { name: 'offer', desc: 'Propose trade', args: [
-            { name: 'character', type: 'character', desc: 'Trade partner' },
+            { name: 'character', type: 'session_character', desc: 'Trade partner' },
             { name: 'give_items', type: 'text', desc: 'item:qty', example: 'Iron Sword:1' },
             { name: 'take_items', type: 'text', desc: 'item:qty', example: 'Gold Coin:100' }
         ]},
@@ -153,17 +155,17 @@ const COMMAND_TREE: SlashCmd[] = [
     ]},
     { name: 'key', desc: 'Lock/unlock locations', subs: [
         { name: 'lock', desc: 'Lock location', args: [
-            { name: 'location', type: 'location', desc: 'Location to lock' },
-            { name: 'character', type: 'character', desc: 'Character (all if omitted)', optional: true }
+            { name: 'location', type: 'session_location', desc: 'Location to lock' },
+            { name: 'character', type: 'session_character', desc: 'Character (all if omitted)', optional: true }
         ]},
         { name: 'unlock', desc: 'Unlock location', args: [
-            { name: 'location', type: 'location', desc: 'Location to unlock' },
-            { name: 'character', type: 'character', desc: 'Character (all if omitted)', optional: true }
+            { name: 'location', type: 'session_location', desc: 'Location to unlock' },
+            { name: 'character', type: 'session_character', desc: 'Character (all if omitted)', optional: true }
         ]},
     ]},
     { name: 'whisper', desc: 'Send a private message', args: [
-        { name: 'targets', type: 'character', desc: 'Target character(s), comma-separated', example: 'char1,char2' },
-        { name: 'text', type: 'text', desc: 'Whisper content', example: 'Meet me at' }
+        { name: 'targets', type: 'session_character', desc: 'Target character(s), comma-separated', example: 'char1,char2' },
+        { name: 'text', type: 'text', desc: 'Whisper content', example: 'Meet me at the inn' }
     ]},
     { name: 'think', desc: 'Reasoning step', args: [{ name: 'reasoning', type: 'text', desc: 'Your thought process', example: 'Should I trust this stranger?' }] },
     { name: 'narrate', desc: 'Inject narration', args: [{ name: 'text', type: 'text', desc: 'Narration text', example: 'The wind howls through the trees.' }] },
@@ -183,28 +185,50 @@ const COMMAND_TREE: SlashCmd[] = [
         { name: 'recall', desc: 'Recall memory', args: [{ name: 'memory', type: 'memory', desc: 'Memory', optional: true }] },
         { name: 'save', desc: 'Save conversation as memory' },
     ]},
+    { name: 'administrator', desc: 'Admin controls', subs: [
+        { name: 'list_chats', desc: 'List all sessions' },
+        { name: 'list_accounts', desc: 'List all accounts' },
+        { name: 'list_multiplayer', desc: 'List multiplayer sessions' },
+        { name: 'move_protagonist', desc: 'Move to session', args: [{ name: 'chat_id', type: 'text', desc: 'Session ID' }] },
+        { name: 'switch_model', desc: 'Switch active model', args: [{ name: 'model_name', type: 'text', desc: 'Model name' }] },
+        { name: 'toggle_account', desc: 'Toggle account active state', args: [{ name: 'account', type: 'account', desc: 'Account to toggle' }] },
+        { name: 'join_session', desc: 'Join multiplayer session', args: [
+            { name: 'session', type: 'multiplayer_session', desc: 'Multiplayer session' },
+            { name: 'password', type: 'text', desc: 'Password (optional)', optional: true }
+        ]},
+        { name: 'leave_session', desc: 'Leave current session' },
+        { name: 'accept_join', desc: 'Accept pending join request', args: [{ name: 'account_id', type: 'text', desc: 'Account ID' }] },
+        { name: 'reject_join', desc: 'Reject pending join request', args: [{ name: 'account_id', type: 'text', desc: 'Account ID' }] },
+    ]},
     { name: 'creator', desc: 'Create new entity', args: [
         { name: 'entity_type', type: 'entity_type', desc: 'Type of entity to create' },
         { name: 'name', type: 'text', desc: 'Name for the new entity', example: 'Forest Guardian' }
     ]},
     { name: 'destroyer', desc: 'Delete entity permanently', args: [
         { name: 'entity_type', type: 'entity_type', desc: 'Type of entity to delete' },
-        { name: 'entity', type: 'character', desc: 'Entity to delete (type-specific)' }
+        { name: 'entity', type: 'text', desc: 'Entity to delete (type-specific)' }
     ]},
 ];
 
 interface EntityOption { value: string; label: string; id: string; extra?: string; }
 
-function truncateDesc(desc: string | undefined, maxLen = 60): string {
-    if (!desc) return '';
-    const trimmed = desc.trim();
-    if (trimmed.length <= maxLen) return trimmed;
-    return trimmed.substring(0, maxLen) + '…';
+function getEntityDescription(entity: any): string {
+    if (!entity) return '';
+    
+    // STRICTLY check only true description or content fields. If none exist, return empty string.
+    const rawDesc = entity.description ?? entity.content;
+
+    if (rawDesc && typeof rawDesc === 'string' && rawDesc.trim().length > 0) {
+        const trimmed = rawDesc.trim();
+        return trimmed.length > 80 ? `${trimmed.substring(0, 80)}…` : trimmed;
+    }
+
+    return '';
 }
 
 function getEntityOptions(
-    type: ArgType, 
-    data: InteractionData | null, 
+    type: ArgType,
+    data: InteractionData | null,
     allChars: Character[],
     allLocs: Location[],
     allCtxs: Context[],
@@ -215,67 +239,95 @@ function getEntityOptions(
     allProfiles: Profile[],
     allWorlds: World[],
     allMems: Memory[],
+    allAccounts: Account[],
+    allMultiplayerData: MultiplayerData[],
     localChar: Character | null
 ): EntityOption[] {
     if (type === 'entity_type') {
-        return VALID_ENTITY_TYPES.map(t => ({
-            value: t,
-            label: t,
-            id: '',
-            extra: ''
-        }));
+        return VALID_ENTITY_TYPES.map(t => ({ value: t, label: t, id: '', extra: '' }));
     }
-    
-    if (!data) return [];
-    
-    if (type === 'location') {
-        const currentLocIndex = [...data.interactionHistory].reverse().find(m => m.locationIndex !== undefined)?.locationIndex;
-        const sessionLocs = data.locations || [];
-        const currentLoc = currentLocIndex !== undefined ? sessionLocs[currentLocIndex] : null;
-        
-        return allLocs.map(l => {
-            const isInSession = sessionLocs.some(sl => sl.id === l.id);
-            const isCurrent = currentLoc && l.id === currentLoc.id;
-            const adjacent = currentLoc?.locationBindings?.includes(l.id) || l.locationBindings?.includes(currentLoc?.id || '');
-            const statusTag = isCurrent ? '(current) ' : adjacent ? '(adjacent) ' : isInSession ? '(in session) ' : '';
-            return {
-                value: l.id,
-                label: l.name,
-                id: l.id.substring(0, 8),
-                extra: statusTag + truncateDesc(l.description)
-            };
-        });
-    }
-    
-    if (type === 'character') {
-        return allChars.map(c => ({
+
+    if (type === 'session_character') {
+        const participants = data?.participants || [];
+        return participants.map(c => ({
             value: c.id,
             label: c.name,
             id: c.id.substring(0, 8),
-            extra: truncateDesc(c.description)
+            extra: getEntityDescription(c)
         }));
     }
-    
+
+    if (type === 'global_character') {
+        const participantIds = new Set((data?.participants || []).map(p => p.id));
+        return allChars
+            .filter(c => !participantIds.has(c.id))
+            .map(c => ({
+                value: c.id,
+                label: c.name,
+                id: c.id.substring(0, 8),
+                extra: getEntityDescription(c)
+            }));
+    }
+
+    if (!data && type !== 'account' && type !== 'multiplayer_session') return [];
+
+    if (type === 'session_location') {
+        const sessionLocs = data?.locations || [];
+        return sessionLocs.map(l => ({
+            value: l.id,
+            label: l.name,
+            id: l.id.substring(0, 8),
+            extra: getEntityDescription(l)
+        }));
+    }
+
+    if (type === 'global_location') {
+        return allLocs.map(l => ({
+            value: l.id,
+            label: l.name,
+            id: l.id.substring(0, 8),
+            extra: getEntityDescription(l)
+        }));
+    }
+
+    if (type === 'account') {
+        return allAccounts.map(a => ({
+            value: a.id,
+            label: a.username,
+            id: a.id.substring(0, 8),
+            extra: getEntityDescription(a)
+        }));
+    }
+
+    if (type === 'multiplayer_session') {
+        return allMultiplayerData.map(m => ({
+            value: m.id,
+            label: m.name,
+            id: m.id.substring(0, 8),
+            extra: getEntityDescription(m)
+        }));
+    }
+
     if (type === 'audio') {
         return allAudio.map(t => ({
             value: t.id,
             label: t.name,
             id: t.id.substring(0, 8),
-            extra: `[${t.audioCategory}] ${t.filename}`
+            extra: getEntityDescription(t)
         }));
     }
-    
+
     if (type === 'clothing' && localChar) {
         return (localChar.clothings || []).map(c => ({
             value: c.id,
             label: c.name,
             id: c.id.substring(0, 8),
-            extra: truncateDesc(c.description)
+            extra: getEntityDescription(c)
         }));
     }
-    
+
     if (type === 'item') {
-        const lastMsg = [...data.interactionHistory].reverse().find(m => 
+        const lastMsg = [...(data?.interactionHistory || [])].reverse().find(m =>
             m.character.id === localChar?.id && m.messageType === 'chat' && m.inventory
         );
         if (lastMsg?.inventory) {
@@ -288,71 +340,72 @@ function getEntityOptions(
                     extra: ''
                 }));
         }
+        return [];
     }
-    
+
     if (type === 'context') {
         return allCtxs.map(c => ({
             value: c.id,
             label: c.name,
             id: c.id.substring(0, 8),
-            extra: truncateDesc(c.description)
+            extra: getEntityDescription(c)
         }));
     }
-    
+
     if (type === 'prompt_block') {
         return allPrompts.map(p => ({
             value: p.id,
             label: p.name,
             id: p.id.substring(0, 8),
-            extra: truncateDesc(p.description)
+            extra: getEntityDescription(p)
         }));
     }
-    
+
     if (type === 'sampler') {
         return allSamplers.map(s => ({
             value: s.id,
             label: s.name,
             id: s.id.substring(0, 8),
-            extra: truncateDesc(s.description)
+            extra: getEntityDescription(s)
         }));
     }
-    
+
     if (type === 'stop_pattern') {
         return allStops.map(s => ({
             value: s.id,
             label: s.name,
             id: s.id.substring(0, 8),
-            extra: truncateDesc(s.description)
+            extra: getEntityDescription(s)
         }));
     }
-    
+
     if (type === 'profile') {
         return allProfiles.map(p => ({
             value: p.id,
             label: p.name,
             id: p.id.substring(0, 8),
-            extra: truncateDesc(p.description)
+            extra: getEntityDescription(p)
         }));
     }
-    
+
     if (type === 'world') {
         return allWorlds.map(w => ({
             value: w.id,
             label: w.name,
             id: w.id.substring(0, 8),
-            extra: truncateDesc(w.description)
+            extra: getEntityDescription(w)
         }));
     }
-    
+
     if (type === 'memory') {
         return allMems.map(m => ({
             value: m.id,
             label: m.name,
             id: m.id.substring(0, 8),
-            extra: truncateDesc(m.content, 80)
+            extra: getEntityDescription(m)
         }));
     }
-    
+
     if (type === 'rng_table') {
         return allCtxs
             .filter(c => c.text && /^\d+[-:]/.test(c.text || ''))
@@ -360,30 +413,30 @@ function getEntityOptions(
                 value: c.name || c.id,
                 label: c.name || 'Unnamed RNG',
                 id: c.id.substring(0, 8),
-                extra: truncateDesc(c.description)
+                extra: getEntityDescription(c)
             }));
     }
-    
+
     if (type === 'dialogue') {
         const dialogues = localChar?.dialoguePrompts || [];
         return dialogues.map(d => ({
             value: d.id,
             label: d.name,
             id: d.id.substring(0, 8),
-            extra: truncateDesc(d.description)
+            extra: getEntityDescription(d)
         }));
     }
-    
+
     if (type === 'knowledge') {
         const knowledge = localChar?.knowledgePrompts || [];
         return knowledge.map(k => ({
             value: k.id,
             label: k.name,
             id: k.id.substring(0, 8),
-            extra: truncateDesc(k.description)
+            extra: getEntityDescription(k)
         }));
     }
-    
+
     return [];
 }
 
@@ -392,11 +445,12 @@ export function ChatInput({
     isRecording, isLoading, isModelReady, isModelLoading, modelStatusMessage,
     localProtagonist, activeStrategy, selectedModelId,
     interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allWorlds,
-    allPromptBlocks, allSamplers, allStopPatterns, allProfiles, allMemories,
+    allPromptBlocks, allSamplers, allStopPatterns, allProfiles, allMemories, allAccounts, allMultiplayerData,
     fileInputRef, textareaRef,
     onFileSelected, onToggleMicrophone, onSend, onStopGeneration, onOpenModels,
 }: ChatInputProps) {
     const [selectedIndex, setSelectedIndex] = useState(0);
+    const [lastResetKey, setLastResetKey] = useState('');
     const autocompleteRef = useRef<HTMLDivElement>(null);
 
     const raw = inputText.trimStart();
@@ -441,7 +495,9 @@ export function ChatInput({
                     options: filtered.map(s => ({ type: 'sub' as const, value: s.name, label: s.name, id: '', desc: s.desc })),
                     isComplete: false,
                 };
-            } else if (cmd.args && cmd.args.length > 0) {
+            }
+
+            if (cmd.args && cmd.args.length > 0) {
                 const arg = cmd.args[0];
                 if (arg.type === 'text') {
                     const filteredByQuery = !effectiveQuery || arg.example?.toLowerCase().includes(effectiveQuery);
@@ -453,44 +509,44 @@ export function ChatInput({
                         options: exampleOpts,
                         isComplete: false,
                     };
-                } else {
-                    const entities = getEntityOptions(
-                        arg.type, interactionData, allCharacters, allLocations, allContexts,
-                        allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
-                        allProfiles, allWorlds, allMemories, localProtagonist
-                    );
-                    
-                    let queryForFilter = effectiveQuery;
-                    if (effectiveQuery.includes(',')) {
-                        const lastComma = effectiveQuery.lastIndexOf(',');
-                        queryForFilter = effectiveQuery.substring(lastComma + 1).trim();
-                    }
-
-                    const filtered = entities.filter(e => 
-                        e.label.toLowerCase().includes(queryForFilter.toLowerCase()) || 
-                        e.id.toLowerCase().includes(queryForFilter.toLowerCase()) ||
-                        (e.extra && e.extra.toLowerCase().includes(queryForFilter.toLowerCase()))
-                    );
-                    return {
-                        breadcrumbs: [cmd.name, `${arg.name} (${filtered.length}/${entities.length})`],
-                        options: filtered.map(e => ({ 
-                            type: 'arg' as const, 
-                            value: e.value, 
-                            label: e.label, 
-                            id: e.id, 
-                            desc: e.extra || arg.desc 
-                        })),
-                        isComplete: false,
-                    };
                 }
-            } else {
-                return { breadcrumbs: [cmd.name, 'Complete ✓'], options: [], isComplete: true };
+
+                const entities = getEntityOptions(
+                    arg.type, interactionData, allCharacters, allLocations, allContexts,
+                    allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
+                    allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData, localProtagonist
+                );
+
+                let queryForFilter = effectiveQuery;
+                if (effectiveQuery.includes(',')) {
+                    const lastComma = effectiveQuery.lastIndexOf(',');
+                    queryForFilter = effectiveQuery.substring(lastComma + 1).trim();
+                }
+
+                const filtered = entities.filter(e =>
+                    e.label.toLowerCase().includes(queryForFilter.toLowerCase()) ||
+                    e.id.toLowerCase().includes(queryForFilter.toLowerCase()) ||
+                    (e.extra?.toLowerCase().includes(queryForFilter.toLowerCase()))
+                );
+                return {
+                    breadcrumbs: [cmd.name, `${arg.name} (${filtered.length}/${entities.length})`],
+                    options: filtered.map(e => ({
+                        type: 'arg' as const,
+                        value: e.value,
+                        label: e.label,
+                        id: e.id,
+                        desc: e.extra || ''
+                    })),
+                    isComplete: false,
+                };
             }
+
+            return { breadcrumbs: [cmd.name, 'Complete ✓'], options: [], isComplete: true };
         }
 
-        const sub = cmd.subs ? cmd.subs.find(s => s.name === parts[1]) : undefined;
+        const sub = cmd.subs?.find(s => s.name === parts[1]);
         const args = sub ? sub.args : cmd.args;
-        
+
         if (!args || args.length === 0) {
             return { breadcrumbs: [cmd.name, ...(sub ? [sub.name] : []), 'Complete ✓'], options: [], isComplete: true };
         }
@@ -501,7 +557,7 @@ export function ChatInput({
         if (argIndex < args.length) {
             const arg = args[argIndex];
             const breadcrumbTrail = [cmd.name, ...(sub ? [sub.name] : [])];
-            
+
             if (arg.type === 'text') {
                 const filteredByQuery = !effectiveQuery || arg.example?.toLowerCase().includes(effectiveQuery);
                 const exampleOpts = filteredByQuery && arg.example
@@ -512,61 +568,69 @@ export function ChatInput({
                     options: exampleOpts,
                     isComplete: false,
                 };
-            } else {
-                const entities = getEntityOptions(
-                    arg.type, interactionData, allCharacters, allLocations, allContexts,
-                    allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
-                    allProfiles, allWorlds, allMemories, localProtagonist
-                );
-
-                let queryForFilter = effectiveQuery;
-                if (effectiveQuery.includes(',')) {
-                    const lastComma = effectiveQuery.lastIndexOf(',');
-                    queryForFilter = effectiveQuery.substring(lastComma + 1).trim();
-                }
-
-                const filtered = entities.filter(e => 
-                    e.label.toLowerCase().includes(queryForFilter.toLowerCase()) || 
-                    e.id.toLowerCase().includes(queryForFilter.toLowerCase()) ||
-                    (e.extra && e.extra.toLowerCase().includes(queryForFilter.toLowerCase()))
-                );
-                return {
-                    breadcrumbs: [...breadcrumbTrail, `${arg.name} (${filtered.length}/${entities.length}${arg.optional ? ', optional' : ''})`],
-                    options: filtered.map(e => ({ 
-                        type: 'arg' as const, 
-                        value: e.value, 
-                        label: e.label, 
-                        id: e.id, 
-                        desc: e.extra || arg.desc 
-                    })),
-                    isComplete: false,
-                };
             }
+
+            const entities = getEntityOptions(
+                arg.type, interactionData, allCharacters, allLocations, allContexts,
+                allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
+                allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData, localProtagonist
+            );
+
+            let queryForFilter = effectiveQuery;
+            if (effectiveQuery.includes(',')) {
+                const lastComma = effectiveQuery.lastIndexOf(',');
+                queryForFilter = effectiveQuery.substring(lastComma + 1).trim();
+            }
+
+            const filtered = entities.filter(e =>
+                e.label.toLowerCase().includes(queryForFilter.toLowerCase()) ||
+                e.id.toLowerCase().includes(queryForFilter.toLowerCase()) ||
+                (e.extra?.toLowerCase().includes(queryForFilter.toLowerCase()))
+            );
+            return {
+                breadcrumbs: [...breadcrumbTrail, `${arg.name} (${filtered.length}/${entities.length}${arg.optional ? ', optional' : ''})`],
+                options: filtered.map(e => ({
+                    type: 'arg' as const,
+                    value: e.value,
+                    label: e.label,
+                    id: e.id,
+                    desc: e.extra || ''
+                })),
+                isComplete: false,
+            };
         }
 
         return { breadcrumbs: [cmd.name, ...(sub ? [sub.name] : []), 'Complete ✓'], options: [], isComplete: true };
-    }, [isSlash, parts, activeIndex, currentQuery, isTypingNewToken, interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns, allProfiles, allWorlds, allMemories, localProtagonist]);
+    }, [isSlash, parts, activeIndex, currentQuery, isTypingNewToken, interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns, allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData, localProtagonist]);
 
     const showAutocomplete = isSlash && !isComplete;
 
-    useEffect(() => { setSelectedIndex(0); }, [options.length, activeIndex, isComplete]);
+    const autocompleteKey = useMemo(() => {
+        if (!showAutocomplete) return '';
+        return `${breadcrumbs.join('|')}|${options.length}|${activeIndex}`;
+    }, [showAutocomplete, breadcrumbs, options.length, activeIndex]);
+
+    if (autocompleteKey && autocompleteKey !== lastResetKey) {
+        setLastResetKey(autocompleteKey);
+        setSelectedIndex(0);
+    } else if (!autocompleteKey && lastResetKey !== '') {
+        setLastResetKey('');
+    }
 
     useEffect(() => {
         if (!showAutocomplete) return;
         const list = autocompleteRef.current?.querySelector('.slash-autocomplete-list');
         const selected = list?.querySelector('.slash-autocomplete-item-selected');
-        if (selected && list) {
-            selected.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        }
-    }, [selectedIndex, showAutocomplete]);
+        selected?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }, [showAutocomplete]);
 
     const applySelection = (opt: { value: string }) => {
         const rawText = inputText.trimStart();
         if (!rawText.startsWith('/')) return;
-        
+
         const afterSlash = rawText.slice(1);
         const currentParts = afterSlash.split(/\s+/).filter(p => p.length > 0);
-        
+
         let newValue = opt.value;
         let isTargetsArg = false;
 
@@ -574,22 +638,20 @@ export function ChatInput({
             const currentPart = currentParts[activeIndex];
             const lastComma = currentPart.lastIndexOf(',');
             if (lastComma !== -1) {
-                newValue = currentPart.substring(0, lastComma + 1) + opt.value;
+                newValue = `${currentPart.substring(0, lastComma + 1)}${opt.value}`;
             }
         }
-        
+
         const cmd = COMMAND_TREE.find(c => c.name === currentParts[0]);
         if (cmd) {
             const pastCommand = isTypingNewToken || activeIndex > 0;
             const effectiveIndex = pastCommand ? activeIndex : 1;
-            const sub = cmd.subs ? cmd.subs.find(s => s.name === currentParts[1]) : undefined;
+            const sub = cmd.subs?.find(s => s.name === currentParts[1]);
             const args = sub ? sub.args : cmd.args;
             const argOffset = sub ? 2 : 1;
             const argIndex = effectiveIndex - argOffset;
-            if (args && argIndex >= 0 && argIndex < args.length) {
-                if (args[argIndex].name === 'targets') {
-                    isTargetsArg = true;
-                }
+            if (args && argIndex >= 0 && argIndex < args.length && args[argIndex].name === 'targets') {
+                isTargetsArg = true;
             }
         }
 
@@ -602,9 +664,9 @@ export function ChatInput({
         } else {
             currentParts[activeIndex] = newValue;
         }
-        
+
         const trailingSpace = isTargetsArg ? '' : ' ';
-        setInputText('/' + currentParts.join(' ') + trailingSpace);
+        setInputText(`/${currentParts.join(' ')}${trailingSpace}`);
         textareaRef.current?.focus();
     };
 
@@ -628,8 +690,8 @@ export function ChatInput({
                 e.preventDefault();
                 if (options.length > 0 && options[selectedIndex]) {
                     applySelection(options[selectedIndex]);
-                } else if (options.length === 0) {
-                    if (localProtagonist) onSend();
+                } else if (localProtagonist) {
+                    onSend();
                 }
                 return;
             }
@@ -642,7 +704,7 @@ export function ChatInput({
                 e.preventDefault();
                 const currentParts = inputText.trim().split(/\s+/).filter(p => p.length > 0);
                 currentParts.pop();
-                setInputText(currentParts.length > 0 ? currentParts.join(' ') + ' ' : '/');
+                setInputText(currentParts.length > 0 ? `${currentParts.join(' ')} ` : '/');
                 return;
             }
             return;
@@ -696,14 +758,14 @@ export function ChatInput({
                         )}
                         {options.map((opt, i) => (
                             <div
-                                key={`${opt.type}-${opt.value}-${i}`}
+                                key={`${opt.type}-${opt.value}-${opt.id}-${i}`}
                                 className={`slash-autocomplete-item ${i === selectedIndex ? 'slash-autocomplete-item-selected' : ''}`}
                                 onMouseDown={(e) => { e.preventDefault(); applySelection(opt); }}
                                 onMouseEnter={() => setSelectedIndex(i)}
                             >
                                 <span className="slash-autocomplete-label">{opt.label}</span>
                                 {opt.id && opt.id !== 'example' && <span className="slash-autocomplete-id">({opt.id})</span>}
-                                <span className="slash-autocomplete-desc">{opt.desc}</span>
+                                {opt.desc && <span className="slash-autocomplete-desc">{opt.desc}</span>}
                             </div>
                         ))}
                     </div>

@@ -19,7 +19,7 @@ import { useAmbientNarration } from './useAmbientNarration';
 import { useSessionStore } from './useSessionStore';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import type { Character, Context, Location, AudioTrack, World, PromptBlock, Sampler, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, HistoryMessage, Memory, Extension, LanguageModel } from '../types';
+import type { Character, Context, Location, AudioTrack, World, PromptBlock, Sampler, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, HistoryMessage, Memory, Extension, Account, MultiplayerData, LanguageModel } from '../types';
 
 const engine = getLanguageModelEngine();
 
@@ -85,10 +85,12 @@ interface UseChatSessionOptions {
     allWorlds?: World[];
     allMemories?: Memory[];
     allExtensions?: Extension[];
+    allAccounts?: Account[];
+    allMultiplayerData?: MultiplayerData[];
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
 }
 
-export function useChatSession(options?: UseChatSessionOptions) {
+export function useChatSession(options: UseChatSessionOptions) {
     const { addToast } = useToast();
     const onMessageBroadcastRef = useRef(options?.onMessageBroadcast);
     const isMultiplayerClient = options?.isMultiplayerClient ?? false;
@@ -113,6 +115,8 @@ export function useChatSession(options?: UseChatSessionOptions) {
     const allWorldsRef = useRef(options?.allWorlds ?? []);
     const allMemoriesRef = useRef(options?.allMemories ?? []);
     const allExtensionsRef = useRef(options?.allExtensions ?? []);
+    const allAccountsRef = useRef(options?.allAccounts ?? []);
+    const allMultiplayerDataRef = useRef(options?.allMultiplayerData ?? []);
 
     useEffect(() => { allCharactersRef.current = options?.allCharacters ?? []; }, [options?.allCharacters]);
     useEffect(() => { allContextsRef.current = options?.allContexts ?? []; }, [options?.allContexts]);
@@ -126,6 +130,8 @@ export function useChatSession(options?: UseChatSessionOptions) {
     useEffect(() => { allWorldsRef.current = options?.allWorlds ?? []; }, [options?.allWorlds]);
     useEffect(() => { allMemoriesRef.current = options?.allMemories ?? []; }, [options?.allMemories]);
     useEffect(() => { allExtensionsRef.current = options?.allExtensions ?? []; }, [options?.allExtensions]);
+    useEffect(() => { allAccountsRef.current = options?.allAccounts ?? []; }, [options?.allAccounts]);
+    useEffect(() => { allMultiplayerDataRef.current = options?.allMultiplayerData ?? []; }, [options?.allMultiplayerData]);
 
     const state = useChatState();
     const {
@@ -315,7 +321,7 @@ export function useChatSession(options?: UseChatSessionOptions) {
         }
     }, []);
 
-    /** Build the ToolExecutionContext from current refs */
+    /** Build the ToolExecutionContext from current refs with comprehensive entity data bindings */
     const buildToolContext = useCallback((): ToolExecutionContext => ({
         allCharacters: allCharactersRef.current,
         allContexts: allContextsRef.current,
@@ -328,6 +334,8 @@ export function useChatSession(options?: UseChatSessionOptions) {
         allProfiles: allProfilesRef.current,
         allWorlds: allWorldsRef.current,
         allMemories: allMemoriesRef.current,
+        allAccounts: allAccountsRef.current,
+        allMultiplayerData: allMultiplayerDataRef.current,
         allExtensions: allExtensionsRef.current,
         addToast,
     }), [addToast]);

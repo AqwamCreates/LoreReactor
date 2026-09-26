@@ -314,7 +314,7 @@ export function useMultiplayerConnection({
     const sendTo = useCallback((accountId: string, msg: Omit<MultiplayerMessage, 'senderAccountId' | 'timestamp'>) => {
         const acctId = currentAccountIdRef.current;
         if (!acctId) return;
-        let conn = connectionsRef.current.get(accountId) || connectionsRef.current.get(accountId.replace(/[^A-Za-z0-9]/g, ''));
+        const conn = connectionsRef.current.get(accountId) || connectionsRef.current.get(accountId.replace(/[^A-Za-z0-9]/g, ''));
         if (!conn) return;
         const sanitizedAcctId = acctId.replace(/[^A-Za-z0-9]/g, '');
         const fullMsg: MultiplayerMessage = { ...msg, senderAccountId: sanitizedAcctId, timestamp: Date.now() };

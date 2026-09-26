@@ -523,8 +523,6 @@ export function useMultiplayerSync({
                         return;
                     }
                 }
-                // If no character was requested, assignedCharacter remains null.
-                // We accept them and they will select a character later.
 
                 const updatedMd = {
                     ...md,
@@ -565,16 +563,17 @@ export function useMultiplayerSync({
                     }
                 });
                 
-                if (payload.requestedCharacterData && currentData) {
-                     const isAlreadyParticipant = currentData.participants.some(p => p.id === assignedCharacter.id);
-                     if (!isAlreadyParticipant) {
-                         saveRawMultiplayerCharacter(assignedCharacter).catch(e => console.error('Failed to save uploaded multiplayer character:', e));
-                         setInteractionData({
-                             ...currentData,
-                             participants: [...currentData.participants, assignedCharacter],
-                             lastUpdatedTimestamp: Date.now()
-                         });
-                     }
+                if (payload.requestedCharacterData && currentData && assignedCharacter) {
+                    const charToSave = assignedCharacter;
+                    const isAlreadyParticipant = currentData.participants.some(p => p.id === charToSave.id);
+                    if (!isAlreadyParticipant) {
+                        saveRawMultiplayerCharacter(charToSave).catch(e => console.error('Failed to save uploaded multiplayer character:', e));
+                        setInteractionData({
+                            ...currentData,
+                            participants: [...currentData.participants, charToSave],
+                            lastUpdatedTimestamp: Date.now()
+                        });
+                    }
                 }
                 break;
             }
@@ -601,7 +600,6 @@ export function useMultiplayerSync({
                         if (payload.assignedCharacter) {
                             onJoinAcceptedRef.current?.(payload.assignedCharacter);
                         } else {
-                            // Trigger character selection UI
                             onCharacterSelectionRequiredRef.current?.(payload.initialState, payload.sessionRules);
                         }
                     }
@@ -761,7 +759,7 @@ export function useMultiplayerSync({
                 payload: {}
             });
         });
-    }, [connectedPeers]);
+    }, [connectedPeers, isHost]);
 
     const acceptJoinRequest = useCallback((accountId: string) => {
         setPendingJoinRequests(prev => {
@@ -777,54 +775,57 @@ export function useMultiplayerSync({
                     assignedCharacter = currentData.participants.find(p => p.id === req.requestedCharacterId) || null;
                 }
 
-                const updatedMd: MultiplayerData = {
-                    ...multiplayerData,
-                    multiplayerDataAccountConfigurations: {
-                        ...multiplayerData.multiplayerDataAccountConfigurations,
-                        [accountId]: {
-                            isWhitelisted: true,
-                            isBlacklisted: false,
-                            isAdministrator: false,
-                            canUseJoinerCharacterId: !!req.requestedCharacterData,
-                            canUseHosterCharacterId: !req.requestedCharacterData,
-                            joinerCharacterIdRequiresHosterApproval: false,
-                            hosterCharacterIdRequiresHosterApproval: false,
-                            whitelistedCharacterIds: req.requestedCharacterId ? [req.requestedCharacterId] : [],
-                            blacklistedCharacterIds: [],
-                            pendingCharacterIds: [],
-                            activeCharacterId: assignedCharacter?.id,
-                        }
-                    },
-                    pendingAccountIds: multiplayerData.pendingAccountIds.filter(id => id !== accountId),
-                    lastUpdatedTimestamp: Date.now(),
-                };
-                multiplayerDataRef.current = updatedMd;
-                useSessionStore.setState({ multiplayerData: updatedMd });
-                onSaveMultiplayerDataRef.current?.(updatedMd);
+                if (assignedCharacter !== null) {
+                    const charToSave: Character = assignedCharacter;
+                    const updatedMd: MultiplayerData = {
+                        ...multiplayerData,
+                        multiplayerDataAccountConfigurations: {
+                            ...multiplayerData.multiplayerDataAccountConfigurations,
+                            [accountId]: {
+                                isWhitelisted: true,
+                                isBlacklisted: false,
+                                isAdministrator: false,
+                                canUseJoinerCharacterId: !!req.requestedCharacterData,
+                                canUseHosterCharacterId: !req.requestedCharacterData,
+                                joinerCharacterIdRequiresHosterApproval: false,
+                                hosterCharacterIdRequiresHosterApproval: false,
+                                whitelistedCharacterIds: req.requestedCharacterId ? [req.requestedCharacterId] : [],
+                                blacklistedCharacterIds: [],
+                                pendingCharacterIds: [],
+                                activeCharacterId: charToSave.id,
+                            }
+                        },
+                        pendingAccountIds: multiplayerData.pendingAccountIds.filter(id => id !== accountId),
+                        lastUpdatedTimestamp: Date.now(),
+                    };
+                    multiplayerDataRef.current = updatedMd;
+                    useSessionStore.setState({ multiplayerData: updatedMd });
+                    onSaveMultiplayerDataRef.current?.(updatedMd);
 
-                const initialState = currentData ? {
-                    protagonists: currentData.protagonists,
-                    participants: currentData.participants,
-                    contexts: currentData.contexts,
-                    locations: currentData.locations,
-                    audioTracks: currentData.audioTracks,
-                    Profile: currentData.Profile,
-                } : undefined;
+                    const initialState = currentData ? {
+                        protagonists: currentData.protagonists,
+                        participants: currentData.participants,
+                        contexts: currentData.contexts,
+                        locations: currentData.locations,
+                        audioTracks: currentData.audioTracks,
+                        Profile: currentData.Profile,
+                    } : undefined;
 
-                sendToRef.current(accountId, {
-                    type: 'join_response',
-                    payload: { 
-                        accepted: true, 
-                        initialState, 
-                        assignedCharacter,
-                        sessionRules: {
-                            canUseJoinerCharacterId: multiplayerData.canUseJoinerCharacterId,
-                            canUseHosterCharacterId: multiplayerData.canUseHosterCharacterId,
-                            joinerCharacterIdRequiresHosterApproval: multiplayerData.joinerCharacterIdRequiresHosterApproval,
-                            hosterCharacterIdRequiresHosterApproval: multiplayerData.hosterCharacterIdRequiresHosterApproval,
+                    sendToRef.current(accountId, {
+                        type: 'join_response',
+                        payload: { 
+                            accepted: true, 
+                            initialState, 
+                            assignedCharacter: charToSave,
+                            sessionRules: {
+                                canUseJoinerCharacterId: multiplayerData.canUseJoinerCharacterId,
+                                canUseHosterCharacterId: multiplayerData.canUseHosterCharacterId,
+                                joinerCharacterIdRequiresHosterApproval: multiplayerData.joinerCharacterIdRequiresHosterApproval,
+                                hosterCharacterIdRequiresHosterApproval: multiplayerData.hosterCharacterIdRequiresHosterApproval,
+                            }
                         }
-                    }
-                });
+                    });
+                }
             }
             return prev.filter(r => r.accountId !== accountId);
         });
@@ -920,7 +921,7 @@ export function useMultiplayerSync({
             });
             setInteractionData({ ...currentData, interactionHistory: updatedHistory, lastUpdatedTimestamp: Date.now() });
         }
-    }, [broadcast]);
+    }, [broadcast, setInteractionData]);
 
     const broadcastMessageDelete = useCallback((messageId: string) => {
         broadcast({
@@ -932,12 +933,12 @@ export function useMultiplayerSync({
             const updatedHistory = currentData.interactionHistory.filter(m => m.id !== messageId);
             setInteractionData({ ...currentData, interactionHistory: updatedHistory, lastUpdatedTimestamp: Date.now() });
         }
-    }, [broadcast]);
+    }, [broadcast, setInteractionData]);
 
     const initiateBranch = useCallback(() => {
         if (isHost) {
             let oldestPeerId: string | null = null;
-            let oldestTime = Infinity;
+            let oldestTime = Number.POSITIVE_INFINITY;
             peerJoinTimesRef.current.forEach((time, id) => {
                 if (time < oldestTime) {
                     oldestTime = time;

@@ -461,7 +461,7 @@ export interface MultiplayerData extends ObjectData {
   canUseHosterCharacterId: boolean;
   joinerCharacterIdRequiresHosterApproval: boolean;
   hosterCharacterIdRequiresHosterApproval: boolean;
-  useJoinerLanguageModel: tristateInteger; // -1 - Disabled, use hoster's language model only. 0 - Use Joiner's when given. 1 - Mandatory for the joiner to give access for the language model or they cannot join.
+  useJoinerLanguageModel: tristateInteger; // -1 - Disabled, use hoster's language model only. 0 - Use joiner's when given. 1 - Mandatory for the joiner to give access for the language model or they cannot join.
   interactionDataIds: string[]
   multiplayerDataAccountConfigurations: Record<string, MultiplayerDataAccountConfiguration> // Account Id -> MultiplayerDataAccountConfiguration
   pendingAccountIds: string[] // Received the join request, and is waiting for the hoster's decision.
@@ -475,7 +475,7 @@ export interface RawMultiplayerData extends RawData {
   canUseHosterCharacterId: boolean;
   joinerCharacterIdRequiresHosterApproval: boolean;
   hosterCharacterIdRequiresHosterApproval: boolean;
-  useJoinerLanguageModel: tristateInteger; // -1 - Disabled, use hoster's language model only. 0 - Use Joiner's when given. 1 - Mandatory for the joiner to give access for the language model or they cannot join.
+  useJoinerLanguageModel: tristateInteger; // -1 - Disabled, use hoster's language model only. 0 - Use joiner's when given. 1 - Mandatory for the joiner to give access for the language model or they cannot join.
   interactionDataIds: string[]
   multiplayerDataAccountConfigurations: Record<string, MultiplayerDataAccountConfiguration> // Account Id -> MultiplayerDataAccountConfiguration
   pendingAccountIds: string[] // Received the join request, and is waiting for the hoster's decision.

@@ -613,7 +613,6 @@ export function AppModals({
             <JoinSessionModal
                 isOpen={joinSessionOpen}
                 onClose={() => setJoinSessionOpen(false)}
-                allCharacters={allCharacters}
                 onJoin={onJoinSession}
             />
 
