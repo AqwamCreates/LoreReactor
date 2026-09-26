@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import '../main.css';
 
-type SettingsTabId = 'session' | 'data' | 'multiplayer' | 'miscellaneous';
+type SettingsTabId = 'session' | 'assistance' | 'data' | 'multiplayer' | 'miscellaneous';
 
 interface SettingsItem {
     id: string;
@@ -13,6 +13,7 @@ interface SettingsItem {
 
 const SETTINGS_TABS: { id: SettingsTabId; label: string; icon: string }[] = [
     { id: 'session', label: 'Session', icon: '🎮' },
+    { id: 'assistance', label: 'Assistance', icon: '🛡️' },
     { id: 'data', label: 'Data', icon: '💾' },
     { id: 'multiplayer', label: 'Multiplayer', icon: '👥' },
     { id: 'miscellaneous', label: 'Miscellaneous', icon: '🔧' },
@@ -39,13 +40,22 @@ const SESSION_ITEMS: SettingsItem[] = [
     },
 ];
 
-const DATA_ITEMS: SettingsItem[] = [
+const ASSISTANCE_ITEMS: SettingsItem[] = [
     {
         id: 'ai-recommendation',
         icon: '✨',
         label: 'AI Recommendation',
         description: 'Generate new characters, contexts, locations, audio tracks, prompt blocks, and worlds using your loaded model.',
     },
+    {
+        id: 'restriction-reduction',
+        icon: '🛡️',
+        label: 'Restriction Reduction',
+        description: 'Analyze and modify character prompts to reduce the likelihood of model censorship or refusal.',
+    },
+];
+
+const DATA_ITEMS: SettingsItem[] = [
     {
         id: 'import-character-card',
         icon: '🎴',
@@ -104,6 +114,7 @@ const MISCELLANEOUS_ITEMS: SettingsItem[] = [
 
 const TAB_ITEMS: Record<SettingsTabId, SettingsItem[]> = {
     session: SESSION_ITEMS,
+    assistance: ASSISTANCE_ITEMS,
     data: DATA_ITEMS,
     multiplayer: MULTIPLAYER_ITEMS,
     miscellaneous: MISCELLANEOUS_ITEMS,
@@ -112,35 +123,47 @@ const TAB_ITEMS: Record<SettingsTabId, SettingsItem[]> = {
 interface SettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
+    // Session tab
     onOpenBudgetControl: () => void;
-    onOpenGpuMonitor: () => void;
     onOpenParticipantControl: () => void;
-    onOpenAccountData: () => void;
+    onOpenAlternateTimelines: () => void;
+    // Assistance tab
+    onOpenAIRecommendation: () => void;
+    onOpenRestrictionReduction: () => void;
+    // Data tab
+    onOpenImportCharacterCard: () => void;
+    onOpenImportData: () => void;
+    onOpenExportData: () => void;
+    onOpenDataManager: () => void;
+    // Multiplayer tab
     onOpenMultiplayerData: () => void;
     onOpenJoinSession: () => void;
-    onOpenAIRecommendation: () => void;
-    onOpenAlternateTimelines: () => void;
-    onOpenImportCharacterCard: () => void;
-    onOpenExportData: () => void;
-    onOpenImportData: () => void;
-    onOpenDataManager: () => void;
+    onOpenAccountData: () => void;
+    // Miscellaneous tab
+    onOpenGpuMonitor: () => void;
 }
 
 export function SettingsModal({
     isOpen,
     onClose,
+    // Session tab
     onOpenBudgetControl,
-    onOpenGpuMonitor,
     onOpenParticipantControl,
-    onOpenAccountData,
+    onOpenAlternateTimelines,
+    // Assistance tab
+    onOpenAIRecommendation,
+    onOpenRestrictionReduction,
+    // Data tab
+    onOpenImportCharacterCard,
+    onOpenImportData,
+    onOpenExportData,
+    onOpenDataManager,
+    // Multiplayer tab
     onOpenMultiplayerData,
     onOpenJoinSession,
-    onOpenAIRecommendation,
-    onOpenAlternateTimelines,
-    onOpenImportCharacterCard,
-    onOpenExportData,
-    onOpenImportData,
-    onOpenDataManager,
+    onOpenAccountData,
+    // Miscellaneous tab
+    onOpenGpuMonitor,
 }: SettingsModalProps) {
     const [activeTab, setActiveTab] = useState<SettingsTabId>('session');
 
@@ -148,18 +171,24 @@ export function SettingsModal({
 
     const handleItemClick = (id: string) => {
         switch (id) {
+            // Session tab
             case 'budget-control': onOpenBudgetControl(); break;
-            case 'gpu-monitor': onOpenGpuMonitor(); break;
             case 'participant-control': onOpenParticipantControl(); break;
-            case 'account-data': onOpenAccountData(); break;
-            case 'multiplayer-data': onOpenMultiplayerData(); break;
-            case 'join-session': onOpenJoinSession(); break;
-            case 'ai-recommendation': onOpenAIRecommendation(); break;
             case 'alternate-timelines': onOpenAlternateTimelines(); break;
+            // Assistance tab
+            case 'ai-recommendation': onOpenAIRecommendation(); break;
+            case 'restriction-reduction': onOpenRestrictionReduction(); break;
+            // Data tab
             case 'import-character-card': onOpenImportCharacterCard(); break;
             case 'import-data': onOpenImportData(); break;
             case 'export-data': onOpenExportData(); break;
             case 'data-manager': onOpenDataManager(); break;
+            // Multiplayer tab
+            case 'multiplayer-data': onOpenMultiplayerData(); break;
+            case 'join-session': onOpenJoinSession(); break;
+            case 'account-data': onOpenAccountData(); break;
+            // Miscellaneous tab
+            case 'gpu-monitor': onOpenGpuMonitor(); break;
         }
     };
 

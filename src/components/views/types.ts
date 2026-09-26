@@ -23,7 +23,7 @@ export interface ViewModeProps {
     centerAvatar: Character | null;
     chatHistoryRef: React.RefObject<HTMLDivElement | null>;
     messageEndRef: React.RefObject<HTMLDivElement | null>;
-    editTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
+    editTextAreaRef: React.RefObject<HTMLTextAreaElement | null>;
     parentInteractionMessageId: string | null;
     locationBackgroundUrl: string | null;
     parentInteractionDataName?: string | null;

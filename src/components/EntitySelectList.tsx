@@ -12,19 +12,20 @@ interface EntitySelectListItem {
 
 interface EntitySelectListProps<T extends EntitySelectListItem> {
     label: string;
+    description?: string;
     items: T[];
     selectedIds: string[];
-    onToggle: (id: string) => void;
+    onToggle: (identifier: string) => void;
     searchQuery: string;
-    onSearchChange: (val: string) => void;
+    onSearchChange: (value: string) => void;
     disabled?: boolean;
 }
 
 /** Extract a short description snippet from an entity for display in the selection list. */
 function getEntityDescription(item: EntitySelectListItem): string {
-    const raw = item.description || item.text || '';
-    if (!raw) return '';
-    return raw.length > 80 ? `${raw.substring(0, 80)}...` : raw;
+    const rawDescription = item.description || item.text || '';
+    if (!rawDescription) return '';
+    return rawDescription.length > 80 ? `${rawDescription.substring(0, 80)}...` : rawDescription;
 }
 
 /**
@@ -34,6 +35,7 @@ function getEntityDescription(item: EntitySelectListItem): string {
  */
 export function EntitySelectList<T extends EntitySelectListItem>({
     label,
+    description,
     items,
     selectedIds,
     onToggle,
@@ -51,28 +53,33 @@ export function EntitySelectList<T extends EntitySelectListItem>({
 
         const unselected = safeItems
             .filter(item => !safeSelectedIds.includes(item.id))
-            .sort((a, b) => (b.lastUpdatedTimestamp ?? 0) - (a.lastUpdatedTimestamp ?? 0));
+            .sort((firstItem, secondItem) => (secondItem.lastUpdatedTimestamp ?? 0) - (firstItem.lastUpdatedTimestamp ?? 0));
 
         return [...selectedOrdered, ...unselected];
     }, [safeItems, safeSelectedIds]);
 
     const filteredItems = useMemo(() => {
         if (!searchQuery.trim()) return sortedItems;
-        const q = searchQuery.toLowerCase();
+        const normalizedQuery = searchQuery.toLowerCase();
         return sortedItems.filter(item =>
-            (item.name || '').toLowerCase().includes(q) ||
-            (item.description || '').toLowerCase().includes(q) ||
-            (item.text || '').toLowerCase().includes(q)
+            (item.name || '').toLowerCase().includes(normalizedQuery) ||
+            (item.description || '').toLowerCase().includes(normalizedQuery) ||
+            (item.text || '').toLowerCase().includes(normalizedQuery)
         );
     }, [sortedItems, searchQuery]);
 
     return (
         <div className="entity-select-list">
             <label className="editor-label editor-label-small">{label}</label>
+            {description && (
+                <div className="entity-ref-hint" style={{ marginBottom: '6px' }}>
+                    {description}
+                </div>
+            )}
             <input
                 type="text"
                 value={searchQuery}
-                onChange={e => onSearchChange(e.target.value)}
+                onChange={event => onSearchChange(event.target.value)}
                 className="editor-input entity-select-search"
                 placeholder={`Search ${label.toLowerCase()}...`}
                 disabled={disabled}
@@ -86,7 +93,7 @@ export function EntitySelectList<T extends EntitySelectListItem>({
                 {filteredItems.map(item => {
                     const isSelected = safeSelectedIds.includes(item.id);
                     const selectionIndex = isSelected ? safeSelectedIds.indexOf(item.id) + 1 : null;
-                    const desc = getEntityDescription(item);
+                    const descriptionText = getEntityDescription(item);
 
                     return (
                         <div
@@ -98,7 +105,7 @@ export function EntitySelectList<T extends EntitySelectListItem>({
                                 <span className={`entity-select-name ${isSelected ? 'entity-select-name-selected' : ''}`}>
                                     {item.name || 'Untitled'}
                                 </span>
-                                <span className="entity-select-desc">{desc || '\u00A0'}</span>
+                                <span className="entity-select-desc">{descriptionText || '\u00A0'}</span>
                             </div>
                             <span className={`entity-select-badge ${isSelected ? 'entity-select-badge-active' : ''}`}>
                                 {selectionIndex ?? ''}

@@ -12,7 +12,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
         editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
         activeToolbarId, portraitUrlCache, displayNameCache,
         formattedStreamingText, isLoading, streamingPortraitUrl, streamingCharacter,
-        chatHistoryRef, messageEndRef, editTextareaRef,
+        chatHistoryRef, messageEndRef, editTextAreaRef,
         parentInteractionMessageId, parentInteractionDataName,
         focusedMessageId, setFocusedMessageId,
         onAvatarClick, onStartEditing, onCancelEditing, onSaveEdit,
@@ -169,7 +169,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
                         onTouchEnd={onTouchEnd}
                         onTouchMove={onTouchMove}
                         suppressNextClickRef={suppressNextClickRef}
-                        editTextareaRef={editTextareaRef}
+                        editTextAreaRef={editTextAreaRef}
                         setEditDraft={setEditDraft}
                         onNavigateToBranchSource={onNavigateToBranchSource}
                     />

@@ -14,7 +14,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
         activeToolbarId, portraitUrlCache, displayNameCache,
         centerAvatar, streamingPortraitUrl, formattedStreamingText,
-        isLoading, chatHistoryRef, messageEndRef, editTextareaRef,
+        isLoading, chatHistoryRef, messageEndRef, editTextAreaRef,
         parentInteractionMessageId, parentInteractionDataName,
         focusedMessageId, setFocusedMessageId,
         onAvatarClick, onStartEditing, onCancelEditing, onSaveEdit,
@@ -207,7 +207,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                             onTouchEnd={onTouchEnd}
                             onTouchMove={onTouchMove}
                             suppressNextClickRef={suppressNextClickRef}
-                            editTextareaRef={editTextareaRef}
+                            editTextAreaRef={editTextAreaRef}
                             setEditDraft={setEditDraft}
                             onNavigateToBranchSource={onNavigateToBranchSource}
                         />

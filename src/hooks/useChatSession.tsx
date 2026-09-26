@@ -1060,7 +1060,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 } else {
                     await saveRawInteractionData(ud);
                     setInteractionData(ud);
-                    broadcastNewMessages(preCount, sd);
+                    broadcastNewMessages(preCount, ud);
                 }
             }
         } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Regen failed:', e); addToast(`Regen error: ${(e as Error).message}`, 'error'); } }

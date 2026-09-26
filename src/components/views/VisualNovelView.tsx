@@ -141,7 +141,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         portraitUrlCache, locationBackgroundUrl,
         formattedStreamingText, isLoading, streamingCharacter,
         centerAvatar,
-        messageEndRef, editTextareaRef,
+        messageEndRef, editTextAreaRef,
         editingId, editDraft, setEditDraft,
         onSaveEdit, onCancelEditing, onRegenerateFromEdit,
         onCopyText, onRegenerateFromMessage, onBranch,
@@ -327,10 +327,10 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     }, [isRawEditing, conversionMap, isEditingLastSpeaker, setEditDraft]);
 
     useEffect(() => {
-        if (isRawEditing && editTextareaRef.current) {
-            editTextareaRef.current.focus();
+        if (isRawEditing && editTextAreaRef.current) {
+            editTextAreaRef.current.focus();
         }
-    }, [isRawEditing, editTextareaRef]);
+    }, [isRawEditing, editTextAreaRef]);
 
     const handleEnterRawEdit = useCallback(() => {
         rawDraftRef.current = editDraft;
@@ -524,7 +524,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                         <div className="vn-dialogue-text">
                             {isEditingLastSpeaker ? (
                                 isRawEditing ? (
-                                    <textarea ref={editTextareaRef} value={rawDraftRef.current} onChange={handleRawChange}
+                                    <textarea ref={editTextAreaRef} value={rawDraftRef.current} onChange={handleRawChange}
                                         onBlur={handleExitRawEdit}
                                         onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); handleExitRawEdit(); } }}
                                         className="vn-edit-textarea" />

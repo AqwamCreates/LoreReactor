@@ -48,7 +48,7 @@ interface MessageBubbleProps {
     onTouchEnd: (e: React.TouchEvent) => void;
     onTouchMove: (e: React.TouchEvent) => void;
     suppressNextClickRef: React.MutableRefObject<boolean>;
-    editTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
+    editTextAreaRef: React.RefObject<HTMLTextAreaElement | null>;
     setEditDraft: (text: string) => void;
     onNavigateToBranchSource: () => void;
 }
@@ -65,7 +65,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     onBranch, onClone, onDelete, onSetMassDelete,
     onMassDeleteConfirm, onCancelMassDelete,
     onTouchStart, onTouchEnd, onTouchMove,
-    suppressNextClickRef, editTextareaRef, setEditDraft,
+    suppressNextClickRef, editTextAreaRef, setEditDraft,
     onNavigateToBranchSource,
 }: MessageBubbleProps) {
     const isModelReady = useSessionStore(s => {
@@ -108,10 +108,10 @@ export const MessageBubble = React.memo(function MessageBubble({
 
     // Focus textarea when entering raw edit mode
     React.useEffect(() => {
-        if (isRawEditing && editTextareaRef.current) {
-            editTextareaRef.current.focus();
+        if (isRawEditing && editTextAreaRef.current) {
+            editTextAreaRef.current.focus();
         }
-    }, [isRawEditing, editTextareaRef]);
+    }, [isRawEditing, editTextAreaRef]);
 
     // Debounced token count during editing
     React.useEffect(() => {
@@ -248,7 +248,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                         <div className="edit-mode">
                             {isRawEditing ? (
                                 <textarea
-                                    ref={editTextareaRef}
+                                    ref={editTextAreaRef}
                                     value={rawDraftRef.current}
                                     onChange={handleRawChange}
                                     onBlur={handleExitRawEdit}

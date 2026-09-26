@@ -34,12 +34,12 @@ function CharacterMemoryEditorContent({
     });
     const [hasChanges, setHasChanges] = useState(false);
     const [showMassDeleteConfirm, setShowMassDeleteConfirm] = useState(false);
-    const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+    const editTextAreaRef = useRef<HTMLTextAreaElement>(null);
 
     // Focus textarea when editing starts
     useEffect(() => {
-        if (editingId && editTextareaRef.current) {
-            editTextareaRef.current.focus();
+        if (editingId && editTextAreaRef.current) {
+            editTextAreaRef.current.focus();
         }
     }, [editingId]);
 
@@ -189,7 +189,7 @@ function CharacterMemoryEditorContent({
                                                     {isEditing ? (
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                             <textarea
-                                                                ref={editTextareaRef}
+                                                                ref={editTextAreaRef}
                                                                 value={editContent}
                                                                 onChange={(e) => setEditContent(e.target.value)}
                                                                 className="editor-textarea"
