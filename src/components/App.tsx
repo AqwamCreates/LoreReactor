@@ -422,7 +422,7 @@ function App() {
     });
 
     const isMultiplayerChat = isMultiplayerClient || !!(multiplayerData && interactionData?.id && multiplayerData.interactionDataIds.includes(interactionData.id));
-    const canDelete = !isMultiplayerChat || multiplayerSync.isHost || multiplayerSync.isAdmin;
+    const canDelete = (!isMultiplayerChat || multiplayerSync.isHost || multiplayerSync.isAdmin) && !isLoading;
 
     const wrappedHandleSaveEdit = useCallback(async () => {
         await handleSaveEdit();
