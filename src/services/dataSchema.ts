@@ -250,7 +250,12 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "skipProbability": "number (-1 or 0-1, default -1 defers to character)",
     "memoryRetentionWeight": "number (-1 or ≥0, default -1 defers to character)",
     "contextSensitivity": "number (-1 or ≥0, default -1 defers to character)",
-    "cacheEfficiencyLevel": "number (0-3, default 0)",
+    "cacheEfficiencyLevels": {
+      "Character Name": "number (0-2, default 0). 0 = no optimization, names resolved dynamically. 1 = freeze names for co-located participants. 2 = freeze names for all participants.",
+      "System Prompt": "number (0-2, default 0). 0 = only current character system prompt. 1 = inject co-located participants system prompts. 2 = inject all participants system prompts.",
+      "Think Prompt": "number (0-2, default 0). 0 = only current character think prompt. 1 = inject co-located participants think prompts. 2 = inject all participants think prompts."
+    },
+    "minimalVolatileCacheMode": "boolean (default false). When true, volatile sections (date/time, weather, fatigue, inventory, tools, location) are forced to end of prompt regardless of input strategy ordering to maximize cache stability.",
     "doNotInjectDefaultStopTokens": "boolean (default false)",
     "narrateTexts": {
       "normal": "boolean (default false)", "quoted": "boolean (default false)", "bolded": "boolean (default false)",

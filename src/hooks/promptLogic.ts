@@ -894,7 +894,7 @@ function buildPromptContext(
     const profile = interactionData.Profile;
 
     const cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number> =
-        profile?.cacheEfficiencyLevels ?? { 'Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
+        profile?.cacheEfficiencyLevels ?? { 'Character Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
     const minimalVolatileCacheMode = profile?.minimalVolatileCacheMode ?? false;
 
     const characterIdArray: string[] = [];
@@ -959,7 +959,7 @@ function buildAppearanceLines(ctx: PromptBuildContext): string[] {
     const hasAnyAppearance = ctx.participants.some(p => p.appearancePrompt?.trim());
     if (!hasAnyAppearance) return lines;
 
-    const nameLevel = ctx.cacheEfficiencyLevels['Name'] ?? 0;
+    const nameLevel = ctx.cacheEfficiencyLevels['Character Name'] ?? 0;
 
     let participantsToRender: Character[];
     if (nameLevel >= 2) {

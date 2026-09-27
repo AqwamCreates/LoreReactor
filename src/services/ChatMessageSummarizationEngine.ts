@@ -132,7 +132,7 @@ export async function generateCharacterMemory(
 
     const profile = interactionData.Profile;
     const cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number> =
-        profile?.cacheEfficiencyLevels ?? { 'Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
+        profile?.cacheEfficiencyLevels ?? { 'Character Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
     const minimalVolatileCacheMode = profile?.minimalVolatileCacheMode ?? false;
 
     const ctx = {
