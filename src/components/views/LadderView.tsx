@@ -21,26 +21,23 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
         onSetMassDelete, onMassDeleteConfirm, onCancelMassDelete,
         onTouchStart, onTouchEnd, onTouchMove,
         suppressNextClickRef, setEditDraft, onNavigateToBranchSource,
+        canDelete,
     } = props;
 
     const lastMsg = displayMessages[displayMessages.length - 1];
-    // Determine if the last message in the list is currently streaming based on global state
     const isStreamingInList = isLoading && streamingCharacter !== null && lastMsg?.character.id === streamingCharacter.id;
     
     const isScrollingRef = useRef(false);
     const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const skipNextFocusScrollRef = useRef(false);
 
-    // Prevent scroll jump when entering/exiting edit mode
     useEffect(() => {
         if (editingId) {
             skipNextFocusScrollRef.current = true;
         }
     }, [editingId]);
 
-    // Scroll to focused message when it changes externally (e.g., from Minimap or Cinematic view)
     useEffect(() => {
-        // If this focus change was triggered by the user scrolling, ignore it
         if (skipNextFocusScrollRef.current) {
             skipNextFocusScrollRef.current = false;
             return;
@@ -56,7 +53,6 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
         }
     }, [focusedMessageId, chatHistoryRef]);
 
-    // Track which message is most visible and update focusedMessageId
     const updateFocusedFromScroll = useCallback(() => {
         if (!chatHistoryRef.current || isScrollingRef.current) return;
 
@@ -65,7 +61,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
         const elements = container.querySelectorAll('[data-message-id]');
 
         let bestId: string | null = null;
-        let bestOverlap = -Infinity;
+        let bestOverlap = Number.NEGATIVE_INFINITY;
 
         for (const el of elements) {
             const rect = el.getBoundingClientRect();
@@ -80,7 +76,6 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
         }
 
         if (bestId && bestOverlap > 0 && bestId !== focusedMessageId) {
-            // Flag that this state change came from a scroll, so the effect above doesn't try to scroll again
             skipNextFocusScrollRef.current = true;
             setFocusedMessageId(bestId);
         }
@@ -172,6 +167,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
                         editTextAreaRef={editTextAreaRef}
                         setEditDraft={setEditDraft}
                         onNavigateToBranchSource={onNavigateToBranchSource}
+                        canDelete={canDelete}
                     />
                 );
             })}

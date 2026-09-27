@@ -1,6 +1,6 @@
 // src/components/MessageBubble.tsx
 import React from 'react';
-import type { Character, ChatMessage } from '../types';
+import type { Character, ChatMessage, WhisperMessage } from '../types';
 import { MemoizedMessageText } from './MemoizedMessageText';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useSessionStore } from '../hooks/useSessionStore';
@@ -14,7 +14,7 @@ import {
 } from '../utilities/textReformatter';
 
 interface MessageBubbleProps {
-    message: ChatMessage;
+    message: ChatMessage | WhisperMessage;
     index: number;
     viewMode: 'ladder' | 'cinematic' | 'vn';
     protagonists: Character[];
@@ -93,6 +93,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     const isEditing = editingId === message.id;
     const inDelRange = isMassActive && massStartIndex !== null && massStartIndex !== -1 && index >= massStartIndex;
     const showAvatar = viewMode === 'ladder' && !isLocalProtagonist && !isAmbient;
+    const isWhisper = message.messageType === 'whisper';
 
     React.useEffect(() => {
         const justStartedEditing = isEditing && !prevIsEditingRef.current;
@@ -188,7 +189,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         viewMode === 'cinematic' ? 'cinematic-bubble' : '',
         isLocalProtagonist ? 'bubble-user' : 'bubble-ai',
         isAmbient ? 'bubble-ambient' : '',
-        message.messageType === 'whisper' ? 'bubble-whisper' : '',
+        isWhisper ? 'bubble-whisper' : '',
         isEditing ? 'bubble-editing' : '',
         inDelRange ? 'bubble-marked-for-delete' : '',
         isStem ? 'bubble-stem' : '',

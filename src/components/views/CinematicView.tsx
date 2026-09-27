@@ -23,6 +23,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         onSetMassDelete, onMassDeleteConfirm, onCancelMassDelete,
         onTouchStart, onTouchEnd, onTouchMove,
         suppressNextClickRef, setEditDraft, onNavigateToBranchSource,
+        canDelete,
     } = props;
 
     const centerAvatarUrl = centerAvatar
@@ -33,7 +34,6 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
     const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const skipNextFocusScrollRef = useRef(false);
 
-    // Prevent scroll jump when entering/exiting edit mode
     useEffect(() => {
         if (editingId) {
             skipNextFocusScrollRef.current = true;
@@ -117,8 +117,6 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                 </div>
             )}
 
-            {/* MOVED OUTSIDE: Minimap must be outside .chat-history because the CSS mask-image 
-                on .chat-history breaks position:fixed containing blocks */}
             {interactionData && interactionData.interactionHistory.length > 5 && (
                 <ChatMinimap
                     messages={interactionData.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat')}
@@ -127,7 +125,6 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                 />
             )}
 
-            {/* MOVED OUTSIDE: Scroll buttons must also be outside .chat-history for the same reason */}
             {interactionData && interactionData.interactionHistory.length > 3 && (
                 <ChatScrollButtons 
                     containerRef={chatHistoryRef} 
@@ -210,6 +207,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                             editTextAreaRef={editTextAreaRef}
                             setEditDraft={setEditDraft}
                             onNavigateToBranchSource={onNavigateToBranchSource}
+                            canDelete={canDelete}
                         />
                     );
                 })}
