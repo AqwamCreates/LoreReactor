@@ -25,6 +25,7 @@ import {
 } from './browserStorage';
 
 import { defaultActions, defaultSampler, defaultCharacterTools, defaultInputStrategy, defaultCharacter } from '../dictionaries/defaults';
+import type { FMSerialized } from '../libraries/factorizationMachine';
 
 // =============================================================================
 // CONFIGURATION & CONSTANTS
@@ -1483,4 +1484,16 @@ export function getMultiplayerCharacterVoiceUrl(characterId: string, voiceFileNa
 
 export async function uploadMultiplayerCharacterVoice(characterId: string, file: File): Promise<string> {
   return uploadImage('multiplayerCharacterVoices', characterId, file);
+}
+
+export async function loadRawFactorizationMachine(path: string): Promise<FMSerialized | null> {
+    return await fetchJson<FMSerialized>(path);
+}
+
+export async function saveRawFactorizationMachine(path: string, data: FMSerialized): Promise<void> {
+    await putJson(path, data);
+}
+
+export async function deleteRawFactorizationMachine(path: string): Promise<void> {
+    await deleteResource(path);
 }

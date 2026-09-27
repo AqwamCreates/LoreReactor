@@ -291,7 +291,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     useEffect(() => {
         const handleBeforeUnload = () => {
             try {
-                getBudgetStrategyEngine().persistFMs();
+                getBudgetStrategyEngine().persistFMs().catch(() => {});
             } catch (e) {
                 console.warn('Failed to persist FMs on unload:', e);
             }
