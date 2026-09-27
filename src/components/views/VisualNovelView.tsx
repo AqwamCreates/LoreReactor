@@ -135,7 +135,7 @@ function buildCategoryConversions(segments: DetectedSegment[]): CategoryConversi
 // =============================================================================
 // COMPONENT
 // =============================================================================
-export const VisualNovelView = React.memo(function VisualNovelView(props: ViewModeProps) {
+export const VisualNovelView = React.memo(function VisualNovelView(props: ViewModeProps & { canDelete?: boolean }) {
     const {
         interactionData, localProtagonist, displayMessages,
         portraitUrlCache, locationBackgroundUrl,
@@ -153,6 +153,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         parentInteractionDataName,
         focusedMessageId,
         setFocusedMessageId,
+        canDelete = true,
     } = props;
 
     const protagonistId = localProtagonist?.id;
@@ -164,7 +165,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     // Deduplicate messages to prevent streaming duplicates
     const chatMessages = useMemo(() => {
-        const all = displayMessages.filter((m): m is ChatMessage => m.messageType === 'chat');
+        const all = displayMessages.filter((m): m is ChatMessage => m.messageType === 'chat' || m.messageType === 'whisper');
         const seen = new Set<string>();
         return all.filter(m => {
             if (seen.has(m.id)) return false;
@@ -502,17 +503,32 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                         <button type="button" className="vn-toolbar-btn" onClick={() => onCopyText(displayedMessage.textContent)} title="Copy Text">📋</button>
                                         <button type="button" className="vn-toolbar-btn" onClick={() => onResumeGeneration(displayedMessage.id)} title="Continue Generation">▶</button>
                                         <button type="button" className="vn-toolbar-btn" onClick={() => handleRegenerateFromMessageWithRollback(displayedMessage.id, interactionData.protagonists)} title="Regenerate">↻</button>
-                                        <button type="button" className="vn-toolbar-btn" onClick={() => onStartEditing(displayedMessage.id, displayedMessage.textContent)} title="Edit Message">✎</button>
+                                        <button
+                                            type="button"
+                                            className="vn-toolbar-btn"
+                                            onClick={() => onStartEditing(displayedMessage.id, displayedMessage.textContent)}
+                                            disabled={isLoading}
+                                            title={isLoading ? 'Generation in progress...' : 'Edit Message'}
+                                            style={isLoading ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
+                                        >
+                                            ✎
+                                        </button>
                                         <button type="button" className="vn-toolbar-btn" onClick={() => handleBranchWithRollback(displayedMessage.id)} title="Branch Timeline">🌿</button>
                                         <button type="button" className="vn-toolbar-btn" onClick={() => onClone(displayedMessage.id)} title="Clone Chat">⑂</button>
-                                        <button type="button" className="vn-toolbar-btn vn-toolbar-danger" onClick={() => onDelete(displayedMessage.id)} title="Delete Message">🗑</button>
+
+                                        {canDelete && (
+                                            <button type="button" className="vn-toolbar-btn vn-toolbar-danger" onClick={() => onDelete(displayedMessage.id)} title="Delete Message">🗑</button>
+                                        )}
+
                                         {isMassDeletingThis ? (
                                             <>
                                                 <button type="button" className="vn-toolbar-btn vn-toolbar-confirm" onClick={onMassDeleteConfirm} title="Confirm Mass Delete">✓</button>
                                                 <button type="button" className="vn-toolbar-btn vn-toolbar-cancel" onClick={onCancelMassDelete} title="Cancel Mass Delete">✕</button>
                                             </>
                                         ) : (
-                                            <button type="button" className="vn-toolbar-btn vn-toolbar-warn" onClick={() => onSetMassDelete(displayedMessage.id)} title="Mass Delete From Here">🗑️↓</button>
+                                            canDelete && (
+                                                <button type="button" className="vn-toolbar-btn vn-toolbar-warn" onClick={() => onSetMassDelete(displayedMessage.id)} title="Mass Delete From Here">🗑️↓</button>
+                                            )
                                         )}
                                     </>
                                 )}

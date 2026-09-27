@@ -237,10 +237,18 @@ function CharacterEditorModalInner({
     // ─── Quick Config Helpers ──────────────────────────────────────
     const effectiveCharacterIdForConfig = existingCharacter?.id || pendingCharacterId || '';
 
+    // Feedback state for inline indicator
+    const [quickConfigFeedback, setQuickConfigFeedback] = useState<{
+        label: string;
+        addedNames: { charName: string; names: string[] }[];
+    } | null>(null);
+
     const mergeKnownNames = useCallback((targets: Character[]) => {
         setKnownCharacterNames(prev => {
             const next = { ...prev };
             let changed = false;
+            const feedbackList: { charName: string; names: string[] }[] = [];
+
             for (const target of targets) {
                 if (target.id === effectiveCharacterIdForConfig) continue;
                 const existing = next[target.id] || [];
@@ -256,8 +264,16 @@ function CharacterEditorModalInner({
                 if (toAdd.length > 0) {
                     next[target.id] = [...existing, ...toAdd];
                     changed = true;
+                    feedbackList.push({ charName: target.name, names: toAdd });
                 }
             }
+
+            if (changed) {
+                setQuickConfigFeedback({ label: 'Names Updated', addedNames: feedbackList });
+            } else {
+                setQuickConfigFeedback({ label: 'No New Names', addedNames: [] });
+            }
+
             return changed ? next : prev;
         });
     }, [effectiveCharacterIdForConfig]);
@@ -1249,6 +1265,40 @@ function CharacterEditorModalInner({
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
                                         Batch-add known names/aliases to this character's knowledge. Merges with existing entries; never overwrites.
                                     </div>
+
+                                    {/* Inline Feedback Indicator */}
+                                    {quickConfigFeedback && (
+                                        <div
+                                            style={{
+                                                padding: '8px 10px',
+                                                background: quickConfigFeedback.addedNames.length > 0
+                                                    ? 'rgba(34, 197, 94, 0.1)'
+                                                    : 'rgba(255, 255, 255, 0.05)',
+                                                border: `1px solid ${quickConfigFeedback.addedNames.length > 0
+                                                    ? 'rgba(34, 197, 94, 0.3)'
+                                                    : 'rgba(255, 255, 255, 0.1)'}`,
+                                                borderRadius: '6px',
+                                                marginBottom: '8px',
+                                            }}
+                                        >
+                                            <div style={{ fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '4px', color: quickConfigFeedback.addedNames.length > 0 ? '#22c55e' : 'var(--text-h)' }}>
+                                                {quickConfigFeedback.addedNames.length > 0
+                                                    ? `✓ ${quickConfigFeedback.label}`
+                                                    : `— ${quickConfigFeedback.label}: No new names to add`}
+                                            </div>
+                                            {quickConfigFeedback.addedNames.length > 0 && (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '120px', overflowY: 'auto' }}>
+                                                    {quickConfigFeedback.addedNames.map(entry => (
+                                                        <div key={entry.charName} style={{ fontSize: '0.6rem', opacity: 0.8 }}>
+                                                            <span style={{ fontWeight: 'bold', opacity: 1 }}>{entry.charName}:</span>{' '}
+                                                            <span style={{ opacity: 0.7 }}>{entry.names.join(', ')}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                         <button
                                             type="button"

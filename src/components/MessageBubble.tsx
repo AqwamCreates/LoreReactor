@@ -51,6 +51,7 @@ interface MessageBubbleProps {
     editTextAreaRef: React.RefObject<HTMLTextAreaElement | null>;
     setEditDraft: (text: string) => void;
     onNavigateToBranchSource: () => void;
+    canDelete: boolean;
 }
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
@@ -67,6 +68,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     onTouchStart, onTouchEnd, onTouchMove,
     suppressNextClickRef, editTextAreaRef, setEditDraft,
     onNavigateToBranchSource,
+    canDelete,
 }: MessageBubbleProps) {
     const isModelReady = useSessionStore(s => {
         if (s.activeStrategy) return true;
@@ -190,6 +192,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         viewMode === 'cinematic' ? 'cinematic-bubble' : '',
         isLocalProtagonist ? 'bubble-user' : 'bubble-ai',
         isAmbient ? 'bubble-ambient' : '',
+        message.messageType === 'whisper' ? 'bubble-whisper' : '',
         isEditing ? 'bubble-editing' : '',
         inDelRange ? 'bubble-marked-for-delete' : '',
         isStem ? 'bubble-stem' : '',
@@ -386,7 +389,10 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         <button
                                             type="button"
                                             onClick={() => onStartEditing(message.id, message.textContent)}
+                                            disabled={isLoading}
                                             className="toolbar-button"
+                                            title={isLoading ? 'Generation in progress...' : 'Edit message'}
+                                            style={isLoading ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
                                         >
                                             ✎
                                         </button>
@@ -435,23 +441,27 @@ export const MessageBubble = React.memo(function MessageBubble({
                                             ⑂
                                         </button>
 
-                                        <button
-                                            type="button"
-                                            onClick={() => onDelete(message.id)}
-                                            className="toolbar-button delete-button"
-                                            style={{ color: '#ff4444' }}
-                                        >
-                                            🗑
-                                        </button>
+                                        {canDelete && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onDelete(message.id)}
+                                                    className="toolbar-button delete-button"
+                                                    style={{ color: '#ff4444' }}
+                                                >
+                                                    🗑
+                                                </button>
 
-                                        <button
-                                            type="button"
-                                            onClick={() => onSetMassDelete(message.id)}
-                                            className="toolbar-button mass-delete-button"
-                                            style={{ color: '#ff9900' }}
-                                        >
-                                            🗑️↓
-                                        </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onSetMassDelete(message.id)}
+                                                    className="toolbar-button mass-delete-button"
+                                                    style={{ color: '#ff9900' }}
+                                                >
+                                                    🗑️↓
+                                                </button>
+                                            </>
+                                        )}
                                     </>
                                 ) : massDeleteId === message.id ? (
                                     <div className="mass-delete-confirm-bar">
