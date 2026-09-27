@@ -14,7 +14,7 @@ export interface TokenStats {
 
 export interface StreamCallbacks {
     onToken?: (state: StreamState) => void | Promise<void>;
-    onFinish?: (result: { promptTokens?: number; completionTokens?: number; cacheMiss?: boolean }) => void;
+    onFinish?: (result: { promptTokens?: number; completionTokens?: number; cachedTokens?: number }) => void;
 }
 
 export interface StreamState {
@@ -24,7 +24,7 @@ export interface StreamState {
     timeToFirstToken: number;
     promptTokens?: number;
     completionTokens?: number;
-    cacheMiss?: boolean;
+    cachedTokens?: number;
 }
 
 export interface StreamResult {
@@ -33,6 +33,8 @@ export interface StreamResult {
   msPerToken?: number;
   timeToFirstToken?: number;
   completionTokens?: number;
+  cachedTokens?: number;
+  promptTokens?: number;
 }
 
 interface ResolvedParams {
@@ -74,15 +76,28 @@ interface OpenAIChoice {
     finish_reason?: string | null;
 }
 
+interface OpenAIUsage {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    prompt_tokens_details?: {
+        cached_tokens?: number;
+    };
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+}
+
 interface OpenAIStreamChunk {
     choices?: OpenAIChoice[];
     content?: string;
     text?: string;
+    usage?: OpenAIUsage;
 }
 
 interface OpenAICompletionResponse {
     choices?: OpenAIChoice[];
     content?: string;
+    usage?: OpenAIUsage;
 }
 
 interface TokenizeResponse {
@@ -419,6 +434,28 @@ export class LanguageModelEngine {
     return null;
   }
 
+  private extractUsage(data: OpenAICompletionResponse | OpenAIStreamChunk): { promptTokens?: number; completionTokens?: number; cachedTokens?: number } {
+    const usage = data.usage;
+    if (!usage) return {};
+
+    const promptTokens = usage.prompt_tokens;
+    const completionTokens = usage.completion_tokens;
+    
+    // OpenAI format: usage.prompt_tokens_details.cached_tokens
+    let cachedTokens = usage.prompt_tokens_details?.cached_tokens;
+    
+    // Anthropic format: usage.cache_read_input_tokens
+    if (cachedTokens === undefined) {
+      cachedTokens = usage.cache_read_input_tokens;
+    }
+
+    return {
+      promptTokens,
+      completionTokens,
+      cachedTokens,
+    };
+  }
+
   // ─── Token Counting ──────────────────────────────────────────────
 
   async countTokens(text: string): Promise<number> {
@@ -623,8 +660,15 @@ export class LanguageModelEngine {
 
       const data = await response.json() as OpenAICompletionResponse;
       const text = this.extractContent(data) || '';
+      const usage = this.extractUsage(data);
 
-      return { text, isCompleted: true };
+      return { 
+        text, 
+        isCompleted: true,
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        cachedTokens: usage.cachedTokens,
+      };
     } catch (e) {
       console.warn('generateCompletion failed:', e);
       return { text: '', isCompleted: false };
@@ -684,6 +728,7 @@ export class LanguageModelEngine {
     let ttftReported = false;
     let lastMsPerToken = 0;
     let lastTimeToFirstToken = 0;
+    let finalUsage: { promptTokens?: number; completionTokens?: number; cachedTokens?: number } = {};
 
     if (existingText && existingText.length > 0) {
       paragraphCount = (existingText.match(/\n\n/g) || []).length;
@@ -694,12 +739,23 @@ export class LanguageModelEngine {
         const { value, done } = await reader.read();
 
         if (done) {
+          if (callbacks?.onFinish) {
+            callbacks.onFinish({
+              promptTokens: finalUsage.promptTokens,
+              completionTokens: finalUsage.completionTokens,
+              cachedTokens: finalUsage.cachedTokens,
+            });
+          }
           return {
             text: fullContent,
             isCompleted: true,
             msPerToken: lastMsPerToken || undefined,
             timeToFirstToken: lastTimeToFirstToken || undefined,
-            completionTokens: newNumberOfTokens || undefined,
+            completionTokens: finalUsage.completionTokens !== undefined 
+              ? finalUsage.completionTokens 
+              : (newNumberOfTokens || undefined),
+            promptTokens: finalUsage.promptTokens,
+            cachedTokens: finalUsage.cachedTokens,
           };
         }
 
@@ -712,17 +768,34 @@ export class LanguageModelEngine {
           const jsonStr = line.slice(6);
 
           if (jsonStr === '[DONE]') {
+            if (callbacks?.onFinish) {
+              callbacks.onFinish({
+                promptTokens: finalUsage.promptTokens,
+                completionTokens: finalUsage.completionTokens,
+                cachedTokens: finalUsage.cachedTokens,
+              });
+            }
             return {
               text: fullContent,
               isCompleted: true,
               msPerToken: lastMsPerToken || undefined,
               timeToFirstToken: lastTimeToFirstToken || undefined,
-              completionTokens: newNumberOfTokens || undefined,
+              completionTokens: finalUsage.completionTokens !== undefined 
+                ? finalUsage.completionTokens 
+                : (newNumberOfTokens || undefined),
+              promptTokens: finalUsage.promptTokens,
+              cachedTokens: finalUsage.cachedTokens,
             };
           }
 
           try {
             const json = JSON.parse(jsonStr) as OpenAIStreamChunk;
+            
+            // Extract usage if present (some providers send it in final chunk)
+            if (json.usage) {
+              finalUsage = this.extractUsage(json);
+            }
+            
             let token = "";
 
             const finishReason = json.choices?.[0]?.finish_reason;
@@ -744,12 +817,23 @@ export class LanguageModelEngine {
                 }
               }
 
+              if (callbacks?.onFinish) {
+                callbacks.onFinish({
+                  promptTokens: finalUsage.promptTokens,
+                  completionTokens: finalUsage.completionTokens,
+                  cachedTokens: finalUsage.cachedTokens,
+                });
+              }
               return {
                 text: fullContent,
                 isCompleted: true,
                 msPerToken: lastMsPerToken || undefined,
                 timeToFirstToken: lastTimeToFirstToken || undefined,
-                completionTokens: newNumberOfTokens || undefined,
+                completionTokens: finalUsage.completionTokens !== undefined 
+                  ? finalUsage.completionTokens 
+                  : (newNumberOfTokens || undefined),
+                promptTokens: finalUsage.promptTokens,
+                cachedTokens: finalUsage.cachedTokens,
               };
             }
 
@@ -787,12 +871,23 @@ export class LanguageModelEngine {
 
               if (paragraphCount >= paragraphLimit) {
                 abortController.abort();
+                if (callbacks?.onFinish) {
+                  callbacks.onFinish({
+                    promptTokens: finalUsage.promptTokens,
+                    completionTokens: finalUsage.completionTokens,
+                    cachedTokens: finalUsage.cachedTokens,
+                  });
+                }
                 return {
                   text: fullContent,
                   isCompleted: true,
                   msPerToken: lastMsPerToken || undefined,
                   timeToFirstToken: lastTimeToFirstToken || undefined,
-                  completionTokens: newNumberOfTokens || undefined,
+                  completionTokens: finalUsage.completionTokens !== undefined 
+                    ? finalUsage.completionTokens 
+                    : (newNumberOfTokens || undefined),
+                  promptTokens: finalUsage.promptTokens,
+                  cachedTokens: finalUsage.cachedTokens,
                 };
               }
             }
@@ -808,19 +903,38 @@ export class LanguageModelEngine {
             lastTimeToFirstToken = timeToFirstToken;
 
             if (callbacks?.onToken) {
-              callbacks.onToken({ fullText: fullContent, msPerToken, tokensPerSecond, timeToFirstToken });
+              callbacks.onToken({ 
+                fullText: fullContent, 
+                msPerToken, 
+                tokensPerSecond, 
+                timeToFirstToken,
+                promptTokens: finalUsage.promptTokens,
+                completionTokens: finalUsage.completionTokens,
+                cachedTokens: finalUsage.cachedTokens,
+              });
             }
           } catch { /* Ignore individual SSE parse errors */ }
         }
       }
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
+        if (callbacks?.onFinish) {
+          callbacks.onFinish({
+            promptTokens: finalUsage.promptTokens,
+            completionTokens: finalUsage.completionTokens,
+            cachedTokens: finalUsage.cachedTokens,
+          });
+        }
         return {
           text: fullContent,
           isCompleted: false,
           msPerToken: lastMsPerToken || undefined,
           timeToFirstToken: lastTimeToFirstToken || undefined,
-          completionTokens: newNumberOfTokens || undefined,
+          completionTokens: finalUsage.completionTokens !== undefined 
+            ? finalUsage.completionTokens 
+            : (newNumberOfTokens || undefined),
+          promptTokens: finalUsage.promptTokens,
+          cachedTokens: finalUsage.cachedTokens,
         };
       }
       throw error;

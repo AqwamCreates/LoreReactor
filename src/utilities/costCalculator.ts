@@ -9,24 +9,26 @@ export interface ModelPricing {
 export interface CostResult {
     totalCost: number;
     potentialMaxCost: number;
-    isCacheMiss: boolean;
+    cachedTokens: number;
+    freshTokens: number;
+    completionTokens: number;
 }
 
 export function calculateRequestCost(
     promptTokens: number,
+    cachedTokens: number,
     completionTokens: number,
-    isCacheMiss: boolean,
     pricing: ModelPricing
-    ): CostResult {
+): CostResult {
     const million = 1000000;
 
-    const promptCost = isCacheMiss
-        ? (promptTokens / million) * pricing.cacheMissPerMillion
-        : (promptTokens / million) * pricing.cacheHitPerMillion;
+    const freshTokens = Math.max(0, promptTokens - cachedTokens);
 
+    const freshCost = (freshTokens / million) * pricing.cacheMissPerMillion;
+    const cachedCost = (cachedTokens / million) * pricing.cacheHitPerMillion;
     const completionCost = (completionTokens / million) * pricing.outputPerMillion;
 
-    const totalCost = promptCost + completionCost;
+    const totalCost = cachedCost + freshCost + completionCost;
 
     const maxPromptCost = (promptTokens / million) * pricing.cacheMissPerMillion;
     const potentialMaxCost = maxPromptCost + completionCost;
@@ -34,6 +36,8 @@ export function calculateRequestCost(
     return {
         totalCost,
         potentialMaxCost,
-        isCacheMiss,
+        cachedTokens,
+        freshTokens,
+        completionTokens,
     };
 }

@@ -119,7 +119,6 @@ export class BudgetStrategyEngine {
     private allModelsById: Map<string, LanguageModel>;
     private engine = getLanguageModelEngine();
     private _lastSelectedModelId: string | null = null;
-    private _lastCacheMiss = false;
 
     constructor(
         strategy: BudgetStrategy,
@@ -161,7 +160,6 @@ export class BudgetStrategyEngine {
     setLoadLocalModel(loadLocalModel: (id: string) => Promise<number | null>): void { this.loadLocalModel = loadLocalModel; }
     getBudgetData(): BudgetData { return this.budgetData; }
     getLastSelectedModelId(): string | null { return this._lastSelectedModelId; }
-    getLastCacheMiss(): boolean { return this._lastCacheMiss; }
 
     /**
      * Resolve model objects from the unified modelIds list.
@@ -234,25 +232,52 @@ export class BudgetStrategyEngine {
         });
     }
 
+    /**
+     * Rank candidates using the four-tier system.
+     * 
+     * Sorting order (all tiers use "higher value = preferred"):
+     *   1. Quality Tier:     higher = preferred (descending: B - A)
+     *   2. Cost Tier:        lower = preferred  (ascending:  A - B)
+     *   3. Latency Tier:     higher = preferred (descending: B - A)
+     *   4. TTFT Tier:        higher = preferred (descending: B - A)
+     *   5. Observed composite quality (descending: B - A)
+     *   6. Context fit factor (descending: B - A)
+     *   7. Random tiebreaker
+     */
     private rankCandidates(candidates: LanguageModel[], requiredContextTokens: number): LanguageModel[] {
         const sorted = [...candidates];
         sorted.sort((a, b) => {
+            // 1. Quality tier: higher = preferred
             const qualityA = this.strategy.modelQualityTiers?.[a.id] ?? 0;
             const qualityB = this.strategy.modelQualityTiers?.[b.id] ?? 0;
             if (qualityA !== qualityB) return qualityB - qualityA;
 
+            // 2. Cost tier: lower = preferred
             const costA = this.strategy.modelCostTiers?.[a.id] ?? 0;
             const costB = this.strategy.modelCostTiers?.[b.id] ?? 0;
             if (costA !== costB) return costA - costB;
 
+            // 3. Latency tier: higher = preferred
+            const latencyA = this.strategy.modelLatencyMsPerTokenTiers?.[a.id] ?? 0;
+            const latencyB = this.strategy.modelLatencyMsPerTokenTiers?.[b.id] ?? 0;
+            if (latencyA !== latencyB) return latencyB - latencyA;
+
+            // 4. TTFT tier: higher = preferred
+            const ttftA = this.strategy.modelTimeToFirstTokenTiers?.[a.id] ?? 0;
+            const ttftB = this.strategy.modelTimeToFirstTokenTiers?.[b.id] ?? 0;
+            if (ttftA !== ttftB) return ttftB - ttftA;
+
+            // 5. Observed composite quality
             const scoreA = this.computeCompositeQuality(a, requiredContextTokens);
             const scoreB = this.computeCompositeQuality(b, requiredContextTokens);
             if (Math.abs(scoreA - scoreB) > 0.0001) return scoreB - scoreA;
 
+            // 6. Context fit
             const fitA = this.getContextFitFactor(a, requiredContextTokens);
             const fitB = this.getContextFitFactor(b, requiredContextTokens);
             if (Math.abs(fitA - fitB) > 0.01) return fitB - fitA;
 
+            // 7. Random tiebreaker
             return Math.random() - 0.5;
         });
         return sorted;
@@ -263,8 +288,6 @@ export class BudgetStrategyEngine {
         abortController: AbortController,
         callbacks?: StreamCallbacks,
     ): Promise<StreamResult> {
-        this._lastCacheMiss = false;
-
         const failedIds = new Set<string>();
 
         const promptText = (requestBody.prompt as string) || '';
@@ -278,7 +301,6 @@ export class BudgetStrategyEngine {
                 if (callbacks?.onToken) await callbacks.onToken(stats);
             },
             onFinish: (rs) => {
-                this._lastCacheMiss = rs.cacheMiss ?? false;
                 if (callbacks?.onFinish) callbacks.onFinish(rs);
             },
         };
@@ -335,7 +357,8 @@ export class BudgetStrategyEngine {
 
                     const promptTokens = requiredContextTokens || await this.engine.countTokens(promptText);
                     const completionTokens = await this.engine.countTokens(result.text);
-                    const cost = calculateRequestCost(promptTokens, completionTokens, this._lastCacheMiss, pricing);
+                    const cachedTokens = result.cachedTokens ?? 0;
+                    const cost = calculateRequestCost(promptTokens, cachedTokens, completionTokens, pricing);
                     this.recordSuccess(selectedModel.id, cost.totalCost);
 
                     const fullOutput = accumulatedPartialText + result.text;
@@ -352,7 +375,7 @@ export class BudgetStrategyEngine {
                         console.warn(`Model ${selectedModel.name} returned censorship refusal — returning text as-is.`);
                     }
 
-                    return { text: fullOutput, isCompleted: result.isCompleted };
+                    return { text: fullOutput, isCompleted: result.isCompleted, cachedTokens: result.cachedTokens };
                 } catch (e) {
                     if (abortController.signal.aborted) throw e;
 
@@ -419,7 +442,8 @@ export class BudgetStrategyEngine {
 
                     const promptTokens = requiredContextTokens || await this.engine.countTokens(promptText);
                     const completionTokens = await this.engine.countTokens(result.text);
-                    const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
+                    const cachedTokens = result.cachedTokens ?? 0;
+                    const cost = calculateRequestCost(promptTokens, cachedTokens, completionTokens, pricing);
                     this.recordSuccess(selectedModel.id, cost.totalCost);
 
                     if (!result.text) {

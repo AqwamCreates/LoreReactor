@@ -19,19 +19,19 @@ type BudgetTabId = 'general' | 'tiers' | 'activation';
 const TIER_AXIS_LABELS: Record<string, { label: string; description: string }> = {
     cost: {
         label: 'Cost Tier',
-        description: 'Lower = cheaper. Models with lower cost tiers are preferred when quality tiers are equal.',
+        description: 'Lower = preferred. Lower cost tier value indicates a cheaper model. Cheaper models are preferred when quality tiers are equal.',
     },
     latency: {
-        label: 'Latency Tier (ms/token)',
-        description: 'Expected ms per token. Lower = faster. Used as secondary ranking signal.',
+        label: 'Latency Tier',
+        description: 'Higher = preferred. Higher latency tier value indicates lower latency (faster). Used as tiebreaker after quality and cost.',
     },
     ttft: {
-        label: 'TTFT Tier (ms)',
-        description: 'Expected time to first token. Lower = faster initial response.',
+        label: 'TTFT Tier',
+        description: 'Higher = preferred. Higher TTFT tier value indicates faster response time. Used as final tiebreaker.',
     },
     quality: {
         label: 'Quality Tier',
-        description: 'Higher = better output quality. Primary ranking signal — higher quality models are tried first.',
+        description: 'Higher = preferred. Higher quality tier value indicates better output quality. Primary ranking signal — higher quality models are tried first.',
     },
 };
 
@@ -162,7 +162,7 @@ function BudgetStrategyEditorContent({
         onClose();
     };
 
-    const renderTierColumn = (
+    const renderTierSection = (
         axisKey: string,
         tiers: Record<string, number>,
         setter: React.Dispatch<React.SetStateAction<Record<string, number>>>,
@@ -173,18 +173,18 @@ function BudgetStrategyEditorContent({
         if (models.length === 0) return null;
 
         return (
-            <div style={{ flex: 1, minWidth: '120px' }}>
+            <div style={{ marginBottom: '16px' }}>
                 <label className="editor-label editor-label-small" style={{ display: 'block', marginBottom: '2px' }}>
                     {config.label}
                 </label>
-                <div style={{ fontSize: '0.5rem', opacity: 0.5, marginBottom: '6px' }}>
+                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
                     {config.description}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                     {models.map(model => (
-                        <div key={model.id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <div key={model.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 6px', borderRadius: '4px', background: 'var(--social-bg)' }}>
                             <span style={{
-                                fontSize: '0.6rem', opacity: 0.7, flex: 1, minWidth: 0,
+                                fontSize: '0.7rem', opacity: 0.8, flex: 1, minWidth: 0,
                                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                             }}>
                                 {model.name}
@@ -198,8 +198,8 @@ function BudgetStrategyEditorContent({
                                 className="editor-input"
                                 placeholder={placeholder}
                                 style={{
-                                    width: '52px', flexShrink: 0, padding: '2px 4px',
-                                    fontSize: '0.65rem', MozAppearance: 'textfield',
+                                    width: '60px', flexShrink: 0, padding: '3px 6px',
+                                    fontSize: '0.7rem', MozAppearance: 'textfield',
                                 }}
                             />
                         </div>
@@ -209,24 +209,24 @@ function BudgetStrategyEditorContent({
         );
     };
 
-    const renderActivationColumn = () => {
+    const renderActivationSection = () => {
         const models = allModels.filter(m => selectedModelIds.includes(m.id));
         if (models.length === 0) return null;
 
         return (
             <>
-                <div style={{ flex: 1, minWidth: '120px' }}>
+                <div style={{ marginBottom: '16px' }}>
                     <label className="editor-label editor-label-small" style={{ display: 'block', marginBottom: '2px' }}>
                         Activation Tokens
                     </label>
-                    <div style={{ fontSize: '0.5rem', opacity: 0.5, marginBottom: '6px' }}>
+                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
                         Model becomes eligible when prompt reaches this many tokens. 0 = always active.
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                         {models.map(model => (
-                            <div key={model.id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <div key={model.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 6px', borderRadius: '4px', background: 'var(--social-bg)' }}>
                                 <span style={{
-                                    fontSize: '0.6rem', opacity: 0.7, flex: 1, minWidth: 0,
+                                    fontSize: '0.7rem', opacity: 0.8, flex: 1, minWidth: 0,
                                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                 }}>
                                     {model.name}
@@ -240,8 +240,8 @@ function BudgetStrategyEditorContent({
                                     min="0"
                                     step="256"
                                     style={{
-                                        width: '64px', flexShrink: 0, padding: '2px 4px',
-                                        fontSize: '0.65rem', MozAppearance: 'textfield',
+                                        width: '72px', flexShrink: 0, padding: '3px 6px',
+                                        fontSize: '0.7rem', MozAppearance: 'textfield',
                                     }}
                                 />
                             </div>
@@ -249,18 +249,18 @@ function BudgetStrategyEditorContent({
                     </div>
                 </div>
 
-                <div style={{ flex: 1, minWidth: '120px' }}>
+                <div style={{ marginBottom: '16px' }}>
                     <label className="editor-label editor-label-small" style={{ display: 'block', marginBottom: '2px' }}>
                         Deactivation Tokens
                     </label>
-                    <div style={{ fontSize: '0.5rem', opacity: 0.5, marginBottom: '6px' }}>
+                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
                         Model becomes ineligible when prompt exceeds this. Empty = never deactivates.
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                         {models.map(model => (
-                            <div key={model.id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <div key={model.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 6px', borderRadius: '4px', background: 'var(--social-bg)' }}>
                                 <span style={{
-                                    fontSize: '0.6rem', opacity: 0.7, flex: 1, minWidth: 0,
+                                    fontSize: '0.7rem', opacity: 0.8, flex: 1, minWidth: 0,
                                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                 }}>
                                     {model.name}
@@ -274,8 +274,8 @@ function BudgetStrategyEditorContent({
                                     min="0"
                                     step="256"
                                     style={{
-                                        width: '64px', flexShrink: 0, padding: '2px 4px',
-                                        fontSize: '0.65rem', MozAppearance: 'textfield',
+                                        width: '72px', flexShrink: 0, padding: '3px 6px',
+                                        fontSize: '0.7rem', MozAppearance: 'textfield',
                                     }}
                                 />
                             </div>
@@ -357,13 +357,9 @@ function BudgetStrategyEditorContent({
                             </div>
 
                             <div className="editor-section">
-                                <span className="editor-section-title">Models</span>
-                                <div className="entity-ref-hint">
-                                    Select all models to include in this strategy. Both online and local models share a single unified pool. Selection priority is controlled by tiers and activation windows.
-                                </div>
-
                                 <EntitySelectList
                                     label="Language Models"
+                                    description="Select all models to include in this strategy. Both online and local models share a single unified pool. Selection priority is controlled by tiers and activation windows."
                                     items={allModels}
                                     selectedIds={selectedModelIds}
                                     onToggle={toggleModel}
@@ -400,7 +396,7 @@ function BudgetStrategyEditorContent({
                         <div className="editor-section">
                             <span className="editor-section-title">Model Tiers</span>
                             <div className="entity-ref-hint" style={{ marginBottom: '12px' }}>
-                                Configure per-model ranking across four independent axes. Models are ranked by quality tier first (higher = preferred), then cost tier (lower = preferred), then observed performance metrics.
+                                Configure per-model ranking across four independent axes. Models are ranked by quality tier (higher = preferred), then cost tier (lower = preferred), then latency tier (higher = preferred), then TTFT tier (higher = preferred).
                             </div>
 
                             {selectedModelIds.length === 0 ? (
@@ -408,15 +404,11 @@ function BudgetStrategyEditorContent({
                                     No models selected. Add models in the General tab first.
                                 </div>
                             ) : (
-                                <div style={{
-                                    display: 'flex',
-                                    gap: '16px',
-                                    flexWrap: 'wrap',
-                                }}>
-                                    {renderTierColumn('quality', modelQualityTiers, setModelQualityTiers, '0')}
-                                    {renderTierColumn('cost', modelCostTiers, setModelCostTiers, '0')}
-                                    {renderTierColumn('latency', modelLatencyTiers, setModelLatencyTiers, '0')}
-                                    {renderTierColumn('ttft', modelTTFTTiers, setModelTTFTTiers, '0')}
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    {renderTierSection('quality', modelQualityTiers, setModelQualityTiers, '0')}
+                                    {renderTierSection('cost', modelCostTiers, setModelCostTiers, '0')}
+                                    {renderTierSection('latency', modelLatencyTiers, setModelLatencyTiers, '0')}
+                                    {renderTierSection('ttft', modelTTFTTiers, setModelTTFTTiers, '0')}
                                 </div>
                             )}
                         </div>
@@ -435,12 +427,8 @@ function BudgetStrategyEditorContent({
                                     No models selected. Add models in the General tab first.
                                 </div>
                             ) : (
-                                <div style={{
-                                    display: 'flex',
-                                    gap: '16px',
-                                    flexWrap: 'wrap',
-                                }}>
-                                    {renderActivationColumn()}
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    {renderActivationSection()}
                                 </div>
                             )}
                         </div>

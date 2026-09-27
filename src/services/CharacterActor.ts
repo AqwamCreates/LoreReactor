@@ -1,3 +1,4 @@
+// src/services/CharacterActor.ts
 import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from '../storage/serverStorage';
 import { buildChatRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
@@ -257,10 +258,13 @@ export class CharacterActor {
                 const doStream = async (reqBody: Record<string, unknown>) => {
                     const result = await this.engine.generateStream(reqBody, { signal } as AbortController, {
                         ...createStreamCallbacks(streamToolParser, accumulator),
-                        onFinish: (rs: { promptTokens?: number; completionTokens?: number; cacheMiss?: boolean }): void => {
-                            const cr = calculateRequestCost(rs.promptTokens || 0, rs.completionTokens || 0, rs.cacheMiss || false, pricing);
+                        onFinish: (rs: { promptTokens?: number; completionTokens?: number; cachedTokens?: number }): void => {
+                            const promptTokens = rs.promptTokens || 0;
+                            const cachedTokens = rs.cachedTokens ?? 0;
+                            const completionTokens = rs.completionTokens || 0;
+                            const cr = calculateRequestCost(promptTokens, cachedTokens, completionTokens, pricing);
                             statsDelta.numberOfRequests++;
-                            if (rs.cacheMiss) statsDelta.numberOfCacheInvalidations++;
+                            if (promptTokens > 0 && cachedTokens === 0) statsDelta.numberOfCacheInvalidations++;
                             statsDelta.totalCost += cr.totalCost;
                             statsDelta.costWithoutCacheMisses += cr.potentialMaxCost;
                         },
@@ -343,9 +347,10 @@ export class CharacterActor {
                     rawText = streamResult.text;
                     lastIsCompleted = streamResult.isCompleted;
 
-                    // Capture cache miss and request count from budget engine
+                    // Track cache invalidation from stream result cached token count
                     statsDelta.numberOfRequests++;
-                    if (bse.getLastCacheMiss()) statsDelta.numberOfCacheInvalidations++;
+                    const cachedTokens = streamResult.cachedTokens ?? 0;
+                    if (cachedTokens === 0) statsDelta.numberOfCacheInvalidations++;
 
                     finalBudgetData = bse.getBudgetData();
                     if (!finalBudgetData) {
@@ -397,10 +402,13 @@ export class CharacterActor {
                 const doStream = async (reqBody: Record<string, unknown>) => {
                     const result = await this.engine.generateStream(reqBody, { signal } as AbortController, {
                         ...createStreamCallbacks(streamToolParser, accumulator),
-                        onFinish: (rs: { promptTokens?: number; completionTokens?: number; cacheMiss?: boolean }): void => {
-                            const cr = calculateRequestCost(rs.promptTokens || 0, rs.completionTokens || 0, rs.cacheMiss || false, pricing);
+                        onFinish: (rs: { promptTokens?: number; completionTokens?: number; cachedTokens?: number }): void => {
+                            const promptTokens = rs.promptTokens || 0;
+                            const cachedTokens = rs.cachedTokens ?? 0;
+                            const completionTokens = rs.completionTokens || 0;
+                            const cr = calculateRequestCost(promptTokens, cachedTokens, completionTokens, pricing);
                             statsDelta.numberOfRequests++;
-                            if (rs.cacheMiss) statsDelta.numberOfCacheInvalidations++;
+                            if (promptTokens > 0 && cachedTokens === 0) statsDelta.numberOfCacheInvalidations++;
                             statsDelta.totalCost += cr.totalCost;
                             statsDelta.costWithoutCacheMisses += cr.potentialMaxCost;
                         },
