@@ -104,6 +104,7 @@ export const defaultBudgetData: BudgetData = {
     modelLastQuotaHitTimeStamps: {},
     modelLastErrorHitTimeStamps: {},
     modelUsedCount: {},
+    modelRegenerationCount: {},
     modelCensorshipHitCount: {},
     modelBrokenCount: {},
     modelQuotaHitCount: {},

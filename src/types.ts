@@ -545,6 +545,7 @@ export interface BudgetData extends ObjectData {
   modelLastQuotaHitTimeStamps: Record<string, number>
   modelLastErrorHitTimeStamps: Record<string, number>
   modelUsedCount: Record<string, number>
+  modelRegenerationCount: Record<string, number>;
   modelCensorshipHitCount: Record<string, number>;
   modelBrokenCount: Record<string, number>;
   modelQuotaHitCount: Record<string, number>
@@ -567,6 +568,7 @@ export interface RawBudgetData extends RawData {
   modelLastQuotaHitTimeStamps: Record<string, number>
   modelLastErrorHitTimeStamps: Record<string, number>
   modelUsedCount: Record<string, number>
+  modelRegenerationCount: Record<string, number>;
   modelCensorshipHitCount: Record<string, number>;
   modelBrokenCount: Record<string, number>;
   modelQuotaHitCount: Record<string, number>

@@ -1351,6 +1351,7 @@ export async function saveRawBudgetData(data: BudgetData): Promise<void> {
         modelLastQuotaHitTimeStamps: data.modelLastQuotaHitTimeStamps,
         modelLastErrorHitTimeStamps: data.modelLastErrorHitTimeStamps,
         modelUsedCount: data.modelUsedCount,
+        modelRegenerationCount: data.modelRegenerationCount,
         modelCensorshipHitCount: data.modelCensorshipHitCount,
         modelBrokenCount: data.modelBrokenCount,
         modelQuotaHitCount: data.modelQuotaHitCount,

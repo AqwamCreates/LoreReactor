@@ -135,6 +135,7 @@ export class BudgetStrategyEngine {
 
         if (!this.budgetData.modelCensorshipHitCount) this.budgetData.modelCensorshipHitCount = {};
         if (!this.budgetData.modelBrokenCount) this.budgetData.modelBrokenCount = {};
+        if (!this.budgetData.modelRegenerationCount) this.budgetData.modelRegenerationCount = {};
 
         applyResetIfDue(this.budgetData);
     }
@@ -145,6 +146,7 @@ export class BudgetStrategyEngine {
         this.budgetData = budgetData;
         if (!this.budgetData.modelCensorshipHitCount) this.budgetData.modelCensorshipHitCount = {};
         if (!this.budgetData.modelBrokenCount) this.budgetData.modelBrokenCount = {};
+        if (!this.budgetData.modelRegenerationCount) this.budgetData.modelRegenerationCount = {};
         applyResetIfDue(this.budgetData);
     }
 
@@ -233,16 +235,58 @@ export class BudgetStrategyEngine {
     }
 
     /**
-     * Rank candidates using the four-tier system.
+     * Compute user-driven quality score for a model.
+     * Quality = generations / max(1, regenerations).
+     * Higher = better (fewer regenerations per generation).
+     * Returns 0 for models with no usage.
+     */
+    getModelQualityScore(modelId: string): number {
+        const used = this.budgetData.modelUsedCount?.[modelId] ?? 0;
+        const regens = this.budgetData.modelRegenerationCount?.[modelId] ?? 0;
+
+        if (used === 0) return 0;
+        return (used - regens) / Math.max(1, regens);
+    }
+
+    /**
+     * Get quality scores for all models that have been used.
+     */
+    getModelQualityScores(): Record<string, number> {
+        const scores: Record<string, number> = {};
+        const usedCounts = this.budgetData.modelUsedCount || {};
+
+        for (const modelId of Object.keys(usedCounts)) {
+            scores[modelId] = this.getModelQualityScore(modelId);
+        }
+
+        return scores;
+    }
+
+    /**
+     * Record a regeneration event for a specific model.
+     * Called by the UI/session layer when user regenerates a message.
+     */
+    recordRegeneration(modelId: string): void {
+        if (!this.budgetData.modelRegenerationCount) {
+            this.budgetData.modelRegenerationCount = {};
+        }
+        this.budgetData.modelRegenerationCount[modelId] =
+            (this.budgetData.modelRegenerationCount[modelId] ?? 0) + 1;
+        this.budgetData.lastUpdatedTimestamp = Date.now();
+    }
+
+    /**
+     * Rank candidates using the four-tier system plus observed user-driven quality.
      * 
-     * Sorting order (all tiers use "higher value = preferred"):
-     *   1. Quality Tier:     higher = preferred (descending: B - A)
-     *   2. Cost Tier:        lower = preferred  (ascending:  A - B)
-     *   3. Latency Tier:     higher = preferred (descending: B - A)
-     *   4. TTFT Tier:        higher = preferred (descending: B - A)
-     *   5. Observed composite quality (descending: B - A)
-     *   6. Context fit factor (descending: B - A)
-     *   7. Random tiebreaker
+     * Sorting order:
+     *   1. Quality Tier:             higher = preferred (descending: B - A)
+     *   2. Cost Tier:                lower = preferred  (ascending:  A - B)
+     *   3. Latency Tier:             higher = preferred (descending: B - A)
+     *   4. TTFT Tier:                higher = preferred (descending: B - A)
+     *   5. Observed quality score:   higher = preferred (descending: B - A)
+     *   6. Observed composite quality (descending: B - A)
+     *   7. Context fit factor        (descending: B - A)
+     *   8. Random tiebreaker
      */
     private rankCandidates(candidates: LanguageModel[], requiredContextTokens: number): LanguageModel[] {
         const sorted = [...candidates];
@@ -267,17 +311,22 @@ export class BudgetStrategyEngine {
             const ttftB = this.strategy.modelTimeToFirstTokenTiers?.[b.id] ?? 0;
             if (ttftA !== ttftB) return ttftB - ttftA;
 
-            // 5. Observed composite quality
+            // 5. Observed user-driven quality score (generations / max(1, regenerations))
+            const observedQualityA = this.getModelQualityScore(a.id);
+            const observedQualityB = this.getModelQualityScore(b.id);
+            if (Math.abs(observedQualityA - observedQualityB) > 0.01) return observedQualityB - observedQualityA;
+
+            // 6. Observed composite quality
             const scoreA = this.computeCompositeQuality(a, requiredContextTokens);
             const scoreB = this.computeCompositeQuality(b, requiredContextTokens);
             if (Math.abs(scoreA - scoreB) > 0.0001) return scoreB - scoreA;
 
-            // 6. Context fit
+            // 7. Context fit
             const fitA = this.getContextFitFactor(a, requiredContextTokens);
             const fitB = this.getContextFitFactor(b, requiredContextTokens);
             if (Math.abs(fitA - fitB) > 0.01) return fitB - fitA;
 
-            // 7. Random tiebreaker
+            // 8. Random tiebreaker
             return Math.random() - 0.5;
         });
         return sorted;
@@ -490,7 +539,7 @@ export class BudgetStrategyEngine {
 
     private getModelSpeed(modelId: string): number { return this.budgetData.modelAverageLatencyMsPerToken?.[modelId] ?? Number.POSITIVE_INFINITY; }
     private getModelTTFT(modelId: string): number { return this.budgetData.modelAverageTimeToFirstToken?.[modelId] ?? Number.POSITIVE_INFINITY; }
-    private getModelQualityScore(modelId: string): number { return this.budgetData.modelTotalSessionDuration?.[modelId] ?? 0; }
+    private getModelSessionScore(modelId: string): number { return this.budgetData.modelTotalSessionDuration?.[modelId] ?? 0; }
 
     private getContextFitFactor(model: LanguageModel, requiredContextTokens?: number): number {
         if (!requiredContextTokens || requiredContextTokens <= 0) return 1;
@@ -504,7 +553,7 @@ export class BudgetStrategyEngine {
         const modelId = model.id;
         const speed = this.getModelSpeed(modelId);
         const ttft = this.getModelTTFT(modelId);
-        const totalDuration = this.getModelQualityScore(modelId);
+        const totalDuration = this.getModelSessionScore(modelId);
         const usedCount = this.budgetData.modelUsedCount?.[modelId] ?? 0;
         const quotaHits = this.budgetData.modelQuotaHitCount?.[modelId] ?? 0;
         const errorHits = this.budgetData.modelErrorHitCount?.[modelId] ?? 0;

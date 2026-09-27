@@ -47,6 +47,7 @@ function createdefaultBudgetData(strategy: BudgetStrategy, resetDuration = DEFAU
         modelLastQuotaHitTimeStamps: {},
         modelLastErrorHitTimeStamps: {},
         modelUsedCount: {},
+        modelRegenerationCount: {},
         modelQuotaHitCount: {},
         modelErrorHitCount: {},
         lastResetTimestamp: now,

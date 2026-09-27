@@ -12,13 +12,14 @@ import { consumeChatStaminaForMessage } from './characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from './locationLogic';
 import { detectName } from './nameDetection';
 import { getFilteredChatMessages } from './promptLogic';
-import { saveRawInteractionData, loadRawBudgetData } from '../storage/serverStorage';
+import { saveRawInteractionData, loadRawBudgetData, saveRawBudgetData } from '../storage/serverStorage';
 import { useThrottledStream } from './useThrottledStream';
 import { useCharacterResponseLock } from './useCharacterResponseLock';
 import { useAmbientNarration } from './useAmbientNarration';
 import { useSessionStore } from './useSessionStore';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import type { Character, Context, Location, AudioTrack, World, PromptBlock, Sampler, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, HistoryMessage, Memory, Extension, Account, MultiplayerData, LanguageModel } from '../types';
 
 const engine = getLanguageModelEngine();
@@ -998,6 +999,25 @@ export function useChatSession(options: UseChatSessionOptions) {
         const history = currentInteractionData.interactionHistory;
         const ti = history.findIndex(m => m.id === messageId);
         if (ti === -1) { addToast('Message not found.', 'error'); releaseLock(); return; }
+        
+        // ─── RECORD REGENERATION FOR QUALITY TRACKING ──────────────
+        // Attribute regeneration to the model that generated the original message
+        const lastModelId = useSessionStore.getState().lastSelectedModelId;
+        if (lastModelId) {
+            try {
+                const budgetEngine = getBudgetStrategyEngine();
+                budgetEngine.recordRegeneration(lastModelId);
+                
+                const budgetData = budgetEngine.getBudgetData();
+                if (budgetData) {
+                    await saveRawBudgetData(budgetData);
+                }
+            } catch (e) {
+                console.warn('Failed to record regeneration:', e);
+            }
+        }
+        // ────────────────────────────────────────────────────────────
+
         const tm = history[ti];
         const isProtagonistMessage = protagonistIds.has(tm.character.id);
         let trimIdx = ti;
