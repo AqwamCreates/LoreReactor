@@ -116,6 +116,7 @@ export class BudgetStrategyEngine {
     private budgetData: BudgetData;
     private runningModels: Record<string, RunningModelState>;
     private loadLocalModel: ((id: string) => Promise<number | null>) | null;
+    private allModelsById: Map<string, LanguageModel>;
     private engine = getLanguageModelEngine();
     private _lastSelectedModelId: string | null = null;
     private _lastCacheMiss = false;
@@ -124,11 +125,13 @@ export class BudgetStrategyEngine {
         strategy: BudgetStrategy,
         budgetData: BudgetData,
         runningModels: Record<string, RunningModelState>,
+        allModels: LanguageModel[],
         loadLocalModel?: (id: string) => Promise<number | null>,
     ) {
         this.strategy = strategy;
         this.budgetData = budgetData;
         this.runningModels = runningModels;
+        this.allModelsById = new Map(allModels.map(m => [m.id, m]));
         this.loadLocalModel = loadLocalModel ?? null;
 
         if (!this.budgetData.modelCensorshipHitCount) this.budgetData.modelCensorshipHitCount = {};
@@ -151,35 +154,38 @@ export class BudgetStrategyEngine {
         this.engine.setRunningModels(runningModels);
     }
 
+    setAllModels(allModels: LanguageModel[]): void {
+        this.allModelsById = new Map(allModels.map(m => [m.id, m]));
+    }
+
     setLoadLocalModel(loadLocalModel: (id: string) => Promise<number | null>): void { this.loadLocalModel = loadLocalModel; }
     getBudgetData(): BudgetData { return this.budgetData; }
     getLastSelectedModelId(): string | null { return this._lastSelectedModelId; }
     getLastCacheMiss(): boolean { return this._lastCacheMiss; }
 
     /**
-     * Get all models from the unified list (online + local combined).
+     * Resolve model objects from the unified modelIds list.
      */
-    private getAllModels(): LanguageModel[] {
-        return [...this.strategy.onlineModels, ...this.strategy.localModels];
+    private getSelectedModels(): LanguageModel[] {
+        const models: LanguageModel[] = [];
+        for (const id of this.strategy.modelIds) {
+            const model = this.allModelsById.get(id);
+            if (model) models.push(model);
+        }
+        return models;
     }
 
     /**
      * Determine which models are currently active based on per-model
      * activation/deactivation context size windows.
-     * A model is active when:
-     *   - currentTokens >= modelActivationContextSize[id] (or activation is 0/undefined = always active)
-     *   - AND (modelDeactivationContextSize[id] is undefined/Infinity OR currentTokens < deactivation)
      */
     private getActiveModels(currentTokens: number): LanguageModel[] {
-        const allModels = this.getAllModels();
-        return allModels.filter(model => {
+        const selectedModels = this.getSelectedModels();
+        return selectedModels.filter(model => {
             const activationThreshold = this.strategy.modelActivationContextSize?.[model.id] ?? 0;
             const deactivationThreshold = this.strategy.modelDeactivationContextSize?.[model.id];
 
-            // Below activation threshold → not yet eligible
             if (currentTokens < activationThreshold) return false;
-
-            // Above deactivation threshold → no longer eligible
             if (deactivationThreshold !== undefined && currentTokens >= deactivationThreshold) return false;
 
             return true;
@@ -194,7 +200,6 @@ export class BudgetStrategyEngine {
 
         const candidates = this.getEligibleCandidates(requiredContextTokens, failedIds);
         if (candidates.length === 0) {
-            // All tiered models exhausted or out of budget — try free models
             const freeModel = this.selectFreeModel(failedIds, requiredContextTokens);
             if (freeModel) {
                 const loaded = await this.ensureModelLoaded(freeModel);
@@ -207,7 +212,6 @@ export class BudgetStrategyEngine {
             return null;
         }
 
-        // Pick best candidate by composite quality score
         const best = this.rankCandidates(candidates, requiredContextTokens)[0];
         if (!best) return null;
 
@@ -219,50 +223,32 @@ export class BudgetStrategyEngine {
         return { model: best, modelId: best.id };
     }
 
-    /**
-     * Get eligible model candidates considering:
-     * - Activation/deactivation context windows
-     * - Budget constraints (skip paid models if budget exceeded)
-     * - Failed model exclusions
-     */
     private getEligibleCandidates(currentTokens: number, failedIds: Set<string>): LanguageModel[] {
         const activeModels = this.getActiveModels(currentTokens);
         const budgetExceeded = this.budgetData.budgetSpent >= this.strategy.maximumBudget;
 
         return activeModels.filter(model => {
             if (failedIds.has(model.id)) return false;
-            // If budget exceeded, only allow free models through
             if (budgetExceeded && !isFreeModel(model)) return false;
             return true;
         });
     }
 
-    /**
-     * Rank candidates using the four-tier system and observed performance metrics.
-     * Primary sort: quality tier (higher = better quality, prefer first).
-     * Secondary sort: cost tier (lower = cheaper, prefer when same quality).
-     * Tertiary: observed composite quality from latency, TTFT, reliability.
-     * Quaternary: context fit factor.
-     */
     private rankCandidates(candidates: LanguageModel[], requiredContextTokens: number): LanguageModel[] {
         const sorted = [...candidates];
         sorted.sort((a, b) => {
-            // Primary: Quality tier (higher = better quality, prefer first)
             const qualityA = this.strategy.modelQualityTiers?.[a.id] ?? 0;
             const qualityB = this.strategy.modelQualityTiers?.[b.id] ?? 0;
             if (qualityA !== qualityB) return qualityB - qualityA;
 
-            // Secondary: Cost tier (lower = cheaper, prefer when same quality)
             const costA = this.strategy.modelCostTiers?.[a.id] ?? 0;
             const costB = this.strategy.modelCostTiers?.[b.id] ?? 0;
             if (costA !== costB) return costA - costB;
 
-            // Tertiary: Observed composite quality
             const scoreA = this.computeCompositeQuality(a, requiredContextTokens);
             const scoreB = this.computeCompositeQuality(b, requiredContextTokens);
             if (Math.abs(scoreA - scoreB) > 0.0001) return scoreB - scoreA;
 
-            // Quaternary: Context fit
             const fitA = this.getContextFitFactor(a, requiredContextTokens);
             const fitB = this.getContextFitFactor(b, requiredContextTokens);
             if (Math.abs(fitA - fitB) > 0.01) return fitB - fitA;
@@ -297,13 +283,11 @@ export class BudgetStrategyEngine {
             },
         };
 
-        // ─── Main retry loop across all eligible models ───
         while (!abortController.signal.aborted) {
             const candidates = this.getEligibleCandidates(requiredContextTokens, failedIds);
             const ranked = this.rankCandidates(candidates, requiredContextTokens);
 
             if (ranked.length === 0) {
-                // Try free models as last resort
                 const freeModel = this.selectFreeModel(failedIds, requiredContextTokens);
                 if (!freeModel) break;
                 ranked.push(freeModel);
@@ -311,7 +295,6 @@ export class BudgetStrategyEngine {
 
             const selectedModel = ranked[0];
 
-            // Inner loop for injection retries on the same model
             while (true) {
                 const loaded = await this.ensureModelLoaded(selectedModel);
                 if (!loaded) {
@@ -516,11 +499,10 @@ export class BudgetStrategyEngine {
     }
 
     private selectFreeModel(failedIds: Set<string>, requiredContextTokens?: number): LanguageModel | null {
-        const allModels = this.getAllModels();
-        const freeModels = allModels.filter(m => isFreeModel(m) && !failedIds.has(m.id));
+        const selectedModels = this.getSelectedModels();
+        const freeModels = selectedModels.filter(m => isFreeModel(m) && !failedIds.has(m.id));
         if (freeModels.length === 0) return null;
 
-        // Rank free models by composite quality
         const ranked = [...freeModels].sort((a, b) => {
             const scoreA = this.computeCompositeQuality(a, requiredContextTokens);
             const scoreB = this.computeCompositeQuality(b, requiredContextTokens);
@@ -622,9 +604,10 @@ export function initializeBudgetStrategyEngine(
     strategy: BudgetStrategy,
     budgetData: BudgetData,
     runningModels: Record<string, RunningModelState>,
+    allModels: LanguageModel[],
     loadLocalModel?: (id: string) => Promise<number | null>,
 ): BudgetStrategyEngine {
-    instance = new BudgetStrategyEngine(strategy, budgetData, runningModels, loadLocalModel);
+    instance = new BudgetStrategyEngine(strategy, budgetData, runningModels, allModels, loadLocalModel);
     return instance;
 }
 

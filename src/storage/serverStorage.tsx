@@ -817,28 +817,20 @@ export const deleteRawModel = modelRepo.remove;
 
 const budgetStrategyRepo = createRepository<BudgetStrategy, RawBudgetStrategy>({
   entityKey: 'budgetStrategies',
-  hydrate: async (raw, id) => {
-    const onlineModelPromises = (raw.onlineModelIds || []).map(mid => loadRawModel(mid));
-    const onlineModelsResults = await Promise.all(onlineModelPromises);
-    const onlineModels = onlineModelsResults.filter((m): m is LanguageModel => m !== null);
-
-    const localModelPromises = (raw.localModelIds || []).map(mid => loadRawModel(mid));
-    const localModelsResults = await Promise.all(localModelPromises);
-    const localModels = localModelsResults.filter((m): m is LanguageModel => m !== null);
-
-    return hydrateEntity<BudgetStrategy, RawBudgetStrategy>(raw, id, {
-        name: 'Unknown Strategy',
-    }, {
-        onlineModels: () => onlineModels,
-        localModels: () => localModels,
-    });
-  },
+  hydrate: (raw, id) => hydrateEntity<BudgetStrategy, RawBudgetStrategy>(raw, id, {
+    name: 'Unknown Strategy',
+    modelIds: [],
+    modelCostTiers: {},
+    modelLatencyMsPerTokenTiers: {},
+    modelTimeToFirstTokenTiers: {},
+    modelQualityTiers: {},
+    modelActivationContextSize: {},
+    modelDeactivationContextSize: {},
+    maximumBudget: 10,
+  }),
   serialize: (strategy) => {
-    const { onlineModels, localModels, ...rest } = strategy;
     return {
-      ...rest,
-      onlineModelIds: onlineModels.map(m => m.id),
-      localModelIds: localModels.map(m => m.id),
+      ...strategy,
       lastUpdatedTimestamp: Date.now(),
     } as RawBudgetStrategy;
   },
@@ -903,6 +895,7 @@ const profileRepo = createRepository<Profile, RawProfile>({
         contextSensitivity: -1,
         maximumActionStamina: -1,
         cacheEfficiencyLevels: {} as Record<cacheEfficiencyConfigurationType, number>,
+        minimalVolatileCacheMode: false,
         doNotInjectDefaultStopTokens: false,
         stripThinkTokens: false,
         tools: {} as Record<tool, tristateInteger>,

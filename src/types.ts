@@ -515,8 +515,7 @@ export interface Extension extends ObjectData {
 }
 
 export interface BudgetStrategy extends ObjectData {
-  onlineModels: LanguageModel[];
-  localModels: LanguageModel[];
+  modelIds: string[];
   modelCostTiers: Record<string, number>
   modelLatencyMsPerTokenTiers: Record<string, number>
   modelTimeToFirstTokenTiers: Record<string, number>
@@ -527,8 +526,7 @@ export interface BudgetStrategy extends ObjectData {
 }
 
 export interface RawBudgetStrategy extends RawData {
-  onlineModelIds: string[];
-  localModelIds: string[];
+  modelIds: string[];
   modelCostTiers: Record<string, number>
   modelLatencyMsPerTokenTiers: Record<string, number>
   modelTimeToFirstTokenTiers: Record<string, number>

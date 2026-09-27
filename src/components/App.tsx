@@ -611,9 +611,9 @@ function App() {
             budgetStrategyEngine.setRunningModels(runningModels);
             budgetStrategyEngine.setLoadLocalModel(loadLocalModelForBudgetStrategyEngine);
         } catch {
-            initializeBudgetStrategyEngine(activeStrategy, budgetData, runningModels, loadLocalModelForBudgetStrategyEngine);
+            initializeBudgetStrategyEngine(activeStrategy, budgetData, runningModels, allModels, loadLocalModelForBudgetStrategyEngine);
         }
-    }, [activeStrategy, budgetData, runningModels, loadLocalModelForBudgetStrategyEngine]);
+    }, [activeStrategy, budgetData, allModels, runningModels, loadLocalModelForBudgetStrategyEngine]);
 
     const loadSteps = useMemo<LoadStep[]>(() => [
         { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatsLoading },
