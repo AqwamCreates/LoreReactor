@@ -34,7 +34,7 @@ import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useFrontCamera } from '../hooks/useFrontCamera';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, BudgetStrategy, InteractionData, ChatMessage, MultiplayerData, HistoryMessage, cloudBackend, WhisperMessage } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, InteractionData, ChatMessage, MultiplayerData, HistoryMessage, cloudBackend, WhisperMessage } from '../types';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
 import { useActionMenu } from '../hooks/useActionMenu';
