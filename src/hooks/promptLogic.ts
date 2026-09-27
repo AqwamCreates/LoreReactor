@@ -1152,7 +1152,11 @@ function buildLocationLines(ctx: PromptBuildContext): { lines: string[]; images:
 
         const reachable = getReachableLocationsByCharacter(ctx.interactionData, ctx.character);
         if (reachable.length > 0) {
-            const reachableNames = reachable.map(r => r.location.name || 'Unknown Location');
+            const reachableNames = reachable.map(r => replacePlaceholders(
+                r.location.name || 'Unknown Location',
+                ctx.characterParticipantTag, ctx.characterName,
+                ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+            ));
             lines.push(`${ctx.delimiters.blockStart('system')}From ${locationName}, I can travel to: ${reachableNames.join(', ')}.${ctx.delimiters.blockEnd}`);
         }
 
@@ -1394,7 +1398,11 @@ export function createChatHistoryPrompt(
             seenSummaries.add(msg.id);
             const msgLoc = msg.locationIndex;
             if (msgLoc !== undefined && msgLoc !== currentLocationIndex) {
-                const locName = locs[msgLoc]?.name || 'Unknown Location';
+                const locName = replacePlaceholders(
+                    locs[msgLoc]?.name || 'Unknown Location',
+                    ctx.characterParticipantTag, ctx.characterName,
+                    ctx.coLocatedProtagonists, participants, ctx.knownNames,
+                );
                 locationVisitSummaries.push({
                     characterName: msg.character.name,
                     locationName: locName,
@@ -1428,7 +1436,12 @@ export function createChatHistoryPrompt(
     }
 
     if (currentLocation) {
-        chatHistoryLines.push(`${ctx.delimiters.turnStart('system')}[Scene: ${currentLocation.name}]${ctx.delimiters.turnEnd}`);
+        const sceneName = replacePlaceholders(
+            currentLocation.name || 'Unknown Location',
+            ctx.characterParticipantTag, ctx.characterName,
+            ctx.coLocatedProtagonists, participants, ctx.knownNames,
+        );
+        chatHistoryLines.push(`${ctx.delimiters.turnStart('system')}[Scene: ${sceneName}]${ctx.delimiters.turnEnd}`);
     }
 
     for (const p of outputMessages) {
@@ -1477,12 +1490,6 @@ const VOLATILE_BLOCK_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Groups assembled prompt lines into structured OpenAIMessage[] ordered by volatility.
- * Respects inputStrategy ordering within each tier.
- * When minimalVolatileCacheMode is true, volatile sections are forced to the end
- * regardless of inputStrategy placement.
- */
-/**
  * Groups blockMap entries into structured OpenAIMessage[] ordered by volatility.
  * Respects inputStrategy ordering within each tier.
  * When minimalVolatileCacheMode is true, volatile sections are forced to the end
@@ -1494,12 +1501,10 @@ function buildStructuredMessages(
     minimalVolatileCacheMode: boolean,
     existingCharacterText: string,
 ): OpenAIMessage[] {
-    // Classify each inputStrategy entry as static or volatile
     const staticEntries: string[] = [];
     const volatileEntries: string[] = [];
 
     for (const entry of inputStrategy) {
-        // Skip template entries — they restructure everything and are handled separately
         if (entry === 'Model Instruction Template' ||
             entry === 'Model Chat Template' ||
             entry === 'Model Chat-Instruction Template') {
@@ -1513,7 +1518,6 @@ function buildStructuredMessages(
         }
     }
 
-    // Determine final ordering based on minimalVolatileCacheMode
     const orderedEntries = minimalVolatileCacheMode
         ? [...staticEntries, ...volatileEntries]
         : inputStrategy.filter(e =>
@@ -1522,7 +1526,6 @@ function buildStructuredMessages(
             e !== 'Model Chat-Instruction Template'
         );
 
-    // Group lines into messages by volatility tier
     const staticLines: string[] = [];
     const semiStableLines: string[] = [];
     const historyLines: string[] = [];
@@ -1542,7 +1545,6 @@ function buildStructuredMessages(
         } else if (entry === 'Context' || entry === 'Starter Prompt') {
             semiStableLines.push(...lines);
         } else {
-            // System Prompt, Think Prompt, Meta Think, Appearance, Dialogue, custom blocks
             staticLines.push(...lines);
         }
     }
@@ -1760,9 +1762,14 @@ export async function buildPrompt(
         character.clothings ?? [], characterClothingWearingStatuses,
     );
     if (visibleClothingDescriptions.length > 0) {
-        const clothingLines = visibleClothingDescriptions.map(desc =>
-            `${delimiters.blockStart('system')}${desc}${delimiters.blockEnd}`
-        );
+        const clothingLines = visibleClothingDescriptions.map(desc => {
+            const replaced = replacePlaceholders(
+                desc,
+                ctx.characterParticipantTag, ctx.characterName,
+                ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+            );
+            return `${delimiters.blockStart('system')}${replaced}${delimiters.blockEnd}`;
+        });
         if (appearancePromptLines.length >= 2) {
             appearancePromptLines.splice(appearancePromptLines.length - 1, 0, ...clothingLines);
         } else {
@@ -1894,7 +1901,6 @@ export async function buildPrompt(
     const protagonistIdSet = ctx.protagonistIds;
     const currentLocationId = ctx.currentLocation?.id;
 
-    // Collect custom prompt block lines keyed by their ID for blockMap integration
     for (const block of allPromptBlocks) {
         if (!isPromptBlockCharacterBound(block, ctx.characterId)) continue;
         if (block.contextBindings && block.contextBindings.length > 0) {
@@ -1922,7 +1928,6 @@ export async function buildPrompt(
             }
         }
 
-        // Add custom block lines to blockMap so they participate in structured message grouping
         const replacedText = replacePlaceholders(
             block.textContent,
             ctx.characterParticipantTag,
@@ -1933,13 +1938,11 @@ export async function buildPrompt(
         );
         const blockLines = [`${delimiters.blockStart('system')}${replacedText}${delimiters.blockEnd}`];
 
-        // Custom blocks are treated as static content unless explicitly named as volatile
         if (!blockMap[block.id]) {
             blockMap[block.id] = blockLines;
         }
     }
 
-    // Check if any model template overrides the entire prompt structure
     const hasTemplateOverride = inputStrategy.some(e =>
         e === 'Model Chat Template' ||
         e === 'Model Instruction Template' ||
@@ -1949,7 +1952,6 @@ export async function buildPrompt(
     let messages: OpenAIMessage[];
 
     if (hasTemplateOverride) {
-        // Template mode: assemble flat string using template logic, wrap as single message
         const effectiveInstructionTemplateKey = activeModel?.instructionTemplate;
         const resolvedInstructionTemplate = effectiveInstructionTemplateKey ? getModelTemplate(effectiveInstructionTemplateKey) : undefined;
 
@@ -2042,7 +2044,6 @@ export async function buildPrompt(
         const flatPrompt = promptLines.join('\n').replaceAll('{{text}}', existingCharacterText);
         messages = [{ role: 'user', content: flatPrompt }];
     } else {
-        // Structured message mode: group by volatility tier
         messages = buildStructuredMessages(
             blockMap,
             inputStrategy,
