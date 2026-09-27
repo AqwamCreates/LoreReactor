@@ -344,7 +344,7 @@ export class BudgetStrategyEngine {
         // Binary labels per FM
         this.censorshipFactorizationMachine.trainOne(x, outcome.censored    ? 1 : 0);
         this.acceptanceFactorizationMachine.trainOne(x, outcome.accepted    ? 1 : 0);
-        this.rateLimitFactorizationMachine.trainOne (x, outcome.rateLimited ? 1 : 0);
+        this.rateLimitFactorizationMachine.trainOne(x, outcome.rateLimited ? 1 : 0);
 
         this.fmSampleCounter++;
         if (this.fmSampleCounter % 10 === 0) {
