@@ -118,7 +118,7 @@ export class BudgetStrategyEngine {
     private loadLocalModel: ((id: string) => Promise<number | null>) | null;
     private engine = getLanguageModelEngine();
     private _lastSelectedModelId: string | null = null;
-    private _lastCacheMiss: boolean = false;
+    private _lastCacheMiss = false;
 
     constructor(
         strategy: BudgetStrategy,
