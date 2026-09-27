@@ -4,7 +4,7 @@ import { loadRawBudgetData, saveRawBudgetData } from '../storage/serverStorage';
 import { buildChatRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { detectName } from '../hooks/nameDetection';
 import { getFilteredChatMessages } from '../hooks/promptLogic';
-import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
+import { getBudgetStrategyEngine, type RequestMetadata } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { getEffectiveTools, initializeClothingWearingStatuses } from '../hooks/characterLogic';
 import { sentimentEngine } from './SentimentAnalysisEngine';
@@ -33,6 +33,7 @@ export interface TurnResult {
     rawText: string;
     displayText: string;
     isCompleted: boolean;
+    promptText?: string; // Captured prompt for FM regeneration correction
 }
 
 export interface TurnError {
@@ -62,6 +63,8 @@ export interface TurnExecutionParams {
     isMultiplayerClient?: boolean;
     /** Optional borrowed model from a peer for shared language model feature */
     borrowedModel?: LanguageModel | null;
+    /** Metadata for FM feature extraction */
+    metadata?: RequestMetadata;
 }
 
 
@@ -140,7 +143,7 @@ export class CharacterActor {
             data, character, signal,
             selectedModel, runningModels, activeStrategy,
             strategyOverride, existingCharacterText, allPromptBlocks, callbacks,
-            isMultiplayerClient, borrowedModel,
+            isMultiplayerClient, borrowedModel, metadata,
         } = params;
 
         // Multiplayer clients must never generate locally.
@@ -165,31 +168,17 @@ export class CharacterActor {
         let lastIsCompleted = true;
 
         // Only create a new message for non-resume turns.
-        // During resume, the partial message already exists in history and is
-        // updated incrementally by useChatEngine's onDisplayText callback.
-        // Message lifecycle (creation, finalization) is owned by the session layer.
         const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
 
-        // Filter chat messages using message filter triggers from contexts, locations,
-        // and prompt blocks. This is the single source of truth for which messages the
-        // character can "see/hear." Used by both name detection and prompt building.
         const filteredMessages = getFilteredChatMessages(data, character.id, allPromptBlocks);
-
-        // Detect name reveals from filtered (visible) messages ONCE at the start of the turn.
-        // This produces the character's current accumulated name knowledge, which is used
-        // for both prompt building and stored on the resulting message.
         const knownCharacterNames = detectName(character, filteredMessages);
 
-        // Resolve clothing wearing statuses upfront so they're available for
-        // both the prompt build and the message creation. We call buildChatRequestBody
-        // once here just for the clothing statuses; the actual streaming calls below
-        // will call it again with potentially updated state after tool processing.
         let resolvedClothingStatuses: Record<string, boolean> = initializeClothingWearingStatuses(character);
         if (!isResuming) {
             const probeModelId = borrowedModel
                 ? borrowedModel.id
                 : strat
-                    ? ((await getBudgetStrategyEngine().selectModelForRequest({ prompt: '' }))?.modelId || '')
+                    ? ((await getBudgetStrategyEngine().selectModelForRequest({ prompt: '' }, metadata))?.modelId || '')
                     : (selectedModel?.id || '');
             if (probeModelId) {
                 try {
@@ -209,6 +198,7 @@ export class CharacterActor {
             let currentExistingText = existingCharacterText || '';
             let accumulatedDisplayText = '';
             let finalBudgetData: BudgetData | null = null;
+            let lastPromptText = ''; // Capture prompt for FM regeneration correction
 
             const createStreamCallbacks = (
                 streamToolParser: ToolInvocationParser,
@@ -229,8 +219,6 @@ export class CharacterActor {
 
                     callbacks?.onDisplayText(displayOut);
 
-                    // Sentiment analysis runs incrementally per-chunk during streaming.
-                    // This is the single source of truth for expression detection.
                     const enableExpression = data.Profile?.enableCharacterExpression ?? false;
                     if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
                         const sentiment = await sentimentEngine.analyze(s.fullText);
@@ -337,13 +325,33 @@ export class CharacterActor {
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
-                    const selection = await bse.selectModelForRequest({ prompt: '' });
+                    // Build a probe body to extract the raw prompt text for FM feature extraction
+                    const { body: probeBody } = await buildChatRequestBody(
+                        data, character, knownCharacterNames, currentExistingText, allPromptBlocks, ''
+                    );
+                    let promptText = '';
+                    if (typeof probeBody.prompt === 'string') {
+                        promptText = probeBody.prompt;
+                    } else if (Array.isArray(probeBody.messages)) {
+                        promptText = probeBody.messages
+                            .map((m: any) => (typeof m.content === 'string' ? m.content : ''))
+                            .join('\n');
+                    }
+                    lastPromptText = promptText; // Store for return
+
+                    // Select model with FM metadata
+                    const selection = await bse.selectModelForRequest({ prompt: promptText }, metadata);
                     const activeModelId = selection?.modelId || '';
 
-                    const { body } = await buildChatRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId);
+                    const { body } = await buildChatRequestBody(
+                        data, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId
+                    );
 
                     const cb = callbacks ? createStreamCallbacks(streamToolParser, accumulator) : undefined;
-                    const streamResult = await bse.generateStream(body, { signal } as AbortController, cb);
+                    
+                    // Generate stream with FM metadata. 
+                    // Note: BudgetStrategyEngine internally calls recordOutcome() on success/failure/censorship.
+                    const streamResult = await bse.generateStream(body, { signal } as AbortController, cb, metadata);
                     rawText = streamResult.text;
                     lastIsCompleted = streamResult.isCompleted;
 
@@ -464,12 +472,13 @@ export class CharacterActor {
                 updatedData = data;
             } else {
                 // Normal mode: finalize the pre-created message and add to history.
-                // knownCharacterNames was already set on aiMessage at creation time.
                 if (aiMessage) {
                     aiMessage.textContent = displayText;
                     aiMessage.characterExpression = latestExpression ?? undefined;
+                    updatedData = addMessageToInteractionData(data, aiMessage);
+                } else {
+                    updatedData = data;
                 }
-                updatedData = addMessageToInteractionData(data, aiMessage!);
             }
 
             return {
@@ -483,6 +492,7 @@ export class CharacterActor {
                     rawText: rawText,
                     displayText,
                     isCompleted: lastIsCompleted,
+                    promptText: lastPromptText, // Pass prompt back for FM regeneration correction
                 },
             };
         } catch (error) {

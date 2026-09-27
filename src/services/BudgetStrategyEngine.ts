@@ -2,12 +2,33 @@
 import type { BudgetStrategy, BudgetData, LanguageModel } from '../types';
 import { getLanguageModelEngine, type StreamCallbacks, type StreamResult } from './LanguageModelEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
+import { FactorizationMachine, type SparseVector } from '../libraries/factorizationMachine';
+import { FeatureExtractor } from './FeatureExtractor';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
 export interface RunningModelState {
     isRunning: boolean;
     port?: number;
+}
+
+/** Per-request metadata fed to the FM for feature extraction */
+export interface RequestMetadata {
+    numberOfImages?: number;
+    numberOfMessages?: number;
+    numberOfRequestsDuringTheLastHour?: number;
+}
+
+/** Outcome of a single model request, used for online FM training */
+export interface RequestOutcome {
+    modelId: string;
+    prompt: string;
+    metadata: RequestMetadata;
+    success: boolean;       // request completed without throwing
+    accepted: boolean;      // user did not regenerate (tracked externally; defaults true here)
+    censored: boolean;      // model returned a refusal / safety block
+    rateLimited: boolean;   // hit 429 / quota
+    broken: boolean;        // empty / malformed response
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -109,7 +130,22 @@ function isFreeModel(model: LanguageModel): boolean {
            pricing.outputPerMillion <= 0;
 }
 
+// ─── Storage Keys ────────────────────────────────────────────────────
+
+const FM_STORAGE_KEY_CENSORSHIP = 'loreReactor_factorization_machine_censorship';
+const FM_STORAGE_KEY_ACCEPTANCE = 'loreReactor_factorization_machine_acceptance';
+const FM_STORAGE_KEY_RATELIMIT  = 'loreReactor_factorization_machine_ratelimit';
+
 // ─── Engine ──────────────────────────────────────────────────────────
+
+/** Number of uses at which quality score confidence saturates to 1.0 */
+const QUALITY_CONFIDENCE_THRESHOLD = 20;
+
+/** Weight of the FM signal in the final rank score (0 = pure tier, 1 = pure FM) */
+const FM_BLEND_WEIGHT = 0.4;
+
+/** Minimum total samples before FM signal is trusted (below this, falls back to aggregate) */
+const FM_MIN_SAMPLES_FOR_CONFIDENCE = 5;
 
 export class BudgetStrategyEngine {
     private strategy: BudgetStrategy;
@@ -119,6 +155,13 @@ export class BudgetStrategyEngine {
     private allModelsById: Map<string, LanguageModel>;
     private engine = getLanguageModelEngine();
     private _lastSelectedModelId: string | null = null;
+
+    // ── Factorization Machines (online-learned, per-outcome) ──
+    private censorshipFactorizationMachine: FactorizationMachine;
+    private acceptanceFactorizationMachine: FactorizationMachine;
+    private rateLimitFactorizationMachine:  FactorizationMachine;
+    private featureExtractor: FeatureExtractor;
+    private fmSampleCounter: number = 0;
 
     constructor(
         strategy: BudgetStrategy,
@@ -138,7 +181,29 @@ export class BudgetStrategyEngine {
         if (!this.budgetData.modelRegenerationCount) this.budgetData.modelRegenerationCount = {};
 
         applyResetIfDue(this.budgetData);
+
+        // Initialize FMs: 8 latent factors, online-friendly config
+        const fmConfig = {
+            numFactors: 8,
+            learningRate: 0.01,
+            regBias: 0.0001,
+            regWeight: 0.001,
+            regLatent: 0.001,
+            epochs: 1,
+            initLatentSigma: 0.01,
+            batchSize: 1,
+            verbose: false,
+        } as const;
+
+        this.censorshipFactorizationMachine = new FactorizationMachine({ ...fmConfig, task: 'classification' });
+        this.acceptanceFactorizationMachine = new FactorizationMachine({ ...fmConfig, task: 'classification' });
+        this.rateLimitFactorizationMachine  = new FactorizationMachine({ ...fmConfig, task: 'classification' });
+        this.featureExtractor = new FeatureExtractor();
+
+        this.loadFMsFromStorage();
     }
+
+    // ── Setters ───────────────────────────────────────────────────────
 
     setStrategy(strategy: BudgetStrategy): void { this.strategy = strategy; }
 
@@ -159,13 +224,42 @@ export class BudgetStrategyEngine {
         this.allModelsById = new Map(allModels.map(m => [m.id, m]));
     }
 
-    setLoadLocalModel(loadLocalModel: (id: string) => Promise<number | null>): void { this.loadLocalModel = loadLocalModel; }
+    setLoadLocalModel(loadLocalModel: (id: string) => Promise<number | null>): void {
+        this.loadLocalModel = loadLocalModel;
+    }
+
     getBudgetData(): BudgetData { return this.budgetData; }
     getLastSelectedModelId(): string | null { return this._lastSelectedModelId; }
 
-    /**
-     * Resolve model objects from the unified modelIds list.
-     */
+    // ── FM Persistence ────────────────────────────────────────────────
+
+    private loadFMsFromStorage(): void {
+        try {
+            const censorRaw = localStorage.getItem(FM_STORAGE_KEY_CENSORSHIP);
+            if (censorRaw) this.censorshipFactorizationMachine = FactorizationMachine.fromJSON(JSON.parse(censorRaw));
+
+            const acceptRaw = localStorage.getItem(FM_STORAGE_KEY_ACCEPTANCE);
+            if (acceptRaw) this.acceptanceFactorizationMachine = FactorizationMachine.fromJSON(JSON.parse(acceptRaw));
+
+            const rateRaw = localStorage.getItem(FM_STORAGE_KEY_RATELIMIT);
+            if (rateRaw) this.rateLimitFactorizationMachine = FactorizationMachine.fromJSON(JSON.parse(rateRaw));
+        } catch (e) {
+            console.warn('[BudgetEngine] Failed to load FM models from storage, using fresh instances:', e);
+        }
+    }
+
+    private saveFMsToStorage(): void {
+        try {
+            localStorage.setItem(FM_STORAGE_KEY_CENSORSHIP, JSON.stringify(this.censorshipFactorizationMachine.toJSON()));
+            localStorage.setItem(FM_STORAGE_KEY_ACCEPTANCE, JSON.stringify(this.acceptanceFactorizationMachine.toJSON()));
+            localStorage.setItem(FM_STORAGE_KEY_RATELIMIT,  JSON.stringify(this.rateLimitFactorizationMachine.toJSON()));
+        } catch (e) {
+            console.warn('[BudgetEngine] Failed to persist FM models:', e);
+        }
+    }
+
+    // ── Model resolution ──────────────────────────────────────────────
+
     private getSelectedModels(): LanguageModel[] {
         const models: LanguageModel[] = [];
         for (const id of this.strategy.modelIds) {
@@ -175,10 +269,6 @@ export class BudgetStrategyEngine {
         return models;
     }
 
-    /**
-     * Determine which models are currently active based on per-model
-     * activation/deactivation context size windows.
-     */
     private getActiveModels(currentTokens: number): LanguageModel[] {
         const selectedModels = this.getSelectedModels();
         return selectedModels.filter(model => {
@@ -192,7 +282,82 @@ export class BudgetStrategyEngine {
         });
     }
 
-    async selectModelForRequest(requestBody: Record<string, unknown>): Promise<{ model: LanguageModel; modelId: string } | null> {
+    // ── Feature extraction ────────────────────────────────────────────
+
+    /**
+     * Build a sparse feature vector for a (model, prompt, metadata) triple.
+     * The model identity is injected explicitly so the same prompt can be scored
+     * against multiple candidate models.
+     */
+    private buildFeaturesForModel(
+        model: LanguageModel,
+        prompt: string,
+        metadata: RequestMetadata,
+    ): SparseVector {
+        const baseFeatures = this.featureExtractor.extract(model, prompt, metadata);
+        return this.censorshipFactorizationMachine.buildSparseVector(baseFeatures);
+    }
+
+    // ── FM prediction ─────────────────────────────────────────────────
+
+    /**
+     * FM-derived score in [0, 1]:
+     *   score = P(accepted) × (1 − P(censored)) × (1 − P(rateLimited))
+     *
+     * Higher is better. When FMs are untrained (cold start), all predictions
+     * hover near 0.5 and the score stays near 0.5 × 0.5 × 0.5 ≈ 0.125 —
+     * effectively a tie, so tier-based ranking dominates.
+     */
+    private predictFMScore(
+        model: LanguageModel,
+        prompt: string,
+        metadata: RequestMetadata,
+    ): number {
+        const x = this.buildFeaturesForModel(model, prompt, metadata);
+        const pAccept   = this.acceptanceFactorizationMachine.predictOne(x);
+        const pCensor   = this.censorshipFactorizationMachine.predictOne(x);
+        const pRateLim  = this.rateLimitFactorizationMachine.predictOne(x);
+        return pAccept * (1 - pCensor) * (1 - pRateLim);
+    }
+
+    /**
+     * FM confidence: how much we trust the FM signal for this model.
+     * Grows linearly with sample count, saturates at 1.0 after MIN_SAMPLES.
+     */
+    private fmConfidenceFor(modelId: string): number {
+        const uses = this.budgetData.modelUsedCount?.[modelId] ?? 0;
+        return Math.min(1, uses / FM_MIN_SAMPLES_FOR_CONFIDENCE);
+    }
+
+    // ── Online learning ───────────────────────────────────────────────
+
+    /**
+     * Record the outcome of a single request and update all 3 FMs.
+     * Also persists FMs to storage every ~10 updates to amortize I/O.
+     */
+    recordOutcome(outcome: RequestOutcome): void {
+        const model = this.allModelsById.get(outcome.modelId);
+        if (!model) return;
+
+        const x = this.buildFeaturesForModel(model, outcome.prompt, outcome.metadata);
+
+        // Binary labels per FM
+        this.censorshipFactorizationMachine.trainOne(x, outcome.censored    ? 1 : 0);
+        this.acceptanceFactorizationMachine.trainOne(x, outcome.accepted    ? 1 : 0);
+        this.rateLimitFactorizationMachine.trainOne (x, outcome.rateLimited ? 1 : 0);
+
+        this.fmSampleCounter++;
+        if (this.fmSampleCounter % 10 === 0) {
+            this.saveFMsToStorage();
+        }
+    }
+
+    // ── Candidate selection ───────────────────────────────────────────
+
+    async selectModelForRequest(
+        requestBody: Record<string, unknown>,
+        metadata: RequestMetadata = {},
+    ): Promise<{ model: LanguageModel; modelId: string } | null> {
         const failedIds = new Set<string>();
 
         const promptText = (requestBody.prompt as string) || '';
@@ -212,7 +377,7 @@ export class BudgetStrategyEngine {
             return null;
         }
 
-        const best = this.rankCandidates(candidates, requiredContextTokens)[0];
+        const best = this.rankCandidates(candidates, requiredContextTokens, promptText, metadata)[0];
         if (!best) return null;
 
         const loaded = await this.ensureModelLoaded(best);
@@ -234,23 +399,21 @@ export class BudgetStrategyEngine {
         });
     }
 
-    /**
-     * Compute user-driven quality score for a model.
-     * Quality = generations / max(1, regenerations).
-     * Higher = better (fewer regenerations per generation).
-     * Returns 0 for models with no usage.
-     */
+    // ── Quality scores ────────────────────────────────────────────────
+
     getModelQualityScore(modelId: string): number {
         const used = this.budgetData.modelUsedCount?.[modelId] ?? 0;
         const regens = this.budgetData.modelRegenerationCount?.[modelId] ?? 0;
 
         if (used === 0) return 0;
-        return (used - regens) / Math.max(1, regens);
+
+        const effectiveRegens = Math.min(regens, used);
+        const acceptanceRate = (used - effectiveRegens) / used;
+        const confidence = Math.min(1, used / QUALITY_CONFIDENCE_THRESHOLD);
+
+        return acceptanceRate * confidence;
     }
 
-    /**
-     * Get quality scores for all models that have been used.
-     */
     getModelQualityScores(): Record<string, number> {
         const scores: Record<string, number> = {};
         const usedCounts = this.budgetData.modelUsedCount || {};
@@ -262,33 +425,49 @@ export class BudgetStrategyEngine {
         return scores;
     }
 
-    /**
-     * Record a regeneration event for a specific model.
-     * Called by the UI/session layer when user regenerates a message.
-     */
-    recordRegeneration(modelId: string): void {
+    recordRegeneration(modelId: string, prompt: string, metadata: RequestMetadata): void {
+        // 1. Aggregate counter
         if (!this.budgetData.modelRegenerationCount) {
             this.budgetData.modelRegenerationCount = {};
         }
         this.budgetData.modelRegenerationCount[modelId] =
             (this.budgetData.modelRegenerationCount[modelId] ?? 0) + 1;
         this.budgetData.lastUpdatedTimestamp = Date.now();
+
+        // 2. FM Correction: Train acceptance FM with 0 (not accepted)
+        const model = this.allModelsById.get(modelId);
+        if (model) {
+            const x = this.buildFeaturesForModel(model, prompt, metadata);
+            this.acceptanceFactorizationMachine.trainOne(x, 0);
+            
+            this.fmSampleCounter++;
+            if (this.fmSampleCounter % 10 === 0) {
+                this.saveFMsToStorage();
+            }
+        }
     }
 
+    // ── Ranking ───────────────────────────────────────────────────────
+
     /**
-     * Rank candidates using the four-tier system plus observed user-driven quality.
-     * 
-     * Sorting order:
-     *   1. Quality Tier:             higher = preferred (descending: B - A)
-     *   2. Cost Tier:                lower = preferred  (ascending:  A - B)
-     *   3. Latency Tier:             higher = preferred (descending: B - A)
-     *   4. TTFT Tier:                higher = preferred (descending: B - A)
-     *   5. Observed quality score:   higher = preferred (descending: B - A)
-     *   6. Observed composite quality (descending: B - A)
-     *   7. Context fit factor        (descending: B - A)
-     *   8. Random tiebreaker
+     * Rank candidates using the four-tier system, observed user-driven quality,
+     * and FM-derived prediction scores.
+     *
+     * Tiers 1–4 are the primary sort keys (hard ordering from strategy config).
+     * When tiers are tied, we blend:
+     *   - Aggregate quality score (historical baseline, works with few samples)
+     *   - FM prediction score (conditional on this request's content/context)
+     *   - Composite quality (speed, reliability, context fit)
+     *
+     * The FM weight is scaled by per-model confidence so untrained models
+     * fall back gracefully to aggregate metrics.
      */
-    private rankCandidates(candidates: LanguageModel[], requiredContextTokens: number): LanguageModel[] {
+    private rankCandidates(
+        candidates: LanguageModel[],
+        requiredContextTokens: number,
+        prompt: string,
+        metadata: RequestMetadata,
+    ): LanguageModel[] {
         const sorted = [...candidates];
         sorted.sort((a, b) => {
             // 1. Quality tier: higher = preferred
@@ -311,31 +490,49 @@ export class BudgetStrategyEngine {
             const ttftB = this.strategy.modelTimeToFirstTokenTiers?.[b.id] ?? 0;
             if (ttftA !== ttftB) return ttftB - ttftA;
 
-            // 5. Observed user-driven quality score (generations / max(1, regenerations))
-            const observedQualityA = this.getModelQualityScore(a.id);
-            const observedQualityB = this.getModelQualityScore(b.id);
-            if (Math.abs(observedQualityA - observedQualityB) > 0.01) return observedQualityB - observedQualityA;
+            // ── Tiers tied: blend FM + aggregate + composite ──
 
-            // 6. Observed composite quality
-            const scoreA = this.computeCompositeQuality(a, requiredContextTokens);
-            const scoreB = this.computeCompositeQuality(b, requiredContextTokens);
-            if (Math.abs(scoreA - scoreB) > 0.0001) return scoreB - scoreA;
+            // Per-model FM confidence (based on sample count)
+            const confA = this.fmConfidenceFor(a.id);
+            const confB = this.fmConfidenceFor(b.id);
 
-            // 7. Context fit
+            // FM predictions (conditional on this request)
+            const fmScoreA = this.predictFMScore(a, prompt, metadata);
+            const fmScoreB = this.predictFMScore(b, prompt, metadata);
+
+            // Aggregate quality (historical)
+            const aggA = this.getModelQualityScore(a.id);
+            const aggB = this.getModelQualityScore(b.id);
+
+            // Composite quality (speed × reliability × context fit)
+            const compA = this.computeCompositeQuality(a, requiredContextTokens);
+            const compB = this.computeCompositeQuality(b, requiredContextTokens);
+
+            // Blended score: FM × (w × confidence) + agg × (1 − w × confidence)
+            // When confidence is 0, pure aggregate. When 1, mostly FM.
+            const w = FM_BLEND_WEIGHT;
+            const blendA = (w * confA) * fmScoreA + (1 - w * confA) * aggA + 0.1 * compA;
+            const blendB = (w * confB) * fmScoreB + (1 - w * confB) * aggB + 0.1 * compB;
+
+            if (Math.abs(blendA - blendB) > 0.0001) return blendB - blendA;
+
+            // Context fit as final tiebreaker
             const fitA = this.getContextFitFactor(a, requiredContextTokens);
             const fitB = this.getContextFitFactor(b, requiredContextTokens);
             if (Math.abs(fitA - fitB) > 0.01) return fitB - fitA;
 
-            // 8. Random tiebreaker
             return Math.random() - 0.5;
         });
         return sorted;
     }
 
+    // ── Streaming generation ──────────────────────────────────────────
+
     async generateStream(
         requestBody: Record<string, unknown>,
         abortController: AbortController,
         callbacks?: StreamCallbacks,
+        metadata: RequestMetadata = {},
     ): Promise<StreamResult> {
         const failedIds = new Set<string>();
 
@@ -356,7 +553,7 @@ export class BudgetStrategyEngine {
 
         while (!abortController.signal.aborted) {
             const candidates = this.getEligibleCandidates(requiredContextTokens, failedIds);
-            const ranked = this.rankCandidates(candidates, requiredContextTokens);
+            const ranked = this.rankCandidates(candidates, requiredContextTokens, promptText, metadata);
 
             if (ranked.length === 0) {
                 const freeModel = this.selectFreeModel(failedIds, requiredContextTokens);
@@ -371,6 +568,13 @@ export class BudgetStrategyEngine {
                 if (!loaded) {
                     failedIds.add(selectedModel.id);
                     this.recordError(selectedModel.id);
+                    this.recordOutcome({
+                        modelId: selectedModel.id,
+                        prompt: promptText,
+                        metadata,
+                        success: false, accepted: false,
+                        censored: false, rateLimited: false, broken: false,
+                    });
                     console.warn(`Model ${selectedModel.name} could not be loaded, skipping.`);
                     break;
                 }
@@ -415,14 +619,33 @@ export class BudgetStrategyEngine {
                     if (!fullOutput) {
                         this.recordBroken(selectedModel.id);
                         failedIds.add(selectedModel.id);
+                        this.recordOutcome({
+                            modelId: selectedModel.id,
+                            prompt: promptText,
+                            metadata,
+                            success: false, accepted: false,
+                            censored: false, rateLimited: false, broken: true,
+                        });
                         console.warn(`Model ${selectedModel.name} returned empty/broken response, rotating.`);
                         break;
                     }
 
-                    if (isCensorshipRefusal(result.text)) {
+                    const censored = isCensorshipRefusal(result.text);
+                    if (censored) {
                         this.recordCensorship(selectedModel.id);
                         console.warn(`Model ${selectedModel.name} returned censorship refusal — returning text as-is.`);
                     }
+
+                    this.recordOutcome({
+                        modelId: selectedModel.id,
+                        prompt: promptText,
+                        metadata,
+                        success: true,
+                        accepted: true,  // refined externally by regenerateFromMessage
+                        censored,
+                        rateLimited: false,
+                        broken: false,
+                    });
 
                     return { text: fullOutput, isCompleted: result.isCompleted, cachedTokens: result.cachedTokens };
                 } catch (e) {
@@ -433,11 +656,25 @@ export class BudgetStrategyEngine {
 
                     if (!isQuotaError(e)) {
                         this.recordError(selectedModel.id);
+                        this.recordOutcome({
+                            modelId: selectedModel.id,
+                            prompt: promptText,
+                            metadata,
+                            success: false, accepted: false,
+                            censored: false, rateLimited: false, broken: false,
+                        });
                         throw e;
                     }
 
                     failedIds.add(selectedModel.id);
                     this.recordQuotaError(selectedModel.id);
+                    this.recordOutcome({
+                        modelId: selectedModel.id,
+                        prompt: promptText,
+                        metadata,
+                        success: false, accepted: false,
+                        censored: false, rateLimited: true, broken: false,
+                    });
                     console.warn(`Model ${selectedModel.name} hit quota/rate limit after partial output (${accumulatedPartialText.length} chars), rotating.`);
                     break;
                 }
@@ -453,6 +690,7 @@ export class BudgetStrategyEngine {
     async generateCompletion(
         requestBody: Record<string, unknown>,
         abortSignal?: AbortSignal,
+        metadata: RequestMetadata = {},
     ): Promise<{ text: string; modelId: string }> {
         const failedIds = new Set<string>();
 
@@ -461,7 +699,7 @@ export class BudgetStrategyEngine {
 
         while (!abortSignal?.aborted) {
             const candidates = this.getEligibleCandidates(requiredContextTokens, failedIds);
-            const ranked = this.rankCandidates(candidates, requiredContextTokens);
+            const ranked = this.rankCandidates(candidates, requiredContextTokens, promptText, metadata);
 
             if (ranked.length === 0) {
                 const freeModel = this.selectFreeModel(failedIds, requiredContextTokens);
@@ -502,7 +740,8 @@ export class BudgetStrategyEngine {
                         break;
                     }
 
-                    if (isCensorshipRefusal(result.text)) {
+                    const censored = isCensorshipRefusal(result.text);
+                    if (censored) {
                         this.recordCensorship(selectedModel.id);
                         console.warn(`Completion model ${selectedModel.name} returned censorship refusal — returning text as-is.`);
                     }
@@ -535,7 +774,7 @@ export class BudgetStrategyEngine {
         return { text: '', modelId: '' };
     }
 
-    // ─── Observed Performance Metrics ────────────────────────────────
+    // ── Observed Performance Metrics ────────────────────────────────
 
     private getModelSpeed(modelId: string): number { return this.budgetData.modelAverageLatencyMsPerToken?.[modelId] ?? Number.POSITIVE_INFINITY; }
     private getModelTTFT(modelId: string): number { return this.budgetData.modelAverageTimeToFirstToken?.[modelId] ?? Number.POSITIVE_INFINITY; }
@@ -586,7 +825,7 @@ export class BudgetStrategyEngine {
         return ranked[0] ?? null;
     }
 
-    // ─── Recording ───────────────────────────────────────────────────
+    // ── Recording ───────────────────────────────────────────────────
 
     private recordSuccess(modelId: string, cost: number): void {
         this.budgetData.budgetSpent += cost;
@@ -640,7 +879,7 @@ export class BudgetStrategyEngine {
         this.budgetData.modelTotalSessionDuration[modelId] = (this.budgetData.modelTotalSessionDuration[modelId] ?? 0) + durationMs;
     }
 
-    // ─── Model Loading ───────────────────────────────────────────────
+    // ── Model Loading ───────────────────────────────────────────────
 
     private isModelReady(model: LanguageModel): boolean {
         const isCloud = !!model.apiKey && !!model.backend;
@@ -663,6 +902,22 @@ export class BudgetStrategyEngine {
             }
         } catch (e) { console.warn(`Failed to auto-load model ${model.name}:`, e); }
         return false;
+    }
+
+    // ── Introspection ─────────────────────────────────────────────────
+
+    /** Get feature importances for the censorship FM (useful for debugging / dashboard) */
+    getCensorshipFeatureImportance(): Map<string, number> {
+        return this.censorshipFactorizationMachine.featureImportance();
+    }
+
+    getcensorshipFactorizationMachine(): FactorizationMachine { return this.censorshipFactorizationMachine; }
+    getacceptanceFactorizationMachine(): FactorizationMachine { return this.acceptanceFactorizationMachine; }
+    getrateLimitFactorizationMachine(): FactorizationMachine { return this.rateLimitFactorizationMachine; }
+
+    /** Force-persist FM models to storage (e.g., on app shutdown) */
+    persistFMs(): void {
+        this.saveFMsToStorage();
     }
 }
 

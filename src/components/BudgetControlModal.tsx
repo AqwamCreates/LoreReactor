@@ -19,7 +19,10 @@ const RESET_PRESETS = [
     { label: 'Monthly', value: 30 * 24 * 60 * 60 * 1000 },
 ];
 
-type SortField = 'name' | 'speed' | 'ttft' | 'reliability' | 'spent' | 'uses' | 'errors' | 'censorship' | 'broken' | 'duration';
+/** Number of uses at which quality score confidence saturates to 1.0 */
+const QUALITY_CONFIDENCE_THRESHOLD = 20;
+
+type SortField = 'name' | 'speed' | 'ttft' | 'reliability' | 'quality' | 'spent' | 'uses' | 'regenerations' | 'errors' | 'censorship' | 'broken' | 'duration';
 type SortDirection = 'asc' | 'desc';
 
 function formatCost(value: number): string {
@@ -78,12 +81,30 @@ function getLatestTimestamp(obj?: Record<string, number>): number | undefined {
     return Math.max(...values);
 }
 
+/**
+ * Compute user-driven quality score matching BudgetStrategyEngine.getModelQualityScore().
+ * Formula: acceptanceRate × confidence
+ *   acceptanceRate = (used - effectiveRegens) / used   (0 to 1)
+ *   confidence = min(1, used / QUALITY_CONFIDENCE_THRESHOLD)  (0 to 1)
+ *   effectiveRegens = min(regens, used)  (clamped)
+ * Returns 0 for models with no usage.
+ */
+function computeQualityScore(used: number, regens: number): number {
+    if (used === 0) return 0;
+    const effectiveRegens = Math.min(regens, used);
+    const acceptanceRate = (used - effectiveRegens) / used;
+    const confidence = Math.min(1, used / QUALITY_CONFIDENCE_THRESHOLD);
+    return acceptanceRate * confidence;
+}
+
 interface ModelRow {
     id: string;
     name: string;
     speed: number;
     ttft: number;
     uses: number;
+    regenerations: number;
+    qualityScore: number;
     quotaHits: number;
     errorHits: number;
     censorshipHits: number;
@@ -121,7 +142,7 @@ export function BudgetControlModal({
     const [isSaving, setIsSaving] = useState(false);
     const [speedAlpha, setSpeedAlpha] = useState<string>('');
     const [ttftAlpha, setTtftAlpha] = useState<string>('');
-    const [sortField, setSortField] = useState<SortField>('uses');
+    const [sortField, setSortField] = useState<SortField>('quality');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
     const currentStrategy = activeStrategy ?? null;
@@ -162,18 +183,22 @@ export function BudgetControlModal({
         const rows: ModelRow[] = [];
         for (const id of strategyModelIds) {
             const uses = budgetData.modelUsedCount?.[id] ?? 0;
+            const regenerations = budgetData.modelRegenerationCount?.[id] ?? 0;
             const quotaHits = budgetData.modelQuotaHitCount?.[id] ?? 0;
             const errorHits = budgetData.modelErrorHitCount?.[id] ?? 0;
             const censorshipHits = budgetData.modelCensorshipHitCount?.[id] ?? 0;
             const brokenHits = budgetData.modelBrokenCount?.[id] ?? 0;
             const totalHits = quotaHits + errorHits;
             const reliability = uses > 0 ? Math.min(1, totalHits / uses) : 0;
+            const qualityScore = computeQualityScore(uses, regenerations);
             rows.push({
                 id,
                 name: strategyNameMap.get(id) || id.substring(0, 8),
                 speed: budgetData.modelAverageLatencyMsPerToken?.[id] ?? Number.POSITIVE_INFINITY,
                 ttft: budgetData.modelAverageTimeToFirstToken?.[id] ?? Number.POSITIVE_INFINITY,
                 uses,
+                regenerations,
+                qualityScore,
                 quotaHits,
                 errorHits,
                 censorshipHits,
@@ -189,6 +214,7 @@ export function BudgetControlModal({
 
     const aggregateStats = useMemo(() => {
         const totalUses = modelRows.reduce((sum, r) => sum + r.uses, 0);
+        const totalRegenerations = modelRows.reduce((sum, r) => sum + r.regenerations, 0);
         const totalQuotaHits = modelRows.reduce((sum, r) => sum + r.quotaHits, 0);
         const totalErrorHits = modelRows.reduce((sum, r) => sum + r.errorHits, 0);
         const totalCensorshipHits = modelRows.reduce((sum, r) => sum + r.censorshipHits, 0);
@@ -200,9 +226,14 @@ export function BudgetControlModal({
         const avgSpeed = speedValues.length > 0 ? speedValues.reduce((a, b) => a + b, 0) / speedValues.length : 0;
         const avgTtft = ttftValues.length > 0 ? ttftValues.reduce((a, b) => a + b, 0) / ttftValues.length : 0;
         const overallReliability = totalUses > 0 ? Math.min(1, (totalQuotaHits + totalErrorHits) / totalUses) : 0;
+        const overallQuality = computeQualityScore(totalUses, totalRegenerations);
         const successfulCount = Math.max(0, totalUses - totalQuotaHits - totalErrorHits);
         const successPct = totalUses > 0 ? Math.round((successfulCount / totalUses) * 100) : 0;
-        return { totalUses, totalQuotaHits, totalErrorHits, totalCensorshipHits, totalBrokenHits, totalSpent, totalDuration, avgSpeed, avgTtft, overallReliability, successfulCount, successPct };
+        return {
+            totalUses, totalRegenerations, totalQuotaHits, totalErrorHits,
+            totalCensorshipHits, totalBrokenHits, totalSpent, totalDuration,
+            avgSpeed, avgTtft, overallReliability, overallQuality, successfulCount, successPct,
+        };
     }, [modelRows]);
 
     const sortedRows = useMemo(() => {
@@ -214,8 +245,10 @@ export function BudgetControlModal({
                 case 'speed': cmp = a.speed - b.speed; break;
                 case 'ttft': cmp = a.ttft - b.ttft; break;
                 case 'reliability': cmp = a.reliability - b.reliability; break;
+                case 'quality': cmp = a.qualityScore - b.qualityScore; break;
                 case 'spent': cmp = a.spent - b.spent; break;
                 case 'uses': cmp = a.uses - b.uses; break;
+                case 'regenerations': cmp = a.regenerations - b.regenerations; break;
                 case 'errors': cmp = (a.quotaHits + a.errorHits) - (b.quotaHits + b.errorHits); break;
                 case 'censorship': cmp = a.censorshipHits - b.censorshipHits; break;
                 case 'broken': cmp = a.brokenHits - b.brokenHits; break;
@@ -410,6 +443,24 @@ export function BudgetControlModal({
                                                 </span>
                                             </div>
                                             <div className="budget-stat-row">
+                                                <span className="budget-stat-label">Regenerations</span>
+                                                <span className="budget-stat-value" style={{ color: aggregateStats.totalRegenerations > 0 ? '#f59e0b' : undefined }}>
+                                                    {aggregateStats.totalRegenerations}
+                                                </span>
+                                            </div>
+                                            <div className="budget-stat-row">
+                                                <span className="budget-stat-label">Quality Score</span>
+                                                <span className="budget-stat-value" style={{
+                                                    color: aggregateStats.overallQuality >= 0.8 ? '#10b981'
+                                                         : aggregateStats.overallQuality >= 0.5 ? '#f59e0b'
+                                                         : aggregateStats.totalUses > 0 ? '#ef4444'
+                                                         : undefined,
+                                                    fontWeight: 'bold',
+                                                }}>
+                                                    {aggregateStats.totalUses > 0 ? `${Math.round(aggregateStats.overallQuality * 100)}%` : '—'}
+                                                </span>
+                                            </div>
+                                            <div className="budget-stat-row">
                                                 <span className="budget-stat-label">Censorship Hits</span>
                                                 <span className="budget-stat-value" style={{ color: '#a855f7' }}>{aggregateStats.totalCensorshipHits}</span>
                                             </div>
@@ -456,9 +507,11 @@ export function BudgetControlModal({
                                                     <thead>
                                                         <tr>
                                                             <th onClick={() => handleSort('name')}>Model{sortIndicator('name')}</th>
+                                                            <th className="sort-right" onClick={() => handleSort('quality')}>Quality{sortIndicator('quality')}</th>
+                                                            <th className="sort-right" onClick={() => handleSort('uses')}>Uses{sortIndicator('uses')}</th>
+                                                            <th className="sort-right" onClick={() => handleSort('regenerations')}>Regen{sortIndicator('regenerations')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('speed')}>Speed{sortIndicator('speed')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('ttft')}>TTFT{sortIndicator('ttft')}</th>
-                                                            <th className="sort-right" onClick={() => handleSort('uses')}>Uses{sortIndicator('uses')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('duration')}>Duration{sortIndicator('duration')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('reliability')}>Rel%{sortIndicator('reliability')}</th>
                                                             <th className="sort-right" onClick={() => handleSort('spent')}>Spent{sortIndicator('spent')}</th>
@@ -471,12 +524,24 @@ export function BudgetControlModal({
                                                         {sortedRows.map(row => {
                                                             const relPct = row.uses > 0 ? Math.max(0, Math.round((1 - Math.min(1, row.reliability)) * 100)) : null;
                                                             const relColor = relPct === null ? undefined : relPct >= 95 ? '#10b981' : relPct >= 80 ? '#f59e0b' : '#ef4444';
+                                                            const qualityPct = row.uses > 0 ? Math.round(row.qualityScore * 100) : null;
+                                                            const qualityColor = qualityPct === null ? undefined
+                                                                : qualityPct >= 80 ? '#10b981'
+                                                                : qualityPct >= 50 ? '#f59e0b'
+                                                                : '#ef4444';
+                                                            const confidencePct = row.uses > 0 ? Math.min(100, Math.round((row.uses / QUALITY_CONFIDENCE_THRESHOLD) * 100)) : 0;
                                                             return (
                                                                 <tr key={row.id}>
                                                                     <td className="name-cell" title={row.name}>{row.name}</td>
+                                                                    <td className="num" style={{ color: qualityColor, fontWeight: 'bold' }} title={row.uses > 0 ? `Acceptance × Confidence (${confidencePct}%)` : 'No data'}>
+                                                                        {qualityPct !== null ? `${qualityPct}%` : '—'}
+                                                                    </td>
+                                                                    <td className="num">{row.uses}</td>
+                                                                    <td className="num" style={{ color: row.regenerations > 0 ? '#f59e0b' : undefined }}>
+                                                                        {row.regenerations > 0 ? row.regenerations : '—'}
+                                                                    </td>
                                                                     <td className="num">{Number.isFinite(row.speed) && row.speed > 0 ? formatMs(row.speed) : '—'}</td>
                                                                     <td className="num">{Number.isFinite(row.ttft) && row.ttft > 0 ? formatMs(row.ttft) : '—'}</td>
-                                                                    <td className="num">{row.uses}</td>
                                                                     <td className="num">{row.totalSessionDuration > 0 ? formatSessionDuration(row.totalSessionDuration) : '—'}</td>
                                                                     <td className="num" style={{ color: relColor }}>{relPct !== null ? `${relPct}%` : '—'}</td>
                                                                     <td className="num">{row.spent > 0 ? `$${formatCost(row.spent)}` : '—'}</td>
@@ -489,7 +554,13 @@ export function BudgetControlModal({
                                                     </tbody>
                                                 </table>
                                             </div>
-                                            <div className="budget-hint">Showing only models in active strategy. Click headers to sort. Rel% = 100 − (hits ÷ uses). Cens = censorship refusals. Brkn = empty responses.</div>
+                                            <div className="budget-hint">
+                                                Quality = acceptance rate × confidence ({QUALITY_CONFIDENCE_THRESHOLD} uses for full confidence).
+                                                Regen = user-initiated regenerations.
+                                                Rel% = 100 − (quota+error hits ÷ uses).
+                                                Cens = censorship refusals. Brkn = empty responses.
+                                                Click headers to sort. Default sort: Quality (descending).
+                                            </div>
                                         </div>
                                     )}
 

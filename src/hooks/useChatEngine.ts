@@ -4,7 +4,7 @@ import type { Character, InteractionData, PromptBlock, BudgetStrategy, BudgetDat
 import { CharacterActor } from '../services/CharacterActor';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngine';
-import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
+import { getBudgetStrategyEngine, type RequestMetadata } from '../services/BudgetStrategyEngine';
 import { saveRawInteractionData } from '../storage/serverStorage';
 import { updatePartialMessageInInteractionData } from './chatLogic';
 
@@ -14,6 +14,8 @@ const autonomousEngine = new AutonomousSimulationEngine();
 export interface HandleServerResponseResult {
     interactionData: InteractionData;
     isCompleted: boolean;
+    /** Raw prompt text captured during generation, used for FM regeneration correction */
+    promptText?: string;
 }
 
 interface EngineDependencies {
@@ -44,6 +46,7 @@ export function useChatEngine(deps: EngineDependencies) {
         strategyOverride?: BudgetStrategy | null,
         existingCharacterText?: string,
         allPromptBlocks?: PromptBlock[],
+        metadata?: RequestMetadata,
     ): Promise<HandleServerResponseResult | null> => {
         const selectedModel = getState().selectedModel;
         const runningModels = getState().runningModels;
@@ -89,6 +92,7 @@ export function useChatEngine(deps: EngineDependencies) {
             strategyOverride, existingCharacterText, allPromptBlocks: allPromptBlocks ?? [], 
             callbacks,
             borrowedModel,
+            metadata,
         });
 
         if ('error' in outcome) {
@@ -124,18 +128,33 @@ export function useChatEngine(deps: EngineDependencies) {
             ? (getState().interactionData ?? result.updatedData)
             : result.updatedData;
         
-        return { interactionData: effectiveData, isCompleted: result.isCompleted };
+        return {
+            interactionData: effectiveData,
+            isCompleted: result.isCompleted,
+            promptText: result.promptText,
+        };
     }, [getState, setStreamingState, setStats, setCurrentCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast, requestBorrowedModel]);
 
     const runTurn = useCallback(async (
         initialData: InteractionData,
         signal: AbortController,
         promptBlocks?: PromptBlock[],
-    ): Promise<{ interactionData: InteractionData; isCompleted: boolean }> => {
+        metadata?: RequestMetadata,
+    ): Promise<{ interactionData: InteractionData; isCompleted: boolean; promptText?: string }> => {
+        // Capture promptText from the last executed turn in the sequence
+        let lastPromptText: string | undefined = undefined;
+
         // Matches TurnExecutor: (data, character, signal, onToken)
         const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken: (t: string) => void) => {
             setStreamingState(c, '');
-            return handleServerResponse(d, c, s, onToken, undefined, '', promptBlocks);
+            const result = await handleServerResponse(d, c, s, onToken, undefined, '', promptBlocks, metadata);
+            
+            // Store the prompt text from this turn
+            if (result?.promptText) {
+                lastPromptText = result.promptText;
+            }
+            
+            return result;
         };
 
         const result = await runTurnSequence(
@@ -150,7 +169,12 @@ export function useChatEngine(deps: EngineDependencies) {
         if (result) {
             await saveRawInteractionData(result.interactionData);
             setInteractionData(result.interactionData);
-            return result;
+            
+            return {
+                interactionData: result.interactionData,
+                isCompleted: result.isCompleted,
+                promptText: lastPromptText, // Propagate the captured prompt text
+            };
         }
         return { interactionData: initialData, isCompleted: true };
     }, [handleServerResponse, setStreamingState, setInteractionData]);
@@ -165,7 +189,8 @@ export function useChatEngine(deps: EngineDependencies) {
         const executor = async (d: InteractionData, c: Character, s: AbortSignal) => {
             resetStream();
             setStreamingState(c, '');
-            return handleServerResponse(d, c, s, undefined, undefined, '');
+            // Autonomous mode passes empty metadata since there's no user context
+            return handleServerResponse(d, c, s, undefined, undefined, '', undefined, {});
         };
         autonomousEngine.start(executor, checkCanAct, getData, setData);
     }, [handleServerResponse, setStreamingState]);
