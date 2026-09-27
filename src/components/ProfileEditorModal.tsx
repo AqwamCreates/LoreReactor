@@ -1,6 +1,6 @@
 // src/components/ProfileEditorModal.tsx
 import { useState, useMemo, useCallback, type CSSProperties } from 'react';
-import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, Sampler, StopPattern, tristateInteger } from '../types';
+import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType } from '../types';
 import { SliderInput } from './SliderInput';
 import '../main.css';
 import { defaultInputStrategy, defaultProfileTools } from '../dictionaries/defaults';
@@ -16,12 +16,23 @@ interface ProfileEditorModalProps {
     allStopPatterns?: StopPattern[];
 }
 
-const CACHE_LEVEL_DESCRIPTIONS = [
-    'No injection.',
-    'Inject all participant names upfront.',
-    'Inject all participant names + all system prompts upfront.',
-    'Inject all participant names + system prompts + think prompts upfront.',
-];
+const CACHE_EFFICIENCY_DESCRIPTIONS: Record<cacheEfficiencyConfigurationType, string[]> = {
+    'Character Name': [
+        'No optimization. Names resolved dynamically per turn.',
+        'Freeze names for co-located participants only.',
+        'Freeze names for all participants regardless of location.',
+    ],
+    'System Prompt': [
+        'Only current character\'s system prompt injected.',
+        'Inject co-located participants\' system prompts upfront.',
+        'Inject ALL participants\' system prompts upfront.',
+    ],
+    'Think Prompt': [
+        'Only current character\'s think prompt injected.',
+        'Inject co-located participants\' think prompts upfront.',
+        'Inject ALL participants\' think prompts upfront.',
+    ],
+};
 
 const STRATEGY_DESCRIPTIONS: Record<SummarizationStrategyType, string> = {
     'Sliding Window Replace': 'Replace old messages with per-message summaries beyond the window size.',
@@ -110,7 +121,7 @@ const STEP_DESC_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6, font
 const INPUT_RIGHT_STYLE: CSSProperties = { textAlign: 'right' as const };
 const FIELD_HINT_STYLE: CSSProperties = { fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' };
 
-type ProfileTabId = 'general' | 'injection' | 'behaviour' | 'tools' | 'pipeline' | 'model';
+type ProfileTabId = 'general' | 'injection' | 'behaviour' | 'tools' | 'pipeline' | 'cache' | 'model';
 
 function ProfileCheckbox({ checked, onChange, label, hint, spaced = false }: { checked: boolean; onChange: (checked: boolean) => void; label: string; hint?: string; spaced?: boolean }) {
     return (
@@ -184,7 +195,6 @@ function ProfileEditorContent({
     const [memoryRetentionWeight, setMemoryRetentionWeight] = useState<number>(ep?.memoryRetentionWeight ?? -1);
     const [contextSensitivity, setContextSensitivity] = useState<number>(ep?.contextSensitivity ?? -1);
     const [maximumActionStamina, setMaximumActionStamina] = useState<number>(ep?.maximumActionStamina ?? -1);
-    const [cacheLevel, setCacheLevel] = useState<number>(ep?.cacheInvalidationReductionLevel ?? 0);
     const [doNotInjectDefaultStopTokens, setDoNotInjectDefaultStopTokens] = useState(ep?.doNotInjectDefaultStopTokens ?? false);
     const [volume, setVolume] = useState<number>(ep?.volume ?? -1);
     const [stripThinkTokens, setStripThinkTokens] = useState(ep?.stripThinkTokens ?? false);
@@ -208,6 +218,13 @@ function ProfileEditorContent({
     const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
     const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
 
+    // ─── Cache Efficiency State ─────────────────────────────────────
+    const defaultCacheLevels: Record<cacheEfficiencyConfigurationType, number> = { 'Character Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
+    const [cacheEfficiencyLevels, setCacheEfficiencyLevels] = useState<Record<cacheEfficiencyConfigurationType, number>>(
+        ep?.cacheEfficiencyLevels ?? { ...defaultCacheLevels }
+    );
+    const [minimalVolatileCacheMode, setMinimalVolatileCacheMode] = useState<boolean>(ep?.minimalVolatileCacheMode ?? false);
+
     const promptBlockById = useMemo(() => {
         const map = new Map<string, PromptBlock>();
         for (const pb of allPromptBlocks) map.set(pb.id, pb);
@@ -222,6 +239,9 @@ function ProfileEditorContent({
 
     const handleToolChange = (toolName: tool, value: tristateInteger) => setTools(prev => ({ ...prev, [toolName]: value }));
     const handleNarrateToggle = (type: textType, checked: boolean) => setNarrateTexts(prev => ({ ...prev, [type]: checked }));
+    const handleCacheLevelChange = (category: cacheEfficiencyConfigurationType, value: number) => {
+        setCacheEfficiencyLevels(prev => ({ ...prev, [category]: Math.round(value) }));
+    };
 
     // ─── Tool Bulk Actions ──────────────────────────────────────────
     const handleSelectAllTools = useCallback(() => {
@@ -268,7 +288,9 @@ function ProfileEditorContent({
             forceEqualInitiative, chatProbability, maximumChatStamina,
             nameSensitivity, skipProbability, chatImpatienceSensitivity,
             memoryRetentionWeight, contextSensitivity, maximumActionStamina,
-            cacheInvalidationReductionLevel: cacheLevel, doNotInjectDefaultStopTokens,
+            cacheEfficiencyLevels: { ...cacheEfficiencyLevels },
+            minimalVolatileCacheMode,
+            doNotInjectDefaultStopTokens,
             volume, stripThinkTokens, tools: { ...tools },
             narrateTexts: { ...narrateTexts },
             inputStrategy: [...inputStrategy],
@@ -347,8 +369,11 @@ function ProfileEditorContent({
         { id: 'behaviour', label: 'Behaviour', icon: '🧠' },
         { id: 'tools', label: 'Tools', icon: '🔧' },
         { id: 'pipeline', label: 'Pipeline', icon: '🔄' },
+        { id: 'cache', label: 'Cache', icon: '⚡' },
         { id: 'model', label: 'Model', icon: '⚙️' },
     ];
+
+    const cacheCategories: cacheEfficiencyConfigurationType[] = ['Character Name', 'System Prompt', 'Think Prompt'];
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -546,12 +571,53 @@ function ProfileEditorContent({
                         </>
                     )}
 
+                    {/* ─── CACHE TAB ─── */}
+                    {activeTab === 'cache' && (
+                        <>
+                            <div className="editor-section">
+                                <span className="editor-section-title">Cache Efficiency Levels</span>
+                                <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '12px' }}>
+                                    Control how much participant content is frozen into the static prompt prefix for provider-side caching. Each category is independent. Higher levels improve cache hit rates at the cost of including more content upfront.
+                                </div>
+                                {cacheCategories.map(category => (
+                                    <div key={category} style={{ marginBottom: '16px' }}>
+                                        <div style={SLIDER_HEADER_STYLE}>
+                                            <label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>{category}</label>
+                                            <span style={SLIDER_VALUE_STYLE}>
+                                                {cacheEfficiencyLevels[category] === 0 ? '(No optimization)' : cacheEfficiencyLevels[category] === 1 ? '(Co-located only)' : '(All participants)'}
+                                            </span>
+                                        </div>
+                                        <SliderInput
+                                            label=""
+                                            value={cacheEfficiencyLevels[category]}
+                                            minimumValue={0}
+                                            maximumValue={2}
+                                            stepValue={1}
+                                            decimals={0}
+                                            onChange={(val) => handleCacheLevelChange(category, val)}
+                                            description={CACHE_EFFICIENCY_DESCRIPTIONS[category][Math.round(cacheEfficiencyLevels[category])] || ''}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="editor-section">
+                                <span className="editor-section-title">Volatile Section Ordering</span>
+                                <ProfileCheckbox
+                                    checked={minimalVolatileCacheMode}
+                                    onChange={setMinimalVolatileCacheMode}
+                                    label="Minimal Volatile Cache Mode"
+                                    hint="When enabled, volatile sections (date/time, weather, fatigue, inventory, tools, location) are forced to the end of the prompt regardless of input strategy ordering. This maximizes the stable prefix for provider-side caching. When disabled, your configured prompt block order is respected exactly as-is."
+                                />
+                            </div>
+                        </>
+                    )}
+
                     {/* ─── MODEL TAB ─── */}
                     {activeTab === 'model' && (
                         <>
                             <div className="editor-section">
                                 <span className="editor-section-title">Language Model Handling</span>
-                                <div style={{ marginBottom: '12px' }}><div style={SLIDER_HEADER_STYLE}><span className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Cache Invalidation Reduction</span></div><SliderInput label="" value={cacheLevel} minimumValue={0} maximumValue={3} stepValue={1} decimals={0} onChange={(val) => setCacheLevel(Math.round(val))} description={CACHE_LEVEL_DESCRIPTIONS[Math.round(cacheLevel)] || ''} /></div>
                                 <ProfileCheckbox checked={doNotInjectDefaultStopTokens} onChange={setDoNotInjectDefaultStopTokens} label="Do Not Inject Default Stop Tokens" hint="Prevent default stop tokens from being injected into the request. Only custom stop patterns will be used." />
                             </div>
 

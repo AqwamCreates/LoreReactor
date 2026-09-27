@@ -1,5 +1,5 @@
 // src/services/dataConverters.ts
-import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StopPattern, tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget, tristateInteger } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StopPattern, tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget, tristateInteger, cacheEfficiencyConfigurationType } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';
 import type { GeneratedOutput } from './dataTypes';
@@ -378,6 +378,20 @@ function fillPromptBlockDefaults(b: Record<string, unknown>): PromptBlock {
     };
 }
 
+function parseCacheEfficiencyLevels(raw: unknown): Record<cacheEfficiencyConfigurationType, number> {
+    const defaults: Record<cacheEfficiencyConfigurationType, number> = { 'Character Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
+    const obj = raw as Record<string, unknown>;
+    const result = { ...defaults };
+    for (const key of Object.keys(defaults) as cacheEfficiencyConfigurationType[]) {
+        if (key in obj && typeof obj[key] === 'number') {
+            const val = Math.round(obj[key] as number);
+            result[key] = Math.max(0, Math.min(2, val));
+        }
+    }
+    return result;
+}
+
 function fillProfileDefaults(p: Record<string, unknown>): Profile {
     const now = Date.now();
     const rawNarrateTexts = (p.narrateTexts && typeof p.narrateTexts === 'object') ? p.narrateTexts as Record<string, unknown> : {};
@@ -416,7 +430,8 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         skipProbability: (p.skipProbability as number) ?? 0.1,
         memoryRetentionWeight: (p.memoryRetentionWeight as number) ?? 0.5,
         contextSensitivity: (p.contextSensitivity as number) ?? 0.5,
-        cacheInvalidationReductionLevel: (p.cacheInvalidationReductionLevel as number) ?? 0,
+        cacheEfficiencyLevels: parseCacheEfficiencyLevels(p.cacheEfficiencyLevels),
+        minimalVolatileCacheMode: (p.minimalVolatileCacheMode as boolean) ?? false,
         doNotInjectDefaultStopTokens: (p.doNotInjectDefaultStopTokens as boolean) ?? false,
         narrateTexts: {
             normal: (rawNarrateTexts.normal as boolean) ?? defaultNarrateTexts.normal,
@@ -434,7 +449,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
             id: ensureId(s),
             name: (s.name as string) || (s.strategyType as string) || '',
             description: (s.description as string) || undefined,
-            strategyType: (s.strategyType as Profile['summarizationSteps'] extends (infer T)[] ? T : never)['strategyType'] ?? 'Sliding Window Replace',
+            strategyType: (s.strategyType as Profile['summarizationSteps'] extends (infer T)[] ? T : never).strategyType ?? 'Sliding Window Replace',
             enabled: (s.enabled as boolean) ?? true,
             order: (s.order as number) ?? 0,
             slidingWindowSize: s.slidingWindowSize as number | undefined,

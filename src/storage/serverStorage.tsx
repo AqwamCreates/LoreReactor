@@ -14,6 +14,7 @@ import type {
   HistoryMessage,
   RawChatMessage,
   tristateInteger,
+  cacheEfficiencyConfigurationType,
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -901,7 +902,7 @@ const profileRepo = createRepository<Profile, RawProfile>({
         memoryRetentionWeight: -1,
         contextSensitivity: -1,
         maximumActionStamina: -1,
-        cacheInvalidationReductionLevel: 0,
+        cacheEfficiencyLevels: {} as Record<cacheEfficiencyConfigurationType, number>,
         doNotInjectDefaultStopTokens: false,
         stripThinkTokens: false,
         tools: {} as Record<tool, tristateInteger>,

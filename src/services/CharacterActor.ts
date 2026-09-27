@@ -1,6 +1,6 @@
 import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from '../storage/serverStorage';
-import { prepareRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
+import { buildChatRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { detectName } from '../hooks/nameDetection';
 import { getFilteredChatMessages } from '../hooks/promptLogic';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
@@ -180,7 +180,7 @@ export class CharacterActor {
         const knownCharacterNames = detectName(character, filteredMessages);
 
         // Resolve clothing wearing statuses upfront so they're available for
-        // both the prompt build and the message creation. We call prepareRequestBody
+        // both the prompt build and the message creation. We call buildChatRequestBody
         // once here just for the clothing statuses; the actual streaming calls below
         // will call it again with potentially updated state after tool processing.
         let resolvedClothingStatuses: Record<string, boolean> = initializeClothingWearingStatuses(character);
@@ -192,7 +192,7 @@ export class CharacterActor {
                     : (selectedModel?.id || '');
             if (probeModelId) {
                 try {
-                    const probeResult = await prepareRequestBody(data, character, knownCharacterNames, '', allPromptBlocks, probeModelId);
+                    const probeResult = await buildChatRequestBody(data, character, knownCharacterNames, '', allPromptBlocks, probeModelId);
                     resolvedClothingStatuses = probeResult.characterClothingWearingStatuses;
                 } catch { /* non-critical, keep initializeClothingWearingStatuses fallback */ }
             }
@@ -274,11 +274,11 @@ export class CharacterActor {
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
-                    const { body } = await prepareRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
+                    const { body } = await buildChatRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
                     rawText = await doStream(body);
 
                     if ((!rawText || !rawText) && !signal.aborted) {
-                        const { body: rb } = await prepareRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
+                        const { body: rb } = await buildChatRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
                         rawText = await doStream(rb);
                         if (!rawText || !rawText) {
                             return { error: { message: 'Empty response from borrowed model', type: 'inference' } };
@@ -336,7 +336,7 @@ export class CharacterActor {
                     const selection = await bse.selectModelForRequest({ prompt: '' });
                     const activeModelId = selection?.modelId || '';
 
-                    const { body } = await prepareRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId);
+                    const { body } = await buildChatRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId);
 
                     const cb = callbacks ? createStreamCallbacks(streamToolParser, accumulator) : undefined;
                     const streamResult = await bse.generateStream(body, { signal } as AbortController, cb);
@@ -414,11 +414,11 @@ export class CharacterActor {
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
-                    const { body } = await prepareRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
+                    const { body } = await buildChatRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
                     rawText = await doStream(body);
 
                     if ((!rawText || !rawText) && !signal.aborted) {
-                        const { body: rb } = await prepareRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
+                        const { body: rb } = await buildChatRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
                         rawText = await doStream(rb);
                         if (!rawText || !rawText) {
                             return { error: { message: 'Empty response from model', type: 'inference' } };

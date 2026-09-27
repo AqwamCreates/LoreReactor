@@ -678,6 +678,8 @@ export interface RawPromptBlock extends RawData {
 export type textType = "normal" | "quoted" | "bolded" | "italicized" | "parenthesized" | "bracketed" | "braced"
 
 export type toolUsageDisplayMode = "none" | "icon" | "simple" | "detailed" | "full" | "raw" // Default is none.
+
+export type cacheEfficiencyConfigurationType = 'Character Name' | 'System Prompt' | 'Think Prompt' // 0 -> No optimization, 1 -> Limited to co-located participants, 2 -> All participants
 export interface Profile extends ObjectData {
   autonomousMode: boolean;
   autonomousInteractionIntervalMs: number;
@@ -710,7 +712,8 @@ export interface Profile extends ObjectData {
   memoryRetentionWeight: number;
   contextSensitivity: number;
   maximumActionStamina: number;
-  cacheInvalidationReductionLevel: number;
+  cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number>;
+  minimalVolatileCacheMode: boolean // A switch that forces the input strategy to be locked to specific configuration to maximize cache efficiency.
   doNotInjectDefaultStopTokens: boolean;
   narrateTexts: Record<textType, boolean>;
   stripThinkTokens: boolean;
@@ -759,7 +762,8 @@ export interface RawProfile extends RawData {
   memoryRetentionWeight: number;
   maximumActionStamina: number;
   contextSensitivity: number;
-  cacheInvalidationReductionLevel: number;
+  cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number>;
+  minimalVolatileCacheMode: boolean // A switch that forces the input strategy to be locked to specific configuration to maximize cache efficiency.
   doNotInjectDefaultStopTokens: boolean;
   narrateTexts: Record<textType, boolean>;
   stripThinkTokens: boolean;

@@ -61,4 +61,5 @@ export interface ViewModeProps {
     closeActionMenu: () => void;
     deactivateToolbar: () => void;
     onStopGeneration: () => void;
+    canDelete: boolean;
 }

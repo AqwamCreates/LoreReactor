@@ -1,11 +1,12 @@
-import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock } from '../types';
+// src/services/ChatMessageSummarizationEngine.ts
+import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock, cacheEfficiencyConfigurationType } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import { createChatHistoryPrompt, getParticipantTag, replacePlaceholders, getUniversalMessageFilterFlags, getFilteredChatMessages, deriveDelimiters } from '../hooks/promptLogic';
 import { detectName } from '../hooks/nameDetection';
 import { buildRequestBody } from '../hooks/genericRequestBuilderLogic';
-import { getCoLocatedProtagonists } from '../hooks/locationLogic';
+import { getCoLocatedProtagonists, getCoLocatedParticipants } from '../hooks/locationLogic';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 
 const SUMMARIZE_SYSTEM_PROMPT = "You are a concise summarizer for roleplay chat messages. Given a single chat message, produce a brief summary that preserves: character actions, key dialogue points, emotional tone, and plot-relevant details. Output ONLY the summary text with no preamble, no markdown, no quotes.";
@@ -121,12 +122,18 @@ export async function generateCharacterMemory(
     const filteredMessages = getFilteredChatMessages(interactionData, character.id, allPromptBlocks);
     const knownCharacterNames = detectName(character, filteredMessages);
     const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
+    const coLocatedParticipants = getCoLocatedParticipants(interactionData, character);
 
     // ─── Get Dynamic Delimiters & Stop Tokens ───────────────────────
     const activeModel = getLanguageModelEngine().getContext();
     const effectiveChatTemplateKey = activeModel?.chatTemplate;
     const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
     const delimiters = deriveDelimiters(resolvedChatTemplate);
+
+    const profile = interactionData.Profile;
+    const cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number> =
+        profile?.cacheEfficiencyLevels ?? { 'Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
+    const minimalVolatileCacheMode = profile?.minimalVolatileCacheMode ?? false;
 
     const ctx = {
         interactionData,
@@ -138,13 +145,15 @@ export async function generateCharacterMemory(
         interactionHistory: history,
         participants,
         coLocatedProtagonists,
+        coLocatedParticipants,
         protagonistIds: new Set(coLocatedProtagonists.map(p => p.id)),
         characterId: character.id,
         characterParticipantId: participants.findIndex(p => p.id === character.id),
         characterParticipantTag: getParticipantTag(character, participants),
         characterName: character.name,
-        profile: interactionData.Profile,
-        cacheLevel: interactionData.Profile?.cacheInvalidationReductionLevel ?? 0,
+        profile,
+        cacheEfficiencyLevels,
+        minimalVolatileCacheMode,
         currentLocation: undefined,
         currentLocationIndex: undefined,
         characterIdArray: [] as string[],

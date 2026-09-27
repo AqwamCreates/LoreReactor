@@ -2,6 +2,8 @@
 import { localAddress } from "../configurations";
 import { cloudBackends, cloudEndpoints, cloudTokenizeEndpoints, localBackends, openAiCompatibleLocalBackends } from "../dictionaries/languageModelInformation";
 import type { backend, cloudBackend, LanguageModel, localBackend } from "../types";
+import { getCachingStrategy } from "./ProviderCachingStrategy";
+import type { OpenAIMessage as CacheOpenAIMessage } from "./ProviderCachingStrategy";
 
 export interface TokenStats {
   fullText: string;
@@ -39,6 +41,8 @@ interface ResolvedParams {
   maxTokens?: number;
   stop?: string[];
   extraParams?: Record<string, unknown>;
+  sessionId?: string;
+  messages?: CacheOpenAIMessage[]; // ← STRUCTURED
 }
 
 interface ResolvedRequest {
@@ -59,11 +63,6 @@ const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
 const TOKEN_CACHE_MAX_SIZE = 500;
 
 // ─── Raw API response shapes ────────────────────────────────────────
-
-interface OpenAIMessage {
-    role: string;
-    content: string;
-}
 
 interface OpenAIChoiceDelta {
     content?: string;
@@ -223,6 +222,8 @@ export class LanguageModelEngine {
     prompt: string,
     stream: boolean,
     params: ResolvedParams,
+    sessionId?: string,
+    incomingMessages?: CacheOpenAIMessage[], // ← STRUCTURED
   ): ResolvedRequest {
     let url: string;
     const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -246,9 +247,12 @@ export class LanguageModelEngine {
 
     const payloadModelName = modelPath || 'default-model';
 
+    // Use structured messages if provided, otherwise fall back to flat prompt
     const bodyObj: Record<string, unknown> = {
       model: payloadModelName,
-      messages: [{ role: "user", content: prompt }],
+      ...(incomingMessages // ← STRUCTURED
+        ? { messages: incomingMessages } // ← STRUCTURED
+        : { messages: [{ role: "user", content: prompt }] }), // ← STRUCTURED
       stream,
       temperature: params.temperature,
       top_p: params.top_p,
@@ -263,6 +267,20 @@ export class LanguageModelEngine {
     if (!STOP_UNSUPPORTED_BACKENDS.has(backendName) && params.stop && params.stop.length > 0) {
       bodyObj.stop = params.stop;
     }
+
+    // ─── Apply Provider Caching Strategy ────────────────────────────
+    const cacheStrategy = getCachingStrategy(backendName);
+    const cacheResult = cacheStrategy.apply({
+      backendName,
+      modelPath,
+      sessionId,
+      messages: (bodyObj.messages as CacheOpenAIMessage[]) ?? [{ role: 'user', content: prompt }],
+    });
+
+    if (cacheResult.headers) Object.assign(headers, cacheResult.headers);
+    if (cacheResult.bodyPatch) Object.assign(bodyObj, cacheResult.bodyPatch);
+    if (cacheResult.messages) bodyObj.messages = cacheResult.messages;
+    // ─────────────────────────────────────────────────────────────────
 
     const body = JSON.stringify(bodyObj);
 
@@ -342,7 +360,11 @@ export class LanguageModelEngine {
     const modelPath = this.model?.model;
 
     if (apiKey && backendName && cloudBackends.includes(backendName as cloudBackend)) {
-      return this.buildCloudRequest(apiKey, backendName, modelPath, finalPrompt, stream, params);
+      return this.buildCloudRequest(
+        apiKey, backendName, modelPath, finalPrompt, stream, params,
+        params.sessionId,
+        params.messages, // ← STRUCTURED
+      );
     }
 
     if (backendName && openAiCompatibleLocalBackends.has(backendName)) {
@@ -361,13 +383,17 @@ export class LanguageModelEngine {
     maxTokens?: number;
     stop?: string[];
     extraParams?: Record<string, unknown>;
+    sessionId?: string;
+    messages?: CacheOpenAIMessage[]; // ← STRUCTURED
   } {
     let prompt = (requestBody.prompt as string) || '';
-    if (!prompt && requestBody.messages) {
-      const messages = requestBody.messages as OpenAIMessage[];
-      const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
-      prompt = lastUserMsg?.content || '';
-    }
+    let messages: CacheOpenAIMessage[] | undefined; // ← STRUCTURED
+
+    if (requestBody.messages && Array.isArray(requestBody.messages)) { // ← STRUCTURED
+      messages = requestBody.messages as CacheOpenAIMessage[]; // ← STRUCTURED
+      const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user'); // ← STRUCTURED
+      prompt = (typeof lastUserMsg?.content === 'string' ? lastUserMsg.content : '') || ''; // ← STRUCTURED
+    } // ← STRUCTURED
 
     return {
       prompt,
@@ -376,6 +402,8 @@ export class LanguageModelEngine {
       maxTokens: (requestBody.n_predict as number) || (requestBody.max_tokens as number),
       stop: requestBody.stop as string[] | undefined,
       extraParams: requestBody.extra_cloud_params as Record<string, unknown> | undefined,
+      sessionId: requestBody.session_id as string | undefined,
+      messages, // ← STRUCTURED
     };
   }
 
@@ -577,7 +605,7 @@ export class LanguageModelEngine {
   async generateCompletion(
     requestBody: Record<string, unknown>,
   ): Promise<StreamResult> {
-    const { prompt, temperature, top_p, maxTokens, stop, extraParams } = this.extractFromRequestBody(requestBody);
+    const { prompt, temperature, top_p, maxTokens, stop, extraParams, sessionId, messages } = this.extractFromRequestBody(requestBody); // ← STRUCTURED
 
     try {
       const { url, headers, body } = this.resolveRequest(prompt, false, {
@@ -586,6 +614,8 @@ export class LanguageModelEngine {
         top_p: top_p,
         stop,
         extraParams,
+        sessionId,
+        messages, // ← STRUCTURED
       });
 
       const response = await fetch(url, { method: 'POST', headers, body });
@@ -594,7 +624,6 @@ export class LanguageModelEngine {
       const data = await response.json() as OpenAICompletionResponse;
       const text = this.extractContent(data) || '';
 
-      // Non-streaming completions are always complete — the server finished generating
       return { text, isCompleted: true };
     } catch (e) {
       console.warn('generateCompletion failed:', e);
@@ -612,7 +641,7 @@ export class LanguageModelEngine {
     existingText?: string,
   ): Promise<StreamResult> {
     const paragraphLimit = (maxParagraphs && maxParagraphs > 0) ? maxParagraphs : 0;
-    const { prompt, temperature, top_p, maxTokens, stop, extraParams } = this.extractFromRequestBody(requestBody);
+    const { prompt, temperature, top_p, maxTokens, stop, extraParams, sessionId, messages } = this.extractFromRequestBody(requestBody); // ← STRUCTURED
 
     const { url, headers, body } = this.resolveRequest(prompt, true, {
       temperature,
@@ -620,6 +649,8 @@ export class LanguageModelEngine {
       maxTokens,
       stop,
       extraParams,
+      sessionId,
+      messages, // ← STRUCTURED
     }, existingText);
 
     const requestStartTime = performance.now();
@@ -662,7 +693,6 @@ export class LanguageModelEngine {
       while (true) {
         const { value, done } = await reader.read();
 
-        // Stream ended naturally — generation is complete
         if (done) {
           return {
             text: fullContent,
@@ -681,7 +711,6 @@ export class LanguageModelEngine {
 
           const jsonStr = line.slice(6);
 
-          // [DONE] sentinel — generation is complete
           if (jsonStr === '[DONE]') {
             return {
               text: fullContent,
@@ -696,11 +725,8 @@ export class LanguageModelEngine {
             const json = JSON.parse(jsonStr) as OpenAIStreamChunk;
             let token = "";
 
-            // Check for finish_reason indicating natural completion
             const finishReason = json.choices?.[0]?.finish_reason;
             if (finishReason === 'stop' || finishReason === 'eos') {
-              // Model signaled natural completion via finish_reason
-              // Process any remaining content in this chunk first
               if (json.choices?.[0]?.delta?.content) {
                 token = json.choices[0].delta.content;
                 if (!hasReceivedNonWhitespace && !existingText) {

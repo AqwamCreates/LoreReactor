@@ -1,12 +1,13 @@
 // src/hooks/promptLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger, Clothing, Profile } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger, Clothing, Profile, cacheEfficiencyConfigurationType } from '../types';
 import type { ModelTemplate } from '../dictionaries/modelTemplates';
+import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
 import { fetchMultipleContextUrls } from '../services/linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
 import { toolStartSring, toolEndString } from '../dictionaries/stringList';
 import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
-import { getCoLocatedProtagonists, getReachableLocationsByCharacter } from './locationLogic';
+import { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter } from './locationLogic';
 import { defaultInputStrategy } from '../dictionaries/defaults';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { generateLocationVisitSummary } from '../services/ChatMessageSummarizationEngine';
@@ -72,7 +73,7 @@ export function deriveDelimiters(template?: ModelTemplate): PromptDelimiters {
     const parts = chatTemplate.split(contentPlaceholder);
     const beforeContent = parts[0] || '';
     const afterContent = parts[1] || '';
-    
+
     const hasRole = /{role}/i.test(beforeContent);
 
     const blockStart = (role: string) => {
@@ -105,13 +106,15 @@ interface PromptBuildContext {
     interactionHistory: HistoryMessage[];
     participants: Character[];
     coLocatedProtagonists: Character[];
+    coLocatedParticipants: Character[];
     protagonistIds: Set<string>;
     characterId: string;
     characterParticipantId: number;
     characterParticipantTag: string;
     characterName: string;
     profile: Profile | undefined;
-    cacheLevel: number;
+    cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number>;
+    minimalVolatileCacheMode: boolean;
     currentLocation: Location | undefined;
     currentLocationIndex: number | undefined;
 
@@ -119,7 +122,7 @@ interface PromptBuildContext {
     textContentArray: string[];
     combinationCache: CombinationCache;
     numberOfMessagesByParticipant: number;
-    
+
     delimiters: PromptDelimiters;
 }
 
@@ -251,9 +254,6 @@ export function findAllMessages(interactionData: InteractionData, characterId: s
 
 // ─── Whisper Visibility Helpers ─────────────────────────────────────
 
-/** Check if a message is visible to a given character.
- *  ChatMessages are visible to all co-located participants.
- *  WhisperMessages are only visible to the sender and targets. */
 function isMessageVisibleTo(msg: HistoryMessage, characterId: string): boolean {
     if (msg.messageType === 'chat') return true;
     if (msg.messageType === 'whisper') {
@@ -263,7 +263,6 @@ function isMessageVisibleTo(msg: HistoryMessage, characterId: string): boolean {
     return false;
 }
 
-/** Type guard: is this a text-bearing message (chat or whisper)? */
 function isTextMessage(msg: HistoryMessage): msg is ChatMessage | WhisperMessage {
     return msg.messageType === 'chat' || msg.messageType === 'whisper';
 }
@@ -886,13 +885,17 @@ function buildPromptContext(
     const interactionHistory = interactionData.interactionHistory;
     const participants = interactionData.participants;
     const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
+    const coLocatedParticipants = getCoLocatedParticipants(interactionData, character);
     const protagonistIds = new Set(coLocatedProtagonists.map(p => p.id));
     const characterId = character.id;
     const characterParticipantId = getParticipantId(character, participants);
     const characterParticipantTag = getParticipantTag(character, participants);
     const characterName = character.name;
     const profile = interactionData.Profile;
-    const cacheLevel = profile?.cacheInvalidationReductionLevel ?? 0;
+
+    const cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number> =
+        profile?.cacheEfficiencyLevels ?? { 'Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
+    const minimalVolatileCacheMode = profile?.minimalVolatileCacheMode ?? false;
 
     const characterIdArray: string[] = [];
     const textContentArray: string[] = [];
@@ -930,13 +933,15 @@ function buildPromptContext(
         interactionHistory,
         participants,
         coLocatedProtagonists,
+        coLocatedParticipants,
         protagonistIds,
         characterId,
         characterParticipantId,
         characterParticipantTag,
         characterName,
         profile,
-        cacheLevel,
+        cacheEfficiencyLevels,
+        minimalVolatileCacheMode,
         currentLocation,
         currentLocationIndex,
         characterIdArray,
@@ -954,9 +959,24 @@ function buildAppearanceLines(ctx: PromptBuildContext): string[] {
     const hasAnyAppearance = ctx.participants.some(p => p.appearancePrompt?.trim());
     if (!hasAnyAppearance) return lines;
 
+    const nameLevel = ctx.cacheEfficiencyLevels['Name'] ?? 0;
+
+    let participantsToRender: Character[];
+    if (nameLevel >= 2) {
+        participantsToRender = ctx.participants;
+    } else if (nameLevel >= 1) {
+        const coLocatedIds = new Set(ctx.coLocatedParticipants.map(p => p.id));
+        coLocatedIds.add(ctx.characterId);
+        participantsToRender = ctx.participants.filter(p => coLocatedIds.has(p.id));
+    } else {
+        participantsToRender = ctx.participants.filter(p => p.id === ctx.characterId);
+    }
+
+    if (participantsToRender.length === 0) return lines;
+
     lines.push(`${ctx.delimiters.blockStart('system')}Start Of The Characters' Appearances List.${ctx.delimiters.blockEnd}`);
 
-    for (const participant of ctx.participants) {
+    for (const participant of participantsToRender) {
         const appearancePrompt = participant.appearancePrompt;
         if (!appearancePrompt || !appearancePrompt.trim()) continue;
 
@@ -969,9 +989,10 @@ function buildAppearanceLines(ctx: PromptBuildContext): string[] {
             ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
         );
 
-        const roleStr = (ctx.cacheLevel > 0 || isCurrent || knownName) 
-            ? `${otherTag} (${knownName ?? participant.name})` 
-            : otherTag;
+        const useFrozenName = nameLevel >= 1 && !isCurrent;
+        const roleStr = useFrozenName
+            ? `${otherTag} (${knownName ?? participant.name})`
+            : (knownName ? `${otherTag} (${knownName})` : otherTag);
 
         const appearanceText = `${ctx.delimiters.blockStart(roleStr)}${finalAppearancePrompt}${ctx.delimiters.blockEnd}`;
         lines.push(appearanceText);
@@ -983,10 +1004,20 @@ function buildAppearanceLines(ctx: PromptBuildContext): string[] {
 
 function buildSystemPromptLines(ctx: PromptBuildContext): string[] {
     const lines: string[] = [];
+    const systemLevel = ctx.cacheEfficiencyLevels['System Prompt'] ?? 0;
     let systemPrompt = ctx.character.systemPrompt;
 
-    if (ctx.cacheLevel >= 2) {
+    if (systemLevel >= 2) {
         for (const p of ctx.participants) {
+            if (p.systemPrompt) {
+                lines.push(`${ctx.delimiters.blockStart('system')}${getParticipantTag(p, ctx.participants)} Prompt: ${replacePlaceholders(p.systemPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames)}${ctx.delimiters.blockEnd}`);
+            }
+        }
+    } else if (systemLevel >= 1) {
+        const coLocatedIds = new Set(ctx.coLocatedParticipants.map(p => p.id));
+        coLocatedIds.add(ctx.characterId);
+        for (const p of ctx.participants) {
+            if (!coLocatedIds.has(p.id)) continue;
             if (p.systemPrompt) {
                 lines.push(`${ctx.delimiters.blockStart('system')}${getParticipantTag(p, ctx.participants)} Prompt: ${replacePlaceholders(p.systemPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames)}${ctx.delimiters.blockEnd}`);
             }
@@ -1001,10 +1032,20 @@ function buildSystemPromptLines(ctx: PromptBuildContext): string[] {
 
 function buildThinkPromptLines(ctx: PromptBuildContext): string[] {
     const lines: string[] = [];
+    const thinkLevel = ctx.cacheEfficiencyLevels['Think Prompt'] ?? 0;
     let thinkPrompt = ctx.character.thinkPrompt;
 
-    if (ctx.cacheLevel >= 3) {
-        for (const p of ctx.interactionData.participants) {
+    if (thinkLevel >= 2) {
+        for (const p of ctx.participants) {
+            if (p.thinkPrompt) {
+                lines.push(`${ctx.delimiters.blockStart('system')}I am keeping this in mind as ${getParticipantTag(p, ctx.participants)}: ${replacePlaceholders(p.thinkPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames)}${ctx.delimiters.blockEnd}`);
+            }
+        }
+    } else if (thinkLevel >= 1) {
+        const coLocatedIds = new Set(ctx.coLocatedParticipants.map(p => p.id));
+        coLocatedIds.add(ctx.characterId);
+        for (const p of ctx.participants) {
+            if (!coLocatedIds.has(p.id)) continue;
             if (p.thinkPrompt) {
                 lines.push(`${ctx.delimiters.blockStart('system')}I am keeping this in mind as ${getParticipantTag(p, ctx.participants)}: ${replacePlaceholders(p.thinkPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames)}${ctx.delimiters.blockEnd}`);
             }
@@ -1385,11 +1426,11 @@ export function createChatHistoryPrompt(
         const knownName = getKnownDisplayName(otherCharacter, ctx.knownNames);
 
         const roleStr = knownName ? `${otherTag} (${knownName})` : otherTag;
-        
+
         const isWhisper = p.msg.messageType === 'whisper';
         const whisperSuffix = isWhisper ? ' [Whisper]' : '';
         const finalRoleStr = `${roleStr}${whisperSuffix}`;
-        
+
         let chatHistoryText = ctx.delimiters.turnStart(finalRoleStr);
 
         const replacedText = replacePlaceholders(
@@ -1412,10 +1453,119 @@ export function createChatHistoryPrompt(
     return { chatHistoryPrompt, hasBeenSummarized };
 }
 
+// ─── Volatile Section Classification ─────────────────────────────
+
+const VOLATILE_BLOCK_TYPES: ReadonlySet<string> = new Set([
+    'Location',
+    'Inventory',
+    'Weather',
+    'Date And Time',
+    'Time Elapsed',
+    'Fatigue Information',
+    'Tool Instructions',
+]);
+
+/**
+ * Groups assembled prompt lines into structured OpenAIMessage[] ordered by volatility.
+ * Respects inputStrategy ordering within each tier.
+ * When minimalVolatileCacheMode is true, volatile sections are forced to the end
+ * regardless of inputStrategy placement.
+ */
+/**
+ * Groups blockMap entries into structured OpenAIMessage[] ordered by volatility.
+ * Respects inputStrategy ordering within each tier.
+ * When minimalVolatileCacheMode is true, volatile sections are forced to the end
+ * regardless of inputStrategy placement.
+ */
+function buildStructuredMessages(
+    blockMap: Record<string, (string[] | undefined)>,
+    inputStrategy: (PromptBlockType | string)[],
+    minimalVolatileCacheMode: boolean,
+    existingCharacterText: string,
+): OpenAIMessage[] {
+    // Classify each inputStrategy entry as static or volatile
+    const staticEntries: string[] = [];
+    const volatileEntries: string[] = [];
+
+    for (const entry of inputStrategy) {
+        // Skip template entries — they restructure everything and are handled separately
+        if (entry === 'Model Instruction Template' ||
+            entry === 'Model Chat Template' ||
+            entry === 'Model Chat-Instruction Template') {
+            continue;
+        }
+
+        if (VOLATILE_BLOCK_TYPES.has(entry)) {
+            volatileEntries.push(entry);
+        } else {
+            staticEntries.push(entry);
+        }
+    }
+
+    // Determine final ordering based on minimalVolatileCacheMode
+    const orderedEntries = minimalVolatileCacheMode
+        ? [...staticEntries, ...volatileEntries]
+        : inputStrategy.filter(e =>
+            e !== 'Model Instruction Template' &&
+            e !== 'Model Chat Template' &&
+            e !== 'Model Chat-Instruction Template'
+        );
+
+    // Group lines into messages by volatility tier
+    const staticLines: string[] = [];
+    const semiStableLines: string[] = [];
+    const historyLines: string[] = [];
+    const volatileLines: string[] = [];
+    const triggerLines: string[] = [];
+
+    for (const entry of orderedEntries) {
+        const lines = blockMap[entry];
+        if (!lines || lines.length === 0) continue;
+
+        if (entry === 'Chat History') {
+            historyLines.push(...lines);
+        } else if (entry === 'Text Injection') {
+            triggerLines.push(...lines);
+        } else if (VOLATILE_BLOCK_TYPES.has(entry)) {
+            volatileLines.push(...lines);
+        } else if (entry === 'Context' || entry === 'Starter Prompt') {
+            semiStableLines.push(...lines);
+        } else {
+            // System Prompt, Think Prompt, Meta Think, Appearance, Dialogue, custom blocks
+            staticLines.push(...lines);
+        }
+    }
+
+    const messages: OpenAIMessage[] = [];
+
+    if (staticLines.length > 0) {
+        messages.push({ role: 'system', content: staticLines.join('\n') });
+    }
+
+    if (semiStableLines.length > 0) {
+        messages.push({ role: 'system', content: semiStableLines.join('\n') });
+    }
+
+    if (historyLines.length > 0) {
+        messages.push({ role: 'system', content: historyLines.join('\n') });
+    }
+
+    if (volatileLines.length > 0) {
+        messages.push({ role: 'user', content: volatileLines.join('\n') });
+    }
+
+    if (triggerLines.length > 0) {
+        const triggerContent = triggerLines.join('\n').replaceAll('{{text}}', existingCharacterText);
+        messages.push({ role: 'assistant', content: triggerContent });
+    }
+
+    return messages;
+}
+
 // ─── Main Orchestrator ────────────────────────────────────────────
 
 interface BuildResult {
-    prompt: string;
+    messages: OpenAIMessage[];
     stops: string[];
     contextImages: EntityImageRef[];
     locationImages: EntityImageRef[];
@@ -1436,7 +1586,7 @@ export async function buildPrompt(
     const activeModel = tokenEngine.getContext();
     const effectiveChatTemplateKey = activeModel?.chatTemplate;
     const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
-    
+
     const delimiters = deriveDelimiters(resolvedChatTemplate);
 
     const ctx = buildPromptContext(interactionData, character, knownNames, modelId, allPromptBlocks, existingCharacterText, delimiters);
@@ -1733,6 +1883,7 @@ export async function buildPrompt(
     const protagonistIdSet = ctx.protagonistIds;
     const currentLocationId = ctx.currentLocation?.id;
 
+    // Collect custom prompt block lines keyed by their ID for blockMap integration
     for (const block of allPromptBlocks) {
         if (!isPromptBlockCharacterBound(block, ctx.characterId)) continue;
         if (block.contextBindings && block.contextBindings.length > 0) {
@@ -1759,136 +1910,142 @@ export async function buildPrompt(
                 activePromptBlockImages.push({ entityId: block.id, filename: img });
             }
         }
-    }
 
-    const effectiveInstructionTemplateKey = activeModel?.instructionTemplate;
-    const resolvedInstructionTemplate = effectiveInstructionTemplateKey ? getModelTemplate(effectiveInstructionTemplateKey) : undefined;
+        // Add custom block lines to blockMap so they participate in structured message grouping
+        const replacedText = replacePlaceholders(
+            block.textContent,
+            ctx.characterParticipantTag,
+            ctx.characterName,
+            ctx.coLocatedProtagonists,
+            ctx.participants,
+            ctx.knownNames,
+        );
+        const blockLines = [`${delimiters.blockStart('system')}${replacedText}${delimiters.blockEnd}`];
 
-    const promptLines: string[] = [];
-    const usedBuiltInTypes = new Set<string>();
-
-    for (const entry of inputStrategy) {
-        if (entry === 'Model Instruction Template') {
-            if (resolvedInstructionTemplate?.instructionTemplate) {
-                const assembledSoFar = promptLines.join('\n');
-                const systemPrompt = ctx.character.systemPrompt || '';
-                const wrapped = resolvedInstructionTemplate.instructionTemplate
-                    .replace(/\{instruction\}/g, assembledSoFar)
-                    .replace(/\{input\}/g, '')
-                    .replace(/\{system\}/g, systemPrompt);
-                promptLines.length = 0;
-                promptLines.push(wrapped);
-            }
-            usedBuiltInTypes.add(entry);
-        } else if (entry === 'Model Chat Template') {
-            if (resolvedChatTemplate?.chatTemplate) {
-                const chatHistoryForTemplate = ctx.interactionHistory.filter(
-                    (m): m is ChatMessage | WhisperMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
-                );
-                for (const msg of chatHistoryForTemplate) {
-                    const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
-                    const content = replacePlaceholders(
-                        selectModelSummary(msg, modelId),
-                        ctx.characterParticipantTag, ctx.characterName,
-                        ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
-                    );
-                    const wrapped = resolvedChatTemplate.chatTemplate
-                        .replace(/\{role\}/gi, role)
-                        .replace(/\{content\}/g, content);
-                    promptLines.push(wrapped);
-                }
-                const genPrompt = resolvedChatTemplate.chatTemplate
-                    .replace(/\{role\}/gi, 'assistant')
-                    .replace(/\{content\}/g, '');
-                promptLines.push(genPrompt);
-            }
-            usedBuiltInTypes.add(entry);
-        } else if (entry === 'Model Chat-Instruction Template') {
-            if (resolvedInstructionTemplate?.instructionTemplate && resolvedChatTemplate?.chatTemplate) {
-                const assembledSoFar = promptLines.join('\n');
-                const systemPrompt = ctx.character.systemPrompt || '';
-                const instructionWrapped = resolvedInstructionTemplate.instructionTemplate
-                    .replace(/\{instruction\}/g, `Continue the chat dialogue below. Write a single reply for the character "${ctx.characterName}".\n\n${assembledSoFar}`)
-                    .replace(/\{input\}/g, '')
-                    .replace(/\{system\}/g, systemPrompt);
-                promptLines.length = 0;
-                promptLines.push(instructionWrapped);
-                const chatHistoryForTemplate = ctx.interactionHistory.filter(
-                    (m): m is ChatMessage | WhisperMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
-                );
-                for (const msg of chatHistoryForTemplate) {
-                    const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
-                    const content = replacePlaceholders(
-                        selectModelSummary(msg, modelId),
-                        ctx.characterParticipantTag, ctx.characterName,
-                        ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
-                    );
-                    const wrapped = resolvedChatTemplate.chatTemplate
-                        .replace(/\{role\}/gi, role)
-                        .replace(/\{content\}/g, content);
-                    promptLines.push(wrapped);
-                }
-                const genPrompt = resolvedChatTemplate.chatTemplate
-                    .replace(/\{role\}/gi, 'assistant')
-                    .replace(/\{content\}/g, '');
-                promptLines.push(genPrompt);
-            }
-            usedBuiltInTypes.add(entry);
-        } else if (isBuiltInBlockType(entry)) {
-            const lines = blockMap[entry];
-            if (lines && lines.length > 0) {
-                promptLines.push(...lines);
-            }
-            usedBuiltInTypes.add(entry);
-        } else {
-            const block = promptBlockById.get(entry);
-            if (!block) continue;
-            if (!block.textContent || !block.textContent.trim()) continue;
-
-            if (!isPromptBlockCharacterBound(block, ctx.characterId)) continue;
-
-            if (block.contextBindings && block.contextBindings.length > 0) {
-                if (!block.contextBindings.some(ctxId => activeContextIds.has(ctxId))) continue;
-            }
-
-            if (block.locationBindings && block.locationBindings.length > 0) {
-                if (!currentLocationId || !block.locationBindings.includes(currentLocationId)) continue;
-            }
-
-            if (!isEntityActiveWithCache(
-                block.regularExpressionActivationTriggers,
-                block.regularExpressionDeactivationTriggers,
-                block.regularExpressionExclusionActivationTriggers,
-                block.regularExpressionExclusionDeactivationTriggers,
-                ctx.characterIdArray, ctx.textContentArray,
-                ctx.characterId, [...ctx.protagonistIds],
-                allTextSearchSpace, ctx.combinationCache,
-            )) {
-                continue;
-            }
-
-            const replacedText = replacePlaceholders(
-                block.textContent,
-                ctx.characterParticipantTag,
-                ctx.characterName,
-                ctx.coLocatedProtagonists,
-                ctx.participants,
-                ctx.knownNames,
-            );
-
-            promptLines.push(`${delimiters.blockStart('system')}${replacedText}${delimiters.blockEnd}`);
+        // Custom blocks are treated as static content unless explicitly named as volatile
+        if (!blockMap[block.id]) {
+            blockMap[block.id] = blockLines;
         }
     }
 
-    const templatePrompt = promptLines.join('\n');
-    const prompt = templatePrompt.replaceAll("{{text}}", `${existingCharacterText}`);
+    // Check if any model template overrides the entire prompt structure
+    const hasTemplateOverride = inputStrategy.some(e =>
+        e === 'Model Chat Template' ||
+        e === 'Model Instruction Template' ||
+        e === 'Model Chat-Instruction Template'
+    );
+
+    let messages: OpenAIMessage[];
+
+    if (hasTemplateOverride) {
+        // Template mode: assemble flat string using template logic, wrap as single message
+        const effectiveInstructionTemplateKey = activeModel?.instructionTemplate;
+        const resolvedInstructionTemplate = effectiveInstructionTemplateKey ? getModelTemplate(effectiveInstructionTemplateKey) : undefined;
+
+        const promptLines: string[] = [];
+        const usedBuiltInTypes = new Set<string>();
+
+        for (const entry of inputStrategy) {
+            if (entry === 'Model Instruction Template') {
+                if (resolvedInstructionTemplate?.instructionTemplate) {
+                    const assembledSoFar = promptLines.join('\n');
+                    const systemPrompt = ctx.character.systemPrompt || '';
+                    const wrapped = resolvedInstructionTemplate.instructionTemplate
+                        .replace(/\{instruction\}/g, assembledSoFar)
+                        .replace(/\{input\}/g, '')
+                        .replace(/\{system\}/g, systemPrompt);
+                    promptLines.length = 0;
+                    promptLines.push(wrapped);
+                }
+                usedBuiltInTypes.add(entry);
+            } else if (entry === 'Model Chat Template') {
+                if (resolvedChatTemplate?.chatTemplate) {
+                    const chatHistoryForTemplate = ctx.interactionHistory.filter(
+                        (m): m is ChatMessage | WhisperMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
+                    );
+                    for (const msg of chatHistoryForTemplate) {
+                        const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
+                        const content = replacePlaceholders(
+                            selectModelSummary(msg, modelId),
+                            ctx.characterParticipantTag, ctx.characterName,
+                            ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+                        );
+                        const wrapped = resolvedChatTemplate.chatTemplate
+                            .replace(/\{role\}/gi, role)
+                            .replace(/\{content\}/g, content);
+                        promptLines.push(wrapped);
+                    }
+                    const genPrompt = resolvedChatTemplate.chatTemplate
+                        .replace(/\{role\}/gi, 'assistant')
+                        .replace(/\{content\}/g, '');
+                    promptLines.push(genPrompt);
+                }
+                usedBuiltInTypes.add(entry);
+            } else if (entry === 'Model Chat-Instruction Template') {
+                if (resolvedInstructionTemplate?.instructionTemplate && resolvedChatTemplate?.chatTemplate) {
+                    const assembledSoFar = promptLines.join('\n');
+                    const systemPrompt = ctx.character.systemPrompt || '';
+                    const instructionWrapped = resolvedInstructionTemplate.instructionTemplate
+                        .replace(/\{instruction\}/g, `Continue the chat dialogue below. Write a single reply for the character "${ctx.characterName}".\n\n${assembledSoFar}`)
+                        .replace(/\{input\}/g, '')
+                        .replace(/\{system\}/g, systemPrompt);
+                    promptLines.length = 0;
+                    promptLines.push(instructionWrapped);
+                    const chatHistoryForTemplate = ctx.interactionHistory.filter(
+                        (m): m is ChatMessage | WhisperMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
+                    );
+                    for (const msg of chatHistoryForTemplate) {
+                        const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
+                        const content = replacePlaceholders(
+                            selectModelSummary(msg, modelId),
+                            ctx.characterParticipantTag, ctx.characterName,
+                            ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+                        );
+                        const wrapped = resolvedChatTemplate.chatTemplate
+                            .replace(/\{role\}/gi, role)
+                            .replace(/\{content\}/g, content);
+                        promptLines.push(wrapped);
+                    }
+                    const genPrompt = resolvedChatTemplate.chatTemplate
+                        .replace(/\{role\}/gi, 'assistant')
+                        .replace(/\{content\}/g, '');
+                    promptLines.push(genPrompt);
+                }
+                usedBuiltInTypes.add(entry);
+            } else if (isBuiltInBlockType(entry)) {
+                const lines = blockMap[entry];
+                if (lines && lines.length > 0) {
+                    promptLines.push(...lines);
+                }
+                usedBuiltInTypes.add(entry);
+            } else {
+                const block = promptBlockById.get(entry);
+                if (!block) continue;
+                const lines = blockMap[block.id];
+                if (lines && lines.length > 0) {
+                    promptLines.push(...lines);
+                }
+            }
+        }
+
+        const flatPrompt = promptLines.join('\n').replaceAll('{{text}}', existingCharacterText);
+        messages = [{ role: 'user', content: flatPrompt }];
+    } else {
+        // Structured message mode: group by volatility tier
+        messages = buildStructuredMessages(
+            blockMap,
+            inputStrategy,
+            ctx.minimalVolatileCacheMode,
+            existingCharacterText,
+        );
+    }
 
     let defaultStops: string[] = [];
 
     if (!profile?.doNotInjectDefaultStopTokens) {
         const templateStops = resolvedChatTemplate?.stopPatterns || [];
         const turnEndStop = delimiters.turnEnd.trim();
-        
+
         defaultStops = [
             ...templateStops,
             turnEndStop,
@@ -1902,7 +2059,7 @@ export async function buildPrompt(
 
     const uniqueStops = Array.from(new Set(stops)).filter(s => typeof s === 'string' && s.trim().length > 0);
 
-    return { prompt, stops: uniqueStops, contextImages: activeContextImages, locationImages: activeLocationImages, promptBlockImages: activePromptBlockImages, characterClothingWearingStatuses, fetchErrors };
+    return { messages, stops: uniqueStops, contextImages: activeContextImages, locationImages: activeLocationImages, promptBlockImages: activePromptBlockImages, characterClothingWearingStatuses, fetchErrors };
 }
 
 // ─── Universal Message Filter ─────────────────────────────────────

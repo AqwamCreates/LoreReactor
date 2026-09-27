@@ -250,7 +250,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "skipProbability": "number (-1 or 0-1, default -1 defers to character)",
     "memoryRetentionWeight": "number (-1 or ≥0, default -1 defers to character)",
     "contextSensitivity": "number (-1 or ≥0, default -1 defers to character)",
-    "cacheInvalidationReductionLevel": "number (0-3, default 0)",
+    "cacheEfficiencyLevel": "number (0-3, default 0)",
     "doNotInjectDefaultStopTokens": "boolean (default false)",
     "narrateTexts": {
       "normal": "boolean (default false)", "quoted": "boolean (default false)", "bolded": "boolean (default false)",

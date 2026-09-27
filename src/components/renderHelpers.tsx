@@ -55,7 +55,6 @@ export function renderProfileSubtext(profile: Profile): React.ReactNode {
     if (profile.useCurrentDateAndTime) flags.push('Clock');
     if (profile.useWeather) flags.push('Weather');
     if (profile.useTimeElapsed) flags.push('Time Elapsed');
-    if (profile.cacheInvalidationReductionLevel >= 1) flags.push(`Cache L${profile.cacheInvalidationReductionLevel}`);
     if (enableWebSearchText) flags.push(enableWebSearchText as string);
     if (enableCalculatorText) flags.push(enableCalculatorText as string);
     if (enableDialogue) flags.push(enableDialogue as string);

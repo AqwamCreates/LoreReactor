@@ -94,8 +94,6 @@ export const MessageBubble = React.memo(function MessageBubble({
     const inDelRange = isMassActive && massStartIndex !== null && massStartIndex !== -1 && index >= massStartIndex;
     const showAvatar = viewMode === 'ladder' && !isLocalProtagonist && !isAmbient;
 
-    // Only initialize editing state when isEditing first becomes true,
-    // not on every editDraft change (which would kill raw editing mode)
     React.useEffect(() => {
         const justStartedEditing = isEditing && !prevIsEditingRef.current;
         prevIsEditingRef.current = isEditing;
@@ -108,14 +106,12 @@ export const MessageBubble = React.memo(function MessageBubble({
         }
     }, [isEditing, editDraft]);
 
-    // Focus textarea when entering raw edit mode
     React.useEffect(() => {
         if (isRawEditing && editTextAreaRef.current) {
             editTextAreaRef.current.focus();
         }
     }, [isRawEditing, editTextAreaRef]);
 
-    // Debounced token count during editing
     React.useEffect(() => {
         if (!isEditing || editingId !== message.id || !editDraft) {
             setEditTokenCount(0);
@@ -283,12 +279,10 @@ export const MessageBubble = React.memo(function MessageBubble({
                                 </div>
                             )}
 
-                            {/* Token count */}
                             <div style={{ fontSize: '0.6rem', opacity: 0.5, marginTop: '2px', textAlign: 'right' }}>
                                 ~{editTokenCount} token(s)
                             </div>
 
-                            {/* Conversion panel */}
                             <div className="message-reformat-panel">
                                 {conversions.length === 0 ? (
                                     <div className="message-reformat-empty">

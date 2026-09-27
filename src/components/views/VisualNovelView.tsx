@@ -132,10 +132,7 @@ function buildCategoryConversions(segments: DetectedSegment[]): CategoryConversi
         .map(c => ({ detected: c, label: CATEGORY_LABELS[c], target: DEFAULT_CONVERSIONS[c], count: counts[c] }));
 }
 
-// =============================================================================
-// COMPONENT
-// =============================================================================
-export const VisualNovelView = React.memo(function VisualNovelView(props: ViewModeProps & { canDelete?: boolean }) {
+export const VisualNovelView = React.memo(function VisualNovelView(props: ViewModeProps) {
     const {
         interactionData, localProtagonist, displayMessages,
         portraitUrlCache, locationBackgroundUrl,
@@ -153,17 +150,15 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         parentInteractionDataName,
         focusedMessageId,
         setFocusedMessageId,
-        canDelete = true,
+        canDelete,
     } = props;
 
     const protagonistId = localProtagonist?.id;
 
-    // --- Reformat State ---
     const [conversions, setConversions] = useState<CategoryConversion[]>([]);
     const [isRawEditing, setIsRawEditing] = useState(false);
     const rawDraftRef = useRef<string>('');
 
-    // Deduplicate messages to prevent streaming duplicates
     const chatMessages = useMemo(() => {
         const all = displayMessages.filter((m): m is ChatMessage => m.messageType === 'chat' || m.messageType === 'whisper');
         const seen = new Set<string>();
@@ -174,14 +169,12 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         });
     }, [displayMessages]);
 
-    // Convert focusedMessageId to viewIndex
     const viewIndex = useMemo(() => {
         if (!focusedMessageId) return null;
         const idx = chatMessages.findIndex(m => m.id === focusedMessageId);
         return idx !== -1 ? idx : null;
     }, [focusedMessageId, chatMessages]);
 
-    // Reset viewIndex when new messages arrive (stay live)
     const prevChatLengthRef = useRef(chatMessages.length);
     useEffect(() => {
         if (chatMessages.length > prevChatLengthRef.current && focusedMessageId) {
@@ -191,7 +184,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     }, [chatMessages.length, focusedMessageId, setFocusedMessageId]);
 
     const lastMsg = displayMessages[displayMessages.length - 1];
-    // Determine if the last message in the list is currently streaming based on global state
     const isStreamingInList = isLoading && streamingCharacter !== null && lastMsg?.character?.id === streamingCharacter.id;
 
     const activeStreamingText: string | null = isStreamingInList
@@ -264,7 +256,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         setFocusedMessageId(null);
     }, [setFocusedMessageId]);
 
-    // --- Sprite States ---
     const spriteCharacterIds = useMemo(() => {
         return visibleCharacters
             .filter(c => c.id !== AMBIENT_NARRATOR_ID && c.id !== protagonistId)
@@ -292,7 +283,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         onBranch(id);
     }, [chatMessages, rollbackToMessage, onBranch, setFocusedMessageId]);
 
-    // --- Reformat Effects ---
     const prevIsEditingRef = useRef(false);
     useEffect(() => {
         const justStarted = isEditingLastSpeaker && !prevIsEditingRef.current;
@@ -382,7 +372,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     return (
         <div className="vn-stage-container" style={bgStyle}>
-            {/* --- SPRITE LAYER --- */}
             <div className="vn-sprites-layer">
                 {spriteCharacterIds.map((characterId) => {
                     const portraitUrl = portraitUrlCache.get(`character:${characterId}`) ?? null;
@@ -420,7 +409,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                 })}
             </div>
 
-            {/* --- BRANCH INDICATOR --- */}
             {hasParentBranch && onNavigateToBranchSource && (
                 <div className="vn-branch-indicator">
                     <button type="button" className="vn-branch-button" onClick={onNavigateToBranchSource}>
@@ -429,7 +417,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                 </div>
             )}
 
-            {/* --- NAVIGATION ARROWS --- */}
             {chatMessages.length > 1 && (
                 <div className="vn-nav-arrows">
                     <div className="vn-nav-group">
@@ -475,7 +462,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                 </div>
             )}
 
-            {/* --- DIALOGUE BOX LAYER --- */}
             <div className="vn-dialogue-layer">
                 <div className={`vn-dialogue-box ${isAmbientSpeaker ? 'vn-dialogue-box-ambient' : ''}`} style={{
                     opacity: isWaitingForGeneration ? 0 : 1,
@@ -582,7 +568,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                         )}
                     </div>
 
-                    {/* Message counter */}
                     <div className="vn-message-counter">
                         {currentIndex + 1} / {chatMessages.length}
                     </div>

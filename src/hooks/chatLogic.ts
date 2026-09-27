@@ -1,5 +1,6 @@
 // src/hooks/chatLogic.ts
 import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, Location, RegularExpressionTrigger, TextCharacterInjection } from '../types';
+import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
 import { getKnownDisplayName, deriveDelimiters } from './promptLogic';
 import type { EntityImageRef } from './promptLogic';
 import { v4 as uuidv4 } from 'uuid';
@@ -157,7 +158,7 @@ function generateInitialCharacterText(character: Character): string {
     return result;
 }
 
-export async function prepareRequestBody(
+export async function buildChatRequestBody(
     interactionData: InteractionData,
     character: Character,
     knownCharacterNames: Record<string, Record<string, boolean>>,
@@ -168,14 +169,14 @@ export async function prepareRequestBody(
 
     const profile = interactionData.Profile;
 
-    const { prompt, stops, contextImages, locationImages, promptBlockImages, characterClothingWearingStatuses, fetchErrors } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId);
+    const { messages, stops, contextImages, locationImages, promptBlockImages, characterClothingWearingStatuses, fetchErrors } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId);
 
     const sampler = character.sampler;
     const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection;
 
     const filesBase64: { data: string; id: number }[] = [];
     let imageIdCounter = 1;
-    let initialPrompt = "";
+    const imageInjectionMessages: OpenAIMessage[] = [];
 
     // ─── Get Dynamic Delimiters ─────────────────────────────────────
     const activeModel = getLanguageModelEngine().getContext();
@@ -195,7 +196,10 @@ export async function prepareRequestBody(
                 if (characterImageBase64) {
                     const rawData = characterImageBase64.includes(',') ? characterImageBase64.split(',')[1] : characterImageBase64;
                     filesBase64.push({ data: rawData, id: imageIdCounter++ });
-                    initialPrompt = `${delimiters.blockStart('system')}I understand that the image ${imageIdCounter} is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${delimiters.blockEnd}`;
+                    imageInjectionMessages.push({
+                        role: 'system',
+                        content: `${delimiters.blockStart('system')}I understand that the image ${imageIdCounter} is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${delimiters.blockEnd}`,
+                    });
                 }
             }
         }
@@ -237,7 +241,10 @@ export async function prepareRequestBody(
 
             filesBase64.push({ data: rawData, id: imageIdCounter++ });
 
-            initialPrompt = `${initialPrompt}${delimiters.blockStart('system')}I understand that the image ${imageIdCounter} is the appearance of ${participantString}.${delimiters.blockEnd}`;
+            imageInjectionMessages.push({
+                role: 'system',
+                content: `${delimiters.blockStart('system')}I understand that the image ${imageIdCounter} is the appearance of ${participantString}.${delimiters.blockEnd}`,
+            });
         }
 
         // Attach files from co-located protagonists' most recent messages only
@@ -318,7 +325,13 @@ export async function prepareRequestBody(
         filesBase64.push(...resolvedPromptBlockImages);
     }
 
-    const fullPrompt = `${initialPrompt}${prompt}`;
+    // ─── Assemble Final Messages Array ──────────────────────────────
+    // Prepend image injection messages before the structured prompt messages
+    const finalMessages: OpenAIMessage[] = [
+        ...imageInjectionMessages,
+        ...messages,
+    ];
+
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
 
     const finalStops = [
@@ -329,7 +342,7 @@ export async function prepareRequestBody(
 
     const body: Record<string, unknown> = {
         ...otherParams,
-        prompt: fullPrompt,
+        messages: finalMessages,
         n_predict: sampler?.maximumNumberOfTokens ?? 512,
         stream: true,
         stop: uniqueStops,
@@ -343,13 +356,21 @@ export async function prepareRequestBody(
             injections.push(generateInitialCharacterText(character));
         }
 
-        body._basePrompt = fullPrompt;
+        // Store base messages for retry reconstruction
+        body._baseMessages = finalMessages.map(m => ({ ...m }));
 
         // FIX: Replaced forbidden non-null assertion (!) with safe undefined check
         if (!profile.randomizeTextCharacterInjectionOnRetry && injections.length > 0) {
             const firstInjection = injections.shift();
             if (firstInjection !== undefined) {
-                body.prompt = firstInjection + (body.prompt as string);
+                // Prepend injection to the first message's content
+                if (finalMessages.length > 0) {
+                    finalMessages[0] = {
+                        ...finalMessages[0],
+                        content: firstInjection + (typeof finalMessages[0].content === 'string' ? finalMessages[0].content : ''),
+                    };
+                    body.messages = finalMessages;
+                }
             }
         }
 
@@ -359,6 +380,9 @@ export async function prepareRequestBody(
     }
 
     if (filesBase64.length > 0) body.image_data = filesBase64;
+
+    // ─── Inject Session ID for Provider Cache Affinity ──────────────
+    body.session_id = interactionData.id;
 
     return { body, knownCharacterNames, fetchErrors, characterClothingWearingStatuses };
 }
