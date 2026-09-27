@@ -171,7 +171,7 @@ function isEntityHollow(
         }
         case 'budgetStrategy': {
             const bs = entity as BudgetStrategy;
-            return !(bs.onlineModels?.length) && !(bs.localModels?.length);
+            return !(bs.modelIds?.length);
         }
         case 'memory': {
             const m = entity as Memory;
@@ -354,8 +354,7 @@ export function DataManagerModal({
         }
 
         for (const bs of allBudgetStrategies) {
-            for (const m of (bs.onlineModels || [])) if (modelIdSet.has(m.id)) referencedModelIds.add(m.id);
-            for (const m of (bs.localModels || [])) if (modelIdSet.has(m.id)) referencedModelIds.add(m.id);
+            for (const modelId of (bs.modelIds || [])) if (modelIdSet.has(modelId)) referencedModelIds.add(modelId);
         }
 
         for (const ctx of allContexts) {
@@ -562,8 +561,9 @@ export function DataManagerModal({
             }
         }
         for (const bs of allBudgetStrategies) {
-            for (const m of (bs.onlineModels || [])) { if (!modelIdSet.has(m.id)) issues.push({ entityType: 'Budget Strategy', entityName: bs.name, issue: 'References missing online model', refType: 'Language Model', refId: m.id }); }
-            for (const m of (bs.localModels || [])) { if (!modelIdSet.has(m.id)) issues.push({ entityType: 'Budget Strategy', entityName: bs.name, issue: 'References missing local model', refType: 'Language Model', refId: m.id }); }
+            for (const modelId of (bs.modelIds || [])) {
+                if (!modelIdSet.has(modelId)) issues.push({ entityType: 'Budget Strategy', entityName: bs.name, issue: 'References missing model', refType: 'Language Model', refId: modelId });
+            }
         }
         for (const mem of allMemories) {
             const interactionId = mem.interactionData?.id;

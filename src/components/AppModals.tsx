@@ -440,8 +440,7 @@ export function AppModals({
                 if (!modals.modelList.isOpen) return null;
                 const strategyModelIds = new Set<string>();
                 if (activeStrategy) {
-                    for (const model of activeStrategy.onlineModels) strategyModelIds.add(model.id);
-                    for (const model of activeStrategy.localModels) strategyModelIds.add(model.id);
+                    for (const modelId of activeStrategy.modelIds) strategyModelIds.add(modelId);
                 }
                 return (
                     <ManagerModal 
@@ -591,7 +590,7 @@ export function AppModals({
             )}
 
             {modals.budgetControl.isOpen && (
-                <BudgetControlModal isOpen={modals.budgetControl.isOpen} onClose={modals.budgetControl.close} activeStrategy={activeStrategy} />
+                <BudgetControlModal isOpen={modals.budgetControl.isOpen} onClose={modals.budgetControl.close} allModels={allModels} activeStrategy={activeStrategy} />
             )}
 
             <GpuMonitorModal isOpen={modals.gpuMonitor.isOpen} onClose={modals.gpuMonitor.close} />

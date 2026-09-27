@@ -77,11 +77,6 @@ interface LoadStep {
     done: boolean; 
 }
 
-type BudgetStrategyWithRawModelIdentifiers = BudgetStrategy & {
-    _rawOnlineModelIds?: string[];
-    _rawLocalModelIds?: string[];
-};
-
 function hasMessagesChanged(previousInteractionData: InteractionData | null, currentInteractionData: InteractionData): boolean {
     if (!previousInteractionData || !previousInteractionData.interactionHistory || !currentInteractionData.interactionHistory) return true;
     if (previousInteractionData.interactionHistory.length !== currentInteractionData.interactionHistory.length) return true;
@@ -491,8 +486,10 @@ function App() {
     const maximumContextLength = useMemo(() => {
         if (activeStrategy) {
             let maxLength = 0;
-            for (const model of activeStrategy.onlineModels) { if (model.contextLength > maxLength) maxLength = model.contextLength; }
-            for (const model of activeStrategy.localModels) { if (model.contextLength > maxLength) maxLength = model.contextLength; }
+            for (const modelId of activeStrategy.modelIds) {
+                const model = allModels.find(m => m.id === modelId);
+                if (model && model.contextLength > maxLength) maxLength = model.contextLength;
+            }
             return maxLength || defaultContextLength;
         }
         if (selectedModelId) {
@@ -511,10 +508,7 @@ function App() {
     const loadLocalModelForBudgetStrategyEngine = useCallback(async (modelId: string): Promise<number | null> => {
         const existingRunningModel = runningModels[modelId];
         if (existingRunningModel?.port) return existingRunningModel.port;
-        const targetModel =
-            activeStrategy?.localModels.find(model => model.id === modelId) ||
-            activeStrategy?.onlineModels.find(model => model.id === modelId) ||
-            allModels.find(model => model.id === modelId);
+        const targetModel = allModels.find(model => model.id === modelId);
         if (!targetModel) return null;
         if (targetModel.apiKey && targetModel.backend) return null;
         try {
@@ -532,7 +526,7 @@ function App() {
             console.warn(`Auto-load of model ${targetModel.name} failed:`, error);
             return null;
         }
-    }, [runningModels, activeStrategy, allModels]);
+    }, [runningModels, allModels]);
 
     // ─── Effects ────────────────────────────────────────────────────
     useEffect(() => {
@@ -553,11 +547,8 @@ function App() {
         if (!selectedBudgetStrategyId || allBudgetStrategies.length === 0) return;
         const strategy = allBudgetStrategies.find(strategyItem => strategyItem.id === selectedBudgetStrategyId);
         if (!strategy) { localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY); return; }
-        const modelMap = new Map(allModels.map(model => [model.id, model]));
-        const freshOnline = strategy.onlineModels.map(model => modelMap.get(model.id)).filter((model): model is LanguageModel => !!model);
-        const freshLocal = strategy.localModels.map(model => modelMap.get(model.id)).filter((model): model is LanguageModel => !!model);
-        setActiveBudgetStrategy({ ...strategy, onlineModels: freshOnline, localModels: freshLocal });
-    }, [selectedBudgetStrategyId, allBudgetStrategies, allModels, setActiveBudgetStrategy]);
+        setActiveBudgetStrategy(strategy);
+    }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
 
     useEffect(() => {
         if (!selectedModelId || allModels.length === 0) return;
@@ -587,28 +578,13 @@ function App() {
     }, [selectedModelId, runningModels, allModels, setSelectedGlobalModel]);
 
     useEffect(() => {
-        if (!activeStrategy) return;
-        let hasStrategyChanged = false;
-        const updatedStrategy = { ...activeStrategy };
-        const strategyWithRawModelIdentifiers = activeStrategy as BudgetStrategyWithRawModelIdentifiers;
-        const savedOnlineIdentifiers = strategyWithRawModelIdentifiers._rawOnlineModelIds || activeStrategy.onlineModels.map((model: LanguageModel) => model.id);
-        const freshOnlineModels: LanguageModel[] = [];
-        for (const modelId of savedOnlineIdentifiers) { const freshModel = allModels.find(model => model.id === modelId); if (freshModel) freshOnlineModels.push(freshModel); }
-        if (freshOnlineModels.length !== activeStrategy.onlineModels.length || freshOnlineModels.some((model, index) => model.id !== activeStrategy.onlineModels[index]?.id)) { updatedStrategy.onlineModels = freshOnlineModels; hasStrategyChanged = true; }
-        const savedLocalIdentifiers = strategyWithRawModelIdentifiers._rawLocalModelIds || activeStrategy.localModels.map((model: LanguageModel) => model.id);
-        const freshLocalModels: LanguageModel[] = [];
-        for (const modelId of savedLocalIdentifiers) { const freshModel = allModels.find(model => model.id === modelId); if (freshModel) freshLocalModels.push(freshModel); }
-        if (freshLocalModels.length !== activeStrategy.localModels.length || freshLocalModels.some((model, index) => model.id !== activeStrategy.localModels[index]?.id)) { updatedStrategy.localModels = freshLocalModels; hasStrategyChanged = true; }
-        if (hasStrategyChanged) setActiveBudgetStrategy(updatedStrategy);
-    }, [activeStrategy, allModels, setActiveBudgetStrategy]);
-
-    useEffect(() => {
         if (!activeStrategy || !budgetData) return;
         try {
             const budgetStrategyEngine = getBudgetStrategyEngine();
             budgetStrategyEngine.setStrategy(activeStrategy);
             budgetStrategyEngine.setBudgetData(budgetData);
             budgetStrategyEngine.setRunningModels(runningModels);
+            budgetStrategyEngine.setAllModels(allModels);
             budgetStrategyEngine.setLoadLocalModel(loadLocalModelForBudgetStrategyEngine);
         } catch {
             initializeBudgetStrategyEngine(activeStrategy, budgetData, runningModels, allModels, loadLocalModelForBudgetStrategyEngine);
@@ -725,8 +701,9 @@ function App() {
                 for (const participant of interactionData.participants) participantCounts[participant.id] = 0;
                 let tokenizerModel: LanguageModel | undefined;
                 if (selectedModelId) tokenizerModel = allModels.find(model => model.id === selectedModelId);
-                if (!tokenizerModel && activeStrategy && activeStrategy.onlineModels.length > 0) tokenizerModel = activeStrategy.onlineModels[0];
-                if (!tokenizerModel && activeStrategy && activeStrategy.localModels.length > 0) tokenizerModel = activeStrategy.localModels[0];
+                if (!tokenizerModel && activeStrategy && activeStrategy.modelIds.length > 0) {
+                    tokenizerModel = allModels.find(m => m.id === activeStrategy.modelIds[0]);
+                }
                 const languageModelEngine = getLanguageModelEngine();
                 if (tokenizerModel) { languageModelEngine.setRunningModels(runningModels); languageModelEngine.setContext(tokenizerModel); } else return;
                 const previouslyCountedIdentifiers = lastCountedMessageIdentifiersReference.current;

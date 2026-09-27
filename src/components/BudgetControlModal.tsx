@@ -1,6 +1,6 @@
 // src/components/BudgetControlModal.tsx
 import { useMemo, useState } from 'react';
-import type { BudgetStrategy } from '../types';
+import type { BudgetStrategy, LanguageModel } from '../types';
 import { useBudgetDataManager } from '../hooks/useBudgetDataManager';
 import '../main.css';
 
@@ -8,6 +8,7 @@ interface BudgetControlModalProps {
     isOpen: boolean;
     onClose: () => void;
     activeStrategy?: BudgetStrategy | null;
+    allModels: LanguageModel[];
 }
 
 const RESET_PRESETS = [
@@ -97,6 +98,7 @@ export function BudgetControlModal({
     isOpen,
     onClose,
     activeStrategy,
+    allModels,
 }: BudgetControlModalProps) {
     const {
         budgetData,
@@ -122,28 +124,28 @@ export function BudgetControlModal({
     const [sortField, setSortField] = useState<SortField>('uses');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-    // Always use the active strategy from props — no local override
     const currentStrategy = activeStrategy ?? null;
 
-    // Build a set of model IDs that belong to the active strategy
     const strategyModelIds = useMemo(() => {
         const ids = new Set<string>();
         if (currentStrategy) {
-            for (const m of currentStrategy.onlineModels) ids.add(m.id);
-            for (const m of currentStrategy.localModels) ids.add(m.id);
+            for (const modelId of currentStrategy.modelIds) ids.add(modelId);
         }
         return ids;
     }, [currentStrategy]);
 
-    // Build a name map from the active strategy's models
     const strategyNameMap = useMemo(() => {
         const map = new Map<string, string>();
         if (currentStrategy) {
-            for (const m of currentStrategy.onlineModels) map.set(m.id, m.name);
-            for (const m of currentStrategy.localModels) map.set(m.id, m.name);
+            for (const modelId of currentStrategy.modelIds) {
+                const model = allModels.find(m => m.id === modelId);
+                if (model) {
+                    map.set(modelId, model.name);
+                }
+            }
         }
         return map;
-    }, [currentStrategy]);
+    }, [currentStrategy, allModels]);
 
     const maximumBudget = budgetData?.budgetStrategy?.maximumBudget ?? currentStrategy?.maximumBudget ?? 0;
     const usagePercent = budgetData ? getBudgetUsagePercent() : 0;
@@ -155,9 +157,6 @@ export function BudgetControlModal({
 
     const modelRows = useMemo<ModelRow[]>(() => {
         if (!budgetData) return [];
-
-        // Only include models that are in the active strategy
-        // If no active strategy, show nothing
         if (strategyModelIds.size === 0) return [];
 
         const rows: ModelRow[] = [];
@@ -342,7 +341,6 @@ export function BudgetControlModal({
                         <div className="empty-state">Loading budget data...</div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            {/* No Budget Data */}
                             {!budgetData && (
                                 <div className="budget-section">
                                     <span className="budget-section-title">Initialize Budget Data</span>
@@ -362,10 +360,8 @@ export function BudgetControlModal({
                                 </div>
                             )}
 
-                            {/* Existing Budget Data */}
                             {budgetData && (
                                 <>
-                                    {/* Overview */}
                                     <div className="budget-section">
                                         <span className="budget-section-title">Overview</span>
                                         <div className="budget-stat-grid">
@@ -399,7 +395,6 @@ export function BudgetControlModal({
                                         </div>
                                     </div>
 
-                                    {/* Aggregate Performance */}
                                     <div className="budget-section">
                                         <span className="budget-section-title">Aggregate Performance</span>
                                         <div className="budget-stat-grid">
@@ -453,7 +448,6 @@ export function BudgetControlModal({
                                         </div>
                                     </div>
 
-                                    {/* Per-Model Performance Table */}
                                     {modelRows.length > 0 && (
                                         <div className="budget-section">
                                             <span className="budget-section-title">Model Performance</span>
@@ -499,14 +493,12 @@ export function BudgetControlModal({
                                         </div>
                                     )}
 
-                                    {/* No models in strategy message */}
                                     {modelRows.length === 0 && currentStrategy && (
                                         <div className="budget-section">
                                             <div className="budget-hint">No models in the active strategy. Add models to the strategy to see performance data.</div>
                                         </div>
                                     )}
 
-                                    {/* Model Runtime Data */}
                                     <div className="budget-section">
                                         <span className="budget-section-title">Runtime Timestamps</span>
                                         <div className="budget-stat-grid">
@@ -544,7 +536,6 @@ export function BudgetControlModal({
                                         </div>
                                     </div>
 
-                                    {/* Reset Schedule */}
                                     <div className="budget-section">
                                         <span className="budget-section-title">Reset Schedule</span>
                                         <div className="budget-button-group" style={{ marginBottom: '10px' }}>
@@ -569,7 +560,6 @@ export function BudgetControlModal({
                                         </div>
                                     </div>
 
-                                    {/* EMA Smoothing */}
                                     <div className="budget-section">
                                         <span className="budget-section-title">EMA Sensitivity</span>
                                         <div className="budget-hint" style={{ marginBottom: '8px' }}>
@@ -591,7 +581,6 @@ export function BudgetControlModal({
                                         </div>
                                     </div>
 
-                                    {/* Budget Editing */}
                                     <div className="budget-section">
                                         <span className="budget-section-title">Budget Editing</span>
                                         <div className="budget-control-row">
