@@ -518,12 +518,11 @@ export interface BudgetStrategy extends ObjectData {
   onlineModels: LanguageModel[];
   localModels: LanguageModel[];
   modelCostTiers: Record<string, number>
-  switchProbability: number;
-  switchOnContextSize: number;
-  switchOnComplexityScore: number;
-  fallbackOnLocalFailure: boolean;
-  fallbackOnQualityThreshold: number;
-  fallbackOnTimeoutInSeconds: number;
+  modelLatencyMsPerTokenTiers: Record<string, number>
+  modelTimeToFirstTokenTiers: Record<string, number>
+  modelQualityTiers: Record<string, number>
+  modelActivationContextSize: Record<string, number> // Model Id -> The number of tokens for enable the model.
+  modelDeactivationContextSize: Record<string, number> // Model Id -> The number of tokens for disabling the model. 
   maximumBudget: number;
 }
 
@@ -531,12 +530,11 @@ export interface RawBudgetStrategy extends RawData {
   onlineModelIds: string[];
   localModelIds: string[];
   modelCostTiers: Record<string, number>
-  switchProbability: number;
-  switchOnContextSize: number;
-  switchOnComplexityScore: number;
-  fallbackOnLocalFailure: boolean;
-  fallbackOnQualityThreshold: number;
-  fallbackOnTimeoutInSeconds: number;
+  modelLatencyMsPerTokenTiers: Record<string, number>
+  modelTimeToFirstTokenTiers: Record<string, number>
+  modelQualityTiers: Record<string, number>
+  modelActivationContextSize: Record<string, number> // Model Id -> The number of tokens for enable the model.
+  modelDeactivationContextSize: Record<string, number> // Model Id -> The number of tokens for disabling the model. 
   maximumBudget: number;
 }
 

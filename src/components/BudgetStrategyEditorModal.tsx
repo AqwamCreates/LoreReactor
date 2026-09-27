@@ -1,7 +1,6 @@
 // src/components/BudgetStrategyEditorModal.tsx
 import { useState } from 'react';
 import type { BudgetStrategy, LanguageModel } from '../types';
-import { SliderInput } from './SliderInput';
 import { EntitySelectList } from './EntitySelectList';
 import { v4 as uuidv4 } from 'uuid';
 import '../main.css';
@@ -15,7 +14,26 @@ interface BudgetStrategyEditorModalProps {
     allModels: LanguageModel[];
 }
 
-type BudgetTabId = 'general' | 'switching' | 'fallback';
+type BudgetTabId = 'general' | 'tiers' | 'activation';
+
+const TIER_AXIS_LABELS: Record<string, { label: string; description: string }> = {
+    cost: {
+        label: 'Cost Tier',
+        description: 'Lower = cheaper. Models with lower cost tiers are preferred when quality tiers are equal.',
+    },
+    latency: {
+        label: 'Latency Tier (ms/token)',
+        description: 'Expected ms per token. Lower = faster. Used as secondary ranking signal.',
+    },
+    ttft: {
+        label: 'TTFT Tier (ms)',
+        description: 'Expected time to first token. Lower = faster initial response.',
+    },
+    quality: {
+        label: 'Quality Tier',
+        description: 'Higher = better output quality. Primary ranking signal — higher quality models are tried first.',
+    },
+};
 
 function BudgetStrategyEditorContent({
     existingStrategy,
@@ -32,54 +50,61 @@ function BudgetStrategyEditorContent({
 
     const [name, setName] = useState(existingStrategy?.name || '');
     const [description, setDescription] = useState(existingStrategy?.description || '');
-    const [onlineModelIds, setOnlineModelIds] = useState<string[]>(existingStrategy?.onlineModels?.map(m => m.id) || []);
-    const [localModelIds, setLocalModelIds] = useState<string[]>(existingStrategy?.localModels?.map(m => m.id) || []);
-    const [modelCostTiers, setModelCostTiers] = useState<Record<string, number>>(existingStrategy?.modelCostTiers ? { ...existingStrategy.modelCostTiers } : {});
-    const [switchProbability, setSwitchProbability] = useState<number>(existingStrategy?.switchProbability ?? 20);
-    const [switchOnContextSize, setSwitchOnContextSize] = useState<number>(existingStrategy?.switchOnContextSize ?? 8192);
-    const [switchOnComplexityScore, setSwitchOnComplexityScore] = useState<number>(existingStrategy?.switchOnComplexityScore ?? 70);
-    const [fallbackOnLocalFailure, setFallbackOnLocalFailure] = useState<boolean>(existingStrategy?.fallbackOnLocalFailure ?? true);
-    const [fallbackOnQualityThreshold, setFallbackOnQualityThreshold] = useState<number>(existingStrategy?.fallbackOnQualityThreshold ?? 30);
-    const [fallbackOnTimeoutInSeconds, setFallbackOnTimeoutInSeconds] = useState<number>(existingStrategy?.fallbackOnTimeoutInSeconds ?? 30);
+    const [selectedModelIds, setSelectedModelIds] = useState<string[]>(() => {
+        const ids = new Set<string>();
+        if (existingStrategy?.onlineModels) existingStrategy.onlineModels.forEach(m => ids.add(m.id));
+        if (existingStrategy?.localModels) existingStrategy.localModels.forEach(m => ids.add(m.id));
+        return Array.from(ids);
+    });
     const [maximumBudget, setMaximumBudget] = useState<number>(existingStrategy?.maximumBudget ?? 10);
-    const [errors, setErrors] = useState<{ name?: string; onlineModels?: string; localModels?: string }>({});
+    const [errors, setErrors] = useState<{ name?: string }>({});
+    const [modelSearch, setModelSearch] = useState('');
 
-    const [onlineSearch, setOnlineSearch] = useState('');
-    const [localSearch, setLocalSearch] = useState('');
+    // ─── Per-Model Tier State ────────────────────────────────────────
+    const [modelCostTiers, setModelCostTiers] = useState<Record<string, number>>(
+        existingStrategy?.modelCostTiers ? { ...existingStrategy.modelCostTiers } : {}
+    );
+    const [modelLatencyTiers, setModelLatencyTiers] = useState<Record<string, number>>(
+        existingStrategy?.modelLatencyMsPerTokenTiers ? { ...existingStrategy.modelLatencyMsPerTokenTiers } : {}
+    );
+    const [modelTTFTTiers, setModelTTFTTiers] = useState<Record<string, number>>(
+        existingStrategy?.modelTimeToFirstTokenTiers ? { ...existingStrategy.modelTimeToFirstTokenTiers } : {}
+    );
+    const [modelQualityTiers, setModelQualityTiers] = useState<Record<string, number>>(
+        existingStrategy?.modelQualityTiers ? { ...existingStrategy.modelQualityTiers } : {}
+    );
 
-    const toggleOnlineModel = (id: string) => {
-        setOnlineModelIds(prev => {
-            const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+    // ─── Per-Model Activation/Deactivation Context Windows ───────────
+    const [modelActivationContextSize, setModelActivationContextSize] = useState<Record<string, number>>(
+        existingStrategy?.modelActivationContextSize ? { ...existingStrategy.modelActivationContextSize } : {}
+    );
+    const [modelDeactivationContextSize, setModelDeactivationContextSize] = useState<Record<string, number>>(
+        existingStrategy?.modelDeactivationContextSize ? { ...existingStrategy.modelDeactivationContextSize } : {}
+    );
+
+    const toggleModel = (id: string) => {
+        setSelectedModelIds(prev => {
             if (prev.includes(id)) {
-                setModelCostTiers(tiers => {
-                    const updated = { ...tiers };
-                    delete updated[id];
-                    return updated;
-                });
+                // Remove model and clean up all tier/activation entries
+                setModelCostTiers(t => { const u = { ...t }; delete u[id]; return u; });
+                setModelLatencyTiers(t => { const u = { ...t }; delete u[id]; return u; });
+                setModelTTFTTiers(t => { const u = { ...t }; delete u[id]; return u; });
+                setModelQualityTiers(t => { const u = { ...t }; delete u[id]; return u; });
+                setModelActivationContextSize(t => { const u = { ...t }; delete u[id]; return u; });
+                setModelDeactivationContextSize(t => { const u = { ...t }; delete u[id]; return u; });
+                return prev.filter(x => x !== id);
             }
-            return next;
+            return [...prev, id];
         });
-        if (errors.onlineModels) setErrors(prev => ({ ...prev, onlineModels: undefined }));
     };
 
-    const toggleLocalModel = (id: string) => {
-        setLocalModelIds(prev => {
-            const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
-            if (prev.includes(id)) {
-                setModelCostTiers(tiers => {
-                    const updated = { ...tiers };
-                    delete updated[id];
-                    return updated;
-                });
-            }
-            return next;
-        });
-        if (errors.localModels) setErrors(prev => ({ ...prev, localModels: undefined }));
-    };
-
-    const setTierForModel = (modelId: string, value: string) => {
+    const setTierValue = (
+        setter: React.Dispatch<React.SetStateAction<Record<string, number>>>,
+        modelId: string,
+        value: string,
+    ) => {
         const num = Number.parseFloat(value);
-        setModelCostTiers(prev => {
+        setter(prev => {
             if (value === '' || Number.isNaN(num)) {
                 const updated = { ...prev };
                 delete updated[modelId];
@@ -90,40 +115,40 @@ function BudgetStrategyEditorContent({
     };
 
     const validate = (): boolean => {
-        const newErrors: { name?: string; onlineModels?: string; localModels?: string } = {};
+        const newErrors: { name?: string } = {};
         if (!name.trim()) newErrors.name = 'Name is required.';
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
 
+    const filterTiersToSelected = (tiers: Record<string, number>): Record<string, number> => {
+        const selected = new Set(selectedModelIds);
+        const filtered: Record<string, number> = {};
+        for (const [id, val] of Object.entries(tiers)) {
+            if (selected.has(id)) filtered[id] = val;
+        }
+        return filtered;
+    };
+
     const buildStrategy = (cloneNameSuffix?: string): BudgetStrategy | null => {
         if (!validate()) return null;
 
-        const onlineModels = allModels.filter(m => onlineModelIds.includes(m.id));
-        const localModels = allModels.filter(m => localModelIds.includes(m.id));
-
-        if ((onlineModels.length + localModels.length) === 0) return null;
-
-        const activeModelIds = new Set([...onlineModelIds, ...localModelIds]);
-        const filteredTiers: Record<string, number> = {};
-        for (const [id, tier] of Object.entries(modelCostTiers)) {
-            if (activeModelIds.has(id)) filteredTiers[id] = tier;
-        }
+        const selectedModels = allModels.filter(m => selectedModelIds.includes(m.id));
+        if (selectedModels.length === 0) return null;
 
         const now = Date.now();
         return {
             id: cloneNameSuffix ? uuidv4() : (existingStrategy?.id || uuidv4()),
             name: cloneNameSuffix ? `${name.trim()} ${cloneNameSuffix}` : name.trim(),
             description: description.trim() || '',
-            onlineModels,
-            localModels,
-            modelCostTiers: filteredTiers,
-            switchProbability,
-            switchOnContextSize,
-            switchOnComplexityScore,
-            fallbackOnLocalFailure,
-            fallbackOnQualityThreshold,
-            fallbackOnTimeoutInSeconds,
+            onlineModels: selectedModels.filter(m => !!m.apiKey && !!m.backend),
+            localModels: selectedModels.filter(m => !m.apiKey || !m.backend),
+            modelCostTiers: filterTiersToSelected(modelCostTiers),
+            modelLatencyMsPerTokenTiers: filterTiersToSelected(modelLatencyTiers),
+            modelTimeToFirstTokenTiers: filterTiersToSelected(modelTTFTTiers),
+            modelQualityTiers: filterTiersToSelected(modelQualityTiers),
+            modelActivationContextSize: filterTiersToSelected(modelActivationContextSize),
+            modelDeactivationContextSize: filterTiersToSelected(modelDeactivationContextSize),
             maximumBudget,
             firstCreatedTimestamp: cloneNameSuffix ? now : (existingStrategy?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
@@ -144,38 +169,30 @@ function BudgetStrategyEditorContent({
         onClose();
     };
 
-    const renderTierGrid = (modelIds: string[], label: string) => {
-        if (modelIds.length === 0) return null;
-        const models = allModels.filter(m => modelIds.includes(m.id));
+    const renderTierColumn = (
+        axisKey: string,
+        tiers: Record<string, number>,
+        setter: React.Dispatch<React.SetStateAction<Record<string, number>>>,
+        placeholder: string,
+    ) => {
+        const config = TIER_AXIS_LABELS[axisKey];
+        const models = allModels.filter(m => selectedModelIds.includes(m.id));
+        if (models.length === 0) return null;
+
         return (
-            <div style={{ marginTop: '6px', marginBottom: '10px' }}>
-                <label className="editor-label editor-label-small">
-                    Cost Tiers ({label})
+            <div style={{ flex: 1, minWidth: '120px' }}>
+                <label className="editor-label editor-label-small" style={{ display: 'block', marginBottom: '2px' }}>
+                    {config.label}
                 </label>
-                <div className="editor-label" style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '4px' }}>
-                    Higher value = higher cost in terms of price, quality, latency and so on. Default 0.
+                <div style={{ fontSize: '0.5rem', opacity: 0.5, marginBottom: '6px' }}>
+                    {config.description}
                 </div>
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '3px 12px',
-                }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                     {models.map(model => (
-                        <div key={model.id} style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            minWidth: 0,
-                        }}>
+                        <div key={model.id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <span style={{
-                                fontSize: '0.65rem',
-                                opacity: 0.8,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                flex: 1,
-                                minWidth: 0,
-                                textAlign: 'left',
+                                fontSize: '0.6rem', opacity: 0.7, flex: 1, minWidth: 0,
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                             }}>
                                 {model.name}
                             </span>
@@ -183,16 +200,13 @@ function BudgetStrategyEditorContent({
                                 type="text"
                                 inputMode="decimal"
                                 pattern="[0-9]*\.?[0-9]*"
-                                value={modelCostTiers[model.id] ?? ''}
-                                onChange={(e) => setTierForModel(model.id, e.target.value)}
+                                value={tiers[model.id] ?? ''}
+                                onChange={(e) => setTierValue(setter, model.id, e.target.value)}
                                 className="editor-input"
-                                placeholder="0"
+                                placeholder={placeholder}
                                 style={{
-                                    width: '48px',
-                                    flexShrink: 0,
-                                    padding: '2px 4px',
-                                    fontSize: '0.7rem',
-                                    MozAppearance: 'textfield',
+                                    width: '52px', flexShrink: 0, padding: '2px 4px',
+                                    fontSize: '0.65rem', MozAppearance: 'textfield',
                                 }}
                             />
                         </div>
@@ -202,10 +216,87 @@ function BudgetStrategyEditorContent({
         );
     };
 
+    const renderActivationColumn = () => {
+        const models = allModels.filter(m => selectedModelIds.includes(m.id));
+        if (models.length === 0) return null;
+
+        return (
+            <>
+                <div style={{ flex: 1, minWidth: '120px' }}>
+                    <label className="editor-label editor-label-small" style={{ display: 'block', marginBottom: '2px' }}>
+                        Activation Tokens
+                    </label>
+                    <div style={{ fontSize: '0.5rem', opacity: 0.5, marginBottom: '6px' }}>
+                        Model becomes eligible when prompt reaches this many tokens. 0 = always active.
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        {models.map(model => (
+                            <div key={model.id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{
+                                    fontSize: '0.6rem', opacity: 0.7, flex: 1, minWidth: 0,
+                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                }}>
+                                    {model.name}
+                                </span>
+                                <input
+                                    type="number"
+                                    value={modelActivationContextSize[model.id] ?? ''}
+                                    onChange={(e) => setTierValue(setModelActivationContextSize, model.id, e.target.value)}
+                                    className="editor-input"
+                                    placeholder="0"
+                                    min="0"
+                                    step="256"
+                                    style={{
+                                        width: '64px', flexShrink: 0, padding: '2px 4px',
+                                        fontSize: '0.65rem', MozAppearance: 'textfield',
+                                    }}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <div style={{ flex: 1, minWidth: '120px' }}>
+                    <label className="editor-label editor-label-small" style={{ display: 'block', marginBottom: '2px' }}>
+                        Deactivation Tokens
+                    </label>
+                    <div style={{ fontSize: '0.5rem', opacity: 0.5, marginBottom: '6px' }}>
+                        Model becomes ineligible when prompt exceeds this. Empty = never deactivates.
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        {models.map(model => (
+                            <div key={model.id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{
+                                    fontSize: '0.6rem', opacity: 0.7, flex: 1, minWidth: 0,
+                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                }}>
+                                    {model.name}
+                                </span>
+                                <input
+                                    type="number"
+                                    value={modelDeactivationContextSize[model.id] ?? ''}
+                                    onChange={(e) => setTierValue(setModelDeactivationContextSize, model.id, e.target.value)}
+                                    className="editor-input"
+                                    placeholder="∞"
+                                    min="0"
+                                    step="256"
+                                    style={{
+                                        width: '64px', flexShrink: 0, padding: '2px 4px',
+                                        fontSize: '0.65rem', MozAppearance: 'textfield',
+                                    }}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </>
+        );
+    };
+
     const budgetTabs: { id: BudgetTabId; label: string; icon: string }[] = [
         { id: 'general', label: 'General', icon: '📝' },
-        { id: 'switching', label: 'Switching', icon: '🔄' },
-        { id: 'fallback', label: 'Fallback', icon: '🛡️' },
+        { id: 'tiers', label: 'Tiers', icon: '📊' },
+        { id: 'activation', label: 'Activation', icon: '⚡' },
     ];
 
     return (
@@ -256,7 +347,7 @@ function BudgetStrategyEditorContent({
                                         if (errors.name) setErrors({ ...errors, name: undefined });
                                     }}
                                     className={`editor-input ${errors.name ? 'error' : ''}`}
-                                    placeholder="e.g., Balanced, Budget Saver, Quality Focused"
+                                    placeholder="e.g., Expensive-First, Graduated Quality, Budget Saver"
                                 />
                                 {errors.name && <div className="editor-error-message">{errors.name}</div>}
                             </div>
@@ -272,37 +363,22 @@ function BudgetStrategyEditorContent({
                                 />
                             </div>
 
-                            {/* Model Pools */}
                             <div className="editor-section">
-                                <span className="editor-section-title">Model Pools</span>
+                                <span className="editor-section-title">Models</span>
                                 <div className="entity-ref-hint">
-                                    Select models for each pool. The engine exhausts the primary pool before falling back. Cost tiers control selection priority — higher values are tried first.
+                                    Select all models to include in this strategy. Online and local models are unified — selection priority is controlled by tiers and activation windows, not pool membership.
                                 </div>
 
                                 <EntitySelectList
-                                    label="Online Language Models"
+                                    label="Language Models"
                                     items={allModels}
-                                    selectedIds={onlineModelIds}
-                                    onToggle={toggleOnlineModel}
-                                    searchQuery={onlineSearch}
-                                    onSearchChange={setOnlineSearch}
+                                    selectedIds={selectedModelIds}
+                                    onToggle={toggleModel}
+                                    searchQuery={modelSearch}
+                                    onSearchChange={setModelSearch}
                                 />
-                                {renderTierGrid(onlineModelIds, 'Online')}
-                                {errors.onlineModels && <div className="editor-error-message">{errors.onlineModels}</div>}
-
-                                <EntitySelectList
-                                    label="Local Language Models"
-                                    items={allModels}
-                                    selectedIds={localModelIds}
-                                    onToggle={toggleLocalModel}
-                                    searchQuery={localSearch}
-                                    onSearchChange={setLocalSearch}
-                                />
-                                {renderTierGrid(localModelIds, 'Local')}
-                                {errors.localModels && <div className="editor-error-message">{errors.localModels}</div>}
                             </div>
 
-                            {/* Budget Control */}
                             <div className="editor-section">
                                 <span className="editor-section-title">Budget Control</span>
                                 <div className="editor-row-full">
@@ -318,7 +394,7 @@ function BudgetStrategyEditorContent({
                                             placeholder="10"
                                         />
                                         <div className="editor-label" style={{ fontSize: '0.6rem', opacity: 0.5, marginTop: '4px' }}>
-                                            When cost exceeds this, the strategy will switch to local-only mode
+                                            When spent cost exceeds this, only free models will be used.
                                         </div>
                                     </div>
                                 </div>
@@ -326,98 +402,54 @@ function BudgetStrategyEditorContent({
                         </>
                     )}
 
-                    {/* ─── SWITCHING TAB ─── */}
-                    {activeTab === 'switching' && (
+                    {/* ─── TIERS TAB ─── */}
+                    {activeTab === 'tiers' && (
                         <div className="editor-section">
-                            <span className="editor-section-title">Switching Rules</span>
-
-                            <div className="editor-row-full">
-                                <SliderInput
-                                    label="Online Model Probability"
-                                    value={switchProbability}
-                                    minimumValue={0}
-                                    maximumValue={100}
-                                    stepValue={1}
-                                    decimals={0}
-                                    onChange={setSwitchProbability}
-                                    description="Percentage chance to use online pool (0 = always local, 100 = always online)"
-                                />
+                            <span className="editor-section-title">Model Tiers</span>
+                            <div className="entity-ref-hint" style={{ marginBottom: '12px' }}>
+                                Configure per-model ranking across four independent axes. Models are ranked by quality tier first (higher = preferred), then cost tier (lower = preferred), then observed performance metrics.
                             </div>
 
-                            <div className="editor-row">
-                                <div>
-                                    <label className="editor-label editor-label-small">Switch On Context Size</label>
-                                    <input
-                                        type="number"
-                                        value={switchOnContextSize}
-                                        onChange={(e) => setSwitchOnContextSize(Number(e.target.value) || 0)}
-                                        className="editor-input"
-                                        min="0"
-                                        step="64"
-                                        placeholder="8192"
-                                    />
+                            {selectedModelIds.length === 0 ? (
+                                <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '24px 0' }}>
+                                    No models selected. Add models in the General tab first.
                                 </div>
-                                <div>
-                                    <label className="editor-label editor-label-small">Switch On Complexity Score</label>
-                                    <input
-                                        type="number"
-                                        value={switchOnComplexityScore}
-                                        onChange={(e) => setSwitchOnComplexityScore(Number(e.target.value) || 0)}
-                                        className="editor-input"
-                                        min="0"
-                                        max="100"
-                                        step="1"
-                                        placeholder="70"
-                                    />
+                            ) : (
+                                <div style={{
+                                    display: 'flex',
+                                    gap: '16px',
+                                    flexWrap: 'wrap',
+                                }}>
+                                    {renderTierColumn('quality', modelQualityTiers, setModelQualityTiers, '0')}
+                                    {renderTierColumn('cost', modelCostTiers, setModelCostTiers, '0')}
+                                    {renderTierColumn('latency', modelLatencyTiers, setModelLatencyTiers, '0')}
+                                    {renderTierColumn('ttft', modelTTFTTiers, setModelTTFTTiers, '0')}
                                 </div>
-                            </div>
+                            )}
                         </div>
                     )}
 
-                    {/* ─── FALLBACK TAB ─── */}
-                    {activeTab === 'fallback' && (
+                    {/* ─── ACTIVATION TAB ─── */}
+                    {activeTab === 'activation' && (
                         <div className="editor-section">
-                            <span className="editor-section-title">Fallback Rules</span>
-
-                            <div className="editor-row">
-                                <div>
-                                    <label className="editor-label editor-label-small">Quality Threshold</label>
-                                    <input
-                                        type="number"
-                                        value={fallbackOnQualityThreshold}
-                                        onChange={(e) => setFallbackOnQualityThreshold(Number(e.target.value) || 0)}
-                                        className="editor-input"
-                                        min="0"
-                                        max="100"
-                                        step="1"
-                                        placeholder="30"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="editor-label editor-label-small">Fallback Timeout (Seconds)</label>
-                                    <input
-                                        type="number"
-                                        value={fallbackOnTimeoutInSeconds}
-                                        onChange={(e) => setFallbackOnTimeoutInSeconds(Number(e.target.value) || 0)}
-                                        className="editor-input"
-                                        min="1"
-                                        step="1"
-                                        placeholder="30"
-                                    />
-                                </div>
+                            <span className="editor-section-title">Activation Windows</span>
+                            <div className="entity-ref-hint" style={{ marginBottom: '12px' }}>
+                                Define per-model context size windows. A model is eligible when the current prompt token count is ≥ activation and &lt; deactivation. Use overlapping windows for graduated quality transitions (e.g., expensive model for early turns, free model for later turns).
                             </div>
 
-                            <div className="editor-row-full" style={{ marginTop: '8px' }}>
-                                <label className="editor-checkbox-label">
-                                    <input
-                                        type="checkbox"
-                                        checked={fallbackOnLocalFailure}
-                                        onChange={(e) => setFallbackOnLocalFailure(e.target.checked)}
-                                        className="editor-checkbox-input"
-                                    />
-                                    <span>Fallback on local failure</span>
-                                </label>
-                            </div>
+                            {selectedModelIds.length === 0 ? (
+                                <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '24px 0' }}>
+                                    No models selected. Add models in the General tab first.
+                                </div>
+                            ) : (
+                                <div style={{
+                                    display: 'flex',
+                                    gap: '16px',
+                                    flexWrap: 'wrap',
+                                }}>
+                                    {renderActivationColumn()}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

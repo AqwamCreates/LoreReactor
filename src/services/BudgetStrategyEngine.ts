@@ -20,35 +20,6 @@ function buildPricing(model: LanguageModel): ModelPricing {
     };
 }
 
-function computeComplexityScore(promptText: string): number {
-    if (!promptText || promptText.length === 0) return 0;
-
-    const totalLen = promptText.length;
-
-    const curlyBrackets = (promptText.match(/[{}]/g) || []).length;
-    const squareBrackets = (promptText.match(/[\[\]]/g) || []).length;
-    const colons = (promptText.match(/:/g) || []).length;
-    const asterisks = (promptText.match(/\*/g) || []).length;
-    const underscores = (promptText.match(/_/g) || []).length;
-    const backticks = (promptText.match(/`/g) || []).length;
-    const pipes = (promptText.match(/\|/g) || []).length;
-    const angleBrackets = (promptText.match(/[<>]/g) || []).length;
-    const hashMarks = (promptText.match(/#/g) || []).length;
-    const dashes = (promptText.match(/---+/g) || []).length;
-    const tabs = (promptText.match(/\t/g) || []).length;
-    const carriageReturns = (promptText.match(/\r/g) || []).length;
-    const carets = (promptText.match(/\^/g) || []).length;
-    const slashes = (promptText.match(/[\\/]/g) || []).length;
-    const atSigns = (promptText.match(/@/g) || []).length;
-
-    const syntaxSymbolCount = curlyBrackets + squareBrackets + colons +
-        asterisks + underscores + backticks + pipes + angleBrackets +
-        hashMarks + dashes + tabs + carriageReturns + carets + slashes + atSigns;
-
-    const syntaxDensity = Math.min(1, syntaxSymbolCount / (totalLen * 0.1));
-    return Math.round(syntaxDensity * 100);
-}
-
 function isQuotaError(e: unknown): boolean {
     const obj = e as Record<string, unknown>;
     const status = obj?.status ?? obj?.statusCode;
@@ -185,62 +156,120 @@ export class BudgetStrategyEngine {
     getLastSelectedModelId(): string | null { return this._lastSelectedModelId; }
     getLastCacheMiss(): boolean { return this._lastCacheMiss; }
 
-    async selectModelForRequest(requestBody: Record<string, unknown>): Promise<{ model: LanguageModel; modelId: string } | null> {
-        const failedOnlineIds = new Set<string>();
-        const failedLocalIds = new Set<string>();
+    /**
+     * Get all models from the unified list (online + local combined).
+     */
+    private getAllModels(): LanguageModel[] {
+        return [...this.strategy.onlineModels, ...this.strategy.localModels];
+    }
 
-        const useOnline = await this.shouldUseOnline(requestBody);
-        const primaryPool = useOnline ? this.strategy.onlineModels : this.strategy.localModels;
-        const fallbackPool = useOnline ? this.strategy.localModels : this.strategy.onlineModels;
-        const primaryFailedSet = useOnline ? failedOnlineIds : failedLocalIds;
-        const fallbackFailedSet = useOnline ? failedLocalIds : failedOnlineIds;
+    /**
+     * Determine which models are currently active based on per-model
+     * activation/deactivation context size windows.
+     * A model is active when:
+     *   - currentTokens >= modelActivationContextSize[id] (or activation is 0/undefined = always active)
+     *   - AND (modelDeactivationContextSize[id] is undefined/Infinity OR currentTokens < deactivation)
+     */
+    private getActiveModels(currentTokens: number): LanguageModel[] {
+        const allModels = this.getAllModels();
+        return allModels.filter(model => {
+            const activationThreshold = this.strategy.modelActivationContextSize?.[model.id] ?? 0;
+            const deactivationThreshold = this.strategy.modelDeactivationContextSize?.[model.id];
+
+            // Below activation threshold → not yet eligible
+            if (currentTokens < activationThreshold) return false;
+
+            // Above deactivation threshold → no longer eligible
+            if (deactivationThreshold !== undefined && currentTokens >= deactivationThreshold) return false;
+
+            return true;
+        });
+    }
+
+    async selectModelForRequest(requestBody: Record<string, unknown>): Promise<{ model: LanguageModel; modelId: string } | null> {
+        const failedIds = new Set<string>();
 
         const promptText = (requestBody.prompt as string) || '';
-        const requiredContextTokens = promptText.length > 0 ? await this.engine.countTokens(promptText) : undefined;
+        const requiredContextTokens = promptText.length > 0 ? await this.engine.countTokens(promptText) : 0;
 
-        const complexityScore = computeComplexityScore(promptText);
-        const tierValues = [...new Set(Object.values(this.strategy.modelCostTiers ?? {}))].sort((a, b) => a - b);
-
-        let perTurnMaxTier: number | undefined;
-        if (tierValues.length > 0) {
-            const tierIndex = Math.min(tierValues.length - 1, Math.round((complexityScore / 100) * (tierValues.length - 1)));
-            perTurnMaxTier = tierValues[tierIndex];
-        }
-
-        const primary = this.selectFromPool(primaryPool, primaryFailedSet, perTurnMaxTier, requiredContextTokens);
-        if (primary) {
-            const loaded = await this.ensureModelLoaded(primary);
-            if (loaded) {
-                this.engine.setContext(primary);
-                this._lastSelectedModelId = primary.id;
-                return { model: primary, modelId: primary.id };
-            }
-        }
-
-        if (this.strategy.fallbackOnLocalFailure) {
-            const fallback = this.selectFromPool(fallbackPool, fallbackFailedSet, perTurnMaxTier, requiredContextTokens);
-            if (fallback) {
-                const loaded = await this.ensureModelLoaded(fallback);
+        const candidates = this.getEligibleCandidates(requiredContextTokens, failedIds);
+        if (candidates.length === 0) {
+            // All tiered models exhausted or out of budget — try free models
+            const freeModel = this.selectFreeModel(failedIds, requiredContextTokens);
+            if (freeModel) {
+                const loaded = await this.ensureModelLoaded(freeModel);
                 if (loaded) {
-                    this.engine.setContext(fallback);
-                    this._lastSelectedModelId = fallback.id;
-                    return { model: fallback, modelId: fallback.id };
+                    this.engine.setContext(freeModel);
+                    this._lastSelectedModelId = freeModel.id;
+                    return { model: freeModel, modelId: freeModel.id };
                 }
             }
+            return null;
         }
 
-        const allFailedIds = new Set([...failedOnlineIds, ...failedLocalIds]);
-        const freeModel = this.selectFreeModel(allFailedIds, requiredContextTokens);
-        if (freeModel) {
-            const loaded = await this.ensureModelLoaded(freeModel);
-            if (loaded) {
-                this.engine.setContext(freeModel);
-                this._lastSelectedModelId = freeModel.id;
-                return { model: freeModel, modelId: freeModel.id };
-            }
-        }
+        // Pick best candidate by composite quality score
+        const best = this.rankCandidates(candidates, requiredContextTokens)[0];
+        if (!best) return null;
 
-        return null;
+        const loaded = await this.ensureModelLoaded(best);
+        if (!loaded) return null;
+
+        this.engine.setContext(best);
+        this._lastSelectedModelId = best.id;
+        return { model: best, modelId: best.id };
+    }
+
+    /**
+     * Get eligible model candidates considering:
+     * - Activation/deactivation context windows
+     * - Budget constraints (skip paid models if budget exceeded)
+     * - Failed model exclusions
+     */
+    private getEligibleCandidates(currentTokens: number, failedIds: Set<string>): LanguageModel[] {
+        const activeModels = this.getActiveModels(currentTokens);
+        const budgetExceeded = this.budgetData.budgetSpent >= this.strategy.maximumBudget;
+
+        return activeModels.filter(model => {
+            if (failedIds.has(model.id)) return false;
+            // If budget exceeded, only allow free models through
+            if (budgetExceeded && !isFreeModel(model)) return false;
+            return true;
+        });
+    }
+
+    /**
+     * Rank candidates using the four-tier system and observed performance metrics.
+     * Primary sort: quality tier (higher = better quality, prefer first).
+     * Secondary sort: cost tier (lower = cheaper, prefer when same quality).
+     * Tertiary: observed composite quality from latency, TTFT, reliability.
+     * Quaternary: context fit factor.
+     */
+    private rankCandidates(candidates: LanguageModel[], requiredContextTokens: number): LanguageModel[] {
+        const sorted = [...candidates];
+        sorted.sort((a, b) => {
+            // Primary: Quality tier (higher = better quality, prefer first)
+            const qualityA = this.strategy.modelQualityTiers?.[a.id] ?? 0;
+            const qualityB = this.strategy.modelQualityTiers?.[b.id] ?? 0;
+            if (qualityA !== qualityB) return qualityB - qualityA;
+
+            // Secondary: Cost tier (lower = cheaper, prefer when same quality)
+            const costA = this.strategy.modelCostTiers?.[a.id] ?? 0;
+            const costB = this.strategy.modelCostTiers?.[b.id] ?? 0;
+            if (costA !== costB) return costA - costB;
+
+            // Tertiary: Observed composite quality
+            const scoreA = this.computeCompositeQuality(a, requiredContextTokens);
+            const scoreB = this.computeCompositeQuality(b, requiredContextTokens);
+            if (Math.abs(scoreA - scoreB) > 0.0001) return scoreB - scoreA;
+
+            // Quaternary: Context fit
+            const fitA = this.getContextFitFactor(a, requiredContextTokens);
+            const fitB = this.getContextFitFactor(b, requiredContextTokens);
+            if (Math.abs(fitA - fitB) > 0.01) return fitB - fitA;
+
+            return Math.random() - 0.5;
+        });
+        return sorted;
     }
 
     async generateStream(
@@ -250,29 +279,10 @@ export class BudgetStrategyEngine {
     ): Promise<StreamResult> {
         this._lastCacheMiss = false;
 
-        const failedOnlineIds = new Set<string>();
-        const failedLocalIds = new Set<string>();
-
-        const useOnline = await this.shouldUseOnline(requestBody);
-
-        const primaryPool = useOnline ? this.strategy.onlineModels : this.strategy.localModels;
-        const fallbackPool = useOnline ? this.strategy.localModels : this.strategy.onlineModels;
-        const primaryFailedSet = useOnline ? failedOnlineIds : failedLocalIds;
-        const fallbackFailedSet = useOnline ? failedLocalIds : failedOnlineIds;
+        const failedIds = new Set<string>();
 
         const promptText = (requestBody.prompt as string) || '';
-        const requiredContextTokens = promptText.length > 0 ? await this.engine.countTokens(promptText) : undefined;
-
-        const complexityScore = computeComplexityScore(promptText);
-        const tierValues = [...new Set(Object.values(this.strategy.modelCostTiers ?? {}))].sort((a, b) => a - b);
-
-        let perTurnMaxTier: number | undefined;
-        if (tierValues.length === 0) {
-            perTurnMaxTier = undefined;
-        } else {
-            const tierIndex = Math.min(tierValues.length - 1, Math.round((complexityScore / 100) * (tierValues.length - 1)));
-            perTurnMaxTier = tierValues[tierIndex];
-        }
+        const requiredContextTokens = promptText.length > 0 ? await this.engine.countTokens(promptText) : 0;
 
         let accumulatedPartialText = '';
 
@@ -287,16 +297,25 @@ export class BudgetStrategyEngine {
             },
         };
 
-        // ─── Try primary pool ───
-        while (true) {
-            const selectedModel = this.selectFromPool(primaryPool, primaryFailedSet, perTurnMaxTier, requiredContextTokens);
-            if (!selectedModel) break;
+        // ─── Main retry loop across all eligible models ───
+        while (!abortController.signal.aborted) {
+            const candidates = this.getEligibleCandidates(requiredContextTokens, failedIds);
+            const ranked = this.rankCandidates(candidates, requiredContextTokens);
+
+            if (ranked.length === 0) {
+                // Try free models as last resort
+                const freeModel = this.selectFreeModel(failedIds, requiredContextTokens);
+                if (!freeModel) break;
+                ranked.push(freeModel);
+            }
+
+            const selectedModel = ranked[0];
 
             // Inner loop for injection retries on the same model
             while (true) {
                 const loaded = await this.ensureModelLoaded(selectedModel);
                 if (!loaded) {
-                    primaryFailedSet.add(selectedModel.id);
+                    failedIds.add(selectedModel.id);
                     this.recordError(selectedModel.id);
                     console.warn(`Model ${selectedModel.name} could not be loaded, skipping.`);
                     break;
@@ -308,22 +327,12 @@ export class BudgetStrategyEngine {
                 const sessionStart = Date.now();
 
                 try {
-                    const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
                     let result: StreamResult;
 
                     try {
-                        result = await this.engine.generateStream(requestBody, timeoutCtrl, wrappedCallbacks);
+                        result = await this.engine.generateStream(requestBody, abortController, wrappedCallbacks);
                     } catch (e) {
-                        cleanupTimeout();
-
-                        if (timeoutCtrl.signal.aborted && !abortController.signal.aborted) {
-                            const sessionDuration = Date.now() - sessionStart;
-                            this.recordSessionDuration(selectedModel.id, sessionDuration);
-                            primaryFailedSet.add(selectedModel.id);
-                            this.recordError(selectedModel.id);
-                            console.warn(`Model ${selectedModel.name} timed out after ${this.strategy.fallbackOnTimeoutInSeconds}s, rotating.`);
-                            break;
-                        }
+                        if (abortController.signal.aborted) throw e;
 
                         if (isInputFilterError(e) && Array.isArray(requestBody._injectionStrings) && requestBody._injectionStrings.length > 0 && typeof requestBody._basePrompt === 'string') {
                             const nextInjection = requestBody._injectionStrings.shift();
@@ -333,8 +342,6 @@ export class BudgetStrategyEngine {
                         }
 
                         throw e;
-                    } finally {
-                        cleanupTimeout();
                     }
 
                     const sessionDuration = Date.now() - sessionStart;
@@ -343,7 +350,7 @@ export class BudgetStrategyEngine {
                     if (result.msPerToken && result.msPerToken > 0) this.recordLatency(selectedModel.id, result.msPerToken);
                     if (result.timeToFirstToken && result.timeToFirstToken > 0) this.recordTTFT(selectedModel.id, result.timeToFirstToken);
 
-                    const promptTokens = requiredContextTokens ?? await this.engine.countTokens(promptText);
+                    const promptTokens = requiredContextTokens || await this.engine.countTokens(promptText);
                     const completionTokens = await this.engine.countTokens(result.text);
                     const cost = calculateRequestCost(promptTokens, completionTokens, this._lastCacheMiss, pricing);
                     this.recordSuccess(selectedModel.id, cost.totalCost);
@@ -352,7 +359,7 @@ export class BudgetStrategyEngine {
 
                     if (!fullOutput) {
                         this.recordBroken(selectedModel.id);
-                        primaryFailedSet.add(selectedModel.id);
+                        failedIds.add(selectedModel.id);
                         console.warn(`Model ${selectedModel.name} returned empty/broken response, rotating.`);
                         break;
                     }
@@ -362,7 +369,7 @@ export class BudgetStrategyEngine {
                         console.warn(`Model ${selectedModel.name} returned censorship refusal — returning text as-is.`);
                     }
 
-                    return {text: fullOutput, isCompleted: result.isCompleted};
+                    return { text: fullOutput, isCompleted: result.isCompleted };
                 } catch (e) {
                     if (abortController.signal.aborted) throw e;
 
@@ -374,232 +381,45 @@ export class BudgetStrategyEngine {
                         throw e;
                     }
 
-                    primaryFailedSet.add(selectedModel.id);
+                    failedIds.add(selectedModel.id);
                     this.recordQuotaError(selectedModel.id);
-                    console.warn(`Model ${selectedModel.name} (tier ${this.getTier(selectedModel)}) hit quota/rate limit after partial output (${accumulatedPartialText.length} chars), rotating to next model for continuation.`);
+                    console.warn(`Model ${selectedModel.name} hit quota/rate limit after partial output (${accumulatedPartialText.length} chars), rotating.`);
                     break;
                 }
             }
         }
 
-        // ─── Primary pool exhausted — try fallback pool ───
-        if (this.strategy.fallbackOnLocalFailure && !abortController.signal.aborted) {
-            while (true) {
-                const selectedModel = this.selectFromPool(fallbackPool, fallbackFailedSet, perTurnMaxTier, requiredContextTokens);
-                if (!selectedModel) break;
-
-                while (true) {
-                    const loaded = await this.ensureModelLoaded(selectedModel);
-                    if (!loaded) {
-                        fallbackFailedSet.add(selectedModel.id);
-                        this.recordError(selectedModel.id);
-                        console.warn(`Fallback model ${selectedModel.name} could not be loaded, skipping.`);
-                        break;
-                    }
-
-                    this.engine.setContext(selectedModel);
-                    this._lastSelectedModelId = selectedModel.id;
-                    const fallbackPricing = buildPricing(selectedModel);
-                    const sessionStart = Date.now();
-
-                    try {
-                        const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
-                        let result: StreamResult;
-
-                        try {
-                            result = await this.engine.generateStream(requestBody, timeoutCtrl, wrappedCallbacks);
-                        } catch (e) {
-                            cleanupTimeout();
-
-                            if (timeoutCtrl.signal.aborted && !abortController.signal.aborted) {
-                                const sessionDuration = Date.now() - sessionStart;
-                                this.recordSessionDuration(selectedModel.id, sessionDuration);
-                                fallbackFailedSet.add(selectedModel.id);
-                                this.recordError(selectedModel.id);
-                                console.warn(`Fallback model ${selectedModel.name} timed out after ${this.strategy.fallbackOnTimeoutInSeconds}s, rotating.`);
-                                break;
-                            }
-
-                            if (isInputFilterError(e) && Array.isArray(requestBody._injectionStrings) && requestBody._injectionStrings.length > 0 && typeof requestBody._basePrompt === 'string') {
-                                const nextInjection = requestBody._injectionStrings.shift();
-                                requestBody.prompt = nextInjection + requestBody._basePrompt;
-                                console.warn(`Fallback model ${selectedModel.name} hit input filter. Retrying with randomized injection (${requestBody._injectionStrings.length} retries left).`);
-                                continue;
-                            }
-
-                            throw e;
-                        } finally {
-                            cleanupTimeout();
-                        }
-
-                        const sessionDuration = Date.now() - sessionStart;
-                        this.recordSessionDuration(selectedModel.id, sessionDuration);
-
-                        if (result.msPerToken && result.msPerToken > 0) this.recordLatency(selectedModel.id, result.msPerToken);
-                        if (result.timeToFirstToken && result.timeToFirstToken > 0) this.recordTTFT(selectedModel.id, result.timeToFirstToken);
-
-                        const promptTokens = requiredContextTokens ?? await this.engine.countTokens(promptText);
-                        const completionTokens = await this.engine.countTokens(result.text);
-                        const cost = calculateRequestCost(promptTokens, completionTokens, this._lastCacheMiss, fallbackPricing);
-                        this.recordSuccess(selectedModel.id, cost.totalCost);
-
-                        const fullOutput = accumulatedPartialText + result.text;
-
-                        if (!fullOutput) {
-                            this.recordBroken(selectedModel.id);
-                            fallbackFailedSet.add(selectedModel.id);
-                            console.warn(`Fallback model ${selectedModel.name} returned empty/broken response, rotating.`);
-                            break;
-                        }
-
-                        if (isCensorshipRefusal(result.text)) {
-                            this.recordCensorship(selectedModel.id);
-                            console.warn(`Fallback model ${selectedModel.name} returned censorship refusal — returning text as-is.`);
-                        }
-
-                        return {text: fullOutput, isCompleted: result.isCompleted};
-                    } catch (e) {
-                        if (abortController.signal.aborted) throw e;
-
-                        const sessionDuration = Date.now() - sessionStart;
-                        this.recordSessionDuration(selectedModel.id, sessionDuration);
-
-                        if (!isQuotaError(e)) {
-                            this.recordError(selectedModel.id);
-                            throw e;
-                        }
-
-                        fallbackFailedSet.add(selectedModel.id);
-                        this.recordQuotaError(selectedModel.id);
-                        console.warn(`Fallback model ${selectedModel.name} (tier ${this.getTier(selectedModel)}) also hit quota/rate limit, rotating.`);
-                        break;
-                    }
-                }
-            }
-        }
-
-        // ─── Both pools exhausted — try free models as last resort ───
-        if (!abortController.signal.aborted) {
-            const allFailedIds = new Set([...failedOnlineIds, ...failedLocalIds]);
-
-            while (true) {
-                const freeModel = this.selectFreeModel(allFailedIds, requiredContextTokens);
-                if (!freeModel) break;
-
-                while (true) {
-                    const loaded = await this.ensureModelLoaded(freeModel);
-                    if (!loaded) {
-                        allFailedIds.add(freeModel.id);
-                        this.recordError(freeModel.id);
-                        console.warn(`Free model ${freeModel.name} could not be loaded, skipping.`);
-                        break;
-                    }
-
-                    this.engine.setContext(freeModel);
-                    this._lastSelectedModelId = freeModel.id;
-                    const sessionStart = Date.now();
-
-                    try {
-                        const { controller: timeoutCtrl, cleanup: cleanupTimeout } = this.createTimeoutController(abortController.signal);
-                        let result: StreamResult;
-
-                        try {
-                            result = await this.engine.generateStream(requestBody, timeoutCtrl, wrappedCallbacks);
-                        } catch (e) {
-                            cleanupTimeout();
-
-                            if (timeoutCtrl.signal.aborted && !abortController.signal.aborted) {
-                                const sessionDuration = Date.now() - sessionStart;
-                                this.recordSessionDuration(freeModel.id, sessionDuration);
-                                allFailedIds.add(freeModel.id);
-                                this.recordError(freeModel.id);
-                                console.warn(`Free model ${freeModel.name} timed out after ${this.strategy.fallbackOnTimeoutInSeconds}s, rotating.`);
-                                break;
-                            }
-
-                            if (isInputFilterError(e) && Array.isArray(requestBody._injectionStrings) && requestBody._injectionStrings.length > 0 && typeof requestBody._basePrompt === 'string') {
-                                const nextInjection = requestBody._injectionStrings.shift();
-                                requestBody.prompt = nextInjection + requestBody._basePrompt;
-                                console.warn(`Free model ${freeModel.name} hit input filter. Retrying with randomized injection (${requestBody._injectionStrings.length} retries left).`);
-                                continue;
-                            }
-
-                            throw e;
-                        } finally {
-                            cleanupTimeout();
-                        }
-
-                        const sessionDuration = Date.now() - sessionStart;
-                        this.recordSessionDuration(freeModel.id, sessionDuration);
-
-                        if (result.msPerToken && result.msPerToken > 0) this.recordLatency(freeModel.id, result.msPerToken);
-                        if (result.timeToFirstToken && result.timeToFirstToken > 0) this.recordTTFT(freeModel.id, result.timeToFirstToken);
-
-                        this.recordSuccess(freeModel.id, 0);
-
-                        const fullOutput = accumulatedPartialText + result.text;
-
-                        if (!fullOutput) {
-                            this.recordBroken(freeModel.id);
-                            allFailedIds.add(freeModel.id);
-                            console.warn(`Free model ${freeModel.name} returned empty/broken response, rotating.`);
-                            break;
-                        }
-
-                        if (isCensorshipRefusal(result.text)) {
-                            this.recordCensorship(freeModel.id);
-                            console.warn(`Free model ${freeModel.name} returned censorship refusal — returning text as-is.`);
-                        }
-
-                        console.info(`[BudgetEngine] Using free model ${freeModel.name} — budget exhausted or all paid models failed.`);
-                        return {text: fullOutput, isCompleted: result.isCompleted};
-                    } catch (e) {
-                        if (abortController.signal.aborted) throw e;
-
-                        const sessionDuration = Date.now() - sessionStart;
-                        this.recordSessionDuration(freeModel.id, sessionDuration);
-
-                        allFailedIds.add(freeModel.id);
-                        this.recordError(freeModel.id);
-                        console.warn(`Free model ${freeModel.name} failed, trying next free model.`);
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (accumulatedPartialText) return {text: accumulatedPartialText, isCompleted: false};
+        if (accumulatedPartialText) return { text: accumulatedPartialText, isCompleted: false };
 
         console.warn('[BudgetEngine] All models exhausted. Returning empty response.');
-        return {text: "", isCompleted: false};
+        return { text: "", isCompleted: false };
     }
 
     async generateCompletion(
         requestBody: Record<string, unknown>,
         abortSignal?: AbortSignal,
     ): Promise<{ text: string; modelId: string }> {
-        const failedOnlineIds = new Set<string>();
-        const failedLocalIds = new Set<string>();
-
-        const useOnline = await this.shouldUseOnline(requestBody);
-        const primaryPool = useOnline ? this.strategy.onlineModels : this.strategy.localModels;
-        const fallbackPool = useOnline ? this.strategy.localModels : this.strategy.onlineModels;
-        const primaryFailedSet = useOnline ? failedOnlineIds : failedLocalIds;
-        const fallbackFailedSet = useOnline ? failedLocalIds : failedOnlineIds;
+        const failedIds = new Set<string>();
 
         const promptText = (requestBody.prompt as string) || '';
-        const requiredContextTokens = promptText.length > 0 ? await this.engine.countTokens(promptText) : undefined;
+        const requiredContextTokens = promptText.length > 0 ? await this.engine.countTokens(promptText) : 0;
 
-        // ─── Try primary pool ───
-        while (true) {
-            const selectedModel = this.selectFromPool(primaryPool, primaryFailedSet, undefined, requiredContextTokens);
-            if (!selectedModel) break;
-            if (abortSignal?.aborted) throw new Error('Aborted');
+        while (!abortSignal?.aborted) {
+            const candidates = this.getEligibleCandidates(requiredContextTokens, failedIds);
+            const ranked = this.rankCandidates(candidates, requiredContextTokens);
+
+            if (ranked.length === 0) {
+                const freeModel = this.selectFreeModel(failedIds, requiredContextTokens);
+                if (!freeModel) break;
+                ranked.push(freeModel);
+            }
+
+            const selectedModel = ranked[0];
 
             while (true) {
                 const loaded = await this.ensureModelLoaded(selectedModel);
                 if (!loaded) {
-                    primaryFailedSet.add(selectedModel.id);
+                    failedIds.add(selectedModel.id);
                     this.recordError(selectedModel.id);
                     break;
                 }
@@ -614,14 +434,14 @@ export class BudgetStrategyEngine {
                     const sessionDuration = Date.now() - sessionStart;
                     this.recordSessionDuration(selectedModel.id, sessionDuration);
 
-                    const promptTokens = requiredContextTokens ?? await this.engine.countTokens(promptText);
+                    const promptTokens = requiredContextTokens || await this.engine.countTokens(promptText);
                     const completionTokens = await this.engine.countTokens(result.text);
                     const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
                     this.recordSuccess(selectedModel.id, cost.totalCost);
 
                     if (!result.text) {
                         this.recordBroken(selectedModel.id);
-                        primaryFailedSet.add(selectedModel.id);
+                        failedIds.add(selectedModel.id);
                         console.warn(`Completion model ${selectedModel.name} returned empty/broken response, rotating.`);
                         break;
                     }
@@ -648,132 +468,8 @@ export class BudgetStrategyEngine {
                         throw e;
                     }
 
-                    primaryFailedSet.add(selectedModel.id);
+                    failedIds.add(selectedModel.id);
                     this.recordQuotaError(selectedModel.id);
-                    break;
-                }
-            }
-        }
-
-        // ─── Fallback pool ───
-        if (this.strategy.fallbackOnLocalFailure) {
-            while (true) {
-                const selectedModel = this.selectFromPool(fallbackPool, fallbackFailedSet, undefined, requiredContextTokens);
-                if (!selectedModel) break;
-                if (abortSignal?.aborted) throw new Error('Aborted');
-
-                while (true) {
-                    const loaded = await this.ensureModelLoaded(selectedModel);
-                    if (!loaded) {
-                        fallbackFailedSet.add(selectedModel.id);
-                        this.recordError(selectedModel.id);
-                        break;
-                    }
-
-                    this.engine.setContext(selectedModel);
-                    this._lastSelectedModelId = selectedModel.id;
-                    const pricing = buildPricing(selectedModel);
-                    const sessionStart = Date.now();
-
-                    try {
-                        const result = await this.engine.generateCompletion(requestBody);
-                        const sessionDuration = Date.now() - sessionStart;
-                        this.recordSessionDuration(selectedModel.id, sessionDuration);
-
-                        const promptTokens = requiredContextTokens ?? await this.engine.countTokens(promptText);
-                        const completionTokens = await this.engine.countTokens(result.text);
-                        const cost = calculateRequestCost(promptTokens, completionTokens, false, pricing);
-                        this.recordSuccess(selectedModel.id, cost.totalCost);
-
-                        if (!result.text) {
-                            this.recordBroken(selectedModel.id);
-                            fallbackFailedSet.add(selectedModel.id);
-                            console.warn(`Fallback completion model ${selectedModel.name} returned empty/broken response, rotating.`);
-                            break;
-                        }
-
-                        if (isCensorshipRefusal(result.text)) {
-                            this.recordCensorship(selectedModel.id);
-                            console.warn(`Fallback completion model ${selectedModel.name} returned censorship refusal — returning text as-is.`);
-                        }
-
-                        return { text: result.text, modelId: selectedModel.id };
-                    } catch (e) {
-                        const sessionDuration = Date.now() - sessionStart;
-                        this.recordSessionDuration(selectedModel.id, sessionDuration);
-
-                        if (isInputFilterError(e) && Array.isArray(requestBody._injectionStrings) && requestBody._injectionStrings.length > 0 && typeof requestBody._basePrompt === 'string') {
-                            const nextInjection = requestBody._injectionStrings.shift();
-                            requestBody.prompt = nextInjection + requestBody._basePrompt;
-                            console.warn(`Fallback completion model ${selectedModel.name} hit input filter. Retrying with randomized injection (${requestBody._injectionStrings.length} retries left).`);
-                            continue;
-                        }
-
-                        if (!isQuotaError(e)) {
-                            this.recordError(selectedModel.id);
-                            throw e;
-                        }
-
-                        fallbackFailedSet.add(selectedModel.id);
-                        this.recordQuotaError(selectedModel.id);
-                        break;
-                    }
-                }
-            }
-        }
-
-        // ─── Free models ───
-        const allFailedIds = new Set([...failedOnlineIds, ...failedLocalIds]);
-
-        while (true) {
-            const freeModel = this.selectFreeModel(allFailedIds, requiredContextTokens);
-            if (!freeModel) break;
-            if (abortSignal?.aborted) throw new Error('Aborted');
-
-            while (true) {
-                const loaded = await this.ensureModelLoaded(freeModel);
-                if (!loaded) {
-                    allFailedIds.add(freeModel.id);
-                    this.recordError(freeModel.id);
-                    break;
-                }
-
-                this.engine.setContext(freeModel);
-                this._lastSelectedModelId = freeModel.id;
-                const sessionStart = Date.now();
-
-                try {
-                    const result = await this.engine.generateCompletion(requestBody);
-                    const sessionDuration = Date.now() - sessionStart;
-                    this.recordSessionDuration(freeModel.id, sessionDuration);
-                    this.recordSuccess(freeModel.id, 0);
-
-                    if (!result.text) {
-                        this.recordBroken(freeModel.id);
-                        allFailedIds.add(freeModel.id);
-                        console.warn(`Free completion model ${freeModel.name} returned empty/broken response, rotating.`);
-                        break;
-                    }
-
-                    if (isCensorshipRefusal(result.text)) {
-                        this.recordCensorship(freeModel.id);
-                        console.warn(`Free completion model ${freeModel.name} returned censorship refusal — returning text as-is.`);
-                    }
-
-                    return { text: result.text, modelId: freeModel.id };
-                } catch (e) {
-                    const sessionDuration = Date.now() - sessionStart;
-                    this.recordSessionDuration(freeModel.id, sessionDuration);
-
-                    if (isInputFilterError(e) && Array.isArray(requestBody._injectionStrings) && requestBody._injectionStrings.length > 0 && typeof requestBody._basePrompt === 'string') {
-                        const nextInjection = requestBody._injectionStrings.shift();
-                        requestBody.prompt = nextInjection + requestBody._basePrompt;
-                        console.warn(`Free completion model ${freeModel.name} hit input filter. Retrying with randomized injection (${requestBody._injectionStrings.length} retries left).`);
-                        continue;
-                    }
-
-                    allFailedIds.add(freeModel.id);
-                    this.recordError(freeModel.id);
                     break;
                 }
             }
@@ -783,20 +479,11 @@ export class BudgetStrategyEngine {
         return { text: '', modelId: '' };
     }
 
-    private getTier(model: LanguageModel): number { return this.strategy.modelCostTiers?.[model.id] ?? 0; }
+    // ─── Observed Performance Metrics ────────────────────────────────
+
     private getModelSpeed(modelId: string): number { return this.budgetData.modelAverageLatencyMsPerToken?.[modelId] ?? Number.POSITIVE_INFINITY; }
     private getModelTTFT(modelId: string): number { return this.budgetData.modelAverageTimeToFirstToken?.[modelId] ?? Number.POSITIVE_INFINITY; }
     private getModelQualityScore(modelId: string): number { return this.budgetData.modelTotalSessionDuration?.[modelId] ?? 0; }
-
-    private isBelowQualityThreshold(modelId: string): boolean {
-        const threshold = this.strategy.fallbackOnQualityThreshold;
-        if (!threshold || threshold <= 0) return false;
-        const usedCount = this.budgetData.modelUsedCount?.[modelId] ?? 0;
-        if (usedCount < 3) return false;
-        const totalDuration = this.budgetData.modelTotalSessionDuration?.[modelId] ?? 0;
-        const avgDurationSeconds = (totalDuration / usedCount) / 1000;
-        return avgDurationSeconds < threshold;
-    }
 
     private getContextFitFactor(model: LanguageModel, requiredContextTokens?: number): number {
         if (!requiredContextTokens || requiredContextTokens <= 0) return 1;
@@ -828,59 +515,23 @@ export class BudgetStrategyEngine {
         return speedFactor * ttftFactor * avgSessionSeconds * reliabilityFactor * contextFitFactor;
     }
 
-    private selectFromPool(
-        pool: LanguageModel[],
-        failedIds: Set<string>,
-        maxTier?: number,
-        requiredContextTokens?: number,
-    ): LanguageModel | null {
-        if (pool.length === 0) return null;
-
-        const tierGroups = new Map<number, LanguageModel[]>();
-        for (const model of pool) {
-            if (failedIds.has(model.id)) continue;
-            const tier = this.getTier(model);
-            if (maxTier !== undefined && tier > maxTier) continue;
-            if (!tierGroups.has(tier)) tierGroups.set(tier, []);
-            const tierModels = tierGroups.get(tier);
-            if (tierModels) tierModels.push(model);
-        }
-
-        if (tierGroups.size === 0) return null;
-        const sortedTiers = [...tierGroups.keys()].sort((a, b) => b - a);
-
-        for (const tier of sortedTiers) {
-            const candidates = tierGroups.get(tier);
-            if (!candidates) continue;
-
-            candidates.sort((a, b) => {
-                const aBelowThreshold = this.isBelowQualityThreshold(a.id) ? 1 : 0;
-                const bBelowThreshold = this.isBelowQualityThreshold(b.id) ? 1 : 0;
-                if (aBelowThreshold !== bBelowThreshold) return aBelowThreshold - bBelowThreshold;
-
-                const contextFitA = this.getContextFitFactor(a, requiredContextTokens);
-                const contextFitB = this.getContextFitFactor(b, requiredContextTokens);
-                if (Math.abs(contextFitA - contextFitB) > 0.01) return contextFitB - contextFitA;
-
-                const scoreA = this.computeCompositeQuality(a, requiredContextTokens);
-                const scoreB = this.computeCompositeQuality(b, requiredContextTokens);
-                if (Math.abs(scoreA - scoreB) > 0.0001) return scoreB - scoreA;
-
-                return Math.random() - 0.5;
-            });
-
-            if (candidates.length > 0) return candidates[0];
-        }
-
-        return null;
-    }
-
     private selectFreeModel(failedIds: Set<string>, requiredContextTokens?: number): LanguageModel | null {
-        const allModels = [...this.strategy.onlineModels, ...this.strategy.localModels];
-        const freeModels = allModels.filter(m => isFreeModel(m));
+        const allModels = this.getAllModels();
+        const freeModels = allModels.filter(m => isFreeModel(m) && !failedIds.has(m.id));
         if (freeModels.length === 0) return null;
-        return this.selectFromPool(freeModels, failedIds, undefined, requiredContextTokens);
+
+        // Rank free models by composite quality
+        const ranked = [...freeModels].sort((a, b) => {
+            const scoreA = this.computeCompositeQuality(a, requiredContextTokens);
+            const scoreB = this.computeCompositeQuality(b, requiredContextTokens);
+            if (Math.abs(scoreA - scoreB) > 0.0001) return scoreB - scoreA;
+            return Math.random() - 0.5;
+        });
+
+        return ranked[0] ?? null;
     }
+
+    // ─── Recording ───────────────────────────────────────────────────
 
     private recordSuccess(modelId: string, cost: number): void {
         this.budgetData.budgetSpent += cost;
@@ -934,6 +585,8 @@ export class BudgetStrategyEngine {
         this.budgetData.modelTotalSessionDuration[modelId] = (this.budgetData.modelTotalSessionDuration[modelId] ?? 0) + durationMs;
     }
 
+    // ─── Model Loading ───────────────────────────────────────────────
+
     private isModelReady(model: LanguageModel): boolean {
         const isCloud = !!model.apiKey && !!model.backend;
         if (isCloud) return true;
@@ -955,40 +608,6 @@ export class BudgetStrategyEngine {
             }
         } catch (e) { console.warn(`Failed to auto-load model ${model.name}:`, e); }
         return false;
-    }
-
-    private createTimeoutController(parentSignal: AbortSignal): { controller: AbortController; cleanup: () => void } {
-        const timeoutSeconds = this.strategy.fallbackOnTimeoutInSeconds;
-        const controller = new AbortController();
-        const onParentAbort = () => controller.abort();
-        parentSignal.addEventListener('abort', onParentAbort);
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        if (timeoutSeconds > 0) timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
-        return {
-            controller,
-            cleanup: () => {
-                if (timeoutId !== undefined) clearTimeout(timeoutId);
-                parentSignal.removeEventListener('abort', onParentAbort);
-            },
-        };
-    }
-
-    private async shouldUseOnline(requestBody: Record<string, unknown>): Promise<boolean> {
-        if (this.strategy.onlineModels.length === 0) return false;
-        if (this.strategy.localModels.length === 0) return true;
-        if (this.budgetData.budgetSpent >= this.strategy.maximumBudget) return false;
-
-        const promptText = (requestBody.prompt as string) || '';
-        if (promptText.length > 0) {
-            const numberOfTokens = await this.engine.countTokens(promptText);
-            if (numberOfTokens >= this.strategy.switchOnContextSize) return true;
-        }
-
-        const complexityScore = computeComplexityScore(promptText);
-        if (complexityScore >= this.strategy.switchOnComplexityScore) return true;
-
-        const randomValue = Math.random() * 100;
-        return randomValue < this.strategy.switchProbability;
     }
 }
 

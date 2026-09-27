@@ -1,3 +1,4 @@
+// src/services/ProviderCachingStrategy.ts
 import type { backend } from "../types";
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -60,6 +61,84 @@ class AnthropicExplicitCacheStrategy implements ProviderCachingStrategy {
     }
 }
 
+/**
+ * Qwen Explicit Cache Strategy
+ * 
+ * Qwen/DashScope explicit cache uses cache_control markers on individual
+ * content blocks within the messages array. Content must be wrapped as
+ * [{type:"text", text:..., cache_control:{type:"ephemeral"}}] for the
+ * marker to take effect. Up to 4 markers per request; backward lookback
+ * limited to 20 content blocks from each marker. Cache TTL is 5 minutes,
+ * reset on hit. Creation billed at 125% of input price; hits at 10%.
+ * 
+ * Markers are placed on:
+ *   - First system message (static prompt prefix)
+ *   - Last assistant/user message before generation trigger (conversation history boundary)
+ */
+class QwenExplicitCacheStrategy implements ProviderCachingStrategy {
+    supports(b: backend): boolean {
+        return b === 'Qwen';
+    }
+
+    apply(ctx: CacheContext): CacheStrategyResult {
+        if (ctx.messages.length === 0) return {};
+
+        const patched = ctx.messages.map((msg, i) => {
+            // Marker 1: First system message (static prompt prefix)
+            if (msg.role === 'system' && i === 0) {
+                return wrapContentWithCacheControl(msg);
+            }
+
+            // Marker 2: Last non-trigger message before the final assistant generation trigger
+            // This caches the conversation history boundary so multi-turn prefixes are reused
+            if (i === ctx.messages.length - 2 && msg.role !== 'assistant') {
+                return wrapContentWithCacheControl(msg);
+            }
+
+            return msg;
+        });
+
+        return { messages: patched };
+    }
+}
+
+/**
+ * Wraps a message's string content into the array format required by
+ * Qwen's explicit cache API: [{type:"text", text:..., cache_control:{type:"ephemeral"}}]
+ * If content is already an array (e.g., multimodal), attaches cache_control
+ * to the first text block.
+ */
+function wrapContentWithCacheControl(msg: OpenAIMessage): OpenAIMessage {
+    if (typeof msg.content === 'string') {
+        return {
+            ...msg,
+            content: [
+                {
+                    type: 'text',
+                    text: msg.content,
+                    cache_control: { type: 'ephemeral' },
+                },
+            ],
+        };
+    }
+
+    // Content is already an array (multimodal or previously wrapped)
+    if (Array.isArray(msg.content)) {
+        const wrapped = [...msg.content];
+        // Attach cache_control to the first text block
+        for (let i = 0; i < wrapped.length; i++) {
+            const block = wrapped[i] as Record<string, unknown>;
+            if (block && block.type === 'text') {
+                wrapped[i] = { ...block, cache_control: { type: 'ephemeral' } };
+                break;
+            }
+        }
+        return { ...msg, content: wrapped };
+    }
+
+    return msg;
+}
+
 class ImplicitCacheStrategy implements ProviderCachingStrategy {
     private readonly backends: ReadonlySet<backend> = new Set(['DeepSeek', 'Google', 'Kimi']);
 
@@ -88,6 +167,7 @@ class NoCacheStrategy implements ProviderCachingStrategy {
 
 const strategies: readonly ProviderCachingStrategy[] = [
     new AnthropicExplicitCacheStrategy(),
+    new QwenExplicitCacheStrategy(),
     new SessionAffinityStrategy(),
     new ImplicitCacheStrategy(),
     new NoCacheStrategy(),

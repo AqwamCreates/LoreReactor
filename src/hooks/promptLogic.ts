@@ -1122,11 +1122,22 @@ function buildLocationLines(ctx: PromptBuildContext): { lines: string[]; images:
     if (location) {
         lines.push(`${ctx.delimiters.blockStart('system')}Start Of Current Location.${ctx.delimiters.blockEnd}`);
 
-        const locationName = location.name || 'Unknown Location';
+        const locationName = replacePlaceholders(
+            location.name || 'Unknown Location',
+            ctx.characterParticipantTag, ctx.characterName,
+            ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+        );
         const locationText = location.text?.trim();
 
         let locationContent = `${ctx.delimiters.blockStart('system')}Current Location: ${locationName}`;
-        if (locationText) locationContent += `\n\n${locationText}`;
+        if (locationText) {
+            const replacedLocationText = replacePlaceholders(
+                locationText,
+                ctx.characterParticipantTag, ctx.characterName,
+                ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+            );
+            locationContent += `\n\n${replacedLocationText}`;
+        }
         locationContent += `${ctx.delimiters.blockEnd}`;
         lines.push(locationContent);
 
