@@ -50,15 +50,19 @@ function BudgetStrategyEditorContent({
 
     const [name, setName] = useState(existingStrategy?.name || '');
     const [description, setDescription] = useState(existingStrategy?.description || '');
-    const [selectedModelIds, setSelectedModelIds] = useState<string[]>(() => {
-        const ids = new Set<string>();
-        if (existingStrategy?.onlineModels) existingStrategy.onlineModels.forEach(m => ids.add(m.id));
-        if (existingStrategy?.localModels) existingStrategy.localModels.forEach(m => ids.add(m.id));
-        return Array.from(ids);
-    });
+    
+    // Separate online and local model IDs
+    const [onlineModelIds, setOnlineModelIds] = useState<string[]>(
+        existingStrategy?.onlineModels?.map(m => m.id) || []
+    );
+    const [localModelIds, setLocalModelIds] = useState<string[]>(
+        existingStrategy?.localModels?.map(m => m.id) || []
+    );
+    
     const [maximumBudget, setMaximumBudget] = useState<number>(existingStrategy?.maximumBudget ?? 10);
     const [errors, setErrors] = useState<{ name?: string }>({});
-    const [modelSearch, setModelSearch] = useState('');
+    const [onlineSearch, setOnlineSearch] = useState('');
+    const [localSearch, setLocalSearch] = useState('');
 
     // ─── Per-Model Tier State ────────────────────────────────────────
     const [modelCostTiers, setModelCostTiers] = useState<Record<string, number>>(
@@ -82,10 +86,25 @@ function BudgetStrategyEditorContent({
         existingStrategy?.modelDeactivationContextSize ? { ...existingStrategy.modelDeactivationContextSize } : {}
     );
 
-    const toggleModel = (id: string) => {
-        setSelectedModelIds(prev => {
+    const toggleOnlineModel = (id: string) => {
+        setOnlineModelIds(prev => {
             if (prev.includes(id)) {
                 // Remove model and clean up all tier/activation entries
+                setModelCostTiers(t => { const u = { ...t }; delete u[id]; return u; });
+                setModelLatencyTiers(t => { const u = { ...t }; delete u[id]; return u; });
+                setModelTTFTTiers(t => { const u = { ...t }; delete u[id]; return u; });
+                setModelQualityTiers(t => { const u = { ...t }; delete u[id]; return u; });
+                setModelActivationContextSize(t => { const u = { ...t }; delete u[id]; return u; });
+                setModelDeactivationContextSize(t => { const u = { ...t }; delete u[id]; return u; });
+                return prev.filter(x => x !== id);
+            }
+            return [...prev, id];
+        });
+    };
+
+    const toggleLocalModel = (id: string) => {
+        setLocalModelIds(prev => {
+            if (prev.includes(id)) {
                 setModelCostTiers(t => { const u = { ...t }; delete u[id]; return u; });
                 setModelLatencyTiers(t => { const u = { ...t }; delete u[id]; return u; });
                 setModelTTFTTiers(t => { const u = { ...t }; delete u[id]; return u; });
@@ -122,7 +141,7 @@ function BudgetStrategyEditorContent({
     };
 
     const filterTiersToSelected = (tiers: Record<string, number>): Record<string, number> => {
-        const selected = new Set(selectedModelIds);
+        const selected = new Set([...onlineModelIds, ...localModelIds]);
         const filtered: Record<string, number> = {};
         for (const [id, val] of Object.entries(tiers)) {
             if (selected.has(id)) filtered[id] = val;
@@ -133,16 +152,18 @@ function BudgetStrategyEditorContent({
     const buildStrategy = (cloneNameSuffix?: string): BudgetStrategy | null => {
         if (!validate()) return null;
 
-        const selectedModels = allModels.filter(m => selectedModelIds.includes(m.id));
-        if (selectedModels.length === 0) return null;
+        const onlineModels = allModels.filter(m => onlineModelIds.includes(m.id));
+        const localModels = allModels.filter(m => localModelIds.includes(m.id));
+
+        if (onlineModels.length === 0 && localModels.length === 0) return null;
 
         const now = Date.now();
         return {
             id: cloneNameSuffix ? uuidv4() : (existingStrategy?.id || uuidv4()),
             name: cloneNameSuffix ? `${name.trim()} ${cloneNameSuffix}` : name.trim(),
             description: description.trim() || '',
-            onlineModels: selectedModels.filter(m => !!m.apiKey && !!m.backend),
-            localModels: selectedModels.filter(m => !m.apiKey || !m.backend),
+            onlineModels,
+            localModels,
             modelCostTiers: filterTiersToSelected(modelCostTiers),
             modelLatencyMsPerTokenTiers: filterTiersToSelected(modelLatencyTiers),
             modelTimeToFirstTokenTiers: filterTiersToSelected(modelTTFTTiers),
@@ -173,10 +194,11 @@ function BudgetStrategyEditorContent({
         axisKey: string,
         tiers: Record<string, number>,
         setter: React.Dispatch<React.SetStateAction<Record<string, number>>>,
+        modelIds: string[],
         placeholder: string,
     ) => {
         const config = TIER_AXIS_LABELS[axisKey];
-        const models = allModels.filter(m => selectedModelIds.includes(m.id));
+        const models = allModels.filter(m => modelIds.includes(m.id));
         if (models.length === 0) return null;
 
         return (
@@ -216,8 +238,8 @@ function BudgetStrategyEditorContent({
         );
     };
 
-    const renderActivationColumn = () => {
-        const models = allModels.filter(m => selectedModelIds.includes(m.id));
+    const renderActivationColumn = (modelIds: string[]) => {
+        const models = allModels.filter(m => modelIds.includes(m.id));
         if (models.length === 0) return null;
 
         return (
@@ -364,18 +386,34 @@ function BudgetStrategyEditorContent({
                             </div>
 
                             <div className="editor-section">
-                                <span className="editor-section-title">Models</span>
+                                <span className="editor-section-title">Online Models</span>
                                 <div className="entity-ref-hint">
-                                    Select all models to include in this strategy. Online and local models are unified — selection priority is controlled by tiers and activation windows, not pool membership.
+                                    Cloud-hosted models with API keys. These incur per-token costs.
                                 </div>
 
                                 <EntitySelectList
-                                    label="Language Models"
-                                    items={allModels}
-                                    selectedIds={selectedModelIds}
-                                    onToggle={toggleModel}
-                                    searchQuery={modelSearch}
-                                    onSearchChange={setModelSearch}
+                                    label="Online Language Models"
+                                    items={allModels.filter(m => m.backend && m.backend !== 'local')}
+                                    selectedIds={onlineModelIds}
+                                    onToggle={toggleOnlineModel}
+                                    searchQuery={onlineSearch}
+                                    onSearchChange={setOnlineSearch}
+                                />
+                            </div>
+
+                            <div className="editor-section">
+                                <span className="editor-section-title">Local Models</span>
+                                <div className="entity-ref-hint">
+                                    Locally-hosted models. These use your GPU/memory but have no per-token cost.
+                                </div>
+
+                                <EntitySelectList
+                                    label="Local Language Models"
+                                    items={allModels.filter(m => !m.backend || m.backend === 'local')}
+                                    selectedIds={localModelIds}
+                                    onToggle={toggleLocalModel}
+                                    searchQuery={localSearch}
+                                    onSearchChange={setLocalSearch}
                                 />
                             </div>
 
@@ -404,53 +442,102 @@ function BudgetStrategyEditorContent({
 
                     {/* ─── TIERS TAB ─── */}
                     {activeTab === 'tiers' && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">Model Tiers</span>
-                            <div className="entity-ref-hint" style={{ marginBottom: '12px' }}>
-                                Configure per-model ranking across four independent axes. Models are ranked by quality tier first (higher = preferred), then cost tier (lower = preferred), then observed performance metrics.
+                        <>
+                            <div className="editor-section">
+                                <span className="editor-section-title">Online Model Tiers</span>
+                                <div className="entity-ref-hint" style={{ marginBottom: '12px' }}>
+                                    Configure per-model ranking across four independent axes. Models are ranked by quality tier first (higher = preferred), then cost tier (lower = preferred), then observed performance metrics.
+                                </div>
+
+                                {onlineModelIds.length === 0 ? (
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '24px 0' }}>
+                                        No online models selected. Add models in the General tab first.
+                                    </div>
+                                ) : (
+                                    <div style={{
+                                        display: 'flex',
+                                        gap: '16px',
+                                        flexWrap: 'wrap',
+                                    }}>
+                                        {renderTierColumn('quality', modelQualityTiers, setModelQualityTiers, onlineModelIds, '0')}
+                                        {renderTierColumn('cost', modelCostTiers, setModelCostTiers, onlineModelIds, '0')}
+                                        {renderTierColumn('latency', modelLatencyTiers, setModelLatencyTiers, onlineModelIds, '0')}
+                                        {renderTierColumn('ttft', modelTTFTTiers, setModelTTFTTiers, onlineModelIds, '0')}
+                                    </div>
+                                )}
                             </div>
 
-                            {selectedModelIds.length === 0 ? (
-                                <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '24px 0' }}>
-                                    No models selected. Add models in the General tab first.
+                            <div className="editor-section">
+                                <span className="editor-section-title">Local Model Tiers</span>
+                                <div className="entity-ref-hint" style={{ marginBottom: '12px' }}>
+                                    Configure per-model ranking for local models. Cost tier is typically 0 for local models.
                                 </div>
-                            ) : (
-                                <div style={{
-                                    display: 'flex',
-                                    gap: '16px',
-                                    flexWrap: 'wrap',
-                                }}>
-                                    {renderTierColumn('quality', modelQualityTiers, setModelQualityTiers, '0')}
-                                    {renderTierColumn('cost', modelCostTiers, setModelCostTiers, '0')}
-                                    {renderTierColumn('latency', modelLatencyTiers, setModelLatencyTiers, '0')}
-                                    {renderTierColumn('ttft', modelTTFTTiers, setModelTTFTTiers, '0')}
-                                </div>
-                            )}
-                        </div>
+
+                                {localModelIds.length === 0 ? (
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '24px 0' }}>
+                                        No local models selected. Add models in the General tab first.
+                                    </div>
+                                ) : (
+                                    <div style={{
+                                        display: 'flex',
+                                        gap: '16px',
+                                        flexWrap: 'wrap',
+                                    }}>
+                                        {renderTierColumn('quality', modelQualityTiers, setModelQualityTiers, localModelIds, '0')}
+                                        {renderTierColumn('cost', modelCostTiers, setModelCostTiers, localModelIds, '0')}
+                                        {renderTierColumn('latency', modelLatencyTiers, setModelLatencyTiers, localModelIds, '0')}
+                                        {renderTierColumn('ttft', modelTTFTTiers, setModelTTFTTiers, localModelIds, '0')}
+                                    </div>
+                                )}
+                            </div>
+                        </>
                     )}
 
                     {/* ─── ACTIVATION TAB ─── */}
                     {activeTab === 'activation' && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">Activation Windows</span>
-                            <div className="entity-ref-hint" style={{ marginBottom: '12px' }}>
-                                Define per-model context size windows. A model is eligible when the current prompt token count is ≥ activation and &lt; deactivation. Use overlapping windows for graduated quality transitions (e.g., expensive model for early turns, free model for later turns).
+                        <>
+                            <div className="editor-section">
+                                <span className="editor-section-title">Online Model Activation Windows</span>
+                                <div className="entity-ref-hint" style={{ marginBottom: '12px' }}>
+                                    Define per-model context size windows. A model is eligible when the current prompt token count is ≥ activation and &lt; deactivation. Use overlapping windows for graduated quality transitions.
+                                </div>
+
+                                {onlineModelIds.length === 0 ? (
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '24px 0' }}>
+                                        No online models selected. Add models in the General tab first.
+                                    </div>
+                                ) : (
+                                    <div style={{
+                                        display: 'flex',
+                                        gap: '16px',
+                                        flexWrap: 'wrap',
+                                    }}>
+                                        {renderActivationColumn(onlineModelIds)}
+                                    </div>
+                                )}
                             </div>
 
-                            {selectedModelIds.length === 0 ? (
-                                <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '24px 0' }}>
-                                    No models selected. Add models in the General tab first.
+                            <div className="editor-section">
+                                <span className="editor-section-title">Local Model Activation Windows</span>
+                                <div className="entity-ref-hint" style={{ marginBottom: '12px' }}>
+                                    Define per-model context size windows for local models.
                                 </div>
-                            ) : (
-                                <div style={{
-                                    display: 'flex',
-                                    gap: '16px',
-                                    flexWrap: 'wrap',
-                                }}>
-                                    {renderActivationColumn()}
-                                </div>
-                            )}
-                        </div>
+
+                                {localModelIds.length === 0 ? (
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '24px 0' }}>
+                                        No local models selected. Add models in the General tab first.
+                                    </div>
+                                ) : (
+                                    <div style={{
+                                        display: 'flex',
+                                        gap: '16px',
+                                        flexWrap: 'wrap',
+                                    }}>
+                                        {renderActivationColumn(localModelIds)}
+                                    </div>
+                                )}
+                            </div>
+                        </>
                     )}
                 </div>
             </div>
