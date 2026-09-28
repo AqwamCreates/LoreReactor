@@ -178,7 +178,7 @@ function App() {
     });
 
     const {
-        interactionData, setInteractionData, setCurrentCharacter,
+        interactionData, setInteractionData, setSelectedCharacter,
         isLoading, streamingText, streamingCharacter, currentCharacterExpression,
         sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage,
         messageEndRef, chatHistoryRef, startNewChat, sendActionAndGetResponse,
@@ -199,7 +199,7 @@ function App() {
         allCharacters: characters.characters,
         rawChatShells: chatList.rawChatShells,
         loadFullCharacter: characters.loadFullCharacter,
-        setInteractionData, setCurrentCharacter,
+        setInteractionData, setSelectedCharacter,
         setSelectedModelId: models.setSelectedModelId,
         startNewChat,
         skipRestoration: mp.isMultiplayerClient,
@@ -209,8 +209,8 @@ function App() {
     useEffect(() => {
         if (!activeChatRestored || !mp.isMultiplayerClient || !mp.joinProtagonist) return;
         const stored = useSessionStore.getState().currentCharacter;
-        if (!stored || stored.id !== mp.joinProtagonist.id) setCurrentCharacter(mp.joinProtagonist);
-    }, [activeChatRestored, mp.isMultiplayerClient, mp.joinProtagonist, setCurrentCharacter]);
+        if (!stored || stored.id !== mp.joinProtagonist.id) setSelectedCharacter(mp.joinProtagonist);
+    }, [activeChatRestored, mp.isMultiplayerClient, mp.joinProtagonist, setSelectedCharacter]);
 
     // Disconnect multiplayer when chat changes
     const prevChatIdRef = useRef<string | null | undefined>(undefined);
@@ -255,7 +255,7 @@ function App() {
         allCharacters: characters.characters,
         allContexts: contexts.contexts,
         allProfiles: profiles.profiles,
-        currentCharacter, setInteractionData, setCurrentCharacter,
+        currentCharacter, setInteractionData, setSelectedCharacter,
     });
 
     // ─── Session Persistence Effects ─────────────────────────────────
@@ -288,8 +288,8 @@ function App() {
         setSelectedGlobalModel,
         selectedCharacterId,
         allCharacters: characters.characters,
-        currentCharacterId: currentCharacter?.id,
-        setCurrentCharacter,
+        selectedProfileId: interactionData?.Profile?.id,
+        setSelectedCharacter,
         activeStrategy, budgetData,
         loadLocalModelForBudgetStrategyEngine: loadLocalModelForBudgetEngine,
     });
@@ -343,14 +343,14 @@ function App() {
 
     const messageActions = useMessageActions({
         interactionData, localProtagonist, isModelReady, isLoading,
-        setInteractionData, setCurrentCharacter,
+        setInteractionData, setSelectedCharacter,
         refreshChatList: chatList.refresh, regenerateFromMessage, addToast,
     });
 
     const chatOps = useChatOperations({
         interactionData, currentCharacter, localProtagonist, selectedCharacterId,
         allCharacters: characters.characters, rawChatShells: chatList.rawChatShells,
-        setInteractionData, setCurrentCharacter,
+        setInteractionData, setSelectedCharacter,
         refreshChatList: chatList.refresh, startNewChat,
         deleteChatFromList: chatList.deleteChat, addToast,
     });
@@ -363,7 +363,7 @@ function App() {
         allProfiles: profiles.profiles,
         allBudgetStrategies: budgetStrategies.strategies,
         selectedBudgetStrategyId,
-        setInteractionData, setCurrentCharacter, setActiveBudgetStrategy,
+        setInteractionData, setSelectedCharacter, setActiveBudgetStrategy,
         setSelectedBudgetStrategyId: storeSetSelectedBudgetStrategyId,
         setSelectedCharacterId: storesetSelectedCharacterId,
         loadFullCharacter: characters.loadFullCharacter, addToast,
@@ -671,12 +671,12 @@ function App() {
                 setInteractionData(source);
                 const srcMp = useSessionStore.getState().multiplayerData;
                 const srcProtag = deriveCurrentProtagonist(source, srcMp, mp.currentAccountId);
-                if (srcProtag) setCurrentCharacter(srcProtag);
+                if (srcProtag) setSelectedCharacter(srcProtag);
                 chatList.refresh();
                 addToast(`Returned to source: "${source.name}"`, 'info');
             } else addToast('Source chat not found.', 'error');
         } catch { addToast('Failed to load source chat.', 'error'); }
-    }, [interactionData, characters, mp.currentAccountId, setInteractionData, setCurrentCharacter, chatList, addToast]);
+    }, [interactionData, characters, mp.currentAccountId, setInteractionData, setSelectedCharacter, chatList, addToast]);
 
     const handleLoadWorld = useCallback(async (world: any) => {
         if (!interactionData) return;
@@ -708,7 +708,7 @@ function App() {
         interactionData: interactionData!,
         localProtagonist: localProtagonist!,
         displayMessages: displayMessages as ChatMessage[],
-        currentCharacterId: currentCharacter?.id,
+        selectedCharacterId: currentCharacter?.id,
         editingId: messageActions.editingId, editDraft: messageActions.editDraft,
         massDeleteId: messageActions.massDeleteId, isMassActive: messageActions.massDeleteId !== null,
         massStartIndex, activeToolbarId: messageToolbar.activeToolbarId,
@@ -766,7 +766,7 @@ function App() {
                             <div className="header-content">
                                 <div className="header-top">
                                     {viewMode === 'ladder' && safeMessages.length > 5 && (
-                                        <ChatMinimap messages={safeMessages.filter((m: ChatMessage | WhisperMessage): m is ChatMessage => m.messageType === 'chat')} containerRef={chatHistoryRef} currentCharacterId={currentCharacter?.id} />
+                                        <ChatMinimap messages={safeMessages.filter((m: ChatMessage | WhisperMessage): m is ChatMessage => m.messageType === 'chat')} containerRef={chatHistoryRef} selectedCharacterId={currentCharacter?.id} />
                                     )}
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                                         {chatOps.isEditingTitle

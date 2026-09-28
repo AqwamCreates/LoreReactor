@@ -14,7 +14,7 @@ interface UseChatRestorationOptions {
     rawChatShells: RawInteractionData[];
     loadFullCharacter: (id: string) => Promise<Character | null>;
     setInteractionData: (data: InteractionData) => void;
-    setCurrentCharacter: (char: Character | null) => void;
+    setSelectedCharacter: (char: Character | null) => void;
     setSelectedModelId: (id: string | null) => void;
     startNewChat: (char: Character) => void;
     /** Skip active chat loading (e.g., when joiner has persisted join state) */
@@ -43,7 +43,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
     const {
         charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading,
         allCharacters, rawChatShells, loadFullCharacter,
-        setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat,
+        setInteractionData, setSelectedCharacter, setSelectedModelId, startNewChat,
         skipRestoration = false,
     } = options;
 
@@ -101,11 +101,11 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
             setInteractionData(hydratedChat);
 
             if (hydratedProtagonists.length > 0) {
-                setCurrentCharacter(hydratedProtagonists[0]);
+                setSelectedCharacter(hydratedProtagonists[0]);
             } else if (hydratedParticipants.length > 0) {
-                setCurrentCharacter(hydratedParticipants[0]);
+                setSelectedCharacter(hydratedParticipants[0]);
             } else {
-                setCurrentCharacter(null);
+                setSelectedCharacter(null);
             }
         };
 
@@ -126,7 +126,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
             if (allCharacters.length > 0) {
                 startNewChat(allCharacters[0]);
             } else {
-                setCurrentCharacter(null);
+                setSelectedCharacter(null);
                 setInteractionData(createEmptyChat());
             }
         };
@@ -172,7 +172,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         };
 
         restore();
-    }, [charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading, allCharacters, rawChatShells, loadFullCharacter, setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat, skipRestoration]);
+    }, [charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading, allCharacters, rawChatShells, loadFullCharacter, setInteractionData, setSelectedCharacter, setSelectedModelId, startNewChat, skipRestoration]);
 
     return { activeChatRestored };
 }

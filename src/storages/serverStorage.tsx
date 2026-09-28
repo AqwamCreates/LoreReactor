@@ -1217,8 +1217,6 @@ export async function loadAllRawInteractionDataShells(): Promise<RawInteractionD
 }
 
 export async function saveRawInteractionData(interactionData: InteractionData): Promise<void> {
-  if (interactionData.protagonists.length === 0) return;
-
   const saveMessagePromises = interactionData.interactionHistory.map(message => {
     const { id, character, ...rawMsg } = message;
     const payload = {

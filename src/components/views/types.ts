@@ -7,7 +7,7 @@ export interface ViewModeProps {
     interactionData: InteractionData;
     localProtagonist: Character | null;
     displayMessages: ChatMessage[];
-    currentCharacterId: string | undefined;
+    selectedCharacterId: string | undefined;
     editingId: string | null;
     editDraft: string;
     massDeleteId: string | null;

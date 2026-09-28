@@ -10,7 +10,7 @@ import { resolveDelayedDisplayNameFromCache } from '../../hooks/immersionLogic';
 
 export const CinematicView = React.memo(function CinematicView(props: ViewModeProps) {
     const {
-        interactionData, localProtagonist, displayMessages, currentCharacterId,
+        interactionData, localProtagonist, displayMessages, selectedCharacterId,
         editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
         activeToolbarId, portraitUrlCache, displayNameCache,
         centerAvatar, streamingPortraitUrl, formattedStreamingText,
@@ -121,7 +121,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                 <ChatMinimap
                     messages={interactionData.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat')}
                     containerRef={chatHistoryRef}
-                    currentCharacterId={currentCharacterId}
+                    selectedCharacterId={selectedCharacterId}
                 />
             )}
 
@@ -137,7 +137,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                 <StreamingIndicators
                     formattedStreamingText={formattedStreamingText}
                     viewMode="cinematic"
-                    currentCharacterId={currentCharacterId}
+                    selectedCharacterId={selectedCharacterId}
                     streamingPortraitUrl={streamingPortraitUrl}
                     messagesLength={displayMessages.length}
                     onAvatarClick={onAvatarClick}

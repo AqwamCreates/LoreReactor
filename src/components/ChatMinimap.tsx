@@ -5,13 +5,13 @@ import type { ChatMessage } from '../types';
 interface ChatMinimapProps {
     messages: ChatMessage[];
     containerRef: React.RefObject<HTMLDivElement | null>;
-    currentCharacterId: string | undefined;
+    selectedCharacterId: string | undefined;
 }
 
 export const ChatMinimap = React.memo(function ChatMinimap({
     messages,
     containerRef,
-    currentCharacterId,
+    selectedCharacterId,
 }: ChatMinimapProps) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -105,7 +105,7 @@ export const ChatMinimap = React.memo(function ChatMinimap({
 
                 <div ref={stripRef} className="chat-minimap-list">
                     {messages.map((msg, i) => {
-                        const isprotagonist = msg.character.id === currentCharacterId;
+                        const isprotagonist = msg.character.id === selectedCharacterId;
                         const firstLine = msg.textContent.split('\n')[0].trim();
                         const truncated = firstLine.length > 28 ? `${firstLine.slice(0, 28)}…` : firstLine;
                         const isHov = hoveredIndex === i;

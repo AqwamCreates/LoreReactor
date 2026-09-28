@@ -222,7 +222,6 @@ export function AppModals({
     const interactionData = useSessionStore(state => state.interactionData);
     const activeStrategy = useSessionStore(state => state.activeStrategy);
     const selectedModelId = useSessionStore(state => state.selectedModel?.id ?? null);
-    const lastSelectedModelId = useSessionStore(state => state.lastSelectedModelId);
     const selectedBudgetStrategyId = useSessionStore(state => state.activeStrategy?.id ?? null);
     const currentAccountId = useSessionStore(state => state.currentAccountId);
     const multiplayerData = useSessionStore(state => state.multiplayerData);
@@ -248,9 +247,9 @@ export function AppModals({
 
     const effectiveTokenizerModel = useMemo(() => {
         if (selectedModelId) return allModels.find(model => model.id === selectedModelId) ?? null;
-        if (lastSelectedModelId) return allModels.find(model => model.id === lastSelectedModelId) ?? null;
+        if (selectedModelId) return allModels.find(model => model.id === selectedModelId) ?? null;
         return null;
-    }, [selectedModelId, lastSelectedModelId, allModels]);
+    }, [selectedModelId, allModels]);
 
     const [aiCharacterSaveRedirect, setAiCharacterSaveRedirect] = useState<((character: Character) => void) | null>(null);
     const [aiContextSaveRedirect, setAiContextSaveRedirect] = useState<((context: Context) => void) | null>(null);
@@ -843,7 +842,7 @@ export function AppModals({
                     allProfiles={allProfiles} 
                     allAudioTracks={allAudioTracks} 
                     allPromptBlocks={allPromptBlocks}
-                    currentCharacterIds={interactionData?.participants.map(participant => participant.id) || []}
+                    selectedCharacterIds={interactionData?.participants.map(participant => participant.id) || []}
                     currentContextIds={interactionData?.contexts?.map(context => context.id) || []}
                     currentLocationIds={interactionData?.locations?.map(location => location.id) || []}
                     currentProfileId={interactionData?.Profile?.id}

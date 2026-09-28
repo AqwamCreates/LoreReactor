@@ -14,7 +14,7 @@ interface UseEntityTogglesOptions {
     allProfiles: Profile[];
     allBudgetStrategies: BudgetStrategy[];
     setInteractionData: (data: InteractionData) => void;
-    setCurrentCharacter: (char: Character | null) => void;
+    setSelectedCharacter: (char: Character | null) => void;
     setActiveBudgetStrategy: (strategy: BudgetStrategy | null) => void;
     selectedBudgetStrategyId: string | null;
     setSelectedBudgetStrategyId: (id: string | null) => void;
@@ -28,7 +28,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         interactionData, allCharacters,
         activeExtensionIds, setActiveExtensionIds,
         allProfiles, allBudgetStrategies,
-        setInteractionData, setCurrentCharacter, setActiveBudgetStrategy,
+        setInteractionData, setSelectedCharacter, setActiveBudgetStrategy,
         selectedBudgetStrategyId,
         setSelectedBudgetStrategyId, setSelectedCharacterId,
         loadFullCharacter, addToast,
@@ -75,7 +75,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
                 };
                 
                 setInteractionData(updatedData);
-                setCurrentCharacter(newActiveProtagonist);
+                setSelectedCharacter(newActiveProtagonist);
                 addToast('Protagonist removed.', 'info');
             } else {
                 // Normal participant removal
@@ -110,7 +110,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             setInteractionData(updatedData);
             addToast('Participant added.', 'info');
         }
-    }, [interactionData, allCharacters, setInteractionData, setCurrentCharacter, loadFullCharacter, addToast]);
+    }, [interactionData, allCharacters, setInteractionData, setSelectedCharacter, loadFullCharacter, addToast]);
 
     const handleToggleContext = useCallback(async (contextId: string) => {
         if (!interactionData?.contexts) return;
@@ -198,10 +198,10 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         if (!uc.participants.find(p => p.id === charId)) uc.participants = [ch, ...uc.participants];
         uc = assignInitialLocationsIfNeeded(uc);
         setInteractionData(uc);
-        setCurrentCharacter(ch);
+        setSelectedCharacter(ch);
         setSelectedCharacterId(charId);
         addToast(`Switched to ${ch.name}.`, 'success');
-    }, [interactionData, allCharacters, currentAccountId, multiplayerData, setInteractionData, setCurrentCharacter, setSelectedCharacterId, loadFullCharacter, addToast]);
+    }, [interactionData, allCharacters, currentAccountId, multiplayerData, setInteractionData, setSelectedCharacter, setSelectedCharacterId, loadFullCharacter, addToast]);
 
     const handleToggleExtension = useCallback((extId: string) => {
         const nextIds = activeExtensionIds.includes(extId)

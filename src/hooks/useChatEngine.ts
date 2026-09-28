@@ -24,7 +24,7 @@ interface EngineDependencies {
     setStreamingState: (c: Character | null, t: string) => void;
     setBudgetData: (d: BudgetData) => void;
     setStats: (l: any) => void;
-    setCurrentCharacterExpression: (e: string) => void;
+    setSelectedCharacterExpression: (e: string) => void;
     setLastSelectedModelId: (id: string | null) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
     /** Optional callback to request a borrowed model from a peer for shared inference */
@@ -34,7 +34,7 @@ interface EngineDependencies {
 export function useChatEngine(deps: EngineDependencies) {
     const { 
         getState, setInteractionData, setStreamingState, 
-        setBudgetData, setStats, setCurrentCharacterExpression,
+        setBudgetData, setStats, setSelectedCharacterExpression,
         setLastSelectedModelId, addToast, requestBorrowedModel,
     } = deps;
 
@@ -84,7 +84,7 @@ export function useChatEngine(deps: EngineDependencies) {
             },
             onLatency: (ms: number) => setStats({ latency: ms }),
             onTimeToFirstToken: (ms: number) => setStats({ timeToFirstToken: ms }),
-            onExpression: (expr: string) => setCurrentCharacterExpression(expr),
+            onExpression: (expr: string) => setSelectedCharacterExpression(expr),
         };
 
         const outcome = await characterActor.executeTurn({
@@ -133,7 +133,7 @@ export function useChatEngine(deps: EngineDependencies) {
             isCompleted: result.isCompleted,
             promptText: result.promptText,
         };
-    }, [getState, setStreamingState, setStats, setCurrentCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast, requestBorrowedModel]);
+    }, [getState, setStreamingState, setStats, setSelectedCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast, requestBorrowedModel]);
 
     const runTurn = useCallback(async (
         initialData: InteractionData,

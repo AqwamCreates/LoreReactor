@@ -17,7 +17,7 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
     const currentAccountId = useSessionStore((s: any) => s.currentAccountId);
     const multiplayerData = useSessionStore((s: any) => s.multiplayerData);
     const setInteractionData = useSessionStore((s: any) => s.setInteractionData) as ((data: InteractionData) => void) | undefined;
-    const setCurrentCharacter = useSessionStore((s: any) => s.setCurrentCharacter) as ((char: Character | null) => void) | undefined;
+    const setSelectedCharacter = useSessionStore((s: any) => s.setSelectedCharacter) as ((char: Character | null) => void) | undefined;
 
     const [joinSessionId, setJoinSessionId] = useState<string | null>(null);
     const [joinPassword, setJoinPassword] = useState('');
@@ -67,8 +67,8 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
             joinProtagonist: assignedCharacter,
         }).catch((e: unknown) => console.warn('Failed to save join data:', e));
         setJoinProtagonist(assignedCharacter);
-        setCurrentCharacter?.(assignedCharacter);
-    }, [addToast, joinSessionId, joinPassword, setCurrentCharacter]);
+        setSelectedCharacter?.(assignedCharacter);
+    }, [addToast, joinSessionId, joinPassword, setSelectedCharacter]);
 
     const handleJoinRejected = useCallback((reason: string) => {
         addToast(`Join rejected: ${reason}`, 'error');

@@ -9,7 +9,7 @@ const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 interface StreamingIndicatorsProps {
     formattedStreamingText: React.ReactNode;
     viewMode: 'ladder' | 'cinematic' | 'vn';
-    currentCharacterId: string | undefined;
+    selectedCharacterId: string | undefined;
     streamingPortraitUrl: string | null;
     messagesLength: number;
     onAvatarClick: (e: React.MouseEvent, id: string, char: Character) => void;
@@ -17,7 +17,7 @@ interface StreamingIndicatorsProps {
 
 export function StreamingIndicators({
     formattedStreamingText,
-    viewMode, currentCharacterId, streamingPortraitUrl,
+    viewMode, selectedCharacterId, streamingPortraitUrl,
     messagesLength, onAvatarClick,
 }: StreamingIndicatorsProps) {
     const isLoading = useSessionStore(s => s.isLoading);
@@ -27,7 +27,7 @@ export function StreamingIndicators({
 
     if (!isLoading || !streamingCharacter) return null;
 
-    const isNotProtagOrAmbient = streamingCharacter.id !== currentCharacterId && streamingCharacter.id !== AMBIENT_NARRATOR_ID;
+    const isNotProtagOrAmbient = streamingCharacter.id !== selectedCharacterId && streamingCharacter.id !== AMBIENT_NARRATOR_ID;
     const dn = interactionData
         ? getDelayedDisplayName(interactionData, Math.max(0, messagesLength - 1), streamingCharacter.id)
         : streamingCharacter.name;

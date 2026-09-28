@@ -9,7 +9,7 @@ interface UseMessageActionsOptions {
     isModelReady: boolean;
     isLoading: boolean;
     setInteractionData: (data: InteractionData) => void;
-    setCurrentCharacter: (char: Character | null) => void;
+    setSelectedCharacter: (char: Character | null) => void;
     refreshChatList: () => void;
     regenerateFromMessage: (id: string, protagonists: Character[]) => Promise<void>;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
@@ -18,7 +18,7 @@ interface UseMessageActionsOptions {
 export function useMessageActions(options: UseMessageActionsOptions) {
     const {
         interactionData, localProtagonist, isModelReady, isLoading,
-        setInteractionData, setCurrentCharacter, refreshChatList,
+        setInteractionData, setSelectedCharacter, refreshChatList,
         regenerateFromMessage, addToast,
     } = options;
 
@@ -100,26 +100,26 @@ export function useMessageActions(options: UseMessageActionsOptions) {
         try {
             const b = await branchMessage(interactionData, id);
             setInteractionData(b);
-            if (localProtagonist) setCurrentCharacter(localProtagonist);
+            if (localProtagonist) setSelectedCharacter(localProtagonist);
             refreshChatList();
             addToast(`Branched to "${b.name}"`, 'success');
         } catch {
             addToast('Failed to branch chat.', 'error');
         }
-    }, [interactionData, localProtagonist, setInteractionData, setCurrentCharacter, refreshChatList, addToast]);
+    }, [interactionData, localProtagonist, setInteractionData, setSelectedCharacter, refreshChatList, addToast]);
 
     const handleClone = useCallback(async (id: string) => {
         if (!interactionData) return;
         try {
             const c = await cloneChatUpToMessage(interactionData, id);
             setInteractionData(c);
-            if (localProtagonist) setCurrentCharacter(localProtagonist);
+            if (localProtagonist) setSelectedCharacter(localProtagonist);
             refreshChatList();
             addToast(`Cloned to "${c.name}"`, 'success');
         } catch {
             addToast('Failed to clone chat.', 'error');
         }
-    }, [interactionData, localProtagonist, setInteractionData, setCurrentCharacter, refreshChatList, addToast]);
+    }, [interactionData, localProtagonist, setInteractionData, setSelectedCharacter, refreshChatList, addToast]);
 
     const handleCopyText = useCallback(async (text: string) => {
         try {

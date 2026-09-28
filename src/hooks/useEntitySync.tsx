@@ -10,14 +10,14 @@ interface UseEntitySyncOptions {
     allProfiles: Profile[];
     currentCharacter: Character | null;
     setInteractionData: (data: InteractionData) => void;
-    setCurrentCharacter: (char: Character | null) => void;
+    setSelectedCharacter: (char: Character | null) => void;
 }
 
 export function useEntitySync(options: UseEntitySyncOptions) {
     const {
         activeChatRestored,
         allCharacters, allContexts, allProfiles,
-        currentCharacter, setInteractionData, setCurrentCharacter,
+        currentCharacter, setInteractionData, setSelectedCharacter,
     } = options;
 
     const initialSyncSkippedRef = useRef(false);
@@ -112,10 +112,10 @@ export function useEntitySync(options: UseEntitySyncOptions) {
         if (currentCharacter) {
             const freshCurrent = charMap.get(currentCharacter.id);
             if (freshCurrent && freshCurrent.lastUpdatedTimestamp !== currentCharacter.lastUpdatedTimestamp) {
-                setCurrentCharacter(freshCurrent);
+                setSelectedCharacter(freshCurrent);
             }
         }
 
         if (changed) setInteractionData(updated);
-    }, [activeChatRestored, allCharacters, allContexts, allProfiles, currentCharacter, setInteractionData, setCurrentCharacter]);
+    }, [activeChatRestored, allCharacters, allContexts, allProfiles, currentCharacter, setInteractionData, setSelectedCharacter]);
 }

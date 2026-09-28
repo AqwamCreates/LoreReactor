@@ -16,9 +16,9 @@ interface UseSessionEffectsOptions {
     runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     setSelectedGlobalModel: (model: LanguageModel | null) => void;
     selectedCharacterId: string | null;
+    selectedProfileId: string | null | undefined;
     allCharacters: Character[];
-    currentCharacterId: string | null | undefined;
-    setCurrentCharacter: (char: Character | null) => void;
+    setSelectedCharacter: (char: Character | null) => void;
     activeStrategy: BudgetStrategy | null;
     budgetData: BudgetData | null;
     loadLocalModelForBudgetStrategyEngine: (modelId: string) => Promise<number | null>;
@@ -29,7 +29,7 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
         interactionDataId, isMultiplayerClient, selectedModelId, setSelectedModelId,
         selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy,
         allModels, runningModels, setSelectedGlobalModel,
-        selectedCharacterId, allCharacters, currentCharacterId, setCurrentCharacter,
+        selectedCharacterId, selectedProfileId, allCharacters, setSelectedCharacter,
         activeStrategy, budgetData, loadLocalModelForBudgetStrategyEngine,
     } = options;
 
@@ -40,6 +40,13 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
             saveRawSessionData({ activeChatId: interactionDataId });
         }
     }, [interactionDataId, isMultiplayerClient]);
+
+    useEffect(() => {
+        if (isMultiplayerClient) return;
+        if (selectedProfileId) {
+            saveRawSessionData({ selectedProfileId: selectedProfileId });
+        }
+    }, [selectedProfileId, isMultiplayerClient]);
 
     // Persist selected model ID when it changes
     useEffect(() => {
@@ -72,11 +79,11 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
         if (isMultiplayerClient) return;
         if (selectedCharacterId && allCharacters.length > 0) {
             const defaultChar = allCharacters.find(c => c.id === selectedCharacterId);
-            if (defaultChar && currentCharacterId !== defaultChar.id) {
-                setCurrentCharacter(defaultChar);
+            if (defaultChar && selectedCharacterId !== defaultChar.id) {
+                setSelectedCharacter(defaultChar);
             }
         }
-    }, [selectedCharacterId, allCharacters, currentCharacterId, setCurrentCharacter, isMultiplayerClient]);
+    }, [selectedCharacterId, allCharacters, setSelectedCharacter, isMultiplayerClient]);
 
     // Sync selected model to global model with runtime port
     useEffect(() => {

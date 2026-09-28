@@ -14,7 +14,7 @@ export function useChatState() {
     const selectedModel = useSessionStore(s => s.selectedModel);
     const runningModels = useSessionStore(s => s.runningModels);
     const budgetData = useSessionStore(s => s.budgetData);
-    const lastSelectedModelId = useSessionStore(s => s.lastSelectedModelId);
+    const selectedModelId = useSessionStore(s => s.selectedModelId);
     
     // Streaming State
     const streamingText = useSessionStore(s => s.streamingText);
@@ -37,7 +37,7 @@ export function useChatState() {
         if (!data) useSessionStore.setState({ numberOfTokens: 0 });
     }, []);
 
-    const setCurrentCharacter = useCallback((char: Character | null) => {
+    const setSelectedCharacter = useCallback((char: Character | null) => {
         useSessionStore.setState({ currentCharacter: char });
     }, []);
 
@@ -67,7 +67,7 @@ export function useChatState() {
     }, []);
 
     const setLastSelectedModelId = useCallback((id: string | null) => {
-        useSessionStore.setState({ lastSelectedModelId: id });
+        useSessionStore.setState({ selectedModelId: id });
     }, []);
 
     const setStats = useCallback((newStats: any) => {
@@ -89,7 +89,7 @@ export function useChatState() {
         useSessionStore.setState({ numberOfTokens: count });
     }, []);
 
-    const setCurrentCharacterExpression = useCallback((expr: string) => {
+    const setSelectedCharacterExpression = useCallback((expr: string) => {
         useSessionStore.setState({ currentCharacterExpression: expr });
     }, []);
 
@@ -101,7 +101,7 @@ export function useChatState() {
         selectedModel,
         runningModels,
         budgetData,
-        lastSelectedModelId,
+        selectedModelId,
         streamingText,
         streamingCharacter,
         isLoading,
@@ -116,7 +116,7 @@ export function useChatState() {
         
         // Actions
         setInteractionData,
-        setCurrentCharacter,
+        setSelectedCharacter,
         setStreamingState,
         updateRunningModels,
         setActiveStrategy,
@@ -125,7 +125,7 @@ export function useChatState() {
         setLastSelectedModelId,
         setStats,
         setNumberOfTokens,
-        setCurrentCharacterExpression,
+        setSelectedCharacterExpression,
         
         // Raw store access
         setState: useSessionStore.setState,

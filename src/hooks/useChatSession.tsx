@@ -143,8 +143,8 @@ export function useChatSession(options: UseChatSessionOptions) {
     const {
         setBudgetData, updateRunningModels, setNumberOfTokens,
         setInteractionData, setStreamingState, setStats,
-        setCurrentCharacterExpression, setLastSelectedModelId,
-        getState, setState, setActiveStrategy, setSelectedModel, setCurrentCharacter,
+        setSelectedCharacterExpression, setLastSelectedModelId,
+        getState, setState, setActiveStrategy, setSelectedModel, setSelectedCharacter,
     } = state;
 
     // Direct Zustand selectors for stable effect dependencies
@@ -193,7 +193,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         setStreamingState,
         setBudgetData,
         setStats,
-        setCurrentCharacterExpression,
+        setSelectedCharacterExpression,
         setLastSelectedModelId,
         addToast,
         requestBorrowedModel,
@@ -706,7 +706,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             // Store context for potential regeneration correction
             if (turnResult.promptText) {
-                const currentModelId = useSessionStore.getState().lastSelectedModelId;
+                const currentModelId = useSessionStore.getState().selectedModelId;
                 if (currentModelId) {
                     lastTurnContextRef.current = {
                         modelId: currentModelId,
@@ -836,7 +836,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             // Store context for potential regeneration correction
             if (turnResult.promptText) {
-                const currentModelId = useSessionStore.getState().lastSelectedModelId;
+                const currentModelId = useSessionStore.getState().selectedModelId;
                 if (currentModelId) {
                     lastTurnContextRef.current = {
                         modelId: currentModelId,
@@ -981,7 +981,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             // Store context for potential regeneration correction
             if (turnResult.promptText) {
-                const currentModelId = useSessionStore.getState().lastSelectedModelId;
+                const currentModelId = useSessionStore.getState().selectedModelId;
                 if (currentModelId) {
                     lastTurnContextRef.current = {
                         modelId: currentModelId,
@@ -1252,7 +1252,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         if (ti === -1) { addToast('Message not found.', 'error'); releaseLock(); return; }
         
         // ─── RECORD REGENERATION FOR QUALITY TRACKING & FM CORRECTION ──────────────
-        const lastModelId = useSessionStore.getState().lastSelectedModelId;
+        const lastModelId = useSessionStore.getState().selectedModelId;
         const ctx = lastTurnContextRef.current;
         
         if (lastModelId && ctx && ctx.modelId === lastModelId) {
@@ -1340,7 +1340,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             // Store context for potential future regeneration
             if (turnResult.promptText) {
-                const currentModelId = useSessionStore.getState().lastSelectedModelId;
+                const currentModelId = useSessionStore.getState().selectedModelId;
                 if (currentModelId) {
                     lastTurnContextRef.current = {
                         modelId: currentModelId,
@@ -1410,10 +1410,10 @@ export function useChatSession(options: UseChatSessionOptions) {
         const c = createNewInteractionData(char);
         c.name = 'Untitled Chat';
         setInteractionData(c);
-        setCurrentCharacter(char);
+        setSelectedCharacter(char);
         isAtBottomRef.current = true;
         setState({ sessionStartTimestamp: Date.now() });
-    }, [setInteractionData, setCurrentCharacter, setState]);
+    }, [setInteractionData, setSelectedCharacter, setState]);
 
     return {
         ...state,

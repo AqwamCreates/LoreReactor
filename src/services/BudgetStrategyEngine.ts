@@ -179,7 +179,7 @@ export class BudgetStrategyEngine {
     private loadLocalModel: ((id: string) => Promise<number | null>) | null;
     private allModelsById: Map<string, LanguageModel>;
     private engine = getLanguageModelEngine();
-    private _lastSelectedModelId: string | null = null;
+    private _selectedModelId: string | null = null;
 
     // ── Factorization Machines (online-learned, per-outcome) ──
     private censorshipFM: FactorizationMachine;
@@ -268,7 +268,7 @@ export class BudgetStrategyEngine {
     }
 
     getBudgetData(): BudgetData { return this.budgetData; }
-    getLastSelectedModelId(): string | null { return this._lastSelectedModelId; }
+    getLastSelectedModelId(): string | null { return this._selectedModelId; }
 
     // ── FM Persistence (server-backed) ────────────────────────────────
 
@@ -451,7 +451,7 @@ export class BudgetStrategyEngine {
                 const loaded = await this.ensureModelLoaded(freeModel);
                 if (loaded) {
                     this.engine.setContext(freeModel);
-                    this._lastSelectedModelId = freeModel.id;
+                    this._selectedModelId = freeModel.id;
                     return { model: freeModel, modelId: freeModel.id };
                 }
             }
@@ -465,7 +465,7 @@ export class BudgetStrategyEngine {
         if (!loaded) return null;
 
         this.engine.setContext(best);
-        this._lastSelectedModelId = best.id;
+        this._selectedModelId = best.id;
         return { model: best, modelId: best.id };
     }
 
@@ -641,7 +641,7 @@ export class BudgetStrategyEngine {
                 }
 
                 this.engine.setContext(selectedModel);
-                this._lastSelectedModelId = selectedModel.id;
+                this._selectedModelId = selectedModel.id;
                 this.recordRequestTimestamp(selectedModel.id);
                 const pricing = buildPricing(selectedModel);
                 const sessionStart = Date.now();
@@ -786,7 +786,7 @@ export class BudgetStrategyEngine {
                 }
 
                 this.engine.setContext(selectedModel);
-                this._lastSelectedModelId = selectedModel.id;
+                this._selectedModelId = selectedModel.id;
                 this.recordRequestTimestamp(selectedModel.id);
                 const pricing = buildPricing(selectedModel);
                 const sessionStart = Date.now();

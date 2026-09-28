@@ -15,7 +15,7 @@ interface UseChatOperationsOptions {
     allCharacters: Character[];
     rawChatShells: RawInteractionData[];
     setInteractionData: (data: InteractionData) => void;
-    setCurrentCharacter: (char: Character | null) => void;
+    setSelectedCharacter: (char: Character | null) => void;
     refreshChatList: () => void;
     startNewChat: (char: Character) => void;
     deleteChatFromList: (id: string) => Promise<boolean>;
@@ -26,7 +26,7 @@ export function useChatOperations(options: UseChatOperationsOptions) {
     const {
         interactionData, currentCharacter, selectedCharacterId,
         allCharacters, rawChatShells,
-        setInteractionData, setCurrentCharacter, refreshChatList,
+        setInteractionData, setSelectedCharacter, refreshChatList,
         startNewChat, deleteChatFromList, addToast,
     } = options;
 
@@ -58,12 +58,12 @@ export function useChatOperations(options: UseChatOperationsOptions) {
             // Persist active chat to server session and derive protagonist
             await saveRawSessionData({ activeChatId: id });
             const firstProtagonist = chat.protagonists?.[0] ?? null;
-            if (firstProtagonist) setCurrentCharacter(firstProtagonist);
+            if (firstProtagonist) setSelectedCharacter(firstProtagonist);
         } else {
             addToast('Failed to load chat.', 'error');
         }
         refreshChatList();
-    }, [allCharacters, interactionData, setInteractionData, setCurrentCharacter, refreshChatList, addToast, safeAutoSave]);
+    }, [allCharacters, interactionData, setInteractionData, setSelectedCharacter, refreshChatList, addToast, safeAutoSave]);
 
     const handleNewChat = useCallback(async () => {
         await safeAutoSave(interactionData);

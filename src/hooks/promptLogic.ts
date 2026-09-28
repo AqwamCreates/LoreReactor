@@ -269,7 +269,7 @@ function isTextMessage(msg: HistoryMessage): msg is ChatMessage | WhisperMessage
 function filterArrayBasedOnContext(
     characterIdArray: string[],
     textContentArray: string[],
-    currentCharacterId: string,
+    selectedCharacterId: string,
     contextType: regularExpressionContext
 ): { characterIdArray: string[]; textContentArray: string[] } {
     const length = characterIdArray.length;
@@ -279,7 +279,7 @@ function filterArrayBasedOnContext(
 
     if (contextType === "previous") {
         for (let i = length - 1; i >= 0; i--) {
-            if (characterIdArray[i] === currentCharacterId) {
+            if (characterIdArray[i] === selectedCharacterId) {
                 return { characterIdArray: [characterIdArray[i]], textContentArray: [textContentArray[i]] };
             }
         }
@@ -290,9 +290,9 @@ function filterArrayBasedOnContext(
         let targetIndex = -1;
         const endIndex = length - 1;
         for (let i = endIndex; i >= 0; i--) {
-            if ((characterIdArray[i] === currentCharacterId) && (i === endIndex)) continue;
-            if ((characterIdArray[i] !== currentCharacterId) && (i === endIndex)) { targetIndex = i; break; }
-            if ((characterIdArray[i] === currentCharacterId) && (characterIdArray[i + 1] !== currentCharacterId)) { targetIndex = i; break; }
+            if ((characterIdArray[i] === selectedCharacterId) && (i === endIndex)) continue;
+            if ((characterIdArray[i] !== selectedCharacterId) && (i === endIndex)) { targetIndex = i; break; }
+            if ((characterIdArray[i] === selectedCharacterId) && (characterIdArray[i + 1] !== selectedCharacterId)) { targetIndex = i; break; }
         }
         if (targetIndex === -1) return { characterIdArray: [], textContentArray: [] };
         const startIndex = targetIndex + 1;
@@ -306,7 +306,7 @@ function filterArrayBasedOnContext(
 function filterArrayBasedOnTarget(
     characterIdArray: string[],
     textContentArray: string[],
-    currentCharacterId: string,
+    selectedCharacterId: string,
     targetType: regularExpressionTarget,
     protagonistIds: string[],
 ): { characterIdArray: string[]; textContentArray: string[] } {
@@ -321,14 +321,14 @@ function filterArrayBasedOnTarget(
 
     if (targetType === "self") {
         for (let i = 0; i < length; i++) {
-            if (characterIdArray[i] === currentCharacterId) {
+            if (characterIdArray[i] === selectedCharacterId) {
                 extractedCharacterIdArray.push(characterIdArray[i]);
                 extractedTextContentArray.push(textContentArray[i]);
             }
         }
     } else if (targetType === "listener") {
         for (let i = length - 1; i >= 0; i--) {
-            if (characterIdArray[i] !== currentCharacterId) {
+            if (characterIdArray[i] !== selectedCharacterId) {
                 extractedCharacterIdArray.push(characterIdArray[i]);
                 extractedTextContentArray.push(textContentArray[i]);
                 break;
@@ -367,14 +367,14 @@ function doesRegexMatch(regexString: string | undefined, searchSpace: string, se
     }
 }
 
-function isCharacterBound(context: Context, currentCharacterId: string): boolean {
+function isCharacterBound(context: Context, selectedCharacterId: string): boolean {
     if (!context.characterBindings || context.characterBindings.length === 0) return true;
-    return context.characterBindings.includes(currentCharacterId);
+    return context.characterBindings.includes(selectedCharacterId);
 }
 
-function isPromptBlockCharacterBound(block: PromptBlock, currentCharacterId: string): boolean {
+function isPromptBlockCharacterBound(block: PromptBlock, selectedCharacterId: string): boolean {
     if (!block.characterBindings || block.characterBindings.length === 0) return true;
-    return block.characterBindings.includes(currentCharacterId);
+    return block.characterBindings.includes(selectedCharacterId);
 }
 
 function isBuiltInBlockType(value: string): value is PromptBlockType {
@@ -408,7 +408,7 @@ function doesAnyTriggerMatchCached(
     triggers: RegularExpressionTrigger[] | undefined,
     characterIdArray: string[],
     textContentArray: string[],
-    currentCharacterId: string,
+    selectedCharacterId: string,
     protagonistIds: string[],
     fallbackSearchSpace: string,
     combinationCache: CombinationCache,
@@ -419,7 +419,7 @@ function doesAnyTriggerMatchCached(
         if (!trigger.trigger.trim()) continue;
         const { textContentArray: filteredTexts } = getFilteredDataCached(
             combinationCache, characterIdArray, textContentArray,
-            currentCharacterId, protagonistIds,
+            selectedCharacterId, protagonistIds,
             trigger.context || 'global', trigger.target || 'everyone'
         );
         const searchSpace = filteredTexts.length > 0
@@ -439,7 +439,7 @@ function isEntityActiveWithCache(
     exclusionDeactivationTriggers: RegularExpressionTrigger[] | undefined,
     characterIdArray: string[],
     textContentArray: string[],
-    currentCharacterId: string,
+    selectedCharacterId: string,
     protagonistIds: string[],
     fallbackSearchSpace: string,
     combinationCache: CombinationCache,
@@ -449,7 +449,7 @@ function isEntityActiveWithCache(
 
     if (!doesAnyTriggerMatchCached(
         activationTriggers, characterIdArray, textContentArray,
-        currentCharacterId, protagonistIds, fallbackSearchSpace,
+        selectedCharacterId, protagonistIds, fallbackSearchSpace,
         combinationCache, sensitivityMultiplier
     )) {
         return false;
@@ -457,7 +457,7 @@ function isEntityActiveWithCache(
 
     if (doesAnyTriggerMatchCached(
         deactivationTriggers, characterIdArray, textContentArray,
-        currentCharacterId, protagonistIds, fallbackSearchSpace,
+        selectedCharacterId, protagonistIds, fallbackSearchSpace,
         combinationCache
     )) {
         return false;
@@ -465,12 +465,12 @@ function isEntityActiveWithCache(
 
     if (doesAnyTriggerMatchCached(
         exclusionActivationTriggers, characterIdArray, textContentArray,
-        currentCharacterId, protagonistIds, fallbackSearchSpace,
+        selectedCharacterId, protagonistIds, fallbackSearchSpace,
         combinationCache
     )) {
         if (!doesAnyTriggerMatchCached(
             exclusionDeactivationTriggers, characterIdArray, textContentArray,
-            currentCharacterId, protagonistIds, fallbackSearchSpace,
+            selectedCharacterId, protagonistIds, fallbackSearchSpace,
             combinationCache
         )) {
             return false;
@@ -566,7 +566,7 @@ export function getFilteredChatMessages(
 async function resolveContextEntries(
     contexts: Context[],
     chatSearchSpace: string,
-    currentCharacterId: string,
+    selectedCharacterId: string,
     protagonistIds: string[],
     characterIdArray: string[],
     textContentArray: string[],
@@ -580,7 +580,7 @@ async function resolveContextEntries(
 
     for (const context of contexts) {
         if (activated.has(context.id)) continue;
-        if (!isCharacterBound(context, currentCharacterId)) continue;
+        if (!isCharacterBound(context, selectedCharacterId)) continue;
 
         if (isEntityActiveWithCache(
             context.regularExpressionActivationTriggers,
@@ -588,7 +588,7 @@ async function resolveContextEntries(
             context.regularExpressionExclusionActivationTriggers,
             context.regularExpressionExclusionDeactivationTriggers,
             characterIdArray, textContentArray,
-            currentCharacterId, protagonistIds,
+            selectedCharacterId, protagonistIds,
             chatSearchSpace, combinationCache,
             sensitivityForCharacter,
         )) {
@@ -621,7 +621,7 @@ async function resolveContextEntries(
 
         for (const context of contexts) {
             if (activated.has(context.id)) continue;
-            if (!isCharacterBound(context, currentCharacterId)) continue;
+            if (!isCharacterBound(context, selectedCharacterId)) continue;
 
             const contextMaxDepth = context.maximumRecursionDepth ?? DEFAULT_MAX_RECURSION_DEPTH;
             if (contextMaxDepth === 0) continue;
@@ -633,7 +633,7 @@ async function resolveContextEntries(
                 context.regularExpressionExclusionActivationTriggers,
                 context.regularExpressionExclusionDeactivationTriggers,
                 characterIdArray, textContentArray,
-                currentCharacterId, protagonistIds,
+                selectedCharacterId, protagonistIds,
                 activatedText, combinationCache,
                 sensitivityForCharacter,
             )) {

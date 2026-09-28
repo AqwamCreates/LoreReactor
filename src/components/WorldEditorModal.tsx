@@ -17,7 +17,7 @@ interface WorldEditorModalProps {
     allProfiles: Profile[];
     allAudioTracks: AudioTrack[];
     allPromptBlocks: PromptBlock[];
-    currentCharacterIds: string[];
+    selectedCharacterIds: string[];
     currentContextIds: string[];
     currentLocationIds: string[];
     currentAudioTrackIds?: string[];
@@ -28,7 +28,7 @@ interface WorldEditorModalProps {
 function WorldEditorContent({
     existingWorld, onClose, onSave, onLoadWorld,
     allCharacters, allContexts, allLocations, allProfiles, allAudioTracks, allPromptBlocks,
-    currentCharacterIds, currentContextIds, currentLocationIds, currentProfileId, currentAudioTrackIds, currentPromptBlockIds,
+    selectedCharacterIds, currentContextIds, currentLocationIds, currentProfileId, currentAudioTrackIds, currentPromptBlockIds,
 }: Omit<WorldEditorModalProps, 'isOpen'>) {
     const [name, setName] = useState(existingWorld?.name ?? '');
     const [description, setDescription] = useState(existingWorld?.description ?? '');
@@ -97,7 +97,7 @@ function WorldEditorContent({
         onClose();
     };
 
-    const copyCharsFromChat = () => setCharIds([...currentCharacterIds]);
+    const copyCharsFromChat = () => setCharIds([...selectedCharacterIds]);
     const copyCtxsFromChat = () => setCtxIds([...currentContextIds]);
     const copyLocsFromChat = () => setLocIds([...currentLocationIds]);
     const copyProfileFromChat = () => setProfileId(currentProfileId || '');
@@ -143,7 +143,7 @@ function WorldEditorContent({
                     <div className="editor-section">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                             <span className="editor-section-title" style={{ margin: 0 }}>Characters ({charIds.length})</span>
-                            {currentCharacterIds.length > 0 && (
+                            {selectedCharacterIds.length > 0 && (
                                 <button type="button" className="budget-button budget-button-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyCharsFromChat}>
                                     Copy From Chat
                                 </button>
