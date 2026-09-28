@@ -2,6 +2,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData } from '../types';
 import { useToast } from '../context/ToastContext';
+import { saveRawSessionData, deleteSessionData, deleteMultiplayerJoinData, deleteActionFormatData, clearPreferencesCache, clearSaveQueue } from '../storage/serverStorage';
 import '../main.css';
 
 interface DataManagerModalProps {
@@ -751,11 +752,34 @@ export function DataManagerModal({
     // ─── Danger zone ────────────────────────────────────────────────
     const handleFactoryReset = async () => {
         try {
-            for (const key of Object.keys(localStorage).filter(k => k.startsWith('loreReactor_'))) localStorage.removeItem(key);
+            // Clear server-backed session and preferences
+            await saveRawSessionData({
+                activeChatId: null,
+                selectedModelId: null,
+                selectedBudgetStrategyId: null,
+                defaultCharacterId: null,
+                currentAccountId: null,
+            });
+            await deleteSessionData()
+            await deleteMultiplayerJoinData();
+            await deleteActionFormatData()
+
+            // Clear in-memory caches so stale data doesn't persist after reload
+            clearPreferencesCache();
+            clearSaveQueue();
+
+            // Clear any legacy localStorage keys that may still exist from before migration
+            try {
+                for (const key of Object.keys(localStorage).filter(k => k.startsWith('loreReactor_'))) {
+                    localStorage.removeItem(key);
+                }
+            } catch { /* ignore */ }
+
             addToast('Factory reset complete. Reloading...', 'success');
             setTimeout(() => window.location.reload(), 1500);
         } catch { addToast('Factory reset failed.', 'error'); }
     };
+
     const handleSelectiveWipe = (entityType: string) => {
         let count = 0;
         switch (entityType) {
@@ -1036,7 +1060,7 @@ export function DataManagerModal({
                             </div>
                             <div className="editor-section" style={{ margin: 0, borderColor: 'rgba(239,68,68,0.2)' }}>
                                 <div className="editor-section-title" style={{ color: '#ef4444' }}>Factory Reset</div>
-                                <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '8px' }}>Wipe ALL local data. The app will reload automatically.</div>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '8px' }}>Wipe ALL local and server-persisted session data. The app will reload automatically.</div>
                                 <button type="button" className="editor-button" onClick={() => confirmDangerAction === 'factory-reset' ? handleFactoryReset() : setConfirmDangerAction('factory-reset')} style={{ fontSize: '0.75rem', width: '100%', color: confirmDangerAction === 'factory-reset' ? '#fff' : '#ef4444', background: confirmDangerAction === 'factory-reset' ? '#ef4444' : 'transparent', borderColor: '#ef4444' }}>
                                     {confirmDangerAction === 'factory-reset' ? '⚠️ CONFIRM FACTORY RESET' : '🏭 Factory Reset Everything'}
                                 </button>

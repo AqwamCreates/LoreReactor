@@ -1,11 +1,9 @@
 // src/hooks/useChatOperations.ts
 import { useState, useCallback } from 'react';
 import type { Character, InteractionData, RawInteractionData } from '../types';
-import { saveRawInteractionData, loadRawInteractionData } from '../storage/serverStorage';
+import { saveRawInteractionData, loadRawInteractionData, saveRawSessionData } from '../storage/serverStorage';
 import { clearFetchCache } from '../services/linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-
-const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
 
 const tokenEngine = getLanguageModelEngine();
 
@@ -57,7 +55,8 @@ export function useChatOperations(options: UseChatOperationsOptions) {
 
         if (chat) {
             setInteractionData(chat);
-            // Derive local protagonist from loaded chat's protagonists array
+            // Persist active chat to server session and derive protagonist
+            await saveRawSessionData({ activeChatId: id });
             const firstProtagonist = chat.protagonists?.[0] ?? null;
             if (firstProtagonist) setCurrentCharacter(firstProtagonist);
         } else {
@@ -69,7 +68,10 @@ export function useChatOperations(options: UseChatOperationsOptions) {
     const handleNewChat = useCallback(async () => {
         await safeAutoSave(interactionData);
         clearFetchCache();
-        localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
+
+        // Clear active chat in server session so restoration picks up the new chat
+        await saveRawSessionData({ activeChatId: null });
+
         let c = currentCharacter;
         if (!c && defaultCharacterId) c = allCharacters.find(x => x.id === defaultCharacterId) || null;
         if (!c && rawChatShells.length) {
@@ -89,7 +91,11 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         await safeAutoSave(interactionData);
         if (await deleteChatFromList(id)) {
             addToast('Chat session deleted.', 'info');
-            if (interactionData?.id === id && currentCharacter) startNewChat(currentCharacter);
+            if (interactionData?.id === id) {
+                // Deleted the active chat — clear session and start fresh
+                await saveRawSessionData({ activeChatId: null });
+                if (currentCharacter) startNewChat(currentCharacter);
+            }
         } else {
             addToast('Failed to delete chat.', 'error');
         }

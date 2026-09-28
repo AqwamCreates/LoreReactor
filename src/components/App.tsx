@@ -21,7 +21,15 @@ import { useMultiplayerDataManager } from '../hooks/useMultiplayerDataManager';
 import { useMultiplayerSync } from '../hooks/useMultiplayerSync';
 import { useEntityModals } from '../hooks/useEntityModals';
 import { useToast } from '../context/ToastContext';
-import { saveRawInteractionData, loadRawInteractionData } from '../storage/serverStorage';
+import { 
+    saveRawInteractionData, 
+    loadRawInteractionData,
+    loadRawSessionData,
+    saveRawSessionData,
+    loadRawMultiplayerJoinData,
+    saveRawMultiplayerJoinData,
+    deleteMultiplayerJoinData,
+} from '../storage/serverStorage';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { useDisplayNameCache, resolveDelayedDisplayNameFromCache } from '../hooks/immersionLogic';
@@ -61,13 +69,6 @@ import { VisualNovelView } from './views/VisualNovelView';
 import type { ViewModeProps } from './views/types';
 import { defaultContextLength } from '../dictionaries/defaults';
 
-const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
-const STORAGE_KEY_BUDGET_STRATEGY = 'loreReactor_selectedBudgetStrategyId';
-const STORAGE_KEY_DEFAULT_CHARACTER = 'loreReactor_defaultCharacterId';
-const STORAGE_KEY_SELECTED_MODEL = 'loreReactor_selectedModelId';
-const STORAGE_KEY_JOIN_SESSION_ID = 'loreReactor_joinSessionId';
-const STORAGE_KEY_JOIN_PASSWORD = 'loreReactor_joinPassword';
-const STORAGE_KEY_JOIN_PROTAGONIST = 'loreReactor_joinProtagonist';
 const MINIMUM_LOADING_SCREEN_MILLISECONDS = 900;
 
 interface LoadStep { 
@@ -111,14 +112,6 @@ function deriveCurrentProtagonist(
         if (foundProtagonist) return foundProtagonist;
     }
     return interactionData.protagonists[0] ?? null;
-}
-
-function clearJoinState() {
-    localStorage.removeItem(STORAGE_KEY_JOIN_SESSION_ID);
-    localStorage.removeItem(STORAGE_KEY_JOIN_PASSWORD);
-    localStorage.removeItem(STORAGE_KEY_JOIN_PROTAGONIST);
-    localStorage.removeItem('loreReactor_joinCharId');
-    localStorage.removeItem('loreReactor_joinCharData');
 }
 
 function App() {
@@ -177,22 +170,22 @@ function App() {
     const selectedBudgetStrategyId = useSessionStore(state => state.selectedBudgetStrategyId);
 
     // ─── Join Session State ──────────────────────────────────────────
-    const [joinSessionId, setJoinSessionId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY_JOIN_SESSION_ID));
-    const [joinPassword, setJoinPassword] = useState<string>(() => localStorage.getItem(STORAGE_KEY_JOIN_PASSWORD) || '');
-    
-    const [joinProtagonist, setJoinProtagonist] = useState<Character | null>(() => {
-        const stored = localStorage.getItem(STORAGE_KEY_JOIN_PROTAGONIST);
-        if (stored) {
-            try { return JSON.parse(stored); } catch { return null; }
-        }
-        return null;
-    });
+    const [joinSessionId, setJoinSessionId] = useState<string | null>(null);
+    const [joinPassword, setJoinPassword] = useState<string>('');
+    const [joinProtagonist, setJoinProtagonist] = useState<Character | null>(null);
+    const [joinRequestedCharacterId, setJoinRequestedCharacterId] = useState<string | null>(null);
+    const [joinRequestedCharacterData, setJoinRequestedCharacterData] = useState<Character | null>(null);
 
-    const [joinRequestedCharacterId, setJoinRequestedCharacterId] = useState<string | null>(() => localStorage.getItem('loreReactor_joinCharId'));
-    const [joinRequestedCharacterData, setJoinRequestedCharacterData] = useState<Character | null>(() => {
-        const stored = localStorage.getItem('loreReactor_joinCharData');
-        try { return stored ? JSON.parse(stored) : null; } catch { return null; }
-    });
+    // Load join data on mount
+    useEffect(() => {
+        loadRawMultiplayerJoinData().then(data => {
+            setJoinSessionId(data.joinSessionId ?? null);
+            setJoinPassword(data.joinPassword ?? '');
+            setJoinProtagonist(data.joinProtagonist ?? null);
+            setJoinRequestedCharacterId(data.joinRequestedCharacterId ?? null);
+            setJoinRequestedCharacterData(data.joinRequestedCharacterData ?? null);
+        });
+    }, []);
 
     const isMultiplayerClient = !!joinSessionId;
 
@@ -216,12 +209,15 @@ function App() {
 
     const handleJoinAccepted = useCallback((assignedCharacter: Character) => {
         addToast(`Joined session as ${assignedCharacter.name}.`, 'success');
-        if (joinSessionId) localStorage.setItem(STORAGE_KEY_JOIN_SESSION_ID, joinSessionId);
-        if (joinPassword) localStorage.setItem(STORAGE_KEY_JOIN_PASSWORD, joinPassword);
+        
+        saveRawMultiplayerJoinData({
+            joinSessionId,
+            joinPassword,
+            joinProtagonist: assignedCharacter,
+        });
         
         setJoinProtagonist(assignedCharacter);
         setCurrentCharacter(assignedCharacter);
-        localStorage.setItem(STORAGE_KEY_JOIN_PROTAGONIST, JSON.stringify(assignedCharacter));
     }, [addToast, joinSessionId, joinPassword, setCurrentCharacter]);
 
     const handleJoinRejected = useCallback((reason: string) => {
@@ -231,7 +227,7 @@ function App() {
         setJoinProtagonist(null);
         setJoinRequestedCharacterId(null);
         setJoinRequestedCharacterData(null);
-        clearJoinState();
+        deleteMultiplayerJoinData();
     }, [addToast]);
 
     const handleJoinSession = useCallback((sessionId: string, password: string, requestedCharacterIdentifier: string | null, requestedCharacterData: Character | null) => {
@@ -244,12 +240,12 @@ function App() {
         setJoinRequestedCharacterId(requestedCharacterIdentifier);
         setJoinRequestedCharacterData(requestedCharacterData);
 
-        localStorage.setItem(STORAGE_KEY_JOIN_SESSION_ID, sessionId);
-        if (password) localStorage.setItem(STORAGE_KEY_JOIN_PASSWORD, password);
-        if (requestedCharacterIdentifier) localStorage.setItem('loreReactor_joinCharId', requestedCharacterIdentifier);
-        else localStorage.removeItem('loreReactor_joinCharId');
-        if (requestedCharacterData) localStorage.setItem('loreReactor_joinCharData', JSON.stringify(requestedCharacterData));
-        else localStorage.removeItem('loreReactor_joinCharData');
+        saveRawMultiplayerJoinData({
+            joinSessionId: sessionId,
+            joinPassword: password,
+            joinRequestedCharacterId: requestedCharacterIdentifier,
+            joinRequestedCharacterData: requestedCharacterData,
+        });
     }, [currentAccountId, addToast]);
 
     const handlePeerChatMessage = useCallback((message: ChatMessage, senderAccountId: string) => {
@@ -269,7 +265,7 @@ function App() {
         setJoinProtagonist(null);
         setJoinRequestedCharacterId(null);
         setJoinRequestedCharacterData(null);
-        clearJoinState();
+        deleteMultiplayerJoinData();
     }, [addToast]);
 
     // ─── Multiplayer Sync ────────────────────────────────────────────
@@ -320,7 +316,7 @@ function App() {
             setJoinProtagonist(null);
             setJoinRequestedCharacterId(null);
             setJoinRequestedCharacterData(null);
-            clearJoinState();
+            deleteMultiplayerJoinData();
         }
         previousChatIdentifierReference.current = currentChatId;
     }, [interactionData?.id, multiplayerSync, activeChatRestored]);
@@ -345,14 +341,12 @@ function App() {
 
     const setDefaultCharacterId = useCallback((identifier: string | null) => {
         useSessionStore.setState({ defaultCharacterId: identifier });
-        if (identifier) localStorage.setItem(STORAGE_KEY_DEFAULT_CHARACTER, identifier);
-        else localStorage.removeItem(STORAGE_KEY_DEFAULT_CHARACTER);
+        saveRawSessionData({ defaultCharacterId: identifier });
     }, []);
 
     const setSelectedBudgetStrategyId = useCallback((identifier: string | null) => {
         useSessionStore.setState({ selectedBudgetStrategyId: identifier });
-        if (identifier) localStorage.setItem(STORAGE_KEY_BUDGET_STRATEGY, identifier);
-        else localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY);
+        saveRawSessionData({ selectedBudgetStrategyId: identifier });
     }, []);
 
     const [maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens, setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens] = useState<number>(0);
@@ -538,15 +532,20 @@ function App() {
     
     useEffect(() => {
         if (isMultiplayerClient) return;
-        if (interactionData?.id) localStorage.setItem(STORAGE_KEY_ACTIVE_CHAT, interactionData.id);
+        if (interactionData?.id) saveRawSessionData({ activeChatId: interactionData.id });
     }, [interactionData?.id, isMultiplayerClient]);
     
-    useEffect(() => { if (selectedModelId) localStorage.setItem(STORAGE_KEY_SELECTED_MODEL, selectedModelId); else localStorage.removeItem(STORAGE_KEY_SELECTED_MODEL); }, [selectedModelId]);
+    useEffect(() => { 
+        saveRawSessionData({ selectedModelId: selectedModelId ?? null });
+    }, [selectedModelId]);
 
     useEffect(() => {
         if (!selectedBudgetStrategyId || allBudgetStrategies.length === 0) return;
         const strategy = allBudgetStrategies.find(strategyItem => strategyItem.id === selectedBudgetStrategyId);
-        if (!strategy) { localStorage.removeItem(STORAGE_KEY_BUDGET_STRATEGY); return; }
+        if (!strategy) { 
+            saveRawSessionData({ selectedBudgetStrategyId: null });
+            return; 
+        }
         setActiveBudgetStrategy(strategy);
     }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
 
@@ -1109,8 +1108,7 @@ function App() {
                     onToggleAccount={(identifier: string) => {
                         const newAccountId = currentAccountId === identifier ? null : identifier;
                         useSessionStore.setState({ currentAccountId: newAccountId });
-                        if (newAccountId) localStorage.setItem('loreReactor_currentAccountId', newAccountId);
-                        else localStorage.removeItem('loreReactor_currentAccountId');
+                        saveRawSessionData({ currentAccountId: newAccountId });
                         addToast(newAccountId ? `Activated account "${allAccounts.find(account => account.id === newAccountId)?.name || newAccountId}"` : 'Deactivated account.', newAccountId ? 'success' : 'info');
                     }}
                     onDeleteMultiplayerData={entityModals.getModalProperties('multiplayerData').delete}
@@ -1144,4 +1142,4 @@ function App() {
     );
 }
 
-export default App
+export default App;

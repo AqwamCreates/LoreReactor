@@ -3,26 +3,26 @@ import { create } from 'zustand';
 import type { Character, InteractionData, BudgetStrategy, LanguageModel, BudgetData, MultiplayerData } from '../types';
 
 interface SessionState {
-    // Core chat state
+    // ── Core chat state ──────────────────────────────────────────────
     interactionData: InteractionData | null;
     currentCharacter: Character | null;
 
-    // Generation state
+    // ── Generation state ─────────────────────────────────────────────
     isLoading: boolean;
     streamingText: string;
     streamingCharacter: Character | null;
     currentCharacterExpression: string;
 
-    // Model state
+    // ── Model state ──────────────────────────────────────────────────
     selectedModel: LanguageModel | null;
     runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     activeStrategy: BudgetStrategy | null;
     lastSelectedModelId: string | null;
 
-    // Budget state
+    // ── Budget state ─────────────────────────────────────────────────
     budgetData: BudgetData | null;
 
-    // Stats
+    // ── Stats ────────────────────────────────────────────────────────
     latency: number;
     timeToFirstToken: number;
     numberOfCacheInvalidations: number;
@@ -32,28 +32,43 @@ interface SessionState {
     numberOfTokens: number;
     sessionStartTimestamp: number | null;
 
-    // Multiplayer state
+    // ── Multiplayer state ────────────────────────────────────────────
     currentAccountId: string | null;
     multiplayerData: MultiplayerData | null;
 
-    // UI preferences (persisted to localStorage)
+    // ── UI preferences (server-persisted via serverStorage) ──────────
     selectedBudgetStrategyId: string | null;
     defaultCharacterId: string | null;
     activeExtensionIds: string[];
+
+    // ── Actions ──────────────────────────────────────────────────────
+    setCurrentAccountId: (id: string | null) => void;
+    setSelectedBudgetStrategyId: (id: string | null) => void;
+    setDefaultCharacterId: (id: string | null) => void;
+    setActiveExtensionIds: (ids: string[]) => void;
 }
 
-export const useSessionStore = create<SessionState>()(() => ({
+export const useSessionStore = create<SessionState>()((set) => ({
+    // ── Core chat state ──────────────────────────────────────────────
     interactionData: null,
     currentCharacter: null,
+
+    // ── Generation state ─────────────────────────────────────────────
     isLoading: false,
     streamingText: '',
     streamingCharacter: null,
     currentCharacterExpression: 'neutral',
+
+    // ── Model state ──────────────────────────────────────────────────
     selectedModel: null,
     runningModels: {},
     activeStrategy: null,
     lastSelectedModelId: null,
+
+    // ── Budget state ─────────────────────────────────────────────────
     budgetData: null,
+
+    // ── Stats ────────────────────────────────────────────────────────
     latency: 0,
     timeToFirstToken: 0,
     numberOfCacheInvalidations: 0,
@@ -63,23 +78,20 @@ export const useSessionStore = create<SessionState>()(() => ({
     numberOfTokens: 0,
     sessionStartTimestamp: null,
 
-    // Multiplayer: null until explicitly set by account linking or join flow
-    currentAccountId: (() => {
-        try { return localStorage.getItem('loreReactor_currentAccountId'); } catch { return null; }
-    })(),
+    // ── Multiplayer state ────────────────────────────────────────────
+    // Initialized as null — populated asynchronously by loadRawSessionData()
+    currentAccountId: null,
     multiplayerData: null,
 
-    // Initialize from localStorage
-    selectedBudgetStrategyId: (() => {
-        try { return localStorage.getItem('loreReactor_selectedBudgetStrategyId'); } catch { return null; }
-    })(),
-    defaultCharacterId: (() => {
-        try { return localStorage.getItem('loreReactor_defaultCharacterId'); } catch { return null; }
-    })(),
-    activeExtensionIds: (() => {
-        try {
-            const saved = localStorage.getItem('loreReactor_activeExtensionIds');
-            return saved ? JSON.parse(saved) : [];
-        } catch { return []; }
-    })(),
+    // ── UI preferences ───────────────────────────────────────────────
+    // Initialized as null/empty — populated asynchronously by loadRawSessionData()
+    selectedBudgetStrategyId: null,
+    defaultCharacterId: null,
+    activeExtensionIds: [],
+
+    // ── Actions ──────────────────────────────────────────────────────
+    setCurrentAccountId: (id) => set({ currentAccountId: id }),
+    setSelectedBudgetStrategyId: (id) => set({ selectedBudgetStrategyId: id }),
+    setDefaultCharacterId: (id) => set({ defaultCharacterId: id }),
+    setActiveExtensionIds: (ids) => set({ activeExtensionIds: ids }),
 }));

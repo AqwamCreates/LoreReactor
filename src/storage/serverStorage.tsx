@@ -1498,3 +1498,245 @@ export async function saveRawFactorizationMachine(name: string, data: FMSerializ
 export async function deleteRawFactorizationMachine(name: string): Promise<void> {
     await deleteResource(`${PATHS.factorizationMachines}/${name}.json`);
 }
+
+// ─── In-Memory Cache (persists until browser close) ────────────────
+
+class PreferencesCache {
+    private cache = new Map<string, unknown>();
+
+    get<T>(key: string): T | null {
+        const entry = this.cache.get(key);
+        if (entry === undefined) return null;
+        return entry as T;
+    }
+
+    set<T>(key: string, data: T): void {
+        this.cache.set(key, data);
+    }
+
+    delete(key: string): void {
+        this.cache.delete(key);
+    }
+
+    clear(): void {
+        this.cache.clear();
+    }
+}
+
+const preferencesCache = new PreferencesCache();
+
+// ─── Debounced Save Queue ──────────────────────────────────────────
+
+class SaveQueue {
+    private pendingSaves = new Map<string, { data: unknown; timer: ReturnType<typeof setTimeout> | null }>();
+    private readonly DEBOUNCE_MS = 500;
+
+    enqueue(key: string, data: unknown, saveFn: (data: unknown) => Promise<void>): void {
+        const existing = this.pendingSaves.get(key);
+        if (existing?.timer) {
+            clearTimeout(existing.timer);
+        }
+
+        const timer = setTimeout(async () => {
+            const pending = this.pendingSaves.get(key);
+            if (pending) {
+                this.pendingSaves.delete(key);
+                try {
+                    await saveFn(pending.data);
+                } catch (error) {
+                    console.error(`Failed to save ${key}:`, error);
+                }
+            }
+        }, this.DEBOUNCE_MS);
+
+        this.pendingSaves.set(key, { data, timer });
+    }
+
+    clear(): void {
+        for (const [, pending] of this.pendingSaves) {
+            if (pending.timer) clearTimeout(pending.timer);
+        }
+        this.pendingSaves.clear();
+    }
+}
+
+const saveQueue = new SaveQueue();
+
+// ─── API Helpers ───────────────────────────────────────────────────
+
+async function fetchPreferences<T>(endpoint: string): Promise<T | null> {
+    try {
+        const response = await fetch(`${localURL}${endpoint}`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) return null;
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        return await response.json() as T;
+    } catch (error) {
+        console.error(`Failed to fetch ${endpoint}:`, error);
+        return null;
+    }
+}
+
+async function savePreferences<T>(endpoint: string, data: T): Promise<void> {
+    const response = await fetch(`${localURL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
+}
+
+async function deletePreferences(endpoint: string): Promise<void> {
+    const response = await fetch(`${localURL}${endpoint}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
+}
+
+// ─── Session Preferences Storage ────────────────────────────────────
+
+interface SessionData {
+    activeChatId?: string | null;
+    selectedModelId?: string | null;
+    selectedBudgetStrategyId?: string | null;
+    defaultCharacterId?: string | null;
+    currentAccountId?: string | null;
+}
+
+const SESSION_KEY = 'session_data';
+
+export async function loadRawSessionData(): Promise<SessionData> {
+    const cached = preferencesCache.get<SessionData>(SESSION_KEY);
+    if (cached) return cached;
+
+    const data = await fetchPreferences<SessionData>(`/${SESSION_KEY}`);
+    if (data) {
+        preferencesCache.set(SESSION_KEY, data);
+    }
+
+    return data || {};
+}
+
+export async function saveRawSessionData(data: SessionData): Promise<void> {
+    preferencesCache.set(SESSION_KEY, data);
+
+    saveQueue.enqueue(SESSION_KEY, data, async (saveData) => {
+        await savePreferences(`/${SESSION_KEY}`, saveData as SessionData);
+    });
+}
+
+export async function deleteSessionData(): Promise<void> {
+    preferencesCache.delete(SESSION_KEY);
+
+    try {
+        await deletePreferences(`/${SESSION_KEY}`);
+    } catch (error) {
+        console.error('Failed to delete session data:', error);
+    }
+}
+
+// ─── Multiplayer Join Data Storage ─────────────────────────────────
+
+interface MultiplayerJoinData {
+    joinSessionId?: string | null;
+    joinPassword?: string | null;
+    joinProtagonist?: Character | null;
+    joinRequestedCharacterId?: string | null;
+    joinRequestedCharacterData?: Character | null;
+}
+
+const MULTIPLAYER_JOIN_KEY = 'multiplayer_join_data';
+
+export async function loadRawMultiplayerJoinData(): Promise<MultiplayerJoinData> {
+    const cached = preferencesCache.get<MultiplayerJoinData>(MULTIPLAYER_JOIN_KEY);
+    if (cached) return cached;
+
+    const data = await fetchPreferences<MultiplayerJoinData>(`/${MULTIPLAYER_JOIN_KEY}`);
+    if (data) {
+        preferencesCache.set(MULTIPLAYER_JOIN_KEY, data);
+    }
+
+    return data || {};
+}
+
+export async function saveRawMultiplayerJoinData(data: MultiplayerJoinData): Promise<void> {
+    preferencesCache.set(MULTIPLAYER_JOIN_KEY, data);
+
+    saveQueue.enqueue(MULTIPLAYER_JOIN_KEY, data, async (saveData) => {
+        await savePreferences(`/${MULTIPLAYER_JOIN_KEY}`, saveData as MultiplayerJoinData);
+    });
+}
+
+export async function deleteMultiplayerJoinData(): Promise<void> {
+    preferencesCache.delete(MULTIPLAYER_JOIN_KEY);
+
+    try {
+        await deletePreferences(`/${MULTIPLAYER_JOIN_KEY}`);
+    } catch (error) {
+        console.error('Failed to delete multiplayer join data:', error);
+    }
+}
+
+// ─── Action Format Data Storage ─────────────────────────────────────
+
+interface ActionFormatData {
+    actionWrap?: string;
+    actionCase?: string;
+    actionPunctuation?: string;
+    showActionFormat?: string;
+}
+
+const ACTION_FORMAT_KEY = 'action_format_data';
+
+export async function loadActionFormatData(): Promise<ActionFormatData> {
+    const cached = preferencesCache.get<ActionFormatData>(ACTION_FORMAT_KEY);
+    if (cached) return cached;
+
+    const data = await fetchPreferences<ActionFormatData>(`/${ACTION_FORMAT_KEY}`);
+    if (data) {
+        preferencesCache.set(ACTION_FORMAT_KEY, data);
+    }
+
+    return data || {};
+}
+
+export async function saveActionFormatData(data: ActionFormatData): Promise<void> {
+    preferencesCache.set(ACTION_FORMAT_KEY, data);
+
+    saveQueue.enqueue(ACTION_FORMAT_KEY, data, async (saveData) => {
+        await savePreferences(`/${ACTION_FORMAT_KEY}`, saveData as ActionFormatData);
+    });
+}
+
+export async function deleteActionFormatData(): Promise<void> {
+    preferencesCache.delete(ACTION_FORMAT_KEY);
+
+    try {
+        await deletePreferences(`/${ACTION_FORMAT_KEY}`);
+    } catch (error) {
+        console.error('Failed to delete action format data:', error);
+    }
+}
+
+// ─── Export cache utilities ─────────────────────────────────────────
+
+export function clearPreferencesCache(): void {
+    preferencesCache.clear();
+}
+
+export function clearSaveQueue(): void {
+    saveQueue.clear();
+}

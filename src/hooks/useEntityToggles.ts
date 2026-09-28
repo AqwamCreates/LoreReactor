@@ -6,8 +6,6 @@ import { assignInitialLocationsIfNeeded } from './locationLogic';
 import { useSessionStore } from './useSessionStore';
 import { createDefaultMultiplayerData } from '../dictionaries/defaults';
 
-const EXTENSION_STORAGE_KEY = 'loreReactor_activeExtensionIds';
-
 interface UseEntityTogglesOptions {
     interactionData: InteractionData | null;
     allCharacters: Character[];
@@ -39,26 +37,8 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
     const currentAccountId = useSessionStore(s => s.currentAccountId);
     const multiplayerData = useSessionStore(s => s.multiplayerData);
 
-    /** Get the protagonist IDs for the current user from centralized multiplayerData */
-    const getMyProtagonistIds = useCallback((): string[] => {
-        if (!interactionData?.protagonists?.length) return [];
-        if (!multiplayerData || !currentAccountId) {
-            // No multiplayer data or no account: first protagonist
-            return [interactionData.protagonists[0].id];
-        }
-        const myCharId = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.activeCharacterId;
-        if (myCharId) {
-            const found = interactionData.protagonists.find(p => p.id === myCharId);
-            if (found) return [found.id];
-        }
-        // Multiplayer but no mapping for this account: first protagonist
-        return [interactionData.protagonists[0].id];
-    }, [interactionData, multiplayerData, currentAccountId]);
-
     const handleToggleParticipant = useCallback(async (charId: string) => {
         if (!interactionData) return;
-        const myProtagonistIds = getMyProtagonistIds();
-        if (myProtagonistIds.includes(charId)) { addToast('Cannot remove your protagonist.', 'error'); return; }
         const ids = interactionData.participants.map(p => p.id);
         let np: Character[];
         let updatedData: InteractionData;
@@ -103,7 +83,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
 
         setInteractionData(updatedData);
         addToast('Participants updated.', 'info');
-    }, [interactionData, allCharacters, getMyProtagonistIds, setInteractionData, loadFullCharacter, addToast]);
+    }, [interactionData, allCharacters, setInteractionData, loadFullCharacter, addToast]);
 
     const handleToggleContext = useCallback(async (contextId: string) => {
         if (!interactionData?.contexts) return;
@@ -198,7 +178,6 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             ? activeExtensionIds.filter(id => id !== extId)
             : [...activeExtensionIds, extId];
         setActiveExtensionIds(nextIds);
-        localStorage.setItem(EXTENSION_STORAGE_KEY, JSON.stringify(nextIds));
         addToast('Extensions updated.', 'info');
     }, [activeExtensionIds, setActiveExtensionIds, addToast]);
 

@@ -1,7 +1,7 @@
 // src/hooks/useCharacterVoice.ts
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useEffect, useState } from 'react';
 import type { Character, textType } from '../types';
-import { getCharacterVoiceUrl, getMultiplayerCharacterVoiceUrl } from '../storage/serverStorage';
+import { getCharacterVoiceUrl, getMultiplayerCharacterVoiceUrl, loadRawMultiplayerJoinData } from '../storage/serverStorage';
 import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
 import { localAddress } from '../configurations';
 import { useSessionStore } from './useSessionStore';
@@ -50,8 +50,24 @@ export function useCharacterVoice() {
     const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
     const ttsServerUrl = `${localAddress}:7860`;
 
-    // Derive the multiplayer context variable directly from the store and localStorage
-    const isMultiplayerClient = !!localStorage.getItem('loreReactor_joinSessionId');
+    // Async-loaded multiplayer join state
+    const [isMultiplayerClient, setIsMultiplayerClient] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const joinData = await loadRawMultiplayerJoinData();
+                if (!cancelled && joinData.joinSessionId) {
+                    setIsMultiplayerClient(true);
+                }
+            } catch (e) {
+                console.warn('Failed to load multiplayer join data for voice:', e);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
     const multiplayerData = useSessionStore(s => s.multiplayerData);
     const interactionDataId = useSessionStore(s => s.interactionData?.id ?? null);
     const isMultiplayerChat = isMultiplayerClient || !!(multiplayerData && interactionDataId && multiplayerData.interactionDataIds.includes(interactionDataId));
@@ -79,7 +95,7 @@ export function useCharacterVoice() {
                 const context: TextToSpeedLanguageModelContext = { serverUrl: ttsServerUrl || undefined, backend: 'Qwen3-TTS' };
                 const label = character.id;
                 if (!uploadedTtsVoicesRef.current.has(label)) {
-                    // YOUR EXACT LOGIC: Try main folder, fallback to multiplayer folder if session is multiplayer
+                    // Try main folder, fallback to multiplayer folder if session is multiplayer
                     const url = getCharacterVoiceUrl(label, character.voice) || (isMultiplayerChat ? getMultiplayerCharacterVoiceUrl(label, character.voice) : null);
                     if (!url) return;
                     const response = await fetch(url);

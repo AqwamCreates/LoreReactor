@@ -1,11 +1,8 @@
 // src/hooks/useChatRestoration.ts
 import { useState, useRef, useEffect } from 'react';
 import type { Character, InteractionData, RawInteractionData } from '../types';
-import { loadRawInteractionData } from '../storage/serverStorage';
+import { loadRawInteractionData, loadRawSessionData, saveRawSessionData } from '../storage/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
-
-const STORAGE_KEY_ACTIVE_CHAT = 'loreReactor_activeChatId';
-const STORAGE_KEY_SELECTED_MODEL = 'loreReactor_selectedModelId';
 
 interface UseChatRestorationOptions {
     charsLoading: boolean;
@@ -57,12 +54,6 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         if (restorationDoneRef.current) return;
         if (charsLoading || chatsLoading || contextsLoading || locationsLoading || profilesLoading) return;
         restorationDoneRef.current = true;
-
-        const savedModelId = localStorage.getItem(STORAGE_KEY_SELECTED_MODEL);
-
-        if (savedModelId) {
-            setTimeout(() => setSelectedModelId(savedModelId), 0);
-        }
 
         const activateChat = async (chat: InteractionData) => {
             let fullChat = chat;
@@ -118,34 +109,50 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
             }
         };
 
+        /** Fallback chain: first chat shell → first character → empty chat */
+        const fallbackRestore = async () => {
+            if (rawChatShells.length > 0) {
+                const firstChatId = rawChatShells[0].id;
+                if (firstChatId) {
+                    const loaded = await loadRawInteractionData(firstChatId, allCharacters);
+                    if (loaded) {
+                        await activateChat(loaded);
+                        // Persist the fallback selection so next load doesn't repeat this
+                        await saveRawSessionData({ activeChatId: firstChatId });
+                        return;
+                    }
+                }
+            }
+            if (allCharacters.length > 0) {
+                startNewChat(allCharacters[0]);
+            } else {
+                setCurrentCharacter(null);
+                setInteractionData(createEmptyChat());
+            }
+        };
+
         const restore = async () => {
             try {
+                // Load session data from server (with browser fallback)
+                const session = await loadRawSessionData();
+
                 // If skipRestoration is true (joiner with persisted join state),
                 // create an empty chat and wait for the host to send initial state
                 if (skipRestoration) {
                     console.log('[Restoration] Skipping active chat restoration (joiner mode)');
                     setInteractionData(createEmptyChat());
-                    setActiveChatRestored(true);
                     return;
                 }
 
-                const savedChatId = localStorage.getItem(STORAGE_KEY_ACTIVE_CHAT);
+                // Restore selected model from server session
+                if (session.selectedModelId) {
+                    setTimeout(() => setSelectedModelId(session.selectedModelId!), 0);
+                }
+
+                const savedChatId = session.activeChatId;
 
                 if (!savedChatId) {
-                    if (rawChatShells.length > 0) {
-                        const firstChatId = rawChatShells[0].id;
-                        if (firstChatId) {
-                            const loaded = await loadRawInteractionData(firstChatId, allCharacters);
-                            if (loaded) { await activateChat(loaded); setActiveChatRestored(true); return; }
-                        }
-                    }
-                    if (allCharacters.length > 0) {
-                        startNewChat(allCharacters[0]);
-                    } else {
-                        setCurrentCharacter(null);
-                        setInteractionData(createEmptyChat());
-                    }
-                    setActiveChatRestored(true);
+                    await fallbackRestore();
                     return;
                 }
 
@@ -154,35 +161,11 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                     await activateChat(interactionDataResult);
                 } else {
                     console.warn('Active chat not found, falling back.');
-                    localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
-                    if (rawChatShells.length > 0) {
-                        const firstChatId = rawChatShells[0].id;
-                        if (firstChatId) {
-                            const loaded = await loadRawInteractionData(firstChatId, allCharacters);
-                            if (loaded) { await activateChat(loaded); setActiveChatRestored(true); return; }
-                        }
-                    }
-                    if (allCharacters.length > 0) { startNewChat(allCharacters[0]); }
-                    else {
-                        setCurrentCharacter(null);
-                        setInteractionData(createEmptyChat());
-                    }
+                    await fallbackRestore();
                 }
             } catch (e) {
                 console.error('Failed to restore active chat:', e);
-                localStorage.removeItem(STORAGE_KEY_ACTIVE_CHAT);
-                if (rawChatShells.length > 0) {
-                    const firstChatId = rawChatShells[0].id;
-                    if (firstChatId) {
-                        const loaded = await loadRawInteractionData(firstChatId, allCharacters);
-                        if (loaded) { await activateChat(loaded); setActiveChatRestored(true); return; }
-                    }
-                }
-                if (allCharacters.length > 0) { startNewChat(allCharacters[0]); }
-                else {
-                    setCurrentCharacter(null);
-                    setInteractionData(createEmptyChat());
-                }
+                await fallbackRestore();
             } finally {
                 setActiveChatRestored(true);
             }

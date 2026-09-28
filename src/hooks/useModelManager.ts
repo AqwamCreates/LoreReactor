@@ -1,7 +1,7 @@
 // src/hooks/useModelManager.ts
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { cloudBackend, LanguageModel } from '../types';
-import { loadAllRawModels, saveRawModel, deleteRawModel } from '../storage/serverStorage';
+import { loadAllRawModels, saveRawModel, deleteRawModel, loadRawSessionData, saveRawSessionData } from '../storage/serverStorage';
 import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../configurations';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
@@ -27,9 +27,11 @@ interface ActiveModel {
 export function useModelManager() {
     const [models, setModels] = useState<LanguageModel[]>([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [selectedModelId, setSelectedModelId] = useState<string | null>(() => {
-        try { return localStorage.getItem('loreReactor_selectedModelId'); } catch { return null; }
-    });
+    // Initialized clean — populated async from server session data
+    const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+
+    // Track whether initial session load has completed to avoid saving defaults back
+    const sessionLoadedRef = useRef(false);
 
     // Read runningModels directly from the session store — single source of truth
     const runningModels = useSessionStore(s => s.runningModels) as Record<string, ModelState>;
@@ -57,15 +59,30 @@ export function useModelManager() {
     useEffect(() => { addToastRef.current = addToast; }, [addToast]);
     useEffect(() => { selectedModelIdRef.current = selectedModelId; }, [selectedModelId]);
 
-    // Persist selected model ID to localStorage
+    // Load selected model ID from server session data on mount
     useEffect(() => {
-        try {
-            if (selectedModelId) {
-                localStorage.setItem('loreReactor_selectedModelId', selectedModelId);
-            } else {
-                localStorage.removeItem('loreReactor_selectedModelId');
+        let cancelled = false;
+        (async () => {
+            try {
+                const session = await loadRawSessionData();
+                if (!cancelled && session.selectedModelId) {
+                    setSelectedModelId(session.selectedModelId);
+                }
+            } catch (e) {
+                console.warn('Failed to load session data for selected model:', e);
+            } finally {
+                if (!cancelled) sessionLoadedRef.current = true;
             }
-        } catch { /* ignore */ }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    // Persist selected model ID to server session data on change (only after initial load)
+    useEffect(() => {
+        if (!sessionLoadedRef.current) return;
+        saveRawSessionData({ selectedModelId }).catch(e =>
+            console.warn('Failed to persist selected model ID:', e)
+        );
     }, [selectedModelId]);
 
     // Sync selected model to session store whenever it changes

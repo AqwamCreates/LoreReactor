@@ -1,15 +1,11 @@
 // src/hooks/useActionMenu.ts
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Character, InteractionData, InterjectableAction } from '../types';
-import { loadInterjectableActions, saveInterjectableActions } from '../storage/serverStorage';
+import { loadInterjectableActions, saveInterjectableActions, loadActionFormatData, saveActionFormatData } from '../storage/serverStorage';
 
 type ActionWrap = '*' | '()' | 'none';
 type ActionCase = 'first' | 'pascal' | 'lower';
 type ActionPunctuation = '.' | '-' | 'none';
-
-const STORAGE_KEY_ACTION_WRAP = 'loreReactor_actionWrap';
-const STORAGE_KEY_ACTION_CASE = 'loreReactor_actionCase';
-const STORAGE_KEY_ACTION_PUNCTUATION = 'loreReactor_actionPunctuation';
 
 function formatActionString(label: string, targetName: string, wrap: ActionWrap, casing: ActionCase, punctuation: ActionPunctuation): string {
     let result = label;
@@ -26,7 +22,7 @@ function formatActionString(label: string, targetName: string, wrap: ActionWrap,
             break;
     }
 
-    result = `${result} ${targetName}`
+    result = `${result} ${targetName}`;
 
     switch (punctuation) {
         case '.':
@@ -75,63 +71,120 @@ export function useActionMenu(options: UseActionMenuOptions) {
     const [actionsLoading, setActionsLoading] = useState(true);
     const [showActionFormat, setShowActionFormat] = useState(false);
 
-    // Action formatting state — persisted to localStorage
-    const [actionWrap, setActionWrap] = useState<ActionWrap>(() => {
-        const saved = localStorage.getItem(STORAGE_KEY_ACTION_WRAP);
-        return (saved === '*' || saved === '()' || saved === 'none') ? saved : '*';
-    });
-    const [actionCase, setActionCase] = useState<ActionCase>(() => {
-        const saved = localStorage.getItem(STORAGE_KEY_ACTION_CASE);
-        return (saved === 'first' || saved === 'pascal' || saved === 'lower') ? saved : 'first';
-    });
-    const [actionPunctuation, setActionPunctuation] = useState<ActionPunctuation>(() => {
-        const saved = localStorage.getItem(STORAGE_KEY_ACTION_PUNCTUATION);
-        return (saved === '.' || saved === '-' || saved === 'none') ? saved : '.';
-    });
+    // Action formatting state — initialized clean, populated async from server
+    const [actionWrap, setActionWrap] = useState<ActionWrap>('*');
+    const [actionCase, setActionCase] = useState<ActionCase>('first');
+    const [actionPunctuation, setActionPunctuation] = useState<ActionPunctuation>('.');
 
-    // Persist action formatting to localStorage on change
-    useEffect(() => { localStorage.setItem(STORAGE_KEY_ACTION_WRAP, actionWrap); }, [actionWrap]);
-    useEffect(() => { localStorage.setItem(STORAGE_KEY_ACTION_CASE, actionCase); }, [actionCase]);
-    useEffect(() => { localStorage.setItem(STORAGE_KEY_ACTION_PUNCTUATION, actionPunctuation); }, [actionPunctuation]);
+    // Track whether initial load has completed to avoid saving defaults back to server
+    const formatLoadedRef = useRef(false);
+
+    // Load action format preferences from server on mount
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const data = await loadActionFormatData();
+                if (cancelled) return;
+
+                if (data.actionWrap === '*' || data.actionWrap === '()' || data.actionWrap === 'none') {
+                    setActionWrap(data.actionWrap);
+                }
+                if (data.actionCase === 'first' || data.actionCase === 'pascal' || data.actionCase === 'lower') {
+                    setActionCase(data.actionCase);
+                }
+                if (data.actionPunctuation === '.' || data.actionPunctuation === '-' || data.actionPunctuation === 'none') {
+                    setActionPunctuation(data.actionPunctuation);
+                }
+            } catch (e) {
+                console.warn('Failed to load action format preferences:', e);
+            } finally {
+                if (!cancelled) formatLoadedRef.current = true;
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    // Persist action formatting to server on change (only after initial load)
+    useEffect(() => {
+        if (!formatLoadedRef.current) return;
+        saveActionFormatData({
+            actionWrap,
+            actionCase,
+            actionPunctuation,
+        }).catch(e => console.warn('Failed to save action format:', e));
+    }, [actionWrap, actionCase, actionPunctuation]);
 
     // Load interjectable actions on mount
     useEffect(() => {
-        loadInterjectableActions()
-            .then(setActions)
-            .finally(() => setActionsLoading(false));
+        let cancelled = false;
+        (async () => {
+            try {
+                const loaded = await loadInterjectableActions();
+                if (!cancelled) setActions(loaded);
+            } catch (e) {
+                console.warn('Failed to load interjectable actions:', e);
+            } finally {
+                if (!cancelled) setActionsLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
     }, []);
 
-    // Save actions when they change
+    // Debounced save for actions — coalesces rapid mutations into single server write
+    const actionsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const scheduleActionsSave = useCallback((actionsToSave: InterjectableAction[]) => {
+        if (actionsSaveTimerRef.current !== null) {
+            clearTimeout(actionsSaveTimerRef.current);
+        }
+        actionsSaveTimerRef.current = setTimeout(() => {
+            actionsSaveTimerRef.current = null;
+            saveInterjectableActions(actionsToSave).catch(e =>
+                console.warn('Failed to save interjectable actions:', e)
+            );
+        }, 500);
+    }, []);
+
+    // Cleanup debounce timer on unmount
     useEffect(() => {
-        if (actions.length > 0) saveInterjectableActions(actions);
-    }, [actions]);
+        return () => {
+            if (actionsSaveTimerRef.current !== null) {
+                clearTimeout(actionsSaveTimerRef.current);
+            }
+        };
+    }, []);
 
     const incrementActionCount = useCallback(async (label: string) => {
         setActions(prev => {
-            const ex = prev.find(a => a.label === label);
-            const na = ex ? prev.map(a => a.label === label ? { ...a, count: a.count + 1 } : a) : [...prev, { label, count: 1 }];
-            saveInterjectableActions(na);
-            return na;
+            const existing = prev.find(a => a.label === label);
+            const next = existing
+                ? prev.map(a => a.label === label ? { ...a, count: a.count + 1 } : a)
+                : [...prev, { label, count: 1 }];
+            scheduleActionsSave(next);
+            return next;
         });
-    }, []);
+    }, [scheduleActionsSave]);
 
     const handleAddAction = useCallback((label: string) => {
-        const t = label.trim();
-        if (!t) return;
-        if (actions.some(a => a.label.toLowerCase() === t.toLowerCase())) { addToast(`Action "${t}" already exists.`, 'info'); return; }
-        const na = [...actions, { label: t, count: 0 }];
-        setActions(na);
-        saveInterjectableActions(na);
+        const trimmed = label.trim();
+        if (!trimmed) return;
+        if (actions.some(a => a.label.toLowerCase() === trimmed.toLowerCase())) {
+            addToast(`Action "${trimmed}" already exists.`, 'info');
+            return;
+        }
+        const next = [...actions, { label: trimmed, count: 0 }];
+        setActions(next);
+        scheduleActionsSave(next);
         setMenuSearchQuery('');
-        addToast(`Added action "${t}".`, 'success');
-    }, [actions, addToast]);
+        addToast(`Added action "${trimmed}".`, 'success');
+    }, [actions, addToast, scheduleActionsSave]);
 
     const handleDeleteAction = useCallback((label: string) => {
-        const na = actions.filter(a => a.label !== label);
-        setActions(na);
-        saveInterjectableActions(na);
+        const next = actions.filter(a => a.label !== label);
+        setActions(next);
+        scheduleActionsSave(next);
         addToast(`Removed action "${label}".`, 'info');
-    }, [actions, addToast]);
+    }, [actions, addToast, scheduleActionsSave]);
 
     const handleActionInterject = useCallback(async (label: string, targetChar: Character, protagonist: Character) => {
         setActionMenuTarget(null);
@@ -139,10 +192,16 @@ export function useActionMenu(options: UseActionMenuOptions) {
         setShowActionFormat(false);
         if (!interactionData || !currentCharacter) return;
         await incrementActionCount(label);
-        if (isLoading) { stopGeneration(); await new Promise(r => setTimeout(r, 200)); }
+        if (isLoading) {
+            stopGeneration();
+            await new Promise(r => setTimeout(r, 200));
+        }
         const formattedAction = formatActionString(label, targetChar.name, actionWrap, actionCase, actionPunctuation);
-        try { await sendActionAndGetResponse(formattedAction, targetChar, protagonist); }
-        catch { addToast('Failed to interject action.', 'error'); }
+        try {
+            await sendActionAndGetResponse(formattedAction, targetChar, protagonist);
+        } catch {
+            addToast('Failed to interject action.', 'error');
+        }
     }, [interactionData, currentCharacter, isLoading, actionWrap, actionCase, actionPunctuation, incrementActionCount, stopGeneration, sendActionAndGetResponse, addToast]);
 
     const getFilteredActions = useCallback(() => actions
