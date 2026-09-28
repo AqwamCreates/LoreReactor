@@ -21,7 +21,8 @@ import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine, type RequestMetadata } from '../services/BudgetStrategyEngine';
 import { learnFromUserMessage } from '../services/ActionFormatEngine';
-import type { Character, Context, Location, AudioTrack, World, PromptBlock, Sampler, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, HistoryMessage, Memory, Extension, Account, MultiplayerData, LanguageModel, InterjectableAction } from '../types';
+import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
+import type { Character, Context, Location, AudioTrack, World, PromptBlock, Sampler, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, WhisperMessage, HistoryMessage, Memory, Extension, Account, MultiplayerData, LanguageModel, InterjectableAction } from '../types';
 
 const engine = getLanguageModelEngine();
 
@@ -207,6 +208,59 @@ export function useChatSession(options: UseChatSessionOptions) {
         throttledSetStreamingText(text);
         const char = streamingCharacterRef.current;
         const msgId = streamingMessageIdRef.current;
+        
+        // ─── SPECULATIVE MARKOV INTERCEPTOR ─────────────────────────────
+        const profile = getState().interactionData?.Profile;
+        if (profile?.enableSpeculativeMarkov && char && msgId && abortControllerRef.current) {
+            const model = getState().selectedModel;
+            const interactionData = getState().interactionData;
+            
+            // Filter history for THIS character only (INCLUDING WHISPERS)
+            // Type predicate ensures TypeScript knows these have 'textContent'
+            const charHistory = interactionData?.interactionHistory.filter(
+                (m): m is ChatMessage | WhisperMessage => 
+                    m.character.id === char.id && (m.messageType === 'chat' || m.messageType === 'whisper')
+            ) || [];
+            
+            // INCREMENTAL SYNC: Only processes new messages, O(1) on subsequent turns
+            speculativeMarkovEngine.syncMessages(
+                charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
+                char.id
+            );
+
+            // Calculate Break-Even Confidence: C_in_miss / C_out
+            const outputCost = model?.outputGenerationCostPerOneMillionOfTokens || 0;
+            const inputCost = model?.cacheMissCostPerOneMillionOfTokens || 0;
+            const minConfidence = outputCost > 0 ? (inputCost / outputCost) : 0.85;
+
+            // Extract Temperature from Sampler Configuration
+            const charTemp = Number(char.sampler?.parameters?.temperature);
+            const profileTemp = Number(profile.characterSampler?.parameters?.temperature);
+            const temperature = Math.max(0.1, Number.isNaN(charTemp) ? (Number.isNaN(profileTemp) ? 1.0 : profileTemp) : charTemp);
+
+            // Only check on word/punctuation boundaries to save CPU cycles
+            if (text.endsWith(' ') || text.endsWith('\n') || text.match(/[.!?]$/)) {
+                const prediction = speculativeMarkovEngine.predictSequence(text, minConfidence, 3, temperature);
+                
+                if (prediction) {
+                    // Append speculatively generated text locally
+                    const newText = text + prediction;
+                    throttledSetStreamingText(newText);
+                    
+                    // HARD ABORT: Sever the API connection immediately
+                    abortControllerRef.current?.abort();
+                    
+                    // QUEUE RESUME
+                    setTimeout(() => {
+                        resumeGenerationRef.current?.(msgId, undefined);
+                    }, 50);
+                    
+                    return; // Stop further processing of this chunk
+                }
+            }
+        }
+        // ────────────────────────────────────────────────────────────────
+
         if (char && msgId && onMessageBroadcastRef.current) {
             const partialMsg: ChatMessage = {
                 id: msgId,
@@ -227,7 +281,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             };
             onMessageBroadcastRef.current(partialMsg);
         }
-    }, [throttledSetStreamingText]);
+    }, [throttledSetStreamingText, getState]);
 
     // Load budget data once on mount
     useEffect(() => {
@@ -521,7 +575,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         try {
             // Get the latest interaction data (may have been updated by slash command)
             const latestState = getState();
-            let td = latestState.interactionData!;
+            let td = latestState.interactionData as InteractionData;
 
             // If NOT a slash command, add the user's text as a chat message
             if (!isSlashCommand) {
@@ -585,6 +639,18 @@ export function useChatSession(options: UseChatSessionOptions) {
                 numberOfMessages: td.interactionHistory.length,
                 numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
             };
+
+            // ─── INCREMENTAL MARKOV SYNC ────────────────────────────────
+            const targetChar = activeCharacter;
+            const charHistory = latestState.interactionData?.interactionHistory.filter(
+                (m): m is ChatMessage | WhisperMessage => 
+                    m.character.id === targetChar.id && (m.messageType === 'chat' || m.messageType === 'whisper')
+            ) || [];
+            speculativeMarkovEngine.syncMessages(
+                charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
+                targetChar.id
+            );
+            // ────────────────────────────────────────────────────────────
 
             const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks, metadata);
             let ud = turnResult.interactionData;
@@ -1035,6 +1101,18 @@ export function useChatSession(options: UseChatSessionOptions) {
         isAtBottomRef.current = true;
 
         try {
+            // ─── INCREMENTAL MARKOV SYNC ────────────────────────────────
+            const targetCharResume = char;
+            const charHistoryResume = currentInteractionData?.interactionHistory.filter(
+                (m): m is ChatMessage | WhisperMessage => 
+                    m.character.id === targetCharResume.id && (m.messageType === 'chat' || m.messageType === 'whisper')
+            ) || [];
+            speculativeMarkovEngine.syncMessages(
+                charHistoryResume.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
+                targetCharResume.id
+            );
+            // ────────────────────────────────────────────────────────────
+
             const result = await chatEngine.handleServerResponse(
                 currentInteractionData, char, ctrl.signal,
                 throttledSetStreamingTextWithBroadcast, undefined, existingText, allPromptBlocks
@@ -1188,6 +1266,20 @@ export function useChatSession(options: UseChatSessionOptions) {
                 numberOfMessages: td.interactionHistory.length,
                 numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
             };
+
+            // ─── INCREMENTAL MARKOV SYNC ────────────────────────────────
+            const targetCharRegen = protagonists[0];
+            if (targetCharRegen) {
+                const charHistoryRegen = currentInteractionData?.interactionHistory.filter(
+                    (m): m is ChatMessage | WhisperMessage => 
+                        m.character.id === targetCharRegen.id && (m.messageType === 'chat' || m.messageType === 'whisper')
+                ) || [];
+                speculativeMarkovEngine.syncMessages(
+                    charHistoryRegen.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
+                    targetCharRegen.id
+                );
+            }
+            // ────────────────────────────────────────────────────────────
 
             const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks, metadata);
             let ud = turnResult.interactionData;

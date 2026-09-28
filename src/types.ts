@@ -723,6 +723,7 @@ export interface Profile extends ObjectData {
   tools: Record<tool, tristateInteger>;
   inputStrategy: (PromptBlockType | string)[];
   summarizationSteps: SummarizationStep[];
+  enableSpeculativeMarkov: boolean;
   characterSampler?: Sampler;
   webSummarizationSampler?: Sampler;
   interactionDataSummarizationSampler?: Sampler;
@@ -773,6 +774,7 @@ export interface RawProfile extends RawData {
   tools: Record<tool, tristateInteger>;
   inputStrategy: (PromptBlockType | string)[];
   summarizationSteps: RawSummarizationStep[];
+  enableSpeculativeMarkov: boolean;
   characterSamplerId?: string;
   webSummarizationSamplerId?: string;
   interactionDataSummarizationSamplerId?: string;
