@@ -8,6 +8,7 @@ import {
 
 type position = 'start' | 'start middle' | 'middle' | 'middle end' | 'end';
 type lengthCategory = 'one' | 'very short' | 'short' | 'medium' | 'long' | 'very long';
+type punctuationType = 'none' | 'comma' | 'period' | 'question' | 'exclamation' | 'dash' | 'ellipsis' | 'colon' | 'semicolon';
 
 export interface FormatContext {
     position: position;
@@ -16,6 +17,7 @@ export interface FormatContext {
     insideQuote: boolean;
     afterDialogueTag: boolean;
     lengthCategory: lengthCategory;
+    punctuation: punctuationType;
 }
 
 interface UserCorrection {
@@ -75,7 +77,7 @@ export class FormatPreferenceEngine {
         const totalLength = text.length;
         const segmentLength = segmentEnd - segmentStart;
 
-        // FIXED: Mutually exclusive if/else-if chain to prevent overwriting
+        // Mutually exclusive if/else-if chain to prevent overwriting
         let position: position = 'middle';
         if (segmentStart < totalLength * 0.2) {
             position = 'start';
@@ -116,6 +118,22 @@ export class FormatPreferenceEngine {
         else if (segmentLength > 100) lengthCategory = 'very long';
         else if (segmentLength > 50) lengthCategory = 'long';
 
+        // NEW: Determine ending punctuation, ignoring trailing formatting markers
+        const segmentText = text.slice(segmentStart, segmentEnd).trim();
+        let punctuation: punctuationType = 'none';
+        
+        // Strip trailing formatting markers and whitespace to find the actual ending punctuation
+        const trimmedForPunct = segmentText.replace(/[\*_\)\"\]”\s]+$/, '');
+        
+        if (trimmedForPunct.endsWith('...') || trimmedForPunct.endsWith('…')) punctuation = 'ellipsis';
+        else if (trimmedForPunct.endsWith('—') || trimmedForPunct.endsWith('--') || trimmedForPunct.endsWith('-')) punctuation = 'dash';
+        else if (trimmedForPunct.endsWith('?')) punctuation = 'question';
+        else if (trimmedForPunct.endsWith('!')) punctuation = 'exclamation';
+        else if (trimmedForPunct.endsWith(',')) punctuation = 'comma';
+        else if (trimmedForPunct.endsWith('.')) punctuation = 'period';
+        else if (trimmedForPunct.endsWith(':')) punctuation = 'colon';
+        else if (trimmedForPunct.endsWith(';')) punctuation = 'semicolon';
+
         return {
             position,
             previousFormat,
@@ -123,6 +141,7 @@ export class FormatPreferenceEngine {
             insideQuote,
             afterDialogueTag,
             lengthCategory,
+            punctuation,
         };
     }
 
@@ -134,6 +153,7 @@ export class FormatPreferenceEngine {
         if (context.insideQuote) parts.push('inQuote');
         if (context.afterDialogueTag) parts.push('afterTag');
         parts.push(`len:${context.lengthCategory}`);
+        if (context.punctuation !== 'none') parts.push(`punct:${context.punctuation}`);
         return parts.join('|');
     }
 
@@ -235,6 +255,7 @@ export class FormatPreferenceEngine {
                 insideQuote: false,
                 afterDialogueTag: false,
                 lengthCategory: 'medium',
+                punctuation: 'none',
             };
             result[cat] = this.predictTarget(cat, defaultContext);
         }
