@@ -332,9 +332,6 @@ export async function buildChatRequestBody(
         ...messages,
     ];
 
-    console.log('=== FINAL MESSAGES ===');
-    console.log(JSON.stringify(finalMessages, null, 2));
-
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
 
     const finalStops = [
