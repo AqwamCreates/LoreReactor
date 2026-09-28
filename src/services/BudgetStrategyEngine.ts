@@ -56,14 +56,24 @@ function isQuotaError(e: unknown): boolean {
         message.includes('exceeded') || message.includes('insufficient') ||
         message.includes('billing') || message.includes('allowance') ||
         message.includes('subscribe') || message.includes('too many requests') ||
-        message.includes('failed to fetch') || message.includes('networkerror') ||
-        message.includes('err_aborted') || message.includes('econnrefused') ||
-        message.includes('enotfound') || message.includes('etimedout') ||
-        message.includes('socket hang up') || message.includes('abort') ||
-        message.includes('timeout') || message.includes('502') ||
-        message.includes('503') || message.includes('504') ||
-        message.includes('service unavailable') ||
         message.includes('429') || message.includes('api error');
+}
+
+function isNetworkError(e: unknown): boolean {
+    const message = ((e as Error)?.message || '').toLowerCase();
+
+    return message.includes('failed to fetch') ||
+        message.includes('networkerror') ||
+        message.includes('err_aborted') ||
+        message.includes('econnrefused') ||
+        message.includes('enotfound') ||
+        message.includes('etimedout') ||
+        message.includes('socket hang up') ||
+        message.includes('abort') ||
+        message.includes('timeout') ||
+        message.includes('502') ||
+        message.includes('504') ||
+        message.includes('service unavailable');
 }
 
 function isInputFilterError(e: unknown): boolean {
@@ -184,7 +194,7 @@ export class BudgetStrategyEngine {
     private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     private readonly SAVE_DEBOUNCE_MS = 5000;
 
-    // ── Sliding Window Rate Limiting ──
+    // ── Sliding Window Rate Limiting (replaces rateLimitFM) ──
     private rateLimitStates: Map<string, RateLimitState> = new Map();
 
     constructor(
@@ -466,7 +476,7 @@ export class BudgetStrategyEngine {
         return activeModels.filter(model => {
             if (failedIds.has(model.id)) return false;
             if (budgetExceeded && !isFreeModel(model)) return false;
-            
+
             // Hard-block: context length exceeded
             const contextLength = model.contextLength ?? 0;
             if (contextLength > 0 && currentTokens > contextLength) return false;
@@ -485,13 +495,15 @@ export class BudgetStrategyEngine {
 
     getModelQualityScore(modelId: string): number {
         const used = this.budgetData.modelUsedCount?.[modelId] ?? 0;
+        const regens = this.budgetData.modelRegenerationCount?.[modelId] ?? 0;
 
         if (used === 0) return 0;
 
-        // Regenerations no longer penalize the aggregate quality score
+        const effectiveRegens = Math.min(regens, used);
+        const acceptanceRate = (used - effectiveRegens) / used;
         const confidence = Math.min(1, used / QUALITY_CONFIDENCE_THRESHOLD);
 
-        return confidence;
+        return acceptanceRate * confidence;
     }
 
     getModelQualityScores(): Record<string, number> {
@@ -513,8 +525,13 @@ export class BudgetStrategyEngine {
             (this.budgetData.modelRegenerationCount[modelId] ?? 0) + 1;
         this.budgetData.lastUpdatedTimestamp = Date.now();
 
-        // Do NOT train the FM with a 0 (failure) for regenerations, 
-        // as regenerations do not necessarily mean the model failed.
+        const model = this.allModelsById.get(modelId);
+        if (model) {
+            const x = this.buildFeaturesForModel(model, prompt, metadata);
+            this.acceptanceFM.trainOne(x, 0);
+            this.factorizationMachineSampleCounter++;
+            this.scheduleSave();
+        }
     }
 
     // ── Ranking ───────────────────────────────────────────────────────
@@ -699,6 +716,11 @@ export class BudgetStrategyEngine {
                     const sessionDuration = Date.now() - sessionStart;
                     this.recordSessionDuration(selectedModel.id, sessionDuration);
 
+                    // Network errors: propagate immediately, do NOT penalize the model
+                    if (isNetworkError(e)) {
+                        throw e;
+                    }
+
                     if (!isQuotaError(e)) {
                         this.recordError(selectedModel.id);
                         this.recordOutcome({
@@ -805,6 +827,11 @@ export class BudgetStrategyEngine {
                         continue;
                     }
 
+                    // Network errors: propagate immediately, do NOT penalize the model
+                    if (isNetworkError(e)) {
+                        throw e;
+                    }
+
                     if (!isQuotaError(e)) {
                         this.recordError(selectedModel.id);
                         throw e;
@@ -863,10 +890,13 @@ export class BudgetStrategyEngine {
         const freeModels = selectedModels.filter(m => {
             if (!isFreeModel(m)) return false;
             if (failedIds.has(m.id)) return false;
-            if (this.isModelOnCooldown(m.id)) return false;
-            if (this.isModelThrottled(m.id)) return false;
+            // Hard-block: context length exceeded
             const contextLength = m.contextLength ?? 0;
             if (contextLength > 0 && (requiredContextTokens ?? 0) > contextLength) return false;
+            // Hard-block: rate-limit cooldown
+            if (this.isModelOnCooldown(m.id)) return false;
+            // Soft-throttle: sliding window
+            if (this.isModelThrottled(m.id)) return false;
             return true;
         });
         if (freeModels.length === 0) return null;
