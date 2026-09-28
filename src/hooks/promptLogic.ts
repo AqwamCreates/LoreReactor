@@ -248,10 +248,6 @@ export function getFatigueContext(currentChatStamina: number, maximumChatStamina
     return "I have no energy left to speak.";
 }
 
-export function findAllMessages(interactionData: InteractionData, characterId: string): HistoryMessage[] {
-    return interactionData.interactionHistory.filter(m => m.character.id === characterId);
-}
-
 // ─── Whisper Visibility Helpers ─────────────────────────────────────
 
 function isMessageVisibleTo(msg: HistoryMessage, characterId: string): boolean {
