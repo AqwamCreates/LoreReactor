@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '../context/ToastContext';
-import { saveRawInteractionData, loadRawInteractionData, flushSaveQueue } from '../storages/serverStorage';
+import { saveRawInteractionData, loadRawInteractionData, flushSaveQueue, loadAllRawModels } from '../storages/serverStorage';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { useDisplayNameCache, resolveDelayedDisplayNameFromCache } from '../hooks/immersionLogic';
@@ -316,7 +316,7 @@ function App() {
         if (sel?.apiKey && sel.backend && cloudBackends.includes(sel.backend as cloudBackend)) return true;
         return models.runningModels[models.selectedModelId]?.isRunning === true
             && models.runningModels[models.selectedModelId]?.isIdle === true;
-    }, [models.selectedModelId, allModels, models.runningModels, activeStrategy, mp.isMultiplayerClient, models]);
+    }, [allModels, activeStrategy, mp.isMultiplayerClient, models]);
 
     const isModelLoading = useMemo(() => {
         if (mp.isMultiplayerClient || !models.selectedModelId) return false;
@@ -324,7 +324,7 @@ function App() {
         if (sel?.apiKey && sel.backend && cloudBackends.includes(sel.backend as cloudBackend)) return false;
         return models.runningModels[models.selectedModelId]?.isRunning === true
             && models.runningModels[models.selectedModelId]?.isIdle !== true;
-    }, [models.selectedModelId, allModels, models.runningModels, mp.isMultiplayerClient, models]);
+    }, [allModels, mp.isMultiplayerClient, models]);
 
     const modelStatusMessage = mp.isMultiplayerClient ? ''
         : (!models.selectedModelId ? 'No model selected — open Language Models to load one'
