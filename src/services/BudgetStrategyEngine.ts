@@ -286,7 +286,7 @@ export class BudgetStrategyEngine {
         }
     }
 
-    private async saveFMsToStorage(): Promise<void> {
+    private async saveFactorizationMachinesToStorage(): Promise<void> {
         try {
             await Promise.all([
                 saveRawFactorizationMachine("censorship", this.censorshipFM.toJSON()),
@@ -307,7 +307,7 @@ export class BudgetStrategyEngine {
         }
         this.saveDebounceTimer = setTimeout(() => {
             this.saveDebounceTimer = null;
-            this.saveFMsToStorage().catch(e =>
+            this.saveFactorizationMachinesToStorage().catch(e =>
                 console.warn('[BudgetEngine] Debounced save failed:', e)
             );
         }, this.SAVE_DEBOUNCE_MS);
@@ -980,7 +980,7 @@ export class BudgetStrategyEngine {
             clearTimeout(this.saveDebounceTimer);
             this.saveDebounceTimer = null;
         }
-        await this.saveFMsToStorage();
+        await this.saveFactorizationMachinesToStorage();
     }
 }
 
