@@ -1,6 +1,8 @@
 // src/utilities/textReformat.ts
+import { getFormatPreferenceEngine } from '../services/FormatPreferenceEngine';
 
 export type FormatCategory = 'plain' | 'italics' | 'bold' | 'strikethrough' | 'quotes' | 'parentheses' | 'brackets';
+
 export interface DetectedSegment {
     start: number;
     end: number;
@@ -262,4 +264,49 @@ export function buildCategoryConversions(segments: DetectedSegment[]): CategoryC
             target: DEFAULT_CONVERSIONS[category],
             count: counts[category],
         }));
+}
+
+// ─── Bayesian Learning UI Bridges ───────────────────────────────────
+
+/**
+ * Builds the category conversions for the UI panel, but overrides the
+ * default targets with learned preferences if the engine's confidence
+ * meets the auto-apply threshold.
+ */
+export function buildCategoryConversionsWithLearning(text: string, segments: DetectedSegment[]): CategoryConversion[] {
+    const baseConversions = buildCategoryConversions(segments);
+    const engine = getFormatPreferenceEngine();
+    
+    return baseConversions.map(conv => {
+        const seg = segments.find(s => s.category === conv.detected);
+        if (seg) {
+            const context = engine.extractContext(text, seg.start, seg.end, segments);
+            const prediction = engine.predictTarget(conv.detected, context);
+            if (prediction) {
+                return { ...conv, target: prediction.target };
+            }
+        }
+        return conv;
+    });
+}
+
+/**
+ * Records a correction for ALL segments of a specific category in the text.
+ * Call this when the user changes a target format in the UI dropdown.
+ */
+export function recordCategoryCorrection(
+    text: string,
+    category: FormatCategory,
+    target: FormatCategory,
+): void {
+    if (category === target) return;
+    const segments = detectFormatSegments(text);
+    const engine = getFormatPreferenceEngine();
+    
+    for (const seg of segments) {
+        if (seg.category === category) {
+            const context = engine.extractContext(text, seg.start, seg.end, segments);
+            engine.recordCorrection(category, target, context);
+        }
+    }
 }

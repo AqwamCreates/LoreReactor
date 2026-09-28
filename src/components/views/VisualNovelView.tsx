@@ -4,133 +4,19 @@ import type { ViewModeProps } from './types';
 import type { Character, ChatMessage } from '../../types';
 import { MemoizedMessageText } from '../MemoizedMessageText';
 import { useVisualNovelSpriteStates } from '../../hooks/useVisualNovelSpriteStates';
-import type { FormatCategory } from '../../utilities/textReformatter';
+import {
+    detectFormatSegments,
+    applyConversions,
+    buildCategoryConversions,
+    buildCategoryConversionsWithLearning,
+    recordCategoryCorrection,
+    DEFAULT_CONVERSIONS,
+    TARGET_OPTIONS,
+    type CategoryConversion,
+    type FormatCategory,
+} from '../../utilities/textReformat';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
-
-interface DetectedSegment { start: number; end: number; category: FormatCategory; innerText: string; rawMatch: string; }
-interface CategoryConversion { detected: FormatCategory; label: string; target: FormatCategory; count: number; }
-
-const CATEGORY_LABELS: Record<FormatCategory, string> = {
-    plain: 'Plain Text', italics: 'Italics', bold: 'Bold', strikethrough: 'Strikethrough',
-    quotes: 'Quotation Marks', parentheses: 'Parentheses', brackets: 'Square Brackets',
-};
-
-const TARGET_OPTIONS: { value: FormatCategory; label: string }[] = [
-    { value: 'plain', label: 'Plain Text' }, { value: 'italics', label: 'Italics' },
-    { value: 'parentheses', label: 'Parentheses' }, { value: 'brackets', label: 'Square Brackets' },
-    { value: 'quotes', label: 'Quotation Marks' }, { value: 'bold', label: 'Bold' },
-    { value: 'strikethrough', label: 'Strikethrough' },
-];
-
-const DEFAULT_CONVERSIONS: Record<FormatCategory, FormatCategory> = {
-    plain: 'plain', italics: 'italics', parentheses: 'parentheses', brackets: 'brackets',
-    quotes: 'quotes', bold: 'bold', strikethrough: 'strikethrough',
-};
-
-function detectFormatSegments(text: string): DetectedSegment[] {
-    const patterns: { regex: RegExp; category: FormatCategory; innerGroup: number }[] = [
-        { regex: /\*\*(.+?)\*\*/gs, category: 'bold', innerGroup: 1 },
-        { regex: /__(.+?)__/gs, category: 'bold', innerGroup: 1 },
-        { regex: /~~(.+?)~~/gs, category: 'strikethrough', innerGroup: 1 },
-        { regex: /\*(.+?)\*/gs, category: 'italics', innerGroup: 1 },
-        { regex: /_(.+?)_/gs, category: 'italics', innerGroup: 1 },
-        { regex: /["\u201C](.+?)["\u201D]/gs, category: 'quotes', innerGroup: 1 },
-        { regex: /\(([^)]+)\)/gs, category: 'parentheses', innerGroup: 1 },
-        { regex: /\[([^\]]+)\]/gs, category: 'brackets', innerGroup: 1 },
-    ];
-    interface RawMatch { start: number; end: number; category: FormatCategory; innerText: string; rawMatch: string; }
-    const allMatches: RawMatch[] = [];
-    for (const { regex, category, innerGroup } of patterns) {
-        let match: RegExpExecArray | null;
-        while ((match = regex.exec(text)) !== null) {
-            if (match[0].length === 0) { regex.lastIndex++; continue; }
-            allMatches.push({ start: match.index, end: match.index + match[0].length, category, innerText: match[innerGroup] || '', rawMatch: match[0] });
-        }
-    }
-    allMatches.sort((a, b) => a.start !== b.start ? a.start - b.start : (b.end - b.start) - (a.end - b.start));
-    const accepted: RawMatch[] = [];
-    let cursor = 0;
-    for (const match of allMatches) {
-        if (match.start < cursor) continue;
-        accepted.push(match);
-        cursor = match.end;
-    }
-    const segments: DetectedSegment[] = [];
-    let pos = 0;
-    for (const match of accepted) {
-        if (match.start > pos) {
-            const plainGap = text.slice(pos, match.start);
-            if (plainGap.trim().length > 0) segments.push({ start: pos, end: match.start, category: 'plain', innerText: plainGap, rawMatch: plainGap });
-        }
-        segments.push({ start: match.start, end: match.end, category: match.category, innerText: match.innerText, rawMatch: match.rawMatch });
-        pos = match.end;
-    }
-    if (pos < text.length) {
-        const trailing = text.slice(pos);
-        if (trailing.trim().length > 0) segments.push({ start: pos, end: text.length, category: 'plain', innerText: trailing, rawMatch: trailing });
-    }
-    return segments;
-}
-
-function wrapCoreText(core: string, target: FormatCategory): string {
-    switch (target) {
-        case 'italics': return `*${core}*`;
-        case 'bold': return `**${core}**`;
-        case 'strikethrough': return `~~${core}~~`;
-        case 'quotes': return `"${core}"`;
-        case 'parentheses': return `(${core})`;
-        case 'brackets': return `[${core}]`;
-        default: return core;
-    }
-}
-
-function convertPlainSegmentPreservingSpacing(raw: string, target: FormatCategory): string {
-    if (target === 'plain') return raw;
-    return raw.split(/(\r?\n)/).map(part => {
-        if (part === '\n' || part === '\r\n' || part.trim().length === 0) return part;
-        const match = part.match(/^(\s*)([\s\S]*?)(\s*)$/);
-        if (!match) return part;
-        const core = match[2] ?? '';
-        if (!core) return part;
-        return `${match[1] ?? ''}${wrapCoreText(core, target)}${match[3] ?? ''}`;
-    }).join('');
-}
-
-function convertFormattedSegmentPreservingSpacing(seg: DetectedSegment, target: FormatCategory): string {
-    if (target === seg.category) return seg.rawMatch;
-    if (target === 'plain') return seg.innerText;
-    return wrapCoreText(seg.innerText, target);
-}
-
-function applyConversions(text: string, conversions: Record<FormatCategory, FormatCategory>): string {
-    const segments = detectFormatSegments(text);
-    if (segments.length === 0) return text;
-    const replacements: { start: number; end: number; replacement: string }[] = [];
-    for (const seg of segments) {
-        const target = conversions[seg.category];
-        if (target === seg.category) continue;
-        const replacement = seg.category === 'plain'
-            ? convertPlainSegmentPreservingSpacing(seg.rawMatch, target)
-            : convertFormattedSegmentPreservingSpacing(seg, target);
-        if (replacement !== seg.rawMatch) replacements.push({ start: seg.start, end: seg.end, replacement });
-    }
-    if (replacements.length === 0) return text;
-    let output = text;
-    for (let i = replacements.length - 1; i >= 0; i--) {
-        const r = replacements[i];
-        output = output.slice(0, r.start) + r.replacement + output.slice(r.end);
-    }
-    return output;
-}
-
-function buildCategoryConversions(segments: DetectedSegment[]): CategoryConversion[] {
-    const counts: Record<FormatCategory, number> = { plain: 0, italics: 0, bold: 0, strikethrough: 0, quotes: 0, parentheses: 0, brackets: 0 };
-    for (const seg of segments) counts[seg.category]++;
-    return (['plain', 'italics', 'bold', 'strikethrough', 'quotes', 'parentheses', 'brackets'] as FormatCategory[])
-        .filter(c => counts[c] > 0)
-        .map(c => ({ detected: c, label: CATEGORY_LABELS[c], target: DEFAULT_CONVERSIONS[c], count: counts[c] }));
-}
 
 export const VisualNovelView = React.memo(function VisualNovelView(props: ViewModeProps) {
     const {
@@ -344,6 +230,12 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     const updateConversionTarget = useCallback((category: FormatCategory, target: FormatCategory) => {
         setConversions(prev => prev.map(c => c.detected === category ? { ...c, target } : c));
+        recordCategoryCorrection(rawDraftRef.current, category, target);
+    }, []);
+
+    const handleAutoReformat = useCallback(() => {
+        const segments = detectFormatSegments(rawDraftRef.current);
+        setConversions(buildCategoryConversionsWithLearning(rawDraftRef.current, segments));
     }, []);
 
     const handleCancelEditing = useCallback(() => {
@@ -547,22 +439,32 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                 {conversions.length === 0 ? (
                                     <div className="vn-reformat-empty">No formatting detected. Click the text above to edit.</div>
                                 ) : (
-                                    <div className="vn-reformat-grid">
-                                        {conversions.map(conversion => (
-                                            <div key={conversion.detected} className="vn-reformat-row">
-                                                <span className="vn-reformat-label">
-                                                    {conversion.label}<span className="vn-reformat-count">×{conversion.count}</span>
-                                                </span>
-                                                <span className="vn-reformat-arrow">→</span>
-                                                <select className="vn-reformat-select" value={conversion.target}
-                                                    onChange={e => updateConversionTarget(conversion.detected, e.target.value as FormatCategory)}>
-                                                    {TARGET_OPTIONS.map(option => (
-                                                        <option key={option.value} value={option.value}>{option.label}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        ))}
-                                    </div>
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={handleAutoReformat}
+                                            className="vn-auto-reformat-button"
+                                            title="Apply learned formatting preferences"
+                                        >
+                                            Auto-Reformat
+                                        </button>
+                                        <div className="vn-reformat-grid">
+                                            {conversions.map(conversion => (
+                                                <div key={conversion.detected} className="vn-reformat-row">
+                                                    <span className="vn-reformat-label">
+                                                        {conversion.label}<span className="vn-reformat-count">×{conversion.count}</span>
+                                                    </span>
+                                                    <span className="vn-reformat-arrow">→</span>
+                                                    <select className="vn-reformat-select" value={conversion.target}
+                                                        onChange={e => updateConversionTarget(conversion.detected, e.target.value as FormatCategory)}>
+                                                        {TARGET_OPTIONS.map(option => (
+                                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
                                 )}
                             </div>
                         )}

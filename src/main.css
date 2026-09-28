@@ -837,10 +837,45 @@ SHARED CHAT COMPONENTS (Used by Ladder & Cinematic)
     border-color: var(--accent);
 }
 
+/* --- Auto Reformat Button (Visual Novel) --- */
+.vn-auto-reformat-button {
+    width: 100%;
+    margin-bottom: 8px;
+    background: rgba(192, 132, 252, 0.15);
+    color: var(--accent);
+    border: 1px solid rgba(192, 132, 252, 0.4);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.vn-auto-reformat-button:hover {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(192, 132, 252, 0.3);
+}
+
+.vn-auto-reformat-button:active {
+    transform: translateY(0);
+}
+
 /* =============================================================================
 SHARED UI COMPONENTS (Context Bar, Input, Modals, etc.)
 ============================================================================= */
-/* ... (Keeping existing shared styles for Context Bar, Input Area, Modals, Sliders, etc. unchanged for brevity in this thought block, but they remain in the file) ... */
 
 /* =============================================================================
 3. CONTEXT BAR
@@ -4987,4 +5022,38 @@ REGEX TRIGGER EDITOR
 .vn-dialogue-box.vn-dialogue-whisper .vn-name-plate {
     background: rgba(170, 59, 255, 0.8);
     font-style: italic;
+}
+
+/* --- Auto Reformat Button (Ladder/Cinematic) --- */
+.auto-reformat-button {
+    width: 100%;
+    margin-bottom: 8px;
+    background: var(--accent-bg);
+    color: var(--accent);
+    border: 1px solid var(--accent-border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 32px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.auto-reformat-button:hover {
+    background: var(--accent);
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.auto-reformat-button:active {
+    transform: translateY(0);
 }

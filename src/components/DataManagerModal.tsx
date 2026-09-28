@@ -2,7 +2,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData } from '../types';
 import { useToast } from '../context/ToastContext';
-import { saveRawSessionData, deleteSessionData, deleteMultiplayerJoinData, deleteActionFormatData, clearPreferencesCache, clearSaveQueue } from '../storages/serverStorage';
+import { saveRawSessionData, deleteSessionData, deleteMultiplayerJoinData, deleteActionFormatData, clearPreferencesCache, clearSaveQueue, deleteFormatPreferences } from '../storages/serverStorage';
 import '../main.css';
 
 interface DataManagerModalProps {
@@ -763,6 +763,7 @@ export function DataManagerModal({
             await deleteSessionData()
             await deleteMultiplayerJoinData();
             await deleteActionFormatData()
+            await deleteFormatPreferences()
 
             // Clear in-memory caches so stale data doesn't persist after reload
             clearPreferencesCache();

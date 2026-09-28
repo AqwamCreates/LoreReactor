@@ -8,10 +8,12 @@ import {
     detectFormatSegments,
     applyConversions,
     buildCategoryConversions,
+    buildCategoryConversionsWithLearning,
+    recordCategoryCorrection,
     TARGET_OPTIONS,
     type CategoryConversion,
     type FormatCategory,
-} from '../utilities/textReformatter';
+} from '../utilities/textReformat';
 
 interface MessageBubbleProps {
     message: ChatMessage | WhisperMessage;
@@ -169,6 +171,12 @@ export const MessageBubble = React.memo(function MessageBubble({
         setConversions(prev => prev.map(c =>
             c.detected === category ? { ...c, target } : c
         ));
+        recordCategoryCorrection(rawDraftRef.current, category, target);
+    }, []);
+
+    const handleAutoReformat = React.useCallback(() => {
+        const segments = detectFormatSegments(rawDraftRef.current);
+        setConversions(buildCategoryConversionsWithLearning(rawDraftRef.current, segments));
     }, []);
 
     const handleCancelEditing = React.useCallback(() => {
@@ -290,28 +298,38 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         No formatting detected. Click the text above to edit.
                                     </div>
                                 ) : (
-                                    <div className="message-reformat-grid">
-                                        {conversions.map(conversion => (
-                                            <div key={conversion.detected} className="message-reformat-row">
-                                                <span className="message-reformat-label">
-                                                    {conversion.label}
-                                                    <span className="message-reformat-count">×{conversion.count}</span>
-                                                </span>
-                                                <span className="message-reformat-arrow">→</span>
-                                                <select
-                                                    className="message-reformat-select"
-                                                    value={conversion.target}
-                                                    onChange={e => updateConversionTarget(conversion.detected, e.target.value as FormatCategory)}
-                                                >
-                                                    {TARGET_OPTIONS.map(option => (
-                                                        <option key={option.value} value={option.value}>
-                                                            {option.label}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        ))}
-                                    </div>
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={handleAutoReformat}
+                                            className="auto-reformat-button"
+                                            title="Apply learned formatting preferences"
+                                        >
+                                            Auto-Reformat
+                                        </button>
+                                        <div className="message-reformat-grid">
+                                            {conversions.map(conversion => (
+                                                <div key={conversion.detected} className="message-reformat-row">
+                                                    <span className="message-reformat-label">
+                                                        {conversion.label}
+                                                        <span className="message-reformat-count">×{conversion.count}</span>
+                                                    </span>
+                                                    <span className="message-reformat-arrow">→</span>
+                                                    <select
+                                                        className="message-reformat-select"
+                                                        value={conversion.target}
+                                                        onChange={e => updateConversionTarget(conversion.detected, e.target.value as FormatCategory)}
+                                                    >
+                                                        {TARGET_OPTIONS.map(option => (
+                                                            <option key={option.value} value={option.value}>
+                                                                {option.label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
                                 )}
                             </div>
 

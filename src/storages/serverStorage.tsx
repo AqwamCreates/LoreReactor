@@ -20,6 +20,8 @@ import type {
   SessionData,
 } from '../types';
 
+import type { FormatPreferenceData } from '../services/FormatPreferenceEngine';
+
 import { localURL } from '../configurations';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -1727,6 +1729,42 @@ export async function deleteActionFormatData(): Promise<void> {
         await deletePreferences(ACTION_FORMAT_KEY);
     } catch (error) {
         console.error('Failed to delete action format data:', error);
+    }
+}
+
+// =============================================================================
+// FORMAT PREFERENCES STORAGE (Bayesian Learning Data)
+// =============================================================================
+
+const FORMAT_PREFERENCES_KEY = 'format_preferences';
+
+export async function loadRawFormatPreferences(): Promise<FormatPreferenceData | null> {
+    const cached = preferencesCache.get<FormatPreferenceData>(FORMAT_PREFERENCES_KEY);
+    if (cached) return cached;
+
+    const data = await fetchPreferences<FormatPreferenceData>(FORMAT_PREFERENCES_KEY);
+    if (data) {
+        preferencesCache.set(FORMAT_PREFERENCES_KEY, data);
+    }
+
+    return data || null;
+}
+
+export async function saveRawFormatPreferences(data: FormatPreferenceData): Promise<void> {
+    preferencesCache.set(FORMAT_PREFERENCES_KEY, data);
+
+    saveQueue.enqueue(FORMAT_PREFERENCES_KEY, data, async (saveData) => {
+        await savePreferences(FORMAT_PREFERENCES_KEY, saveData as FormatPreferenceData);
+    });
+}
+
+export async function deleteFormatPreferences(): Promise<void> {
+    preferencesCache.delete(FORMAT_PREFERENCES_KEY);
+
+    try {
+        await deletePreferences(FORMAT_PREFERENCES_KEY);
+    } catch (error) {
+        console.error('Failed to delete format preferences:', error);
     }
 }
 
