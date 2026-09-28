@@ -14,7 +14,7 @@ import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useFrontCamera } from '../hooks/useFrontCamera';
-import type { Character, Context, InteractionData, ChatMessage, MultiplayerData, WhisperMessage, LanguageModel, HistoryMessage, RawInteractionData, Account, cloudBackend } from '../types';
+import type { Character, Context, InteractionData, ChatMessage, MultiplayerData, WhisperMessage, LanguageModel, HistoryMessage, RawInteractionData, Account, cloudBackend, InterjectableAction } from '../types';
 import { useSessionStore } from '../hooks/useSessionStore';
 
 // ─── Manager Hooks ──────────────────────────────────────────────────
@@ -148,6 +148,12 @@ function App() {
         addToast,
     });
 
+    // ─── State Bridge for Actions ────────────────────────────────────
+    // useChatSession needs the actions to learn from manual typing.
+    // Since useActionMenu loads them and is declared after useChatSession,
+    // we use a state bridge to pass them down safely without circular dependencies.
+    const [allActionsState, setAllActionsState] = useState<InterjectableAction[]>([]);
+
     // ─── Chat Session ────────────────────────────────────────────────
     const session = useChatSession({
         onMessageBroadcast: mp.broadcastMessageRef.current ? (msg: HistoryMessage) => mp.broadcastMessageRef.current?.(msg) : undefined,
@@ -167,6 +173,7 @@ function App() {
         allExtensions: extensions.extensions,
         allAccounts: accounts.accounts,
         allMultiplayerData: multiplayerDataManager.multiplayerDatas,
+        allActions: allActionsState,
         requestBorrowedModel: () => mp.requestBorrowedModelRef.current(),
     });
 
@@ -328,6 +335,11 @@ function App() {
         interactionData, currentCharacter, isLoading, isModelReady,
         allCharacters: characters.characters, stopGeneration, sendActionAndGetResponse, addToast,
     });
+
+    // Sync loaded actions back to the state bridge for useChatSession
+    useEffect(() => {
+        setAllActionsState(actionMenu.actions);
+    }, [actionMenu.actions]);
 
     const messageActions = useMessageActions({
         interactionData, localProtagonist, isModelReady, isLoading,
@@ -877,6 +889,7 @@ function App() {
                 actionWrap={actionMenu.actionWrap} setActionWrap={actionMenu.setActionWrap}
                 actionCase={actionMenu.actionCase} setActionCase={actionMenu.setActionCase}
                 actionPunctuation={actionMenu.actionPunctuation} setActionPunctuation={actionMenu.setActionPunctuation}
+                isAutoFormat={actionMenu.isAutoFormat} setIsAutoFormat={actionMenu.setIsAutoFormat}
                 filteredActions={actionMenu.getFilteredActions()} isModelReady={isModelReady}
                 allCharacters={characters.characters} localProtagonist={localProtagonist}
                 onAddAction={actionMenu.handleAddAction} onDeleteAction={actionMenu.handleDeleteAction} onActionInterject={actionMenu.handleActionInterject}

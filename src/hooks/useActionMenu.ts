@@ -1,11 +1,8 @@
 // src/hooks/useActionMenu.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Character, InteractionData, InterjectableAction } from '../types';
-import { loadInterjectableActions, saveInterjectableActions, loadActionFormatData, saveActionFormatData } from '../storages/serverStorage';
-
-type ActionWrap = '*' | '()' | 'none';
-type ActionCase = 'first' | 'pascal' | 'lower';
-type ActionPunctuation = '.' | '-' | 'none';
+import { loadInterjectableActions, saveInterjectableActions } from '../storages/serverStorage';
+import { initializeActionFormatEngine, getActionFormatEngine, type ActionWrap, type ActionCase, type ActionPunctuation } from '../services/ActionFormatEngine';
 
 function formatActionString(label: string, targetName: string, wrap: ActionWrap, casing: ActionCase, punctuation: ActionPunctuation): string {
     let result = label;
@@ -25,25 +22,15 @@ function formatActionString(label: string, targetName: string, wrap: ActionWrap,
     result = `${result} ${targetName}`;
 
     switch (punctuation) {
-        case '.':
-            result += '.';
-            break;
-        case '-':
-            result += '-';
-            break;
-        case 'none':
-            break;
+        case '.': result += '.'; break;
+        case '-': result += '-'; break;
+        case 'none': break;
     }
 
     switch (wrap) {
-        case '*':
-            result = `*${result}*`;
-            break;
-        case '()':
-            result = `(${result})`;
-            break;
-        case 'none':
-            break;
+        case '*': result = `*${result}*`; break;
+        case '()': result = `(${result})`; break;
+        case 'none': break;
     }
 
     return result;
@@ -71,49 +58,41 @@ export function useActionMenu(options: UseActionMenuOptions) {
     const [actionsLoading, setActionsLoading] = useState(true);
     const [showActionFormat, setShowActionFormat] = useState(false);
 
-    // Action formatting state — initialized clean, populated async from server
     const [actionWrap, setActionWrap] = useState<ActionWrap>('*');
     const [actionCase, setActionCase] = useState<ActionCase>('first');
     const [actionPunctuation, setActionPunctuation] = useState<ActionPunctuation>('.');
+    const [isAutoFormat, setIsAutoFormat] = useState(false);
 
-    // Track whether initial load has completed to avoid saving defaults back to server
     const formatLoadedRef = useRef(false);
 
-    // Load action format preferences from server on mount
+    // Load preferences from the unified engine on mount
     useEffect(() => {
         let cancelled = false;
         (async () => {
-            try {
-                const data = await loadActionFormatData();
-                if (cancelled) return;
-
-                if (data.actionWrap === '*' || data.actionWrap === '()' || data.actionWrap === 'none') {
-                    setActionWrap(data.actionWrap);
-                }
-                if (data.actionCase === 'first' || data.actionCase === 'pascal' || data.actionCase === 'lower') {
-                    setActionCase(data.actionCase);
-                }
-                if (data.actionPunctuation === '.' || data.actionPunctuation === '-' || data.actionPunctuation === 'none') {
-                    setActionPunctuation(data.actionPunctuation);
-                }
-            } catch (e) {
-                console.warn('Failed to load action format preferences:', e);
-            } finally {
-                if (!cancelled) formatLoadedRef.current = true;
-            }
+            const engine = await initializeActionFormatEngine();
+            if (cancelled) return;
+            
+            const prefs = engine.getUIPreferences();
+            setActionWrap(prefs.actionWrap);
+            setActionCase(prefs.actionCase);
+            setActionPunctuation(prefs.actionPunctuation);
+            setIsAutoFormat(prefs.isAutoFormat);
+            
+            formatLoadedRef.current = true;
         })();
         return () => { cancelled = true; };
     }, []);
 
-    // Persist action formatting to server on change (only after initial load)
+    // Sync UI changes to the engine (which handles debounced saving)
     useEffect(() => {
         if (!formatLoadedRef.current) return;
-        saveActionFormatData({
+        getActionFormatEngine().setUIPreferences({
             actionWrap,
             actionCase,
             actionPunctuation,
-        }).catch(e => console.warn('Failed to save action format:', e));
-    }, [actionWrap, actionCase, actionPunctuation]);
+            isAutoFormat,
+        });
+    }, [actionWrap, actionCase, actionPunctuation, isAutoFormat]);
 
     // Load interjectable actions on mount
     useEffect(() => {
@@ -131,12 +110,9 @@ export function useActionMenu(options: UseActionMenuOptions) {
         return () => { cancelled = true; };
     }, []);
 
-    // Debounced save for actions — coalesces rapid mutations into single server write
     const actionsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const scheduleActionsSave = useCallback((actionsToSave: InterjectableAction[]) => {
-        if (actionsSaveTimerRef.current !== null) {
-            clearTimeout(actionsSaveTimerRef.current);
-        }
+        if (actionsSaveTimerRef.current !== null) clearTimeout(actionsSaveTimerRef.current);
         actionsSaveTimerRef.current = setTimeout(() => {
             actionsSaveTimerRef.current = null;
             saveInterjectableActions(actionsToSave).catch(e =>
@@ -145,13 +121,8 @@ export function useActionMenu(options: UseActionMenuOptions) {
         }, 500);
     }, []);
 
-    // Cleanup debounce timer on unmount
     useEffect(() => {
-        return () => {
-            if (actionsSaveTimerRef.current !== null) {
-                clearTimeout(actionsSaveTimerRef.current);
-            }
-        };
+        return () => { if (actionsSaveTimerRef.current !== null) clearTimeout(actionsSaveTimerRef.current); };
     }, []);
 
     const incrementActionCount = useCallback(async (label: string) => {
@@ -191,18 +162,52 @@ export function useActionMenu(options: UseActionMenuOptions) {
         setMenuSearchQuery('');
         setShowActionFormat(false);
         if (!interactionData || !currentCharacter) return;
+        
         await incrementActionCount(label);
+        
         if (isLoading) {
             stopGeneration();
             await new Promise(r => setTimeout(r, 200));
         }
-        const formattedAction = formatActionString(label, targetChar.name, actionWrap, actionCase, actionPunctuation);
+
+        // Determine previous user wrap for context
+        let prevUserWrap: ActionWrap | 'unknown' = 'unknown';
+        for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
+            const msg = interactionData.interactionHistory[i];
+            if (msg.character.id === currentCharacter.id && msg.messageType === 'chat') {
+                const text = msg.textContent;
+                if (text.includes('*')) prevUserWrap = '*';
+                else if (text.includes('(') && text.includes(')')) prevUserWrap = '()';
+                else prevUserWrap = 'none';
+                break;
+            }
+        }
+
+        const engine = getActionFormatEngine();
+        let wrap = actionWrap;
+        let casing = actionCase;
+        let punct = actionPunctuation;
+
+        if (isAutoFormat) {
+            const prediction = engine.predict(label, prevUserWrap);
+            if (prediction) {
+                wrap = prediction.wrap;
+                casing = prediction.casing;
+                punct = prediction.punctuation;
+            }
+        }
+
+        const formattedAction = formatActionString(label, targetChar.name, wrap, casing, punct);
+        
+        // Record the usage to reinforce the learning matrix
+        engine.record(label, prevUserWrap, { wrap, casing, punctuation: punct });
+
         try {
             await sendActionAndGetResponse(formattedAction, targetChar, protagonist);
         } catch {
             addToast('Failed to interject action.', 'error');
         }
-    }, [interactionData, currentCharacter, isLoading, actionWrap, actionCase, actionPunctuation, incrementActionCount, stopGeneration, sendActionAndGetResponse, addToast]);
+    }, [interactionData, currentCharacter, isLoading, actionWrap, actionCase, actionPunctuation, isAutoFormat, incrementActionCount, stopGeneration, sendActionAndGetResponse, addToast]);
 
     const getFilteredActions = useCallback(() => actions
         .filter(a => a.label.toLowerCase().includes(menuSearchQuery.toLowerCase()))
@@ -228,6 +233,7 @@ export function useActionMenu(options: UseActionMenuOptions) {
         actionWrap, setActionWrap,
         actionCase, setActionCase,
         actionPunctuation, setActionPunctuation,
+        isAutoFormat, setIsAutoFormat,
         handleAddAction,
         handleDeleteAction,
         handleActionInterject,

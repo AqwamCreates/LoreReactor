@@ -20,7 +20,8 @@ import { useSessionStore } from './useSessionStore';
 import { localURL } from '../configurations';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine, type RequestMetadata } from '../services/BudgetStrategyEngine';
-import type { Character, Context, Location, AudioTrack, World, PromptBlock, Sampler, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, HistoryMessage, Memory, Extension, Account, MultiplayerData, LanguageModel } from '../types';
+import { learnFromUserMessage } from '../services/ActionFormatEngine';
+import type { Character, Context, Location, AudioTrack, World, PromptBlock, Sampler, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, HistoryMessage, Memory, Extension, Account, MultiplayerData, LanguageModel, InterjectableAction } from '../types';
 
 const engine = getLanguageModelEngine();
 
@@ -88,6 +89,7 @@ interface UseChatSessionOptions {
     allExtensions?: Extension[];
     allAccounts?: Account[];
     allMultiplayerData?: MultiplayerData[];
+    allActions?: InterjectableAction[];
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
 }
 
@@ -118,6 +120,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     const allExtensionsRef = useRef(options?.allExtensions ?? []);
     const allAccountsRef = useRef(options?.allAccounts ?? []);
     const allMultiplayerDataRef = useRef(options?.allMultiplayerData ?? []);
+    const allActionsRef = useRef(options?.allActions ?? []);
 
     useEffect(() => { allCharactersRef.current = options?.allCharacters ?? []; }, [options?.allCharacters]);
     useEffect(() => { allContextsRef.current = options?.allContexts ?? []; }, [options?.allContexts]);
@@ -133,6 +136,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     useEffect(() => { allExtensionsRef.current = options?.allExtensions ?? []; }, [options?.allExtensions]);
     useEffect(() => { allAccountsRef.current = options?.allAccounts ?? []; }, [options?.allAccounts]);
     useEffect(() => { allMultiplayerDataRef.current = options?.allMultiplayerData ?? []; }, [options?.allMultiplayerData]);
+    useEffect(() => { allActionsRef.current = options?.allActions ?? []; }, [options?.allActions]);
 
     const state = useChatState();
     const {
@@ -468,6 +472,23 @@ export function useChatSession(options: UseChatSessionOptions) {
                 // Broadcast user message to host
                 onMessageBroadcastRef.current?.(chatMessage);
 
+                // --- ACTION FORMAT LEARNING ---
+                if (allActionsRef.current.length > 0) {
+                    let prevWrap: '*' | '()' | 'none' | 'unknown' = 'unknown';
+                    for (let i = td.interactionHistory.length - 2; i >= 0; i--) {
+                        const prevMsg = td.interactionHistory[i];
+                        if (prevMsg.character.id === activeCharacter.id && prevMsg.messageType === 'chat') {
+                            const prevText = prevMsg.textContent;
+                            if (prevText.includes('*')) prevWrap = '*';
+                            else if (prevText.includes('(') && prevText.includes(')')) prevWrap = '()';
+                            else prevWrap = 'none';
+                            break;
+                        }
+                    }
+                    learnFromUserMessage(text, allActionsRef.current.map(a => a.label), prevWrap);
+                }
+                // ------------------------------
+
                 const hasLocations = td.locations && td.locations.length > 0;
                 if (hasLocations) {
                     const protagonistMsg = td.interactionHistory[td.interactionHistory.length - 1];
@@ -520,6 +541,23 @@ export function useChatSession(options: UseChatSessionOptions) {
 
                 // Broadcast user message
                 onMessageBroadcastRef.current?.(chatMessage);
+
+                // --- ACTION FORMAT LEARNING ---
+                if (allActionsRef.current.length > 0) {
+                    let prevWrap: '*' | '()' | 'none' | 'unknown' = 'unknown';
+                    for (let i = td.interactionHistory.length - 2; i >= 0; i--) {
+                        const prevMsg = td.interactionHistory[i];
+                        if (prevMsg.character.id === activeCharacter.id && prevMsg.messageType === 'chat') {
+                            const prevText = prevMsg.textContent;
+                            if (prevText.includes('*')) prevWrap = '*';
+                            else if (prevText.includes('(') && prevText.includes(')')) prevWrap = '()';
+                            else prevWrap = 'none';
+                            break;
+                        }
+                    }
+                    learnFromUserMessage(text, allActionsRef.current.map(a => a.label), prevWrap);
+                }
+                // ------------------------------
 
                 const hasLocations = td.locations && td.locations.length > 0;
                 if (hasLocations) {

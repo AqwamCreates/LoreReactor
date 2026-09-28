@@ -874,8 +874,9 @@ export interface MultiplayerJoinData {
 }
 
 export interface ActionFormatData {
-    actionWrap?: string;
-    actionCase?: string;
-    actionPunctuation?: string;
-    showActionFormat?: string;
+    actionWrap?: '*' | '()' | 'none';
+    actionCase?: 'first' | 'pascal' | 'lower';
+    actionPunctuation?: '.' | '-' | 'none';
+    isAutoFormat?: boolean;
+    matrix?: Record<string, Record<string, number>>;
 }

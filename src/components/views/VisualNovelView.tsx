@@ -236,7 +236,20 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     const handleAutoReformat = useCallback(() => {
         const segments = detectFormatSegments(rawDraftRef.current);
-        setConversions(buildCategoryConversionsWithLearning(rawDraftRef.current, segments));
+        setConversions(buildCategoryConversionsWithLearning(
+            rawDraftRef.current, 
+            segments, 
+            { includePlain: false, includeFormatted: true }
+        ));
+    }, []);
+
+    const handleAutoAddMissing = useCallback(() => {
+        const segments = detectFormatSegments(rawDraftRef.current);
+        setConversions(buildCategoryConversionsWithLearning(
+            rawDraftRef.current, 
+            segments, 
+            { includePlain: true, includeFormatted: false }
+        ));
     }, []);
 
     const handleCancelEditing = useCallback(() => {
@@ -452,9 +465,17 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                             type="button"
                                             onClick={handleAutoReformat}
                                             className="vn-auto-reformat-button"
-                                            title="Apply learned formatting preferences"
+                                            title="Fix existing formatting based on learned preferences"
                                         >
                                             Auto-Reformat
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleAutoAddMissing}
+                                            className="vn-auto-format-button"
+                                            title="Format plain text based on learned context"
+                                        >
+                                            Auto-Format
                                         </button>
                                         <div className="vn-reformat-grid">
                                             {conversions.map(conversion => (

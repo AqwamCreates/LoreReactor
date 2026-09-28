@@ -177,7 +177,20 @@ export const MessageBubble = React.memo(function MessageBubble({
 
     const handleAutoReformat = React.useCallback(() => {
         const segments = detectFormatSegments(rawDraftRef.current);
-        setConversions(buildCategoryConversionsWithLearning(rawDraftRef.current, segments));
+        setConversions(buildCategoryConversionsWithLearning(
+            rawDraftRef.current, 
+            segments, 
+            { includePlain: false, includeFormatted: true }
+        ));
+    }, []);
+
+    const handleAutoAddMissing = React.useCallback(() => {
+        const segments = detectFormatSegments(rawDraftRef.current);
+        setConversions(buildCategoryConversionsWithLearning(
+            rawDraftRef.current, 
+            segments, 
+            { includePlain: true, includeFormatted: false }
+        ));
     }, []);
 
     const handleCancelEditing = React.useCallback(() => {
@@ -188,7 +201,6 @@ export const MessageBubble = React.memo(function MessageBubble({
     }, [onCancelEditing]);
 
     const handleSaveEdit = React.useCallback(() => {
-        // Learn from any manual formatting additions/removals before saving
         learnFromManualEdits(message.textContent, editDraft);
         onSaveEdit();
     }, [message.textContent, editDraft, onSaveEdit]);
@@ -310,9 +322,17 @@ export const MessageBubble = React.memo(function MessageBubble({
                                             type="button"
                                             onClick={handleAutoReformat}
                                             className="auto-reformat-button"
-                                            title="Apply learned formatting preferences"
+                                            title="Fix existing formatting based on learned preferences"
                                         >
                                             Auto-Reformat
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleAutoAddMissing}
+                                            className="auto-format-button"
+                                            title="Format plain text based on learned context"
+                                        >
+                                            Auto-Format
                                         </button>
                                         <div className="message-reformat-grid">
                                             {conversions.map(conversion => (

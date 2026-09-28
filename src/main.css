@@ -873,6 +873,76 @@ SHARED CHAT COMPONENTS (Used by Ladder & Cinematic)
     transform: translateY(0);
 }
 
+/* --- Auto Format (Missing) Button (Ladder/Cinematic) --- */
+.auto-format-button {
+    width: 100%;
+    margin-bottom: 8px;
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 32px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.auto-format-button:hover {
+    background: #10b981;
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.auto-format-button:active {
+    transform: translateY(0);
+}
+
+/* --- Auto Format (Missing) Button (Visual Novel) --- */
+.vn-auto-format-button {
+    width: 100%;
+    margin-bottom: 8px;
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.vn-auto-format-button:hover {
+    background: #10b981;
+    color: #fff;
+    border-color: #10b981;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.vn-auto-format-button:active {
+    transform: translateY(0);
+}
+
 /* =============================================================================
 SHARED UI COMPONENTS (Context Bar, Input, Modals, etc.)
 ============================================================================= */

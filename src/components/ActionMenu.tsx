@@ -14,6 +14,8 @@ interface ActionMenuProps {
     setActionCase: (c: 'first' | 'pascal' | 'lower') => void;
     actionPunctuation: '.' | '-' | 'none';
     setActionPunctuation: (p: '.' | '-' | 'none') => void;
+    isAutoFormat: boolean;
+    setIsAutoFormat: (auto: boolean) => void;
     filteredActions: InterjectableAction[];
     isModelReady: boolean;
     allCharacters: Character[];
@@ -30,6 +32,7 @@ export function ActionMenu({
     actionWrap, setActionWrap,
     actionCase, setActionCase,
     actionPunctuation, setActionPunctuation,
+    isAutoFormat, setIsAutoFormat,
     filteredActions, isModelReady, allCharacters, localProtagonist,
     onAddAction, onDeleteAction, onActionInterject,
 }: ActionMenuProps) {
@@ -39,7 +42,7 @@ export function ActionMenu({
         if (!localProtagonist) return;
         const tc = allCharacters.find(c => c.id === actionMenuTarget.charId);
         if (tc) onActionInterject(label, tc, localProtagonist);
-    };;
+    };
 
     return (
         <div
@@ -59,16 +62,47 @@ export function ActionMenu({
             {showActionFormat ? (
                 <div className="action-format-panel" onClick={e => e.stopPropagation()}>
                     <div className="action-format-row">
+                        <button
+                            type="button"
+                            className={`action-format-button ${isAutoFormat ? 'action-format-button-active' : ''}`}
+                            onClick={() => setIsAutoFormat(!isAutoFormat)}
+                            style={{ gridColumn: '1 / -1', fontWeight: 'bold' }}
+                        >
+                            {isAutoFormat ? 'Auto-Format' : 'Manual Format'}
+                        </button>
+                    </div>
+                    <div
+                        className="action-format-row"
+                        style={{
+                            opacity: isAutoFormat ? 0.4 : 1,
+                            pointerEvents: isAutoFormat ? 'none' : 'auto',
+                            transition: 'opacity 0.2s'
+                        }}
+                    >
                         <button type="button" className={`action-format-button ${actionWrap === '*' ? 'action-format-button-active' : ''}`} onClick={() => setActionWrap('*')}>*</button>
                         <button type="button" className={`action-format-button ${actionWrap === '()' ? 'action-format-button-active' : ''}`} onClick={() => setActionWrap('()')}>()</button>
                         <button type="button" className={`action-format-button ${actionWrap === 'none' ? 'action-format-button-active' : ''}`} onClick={() => setActionWrap('none')}>None</button>
                     </div>
-                    <div className="action-format-row">
+                    <div
+                        className="action-format-row"
+                        style={{
+                            opacity: isAutoFormat ? 0.4 : 1,
+                            pointerEvents: isAutoFormat ? 'none' : 'auto',
+                            transition: 'opacity 0.2s'
+                        }}
+                    >
                         <button type="button" className={`action-format-button ${actionCase === 'first' ? 'action-format-button-active' : ''}`} onClick={() => setActionCase('first')}>A*</button>
                         <button type="button" className={`action-format-button ${actionCase === 'pascal' ? 'action-format-button-active' : ''}`} onClick={() => setActionCase('pascal')}>A* A*</button>
                         <button type="button" className={`action-format-button ${actionCase === 'lower' ? 'action-format-button-active' : ''}`} onClick={() => setActionCase('lower')}>a*</button>
                     </div>
-                    <div className="action-format-row">
+                    <div
+                        className="action-format-row"
+                        style={{
+                            opacity: isAutoFormat ? 0.4 : 1,
+                            pointerEvents: isAutoFormat ? 'none' : 'auto',
+                            transition: 'opacity 0.2s'
+                        }}
+                    >
                         <button type="button" className={`action-format-button ${actionPunctuation === '.' ? 'action-format-button-active' : ''}`} onClick={() => setActionPunctuation('.')}>.</button>
                         <button type="button" className={`action-format-button ${actionPunctuation === '-' ? 'action-format-button-active' : ''}`} onClick={() => setActionPunctuation('-')}>-</button>
                         <button type="button" className={`action-format-button ${actionPunctuation === 'none' ? 'action-format-button-active' : ''}`} onClick={() => setActionPunctuation('none')}>None</button>
