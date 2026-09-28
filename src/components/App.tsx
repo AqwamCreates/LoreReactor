@@ -1,46 +1,31 @@
-// src/App.tsx
+// src/components/App.tsx
 import type React from 'react';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { useChatSession } from '../hooks/useChatSession';
-import { useChatListManager } from '../hooks/useChatListManager';
-import { useCharacterManager } from '../hooks/useCharacterManager';
-import { useContextManager } from '../hooks/useContextManager';
-import { useLocationManager } from '../hooks/useLocationManager';
-import { useAudioTrackManager } from '../hooks/useAudioTrackManager';
-import { useWorldManager } from '../hooks/useWorldManager';
-import { useModelManager } from '../hooks/useModelManager';
-import { useSamplerManager } from '../hooks/useSamplerManager';
-import { usePromptBlockManager } from '../hooks/usePromptBlockManager';
-import { useStopPatternManager } from '../hooks/useStopPatternManager';
-import { useBudgetStrategyManager } from '../hooks/useBudgetStrategyManager';
-import { useProfileManager } from '../hooks/useProfileManager';
-import { useExtensionManager } from '../hooks/useExtensionManager';
-import { useMemoryManager } from '../hooks/useMemoryManager';
-import { useAccountManager } from '../hooks/useAccountManager';
-import { useMultiplayerDataManager } from '../hooks/useMultiplayerDataManager';
-import { useMultiplayerSync } from '../hooks/useMultiplayerSync';
-import { useEntityModals } from '../hooks/useEntityModals';
 import { useToast } from '../context/ToastContext';
-import { 
-    saveRawInteractionData, 
-    loadRawInteractionData,
-    loadRawMultiplayerJoinData,
-    saveRawMultiplayerJoinData,
-    deleteMultiplayerJoinData,
-} from '../storages/serverStorage';
+import { saveRawInteractionData, loadRawInteractionData } from '../storages/serverStorage';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { useDisplayNameCache, resolveDelayedDisplayNameFromCache } from '../hooks/immersionLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { getBudgetStrategyEngine, initializeBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { buildModelLoadArguments } from '../hooks/modelLoadArguments';
 import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useFrontCamera } from '../hooks/useFrontCamera';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, InteractionData, ChatMessage, MultiplayerData, HistoryMessage, cloudBackend, WhisperMessage } from '../types';
+import type { Character, Context, InteractionData, ChatMessage, MultiplayerData, WhisperMessage, LanguageModel, HistoryMessage, RawInteractionData, Account, cloudBackend } from '../types';
+import { useSessionStore } from '../hooks/useSessionStore';
+
+// ─── Extracted Hooks ─────────────────────────────────────────────────
+import { useAppManagers } from '../hooks/useAppManagers';
+import { useMultiplayerSession } from '../hooks/useMultiplayerSession';
+import { useSessionEffects } from '../hooks/useSessionEffects';
+import { useChatAutoSave } from '../hooks/useChatAutoSave';
+import { useTokenCounter } from '../hooks/useTokenCounter';
+
+// ─── Existing Feature Hooks ──────────────────────────────────────────
+import { useChatSession } from '../hooks/useChatSession';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
 import { useActionMenu } from '../hooks/useActionMenu';
@@ -50,46 +35,25 @@ import { useEntityToggles } from '../hooks/useEntityToggles';
 import { useViewAssets } from '../hooks/useViewAssets';
 import { useMessageToolbar } from '../hooks/useMessageToolbar';
 import { useAppModals } from '../hooks/useAppModals';
-import { useActiveExtensions } from '../hooks/useActiveExtensions';
-import { useSessionStore } from '../hooks/useSessionStore';
+
+// ─── Components ──────────────────────────────────────────────────────
 import { ActionMenu } from './ActionMenu';
 import { AppModals } from './AppModals';
 import { ChatInput } from './ChatInput';
 import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
-import '../main.css';
 import { ChatMinimap } from './ChatMinimap';
-
 import { LadderView } from './views/LadderView';
 import { CinematicView } from './views/CinematicView';
 import { VisualNovelView } from './views/VisualNovelView';
 import type { ViewModeProps } from './views/types';
 import { defaultContextLength } from '../dictionaries/defaults';
-interface LoadStep { 
-    id: string; 
-    label: string; 
-    icon: string; 
-    done: boolean; 
-}
+import '../main.css';
 
-function hasMessagesChanged(previousInteractionData: InteractionData | null, currentInteractionData: InteractionData): boolean {
-    if (!previousInteractionData || !previousInteractionData.interactionHistory || !currentInteractionData.interactionHistory) return true;
-    if (previousInteractionData.interactionHistory.length !== currentInteractionData.interactionHistory.length) return true;
-    
-    for (let index = 0; index < previousInteractionData.interactionHistory.length; index++) {
-        const previousMessage = previousInteractionData.interactionHistory[index];
-        const currentMessage = currentInteractionData.interactionHistory[index];
-        
-        if (previousMessage.id !== currentMessage.id) return true;
-        if (previousMessage.character.id !== currentMessage.character.id) return true;
-        
-        if ('textContent' in previousMessage && 'textContent' in currentMessage) {
-            if ((previousMessage as ChatMessage).textContent !== (currentMessage as ChatMessage).textContent) return true;
-        }
-    }
-    return false;
-}
+// ─── Types & Helpers ─────────────────────────────────────────────────
+
+interface LoadStep { id: string; label: string; icon: string; done: boolean; }
 
 function deriveCurrentProtagonist(
     interactionData: InteractionData | null,
@@ -97,875 +61,607 @@ function deriveCurrentProtagonist(
     currentAccountId: string | null,
 ): Character | null {
     if (!interactionData?.protagonists?.length) return null;
-    if (!multiplayerData || !currentAccountId) {
-        return interactionData.protagonists[0] ?? null;
-    }
-    const activeCharacterIdentifier = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.activeCharacterId;
-    if (activeCharacterIdentifier) {
-        const foundProtagonist = interactionData.protagonists.find(protagonist => protagonist.id === activeCharacterIdentifier) || 
-                                 interactionData.participants.find(participant => participant.id === activeCharacterIdentifier);
-        if (foundProtagonist) return foundProtagonist;
+    if (!multiplayerData || !currentAccountId) return interactionData.protagonists[0] ?? null;
+    const activeCharId = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.activeCharacterId;
+    if (activeCharId) {
+        const found = interactionData.protagonists.find((p: Character) => p.id === activeCharId)
+            || interactionData.participants.find((p: Character) => p.id === activeCharId);
+        if (found) return found;
     }
     return interactionData.protagonists[0] ?? null;
 }
+
+// ─── App Component ───────────────────────────────────────────────────
 
 function App() {
     const { addToast } = useToast();
     const { captureImage: captureFrontCameraImage } = useFrontCamera(addToast);
 
-    // ─── Manager Hooks ───────────────────────────────────────────────
-    const { rawChatShells, isLoading: chatsLoading, deleteChat: deleteChatFromList, refresh: refreshChatList, ensureLoaded: ensureChatsLoaded } = useChatListManager();
-    const { characters: allCharacters, isLoading: charsLoading, saveCharacter, deleteCharacter, loadFullCharacter } = useCharacterManager();
-    const { contexts: allContexts, isLoading: contextsLoading, saveContext, deleteContext } = useContextManager();
-    const { locations: allLocations, isLoading: locationsLoading, saveLocation, deleteLocation } = useLocationManager();
-    const { audioTracks: allAudioTracks, isLoading: audioTracksLoading, saveAudioTrack, deleteAudioTrack } = useAudioTrackManager();
-    const { worlds: allWorlds, isLoading: worldsLoading, saveWorld, deleteWorld } = useWorldManager();
-    const { promptBlocks: allPromptBlocks, isLoading: promptBlocksLoading, savePromptBlock, deletePromptBlock } = usePromptBlockManager();
-    const { models: allModels, isLoading: modelsLoading, saveModel, deleteModel, runningModels, toggleModelLoad, selectedModelId, setSelectedModelId } = useModelManager();
-    const { Samplers: allSamplers, isLoading: samplersLoading, saveSampler, deleteSampler } = useSamplerManager();
-    const { stopPatterns: allStopPatterns, isLoading: stopLoading, saveStopPattern, deleteStopPattern } = useStopPatternManager();
-    const { strategies: allBudgetStrategies, isLoading: budgetLoading, saveStrategy: saveBudgetStrategy, deleteStrategy: deleteBudgetStrategy } = useBudgetStrategyManager();
-    const { profiles: allProfiles, isLoading: profilesLoading, saveProfile, deleteProfile } = useProfileManager();
-    const { extensions: allExtensions, deleteExtension } = useExtensionManager();
-    const { memories: allMemories, deleteMemory } = useMemoryManager();
-    const { accounts: allAccounts, isLoading: accountsLoading, saveAccount, deleteAccount } = useAccountManager();
-    const { multiplayerDatas: allMultiplayerData, isLoading: multiplayerDataLoading, saveMultiplayerData, deleteMultiplayerData } = useMultiplayerDataManager();
+    // ─── Consolidated Managers ───────────────────────────────────────
+    const managers = useAppManagers();
+    const {
+        chatList, characters, contexts, locations, audioTracks, worlds,
+        models, samplers, promptBlocks, stopPatterns, budgetStrategies,
+        profiles, extensions, memories, accounts, multiplayerData: mpDataManager,
+        activeExtensions, entityModals,
+    } = managers;
 
-    const { activeIds: activeExtensionIds, setActiveIds: setActiveExtensionIds } = useActiveExtensions(allExtensions);
-
-    // ─── Unified Modal Management Hooks ──────────────────────────────
-    const { modals } = useAppModals();
-    const entityModals = useEntityModals({
-        character: { saveFunction: saveCharacter, deleteFunction: deleteCharacter, entityLabel: 'Character' },
-        context: { saveFunction: saveContext, deleteFunction: deleteContext, entityLabel: 'Context' },
-        location: { saveFunction: saveLocation, deleteFunction: deleteLocation, entityLabel: 'Location' },
-        audioTrack: { saveFunction: saveAudioTrack, deleteFunction: deleteAudioTrack, entityLabel: 'Audio Track' },
-        world: { saveFunction: saveWorld, deleteFunction: deleteWorld, entityLabel: 'World' },
-        model: { saveFunction: saveModel, deleteFunction: deleteModel, entityLabel: 'Model' },
-        sampler: { saveFunction: saveSampler, deleteFunction: deleteSampler, entityLabel: 'Sampler' },
-        promptBlock: { saveFunction: savePromptBlock, deleteFunction: deletePromptBlock, entityLabel: 'Prompt Block' },
-        stopPattern: { saveFunction: saveStopPattern, deleteFunction: deleteStopPattern, entityLabel: 'Stop Pattern' },
-        budgetStrategy: { saveFunction: saveBudgetStrategy, deleteFunction: deleteBudgetStrategy, entityLabel: 'Budget Strategy' },
-        profile: { saveFunction: saveProfile, deleteFunction: deleteProfile, entityLabel: 'Profile' },
-        account: { saveFunction: saveAccount, deleteFunction: deleteAccount, entityLabel: 'Account' },
-        multiplayerData: { saveFunction: saveMultiplayerData, deleteFunction: deleteMultiplayerData, entityLabel: 'Multiplayer Data' },
-    });
-
-    // ─── Multiplayer Broadcast Bridge ────────────────────────────────
-    const broadcastMessageReference = useRef<((message: HistoryMessage) => void) | undefined>(undefined);
-    const onMessageBroadcast = useCallback((message: HistoryMessage) => {
-        broadcastMessageReference.current?.(message);
-    }, []);
-
-    const requestBorrowedModelReference = useRef<() => Promise<LanguageModel | null>>(async () => null);
+    // Convenience alias: the actual LanguageModel[] array
+    const allModels = models.models;
 
     // ─── Session Store Selectors & Actions ───────────────────────────
-    const currentAccountId = useSessionStore(state => state.currentAccountId);
-    const multiplayerData = useSessionStore(state => state.multiplayerData);
-    const defaultCharacterId = useSessionStore(state => state.defaultCharacterId);
-    const selectedBudgetStrategyId = useSessionStore(state => state.selectedBudgetStrategyId);
+    const defaultCharacterId = useSessionStore((s: any) => s.defaultCharacterId);
+    const selectedBudgetStrategyId = useSessionStore((s: any) => s.selectedBudgetStrategyId);
+    const storeSetCurrentAccountId = useSessionStore((s: any) => s.setCurrentAccountId);
+    const storeSetDefaultCharacterId = useSessionStore((s: any) => s.setDefaultCharacterId);
+    const storeSetSelectedBudgetStrategyId = useSessionStore((s: any) => s.setSelectedBudgetStrategyId);
 
-    const storeSetCurrentAccountId = useSessionStore(s => s.setCurrentAccountId);
-    const storeSetDefaultCharacterId = useSessionStore(s => s.setDefaultCharacterId);
-    const storeSetSelectedBudgetStrategyId = useSessionStore(s => s.setSelectedBudgetStrategyId);
-    const storeSetActiveChatId = useSessionStore(s => s.setActiveChatId);
-    const storeSetSelectedModelId = useSessionStore(s => s.setSelectedModelId);
-
-    // ─── Join Session State ──────────────────────────────────────────
-    const [joinSessionId, setJoinSessionId] = useState<string | null>(null);
-    const [joinPassword, setJoinPassword] = useState<string>('');
-    const [joinProtagonist, setJoinProtagonist] = useState<Character | null>(null);
-    const [joinRequestedCharacterId, setJoinRequestedCharacterId] = useState<string | null>(null);
-    const [joinRequestedCharacterData, setJoinRequestedCharacterData] = useState<Character | null>(null);
-
-    // Load join data on mount
-    useEffect(() => {
-        loadRawMultiplayerJoinData().then(data => {
-            setJoinSessionId(data.joinSessionId ?? null);
-            setJoinPassword(data.joinPassword ?? '');
-            setJoinProtagonist(data.joinProtagonist ?? null);
-            setJoinRequestedCharacterId(data.joinRequestedCharacterId ?? null);
-            setJoinRequestedCharacterData(data.joinRequestedCharacterData ?? null);
-        });
-    }, []);
-
-    const isMultiplayerClient = !!joinSessionId;
-
-    // ─── Session Hook ────────────────────────────────────────────────
-    const session = useChatSession({ 
-        onMessageBroadcast, 
-        isMultiplayerClient, 
-        joinProtagonist,
-        allCharacters, allContexts, allLocations, allAudioTracks,
-        allPromptBlocks, allSamplers, allStopPatterns, allBudgetStrategies,
-        allProfiles, allWorlds, allMemories, allExtensions, allAccounts, allMultiplayerData,
-        requestBorrowedModel: () => requestBorrowedModelReference.current(),
+    // ─── Multiplayer Session ─────────────────────────────────────────
+    const mp = useMultiplayerSession({
+        allCharacters: characters.characters,
+        saveMultiplayerData: mpDataManager.saveMultiplayerData,
+        addToast,
     });
+
+    // ─── Chat Session ────────────────────────────────────────────────
+    const session = useChatSession({
+        onMessageBroadcast: mp.broadcastMessageRef.current ? (msg: HistoryMessage) => mp.broadcastMessageRef.current?.(msg) : undefined,
+        isMultiplayerClient: mp.isMultiplayerClient,
+        joinProtagonist: mp.joinProtagonist,
+        allCharacters: characters.characters,
+        allContexts: contexts.contexts,
+        allLocations: locations.locations,
+        allAudioTracks: audioTracks.audioTracks,
+        allPromptBlocks: promptBlocks.promptBlocks,
+        allSamplers: samplers.Samplers,
+        allStopPatterns: stopPatterns.stopPatterns,
+        allBudgetStrategies: budgetStrategies.strategies,
+        allProfiles: profiles.profiles,
+        allWorlds: worlds.worlds,
+        allMemories: memories.memories,
+        allExtensions: extensions.extensions,
+        allAccounts: accounts.accounts,
+        allMultiplayerData: mpDataManager.multiplayerDatas,
+        requestBorrowedModel: () => mp.requestBorrowedModelRef.current(),
+    });
+
     const {
         interactionData, setInteractionData, setCurrentCharacter,
-        isLoading, streamingText, streamingCharacter, currentCharacterExpression, sendMessage, stopGeneration,
-        resumeGeneration, regenerateFromMessage, messageEndRef, chatHistoryRef,
-        startNewChat, sendActionAndGetResponse, triggerHostResponse, setActiveBudgetStrategy, setSelectedGlobalModel,
+        isLoading, streamingText, streamingCharacter, currentCharacterExpression,
+        sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage,
+        messageEndRef, chatHistoryRef, startNewChat, sendActionAndGetResponse,
+        triggerHostResponse, setActiveBudgetStrategy, setSelectedGlobalModel,
         activeStrategy, budgetData,
     } = session;
 
-    const handleJoinAccepted = useCallback((assignedCharacter: Character) => {
-        addToast(`Joined session as ${assignedCharacter.name}.`, 'success');
-        
-        saveRawMultiplayerJoinData({
-            joinSessionId,
-            joinPassword,
-            joinProtagonist: assignedCharacter,
-        });
-        
-        setJoinProtagonist(assignedCharacter);
-        setCurrentCharacter(assignedCharacter);
-    }, [addToast, joinSessionId, joinPassword, setCurrentCharacter]);
+    // Wire triggerHostResponse into multiplayer session
+    useEffect(() => { mp.triggerHostResponseRef.current = triggerHostResponse; }, [triggerHostResponse]);
 
-    const handleJoinRejected = useCallback((reason: string) => {
-        addToast(`Join rejected: ${reason}`, 'error');
-        setJoinSessionId(null);
-        setJoinPassword('');
-        setJoinProtagonist(null);
-        setJoinRequestedCharacterId(null);
-        setJoinRequestedCharacterData(null);
-        deleteMultiplayerJoinData();
-    }, [addToast]);
-
-    const handleJoinSession = useCallback((sessionId: string, password: string, requestedCharacterIdentifier: string | null, requestedCharacterData: Character | null) => {
-        if (!currentAccountId) {
-            addToast('No account configured. Create an account first.', 'error');
-            return;
-        }
-        setJoinSessionId(sessionId);
-        setJoinPassword(password);
-        setJoinRequestedCharacterId(requestedCharacterIdentifier);
-        setJoinRequestedCharacterData(requestedCharacterData);
-
-        saveRawMultiplayerJoinData({
-            joinSessionId: sessionId,
-            joinPassword: password,
-            joinRequestedCharacterId: requestedCharacterIdentifier,
-            joinRequestedCharacterData: requestedCharacterData,
-        });
-    }, [currentAccountId, addToast]);
-
-    const handlePeerChatMessage = useCallback((message: ChatMessage, senderAccountId: string) => {
-        if (!message?.id || message.messageType !== 'chat') return;
-        const localAccountId = currentAccountId ? currentAccountId.replace(/[^A-Za-z0-9]/g, '') : null;
-        if (localAccountId && senderAccountId === localAccountId) return;
-
-        const hasContent = (message.textContent?.trim().length ?? 0) > 0 || (message.files?.length ?? 0) > 0 || Boolean(message.frontCameraImage);
-        if (!hasContent) return;
-        triggerHostResponse();
-    }, [currentAccountId, triggerHostResponse]);
-
-    const handleConnectionFailed = useCallback(() => {
-        addToast('Could not connect to host. Returning to local mode.', 'error');
-        setJoinSessionId(null);
-        setJoinPassword('');
-        setJoinProtagonist(null);
-        setJoinRequestedCharacterId(null);
-        setJoinRequestedCharacterData(null);
-        deleteMultiplayerJoinData();
-    }, [addToast]);
-
-    // ─── Multiplayer Sync ────────────────────────────────────────────
-    const multiplayerSync = useMultiplayerSync({
-        interactionData, multiplayerData, currentAccountId, setInteractionData,
-        allCharacters, joinSessionId, joinPassword, joinRequestedCharacterId, joinRequestedCharacterData,
-        onJoinAccepted: handleJoinAccepted,
-        onJoinRejected: handleJoinRejected,
-        onPeerChatMessage: handlePeerChatMessage,
-        onSaveMultiplayerData: saveMultiplayerData,
-        onConnectionFailed: handleConnectionFailed,
-    });
-
-    useEffect(() => {
-        requestBorrowedModelReference.current = multiplayerSync.requestAndAwaitBorrowedModel;
-    }, [multiplayerSync.requestAndAwaitBorrowedModel]);
-
-    useEffect(() => {
-        broadcastMessageReference.current = multiplayerSync.isConnected ? multiplayerSync.broadcastMessage : undefined;
-    }, [multiplayerSync.isConnected, multiplayerSync.broadcastMessage]);
-
+    // ─── Chat Restoration ────────────────────────────────────────────
     const { activeChatRestored } = useChatRestoration({
-        charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading,
-        allCharacters, rawChatShells, loadFullCharacter,
-        setInteractionData, setCurrentCharacter, setSelectedModelId, startNewChat,
-        skipRestoration: isMultiplayerClient,
+        charsLoading: characters.isLoading,
+        chatsLoading: chatList.isLoading,
+        contextsLoading: contexts.isLoading,
+        locationsLoading: locations.isLoading,
+        profilesLoading: profiles.isLoading,
+        allCharacters: characters.characters,
+        rawChatShells: chatList.rawChatShells,
+        loadFullCharacter: characters.loadFullCharacter,
+        setInteractionData, setCurrentCharacter,
+        setSelectedModelId: models.setSelectedModelId,
+        startNewChat,
+        skipRestoration: mp.isMultiplayerClient,
     });
 
+    // Restore join protagonist after chat restoration
     useEffect(() => {
-        if (!activeChatRestored) return;
-        if (!isMultiplayerClient || !joinProtagonist) return;
-        const storedCharacter = useSessionStore.getState().currentCharacter;
-        if (!storedCharacter || storedCharacter.id !== joinProtagonist.id) {
-            setCurrentCharacter(joinProtagonist);
-        }
-    }, [activeChatRestored, isMultiplayerClient, joinProtagonist, setCurrentCharacter]);
+        if (!activeChatRestored || !mp.isMultiplayerClient || !mp.joinProtagonist) return;
+        const stored = useSessionStore.getState().currentCharacter;
+        if (!stored || stored.id !== mp.joinProtagonist.id) setCurrentCharacter(mp.joinProtagonist);
+    }, [activeChatRestored, mp.isMultiplayerClient, mp.joinProtagonist, setCurrentCharacter]);
 
-    const previousChatIdentifierReference = useRef<string | null | undefined>(undefined);
+    // Disconnect multiplayer when chat changes
+    const prevChatIdRef = useRef<string | null | undefined>(undefined);
     useEffect(() => {
         if (!activeChatRestored) return;
         const currentChatId = interactionData?.id ?? null;
-        const previousChatId = previousChatIdentifierReference.current;
-
-        if (previousChatId !== undefined && previousChatId !== null && previousChatId !== currentChatId) {
-            multiplayerSync.disconnect();
-            setJoinSessionId(null);
-            setJoinPassword('');
-            setJoinProtagonist(null);
-            setJoinRequestedCharacterId(null);
-            setJoinRequestedCharacterData(null);
-            deleteMultiplayerJoinData();
+        if (prevChatIdRef.current !== undefined && prevChatIdRef.current !== null && prevChatIdRef.current !== currentChatId) {
+            mp.multiplayerSync.disconnect();
+            mp.clearJoinState();
         }
-        previousChatIdentifierReference.current = currentChatId;
-    }, [interactionData?.id, multiplayerSync, activeChatRestored]);
+        prevChatIdRef.current = currentChatId;
+    }, [interactionData?.id, mp.multiplayerSync, activeChatRestored, mp.clearJoinState]);
 
+    // Auto-associate multiplayer data with current chat
     useEffect(() => {
-        if (!interactionData?.id || joinSessionId) return;
-        if (multiplayerData?.interactionDataIds?.includes(interactionData.id)) return;
-        const matchingMultiplayerData = allMultiplayerData.find(multiplayerDataEntry => multiplayerDataEntry.interactionDataIds.includes(interactionData.id));
-        if (matchingMultiplayerData) {
-            useSessionStore.setState({ multiplayerData: matchingMultiplayerData });
-        } else if (!multiplayerData && allMultiplayerData.length > 0) {
-            useSessionStore.setState({ multiplayerData: allMultiplayerData[0] });
-        }
-    }, [interactionData?.id, allMultiplayerData, multiplayerData, joinSessionId]);
+        if (!interactionData?.id || mp.joinSessionId) return;
+        const mpData = useSessionStore.getState().multiplayerData;
+        if (mpData?.interactionDataIds?.includes(interactionData.id)) return;
+        const match = mpDataManager.multiplayerDatas.find((m: MultiplayerData) => m.interactionDataIds.includes(interactionData.id!));
+        if (match) useSessionStore.setState({ multiplayerData: match });
+        else if (!mpData && mpDataManager.multiplayerDatas.length > 0) useSessionStore.setState({ multiplayerData: mpDataManager.multiplayerDatas[0] });
+    }, [interactionData?.id, mpDataManager.multiplayerDatas, mp.joinSessionId]);
 
+    // ─── Derived Protagonist ─────────────────────────────────────────
     const localProtagonist = useMemo(
-        () => deriveCurrentProtagonist(interactionData, multiplayerData, currentAccountId),
-        [interactionData, multiplayerData, currentAccountId],
+        () => deriveCurrentProtagonist(interactionData, mp.multiplayerData, mp.currentAccountId),
+        [interactionData, mp.multiplayerData, mp.currentAccountId],
     );
+    const currentCharacter = mp.isMultiplayerClient && mp.joinProtagonist ? mp.joinProtagonist : localProtagonist;
 
-    const currentCharacter = isMultiplayerClient && joinProtagonist ? joinProtagonist : localProtagonist;
+    // ─── Entity Sync ─────────────────────────────────────────────────
+    useEntitySync({
+        activeChatRestored,
+        allCharacters: characters.characters,
+        allContexts: contexts.contexts,
+        allProfiles: profiles.profiles,
+        currentCharacter, setInteractionData, setCurrentCharacter,
+    });
 
-    const [maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens, setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens] = useState<number>(0);
-    const [isRecording, setIsRecording] = useState(false);
+    // ─── Session Persistence Effects ─────────────────────────────────
+    const loadLocalModelForBudgetEngine = useCallback(async (modelId: string): Promise<number | null> => {
+        const existing = models.runningModels[modelId];
+        if (existing?.port) return existing.port;
+        const target = allModels.find((m: LanguageModel) => m.id === modelId);
+        if (!target || (target.apiKey && target.backend)) return null;
+        try {
+            const args = buildModelLoadArguments(target);
+            const res = await fetch(`${localURL}/models/load`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: target.id, modelPath: target.model || '', args }),
+            });
+            if (!res.ok) return null;
+            return (await res.json()).port ?? null;
+        } catch (e) { console.warn(`Auto-load of model ${target.name} failed:`, e); return null; }
+    }, [models.runningModels, allModels]);
+
+    useSessionEffects({
+        interactionDataId: interactionData?.id,
+        isMultiplayerClient: mp.isMultiplayerClient,
+        selectedModelId: models.selectedModelId,
+        setSelectedModelId: models.setSelectedModelId,
+        selectedBudgetStrategyId,
+        allBudgetStrategies: budgetStrategies.strategies,
+        setActiveBudgetStrategy,
+        allModels,
+        runningModels: models.runningModels,
+        setSelectedGlobalModel,
+        defaultCharacterId,
+        allCharacters: characters.characters,
+        currentCharacterId: currentCharacter?.id,
+        setCurrentCharacter,
+        activeStrategy, budgetData,
+        loadLocalModelForBudgetStrategyEngine: loadLocalModelForBudgetEngine,
+    });
+
+    // ─── Sentiment Engine ────────────────────────────────────────────
+    useEffect(() => {
+        const enabled = interactionData?.Profile?.enableCharacterExpression ?? false;
+        if (enabled) sentimentEngine.initialize(); else sentimentEngine.unload();
+    }, [interactionData?.Profile?.enableCharacterExpression]);
+
+    // ─── Chat Auto-Save ──────────────────────────────────────────────
+    useChatAutoSave({
+        interactionData,
+        rawChatShells: chatList.rawChatShells,
+        refreshChatList: chatList.refresh,
+    });
+
+    // ─── Model Readiness ─────────────────────────────────────────────
+    const isModelReady = useMemo(() => {
+        if (mp.isMultiplayerClient) return true;
+        if (activeStrategy) return true;
+        if (!models.selectedModelId) return false;
+        const sel = allModels.find((m: LanguageModel) => m.id === models.selectedModelId);
+        if (sel?.apiKey && sel.backend && cloudBackends.includes(sel.backend as cloudBackend)) return true;
+        return models.runningModels[models.selectedModelId]?.isRunning === true
+            && models.runningModels[models.selectedModelId]?.isIdle === true;
+    }, [models.selectedModelId, allModels, models.runningModels, activeStrategy, mp.isMultiplayerClient]);
+
+    const isModelLoading = useMemo(() => {
+        if (mp.isMultiplayerClient || !models.selectedModelId) return false;
+        const sel = allModels.find((m: LanguageModel) => m.id === models.selectedModelId);
+        if (sel?.apiKey && sel.backend && cloudBackends.includes(sel.backend as cloudBackend)) return false;
+        return models.runningModels[models.selectedModelId]?.isRunning === true
+            && models.runningModels[models.selectedModelId]?.isIdle !== true;
+    }, [models.selectedModelId, allModels, models.runningModels, mp.isMultiplayerClient]);
+
+    const modelStatusMessage = mp.isMultiplayerClient ? ''
+        : (!models.selectedModelId ? 'No model selected — open Language Models to load one'
+            : isModelLoading ? 'Model is warming up... please wait' : '');
+
+    // ─── Feature Hooks ───────────────────────────────────────────────
+    const actionMenu = useActionMenu({
+        interactionData, currentCharacter, isLoading, isModelReady,
+        allCharacters: characters.characters, stopGeneration, sendActionAndGetResponse, addToast,
+    });
+
+    const messageActions = useMessageActions({
+        interactionData, localProtagonist, isModelReady, isLoading,
+        setInteractionData, setCurrentCharacter,
+        refreshChatList: chatList.refresh, regenerateFromMessage, addToast,
+    });
+
+    const chatOps = useChatOperations({
+        interactionData, currentCharacter, localProtagonist, defaultCharacterId,
+        allCharacters: characters.characters, rawChatShells: chatList.rawChatShells,
+        setInteractionData, setCurrentCharacter,
+        refreshChatList: chatList.refresh, startNewChat,
+        deleteChatFromList: chatList.deleteChat, addToast,
+    });
+
+    const entityToggles = useEntityToggles({
+        interactionData,
+        allCharacters: characters.characters,
+        activeExtensionIds: activeExtensions.activeIds,
+        setActiveExtensionIds: activeExtensions.setActiveIds,
+        allProfiles: profiles.profiles,
+        allBudgetStrategies: budgetStrategies.strategies,
+        selectedBudgetStrategyId,
+        setInteractionData, setCurrentCharacter, setActiveBudgetStrategy,
+        setSelectedBudgetStrategyId: storeSetSelectedBudgetStrategyId,
+        setDefaultCharacterId: storeSetDefaultCharacterId,
+        loadFullCharacter: characters.loadFullCharacter, addToast,
+    });
+
+    const isMultiplayerChat = mp.isMultiplayerClient || !!(mp.multiplayerData && interactionData?.id && mp.multiplayerData.interactionDataIds.includes(interactionData.id));
+
+    const viewAssets = useViewAssets({
+        viewMode: undefined as any,
+        interactionData, localProtagonist, currentCharacter,
+        streamingCharacter, currentCharacterExpression, chatHistoryRef,
+        isMultiplayerChat,
+    });
+
+    const messageToolbar = useMessageToolbar({ chatHistoryRef });
+    const displayNameCache = useDisplayNameCache(interactionData);
+    const { modals } = useAppModals();
+
+    // ─── Token Counter ───────────────────────────────────────────────
+    const maxParticipantTokens = useTokenCounter({
+        messages: viewAssets.chatMessages || [],
+        interactionData,
+        selectedModelId: models.selectedModelId,
+        allModels,
+        runningModels: models.runningModels,
+        activeStrategy,
+    });
+
+    // ─── Local UI State ──────────────────────────────────────────────
     const [viewMode, setViewMode] = useState<'ladder' | 'cinematic' | 'vn'>('ladder');
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
     const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
+    const [isRecording, setIsRecording] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const editTextAreaRef = useRef<HTMLTextAreaElement>(null);
 
-    useEntitySync({
-        activeChatRestored, allCharacters, allContexts, allProfiles,
-        currentCharacter, setInteractionData, setCurrentCharacter,
-    });
+    // Textarea auto-resize
+    useEffect(() => { if (!textareaRef.current) return; textareaRef.current.style.height = 'auto'; textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, window.innerHeight * 0.3)}px`; });
+    useEffect(() => { if (!editTextAreaRef.current || !messageActions.editingId) return; editTextAreaRef.current.style.height = 'auto'; editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`; });
 
-    const isModelReady = useMemo(() => {
-        if (isMultiplayerClient) return true;
-        if (activeStrategy) return true;
-        if (!selectedModelId) return false;
-        const selectedModel = allModels.find(model => model.id === selectedModelId);
-        if (selectedModel?.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend as cloudBackend)) return true;
-        return runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle === true;
-    }, [selectedModelId, allModels, runningModels, activeStrategy, isMultiplayerClient]);
+    // ─── Derived Display Values ──────────────────────────────────────
+    const canDelete = (!isMultiplayerChat || mp.multiplayerSync.isHost || mp.multiplayerSync.isAdmin) && !isLoading;
+    const safeMessages = useMemo(() => viewAssets.chatMessages || [], [viewAssets.chatMessages]);
+    const formattedStreamingText = useMemo(() => streamingText ? formatDisplayMessageText(streamingText) : null, [streamingText]);
 
-    const {
-        actionMenuTarget, menuSearchQuery, setMenuSearchQuery,
-        actionsLoading, showActionFormat, setShowActionFormat,
-        actionWrap, setActionWrap, actionCase, setActionCase, actionPunctuation, setActionPunctuation,
-        handleAddAction, handleDeleteAction, handleActionInterject,
-        getFilteredActions, handleAvatarClick, closeActionMenu,
-    } = useActionMenu({
-        interactionData, currentCharacter, isLoading, isModelReady,
-        allCharacters, stopGeneration, sendActionAndGetResponse, addToast,
-    });
-
-    const {
-        editingId, editDraft, setEditDraft, massDeleteId, setMassDeleteId,
-        handleSaveEdit, handleRegenerateFromEdit, handleDelete, handleMassDeleteConfirm,
-        handleBranch, handleClone, handleCopyText, startEditing, cancelEditing,
-    } = useMessageActions({
-        interactionData, localProtagonist, isModelReady, isLoading,
-        setInteractionData, setCurrentCharacter, refreshChatList, regenerateFromMessage, addToast,
-    });
-
-    const {
-        isEditingTitle, editTitleValue, setEditTitleValue,
-        handleSwitchChat, handleNewChat, handleDeleteChat,
-        handleStartEditTitle, handleSaveTitle, cancelEditTitle,
-    } = useChatOperations({
-        interactionData, currentCharacter, localProtagonist, defaultCharacterId,
-        allCharacters, rawChatShells, setInteractionData, setCurrentCharacter,
-        refreshChatList, startNewChat, deleteChatFromList, addToast,
-    });
-
-    const {
-        handleToggleParticipant, handleToggleContext, handleToggleLocation, handleToggleAudioTrack,
-        handleSetChatProtagonist, handleToggleExtension, handleActivateBudgetStrategy, handleActivateProfile,
-    } = useEntityToggles({
-        interactionData, allCharacters, activeExtensionIds, setActiveExtensionIds,
-        allProfiles, allBudgetStrategies, selectedBudgetStrategyId,
-        setInteractionData, setCurrentCharacter, setActiveBudgetStrategy,
-        setSelectedBudgetStrategyId: storeSetSelectedBudgetStrategyId,
-        setDefaultCharacterId: storeSetDefaultCharacterId,
-        loadFullCharacter, addToast,
-    });
-
-    const isMultiplayerChat = isMultiplayerClient || !!(multiplayerData && interactionData?.id && multiplayerData.interactionDataIds.includes(interactionData.id));
-    const canDelete = (!isMultiplayerChat || multiplayerSync.isHost || multiplayerSync.isAdmin) && !isLoading;
-
-    const wrappedHandleSaveEdit = useCallback(async () => {
-        await handleSaveEdit();
-        if (isMultiplayerChat && editingId) {
-            multiplayerSync.broadcastMessageEdit(editingId, editDraft);
-        }
-    }, [handleSaveEdit, editingId, editDraft, isMultiplayerChat, multiplayerSync]);
-
-    const wrappedHandleDelete = useCallback(async (identifier: string) => {
-        await handleDelete(identifier);
-        if (isMultiplayerChat) {
-            multiplayerSync.broadcastMessageDelete(identifier);
-        }
-    }, [handleDelete, isMultiplayerChat, multiplayerSync]);
-
-    const wrappedHandleBranch = useCallback((identifier: string) => {
-        if (isMultiplayerChat) {
-            multiplayerSync.initiateBranch();
-        } else {
-            handleBranch(identifier);
-        }
-    }, [handleBranch, isMultiplayerChat, multiplayerSync]);
-
-    const {
-        centerAvatar, lastViewedMessageIdRef, suppressAutoScrollRef,
-        chatMessages, portraitUrlCache, streamingPortraitUrl, locationBackgroundUrl,
-    } = useViewAssets({
-        viewMode, interactionData, localProtagonist, currentCharacter,
-        streamingCharacter, currentCharacterExpression, chatHistoryRef, isMultiplayerChat,
-    });
-
-    const {
-        activeToolbarId, deactivateToolbar,
-        handleBubbleTouchStart, handleBubbleTouchEnd, handleBubbleTouchMove, suppressNextClickRef,
-    } = useMessageToolbar({ chatHistoryRef });
-
-    const displayNameCache = useDisplayNameCache(interactionData);
-
-    const formattedStreamingText = useMemo(() => {
-        if (!streamingText) return null;
-        return formatDisplayMessageText(streamingText);
-    }, [streamingText]);
-
-    const isModelLoading = useMemo(() => {
-        if (isMultiplayerClient) return false;
-        if (!selectedModelId) return false;
-        const selectedModel = allModels.find(model => model.id === selectedModelId);
-        if (selectedModel?.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend as cloudBackend)) return false;
-        return runningModels[selectedModelId]?.isRunning === true && runningModels[selectedModelId]?.isIdle !== true;
-    }, [selectedModelId, allModels, runningModels, isMultiplayerClient]);
-
-    const modelStatusMessage = isMultiplayerClient
-        ? ''
-        : (!selectedModelId ? 'No model selected — open Language Models to load one' : isModelLoading ? 'Model is warming up... please wait' : '');
-    
-    const isMassActive = massDeleteId !== null;
-    const safeInteractionMessages = useMemo(() => chatMessages || [], [chatMessages]);
-
-    const maximumNumberOfContextTokens = useMemo(() => {
+    const maxContextTokens = useMemo(() => {
         if (!interactionData?.contexts?.length) return 0;
-        let totalTokens = 0;
-        for (const context of interactionData.contexts) { if (context.text) totalTokens += Math.ceil(context.text.length / 4); }
-        return totalTokens;
+        let total = 0;
+        for (const ctx of interactionData.contexts) { if (ctx.text) total += Math.ceil(ctx.text.length / 4); }
+        return total;
     }, [interactionData]);
 
-    const maximumContextLength = useMemo(() => {
+    const maxContextLength = useMemo(() => {
         if (activeStrategy) {
-            let maxLength = 0;
-            for (const modelId of activeStrategy.modelIds) {
-                const model = allModels.find(m => m.id === modelId);
-                if (model && model.contextLength > maxLength) maxLength = model.contextLength;
+            let max = 0;
+            for (const mid of activeStrategy.modelIds) {
+                const m = allModels.find((x: LanguageModel) => x.id === mid);
+                if (m && m.contextLength > max) max = m.contextLength;
             }
-            return maxLength || defaultContextLength;
+            return max || defaultContextLength;
         }
-        if (selectedModelId) {
-            const foundModel = allModels.find(model => model.id === selectedModelId);
-            return foundModel?.contextLength || defaultContextLength;
+        if (models.selectedModelId) {
+            const m = allModels.find((x: LanguageModel) => x.id === models.selectedModelId);
+            return m?.contextLength || defaultContextLength;
         }
         return defaultContextLength;
-    }, [activeStrategy, selectedModelId, allModels]);
+    }, [activeStrategy, models.selectedModelId, allModels]);
 
-    const parentInteractionDataName = useMemo(() => {
+    const parentChatName = useMemo(() => {
         if (!interactionData?.parentInteractionDataId) return null;
-        const parentShell = rawChatShells.find(shell => shell.id === interactionData.parentInteractionDataId);
-        return parentShell?.name ?? null;
-    }, [interactionData, rawChatShells]);
+        return chatList.rawChatShells.find((s: RawInteractionData) => s.id === interactionData.parentInteractionDataId)?.name ?? null;
+    }, [interactionData, chatList.rawChatShells]);
 
-    const loadLocalModelForBudgetStrategyEngine = useCallback(async (modelId: string): Promise<number | null> => {
-        const existingRunningModel = runningModels[modelId];
-        if (existingRunningModel?.port) return existingRunningModel.port;
-        const targetModel = allModels.find(model => model.id === modelId);
-        if (!targetModel) return null;
-        if (targetModel.apiKey && targetModel.backend) return null;
-        try {
-            const modelPath = targetModel.model || '';
-            const loadArguments = buildModelLoadArguments(targetModel);
-            const response = await fetch(`${localURL}/models/load`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: targetModel.id, modelPath, args: loadArguments }),
+    // ─── Display Messages (with streaming injection + whisper filtering) ──
+    const displayMessages = useMemo(() => {
+        let base = [...safeMessages] as (ChatMessage | WhisperMessage)[];
+        if (isMultiplayerChat && localProtagonist) {
+            base = base.filter((msg: ChatMessage | WhisperMessage) => {
+                if (msg.messageType === 'whisper') {
+                    const w = msg as WhisperMessage;
+                    return w.character.id === localProtagonist.id || w.targetCharacterIds.includes(localProtagonist.id);
+                }
+                return true;
             });
-            if (!response.ok) return null;
-            const responseData = await response.json();
-            return responseData.port ?? null;
-        } catch (error) {
-            console.warn(`Auto-load of model ${targetModel.name} failed:`, error);
-            return null;
         }
-    }, [runningModels, allModels]);
-
-    // ─── Effects ────────────────────────────────────────────────────
-    useEffect(() => {
-        const isCharacterExpressionEnabled = interactionData?.Profile?.enableCharacterExpression ?? false;
-        if (isCharacterExpressionEnabled) sentimentEngine.initialize(); else sentimentEngine.unload();
-    }, [interactionData?.Profile?.enableCharacterExpression]);
-
-    useEffect(() => { void selectedModelId; void runningModels; getLanguageModelEngine().clearTokenCache(); }, [selectedModelId, runningModels]);
-    
-    // Persist active chat ID via store action (replaces old saveRawSessionData effect)
-    useEffect(() => {
-        if (isMultiplayerClient) return;
-        if (interactionData?.id) storeSetActiveChatId(interactionData.id);
-    }, [interactionData?.id, isMultiplayerClient, storeSetActiveChatId]);
-    
-    // Persist selected model ID via store action (replaces old saveRawSessionData effect)
-    useEffect(() => { 
-        storeSetSelectedModelId(selectedModelId ?? null);
-    }, [selectedModelId, storeSetSelectedModelId]);
-
-    useEffect(() => {
-        if (!selectedBudgetStrategyId || allBudgetStrategies.length === 0) return;
-        const strategy = allBudgetStrategies.find(strategyItem => strategyItem.id === selectedBudgetStrategyId);
-        if (!strategy) { 
-            storeSetSelectedBudgetStrategyId(null);
-            return; 
+        if (isLoading && streamingText && streamingCharacter) {
+            const last = base[base.length - 1];
+            const isLastStreaming = last?.character.id === streamingCharacter.id;
+            if (isLastStreaming) {
+                const idx = base.length - 1;
+                const name = resolveDelayedDisplayNameFromCache(displayNameCache, idx, streamingCharacter.id);
+                (base[idx] as any).textContent = streamingText;
+                (base[idx] as any).character = { ...last!.character, name };
+            } else if (!last || last.character.id !== streamingCharacter.id) {
+                const name = resolveDelayedDisplayNameFromCache(displayNameCache, base.length, streamingCharacter.id);
+                base.push({
+                    id: `streaming-${streamingCharacter.id}`, messageType: 'chat',
+                    character: { ...streamingCharacter, name }, textContent: streamingText,
+                    files: [], firstCreatedTimestamp: 0, lastUpdatedTimestamp: 0,
+                    locationIndex: undefined, characterLockedLocations: {}, parentInteractionMessageId: null,
+                } as any);
+            }
         }
-        setActiveBudgetStrategy(strategy);
-    }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy, storeSetSelectedBudgetStrategyId]);
+        return base;
+    }, [safeMessages, isLoading, streamingText, streamingCharacter, displayNameCache, isMultiplayerChat, localProtagonist]);
 
+    const massStartIndex = messageActions.massDeleteId !== null
+        ? displayMessages.findIndex((m: ChatMessage | WhisperMessage) => m.id === messageActions.massDeleteId) : -1;
+
+    // ─── Budget Reset Timer ──────────────────────────────────────────
+    const timeUntilResetRef = useRef<number | undefined>(undefined);
+    const [timeUntilReset, setTimeUntilReset] = useState<number | undefined>(undefined);
     useEffect(() => {
-        if (!selectedModelId || allModels.length === 0) return;
-        const selectedModel = allModels.find(model => model.id === selectedModelId);
-        if (!selectedModel) { setSelectedModelId(null); return; }
-        const isCloudModel = !!selectedModel.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend as cloudBackend);
-        if (isCloudModel) return;
-        if (!runningModels[selectedModelId]?.isRunning) setSelectedModelId(null);
-    }, [selectedModelId, allModels, runningModels, setSelectedModelId]);
+        if (!budgetData || !activeStrategy || budgetData.resetDuration <= 0) { timeUntilResetRef.current = undefined; return; }
+        const compute = () => Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp));
+        timeUntilResetRef.current = compute();
+        const interval = setInterval(() => { timeUntilResetRef.current = compute(); setTimeUntilReset(timeUntilResetRef.current); }, 1000);
+        const raf = requestAnimationFrame(() => setTimeUntilReset(timeUntilResetRef.current));
+        return () => { clearInterval(interval); cancelAnimationFrame(raf); };
+    }, [budgetData, activeStrategy]);
 
-    useEffect(() => {
-        if (isMultiplayerClient) return;
-        if (defaultCharacterId && allCharacters.length > 0) {
-            const defaultChar = allCharacters.find(character => character.id === defaultCharacterId);
-            if (defaultChar && currentCharacter?.id !== defaultChar.id) setCurrentCharacter(defaultChar);
-        }
-    }, [defaultCharacterId, allCharacters, currentCharacter?.id, setCurrentCharacter, isMultiplayerClient]);
-
-    useEffect(() => {
-        if (selectedModelId && runningModels[selectedModelId]?.isRunning) {
-            const foundModel = allModels.find(model => model.id === selectedModelId);
-            const portNumber = runningModels[selectedModelId].port;
-            if (foundModel && portNumber) setSelectedGlobalModel({ ...foundModel, parameters: { ...foundModel.parameters, _runtimePort: portNumber } });
-        } else if (selectedModelId) {
-            setSelectedGlobalModel(allModels.find(model => model.id === selectedModelId) || null);
-        } else setSelectedGlobalModel(null);
-    }, [selectedModelId, runningModels, allModels, setSelectedGlobalModel]);
-
-    useEffect(() => {
-        if (!activeStrategy || !budgetData) return;
-        try {
-            const budgetStrategyEngine = getBudgetStrategyEngine();
-            budgetStrategyEngine.setStrategy(activeStrategy);
-            budgetStrategyEngine.setBudgetData(budgetData);
-            budgetStrategyEngine.setRunningModels(runningModels);
-            budgetStrategyEngine.setAllModels(allModels);
-            budgetStrategyEngine.setLoadLocalModel(loadLocalModelForBudgetStrategyEngine);
-        } catch {
-            initializeBudgetStrategyEngine(activeStrategy, budgetData, runningModels, allModels, loadLocalModelForBudgetStrategyEngine);
-        }
-    }, [activeStrategy, budgetData, allModels, runningModels, loadLocalModelForBudgetStrategyEngine]);
-
+    // ─── Loading Screen ──────────────────────────────────────────────
     const loadSteps = useMemo<LoadStep[]>(() => [
-        { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatsLoading },
-        { id: 'characters', label: 'Characters', icon: '🎭', done: !charsLoading },
-        { id: 'actions', label: 'Actions', icon: '⚡', done: !actionsLoading },
-        { id: 'contexts', label: 'Contexts', icon: '📜', done: !contextsLoading },
-        { id: 'locations', label: 'Locations', icon: '📍', done: !locationsLoading },
-        { id: 'audioTracks', label: 'Audio Tracks', icon: '🔊', done: !audioTracksLoading },
-        { id: 'worlds', label: 'Worlds', icon: '🌍', done: !worldsLoading },
-        { id: 'promptBlocks', label: 'Prompt Blocks', icon: '🧱', done: !promptBlocksLoading },
-        { id: 'models', label: 'Language Models', icon: '🤖', done: !modelsLoading },
-        { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplersLoading },
-        { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopLoading },
-        { id: 'budget', label: 'Budget', icon: '💰', done: !budgetLoading },
-        { id: 'profiles', label: 'Profiles', icon: '👤', done: !profilesLoading },
-        { id: 'accounts', label: 'Accounts', icon: '🔑', done: !accountsLoading },
-        { id: 'multiplayerData', label: 'Multiplayer Data', icon: '👥', done: !multiplayerDataLoading },
-    ], [chatsLoading, charsLoading, actionsLoading, contextsLoading, locationsLoading, audioTracksLoading, worldsLoading, promptBlocksLoading, modelsLoading, samplersLoading, stopLoading, budgetLoading, profilesLoading, accountsLoading, multiplayerDataLoading]);
+        { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatList.isLoading },
+        { id: 'characters', label: 'Characters', icon: '🎭', done: !characters.isLoading },
+        { id: 'actions', label: 'Actions', icon: '⚡', done: !actionMenu.actionsLoading },
+        { id: 'contexts', label: 'Contexts', icon: '📜', done: !contexts.isLoading },
+        { id: 'locations', label: 'Locations', icon: '📍', done: !locations.isLoading },
+        { id: 'audioTracks', label: 'Audio Tracks', icon: '🔊', done: !audioTracks.isLoading },
+        { id: 'worlds', label: 'Worlds', icon: '🌍', done: !worlds.isLoading },
+        { id: 'promptBlocks', label: 'Prompt Blocks', icon: '🧱', done: !promptBlocks.isLoading },
+        { id: 'models', label: 'Language Models', icon: '🤖', done: !models.isLoading },
+        { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplers.isLoading },
+        { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopPatterns.isLoading },
+        { id: 'budget', label: 'Budget', icon: '💰', done: !budgetStrategies.isLoading },
+        { id: 'profiles', label: 'Profiles', icon: '👤', done: !profiles.isLoading },
+        { id: 'accounts', label: 'Accounts', icon: '🔑', done: !accounts.isLoading },
+        { id: 'multiplayerData', label: 'Multiplayer Data', icon: '👥', done: !mpDataManager.isLoading },
+    ], [chatList.isLoading, characters.isLoading, actionMenu.actionsLoading, contexts.isLoading, locations.isLoading, audioTracks.isLoading, worlds.isLoading, promptBlocks.isLoading, models.isLoading, samplers.isLoading, stopPatterns.isLoading, budgetStrategies.isLoading, profiles.isLoading, accounts.isLoading, mpDataManager.isLoading]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
-    const loadingStartedAtReference = useRef<number | null>(null);
-    const chatModifiedReference = useRef(false);
-    const previousMessageCountReference = useRef<number>(0);
-    const previousInteractionDataReference = useRef<InteractionData | null>(null);
+    const loadingStartedAtRef = useRef<number | null>(null);
 
     useEffect(() => {
         if (!isInitializing) return;
-        const areAllStepsDone = loadSteps.every(step => step.done);
-        if (!areAllStepsDone || !activeChatRestored || !interactionData) return;
-        const loadingStartedAt = loadingStartedAtReference.current ?? Date.now();
-        loadingStartedAtReference.current = loadingStartedAt;
-        const remainingTime = Date.now() - loadingStartedAt;
-        const holdTimer = setTimeout(() => { 
-            setIsFadeOut(true); 
-            const fadeTimer = setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300); 
-            return () => clearTimeout(fadeTimer); 
-        }, remainingTime);
-        return () => clearTimeout(holdTimer);
+        if (!loadSteps.every((s: LoadStep) => s.done) || !activeChatRestored || !interactionData) return;
+        const started = loadingStartedAtRef.current ?? Date.now();
+        loadingStartedAtRef.current = started;
+        const remaining = Math.max(0, 900 - (Date.now() - started));
+        const timer = setTimeout(() => {
+            setIsFadeOut(true);
+            setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300);
+        }, remaining);
+        return () => clearTimeout(timer);
     }, [loadSteps, isInitializing, activeChatRestored, interactionData]);
 
-    useEffect(() => {
-        if (!isInitializing && activeChatRestored) ensureChatsLoaded();
-    }, [isInitializing, activeChatRestored, ensureChatsLoaded]);
+    useEffect(() => { if (!isInitializing && activeChatRestored) chatList.ensureLoaded(); }, [isInitializing, activeChatRestored, chatList.ensureLoaded]);
 
-    useEffect(() => {
-        chatModifiedReference.current = false;
-        previousMessageCountReference.current = interactionData?.interactionHistory?.length ?? 0;
-    }, [interactionData?.interactionHistory?.length]);
+    // ─── Wrapped Multiplayer-Aware Handlers ──────────────────────────
+    const wrappedSaveEdit = useCallback(async () => {
+        await messageActions.handleSaveEdit();
+        if (isMultiplayerChat && messageActions.editingId) mp.multiplayerSync.broadcastMessageEdit(messageActions.editingId, messageActions.editDraft);
+    }, [messageActions.handleSaveEdit, messageActions.editingId, messageActions.editDraft, isMultiplayerChat, mp.multiplayerSync]);
 
-    useEffect(() => {
-        if (!interactionData || !interactionData.id) return;
-        const historyLength = interactionData.interactionHistory?.length ?? 0;
-        const protagonistIdentifiers = new Set(interactionData.protagonists?.map(protagonist => protagonist.id) ?? []);
-        const nonProtagonistParticipants = interactionData.participants.filter(participant => !protagonistIdentifiers.has(participant.id));
-        const hasContent = nonProtagonistParticipants.length > 0 || historyLength > 0 || (interactionData.contexts?.length ?? 0) > 0 || (interactionData.locations?.length ?? 0) > 0 || (interactionData.audioTracks?.length ?? 0) > 0 || !!interactionData.Profile;
-        
-        if (!chatModifiedReference.current && hasContent) chatModifiedReference.current = true;
-        
-        if (chatModifiedReference.current && historyLength !== previousMessageCountReference.current) {
-            const previousData = previousInteractionDataReference.current;
-            const previousProtagonistIdentifiers = new Set(previousData?.protagonists?.map(protagonist => protagonist.id) ?? []);
-            const currentProtagonistIdentifiers = new Set(interactionData.protagonists?.map(protagonist => protagonist.id) ?? []);
-            const hasProtagonistsChanged = previousProtagonistIdentifiers.size !== currentProtagonistIdentifiers.size || [...previousProtagonistIdentifiers].some(identifier => !currentProtagonistIdentifiers.has(identifier));
+    const wrappedDelete = useCallback(async (id: string) => {
+        await messageActions.handleDelete(id);
+        if (isMultiplayerChat) mp.multiplayerSync.broadcastMessageDelete(id);
+    }, [messageActions.handleDelete, isMultiplayerChat, mp.multiplayerSync]);
 
-            const hasActualChange = !previousData || 
-                previousData.interactionHistory?.length !== historyLength ||
-                previousData.name !== interactionData.name ||
-                hasProtagonistsChanged ||
-                previousData.participants.length !== interactionData.participants.length ||
-                previousData.contexts?.length !== interactionData.contexts?.length ||
-                previousData.locations?.length !== interactionData.locations?.length ||
-                previousData.audioTracks?.length !== interactionData.audioTracks?.length ||
-                hasMessagesChanged(previousData, interactionData);
-            
-            if (hasActualChange) {
-                previousMessageCountReference.current = historyLength;
-                previousInteractionDataReference.current = interactionData;
-                saveRawInteractionData(interactionData).catch(error => console.error('Failed to save chat:', error));
-                if (!rawChatShells.some(shell => shell.id === interactionData.id)) {
-                    refreshChatList();
-                }
-            }
-        }
-    }, [interactionData, rawChatShells, refreshChatList]);
+    const wrappedBranch = useCallback((id: string) => {
+        if (isMultiplayerChat) mp.multiplayerSync.initiateBranch();
+        else messageActions.handleBranch(id);
+    }, [messageActions.handleBranch, isMultiplayerChat, mp.multiplayerSync]);
 
-    const textareaReference = useRef<HTMLTextAreaElement>(null);
-    const editTextAreaRef = useRef<HTMLTextAreaElement>(null);
-    useEffect(() => { if (!textareaReference.current) return; textareaReference.current.style.height = 'auto'; textareaReference.current.style.height = `${Math.min(textareaReference.current.scrollHeight, window.innerHeight * 0.3)}px`; });
-    useEffect(() => { if (!editTextAreaRef.current || !editingId) return; editTextAreaRef.current.style.height = 'auto'; editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`; });
-
-    const tokenCountAbortReference = useRef<AbortController | null>(null);
-    const tokenCountTimerReference = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const lastCountedMessageIdentifiersReference = useRef<Set<string>>(new Set());
-
-    useEffect(() => {
-        if (tokenCountTimerReference.current) { clearTimeout(tokenCountTimerReference.current); tokenCountTimerReference.current = null; }
-        if (tokenCountAbortReference.current) { tokenCountAbortReference.current.abort(); tokenCountAbortReference.current = null; }
-        tokenCountTimerReference.current = setTimeout(async () => {
-            if (safeInteractionMessages.length === 0 || !interactionData?.participants) {
-                setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(0);
-                lastCountedMessageIdentifiersReference.current.clear();
-                return;
-            }
-            const abortController = new AbortController();
-            tokenCountAbortReference.current = abortController;
-            try {
-                const participantCounts: Record<string, number> = {};
-                for (const participant of interactionData.participants) participantCounts[participant.id] = 0;
-                let tokenizerModel: LanguageModel | undefined;
-                if (selectedModelId) tokenizerModel = allModels.find(model => model.id === selectedModelId);
-                if (!tokenizerModel && activeStrategy && activeStrategy.modelIds.length > 0) {
-                    tokenizerModel = allModels.find(m => m.id === activeStrategy.modelIds[0]);
-                }
-                const languageModelEngine = getLanguageModelEngine();
-                if (tokenizerModel) { languageModelEngine.setRunningModels(runningModels); languageModelEngine.setContext(tokenizerModel); } else return;
-                const previouslyCountedIdentifiers = lastCountedMessageIdentifiersReference.current;
-                const currentMessageIdentifiers = new Set<string>();
-                let hasNewMessages = false;
-                for (const message of safeInteractionMessages) { currentMessageIdentifiers.add(message.id); if (!previouslyCountedIdentifiers.has(message.id)) hasNewMessages = true; }
-                if (!hasNewMessages && previouslyCountedIdentifiers.size === currentMessageIdentifiers.size) return;
-                for (const message of safeInteractionMessages) {
-                    if (abortController.signal.aborted) return;
-                    if (previouslyCountedIdentifiers.has(message.id)) continue;
-                    if (message.character && (message as ChatMessage).textContent) {
-                        const characterId = message.character.id;
-                        if (participantCounts[characterId] !== undefined || characterId === '__ambient_narrator__') {
-                            const tokens = await languageModelEngine.countTokens((message as ChatMessage).textContent);
-                            if (abortController.signal.aborted) return;
-                            if (participantCounts[characterId] !== undefined) participantCounts[characterId] += tokens;
-                        }
-                    }
-                }
-                lastCountedMessageIdentifiersReference.current = currentMessageIdentifiers;
-                if (!abortController.signal.aborted) setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens(Math.max(...Object.values(participantCounts), 0));
-            } catch (error) { if ((error as Error).name !== 'AbortError') console.error('Token counting failed:', error); }
-        }, 500);
-        return () => { 
-            if (tokenCountTimerReference.current) { clearTimeout(tokenCountTimerReference.current); tokenCountTimerReference.current = null; } 
-            if (tokenCountAbortReference.current) { tokenCountAbortReference.current.abort(); tokenCountAbortReference.current = null; } 
-        };
-    }, [safeInteractionMessages, interactionData?.participants, selectedModelId, allModels, runningModels, activeStrategy]);
-
-    const fileInputReference = useRef<HTMLInputElement>(null);
-
-    const handleFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const fileList = event.target.files;
-        const newFiles = fileList ? Array.from(fileList) : [];
-        if (newFiles.length > 0) { setPendingFiles(previousFiles => [...previousFiles, ...newFiles]); addToast(`${newFiles.length} file${newFiles.length !== 1 ? 's' : ''} attached.`); }
-        requestAnimationFrame(() => { if (fileInputReference.current) fileInputReference.current.value = ''; });
+    // ─── Input Handlers ──────────────────────────────────────────────
+    const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files ? Array.from(e.target.files) : [];
+        if (files.length > 0) { setPendingFiles(prev => [...prev, ...files]); addToast(`${files.length} file${files.length !== 1 ? 's' : ''} attached.`); }
+        requestAnimationFrame(() => { if (fileInputRef.current) fileInputRef.current.value = ''; });
     };
 
-    const handleToggleMicrophone = useCallback(async () => {
+    const handleToggleMic = useCallback(async () => {
         if (isRecording) { await speechToTextEngine.stopRecording(); setIsRecording(false); }
         else {
-            const hasRecordingStarted = await speechToTextEngine.startRecording((text) => { setInputText(previousText => previousText + (previousText ? ' ' : '') + text); });
-            if (!hasRecordingStarted) { addToast('Failed to start voice input. Check microphone permissions.', 'error'); return; }
+            const started = await speechToTextEngine.startRecording((text: string) => setInputText(prev => prev + (prev ? ' ' : '') + text));
+            if (!started) { addToast('Failed to start voice input.', 'error'); return; }
             setIsRecording(true);
         }
     }, [isRecording, addToast]);
 
     const handleSend = useCallback(async () => {
         if (!inputText.trim() && !pendingFiles.length) return;
-        let frontCameraImage: string | undefined = undefined;
-        const profileUseFrontCamera = interactionData?.Profile?.useFrontCameraImage;
-        
-        if (profileUseFrontCamera === 1) {
-            const capturedImage = await captureFrontCameraImage();
-            if (capturedImage) frontCameraImage = capturedImage;
-        } else if (profileUseFrontCamera === 0) {
-            const characterUseFrontCamera = currentCharacter?.useFrontCameraImage;
-            if (characterUseFrontCamera) {
-                const capturedImage = await captureFrontCameraImage();
-                if (capturedImage) frontCameraImage = capturedImage;
-            }
-        }
-        sendMessage(inputText, allPromptBlocks, pendingFiles, frontCameraImage);
-        setInputText('');
-        setPendingFiles([]);
-        if (textareaReference.current) textareaReference.current.style.height = 'auto';
-    }, [inputText, pendingFiles, sendMessage, allPromptBlocks, captureFrontCameraImage, interactionData, currentCharacter]);
+        let frontCam: string | undefined;
+        const profileCam = interactionData?.Profile?.useFrontCameraImage;
+        if (profileCam === 1) { const img = await captureFrontCameraImage(); if (img) frontCam = img; }
+        else if (profileCam === 0 && currentCharacter?.useFrontCameraImage) { const img = await captureFrontCameraImage(); if (img) frontCam = img; }
+        sendMessage(inputText, promptBlocks.promptBlocks, pendingFiles, frontCam);
+        setInputText(''); setPendingFiles([]);
+        if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    }, [inputText, pendingFiles, sendMessage, promptBlocks.promptBlocks, captureFrontCameraImage, interactionData, currentCharacter]);
 
     const toggleViewMode = () => {
-        setViewMode(previousMode => previousMode === 'ladder' ? 'cinematic' : previousMode === 'cinematic' ? 'vn' : 'ladder');
+        setViewMode(prev => prev === 'ladder' ? 'cinematic' : prev === 'cinematic' ? 'vn' : 'ladder');
         const container = chatHistoryRef.current;
-        let targetIndex = -1;
+        let targetIdx = -1;
         if (container && interactionData) {
-            const containerRectangle = container.getBoundingClientRect();
-            const messageIdentifiers = new Set(safeInteractionMessages.map(message => message.id));
-            let bestTop = Number.POSITIVE_INFINITY;
-            for (const element of container.querySelectorAll('[data-message-id]')) {
-                const messageId = element.getAttribute('data-message-id'); if (!messageId || !messageIdentifiers.has(messageId)) continue;
-                const elementRectangle = element.getBoundingClientRect();
-                if (elementRectangle.top < containerRectangle.bottom && elementRectangle.bottom > containerRectangle.top && elementRectangle.top < bestTop) { bestTop = elementRectangle.top; targetIndex = safeInteractionMessages.findIndex(message => message.id === messageId); }
+            const rect = container.getBoundingClientRect();
+            const ids = new Set(safeMessages.map((m: ChatMessage | WhisperMessage) => m.id));
+            let bestTop = Infinity;
+            for (const el of container.querySelectorAll('[data-message-id]')) {
+                const mid = el.getAttribute('data-message-id');
+                if (!mid || !ids.has(mid)) continue;
+                const r = el.getBoundingClientRect();
+                if (r.top < rect.bottom && r.bottom > rect.top && r.top < bestTop) { bestTop = r.top; targetIdx = safeMessages.findIndex((m: ChatMessage | WhisperMessage) => m.id === mid); }
             }
         }
-        if (targetIndex === -1 && lastViewedMessageIdRef.current && interactionData) targetIndex = safeInteractionMessages.findIndex(message => message.id === lastViewedMessageIdRef.current);
-        if (targetIndex >= 0 && interactionData) lastViewedMessageIdRef.current = safeInteractionMessages[targetIndex].id;
-        suppressAutoScrollRef.current = true;
+        if (targetIdx === -1 && viewAssets.lastViewedMessageIdRef.current && interactionData)
+            targetIdx = safeMessages.findIndex((m: ChatMessage | WhisperMessage) => m.id === viewAssets.lastViewedMessageIdRef.current);
+        if (targetIdx >= 0 && interactionData) viewAssets.lastViewedMessageIdRef.current = safeMessages[targetIdx].id;
+        viewAssets.suppressAutoScrollRef.current = true;
         setTimeout(() => {
-            if (targetIndex >= 0 && interactionData && chatHistoryRef.current) {
-                const element = chatHistoryRef.current.querySelector(`[data-message-id="${safeInteractionMessages[targetIndex].id}"]`) as HTMLElement | null;
-                if (element) { element.scrollIntoView({ block: 'start' }); setTimeout(() => { suppressAutoScrollRef.current = false; }, 400); return; }
+            if (targetIdx >= 0 && chatHistoryRef.current) {
+                const el = chatHistoryRef.current.querySelector(`[data-message-id="${safeMessages[targetIdx].id}"]`) as HTMLElement | null;
+                if (el) { el.scrollIntoView({ block: 'start' }); setTimeout(() => { viewAssets.suppressAutoScrollRef.current = false; }, 400); return; }
             }
             messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-            setTimeout(() => { suppressAutoScrollRef.current = false; }, 400);
+            setTimeout(() => { viewAssets.suppressAutoScrollRef.current = false; }, 400);
         }, 50);
     };
 
-    const handleImportComplete = useCallback(() => { getLanguageModelEngine().clearTokenCache(); refreshChatList(); }, [refreshChatList]);
+    // ─── Chat Management Handlers ────────────────────────────────────
+    const handleImportComplete = useCallback(() => { getLanguageModelEngine().clearTokenCache(); chatList.refresh(); }, [chatList.refresh]);
 
-    const handleForceFirstMessage = useCallback(async (character: Character) => {
+    const handleForceFirstMessage = useCallback(async (char: Character) => {
         if (!interactionData) return;
-        const chatMessage = createChatMessage(interactionData, character, `*${character.name} enters the scene.*`);
-        const updatedInteractionData = addMessageToInteractionData(interactionData, chatMessage);
-        setInteractionData(updatedInteractionData);
-        await saveRawInteractionData(updatedInteractionData); addToast(`Sent first message as ${character.name}`, 'success');
+        const msg = createChatMessage(interactionData, char, `*${char.name} enters the scene.*`);
+        const updated = addMessageToInteractionData(interactionData, msg);
+        setInteractionData(updated);
+        await saveRawInteractionData(updated);
+        addToast(`Sent first message as ${char.name}`, 'success');
     }, [interactionData, addToast, setInteractionData]);
 
-    const handleSendCustomMessage = useCallback(async (character: Character, text: string) => {
+    const handleSendCustom = useCallback(async (char: Character, text: string) => {
         if (!interactionData) return;
-        const chatMessage = createChatMessage(interactionData, character, text);
-        const updatedInteractionData = addMessageToInteractionData(interactionData, chatMessage);
-        setInteractionData(updatedInteractionData);
-        await saveRawInteractionData(updatedInteractionData); addToast(`Sent message as ${character.name}`, 'success');
+        const msg = createChatMessage(interactionData, char, text);
+        const updated = addMessageToInteractionData(interactionData, msg);
+        setInteractionData(updated);
+        await saveRawInteractionData(updated);
+        addToast(`Sent message as ${char.name}`, 'success');
     }, [interactionData, addToast, setInteractionData]);
 
-    const handleInjectCustomMessage = useCallback(async (character: Character, text: string) => {
+    const handleInjectCustom = useCallback(async (char: Character, text: string) => {
         if (!interactionData) return;
-        const injectedContext: Context = { id: crypto.randomUUID(), name: `[Injected] ${character.name}`, description: 'User-injected message for LLM context', text: `${character.name}: ${text}`, isAutoGenerated: true, useBase64Encoding: false, insertionDepth: 0, tokenBudget: 512, limitLinksToSubdirectory: false, firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now() };
-        const updatedInteractionData: InteractionData = { ...interactionData, contexts: [...(interactionData.contexts || []), injectedContext], lastUpdatedTimestamp: Date.now() };
-        setInteractionData(updatedInteractionData);
-        await saveRawInteractionData(updatedInteractionData); addToast(`Injected custom message as ${character.name} into LLM context`, 'success');
+        const ctx: Context = { id: crypto.randomUUID(), name: `[Injected] ${char.name}`, description: 'User-injected message for LLM context', text: `${char.name}: ${text}`, isAutoGenerated: true, useBase64Encoding: false, insertionDepth: 0, tokenBudget: 512, limitLinksToSubdirectory: false, firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now() };
+        const updated: InteractionData = { ...interactionData, contexts: [...(interactionData.contexts || []), ctx], lastUpdatedTimestamp: Date.now() };
+        setInteractionData(updated);
+        await saveRawInteractionData(updated);
+        addToast(`Injected custom message as ${char.name}`, 'success');
     }, [interactionData, addToast, setInteractionData]);
 
-    const handleInjectFirstMessage = useCallback(async (character: Character) => {
+    const handleInjectFirst = useCallback(async (char: Character) => {
         if (!interactionData) return;
-        const injectedContext: Context = { id: crypto.randomUUID(), name: `[Injected First] ${character.name}`, description: 'User-injected first message for LLM context', text: `${character.name}: *${character.name} enters the scene.*`, isAutoGenerated: true, useBase64Encoding: false, insertionDepth: 0, tokenBudget: 512, limitLinksToSubdirectory: false, firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now() };
-        const updatedInteractionData: InteractionData = { ...interactionData, contexts: [...(interactionData.contexts || []), injectedContext], lastUpdatedTimestamp: Date.now() };
-        setInteractionData(updatedInteractionData);
-        await saveRawInteractionData(updatedInteractionData); addToast(`Injected first message as ${character.name} into LLM context`, 'success');
+        const ctx: Context = { id: crypto.randomUUID(), name: `[Injected First] ${char.name}`, description: 'User-injected first message', text: `${char.name}: *${char.name} enters the scene.*`, isAutoGenerated: true, useBase64Encoding: false, insertionDepth: 0, tokenBudget: 512, limitLinksToSubdirectory: false, firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now() };
+        const updated: InteractionData = { ...interactionData, contexts: [...(interactionData.contexts || []), ctx], lastUpdatedTimestamp: Date.now() };
+        setInteractionData(updated);
+        await saveRawInteractionData(updated);
+        addToast(`Injected first message as ${char.name}`, 'success');
     }, [interactionData, addToast, setInteractionData]);
 
-    const onDeleteChatForModals = useCallback((identifier: string) => {
-        handleDeleteChat({ stopPropagation: () => {} } as React.MouseEvent, identifier);
-    }, [handleDeleteChat]);
+    const onDeleteChatForModals = useCallback((id: string) => {
+        chatOps.handleDeleteChat({ stopPropagation: () => {} } as React.MouseEvent, id);
+    }, [chatOps.handleDeleteChat]);
 
-    const handleRenameChat = useCallback(async (identifier: string, name: string) => {
-        const loadedInteraction = await loadRawInteractionData(identifier, allCharacters);
-        if (!loadedInteraction) { addToast('Chat not found.', 'error'); return; }
-        const updatedInteraction = { ...loadedInteraction, name, lastUpdatedTimestamp: Date.now() };
-        await saveRawInteractionData(updatedInteraction);
-        refreshChatList();
-        if (interactionData?.id === identifier) setInteractionData({ ...interactionData, name, lastUpdatedTimestamp: Date.now() });
+    const handleRenameChat = useCallback(async (id: string, name: string) => {
+        const loaded = await loadRawInteractionData(id, characters.characters);
+        if (!loaded) { addToast('Chat not found.', 'error'); return; }
+        const updated = { ...loaded, name, lastUpdatedTimestamp: Date.now() };
+        await saveRawInteractionData(updated);
+        chatList.refresh();
+        if (interactionData?.id === id) setInteractionData({ ...interactionData, name, lastUpdatedTimestamp: Date.now() });
         addToast(`Renamed to "${name}"`, 'success');
-    }, [allCharacters, interactionData, setInteractionData, refreshChatList, addToast]);
+    }, [characters.characters, interactionData, setInteractionData, chatList.refresh, addToast]);
 
     const handleNavigateToBranchSource = useCallback(async () => {
         if (!interactionData?.parentInteractionDataId) return;
         try {
-            const sourceInteraction = await loadRawInteractionData(interactionData.parentInteractionDataId, allCharacters);
-            if (sourceInteraction) {
-                setInteractionData(sourceInteraction);
-                const sourceMultiplayerData = useSessionStore.getState().multiplayerData;
-                const sourceProtagonist = deriveCurrentProtagonist(sourceInteraction, sourceMultiplayerData, currentAccountId);
-                if (sourceProtagonist) setCurrentCharacter(sourceProtagonist);
-                refreshChatList();
-                addToast(`Returned to source: "${sourceInteraction.name}"`, 'info');
+            const source = await loadRawInteractionData(interactionData.parentInteractionDataId, characters.characters);
+            if (source) {
+                setInteractionData(source);
+                const srcMp = useSessionStore.getState().multiplayerData;
+                const srcProtag = deriveCurrentProtagonist(source, srcMp, mp.currentAccountId);
+                if (srcProtag) setCurrentCharacter(srcProtag);
+                chatList.refresh();
+                addToast(`Returned to source: "${source.name}"`, 'info');
             } else addToast('Source chat not found.', 'error');
         } catch { addToast('Failed to load source chat.', 'error'); }
-    }, [interactionData, allCharacters, currentAccountId, setInteractionData, setCurrentCharacter, refreshChatList, addToast]);
+    }, [interactionData, characters.characters, mp.currentAccountId, setInteractionData, setCurrentCharacter, chatList.refresh, addToast]);
 
-    const handleLoadWorld = useCallback(async (world: World) => {
+    const handleLoadWorld = useCallback(async (world: any) => {
         if (!interactionData) return;
-        const resolvedCharacters = world.characterIds.map(identifier => allCharacters.find(character => character.id === identifier)).filter((character): character is Character => !!character);
-        const resolvedContexts = world.contextIds.map(identifier => allContexts.find(context => context.id === identifier)).filter((context): context is Context => !!context);
-        const resolvedLocations = world.locationIds.map(identifier => allLocations.find(location => location.id === identifier)).filter((location): location is Location => location !== undefined);
-        const resolvedAudioTracks = (world.audioTrackIds || []).map(identifier => allAudioTracks.find(track => track.id === identifier)).filter((track): track is AudioTrack => !!track);
-        const resolvedProfile = world.profileId ? allProfiles.find(profile => profile.id === world.profileId) : undefined;
-        let updatedInteraction: InteractionData = { ...interactionData, participants: resolvedCharacters.length > 0 ? resolvedCharacters : interactionData.participants, contexts: resolvedContexts, locations: resolvedLocations, audioTracks: resolvedAudioTracks.length > 0 ? resolvedAudioTracks : [], Profile: resolvedProfile, lastUpdatedTimestamp: Date.now() };
-        if (updatedInteraction.protagonists) {
-            for (const protagonist of updatedInteraction.protagonists) {
-                if (!updatedInteraction.participants.find(participant => participant.id === protagonist.id)) {
-                    updatedInteraction.participants = [protagonist, ...updatedInteraction.participants];
-                }
+        const resolvedChars = world.characterIds.map((id: string) => characters.characters.find((c: Character) => c.id === id)).filter(Boolean);
+        const resolvedCtxs = world.contextIds.map((id: string) => contexts.contexts.find((c: Context) => c.id === id)).filter(Boolean);
+        const resolvedLocs = world.locationIds.map((id: string) => locations.locations.find((l: any) => l.id === id)).filter(Boolean);
+        const resolvedAudio = (world.audioTrackIds || []).map((id: string) => audioTracks.audioTracks.find((t: any) => t.id === id)).filter(Boolean);
+        const resolvedProfile = world.profileId ? profiles.profiles.find((p: any) => p.id === world.profileId) : undefined;
+        let updated: InteractionData = {
+            ...interactionData,
+            participants: resolvedChars.length > 0 ? resolvedChars : interactionData.participants,
+            contexts: resolvedCtxs, locations: resolvedLocs,
+            audioTracks: resolvedAudio.length > 0 ? resolvedAudio : [],
+            Profile: resolvedProfile, lastUpdatedTimestamp: Date.now(),
+        };
+        if (updated.protagonists) {
+            for (const p of updated.protagonists) {
+                if (!updated.participants.find((x: Character) => x.id === p.id)) updated.participants = [p, ...updated.participants];
             }
         }
-        updatedInteraction = assignInitialLocationsIfNeeded(updatedInteraction);
-        setInteractionData(updatedInteraction);
-        await saveRawInteractionData(updatedInteraction);
+        updated = assignInitialLocationsIfNeeded(updated);
+        setInteractionData(updated);
+        await saveRawInteractionData(updated);
         addToast(`Loaded world "${world.name}"`, 'success');
-    }, [interactionData, allCharacters, allContexts, allLocations, allAudioTracks, allProfiles, setInteractionData, addToast]);
+    }, [interactionData, characters.characters, contexts.contexts, locations.locations, audioTracks.audioTracks, profiles.profiles, setInteractionData, addToast]);
 
-    const displayMessages = useMemo(() => {
-        let baseMessages = [...safeInteractionMessages] as (ChatMessage | WhisperMessage)[];
-        if (isMultiplayerChat && localProtagonist) {
-            baseMessages = baseMessages.filter(message => {
-                if (message.messageType === 'whisper') {
-                    const whisperMessage = message as WhisperMessage;
-                    const isSender = whisperMessage.character.id === localProtagonist.id;
-                    const isTarget = whisperMessage.targetCharacterIds.includes(localProtagonist.id);
-                    return isSender || isTarget;
-                }
-                return true;
-            });
-        }
-
-        if (isLoading && streamingText && streamingCharacter) {
-            const lastMessage = baseMessages[baseMessages.length - 1];
-            const isLastMessageStreaming = lastMessage?.character.id === streamingCharacter.id;
-            const isNewTurn = !lastMessage || lastMessage.character.id !== streamingCharacter.id;
-
-            if (isLastMessageStreaming) {
-                const lastIndex = baseMessages.length - 1;
-                const resolvedName = resolveDelayedDisplayNameFromCache(displayNameCache, lastIndex, streamingCharacter.id);
-                (baseMessages[lastIndex] as any).textContent = streamingText;
-                (baseMessages[lastIndex] as any).character = { ...lastMessage!.character, name: resolvedName };
-            } else if (isNewTurn) {
-                const streamingIndex = baseMessages.length;
-                const resolvedName = resolveDelayedDisplayNameFromCache(displayNameCache, streamingIndex, streamingCharacter.id);
-                baseMessages.push({
-                    id: `streaming-${streamingCharacter.id}`,
-                    messageType: 'chat',
-                    character: { ...streamingCharacter, name: resolvedName },
-                    textContent: streamingText,
-                    files: [],
-                    firstCreatedTimestamp: 0,
-                    lastUpdatedTimestamp: 0,
-                    locationIndex: undefined,
-                    characterLockedLocations: {},
-                    parentInteractionMessageId: null,
-                } as any);
-            }
-        }
-        return baseMessages;
-    }, [safeInteractionMessages, isLoading, streamingText, streamingCharacter, displayNameCache, isMultiplayerChat, localProtagonist]);
-
-    const massStartIndex = isMassActive ? displayMessages.findIndex(message => message.id === massDeleteId) : -1;
-
-    const timeUntilResetReference = useRef<number | undefined>(undefined);
-    const [timeUntilReset, setTimeUntilReset] = useState<number | undefined>(undefined);
-
-    useEffect(() => {
-        if (!budgetData || !activeStrategy || budgetData.resetDuration <= 0) {
-            timeUntilResetReference.current = undefined;
-            return;
-        }
-        const computeRemainingTime = () => Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp));
-        timeUntilResetReference.current = computeRemainingTime();
-        const intervalIdentifier = setInterval(() => {
-            const remainingTime = computeRemainingTime();
-            timeUntilResetReference.current = remainingTime;
-            setTimeUntilReset(remainingTime);
-        }, 1000);
-        const animationFrameIdentifier = requestAnimationFrame(() => { setTimeUntilReset(timeUntilResetReference.current); });
-        return () => { clearInterval(intervalIdentifier); cancelAnimationFrame(animationFrameIdentifier); };
-    }, [budgetData, activeStrategy]);
-
+    // ─── View Props ──────────────────────────────────────────────────
     const viewProps: ViewModeProps & { canDelete: boolean } = {
         interactionData: interactionData!,
         localProtagonist: localProtagonist!,
         displayMessages: displayMessages as ChatMessage[],
         currentCharacterId: currentCharacter?.id,
-        editingId, editDraft, massDeleteId, isMassActive, massStartIndex, activeToolbarId,
-        portraitUrlCache, displayNameCache, characterScales: new Map(), centerAvatar,
-        streamingPortraitUrl, formattedStreamingText, locationBackgroundUrl, isLoading,
-        isEditingTitle, editTitleValue,
+        editingId: messageActions.editingId, editDraft: messageActions.editDraft,
+        massDeleteId: messageActions.massDeleteId, isMassActive: messageActions.massDeleteId !== null,
+        massStartIndex, activeToolbarId: messageToolbar.activeToolbarId,
+        portraitUrlCache: viewAssets.portraitUrlCache, displayNameCache,
+        characterScales: new Map(), centerAvatar: viewAssets.centerAvatar,
+        streamingPortraitUrl: viewAssets.streamingPortraitUrl,
+        formattedStreamingText, locationBackgroundUrl: viewAssets.locationBackgroundUrl, isLoading,
+        isEditingTitle: chatOps.isEditingTitle, editTitleValue: chatOps.editTitleValue,
         parentInteractionMessageId: interactionData?.parentInteractionMessageId ?? null,
-        parentInteractionDataName, streamingCharacter, chatHistoryRef, messageEndRef,
+        parentInteractionDataName: parentChatName,
+        streamingCharacter, chatHistoryRef, messageEndRef,
         editTextAreaRef, focusedMessageId, setFocusedMessageId,
-        onAvatarClick: handleAvatarClick, onStartEditing: startEditing, onCancelEditing: cancelEditing,
-        onSaveEdit: wrappedHandleSaveEdit, onRegenerateFromEdit: handleRegenerateFromEdit,
-        onResumeGeneration: (identifier: string) => { resumeGeneration(identifier, allPromptBlocks); },
-        onCopyText: handleCopyText, onRegenerateFromMessage: regenerateFromMessage,
-        onBranch: wrappedHandleBranch, onClone: handleClone, onDelete: wrappedHandleDelete,
-        onSetMassDelete: setMassDeleteId, onMassDeleteConfirm: handleMassDeleteConfirm,
-        onCancelMassDelete: () => setMassDeleteId(null),
-        onTouchStart: handleBubbleTouchStart, onTouchEnd: handleBubbleTouchEnd, onTouchMove: handleBubbleTouchMove,
-        suppressNextClickRef, setEditDraft, onNavigateToBranchSource: handleNavigateToBranchSource,
-        onStartEditTitle: handleStartEditTitle, onSaveTitle: handleSaveTitle, onCancelEditTitle: cancelEditTitle,
-        setEditTitleValue, closeActionMenu, deactivateToolbar, onStopGeneration: stopGeneration, canDelete,
+        onAvatarClick: actionMenu.handleAvatarClick,
+        onStartEditing: messageActions.startEditing, onCancelEditing: messageActions.cancelEditing,
+        onSaveEdit: wrappedSaveEdit, onRegenerateFromEdit: messageActions.handleRegenerateFromEdit,
+        onResumeGeneration: (id: string) => resumeGeneration(id, promptBlocks.promptBlocks),
+        onCopyText: messageActions.handleCopyText, onRegenerateFromMessage: regenerateFromMessage,
+        onBranch: wrappedBranch, onClone: messageActions.handleClone, onDelete: wrappedDelete,
+        onSetMassDelete: messageActions.setMassDeleteId,
+        onMassDeleteConfirm: messageActions.handleMassDeleteConfirm,
+        onCancelMassDelete: () => messageActions.setMassDeleteId(null),
+        onTouchStart: messageToolbar.handleBubbleTouchStart,
+        onTouchEnd: messageToolbar.handleBubbleTouchEnd,
+        onTouchMove: messageToolbar.handleBubbleTouchMove,
+        suppressNextClickRef: messageToolbar.suppressNextClickRef,
+        setEditDraft: messageActions.setEditDraft,
+        onNavigateToBranchSource: handleNavigateToBranchSource,
+        onStartEditTitle: chatOps.handleStartEditTitle, onSaveTitle: chatOps.handleSaveTitle,
+        onCancelEditTitle: chatOps.cancelEditTitle, setEditTitleValue: chatOps.setEditTitleValue,
+        closeActionMenu: actionMenu.closeActionMenu, deactivateToolbar: messageToolbar.deactivateToolbar,
+        onStopGeneration: stopGeneration, canDelete,
     };
 
     const containerClass = [
@@ -973,17 +669,18 @@ function App() {
         viewMode === 'cinematic' ? 'mode-cinematic' : '',
         viewMode === 'vn' ? 'mode-vn' : '',
         viewMode === 'ladder' ? 'mode-ladder' : '',
-        locationBackgroundUrl ? 'has-location-bg' : '',
+        viewAssets.locationBackgroundUrl ? 'has-location-bg' : '',
     ].filter(Boolean).join(' ');
 
+    // ─── Render ──────────────────────────────────────────────────────
     return (
         <>
             {isInitializing && <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />}
-            
-            <div 
-                className={containerClass} 
-                style={locationBackgroundUrl && viewMode !== 'vn' ? { '--location-bg': `url(${locationBackgroundUrl})` } as React.CSSProperties : undefined} 
-                onClick={() => { closeActionMenu(); deactivateToolbar(); }}
+
+            <div
+                className={containerClass}
+                style={viewAssets.locationBackgroundUrl && viewMode !== 'vn' ? { '--location-bg': `url(${viewAssets.locationBackgroundUrl})` } as React.CSSProperties : undefined}
+                onClick={() => { actionMenu.closeActionMenu(); messageToolbar.deactivateToolbar(); }}
             >
                 {!interactionData && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', opacity: 0.5, gap: '12px' }}>
@@ -998,38 +695,34 @@ function App() {
                         <header className="app-header">
                             <div className="header-content">
                                 <div className="header-top">
-                                    {viewMode === 'ladder' && interactionData && safeInteractionMessages.length > 5 && (
-                                        <ChatMinimap
-                                            messages={safeInteractionMessages.filter((message): message is ChatMessage => message.messageType === 'chat')}
-                                            containerRef={chatHistoryRef}
-                                            currentCharacterId={currentCharacter?.id}
-                                        />
+                                    {viewMode === 'ladder' && safeMessages.length > 5 && (
+                                        <ChatMinimap messages={safeMessages.filter((m: ChatMessage | WhisperMessage): m is ChatMessage => m.messageType === 'chat')} containerRef={chatHistoryRef} currentCharacterId={currentCharacter?.id} />
                                     )}
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                                        {isEditingTitle
-                                            ? <input ref={element => element?.focus()} type="text" value={editTitleValue} onChange={event => setEditTitleValue(event.target.value)} onBlur={handleSaveTitle} onKeyDown={event => { if (event.key === 'Enter') handleSaveTitle(); if (event.key === 'Escape') cancelEditTitle(); }} style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '200px', outline: 'none' }} />
-                                            : <><span onClick={handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={event => event.currentTarget.style.opacity = '1'} onMouseLeave={event => event.currentTarget.style.opacity = '0.3'}>✎</span><div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{interactionData?.name || 'Untitled Chat'}</div></>}
+                                        {chatOps.isEditingTitle
+                                            ? <input ref={el => el?.focus()} type="text" value={chatOps.editTitleValue} onChange={e => chatOps.setEditTitleValue(e.target.value)} onBlur={chatOps.handleSaveTitle} onKeyDown={e => { if (e.key === 'Enter') chatOps.handleSaveTitle(); if (e.key === 'Escape') chatOps.cancelEditTitle(); }} style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '200px', outline: 'none' }} />
+                                            : <><span onClick={chatOps.handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = '1'} onMouseLeave={e => e.currentTarget.style.opacity = '0.3'}>✎</span><div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{interactionData?.name || 'Untitled Chat'}</div></>}
                                     </div>
                                     <div className="header-controls-group">
                                         <button type="button" className="view-mode-toggle" onClick={modals.settings.open} title="Settings" style={{ padding: '6px 10px' }}><span>⚙️</span></button>
-                                        <button type="button" className="view-mode-toggle" onClick={() => interactionData && modals.extList.open()} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
+                                        <button type="button" className="view-mode-toggle" onClick={() => modals.extList.open()} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
                                         <button type="button" onClick={toggleViewMode} className={`view-mode-toggle ${viewMode !== 'ladder' ? 'active' : ''}`} title="Switch View Mode">
                                             <span>{viewMode === 'ladder' ? '📜' : viewMode === 'cinematic' ? '🎥' : '📖'}</span>
                                             <span>{viewMode === 'ladder' ? 'Ladder' : viewMode === 'cinematic' ? 'Cinematic' : 'Visual Novel'}</span>
                                         </button>
                                         <ChatStatisticsBar
-                                            numberOfMessages={interactionData?.numberOfMessages ?? safeInteractionMessages.length}
-                                            maximumNumberOfTokens={maximumContextLength}
-                                            maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens}
-                                            maximumNumberOfContextTokens={maximumNumberOfContextTokens}
+                                            numberOfMessages={interactionData?.numberOfMessages ?? safeMessages.length}
+                                            maximumNumberOfTokens={maxContextLength}
+                                            maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maxParticipantTokens}
+                                            maximumNumberOfContextTokens={maxContextTokens}
                                             budgetSpent={budgetData?.budgetSpent}
                                             maximumBudget={activeStrategy?.maximumBudget}
                                             timeUntilReset={timeUntilReset}
                                         />
-                                        {multiplayerSync.isConnected && (
+                                        {mp.multiplayerSync.isConnected && (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '12px', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', fontSize: '0.7rem', color: '#22c55e', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
                                                 <span>🟢</span>
-                                                <span>{multiplayerSync.connectedPeers.length} Peer{multiplayerSync.connectedPeers.length !== 1 ? 's' : ''}</span>
+                                                <span>{mp.multiplayerSync.connectedPeers.length} Peer{mp.multiplayerSync.connectedPeers.length !== 1 ? 's' : ''}</span>
                                             </div>
                                         )}
                                     </div>
@@ -1041,97 +734,86 @@ function App() {
                         {viewMode === 'cinematic' && <CinematicView {...viewProps} />}
                         {viewMode === 'vn' && <VisualNovelView {...viewProps} />}
 
-                        <ContextBar 
-                            viewMode={viewMode} 
-                            onOpenChatList={modals.chatList.open} 
-                            onOpenCharacters={modals.charList.open} 
-                            onOpenContexts={modals.contextList.open} 
-                            onOpenLocations={modals.locationList.open} 
-                            onOpenAudioTracks={modals.audioTrackList.open} 
-                            onOpenWorlds={modals.worldManager.open} 
-                            onOpenPromptBlocks={modals.promptBlockList.open} 
-                            onOpenModels={modals.modelList.open} 
-                            onOpenSamplers={modals.samplerList.open} 
-                            onOpenStopPatterns={modals.stopList.open} 
-                            onOpenBudgets={modals.budgetStrategyList.open} 
-                            onOpenProfiles={modals.profileList.open} 
+                        <ContextBar
+                            viewMode={viewMode}
+                            onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open}
+                            onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open}
+                            onOpenAudioTracks={modals.audioTrackList.open} onOpenWorlds={modals.worldManager.open}
+                            onOpenPromptBlocks={modals.promptBlockList.open} onOpenModels={modals.modelList.open}
+                            onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopList.open}
+                            onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open}
                         />
 
-                        <ChatInput 
-                            inputText={inputText} setInputText={setInputText} 
-                            pendingFiles={pendingFiles} setPendingFiles={setPendingFiles} 
-                            isRecording={isRecording} isLoading={isLoading} isModelReady={isModelReady} 
-                            isModelLoading={isModelLoading} modelStatusMessage={modelStatusMessage} 
-                            localProtagonist={localProtagonist} activeStrategy={activeStrategy ?? undefined} 
-                            selectedModelId={selectedModelId} interactionData={interactionData}
-                            allCharacters={allCharacters} allLocations={allLocations} allContexts={allContexts}
-                            allAudioTracks={allAudioTracks} allWorlds={allWorlds} allPromptBlocks={allPromptBlocks}
-                            allSamplers={allSamplers} allStopPatterns={allStopPatterns} allProfiles={allProfiles}
-                            allMemories={allMemories} allAccounts={allAccounts} allMultiplayerData={allMultiplayerData}
-                            fileInputRef={fileInputReference} textareaRef={textareaReference} onFileSelected={handleFileSelected} 
-                            onToggleMicrophone={handleToggleMicrophone} onSend={handleSend} 
-                            onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} 
+                        <ChatInput
+                            inputText={inputText} setInputText={setInputText}
+                            pendingFiles={pendingFiles} setPendingFiles={setPendingFiles}
+                            isRecording={isRecording} isLoading={isLoading} isModelReady={isModelReady}
+                            isModelLoading={isModelLoading} modelStatusMessage={modelStatusMessage}
+                            localProtagonist={localProtagonist} activeStrategy={activeStrategy ?? undefined}
+                            selectedModelId={models.selectedModelId} interactionData={interactionData}
+                            allCharacters={characters.characters} allLocations={locations.locations} allContexts={contexts.contexts}
+                            allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allPromptBlocks={promptBlocks.promptBlocks}
+                            allSamplers={samplers.Samplers} allStopPatterns={stopPatterns.stopPatterns} allProfiles={profiles.profiles}
+                            allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={mpDataManager.multiplayerDatas}
+                            fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected}
+                            onToggleMicrophone={handleToggleMic} onSend={handleSend}
+                            onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open}
                         />
                     </>
                 )}
 
                 <AppModals
-                    isMultiplayerClient={isMultiplayerClient}
-                    modals={modals}
-                    entityModals={entityModals}
-                    runningModels={runningModels}
-                    rawChatShells={rawChatShells}
-                    allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations}
-                    allAudioTracks={allAudioTracks} allWorlds={allWorlds} allModels={allModels}
-                    allSamplers={allSamplers} allPromptBlocks={allPromptBlocks} allStopPatterns={allStopPatterns}
-                    allBudgetStrategies={allBudgetStrategies} allProfiles={allProfiles} allExtensions={allExtensions}
-                    allMemories={allMemories} allAccounts={allAccounts} allMultiplayerData={allMultiplayerData}
-                    onSwitchChat={handleSwitchChat} onDeleteChat={onDeleteChatForModals} onNewChat={handleNewChat}
-                    onRenameChat={handleRenameChat} onDeleteCharacter={entityModals.getModalProperties('character').delete}
-                    onLoadFullCharacter={loadFullCharacter} onToggleParticipant={handleToggleParticipant}
-                    onSetProtagonist={handleSetChatProtagonist} onSaveCharacter={saveCharacter}
-                    onDeleteContext={entityModals.getModalProperties('context').delete} onToggleContext={handleToggleContext} onSaveContext={saveContext}
-                    onDeleteLocation={entityModals.getModalProperties('location').delete} onToggleLocation={handleToggleLocation} onSaveLocation={saveLocation}
-                    onDeleteAudioTrack={entityModals.getModalProperties('audioTrack').delete} onToggleAudioTrack={handleToggleAudioTrack} onSaveAudioTrack={saveAudioTrack}
-                    onSaveWorld={saveWorld} onLoadWorld={handleLoadWorld} onDeleteWorld={entityModals.getModalProperties('world').delete}
-                    onDeleteModel={entityModals.getModalProperties('model').delete} onToggleModelLoad={toggleModelLoad}
+                    isMultiplayerClient={mp.isMultiplayerClient}
+                    modals={modals} entityModals={entityModals}
+                    runningModels={models.runningModels} rawChatShells={chatList.rawChatShells}
+                    allCharacters={characters.characters} allContexts={contexts.contexts} allLocations={locations.locations}
+                    allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allModels={allModels}
+                    allSamplers={samplers.Samplers} allPromptBlocks={promptBlocks.promptBlocks} allStopPatterns={stopPatterns.stopPatterns}
+                    allBudgetStrategies={budgetStrategies.strategies} allProfiles={profiles.profiles} allExtensions={extensions.extensions}
+                    allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={mpDataManager.multiplayerDatas}
+                    onSwitchChat={chatOps.handleSwitchChat} onDeleteChat={onDeleteChatForModals} onNewChat={chatOps.handleNewChat}
+                    onRenameChat={handleRenameChat}
+                    onDeleteCharacter={entityModals.getModalProperties('character').delete}
+                    onLoadFullCharacter={characters.loadFullCharacter} onToggleParticipant={entityToggles.handleToggleParticipant}
+                    onSetProtagonist={entityToggles.handleSetChatProtagonist} onSaveCharacter={characters.saveCharacter}
+                    onDeleteContext={entityModals.getModalProperties('context').delete} onToggleContext={entityToggles.handleToggleContext} onSaveContext={contexts.saveContext}
+                    onDeleteLocation={entityModals.getModalProperties('location').delete} onToggleLocation={entityToggles.handleToggleLocation} onSaveLocation={locations.saveLocation}
+                    onDeleteAudioTrack={entityModals.getModalProperties('audioTrack').delete} onToggleAudioTrack={entityToggles.handleToggleAudioTrack} onSaveAudioTrack={audioTracks.saveAudioTrack}
+                    onSaveWorld={worlds.saveWorld} onLoadWorld={handleLoadWorld} onDeleteWorld={entityModals.getModalProperties('world').delete}
+                    onDeleteModel={entityModals.getModalProperties('model').delete} onToggleModelLoad={models.toggleModelLoad}
                     onDeleteSampler={entityModals.getModalProperties('sampler').delete} onDeletePromptBlock={entityModals.getModalProperties('promptBlock').delete}
                     onDeleteStopPattern={entityModals.getModalProperties('stopPattern').delete} onDeleteBudgetStrategy={entityModals.getModalProperties('budgetStrategy').delete}
-                    onActivateBudgetStrategy={handleActivateBudgetStrategy} onDeleteProfile={entityModals.getModalProperties('profile').delete}
-                    onActivateProfile={handleActivateProfile} onSaveProfile={saveProfile}
-                    onDeleteExtension={deleteExtension} onToggleExtension={handleToggleExtension}
-                    onDeleteMemory={deleteMemory} onDeleteAccount={entityModals.getModalProperties('account').delete}
-                    onToggleAccount={(identifier: string) => {
-                        const newAccountId = currentAccountId === identifier ? null : identifier;
-                        storeSetCurrentAccountId(newAccountId);
-                        addToast(newAccountId ? `Activated account "${allAccounts.find(account => account.id === newAccountId)?.name || newAccountId}"` : 'Deactivated account.', newAccountId ? 'success' : 'info');
+                    onActivateBudgetStrategy={entityToggles.handleActivateBudgetStrategy} onDeleteProfile={entityModals.getModalProperties('profile').delete}
+                    onActivateProfile={entityToggles.handleActivateProfile} onSaveProfile={profiles.saveProfile}
+                    onDeleteExtension={extensions.deleteExtension} onToggleExtension={entityToggles.handleToggleExtension}
+                    onDeleteMemory={memories.deleteMemory} onDeleteAccount={entityModals.getModalProperties('account').delete}
+                    onToggleAccount={(id: string) => {
+                        const newId = mp.currentAccountId === id ? null : id;
+                        storeSetCurrentAccountId(newId);
+                        addToast(newId ? `Activated account "${accounts.accounts.find((a: Account) => a.id === newId)?.name || newId}"` : 'Deactivated account.', newId ? 'success' : 'info');
                     }}
                     onDeleteMultiplayerData={entityModals.getModalProperties('multiplayerData').delete}
-                    onJoinSession={handleJoinSession}
-                    onUpdateInteractionData={(data) => {
-                        const dataWithLocations = assignInitialLocationsIfNeeded(data);
-                        setInteractionData(dataWithLocations);
-                        saveRawInteractionData(dataWithLocations);
-                    }}
-                    onForceFirstMessage={handleForceFirstMessage} onSendCustomMessage={handleSendCustomMessage}
-                    onInjectCustomMessage={handleInjectCustomMessage} onInjectFirstMessage={handleInjectFirstMessage}
-                    onImportComplete={handleImportComplete} addToast={addToast} ensureChatsLoaded={ensureChatsLoaded}
-                    pendingJoinRequests={multiplayerSync.pendingJoinRequests}
-                    onAcceptJoinRequest={multiplayerSync.acceptJoinRequest}
-                    onRejectJoinRequest={multiplayerSync.rejectJoinRequest}
+                    onJoinSession={mp.handleJoinSession}
+                    onUpdateInteractionData={(data: InteractionData) => { setInteractionData(assignInitialLocationsIfNeeded(data)); saveRawInteractionData(assignInitialLocationsIfNeeded(data)); }}
+                    onForceFirstMessage={handleForceFirstMessage} onSendCustomMessage={handleSendCustom}
+                    onInjectCustomMessage={handleInjectCustom} onInjectFirstMessage={handleInjectFirst}
+                    onImportComplete={handleImportComplete} addToast={addToast} ensureChatsLoaded={chatList.ensureLoaded}
+                    pendingJoinRequests={mp.multiplayerSync.pendingJoinRequests}
+                    onAcceptJoinRequest={mp.multiplayerSync.acceptJoinRequest}
+                    onRejectJoinRequest={mp.multiplayerSync.rejectJoinRequest}
                 />
             </div>
 
-            <ActionMenu 
-                actionMenuTarget={actionMenuTarget} interactionDataExists={!!interactionData} 
-                menuSearchQuery={menuSearchQuery} setMenuSearchQuery={setMenuSearchQuery} 
-                showActionFormat={showActionFormat} setShowActionFormat={setShowActionFormat} 
-                actionWrap={actionWrap} setActionWrap={setActionWrap} 
-                actionCase={actionCase} setActionCase={setActionCase} 
-                actionPunctuation={actionPunctuation} setActionPunctuation={setActionPunctuation} 
-                filteredActions={getFilteredActions()} isModelReady={isModelReady} 
-                allCharacters={allCharacters} localProtagonist={localProtagonist}
-                onAddAction={handleAddAction} onDeleteAction={handleDeleteAction} onActionInterject={handleActionInterject} 
+            <ActionMenu
+                actionMenuTarget={actionMenu.actionMenuTarget} interactionDataExists={!!interactionData}
+                menuSearchQuery={actionMenu.menuSearchQuery} setMenuSearchQuery={actionMenu.setMenuSearchQuery}
+                showActionFormat={actionMenu.showActionFormat} setShowActionFormat={actionMenu.setShowActionFormat}
+                actionWrap={actionMenu.actionWrap} setActionWrap={actionMenu.setActionWrap}
+                actionCase={actionMenu.actionCase} setActionCase={actionMenu.setActionCase}
+                actionPunctuation={actionMenu.actionPunctuation} setActionPunctuation={actionMenu.setActionPunctuation}
+                filteredActions={actionMenu.getFilteredActions()} isModelReady={isModelReady}
+                allCharacters={characters.characters} localProtagonist={localProtagonist}
+                onAddAction={actionMenu.handleAddAction} onDeleteAction={actionMenu.handleDeleteAction} onActionInterject={actionMenu.handleActionInterject}
             />
         </>
     );
