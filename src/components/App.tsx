@@ -14,12 +14,13 @@ import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useFrontCamera } from '../hooks/useFrontCamera';
-import type { Character, Context, InteractionData, ChatMessage, MultiplayerData, WhisperMessage, LanguageModel, HistoryMessage, RawInteractionData, Account, cloudBackend, InterjectableAction } from '../types';
+import type { Character, Context, InteractionData, ChatMessage, MultiplayerData, WhisperMessage, LanguageModel, HistoryMessage, RawInteractionData, Account, cloudBackend } from '../types';
 import { useSessionStore } from '../hooks/useSessionStore';
 
 // ─── Manager Hooks ──────────────────────────────────────────────────
 import { useChatListManager } from '../hooks/useChatListManager';
 import { useCharacterManager } from '../hooks/useCharacterManager';
+import { useActionManager } from '../hooks/useActionManager';
 import { useContextManager } from '../hooks/useContextManager';
 import { useLocationManager } from '../hooks/useLocationManager';
 import { useAudioTrackManager } from '../hooks/useAudioTrackManager';
@@ -99,6 +100,7 @@ function App() {
     // ─── Manager Hooks ───────────────────────────────────────────────
     const chatList = useChatListManager();
     const characters = useCharacterManager();
+    const actionManager = useActionManager(addToast);
     const contexts = useContextManager();
     const locations = useLocationManager();
     const audioTracks = useAudioTrackManager();
@@ -115,7 +117,6 @@ function App() {
     const multiplayerDataManager = useMultiplayerDataManager();
 
     const activeExtensions = useActiveExtensions(extensions.extensions);
-
     const allModels = models.models;
 
     const entityModals = useEntityModals({
@@ -148,11 +149,7 @@ function App() {
         addToast,
     });
 
-    // Stable actions reference: updated inside useEffect to never touch refs during render
-    const actionsBridgeRef = useRef<InterjectableAction[]>([]);
-    const getAllActions = useCallback(() => actionsBridgeRef.current, []);
-
-    // Broadcast wrapper: evaluates broadcastMessageRef outside of render
+    // Wrapped broadcast callback avoiding ref access during render
     const handleBroadcastMessage = useCallback((msg: HistoryMessage) => {
         mp.broadcastMessageRef.current?.(msg);
     }, [mp.broadcastMessageRef]);
@@ -180,7 +177,7 @@ function App() {
         allExtensions: extensions.extensions,
         allAccounts: accounts.accounts,
         allMultiplayerData: multiplayerDataManager.multiplayerDatas,
-        getAllActions,
+        allActions: actionManager.allActions,
         requestBorrowedModel: handleRequestBorrowedModel,
     });
 
@@ -193,7 +190,7 @@ function App() {
         activeStrategy, budgetData,
     } = session;
 
-    // Destructure target ref to satisfy the compiler and assign safely in effect
+    // Destructure ref before assignment in effect to satisfy React Compiler purity checks
     const { triggerHostResponseRef } = mp;
     useEffect(() => {
         if (triggerHostResponseRef) {
@@ -306,7 +303,7 @@ function App() {
         loadLocalModelForBudgetStrategyEngine: loadLocalModelForBudgetEngine,
     });
 
-    // ─── Sentiment Engine ────────────────────────────────────────────
+    // ─── Sentiment Engine ────────────────────────────────────
     useEffect(() => {
         const enabled = interactionData?.Profile?.enableCharacterExpression ?? false;
         if (enabled) sentimentEngine.initialize();
@@ -344,14 +341,10 @@ function App() {
 
     // ─── Feature Hooks ───────────────────────────────────────────────
     const actionMenu = useActionMenu({
+        actionManager,
         interactionData, currentCharacter, isLoading, isModelReady,
         allCharacters: characters.characters, stopGeneration, sendActionAndGetResponse, addToast,
     });
-
-    // Update actions bridge ref purely inside an effect (never during render)
-    useEffect(() => {
-        actionsBridgeRef.current = actionMenu.allActions;
-    }, [actionMenu.allActions]);
 
     const messageActions = useMessageActions({
         interactionData, localProtagonist, isModelReady, isLoading,
@@ -452,10 +445,13 @@ function App() {
         return defaultContextLength;
     }, [activeStrategy, allModels, models]);
 
+    // Extracted primitive ID outside hooks to preserve React Compiler memoization
+    const parentInteractionDataId = interactionData?.parentInteractionDataId;
+
     const parentChatName = useMemo(() => {
-        if (!interactionData?.parentInteractionDataId) return null;
-        return chatList.rawChatShells.find((s: RawInteractionData) => s.id === interactionData.parentInteractionDataId)?.name ?? null;
-    }, [interactionData, chatList]);
+        if (!parentInteractionDataId) return null;
+        return chatList.rawChatShells.find((s: RawInteractionData) => s.id === parentInteractionDataId)?.name ?? null;
+    }, [parentInteractionDataId, chatList.rawChatShells]);
 
     // ─── Display Messages (with streaming injection + whisper filtering) ──
     const displayMessages = useMemo(() => {
@@ -509,7 +505,7 @@ function App() {
     const loadSteps = useMemo<LoadStep[]>(() => [
         { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatList.isLoading },
         { id: 'characters', label: 'Characters', icon: '🎭', done: !characters.isLoading },
-        { id: 'actions', label: 'Actions', icon: '⚡', done: !actionMenu.actionsLoading },
+        { id: 'actions', label: 'Actions', icon: '⚡', done: !actionManager.actionsLoading },
         { id: 'contexts', label: 'Contexts', icon: '📜', done: !contexts.isLoading },
         { id: 'locations', label: 'Locations', icon: '📍', done: !locations.isLoading },
         { id: 'audioTracks', label: 'Audio Tracks', icon: '🔊', done: !audioTracks.isLoading },
@@ -522,7 +518,7 @@ function App() {
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profiles.isLoading },
         { id: 'accounts', label: 'Accounts', icon: '🔑', done: !accounts.isLoading },
         { id: 'multiplayerData', label: 'Multiplayer Data', icon: '👥', done: !multiplayerDataManager.isLoading },
-    ], [chatList, characters, actionMenu.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, budgetStrategies, profiles, accounts, multiplayerDataManager]);
+    ], [chatList, characters, actionManager.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, budgetStrategies, profiles, accounts, multiplayerDataManager]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
@@ -662,6 +658,7 @@ function App() {
     }, [chatOps]);
 
     const handleRenameChat = useCallback(async (id: string, name: string) => {
+        // Use in-memory chat state directly if renaming the currently active chat
         const loaded = (interactionData?.id === id)
             ? interactionData
             : await loadRawInteractionData(id, characters.characters);
@@ -673,8 +670,6 @@ function App() {
         if (interactionData?.id === id) setInteractionData(updated);
         addToast(`Renamed to "${name}"`, 'success');
     }, [characters.characters, interactionData, setInteractionData, chatList, addToast]);
-
-    const parentInteractionDataId = interactionData?.parentInteractionDataId;
 
     const handleNavigateToBranchSource = useCallback(async () => {
         if (!parentInteractionDataId) return;
