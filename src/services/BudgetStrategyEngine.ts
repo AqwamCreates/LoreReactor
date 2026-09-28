@@ -5,7 +5,6 @@ import { calculateRequestCost, type ModelPricing } from '../utilities/costCalcul
 import { FactorizationMachine, type SparseVector } from '../libraries/factorizationMachine';
 import { FeatureExtractor } from './FeatureExtractor';
 import {
-    FM_PATHS,
     loadRawFactorizationMachine,
     saveRawFactorizationMachine,
 } from '../storage/serverStorage';
@@ -160,10 +159,10 @@ export class BudgetStrategyEngine {
     private acceptanceFM: FactorizationMachine;
     private rateLimitFM:  FactorizationMachine;
     private featureExtractor: FeatureExtractor;
-    private fmSampleCounter: number = 0;
+    private factorizationMachineSampleCounter = 0;
 
     /** Promise that resolves once FMs have been loaded from server storage */
-    private fmLoadPromise: Promise<void> | null = null;
+    private factorizationMachineLoadPromise: Promise<void> | null = null;
 
     /** Debounce save so we don't hammer the server on every sample */
     private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -189,7 +188,7 @@ export class BudgetStrategyEngine {
         applyResetIfDue(this.budgetData);
 
         // Initialize FMs: 8 latent factors, Adam optimizer
-        const fmConfig = {
+        const factorizationMachineConfig = {
             numFactors: 8,
             regBias: 0.0001,
             regWeight: 0.001,
@@ -204,15 +203,15 @@ export class BudgetStrategyEngine {
             adamEpsilon: 1e-8,
         } as const;
 
-        this.censorshipFM = new FactorizationMachine({ ...fmConfig, task: 'classification' });
-        this.acceptanceFM = new FactorizationMachine({ ...fmConfig, task: 'classification' });
-        this.rateLimitFM  = new FactorizationMachine({ ...fmConfig, task: 'classification' });
+        this.censorshipFM = new FactorizationMachine({ ...factorizationMachineConfig, task: 'classification' });
+        this.acceptanceFM = new FactorizationMachine({ ...factorizationMachineConfig, task: 'classification' });
+        this.rateLimitFM  = new FactorizationMachine({ ...factorizationMachineConfig, task: 'classification' });
         this.featureExtractor = new FeatureExtractor();
 
         // Fire-and-forget async load. First predictions may use fresh FMs
         // (predicting ~0.5), which is harmless since ranking falls back to
         // tiers + aggregate when FM confidence is low.
-        this.fmLoadPromise = this.loadFMsFromStorage();
+        this.factorizationMachineLoadPromise = this.loadFMsFromStorage();
     }
 
     // ── Setters ───────────────────────────────────────────────────────
@@ -250,18 +249,18 @@ export class BudgetStrategyEngine {
      * Subsequent calls resolve immediately once loading completes.
      */
     async ensureFMsLoaded(): Promise<void> {
-        if (this.fmLoadPromise) {
-            await this.fmLoadPromise;
-            this.fmLoadPromise = null;
+        if (this.factorizationMachineLoadPromise) {
+            await this.factorizationMachineLoadPromise;
+            this.factorizationMachineLoadPromise = null;
         }
     }
 
     private async loadFMsFromStorage(): Promise<void> {
         try {
             const [censorRaw, acceptRaw, rateRaw] = await Promise.all([
-                loadRawFactorizationMachine(FM_PATHS.censorship),
-                loadRawFactorizationMachine(FM_PATHS.acceptance),
-                loadRawFactorizationMachine(FM_PATHS.rateLimit),
+                loadRawFactorizationMachine("censorship"),
+                loadRawFactorizationMachine("acceptance"),
+                loadRawFactorizationMachine("rateLimit"),
             ]);
             if (censorRaw) this.censorshipFM = FactorizationMachine.fromJSON(censorRaw);
             if (acceptRaw) this.acceptanceFM = FactorizationMachine.fromJSON(acceptRaw);
@@ -274,9 +273,9 @@ export class BudgetStrategyEngine {
     private async saveFMsToStorage(): Promise<void> {
         try {
             await Promise.all([
-                saveRawFactorizationMachine(FM_PATHS.censorship, this.censorshipFM.toJSON()),
-                saveRawFactorizationMachine(FM_PATHS.acceptance, this.acceptanceFM.toJSON()),
-                saveRawFactorizationMachine(FM_PATHS.rateLimit,  this.rateLimitFM.toJSON()),
+                saveRawFactorizationMachine("censorship", this.censorshipFM.toJSON()),
+                saveRawFactorizationMachine("acceptance", this.acceptanceFM.toJSON()),
+                saveRawFactorizationMachine("rateLimit",  this.rateLimitFM.toJSON()),
             ]);
         } catch (e) {
             console.warn('[BudgetEngine] Failed to persist FM models to server:', e);
@@ -348,7 +347,7 @@ export class BudgetStrategyEngine {
         return pAccept * (1 - pCensor) * (1 - pRateLim);
     }
 
-    private fmConfidenceFor(modelId: string): number {
+    private factorizationMachineConfidenceFor(modelId: string): number {
         const uses = this.budgetData.modelUsedCount?.[modelId] ?? 0;
         return Math.min(1, uses / FM_MIN_SAMPLES_FOR_CONFIDENCE);
     }
@@ -365,7 +364,7 @@ export class BudgetStrategyEngine {
         this.acceptanceFM.trainOne(x, outcome.accepted    ? 1 : 0);
         this.rateLimitFM.trainOne (x, outcome.rateLimited ? 1 : 0);
 
-        this.fmSampleCounter++;
+        this.factorizationMachineSampleCounter++;
         // Debounced save instead of every-10-samples to reduce server writes
         this.scheduleSave();
     }
@@ -455,7 +454,7 @@ export class BudgetStrategyEngine {
         if (model) {
             const x = this.buildFeaturesForModel(model, prompt, metadata);
             this.acceptanceFM.trainOne(x, 0);
-            this.fmSampleCounter++;
+            this.factorizationMachineSampleCounter++;
             this.scheduleSave();
         }
     }
@@ -486,11 +485,11 @@ export class BudgetStrategyEngine {
             const ttftB = this.strategy.modelTimeToFirstTokenTiers?.[b.id] ?? 0;
             if (ttftA !== ttftB) return ttftB - ttftA;
 
-            const confA = this.fmConfidenceFor(a.id);
-            const confB = this.fmConfidenceFor(b.id);
+            const confA = this.factorizationMachineConfidenceFor(a.id);
+            const confB = this.factorizationMachineConfidenceFor(b.id);
 
-            const fmScoreA = this.predictFMScore(a, prompt, metadata);
-            const fmScoreB = this.predictFMScore(b, prompt, metadata);
+            const factorizationMachineScoreA = this.predictFMScore(a, prompt, metadata);
+            const factorizationMachineScoreB = this.predictFMScore(b, prompt, metadata);
 
             const aggA = this.getModelQualityScore(a.id);
             const aggB = this.getModelQualityScore(b.id);
@@ -499,8 +498,8 @@ export class BudgetStrategyEngine {
             const compB = this.computeCompositeQuality(b, requiredContextTokens);
 
             const w = FM_BLEND_WEIGHT;
-            const blendA = (w * confA) * fmScoreA + (1 - w * confA) * aggA + 0.1 * compA;
-            const blendB = (w * confB) * fmScoreB + (1 - w * confB) * aggB + 0.1 * compB;
+            const blendA = (w * confA) * factorizationMachineScoreA + (1 - w * confA) * aggA + 0.1 * compA;
+            const blendB = (w * confB) * factorizationMachineScoreB + (1 - w * confB) * aggB + 0.1 * compB;
 
             if (Math.abs(blendA - blendB) > 0.0001) return blendB - blendA;
 

@@ -63,6 +63,7 @@ const ENTITY_REGISTRY = {
   multiplayerCharacters: { dir: 'multiplayer_character_data', hasManifest: true },
   multiplayerCharacterImages: { dir: 'multiplayer_character_images', hasManifest: false },
   multiplayerCharacterVoices: { dir: 'multiplayer_character_voices', hasManifest: false },
+  factorizationMachines: { dir: 'factorization_machine_data', hasManifest: false },
 } as const;
 
 type EntityKey = keyof typeof ENTITY_REGISTRY;
@@ -1486,14 +1487,14 @@ export async function uploadMultiplayerCharacterVoice(characterId: string, file:
   return uploadImage('multiplayerCharacterVoices', characterId, file);
 }
 
-export async function loadRawFactorizationMachine(path: string): Promise<FMSerialized | null> {
-    return await fetchJson<FMSerialized>(path);
+export async function loadRawFactorizationMachine(name: string): Promise<FMSerialized | null> {
+    return await fetchJson<FMSerialized>(`${PATHS.factorizationMachines}/${name}.json`);
 }
 
-export async function saveRawFactorizationMachine(path: string, data: FMSerialized): Promise<void> {
-    await putJson(path, data);
+export async function saveRawFactorizationMachine(name: string, data: FMSerialized): Promise<void> {
+    await putJson(`${PATHS.factorizationMachines}/${name}.json`, data);
 }
 
-export async function deleteRawFactorizationMachine(path: string): Promise<void> {
-    await deleteResource(path);
+export async function deleteRawFactorizationMachine(name: string): Promise<void> {
+    await deleteResource(`${PATHS.factorizationMachines}/${name}.json`);
 }

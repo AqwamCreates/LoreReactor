@@ -471,6 +471,7 @@ const MEDIA_DIR_PREFIXES = [
   'location_images/',
   'audio_track_audio/',
   'prompt_block_images/',
+  'factorization_machine_data/'
 ];
 
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
