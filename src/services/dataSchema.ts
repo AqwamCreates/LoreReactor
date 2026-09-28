@@ -321,7 +321,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "name": "string (required)",
     "description": "string (display only, NOT used as AI input)",
     ${worldParts.join(',\n    ')}
-  }`);
+    }`);
     }
 
     return `{\n${parts.join(',\n')}\n}`;
