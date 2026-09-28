@@ -10,6 +10,7 @@ import {
     buildCategoryConversions,
     buildCategoryConversionsWithLearning,
     recordCategoryCorrection,
+    learnFromManualEdits,
     DEFAULT_CONVERSIONS,
     TARGET_OPTIONS,
     type CategoryConversion,
@@ -244,6 +245,13 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         onCancelEditing();
     }, [onCancelEditing]);
 
+    const handleSaveEdit = useCallback(() => {
+        if (displayedMessage) {
+            learnFromManualEdits(displayedMessage.textContent, editDraft);
+        }
+        onSaveEdit();
+    }, [displayedMessage, editDraft, onSaveEdit]);
+
     const bgStyle: React.CSSProperties = locationBackgroundUrl
         ? { backgroundImage: `url(${locationBackgroundUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
         : { background: 'linear-gradient(to bottom, #1a1a2e, #16213e)' };
@@ -368,7 +376,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                         {isEditingLastSpeaker ? (
                             <>
                                 <button type="button" className="vn-toolbar-btn vn-toolbar-cancel" onClick={handleCancelEditing} title="Cancel Edit">✕</button>
-                                <button type="button" className="vn-toolbar-btn vn-toolbar-confirm" onClick={onSaveEdit} title="Save Edit">💾</button>
+                                <button type="button" className="vn-toolbar-btn vn-toolbar-confirm" onClick={handleSaveEdit} title="Save Edit">💾</button>
                                 <button type="button" className="vn-toolbar-btn vn-toolbar-warn" onClick={onRegenerateFromEdit} title="Save & Regenerate">↻</button>
                             </>
                         ) : (

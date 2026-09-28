@@ -268,11 +268,6 @@ export function buildCategoryConversions(segments: DetectedSegment[]): CategoryC
 
 // ─── Bayesian Learning UI Bridges ───────────────────────────────────
 
-/**
- * Builds the category conversions for the UI panel, but overrides the
- * default targets with learned preferences if the engine's confidence
- * meets the auto-apply threshold.
- */
 export function buildCategoryConversionsWithLearning(text: string, segments: DetectedSegment[]): CategoryConversion[] {
     const baseConversions = buildCategoryConversions(segments);
     const engine = getFormatPreferenceEngine();
@@ -290,10 +285,6 @@ export function buildCategoryConversionsWithLearning(text: string, segments: Det
     });
 }
 
-/**
- * Records a correction for ALL segments of a specific category in the text.
- * Call this when the user changes a target format in the UI dropdown.
- */
 export function recordCategoryCorrection(
     text: string,
     category: FormatCategory,
@@ -307,6 +298,45 @@ export function recordCategoryCorrection(
         if (seg.category === category) {
             const context = engine.extractContext(text, seg.start, seg.end, segments);
             engine.recordCorrection(category, target, context);
+        }
+    }
+}
+
+/**
+ * Compares the original AI text with the user's final edited text.
+ * If the user manually wrapped or unwrapped text (e.g., typed quotes 
+ * around a plain sentence, or removed asterisks from a word), this 
+ * function detects the formatting change and trains the engine on 
+ * the specific context where the edit occurred.
+ */
+export function learnFromManualEdits(originalText: string, finalText: string): void {
+    if (originalText === finalText) return;
+
+    const originalSegments = detectFormatSegments(originalText);
+    const finalSegments = detectFormatSegments(finalText);
+    const engine = getFormatPreferenceEngine();
+
+    for (const origSeg of originalSegments) {
+        const origCore = origSeg.innerText.trim();
+        if (!origCore) continue;
+
+        // Look for the exact same text in the final output, but with a different format
+        const matchingFinal = finalSegments.find(fSeg => {
+            const finalCore = fSeg.innerText.trim();
+            return finalCore === origCore && fSeg.category !== origSeg.category;
+        });
+
+        if (matchingFinal) {
+            // The user manually changed the formatting of this specific text!
+            const context = engine.extractContext(
+                originalText, 
+                origSeg.start, 
+                origSeg.end, 
+                originalSegments
+            );
+            
+            // Record the transition (e.g., 'plain' -> 'quotes', or 'italics' -> 'plain')
+            engine.recordCorrection(origSeg.category, matchingFinal.category, context);
         }
     }
 }

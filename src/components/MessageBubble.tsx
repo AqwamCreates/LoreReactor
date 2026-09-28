@@ -10,6 +10,7 @@ import {
     buildCategoryConversions,
     buildCategoryConversionsWithLearning,
     recordCategoryCorrection,
+    learnFromManualEdits,
     TARGET_OPTIONS,
     type CategoryConversion,
     type FormatCategory,
@@ -186,6 +187,12 @@ export const MessageBubble = React.memo(function MessageBubble({
         onCancelEditing();
     }, [onCancelEditing]);
 
+    const handleSaveEdit = React.useCallback(() => {
+        // Learn from any manual formatting additions/removals before saving
+        learnFromManualEdits(message.textContent, editDraft);
+        onSaveEdit();
+    }, [message.textContent, editDraft, onSaveEdit]);
+
     const rowClass = [
         'message-row',
         viewMode === 'cinematic' ? '' : isLocalProtagonist ? 'message-right' : 'message-left',
@@ -355,7 +362,7 @@ export const MessageBubble = React.memo(function MessageBubble({
 
                                 <button
                                     type="button"
-                                    onClick={onSaveEdit}
+                                    onClick={handleSaveEdit}
                                     className="edit-button edit-button-save"
                                 >
                                     Save
