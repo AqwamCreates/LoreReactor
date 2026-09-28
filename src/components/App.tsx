@@ -24,8 +24,6 @@ import { useToast } from '../context/ToastContext';
 import { 
     saveRawInteractionData, 
     loadRawInteractionData,
-    loadRawSessionData,
-    saveRawSessionData,
     loadRawMultiplayerJoinData,
     saveRawMultiplayerJoinData,
     deleteMultiplayerJoinData,
@@ -53,7 +51,7 @@ import { useViewAssets } from '../hooks/useViewAssets';
 import { useMessageToolbar } from '../hooks/useMessageToolbar';
 import { useAppModals } from '../hooks/useAppModals';
 import { useActiveExtensions } from '../hooks/useActiveExtensions';
-import { useSessionStore } from '../hooks/useSessionStore';
+import { useSessionStore } from '../store/useSessionStore';
 import { ActionMenu } from './ActionMenu';
 import { AppModals } from './AppModals';
 import { ChatInput } from './ChatInput';
@@ -164,10 +162,17 @@ function App() {
 
     const requestBorrowedModelReference = useRef<() => Promise<LanguageModel | null>>(async () => null);
 
+    // ─── Session Store Selectors & Actions ───────────────────────────
     const currentAccountId = useSessionStore(state => state.currentAccountId);
     const multiplayerData = useSessionStore(state => state.multiplayerData);
     const defaultCharacterId = useSessionStore(state => state.defaultCharacterId);
     const selectedBudgetStrategyId = useSessionStore(state => state.selectedBudgetStrategyId);
+
+    const storeSetCurrentAccountId = useSessionStore(s => s.setCurrentAccountId);
+    const storeSetDefaultCharacterId = useSessionStore(s => s.setDefaultCharacterId);
+    const storeSetSelectedBudgetStrategyId = useSessionStore(s => s.setSelectedBudgetStrategyId);
+    const storeSetActiveChatId = useSessionStore(s => s.setActiveChatId);
+    const storeSetSelectedModelId = useSessionStore(s => s.setSelectedModelId);
 
     // ─── Join Session State ──────────────────────────────────────────
     const [joinSessionId, setJoinSessionId] = useState<string | null>(null);
@@ -339,16 +344,6 @@ function App() {
 
     const currentCharacter = isMultiplayerClient && joinProtagonist ? joinProtagonist : localProtagonist;
 
-    const setDefaultCharacterId = useCallback((identifier: string | null) => {
-        useSessionStore.setState({ defaultCharacterId: identifier });
-        saveRawSessionData({ defaultCharacterId: identifier });
-    }, []);
-
-    const setSelectedBudgetStrategyId = useCallback((identifier: string | null) => {
-        useSessionStore.setState({ selectedBudgetStrategyId: identifier });
-        saveRawSessionData({ selectedBudgetStrategyId: identifier });
-    }, []);
-
     const [maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens, setMaximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens] = useState<number>(0);
     const [isRecording, setIsRecording] = useState(false);
     const [viewMode, setViewMode] = useState<'ladder' | 'cinematic' | 'vn'>('ladder');
@@ -407,7 +402,9 @@ function App() {
         interactionData, allCharacters, activeExtensionIds, setActiveExtensionIds,
         allProfiles, allBudgetStrategies, selectedBudgetStrategyId,
         setInteractionData, setCurrentCharacter, setActiveBudgetStrategy,
-        setSelectedBudgetStrategyId, setDefaultCharacterId, loadFullCharacter, addToast,
+        setSelectedBudgetStrategyId: storeSetSelectedBudgetStrategyId,
+        setDefaultCharacterId: storeSetDefaultCharacterId,
+        loadFullCharacter, addToast,
     });
 
     const isMultiplayerChat = isMultiplayerClient || !!(multiplayerData && interactionData?.id && multiplayerData.interactionDataIds.includes(interactionData.id));
@@ -530,24 +527,26 @@ function App() {
 
     useEffect(() => { void selectedModelId; void runningModels; getLanguageModelEngine().clearTokenCache(); }, [selectedModelId, runningModels]);
     
+    // Persist active chat ID via store action (replaces old saveRawSessionData effect)
     useEffect(() => {
         if (isMultiplayerClient) return;
-        if (interactionData?.id) saveRawSessionData({ activeChatId: interactionData.id });
-    }, [interactionData?.id, isMultiplayerClient]);
+        if (interactionData?.id) storeSetActiveChatId(interactionData.id);
+    }, [interactionData?.id, isMultiplayerClient, storeSetActiveChatId]);
     
+    // Persist selected model ID via store action (replaces old saveRawSessionData effect)
     useEffect(() => { 
-        saveRawSessionData({ selectedModelId: selectedModelId ?? null });
-    }, [selectedModelId]);
+        storeSetSelectedModelId(selectedModelId ?? null);
+    }, [selectedModelId, storeSetSelectedModelId]);
 
     useEffect(() => {
         if (!selectedBudgetStrategyId || allBudgetStrategies.length === 0) return;
         const strategy = allBudgetStrategies.find(strategyItem => strategyItem.id === selectedBudgetStrategyId);
         if (!strategy) { 
-            saveRawSessionData({ selectedBudgetStrategyId: null });
+            storeSetSelectedBudgetStrategyId(null);
             return; 
         }
         setActiveBudgetStrategy(strategy);
-    }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
+    }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy, storeSetSelectedBudgetStrategyId]);
 
     useEffect(() => {
         if (!selectedModelId || allModels.length === 0) return;
@@ -561,8 +560,8 @@ function App() {
     useEffect(() => {
         if (isMultiplayerClient) return;
         if (defaultCharacterId && allCharacters.length > 0) {
-            const defaultCharacter = allCharacters.find(character => character.id === defaultCharacterId);
-            if (defaultCharacter && currentCharacter?.id !== defaultCharacter.id) setCurrentCharacter(defaultCharacter);
+            const defaultChar = allCharacters.find(character => character.id === defaultCharacterId);
+            if (defaultChar && currentCharacter?.id !== defaultChar.id) setCurrentCharacter(defaultChar);
         }
     }, [defaultCharacterId, allCharacters, currentCharacter?.id, setCurrentCharacter, isMultiplayerClient]);
 
@@ -1107,8 +1106,7 @@ function App() {
                     onDeleteMemory={deleteMemory} onDeleteAccount={entityModals.getModalProperties('account').delete}
                     onToggleAccount={(identifier: string) => {
                         const newAccountId = currentAccountId === identifier ? null : identifier;
-                        useSessionStore.setState({ currentAccountId: newAccountId });
-                        saveRawSessionData({ currentAccountId: newAccountId });
+                        storeSetCurrentAccountId(newAccountId);
                         addToast(newAccountId ? `Activated account "${allAccounts.find(account => account.id === newAccountId)?.name || newAccountId}"` : 'Deactivated account.', newAccountId ? 'success' : 'info');
                     }}
                     onDeleteMultiplayerData={entityModals.getModalProperties('multiplayerData').delete}

@@ -1,6 +1,7 @@
 // src/store/useSessionStore.ts
 import { create } from 'zustand';
 import type { Character, InteractionData, BudgetStrategy, LanguageModel, BudgetData, MultiplayerData } from '../types';
+import { loadRawSessionData, saveRawSessionData } from '../storage/serverStorage';
 
 interface SessionState {
     // ── Core chat state ──────────────────────────────────────────────
@@ -41,57 +42,116 @@ interface SessionState {
     defaultCharacterId: string | null;
     activeExtensionIds: string[];
 
-    // ── Actions ──────────────────────────────────────────────────────
+    // ── Bootstrap state ──────────────────────────────────────────────
+    sessionLoaded: boolean;
+
+    // ── Actions (update store + persist to server atomically) ────────
     setCurrentAccountId: (id: string | null) => void;
     setSelectedBudgetStrategyId: (id: string | null) => void;
     setDefaultCharacterId: (id: string | null) => void;
     setActiveExtensionIds: (ids: string[]) => void;
+    setActiveChatId: (id: string | null) => void;
+    setSelectedModelId: (id: string | null) => void;
 }
 
-export const useSessionStore = create<SessionState>()((set) => ({
-    // ── Core chat state ──────────────────────────────────────────────
-    interactionData: null,
-    currentCharacter: null,
+export const useSessionStore = create<SessionState>()((set) => {
+    // Fire-and-forget async bootstrap
+    loadRawSessionData()
+        .then((session) => {
+            const updates: Partial<SessionState> = { sessionLoaded: true };
+            if (session.selectedModelId !== undefined) updates.lastSelectedModelId = session.selectedModelId;
+            if (session.selectedBudgetStrategyId !== undefined) updates.selectedBudgetStrategyId = session.selectedBudgetStrategyId;
+            if (session.defaultCharacterId !== undefined) updates.defaultCharacterId = session.defaultCharacterId;
+            if (session.currentAccountId !== undefined) updates.currentAccountId = session.currentAccountId;
+            set(updates);
+        })
+        .catch((e) => {
+            console.warn('[useSessionStore] Failed to load session data:', e);
+            set({ sessionLoaded: true });
+        });
 
-    // ── Generation state ─────────────────────────────────────────────
-    isLoading: false,
-    streamingText: '',
-    streamingCharacter: null,
-    currentCharacterExpression: 'neutral',
+    return {
+        // ── Core chat state ──────────────────────────────────────────
+        interactionData: null,
+        currentCharacter: null,
 
-    // ── Model state ──────────────────────────────────────────────────
-    selectedModel: null,
-    runningModels: {},
-    activeStrategy: null,
-    lastSelectedModelId: null,
+        // ── Generation state ─────────────────────────────────────────
+        isLoading: false,
+        streamingText: '',
+        streamingCharacter: null,
+        currentCharacterExpression: 'neutral',
 
-    // ── Budget state ─────────────────────────────────────────────────
-    budgetData: null,
+        // ── Model state ──────────────────────────────────────────────
+        selectedModel: null,
+        runningModels: {},
+        activeStrategy: null,
+        lastSelectedModelId: null,
 
-    // ── Stats ────────────────────────────────────────────────────────
-    latency: 0,
-    timeToFirstToken: 0,
-    numberOfCacheInvalidations: 0,
-    numberOfRequests: 0,
-    totalCost: 0,
-    costWithoutCacheMisses: 0,
-    numberOfTokens: 0,
-    sessionStartTimestamp: null,
+        // ── Budget state ─────────────────────────────────────────────
+        budgetData: null,
 
-    // ── Multiplayer state ────────────────────────────────────────────
-    // Initialized as null — populated asynchronously by loadRawSessionData()
-    currentAccountId: null,
-    multiplayerData: null,
+        // ── Stats ────────────────────────────────────────────────────
+        latency: 0,
+        timeToFirstToken: 0,
+        numberOfCacheInvalidations: 0,
+        numberOfRequests: 0,
+        totalCost: 0,
+        costWithoutCacheMisses: 0,
+        numberOfTokens: 0,
+        sessionStartTimestamp: null,
 
-    // ── UI preferences ───────────────────────────────────────────────
-    // Initialized as null/empty — populated asynchronously by loadRawSessionData()
-    selectedBudgetStrategyId: null,
-    defaultCharacterId: null,
-    activeExtensionIds: [],
+        // ── Multiplayer state ────────────────────────────────────────
+        currentAccountId: null,
+        multiplayerData: null,
 
-    // ── Actions ──────────────────────────────────────────────────────
-    setCurrentAccountId: (id) => set({ currentAccountId: id }),
-    setSelectedBudgetStrategyId: (id) => set({ selectedBudgetStrategyId: id }),
-    setDefaultCharacterId: (id) => set({ defaultCharacterId: id }),
-    setActiveExtensionIds: (ids) => set({ activeExtensionIds: ids }),
-}));
+        // ── UI preferences ───────────────────────────────────────────
+        selectedBudgetStrategyId: null,
+        defaultCharacterId: null,
+        activeExtensionIds: [],
+
+        // ── Bootstrap state ──────────────────────────────────────────
+        sessionLoaded: false,
+
+        // ── Actions ──────────────────────────────────────────────────
+        setCurrentAccountId: (id) => {
+            set({ currentAccountId: id });
+            saveRawSessionData({ currentAccountId: id }).catch(e =>
+                console.warn('Failed to persist currentAccountId:', e)
+            );
+        },
+
+        setSelectedBudgetStrategyId: (id) => {
+            set({ selectedBudgetStrategyId: id });
+            saveRawSessionData({ selectedBudgetStrategyId: id }).catch(e =>
+                console.warn('Failed to persist selectedBudgetStrategyId:', e)
+            );
+        },
+
+        setDefaultCharacterId: (id) => {
+            set({ defaultCharacterId: id });
+            saveRawSessionData({ defaultCharacterId: id }).catch(e =>
+                console.warn('Failed to persist defaultCharacterId:', e)
+            );
+        },
+
+        setActiveExtensionIds: (ids) => {
+            set({ activeExtensionIds: ids });
+            // Extensions are not in SessionData — no server persist needed
+        },
+
+        setActiveChatId: (id) => {
+            // activeChatId is not stored in Zustand (consumed by useChatRestoration
+            // via loadRawSessionData cache), but we still need to persist it
+            saveRawSessionData({ activeChatId: id }).catch(e =>
+                console.warn('Failed to persist activeChatId:', e)
+            );
+        },
+
+        setSelectedModelId: (id) => {
+            set({ lastSelectedModelId: id });
+            saveRawSessionData({ selectedModelId: id }).catch(e =>
+                console.warn('Failed to persist selectedModelId:', e)
+            );
+        },
+    };
+});

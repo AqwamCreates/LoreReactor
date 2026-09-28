@@ -1609,10 +1609,11 @@ async function deletePreferences(endpoint: string): Promise<void> {
 // ─── Session Preferences Storage ────────────────────────────────────
 
 interface SessionData {
-    activeChatId?: string | null;
+    defaultCharacterId?: string | null;
     selectedModelId?: string | null;
     selectedBudgetStrategyId?: string | null;
-    defaultCharacterId?: string | null;
+    activeChatId?: string | null;
+    activeExtensionIds?: string[]
     currentAccountId?: string | null;
 }
 
