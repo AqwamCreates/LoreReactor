@@ -211,7 +211,7 @@ export class BudgetStrategyEngine {
         // Fire-and-forget async load. First predictions may use fresh FMs
         // (predicting ~0.5), which is harmless since ranking falls back to
         // tiers + aggregate when FM confidence is low.
-        this.factorizationMachineLoadPromise = this.loadFMsFromStorage();
+        this.factorizationMachineLoadPromise = this.loadFactorizationMachinesFromStorage();
     }
 
     // ── Setters ───────────────────────────────────────────────────────
@@ -255,7 +255,7 @@ export class BudgetStrategyEngine {
         }
     }
 
-    private async loadFMsFromStorage(): Promise<void> {
+    private async loadFactorizationMachinesFromStorage(): Promise<void> {
         try {
             const [censorRaw, acceptRaw, rateRaw] = await Promise.all([
                 loadRawFactorizationMachine("censorship"),
