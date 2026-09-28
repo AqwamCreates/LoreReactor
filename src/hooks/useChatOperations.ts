@@ -4,6 +4,7 @@ import type { Character, InteractionData, RawInteractionData } from '../types';
 import { saveRawInteractionData, loadRawInteractionData, saveRawSessionData } from '../storages/serverStorage';
 import { clearFetchCache } from '../services/linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+import { isChatSaveable } from '../utilities/chatSaveHelper';
 
 const tokenEngine = getLanguageModelEngine();
 
@@ -34,10 +35,12 @@ export function useChatOperations(options: UseChatOperationsOptions) {
     const [editTitleValue, setEditTitleValue] = useState('');
 
     const safeAutoSave = useCallback(async (data: InteractionData | null) => {
-        if (!data) return;
-        const msgs = data.interactionHistory.filter(m => m.messageType === 'chat');
-        if (msgs.length === 0 && (data.numberOfMessages ?? 0) > 0) return;
-        try { await saveRawInteractionData(data); } catch (e) { console.error('Auto-save failed:', e); }
+        if (!data || !isChatSaveable(data)) return;
+        try { 
+            await saveRawInteractionData(data); 
+        } catch (e) { 
+            console.error('Auto-save failed:', e); 
+        }
     }, []);
 
     const handleSwitchChat = useCallback(async (id: string) => {

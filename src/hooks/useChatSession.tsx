@@ -12,7 +12,7 @@ import { consumeChatStaminaForMessage } from './characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from './locationLogic';
 import { detectName } from './nameDetection';
 import { getFilteredChatMessages } from './promptLogic';
-import { saveRawInteractionData, loadRawBudgetData, saveRawBudgetData } from '../storages/serverStorage';
+import { loadRawBudgetData, saveRawBudgetData } from '../storages/serverStorage';
 import { useThrottledStream } from './useThrottledStream';
 import { useCharacterResponseLock } from './useCharacterResponseLock';
 import { useAmbientNarration } from './useAmbientNarration';
@@ -528,7 +528,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 updatedData = processPendingToolActions(updatedData, allCharactersRef.current, { onToast: addToast });
                 
                 setInteractionData(updatedData);
-                await saveRawInteractionData(updatedData);
 
                 if (isMultiplayerClient) {
                     onMessageBroadcastRef.current?.(slashMessage);
@@ -607,7 +606,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 }
 
                 setInteractionData(td);
-                await saveRawInteractionData(td);
             } finally {
                 releaseLock();
             }
@@ -677,7 +675,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 }
 
                 setInteractionData(td);
-                await saveRawInteractionData(td);
             }
 
             // Set up streaming broadcast tracking
@@ -723,7 +720,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             if (pendingPartialRef.current) {
                 const fd = await applyPendingPartial(ud, activeCharacter.id);
-                await saveRawInteractionData(fd);
                 setInteractionData(fd);
                 broadcastNewMessages(preTurnCount, fd);
                 return;
@@ -733,7 +729,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
-                await saveRawInteractionData(ud);
                 setInteractionData(ud);
 
                 // Broadcast finalized AI messages
@@ -762,11 +757,9 @@ export function useChatSession(options: UseChatSessionOptions) {
                 if (enableAmbientNarration) {
                     const ad = await generateAmbientNarration(ud, ctrl.signal);
                     const sd = ad || ud;
-                    await saveRawInteractionData(sd);
                     setInteractionData(sd);
                     broadcastNewMessages(preTurnCount, sd);
                 } else {
-                    await saveRawInteractionData(ud);
                     setInteractionData(ud);
                     broadcastNewMessages(preTurnCount, ud);
                 }
@@ -795,25 +788,18 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     // Trigger host response when a peer sends a message
     const triggerHostResponse = useCallback(async () => {
-        console.log('[MP] triggerHostResponse called');
         const currentState = getState();
-        if (!currentState.interactionData || !currentState.currentCharacter) {
-            console.log('[MP] triggerHostResponse: No interactionData or currentCharacter');
-            return;
-        }
+        if (!currentState.interactionData || !currentState.currentCharacter) return;
         if (!acquireLock()) { 
-            console.warn('[MP] Host: Already generating, queueing peer response'); 
             pendingHostResponseRef.current = true;
             return; 
         }
         if (!currentState.activeStrategy && !isModelReadyForGeneration()) { 
-            console.log('[MP] triggerHostResponse: Model not ready');
             addToast('Model not ready.', 'error'); 
             releaseLock(); 
             return; 
         }
 
-        console.log('[MP] triggerHostResponse: Starting generation...');
         const ctrl = new AbortController();
         abortControllerRef.current = ctrl;
         wasStoppedRef.current = false;
@@ -829,7 +815,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
-            // Track request for FM metadata
             requestTimestampsRef.current.push(Date.now());
             const metadata: RequestMetadata = {
                 numberOfMessages: td.interactionHistory.length,
@@ -839,7 +824,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             const turnResult = await chatEngine.runTurn(td, ctrl, undefined, metadata);
             let ud = turnResult.interactionData;
 
-            // Store context for potential regeneration correction
             if (turnResult.promptText) {
                 const currentModelId = useSessionStore.getState().selectedModelId;
                 if (currentModelId) {
@@ -853,7 +837,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             if (pendingPartialRef.current) {
                 const fd = await applyPendingPartial(ud, currentState.currentCharacter.id);
-                await saveRawInteractionData(fd);
                 setInteractionData(fd);
                 broadcastNewMessages(preTurnCount, fd);
                 return;
@@ -862,7 +845,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
-                await saveRawInteractionData(ud);
                 setInteractionData(ud);
 
                 broadcastNewMessages(preTurnCount, ud);
@@ -888,11 +870,9 @@ export function useChatSession(options: UseChatSessionOptions) {
                 if (enableAmbientNarration) {
                     const ad = await generateAmbientNarration(ud, ctrl.signal);
                     const sd = ad || ud;
-                    await saveRawInteractionData(sd);
                     setInteractionData(sd);
                     broadcastNewMessages(preTurnCount, sd);
                 } else {
-                    await saveRawInteractionData(ud);
                     setInteractionData(ud);
                     broadcastNewMessages(preTurnCount, ud);
                 }
@@ -932,7 +912,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         if (isMultiplayerClient) {
             try {
-                // Detect names for protagonist from filtered messages
                 const filteredMessages = getFilteredChatMessages(currentInteractionData, activeProtagonist.id, allPromptBlocksRef.current || []);
                 const knownCharacterNames = detectName(activeProtagonist, filteredMessages);
 
@@ -942,7 +921,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 onMessageBroadcastRef.current?.(chatMessage);
 
                 setInteractionData(td);
-                await saveRawInteractionData(td);
             } finally {
                 releaseLock();
             }
@@ -960,7 +938,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         isAtBottomRef.current = true;
 
         try {
-            // Detect names for protagonist from filtered messages
             const filteredMessages = getFilteredChatMessages(currentInteractionData, protagonist.id, allPromptBlocksRef.current || []);
             const knownCharacterNames = detectName(protagonist, filteredMessages);
 
@@ -970,13 +947,11 @@ export function useChatSession(options: UseChatSessionOptions) {
             onMessageBroadcastRef.current?.(chatMessage);
 
             setInteractionData(td);
-            await saveRawInteractionData(td);
 
             const preTurnCount = td.interactionHistory.length;
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
-            // Track request for FM metadata
             requestTimestampsRef.current.push(Date.now());
             const metadata: RequestMetadata = {
                 numberOfMessages: td.interactionHistory.length,
@@ -986,7 +961,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             const turnResult = await chatEngine.runTurn(td, ctrl, undefined, metadata);
             let ud = turnResult.interactionData;
 
-            // Store context for potential regeneration correction
             if (turnResult.promptText) {
                 const currentModelId = useSessionStore.getState().selectedModelId;
                 if (currentModelId) {
@@ -1000,7 +974,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             if (pendingPartialRef.current) {
                 const fd = await applyPendingPartial(ud, protagonist.id);
-                await saveRawInteractionData(fd);
                 setInteractionData(fd);
                 broadcastNewMessages(preTurnCount, fd);
                 return;
@@ -1009,7 +982,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
-                await saveRawInteractionData(ud);
                 setInteractionData(ud);
 
                 broadcastNewMessages(preTurnCount, ud);
@@ -1031,11 +1003,9 @@ export function useChatSession(options: UseChatSessionOptions) {
                 if (enableAmbientNarration) {
                     const ad = await generateAmbientNarration(ud, ctrl.signal);
                     const sd = ad || ud;
-                    await saveRawInteractionData(sd);
                     setInteractionData(sd);
                     broadcastNewMessages(preTurnCount, sd);
                 } else {
-                    await saveRawInteractionData(ud);
                     setInteractionData(ud);
                     broadcastNewMessages(preTurnCount, ud);
                 }
@@ -1158,7 +1128,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         isAtBottomRef.current = true;
 
         try {
-            // ─── INCREMENTAL MARKOV SYNC ────────────────────────────────
             const targetCharResume = char;
             const interactionDataIdResume = currentInteractionData?.id || 'unknown';
             const charHistoryResume = currentInteractionData?.interactionHistory.filter(
@@ -1170,7 +1139,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 targetCharResume.id,
                 interactionDataIdResume
             );
-            // ────────────────────────────────────────────────────────────
 
             const result = await chatEngine.handleServerResponse(
                 currentInteractionData, char, ctrl.signal,
@@ -1185,8 +1153,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 streamingCharacter: null,
                 streamingText: '',
             });
-
-            await saveRawInteractionData(finalized);
 
             const finalizedMsg = finalized.interactionHistory.find(m => m.id === messageId);
             if (finalizedMsg) onMessageBroadcastRef.current?.(finalizedMsg);
@@ -1260,12 +1226,10 @@ export function useChatSession(options: UseChatSessionOptions) {
         const ti = history.findIndex(m => m.id === messageId);
         if (ti === -1) { addToast('Message not found.', 'error'); releaseLock(); return; }
         
-        // ─── RECORD REGENERATION FOR QUALITY TRACKING & FM CORRECTION ──────────────
         const lastModelId = useSessionStore.getState().selectedModelId;
         const ctx = lastTurnContextRef.current;
         
         if (lastModelId && ctx && ctx.modelId === lastModelId) {
-            // We have the context from the previous turn: correct the FM label AND increment aggregate
             try {
                 const budgetEngine = getBudgetStrategyEngine();
                 budgetEngine.recordRegeneration(lastModelId, ctx.prompt, ctx.metadata);
@@ -1279,8 +1243,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 console.warn('Failed to record regeneration:', e);
             }
         } else if (lastModelId) {
-            // Context lost (e.g. page refresh): just increment aggregate counter manually
-            // We can't correct the FM without the prompt/metadata, so we skip FM training
             try {
                 const budgetEngine = getBudgetStrategyEngine();
                 const bd = budgetEngine.getBudgetData();
@@ -1294,7 +1256,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 console.warn('Failed to record regeneration (fallback):', e);
             }
         }
-        // ────────────────────────────────────────────────────────────
 
         const tm = history[ti];
         const isProtagonistMessage = protagonistIds.has(tm.character.id);
@@ -1305,7 +1266,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         const td: InteractionData = { ...currentInteractionData, interactionHistory: history.slice(0, trimIdx), lastUpdatedTimestamp: Date.now() };
         setInteractionData(td);
-        await saveRawInteractionData(td);
 
         resetStream();
         setStreamingState(null, '');
@@ -1320,14 +1280,12 @@ export function useChatSession(options: UseChatSessionOptions) {
         streamingMessageIdRef.current = null;
 
         try {
-            // Track request for FM metadata (regeneration is a new request)
             requestTimestampsRef.current.push(Date.now());
             const metadata: RequestMetadata = {
                 numberOfMessages: td.interactionHistory.length,
                 numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
             };
 
-            // ─── INCREMENTAL MARKOV SYNC ────────────────────────────────
             const targetCharRegen = protagonists[0];
             if (targetCharRegen) {
                 const interactionDataIdRegen = currentInteractionData?.id || 'unknown';
@@ -1341,13 +1299,11 @@ export function useChatSession(options: UseChatSessionOptions) {
                     interactionDataIdRegen
                 );
             }
-            // ────────────────────────────────────────────────────────────
 
             const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks, metadata);
             let ud = turnResult.interactionData;
             const primaryProtagonistId = protagonists[0]?.id ?? '';
 
-            // Store context for potential future regeneration
             if (turnResult.promptText) {
                 const currentModelId = useSessionStore.getState().selectedModelId;
                 if (currentModelId) {
@@ -1359,12 +1315,16 @@ export function useChatSession(options: UseChatSessionOptions) {
                 }
             }
 
-            if (pendingPartialRef.current) { const fd = await applyPendingPartial(ud, primaryProtagonistId); await saveRawInteractionData(fd); setInteractionData(fd); broadcastNewMessages(preCount, fd); return; }
+            if (pendingPartialRef.current) { 
+                const fd = await applyPendingPartial(ud, primaryProtagonistId); 
+                setInteractionData(fd); 
+                broadcastNewMessages(preCount, fd); 
+                return; 
+            }
 
             ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
 
             if (ud.interactionHistory.length > preCount) {
-                await saveRawInteractionData(ud);
                 setInteractionData(ud);
 
                 broadcastNewMessages(preCount, ud);
@@ -1388,11 +1348,9 @@ export function useChatSession(options: UseChatSessionOptions) {
                 if (enableAmbientNarration) {
                     const ad = await generateAmbientNarration(ud, ctrl.signal);
                     const sd = ad || ud;
-                    await saveRawInteractionData(sd);
                     setInteractionData(sd);
                     broadcastNewMessages(preCount, sd);
                 } else {
-                    await saveRawInteractionData(ud);
                     setInteractionData(ud);
                     broadcastNewMessages(preCount, ud);
                 }

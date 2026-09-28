@@ -1,7 +1,8 @@
 // src/hooks/useChatAutoSave.ts
 import { useRef, useEffect } from 'react';
-import type { InteractionData, ChatMessage, RawInteractionData, Character } from '../types';
+import type { InteractionData, ChatMessage, RawInteractionData } from '../types';
 import { saveRawInteractionData } from '../storages/serverStorage';
+import { isChatSaveable } from '../utilities/chatSaveHelper';
 
 /**
  * Robustly checks if an array of entities has changed.
@@ -50,22 +51,10 @@ export function useChatAutoSave(options: UseChatAutoSaveOptions) {
 
     useEffect(() => {
         if (!interactionData || !interactionData.id) return;
-        
-        const historyLength = interactionData.interactionHistory?.length ?? 0;
-        const protagonistIds = new Set(interactionData.protagonists?.map((p: Character) => p.id) ?? []);
-        const nonProtagonistParticipants = interactionData.participants.filter((p: Character) => !protagonistIds.has(p.id));
-        
-        // STRICT RULE: Do not persist unless the interaction data has actual user-generated or added content.
-        // Merely having a protagonist, participants, or a default profile does NOT count as content.
-        const hasContent = 
-            historyLength > 0 ||
-            nonProtagonistParticipants.length > 0 ||
-            (interactionData.contexts?.length ?? 0) > 0 ||
-            (interactionData.locations?.length ?? 0) > 0 ||
-            (interactionData.audioTracks?.length ?? 0) > 0;
 
-        // If the chat is truly empty, abort the save process entirely.
-        if (!hasContent) return;
+        // STRICT RULE: Abort if the chat is pristine/empty.
+        // Merely having a protagonist or default profile does NOT count as content.
+        if (!isChatSaveable(interactionData)) return;
 
         const prev = prevDataRef.current;
 

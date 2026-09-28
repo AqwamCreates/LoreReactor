@@ -1,7 +1,7 @@
 // src/hooks/useEntityToggles.ts
 import { useCallback } from 'react';
 import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy, InteractionData, MultiplayerData } from '../types';
-import { saveRawInteractionData, loadRawContext, loadRawLocation, loadRawAudioTrack } from '../storages/serverStorage';
+import { loadRawContext, loadRawLocation, loadRawAudioTrack } from '../storages/serverStorage';
 import { assignInitialLocationsIfNeeded } from './locationLogic';
 import { useSessionStore } from './useSessionStore';
 import { createDefaultMultiplayerData } from '../dictionaries/defaults';
@@ -222,19 +222,17 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         }
     }, [selectedBudgetStrategyId, allBudgetStrategies, setSelectedBudgetStrategyId, setActiveBudgetStrategy, addToast]);
 
-    const handleActivateProfile = useCallback(async (pid: string) => {
+    const handleActivateProfile = useCallback((pid: string) => {
         if (!interactionData) return;
         if (interactionData.Profile?.id === pid) {
             const uc = { ...interactionData, Profile: undefined, lastUpdatedTimestamp: Date.now() };
             setInteractionData(uc);
-            await saveRawInteractionData(uc);
             addToast('Profile deactivated.', 'info');
         } else {
             const p = allProfiles.find(x => x.id === pid);
             if (!p) return;
             const uc = { ...interactionData, Profile: p, lastUpdatedTimestamp: Date.now() };
             setInteractionData(uc);
-            await saveRawInteractionData(uc);
             addToast(`Profile "${p.name}" activated!`, 'success');
         }
     }, [interactionData, allProfiles, setInteractionData, addToast]);

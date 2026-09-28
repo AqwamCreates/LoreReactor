@@ -2,7 +2,6 @@
 import type { Character, InteractionData, HistoryMessage, ChatMessage, InteractionMessage } from '../types';
 import { getEffectiveChatProbability, getEffectiveChatImpatienceSensitivity, generateChatStaminaForInteractionData, generateActionStaminaForInteractionData, consumeChatStaminaForMessage, consumeActionStaminaForMessage } from '../hooks/characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex, getReachableLocationsByCharacter, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
-import { saveRawInteractionData } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import {
     countParagraphs,
@@ -269,12 +268,7 @@ export class AutonomousSimulationEngine {
                 processedThisTick.add(speaker.id);
                 actionsThisTick++;
 
-                try {
-                    await saveRawInteractionData(workingData);
-                    setData(workingData);
-                } catch (e) {
-                    console.error('Failed to save autonomous speech:', e);
-                }
+                setData(workingData);
             } else {
                 // ─── ACTION PATH ───
                 const actionEligible = remaining.filter(p => {
@@ -358,12 +352,7 @@ export class AutonomousSimulationEngine {
                 processedThisTick.add(mover.id);
                 actionsThisTick++;
 
-                try {
-                    await saveRawInteractionData(workingData);
-                    setData(workingData);
-                } catch (e) {
-                    console.error('Failed to save autonomous movement:', e);
-                }
+                setData(workingData);
             }
         }
     }

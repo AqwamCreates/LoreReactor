@@ -2,7 +2,6 @@
 import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage } from '../types';
 import { getEffectiveChatProbability, consumeChatStaminaForMessage, consumeActionStaminaForMessage, generateActionStaminaForInteractionData, generateChatStaminaForInteractionData, getEffectiveChatImpatienceSensitivity } from '../hooks/characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex, getReachableLocationsByCharacter, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
-import { saveRawInteractionData } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import {
     countParagraphs,
@@ -66,8 +65,7 @@ export async function runTurnSequence(
     executor: TurnExecutor,
     abortController: AbortController,
     onSpeakerChange?: (char: Character | null) => void,
-    onTokenStream?: (text: string) => void,
-    onMessageSaved?: (data: InteractionData) => void
+    onTokenStream?: (text: string) => void
 ): Promise<{ interactionData: InteractionData; isCompleted: boolean } | null> {
 
     const profile = currentInteractionData.Profile;
@@ -209,13 +207,6 @@ export async function runTurnSequence(
             workingData = resultData;
             spokenThisSequence.add(speaker.id);
 
-            try {
-                await saveRawInteractionData(workingData);
-                if (onMessageSaved) onMessageSaved(workingData);
-            } catch (error) {
-                console.error("Failed to save intermediate message:", error);
-            }
-
             // If the last generation was incomplete, stop the sequence so caller can auto-resume
             if (!sequenceCompleted) break;
         } else {
@@ -304,13 +295,6 @@ export async function runTurnSequence(
             }
 
             actedThisSequence.add(mover.id);
-
-            try {
-                await saveRawInteractionData(workingData);
-                if (onMessageSaved) onMessageSaved(workingData);
-            } catch (e) {
-                console.error('Failed to save autonomous movement:', e);
-            }
         }
     }
 

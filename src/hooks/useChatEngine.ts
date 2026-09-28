@@ -163,7 +163,6 @@ export function useChatEngine(deps: EngineDependencies) {
             signal, 
             (char) => setStreamingState(char ?? null, ''), 
             () => {}, 
-            (data: InteractionData) => setInteractionData(data)
         );
 
         if (result) {
