@@ -1,4 +1,4 @@
-// src/storage/serverStorage.tsx
+// src/storages/serverStorage.tsx
 import type { 
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
   Character, RawCharacter, RawInteractionMessage, RawWhisperMessage, InteractionData, RawInteractionData,
@@ -1028,14 +1028,12 @@ async function buildInteractionDataShell(
   audioTrackMap?: Map<string, AudioTrack>,
 ): Promise<InteractionData | null> {
   
-  // Hydrate protagonists array from protagonistIds
   const protagonists: Character[] = (rawInteractionData.protagonistIds || [])
     .map(pid => charMap.get(pid) ?? createDeletedCharacterStub(pid));
 
   const participants = (rawInteractionData.participantIds || [])
     .map(pid => charMap.get(pid) ?? createDeletedCharacterStub(pid));
     
-  // Ensure all protagonists are also in participants list
   for (const protag of protagonists) {
     if (!participants.find(p => p.id === protag.id)) {
       participants.push(protag);
@@ -1120,13 +1118,11 @@ export async function loadRawInteractionData(
   if (existingCharShells && existingCharShells.length > 0) {
     for (const c of existingCharShells) charMap.set(c.id, c);
   } else {
-    // Collect all needed character IDs from both protagonistIds and participantIds
     const neededIds = [...new Set([
       ...(rawInteractionData.protagonistIds || []),
       ...(rawInteractionData.participantIds || []),
     ])];
     
-    // ISOLATION: Check main library first, fallback to isolated multiplayer storage
     const shells = await Promise.all(neededIds.map(async (cid) => {
         let shell = await loadCharacterShell(cid);
         if (!shell) shell = await loadRawMultiplayerCharacter(cid);
@@ -1502,7 +1498,9 @@ export async function deleteRawFactorizationMachine(name: string): Promise<void>
     await deleteResource(`${PATHS.factorizationMachines}/${name}.json`);
 }
 
-// ─── In-Memory Cache (persists until browser close) ────────────────
+// =============================================================================
+// IN-MEMORY CACHE & DEBOUNCED SAVE QUEUE
+// =============================================================================
 
 class PreferencesCache {
     private cache = new Map<string, unknown>();
@@ -1528,10 +1526,8 @@ class PreferencesCache {
 
 const preferencesCache = new PreferencesCache();
 
-// ─── Debounced Save Queue ──────────────────────────────────────────
-
 class SaveQueue {
-    private pendingSaves = new Map<string, { data: unknown; timer: ReturnType<typeof setTimeout> | null }>();
+    private pendingSaves = new Map<string, { data: unknown; timer: ReturnType<typeof setTimeout> | null; saveFn: (data: unknown) => Promise<void> }>();
     private readonly DEBOUNCE_MS = 500;
 
     enqueue(key: string, data: unknown, saveFn: (data: unknown) => Promise<void>): void {
@@ -1545,14 +1541,14 @@ class SaveQueue {
             if (pending) {
                 this.pendingSaves.delete(key);
                 try {
-                    await saveFn(pending.data);
+                    await pending.saveFn(pending.data);
                 } catch (error) {
                     console.error(`Failed to save ${key}:`, error);
                 }
             }
         }, this.DEBOUNCE_MS);
 
-        this.pendingSaves.set(key, { data, timer });
+        this.pendingSaves.set(key, { data, timer, saveFn });
     }
 
     clear(): void {
@@ -1561,11 +1557,25 @@ class SaveQueue {
         }
         this.pendingSaves.clear();
     }
+
+    async flush(): Promise<void> {
+        const promises: Promise<void>[] = [];
+        for (const [, pending] of this.pendingSaves) {
+            if (pending.timer) {
+                clearTimeout(pending.timer);
+                promises.push(pending.saveFn(pending.data));
+            }
+        }
+        this.pendingSaves.clear();
+        await Promise.all(promises);
+    }
 }
 
 const saveQueue = new SaveQueue();
 
-// ─── API Helpers ───────────────────────────────────────────────────
+// =============================================================================
+// PREFERENCES API HELPERS
+// =============================================================================
 
 async function fetchPreferences<T>(endpoint: string): Promise<T | null> {
     try {
@@ -1609,7 +1619,9 @@ async function deletePreferences(endpoint: string): Promise<void> {
     }
 }
 
-// ─── Session Preferences Storage ────────────────────────────────────
+// =============================================================================
+// SESSION PREFERENCES STORAGE (merges partial updates)
+// =============================================================================
 
 const SESSION_KEY = 'session_data';
 
@@ -1626,7 +1638,6 @@ export async function loadRawSessionData(): Promise<SessionData> {
 }
 
 export async function saveRawSessionData(data: Partial<SessionData>): Promise<void> {
-    // Load existing session data and merge
     const existing = preferencesCache.get<SessionData>(SESSION_KEY) || {};
     const merged: SessionData = { ...existing, ...data };
     
@@ -1636,6 +1647,7 @@ export async function saveRawSessionData(data: Partial<SessionData>): Promise<vo
         await savePreferences(`/${SESSION_KEY}`, saveData as SessionData);
     });
 }
+
 export async function deleteSessionData(): Promise<void> {
     preferencesCache.delete(SESSION_KEY);
 
@@ -1646,7 +1658,9 @@ export async function deleteSessionData(): Promise<void> {
     }
 }
 
-// ─── Multiplayer Join Data Storage ─────────────────────────────────
+// =============================================================================
+// MULTIPLAYER JOIN DATA STORAGE
+// =============================================================================
 
 const MULTIPLAYER_JOIN_KEY = 'multiplayer_join_data';
 
@@ -1680,7 +1694,9 @@ export async function deleteMultiplayerJoinData(): Promise<void> {
     }
 }
 
-// ─── Action Format Data Storage ─────────────────────────────────────
+// =============================================================================
+// ACTION FORMAT DATA STORAGE
+// =============================================================================
 
 const ACTION_FORMAT_KEY = 'action_format_data';
 
@@ -1714,7 +1730,9 @@ export async function deleteActionFormatData(): Promise<void> {
     }
 }
 
-// ─── Export cache utilities ─────────────────────────────────────────
+// =============================================================================
+// EXPORTED CACHE UTILITIES
+// =============================================================================
 
 export function clearPreferencesCache(): void {
     preferencesCache.clear();
@@ -1722,4 +1740,8 @@ export function clearPreferencesCache(): void {
 
 export function clearSaveQueue(): void {
     saveQueue.clear();
+}
+
+export async function flushSaveQueue(): Promise<void> {
+    await saveQueue.flush();
 }

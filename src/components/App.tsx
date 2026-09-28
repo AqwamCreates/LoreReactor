@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '../context/ToastContext';
-import { saveRawInteractionData, loadRawInteractionData } from '../storages/serverStorage';
+import { saveRawInteractionData, loadRawInteractionData, flushSaveQueue } from '../storages/serverStorage';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { useDisplayNameCache, resolveDelayedDisplayNameFromCache } from '../hooks/immersionLogic';
@@ -112,7 +112,7 @@ function App() {
     const extensions = useExtensionManager();
     const memories = useMemoryManager();
     const accounts = useAccountManager();
-    const mpDataManager = useMultiplayerDataManager();
+    const multiplayerDataManager = useMultiplayerDataManager();
 
     const activeExtensions = useActiveExtensions(extensions.extensions);
 
@@ -131,7 +131,7 @@ function App() {
         budgetStrategy: { saveFunction: budgetStrategies.saveStrategy, deleteFunction: budgetStrategies.deleteStrategy, entityLabel: 'Budget Strategy' },
         profile: { saveFunction: profiles.saveProfile, deleteFunction: profiles.deleteProfile, entityLabel: 'Profile' },
         account: { saveFunction: accounts.saveAccount, deleteFunction: accounts.deleteAccount, entityLabel: 'Account' },
-        multiplayerData: { saveFunction: mpDataManager.saveMultiplayerData, deleteFunction: mpDataManager.deleteMultiplayerData, entityLabel: 'Multiplayer Data' },
+        multiplayerData: { saveFunction: multiplayerDataManager.saveMultiplayerData, deleteFunction: multiplayerDataManager.deleteMultiplayerData, entityLabel: 'Multiplayer Data' },
     });
 
     // ─── Session Store Selectors & Actions ───────────────────────────
@@ -144,7 +144,7 @@ function App() {
     // ─── Multiplayer Session ─────────────────────────────────────────
     const mp = useMultiplayerSession({
         allCharacters: characters.characters,
-        saveMultiplayerData: mpDataManager.saveMultiplayerData,
+        saveMultiplayerData: multiplayerDataManager.saveMultiplayerData,
         addToast,
     });
 
@@ -166,7 +166,7 @@ function App() {
         allMemories: memories.memories,
         allExtensions: extensions.extensions,
         allAccounts: accounts.accounts,
-        allMultiplayerData: mpDataManager.multiplayerDatas,
+        allMultiplayerData: multiplayerDataManager.multiplayerDatas,
         requestBorrowedModel: () => mp.requestBorrowedModelRef.current(),
     });
 
@@ -180,7 +180,7 @@ function App() {
     } = session;
 
     // Wire triggerHostResponse into multiplayer session
-    useEffect(() => { mp.triggerHostResponseRef.current = triggerHostResponse; }, [triggerHostResponse]);
+    useEffect(() => { mp.triggerHostResponseRef.current = triggerHostResponse; }, [mp.triggerHostResponseRef, triggerHostResponse]);
 
     // ─── Chat Restoration ────────────────────────────────────────────
     const { activeChatRestored } = useChatRestoration({
@@ -215,17 +215,25 @@ function App() {
             mp.clearJoinState();
         }
         prevChatIdRef.current = currentChatId;
-    }, [interactionData?.id, mp.multiplayerSync, activeChatRestored, mp.clearJoinState]);
+    }, [interactionData?.id, mp, activeChatRestored]);
 
     // Auto-associate multiplayer data with current chat
     useEffect(() => {
         if (!interactionData?.id || mp.joinSessionId) return;
         const mpData = useSessionStore.getState().multiplayerData;
         if (mpData?.interactionDataIds?.includes(interactionData.id)) return;
-        const match = mpDataManager.multiplayerDatas.find((m: MultiplayerData) => m.interactionDataIds.includes(interactionData.id!));
+        const match = multiplayerDataManager.multiplayerDatas.find((m: MultiplayerData) => m.interactionDataIds.includes(interactionData.id!));
         if (match) useSessionStore.setState({ multiplayerData: match });
-        else if (!mpData && mpDataManager.multiplayerDatas.length > 0) useSessionStore.setState({ multiplayerData: mpDataManager.multiplayerDatas[0] });
-    }, [interactionData?.id, mpDataManager.multiplayerDatas, mp.joinSessionId]);
+        else if (!mpData && multiplayerDataManager.multiplayerDatas.length > 0) useSessionStore.setState({ multiplayerData: multiplayerDataManager.multiplayerDatas[0] });
+    }, [interactionData?.id, multiplayerDataManager.multiplayerDatas, mp.joinSessionId]);
+
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            flushSaveQueue();
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, []);
 
     // ─── Derived Protagonist ─────────────────────────────────────────
     const localProtagonist = useMemo(
@@ -258,7 +266,7 @@ function App() {
             if (!res.ok) return null;
             return (await res.json()).port ?? null;
         } catch (e) { console.warn(`Auto-load of model ${target.name} failed:`, e); return null; }
-    }, [models.runningModels, allModels, models, localURL]);
+    }, [allModels, models]);
 
     useSessionEffects({
         interactionDataId: interactionData?.id,
@@ -351,11 +359,17 @@ function App() {
 
     const isMultiplayerChat = mp.isMultiplayerClient || !!(mp.multiplayerData && interactionData?.id && mp.multiplayerData.interactionDataIds.includes(interactionData.id));
 
+    // ─── Local Refs for View Assets ──────────────────────────────────
+    const lastViewedMessageIdRef = useRef<string | null>(null);
+    const suppressAutoScrollRef = useRef(false);
+
     const viewAssets = useViewAssets({
         viewMode: undefined as any,
         interactionData, localProtagonist, currentCharacter,
         streamingCharacter, currentCharacterExpression, chatHistoryRef,
         isMultiplayerChat,
+        lastViewedMessageIdRef,
+        suppressAutoScrollRef,
     });
 
     const messageToolbar = useMessageToolbar({ chatHistoryRef });
@@ -412,12 +426,12 @@ function App() {
             return m?.contextLength || defaultContextLength;
         }
         return defaultContextLength;
-    }, [activeStrategy, models.selectedModelId, allModels, models]);
+    }, [activeStrategy, allModels, models]);
 
     const parentChatName = useMemo(() => {
         if (!interactionData?.parentInteractionDataId) return null;
         return chatList.rawChatShells.find((s: RawInteractionData) => s.id === interactionData.parentInteractionDataId)?.name ?? null;
-    }, [interactionData, chatList.rawChatShells, chatList]);
+    }, [interactionData, chatList]);
 
     // ─── Display Messages (with streaming injection + whisper filtering) ──
     const displayMessages = useMemo(() => {
@@ -483,8 +497,8 @@ function App() {
         { id: 'budget', label: 'Budget', icon: '💰', done: !budgetStrategies.isLoading },
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profiles.isLoading },
         { id: 'accounts', label: 'Accounts', icon: '🔑', done: !accounts.isLoading },
-        { id: 'multiplayerData', label: 'Multiplayer Data', icon: '👥', done: !mpDataManager.isLoading },
-    ], [chatList, characters, actionMenu.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, budgetStrategies, profiles, accounts, mpDataManager]);
+        { id: 'multiplayerData', label: 'Multiplayer Data', icon: '👥', done: !multiplayerDataManager.isLoading },
+    ], [chatList, characters, actionMenu.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, budgetStrategies, profiles, accounts, multiplayerDataManager]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
@@ -555,25 +569,32 @@ function App() {
         if (container && interactionData) {
             const rect = container.getBoundingClientRect();
             const ids = new Set(safeMessages.map((m: ChatMessage | WhisperMessage) => m.id));
-            let bestTop = Infinity;
+            let bestTop = Number.POSITIVE_INFINITY;
             for (const el of container.querySelectorAll('[data-message-id]')) {
                 const mid = el.getAttribute('data-message-id');
                 if (!mid || !ids.has(mid)) continue;
                 const r = el.getBoundingClientRect();
-                if (r.top < rect.bottom && r.bottom > rect.top && r.top < bestTop) { bestTop = r.top; targetIdx = safeMessages.findIndex((m: ChatMessage | WhisperMessage) => m.id === mid); }
+                if (r.top < rect.bottom && r.bottom > rect.top && r.top < bestTop) { 
+                    bestTop = r.top; 
+                    targetIdx = safeMessages.findIndex((m: ChatMessage | WhisperMessage) => m.id === mid); 
+                }
             }
         }
-        if (targetIdx === -1 && viewAssets.lastViewedMessageIdRef.current && interactionData)
-            targetIdx = safeMessages.findIndex((m: ChatMessage | WhisperMessage) => m.id === viewAssets.lastViewedMessageIdRef.current);
-        if (targetIdx >= 0 && interactionData) viewAssets.lastViewedMessageIdRef.current = safeMessages[targetIdx].id;
-        viewAssets.suppressAutoScrollRef.current = true;
+        if (targetIdx === -1 && lastViewedMessageIdRef.current && interactionData)
+            targetIdx = safeMessages.findIndex((m: ChatMessage | WhisperMessage) => m.id === lastViewedMessageIdRef.current);
+        if (targetIdx >= 0 && interactionData) lastViewedMessageIdRef.current = safeMessages[targetIdx].id;
+        suppressAutoScrollRef.current = true;
         setTimeout(() => {
             if (targetIdx >= 0 && chatHistoryRef.current) {
                 const el = chatHistoryRef.current.querySelector(`[data-message-id="${safeMessages[targetIdx].id}"]`) as HTMLElement | null;
-                if (el) { el.scrollIntoView({ block: 'start' }); setTimeout(() => { viewAssets.suppressAutoScrollRef.current = false; }, 400); return; }
+                if (el) { 
+                    el.scrollIntoView({ block: 'start' }); 
+                    setTimeout(() => { suppressAutoScrollRef.current = false; }, 400); 
+                    return; 
+                }
             }
             messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-            setTimeout(() => { viewAssets.suppressAutoScrollRef.current = false; }, 400);
+            setTimeout(() => { suppressAutoScrollRef.current = false; }, 400);
         }, 50);
     };
 
@@ -799,7 +820,7 @@ function App() {
                             allCharacters={characters.characters} allLocations={locations.locations} allContexts={contexts.contexts}
                             allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allPromptBlocks={promptBlocks.promptBlocks}
                             allSamplers={samplers.Samplers} allStopPatterns={stopPatterns.stopPatterns} allProfiles={profiles.profiles}
-                            allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={mpDataManager.multiplayerDatas}
+                            allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDataManager.multiplayerDatas}
                             fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected}
                             onToggleMicrophone={handleToggleMic} onSend={handleSend}
                             onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open}
@@ -815,7 +836,7 @@ function App() {
                     allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allModels={allModels}
                     allSamplers={samplers.Samplers} allPromptBlocks={promptBlocks.promptBlocks} allStopPatterns={stopPatterns.stopPatterns}
                     allBudgetStrategies={budgetStrategies.strategies} allProfiles={profiles.profiles} allExtensions={extensions.extensions}
-                    allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={mpDataManager.multiplayerDatas}
+                    allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDataManager.multiplayerDatas}
                     onSwitchChat={chatOps.handleSwitchChat} onDeleteChat={onDeleteChatForModals} onNewChat={chatOps.handleNewChat}
                     onRenameChat={handleRenameChat}
                     onDeleteCharacter={entityModals.getModalProperties('character').delete}

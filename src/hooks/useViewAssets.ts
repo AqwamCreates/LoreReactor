@@ -13,16 +13,16 @@ interface UseViewAssetsOptions {
     streamingCharacter: Character | null;
     currentCharacterExpression: string;
     chatHistoryRef: React.RefObject<HTMLDivElement | null>;
-    isMultiplayerChat?: boolean; // <-- ADDED
+    isMultiplayerChat?: boolean;
+    lastViewedMessageIdRef: React.RefObject<string | null>;
+    suppressAutoScrollRef: React.RefObject<boolean>;
 }
 
-// UPDATED: Added isMultiplayerChat for the || fallback chain
 function resolvePortrait(characterId: string, images: Record<string, string> | undefined, expression?: string, isMultiplayerChat?: boolean): string | null {
     const expr = expression || 'neutral';
     const filename = images?.[expr] || images?.neutral;
     if (!filename) return null;
     
-    // YOUR EXACT LOGIC: Try main folder, fallback to multiplayer folder if session is multiplayer
     return getCharacterImageUrl(characterId, filename) || (isMultiplayerChat ? getMultiplayerCharacterImageUrl(characterId, filename) : null);
 }
 
@@ -95,13 +95,13 @@ export function useViewAssets(options: UseViewAssetsOptions) {
     const {
         viewMode, interactionData, currentCharacter, localProtagonist,
         streamingCharacter, currentCharacterExpression, chatHistoryRef,
-        isMultiplayerChat, // <-- ADDED
+        isMultiplayerChat,
+        lastViewedMessageIdRef,
+        suppressAutoScrollRef,
     } = options;
 
     const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
     const centerAvatarRef = useRef<Character | null>(null);
-    const lastViewedMessageIdRef = useRef<string | null>(null);
-    const suppressAutoScrollRef = useRef(false);
 
     useEffect(() => { centerAvatarRef.current = centerAvatar; }, [centerAvatar]);
 
@@ -115,7 +115,6 @@ export function useViewAssets(options: UseViewAssetsOptions) {
 
         if (interactionData) {
             for (const participant of interactionData.participants) {
-                // Pass isMultiplayerChat to all resolvePortrait calls
                 const url = resolvePortrait(participant.id, participant.images, 'neutral', isMultiplayerChat);
                 cache.set(`character:${participant.id}`, url);
             }
@@ -183,6 +182,7 @@ export function useViewAssets(options: UseViewAssetsOptions) {
             for (const el of document.querySelectorAll('.message-row')) el.classList.remove('is-active');
             const activeEl = chatHistoryElement.querySelector(`[data-message-id="${bestId}"]`);
             if (activeEl) activeEl.classList.add('is-active');
+            
             lastViewedMessageIdRef.current = bestId;
 
             if (msg.character.id === currentCharacter?.id || msg.character.id === AMBIENT_NARRATOR_ID) {
@@ -212,13 +212,13 @@ export function useViewAssets(options: UseViewAssetsOptions) {
             cancelAnimationFrame(rafId);
             chatHistoryElement.removeEventListener('scroll', updateAvatarFromScroll);
         };
-    }, [viewMode, currentCharacter?.id, interactionData, chatMessages, chatHistoryRef]);
+    }, [viewMode, currentCharacter?.id, interactionData, chatMessages, chatHistoryRef, lastViewedMessageIdRef]);
 
     useEffect(() => {
         const chatHistoryElement = chatHistoryRef.current;
         if (viewMode !== 'cinematic' || !chatHistoryElement || suppressAutoScrollRef.current) return;
         chatHistoryElement.scrollTop = 0;
-    }, [viewMode, chatHistoryRef]);
+    }, [viewMode, chatHistoryRef, suppressAutoScrollRef]);
 
     return {
         centerAvatar, setCenterAvatar,

@@ -1,11 +1,8 @@
 // src/hooks/useSessionEffects.ts
 import { useEffect } from 'react';
-import type { BudgetData, BudgetStrategy, LanguageModel } from '../types';
+import type { BudgetData, BudgetStrategy, Character, LanguageModel } from '../types';
+import { saveRawSessionData } from '../storages/serverStorage';
 import { getBudgetStrategyEngine, initializeBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
-import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { cloudBackends } from '../dictionaries/languageModelInformation';
-import type { cloudBackend } from '../types';
-import { useSessionStore } from '../hooks/useSessionStore';
 
 interface UseSessionEffectsOptions {
     interactionDataId: string | null | undefined;
@@ -14,14 +11,14 @@ interface UseSessionEffectsOptions {
     setSelectedModelId: (id: string | null) => void;
     selectedBudgetStrategyId: string | null;
     allBudgetStrategies: BudgetStrategy[];
-    setActiveBudgetStrategy: (strategy: BudgetStrategy) => void;
+    setActiveBudgetStrategy: (strategy: BudgetStrategy | null) => void;
     allModels: LanguageModel[];
     runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     setSelectedGlobalModel: (model: LanguageModel | null) => void;
     defaultCharacterId: string | null;
-    allCharacters: { id: string }[];
+    allCharacters: Character[];
     currentCharacterId: string | null | undefined;
-    setCurrentCharacter: (char: any) => void;
+    setCurrentCharacter: (char: Character | null) => void;
     activeStrategy: BudgetStrategy | null;
     budgetData: BudgetData | null;
     loadLocalModelForBudgetStrategyEngine: (modelId: string) => Promise<number | null>;
@@ -36,46 +33,48 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
         activeStrategy, budgetData, loadLocalModelForBudgetStrategyEngine,
     } = options;
 
-    const storeSetActiveChatId = useSessionStore(s => s.setActiveChatId);
-    const storeSetSelectedModelId = useSessionStore(s => s.setSelectedModelId);
-    const storeSetSelectedBudgetStrategyId = useSessionStore(s => s.setSelectedBudgetStrategyId);
-
-    // Clear token cache when model or running models change
-    useEffect(() => { void selectedModelId; void runningModels; getLanguageModelEngine().clearTokenCache(); }, [selectedModelId, runningModels]);
-
-    // Persist active chat ID
+    // Persist active chat ID when it changes
     useEffect(() => {
         if (isMultiplayerClient) return;
-        if (interactionDataId) storeSetActiveChatId(interactionDataId);
-    }, [interactionDataId, isMultiplayerClient, storeSetActiveChatId]);
+        if (interactionDataId) {
+            saveRawSessionData({ activeChatId: interactionDataId });
+        }
+    }, [interactionDataId, isMultiplayerClient]);
 
-    // Persist selected model ID
-    useEffect(() => { storeSetSelectedModelId(selectedModelId ?? null); }, [selectedModelId, storeSetSelectedModelId]);
+    // Persist selected model ID when it changes
+    useEffect(() => {
+        saveRawSessionData({ selectedModelId: selectedModelId ?? null });
+    }, [selectedModelId]);
 
-    // Activate budget strategy from stored ID
+    // Activate budget strategy when selectedBudgetStrategyId changes
     useEffect(() => {
         if (!selectedBudgetStrategyId || allBudgetStrategies.length === 0) return;
         const strategy = allBudgetStrategies.find(s => s.id === selectedBudgetStrategyId);
-        if (!strategy) { storeSetSelectedBudgetStrategyId(null); return; }
+        if (!strategy) {
+            saveRawSessionData({ selectedBudgetStrategyId: null });
+            return;
+        }
         setActiveBudgetStrategy(strategy);
-    }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy, storeSetSelectedBudgetStrategyId]);
+    }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
 
     // Clear selected model if it's no longer running (local models only)
     useEffect(() => {
         if (!selectedModelId || allModels.length === 0) return;
         const selectedModel = allModels.find(m => m.id === selectedModelId);
         if (!selectedModel) { setSelectedModelId(null); return; }
-        const isCloudModel = !!selectedModel.apiKey && selectedModel.backend && cloudBackends.includes(selectedModel.backend as cloudBackend);
+        const isCloudModel = selectedModel.apiKey && selectedModel.backend;
         if (isCloudModel) return;
         if (!runningModels[selectedModelId]?.isRunning) setSelectedModelId(null);
     }, [selectedModelId, allModels, runningModels, setSelectedModelId]);
 
-    // Apply default character
+    // Apply default character when it changes
     useEffect(() => {
         if (isMultiplayerClient) return;
         if (defaultCharacterId && allCharacters.length > 0) {
             const defaultChar = allCharacters.find(c => c.id === defaultCharacterId);
-            if (defaultChar && currentCharacterId !== defaultChar.id) setCurrentCharacter(defaultChar);
+            if (defaultChar && currentCharacterId !== defaultChar.id) {
+                setCurrentCharacter(defaultChar);
+            }
         }
     }, [defaultCharacterId, allCharacters, currentCharacterId, setCurrentCharacter, isMultiplayerClient]);
 
@@ -84,15 +83,20 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
         if (selectedModelId && runningModels[selectedModelId]?.isRunning) {
             const foundModel = allModels.find(m => m.id === selectedModelId);
             const portNumber = runningModels[selectedModelId].port;
-            if (foundModel && portNumber) setSelectedGlobalModel({ ...foundModel, parameters: { ...foundModel.parameters, _runtimePort: portNumber } });
+            if (foundModel && portNumber) {
+                setSelectedGlobalModel({ ...foundModel, parameters: { ...foundModel.parameters, _runtimePort: portNumber } });
+            }
         } else if (selectedModelId) {
             setSelectedGlobalModel(allModels.find(m => m.id === selectedModelId) || null);
-        } else setSelectedGlobalModel(null);
+        } else {
+            setSelectedGlobalModel(null);
+        }
     }, [selectedModelId, runningModels, allModels, setSelectedGlobalModel]);
 
     // Initialize/update budget strategy engine
     useEffect(() => {
         if (!activeStrategy || !budgetData) return;
+        
         try {
             const engine = getBudgetStrategyEngine();
             engine.setStrategy(activeStrategy);
