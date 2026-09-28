@@ -1579,7 +1579,7 @@ const saveQueue = new SaveQueue();
 
 async function fetchPreferences<T>(endpoint: string): Promise<T | null> {
     try {
-        const response = await fetch(`${localURL}${endpoint}`, {
+        const response = await fetch(`${localURL}/user_data/${endpoint}.json`, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' },
         });
@@ -1597,8 +1597,8 @@ async function fetchPreferences<T>(endpoint: string): Promise<T | null> {
 }
 
 async function savePreferences<T>(endpoint: string, data: T): Promise<void> {
-    const response = await fetch(`${localURL}${endpoint}`, {
-        method: 'POST',
+    const response = await fetch(`${localURL}/user_data/${endpoint}.json`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
     });
@@ -1609,7 +1609,7 @@ async function savePreferences<T>(endpoint: string, data: T): Promise<void> {
 }
 
 async function deletePreferences(endpoint: string): Promise<void> {
-    const response = await fetch(`${localURL}${endpoint}`, {
+    const response = await fetch(`${localURL}/user_data/${endpoint}.json`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
     });
@@ -1629,7 +1629,7 @@ export async function loadRawSessionData(): Promise<SessionData> {
     const cached = preferencesCache.get<SessionData>(SESSION_KEY);
     if (cached) return cached;
 
-    const data = await fetchPreferences<SessionData>(`/${SESSION_KEY}`);
+    const data = await fetchPreferences<SessionData>(SESSION_KEY);
     if (data) {
         preferencesCache.set(SESSION_KEY, data);
     }
@@ -1644,7 +1644,7 @@ export async function saveRawSessionData(data: Partial<SessionData>): Promise<vo
     preferencesCache.set(SESSION_KEY, merged);
 
     saveQueue.enqueue(SESSION_KEY, merged, async (saveData) => {
-        await savePreferences(`/${SESSION_KEY}`, saveData as SessionData);
+        await savePreferences(SESSION_KEY, saveData as SessionData);
     });
 }
 
@@ -1652,7 +1652,7 @@ export async function deleteSessionData(): Promise<void> {
     preferencesCache.delete(SESSION_KEY);
 
     try {
-        await deletePreferences(`/${SESSION_KEY}`);
+        await deletePreferences(SESSION_KEY);
     } catch (error) {
         console.error('Failed to delete session data:', error);
     }
@@ -1668,7 +1668,7 @@ export async function loadRawMultiplayerJoinData(): Promise<MultiplayerJoinData>
     const cached = preferencesCache.get<MultiplayerJoinData>(MULTIPLAYER_JOIN_KEY);
     if (cached) return cached;
 
-    const data = await fetchPreferences<MultiplayerJoinData>(`/${MULTIPLAYER_JOIN_KEY}`);
+    const data = await fetchPreferences<MultiplayerJoinData>(MULTIPLAYER_JOIN_KEY);
     if (data) {
         preferencesCache.set(MULTIPLAYER_JOIN_KEY, data);
     }
@@ -1680,7 +1680,7 @@ export async function saveRawMultiplayerJoinData(data: MultiplayerJoinData): Pro
     preferencesCache.set(MULTIPLAYER_JOIN_KEY, data);
 
     saveQueue.enqueue(MULTIPLAYER_JOIN_KEY, data, async (saveData) => {
-        await savePreferences(`/${MULTIPLAYER_JOIN_KEY}`, saveData as MultiplayerJoinData);
+        await savePreferences(MULTIPLAYER_JOIN_KEY, saveData as MultiplayerJoinData);
     });
 }
 
@@ -1688,7 +1688,7 @@ export async function deleteMultiplayerJoinData(): Promise<void> {
     preferencesCache.delete(MULTIPLAYER_JOIN_KEY);
 
     try {
-        await deletePreferences(`/${MULTIPLAYER_JOIN_KEY}`);
+        await deletePreferences(MULTIPLAYER_JOIN_KEY);
     } catch (error) {
         console.error('Failed to delete multiplayer join data:', error);
     }
@@ -1704,7 +1704,7 @@ export async function loadActionFormatData(): Promise<ActionFormatData> {
     const cached = preferencesCache.get<ActionFormatData>(ACTION_FORMAT_KEY);
     if (cached) return cached;
 
-    const data = await fetchPreferences<ActionFormatData>(`/${ACTION_FORMAT_KEY}`);
+    const data = await fetchPreferences<ActionFormatData>(ACTION_FORMAT_KEY);
     if (data) {
         preferencesCache.set(ACTION_FORMAT_KEY, data);
     }
@@ -1716,7 +1716,7 @@ export async function saveActionFormatData(data: ActionFormatData): Promise<void
     preferencesCache.set(ACTION_FORMAT_KEY, data);
 
     saveQueue.enqueue(ACTION_FORMAT_KEY, data, async (saveData) => {
-        await savePreferences(`/${ACTION_FORMAT_KEY}`, saveData as ActionFormatData);
+        await savePreferences(ACTION_FORMAT_KEY, saveData as ActionFormatData);
     });
 }
 
@@ -1724,7 +1724,7 @@ export async function deleteActionFormatData(): Promise<void> {
     preferencesCache.delete(ACTION_FORMAT_KEY);
 
     try {
-        await deletePreferences(`/${ACTION_FORMAT_KEY}`);
+        await deletePreferences(ACTION_FORMAT_KEY);
     } catch (error) {
         console.error('Failed to delete action format data:', error);
     }
