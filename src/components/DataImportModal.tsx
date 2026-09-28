@@ -41,7 +41,13 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
     const [selectedMemoryIds, setSelectedMemoryIds] = useState<string[]>([]);
     const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
     const [selectedMultiplayerDataIds, setSelectedMultiplayerDataIds] = useState<string[]>([]);
+    
+    // STRICT ORDER: Actions -> Action Format -> Format Preferences -> Session -> Budget
     const [includeActions, setIncludeActions] = useState(true);
+    const [includeActionFormatData, setIncludeActionFormatData] = useState(true);
+    const [includeFormatPreferences, setIncludeFormatPreferences] = useState(true);
+    const [includeSessionData, setIncludeSessionData] = useState(true);
+    const [includeBudgetData, setIncludeBudgetData] = useState(true);
 
     const [chatSearch, setChatSearch] = useState('');
     const [characterSearch, setCharacterSearch] = useState('');
@@ -67,6 +73,10 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
         setSelectedStopPatternIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
         setSelectedMemoryIds([]); setSelectedAccountIds([]); setSelectedMultiplayerDataIds([]);
         setIncludeActions(true);
+        setIncludeActionFormatData(true);
+        setIncludeFormatPreferences(true);
+        setIncludeSessionData(true);
+        setIncludeBudgetData(true);
         setPasteText('');
         setSchemaCopied(false);
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
@@ -97,7 +107,12 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
         setSelectedMemoryIds(json.memories?.map((m: { id: string }) => m.id) ?? []);
         setSelectedAccountIds(json.accounts?.map((a: { id: string }) => a.id) ?? []);
         setSelectedMultiplayerDataIds(json.multiplayerData?.map((md: { id: string }) => md.id) ?? []);
+        
         setIncludeActions(json.interjectableActions.length > 0);
+        setIncludeActionFormatData(!!json.actionFormatData);
+        setIncludeFormatPreferences(!!json.formatPreferences);
+        setIncludeSessionData(!!json.sessionData || !!json.multiplayerJoinData);
+        setIncludeBudgetData(!!json.budgetData);
     };
 
     const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,6 +167,11 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                 accounts: [],
                 multiplayerData: [],
                 interjectableActions: [],
+                actionFormatData: undefined,
+                formatPreferences: undefined,
+                sessionData: undefined,
+                multiplayerJoinData: undefined,
+                budgetData: undefined,
                 _entitySchema: JSON.parse(entitySchema),
             };
             return JSON.stringify(wrapped, null, 2);
@@ -193,7 +213,14 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
             memories: parsedData.memories?.filter(m => selectedMemoryIds.includes(m.id)) ?? [],
             accounts: parsedData.accounts?.filter(a => selectedAccountIds.includes(a.id)) ?? [],
             multiplayerData: parsedData.multiplayerData?.filter(md => selectedMultiplayerDataIds.includes(md.id)) ?? [],
+            
+            // STRICT ORDER: Actions -> Action Format -> Format Preferences -> Session -> Budget
             interjectableActions: includeActions ? parsedData.interjectableActions : [],
+            actionFormatData: includeActionFormatData ? parsedData.actionFormatData : undefined,
+            formatPreferences: includeFormatPreferences ? parsedData.formatPreferences : undefined,
+            sessionData: includeSessionData ? parsedData.sessionData : undefined,
+            multiplayerJoinData: includeSessionData ? parsedData.multiplayerJoinData : undefined,
+            budgetData: includeBudgetData ? parsedData.budgetData : undefined,
         };
 
         try {
@@ -209,7 +236,8 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
         selectedModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
         selectedStopPatternIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
         selectedMemoryIds.length + selectedAccountIds.length + selectedMultiplayerDataIds.length +
-        (includeActions ? 1 : 0);
+        (includeActions ? 1 : 0) + (includeActionFormatData ? 1 : 0) + 
+        (includeFormatPreferences ? 1 : 0) + (includeSessionData ? 1 : 0) + (includeBudgetData ? 1 : 0);
 
     if (!isOpen) return null;
 
@@ -424,12 +452,39 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                         onToggle={(id) => toggle(selectedMultiplayerDataIds, setSelectedMultiplayerDataIds, id)} searchQuery={multiplayerDataSearch} onSearchChange={setMultiplayerDataSearch} />
                                 )}
 
-                                {parsedData.interjectableActions.length > 0 && (
-                                    <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                                        <input type="checkbox" checked={includeActions} onChange={e => setIncludeActions(e.target.checked)} className="editor-checkbox-input" />
-                                        <span>Include Interjectable Actions ({parsedData.interjectableActions.length})</span>
-                                    </label>
-                                )}
+                                <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    <span className="editor-section-title" style={{ fontSize: '0.8rem' }}>Singleton Data</span>
+                                    {parsedData.interjectableActions.length > 0 && (
+                                        <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                            <input type="checkbox" checked={includeActions} onChange={e => setIncludeActions(e.target.checked)} className="editor-checkbox-input" />
+                                            <span>Interjectable Actions ({parsedData.interjectableActions.length})</span>
+                                        </label>
+                                    )}
+                                    {parsedData.actionFormatData && (
+                                        <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                            <input type="checkbox" checked={includeActionFormatData} onChange={e => setIncludeActionFormatData(e.target.checked)} className="editor-checkbox-input" />
+                                            <span>Action Format Data</span>
+                                        </label>
+                                    )}
+                                    {parsedData.formatPreferences && (
+                                        <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                            <input type="checkbox" checked={includeFormatPreferences} onChange={e => setIncludeFormatPreferences(e.target.checked)} className="editor-checkbox-input" />
+                                            <span>Format Preferences</span>
+                                        </label>
+                                    )}
+                                    {(parsedData.sessionData || parsedData.multiplayerJoinData) && (
+                                        <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                            <input type="checkbox" checked={includeSessionData} onChange={e => setIncludeSessionData(e.target.checked)} className="editor-checkbox-input" />
+                                            <span>Session & Multiplayer Join Data</span>
+                                        </label>
+                                    )}
+                                    {parsedData.budgetData && (
+                                        <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                            <input type="checkbox" checked={includeBudgetData} onChange={e => setIncludeBudgetData(e.target.checked)} className="editor-checkbox-input" />
+                                            <span>Budget Data (Includes Factorization Machine state)</span>
+                                        </label>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="entity-action-buttons">
@@ -471,6 +526,7 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
                                     <div><strong>Accounts:</strong> {importResult.counts.accounts ?? 0}</div>
                                     <div><strong>Multiplayer Data:</strong> {importResult.counts.multiplayerData ?? 0}</div>
                                     <div><strong>Actions:</strong> {importResult.counts.interjectableActions}</div>
+                                    <div><strong>Preferences:</strong> {importResult.counts.preferences}</div>
                                 </div>
                             </div>
 

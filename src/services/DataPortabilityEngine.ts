@@ -2,8 +2,9 @@
 import type {
     Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock,
     StopPattern, BudgetStrategy, Profile, InteractionData, InterjectableAction, Memory,
-    Account, MultiplayerData,
+    Account, MultiplayerData, SessionData, MultiplayerJoinData, ActionFormatData, BudgetData,
 } from '../types';
+import type { FormatPreferenceData } from './FormatPreferenceEngine';
 import {
     loadRawCharacter, saveRawCharacter,
     loadRawContext, saveRawContext,
@@ -22,6 +23,11 @@ import {
     loadInteractionMessages,
     loadRawAccount, saveRawAccount,
     loadRawMultiplayerData, saveRawMultiplayerData,
+    loadRawSessionData, saveRawSessionData,
+    loadRawMultiplayerJoinData, saveRawMultiplayerJoinData,
+    loadActionFormatData, saveActionFormatData,
+    loadRawFormatPreferences, saveRawFormatPreferences,
+    loadRawBudgetData, saveRawBudgetData,
 } from '../storages/serverStorage';
 
 export interface LoreReactorExport {
@@ -42,7 +48,14 @@ export interface LoreReactorExport {
     memories: Memory[];
     accounts: Account[];
     multiplayerData: MultiplayerData[];
+    
+    // STRICT ORDER: Actions -> Action Format -> Format Preferences -> Session -> Budget
     interjectableActions: InterjectableAction[];
+    actionFormatData?: ActionFormatData;
+    formatPreferences?: FormatPreferenceData;
+    sessionData?: SessionData;
+    multiplayerJoinData?: MultiplayerJoinData;
+    budgetData?: BudgetData; // Includes Factorization Machine state
 }
 
 export interface ImportResult {
@@ -51,7 +64,7 @@ export interface ImportResult {
         chats: number; characters: number; contexts: number; locations: number; audioTracks: number;
         worlds: number; models: number; samplers: number; promptBlocks: number; stopPatterns: number;
         budgetStrategies: number; profiles: number; memories: number; accounts: number;
-        multiplayerData: number; interjectableActions: number;
+        multiplayerData: number; interjectableActions: number; preferences: number;
     };
     errors: string[];
 }
@@ -60,7 +73,6 @@ export function validateExport(data: unknown): data is LoreReactorExport {
     if (!data || typeof data !== 'object') return false;
     const d = data as Record<string, unknown>;
     if (d.version !== 1) return false;
-    // Accept both numeric timestamps and ISO strings (AI generates strings)
     if (typeof d.exportedAt !== 'number' && typeof d.exportedAt !== 'string') return false;
     if (!Array.isArray(d.chats)) return false;
     if (!Array.isArray(d.characters)) return false;
@@ -74,19 +86,13 @@ export function validateExport(data: unknown): data is LoreReactorExport {
     if (!Array.isArray(d.stopPatterns)) return false;
     if (!Array.isArray(d.budgetStrategies)) return false;
     if (!Array.isArray(d.profiles)) return false;
-    // memories may be absent in older exports — treat as optional for backward compat
     if (d.memories !== undefined && !Array.isArray(d.memories)) return false;
-    // accounts and multiplayerData may be absent in older exports
     if (d.accounts !== undefined && !Array.isArray(d.accounts)) return false;
     if (d.multiplayerData !== undefined && !Array.isArray(d.multiplayerData)) return false;
     if (!Array.isArray(d.interjectableActions)) return false;
     return true;
 }
 
-/**
- * Normalizes an export object so downstream code always gets numeric timestamps.
- * Call after validateExport() passes.
- */
 export function normalizeExport(data: LoreReactorExport): LoreReactorExport {
     if (typeof data.exportedAt === 'string') {
         data.exportedAt = new Date(data.exportedAt).getTime() || Date.now();
@@ -94,9 +100,6 @@ export function normalizeExport(data: LoreReactorExport): LoreReactorExport {
     return data;
 }
 
-/**
- * Exports only the selected entity IDs. Fully hydrates each entity.
- */
 export async function exportSelectedData(selection: {
     chatIds: string[];
     characterIds: string[];
@@ -114,6 +117,10 @@ export async function exportSelectedData(selection: {
     accountIds: string[];
     multiplayerDataIds: string[];
     includeActions: boolean;
+    includeActionFormatData: boolean;
+    includeFormatPreferences: boolean;
+    includeSessionData: boolean;
+    includeBudgetData: boolean;
 }): Promise<LoreReactorExport> {
     const data: LoreReactorExport = {
         version: 1, exportedAt: Date.now(),
@@ -123,7 +130,6 @@ export async function exportSelectedData(selection: {
         multiplayerData: [], interjectableActions: [],
     };
 
-    // Load individual entities by ID
     for (const id of selection.chatIds) {
         let full = await loadRawInteractionData(id, []);
         if (!full) continue;
@@ -189,17 +195,33 @@ export async function exportSelectedData(selection: {
         if (full) data.multiplayerData.push(full);
     }
 
+    // STRICT ORDER: Actions -> Action Format -> Format Preferences -> Session -> Budget
     if (selection.includeActions) {
         try { data.interjectableActions = await loadInterjectableActions(); } catch { /* empty */ }
+    }
+    if (selection.includeActionFormatData) {
+        try { data.actionFormatData = await loadActionFormatData(); } catch { /* empty */ }
+    }
+    if (selection.includeFormatPreferences) {
+        try { 
+            const fp = await loadRawFormatPreferences(); 
+            if (fp) data.formatPreferences = fp; 
+        } catch { /* empty */ }
+    }
+    if (selection.includeSessionData) {
+        try { data.sessionData = await loadRawSessionData(); } catch { /* empty */ }
+        try { data.multiplayerJoinData = await loadRawMultiplayerJoinData(); } catch { /* empty */ }
+    }
+    if (selection.includeBudgetData) {
+        try { 
+            const bd = await loadRawBudgetData(); 
+            if (bd) data.budgetData = bd; // Includes Factorization Machine state
+        } catch { /* empty */ }
     }
 
     return data;
 }
 
-/**
- * Imports only the entities present in the export envelope.
- * Overwrites existing entities with matching IDs.
- */
 export async function importSelectedData(data: LoreReactorExport): Promise<ImportResult> {
     const result: ImportResult = {
         success: true,
@@ -207,13 +229,12 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
             chats: 0, characters: 0, contexts: 0, locations: 0, audioTracks: 0,
             worlds: 0, models: 0, samplers: 0, promptBlocks: 0, stopPatterns: 0,
             budgetStrategies: 0, profiles: 0, memories: 0, accounts: 0,
-            multiplayerData: 0, interjectableActions: 0,
+            multiplayerData: 0, interjectableActions: 0, preferences: 0,
         },
         errors: [],
     };
 
-    // Import in dependency order: base entities first, then dependents
-    // Memories before characters — characters reference memory IDs
+    // Base entities first
     for (const mem of (data.memories ?? [])) {
         try { await saveRawMemory(mem); result.counts.memories++; }
         catch (e) { result.errors.push(`Memory "${mem.name || mem.id}": ${(e as Error).message}`); }
@@ -270,11 +291,34 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
         try { await saveRawMultiplayerData(md); result.counts.multiplayerData++; }
         catch (e) { result.errors.push(`Multiplayer Data "${md.name || md.id}": ${(e as Error).message}`); }
     }
+
+    // STRICT ORDER: Actions -> Action Format -> Format Preferences -> Session -> Budget
     if (data.interjectableActions.length > 0) {
         try { await saveInterjectableActions(data.interjectableActions); result.counts.interjectableActions = data.interjectableActions.length; }
         catch (e) { result.errors.push(`Interjectable Actions: ${(e as Error).message}`); }
     }
-    // Chats last — they reference characters, contexts, locations, audio tracks
+    if (data.actionFormatData) {
+        try { await saveActionFormatData(data.actionFormatData); result.counts.preferences++; }
+        catch (e) { result.errors.push(`Action Format Data: ${(e as Error).message}`); }
+    }
+    if (data.formatPreferences) {
+        try { await saveRawFormatPreferences(data.formatPreferences); result.counts.preferences++; }
+        catch (e) { result.errors.push(`Format Preferences: ${(e as Error).message}`); }
+    }
+    if (data.sessionData) {
+        try { await saveRawSessionData(data.sessionData); result.counts.preferences++; }
+        catch (e) { result.errors.push(`Session Data: ${(e as Error).message}`); }
+    }
+    if (data.multiplayerJoinData) {
+        try { await saveRawMultiplayerJoinData(data.multiplayerJoinData); result.counts.preferences++; }
+        catch (e) { result.errors.push(`Multiplayer Join Data: ${(e as Error).message}`); }
+    }
+    if (data.budgetData) {
+        try { await saveRawBudgetData(data.budgetData); result.counts.preferences++; }
+        catch (e) { result.errors.push(`Budget Data: ${(e as Error).message}`); }
+    }
+
+    // Chats last
     for (const chat of data.chats) {
         try { await saveRawInteractionData(chat); result.counts.chats++; }
         catch (e) { result.errors.push(`Chat "${chat.name || chat.id}": ${(e as Error).message}`); }

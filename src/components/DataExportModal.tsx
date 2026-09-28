@@ -51,7 +51,13 @@ export function DataExportModal({
     const [selectedMemoryIds, setSelectedMemoryIds] = useState<string[]>([]);
     const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
     const [selectedMultiplayerDataIds, setSelectedMultiplayerDataIds] = useState<string[]>([]);
+    
+    // STRICT ORDER: Actions -> Action Format -> Format Preferences -> Session -> Budget
     const [includeActions, setIncludeActions] = useState(true);
+    const [includeActionFormatData, setIncludeActionFormatData] = useState(true);
+    const [includeFormatPreferences, setIncludeFormatPreferences] = useState(true);
+    const [includeSessionData, setIncludeSessionData] = useState(true);
+    const [includeBudgetData, setIncludeBudgetData] = useState(true);
 
     const [chatSearch, setChatSearch] = useState('');
     const [characterSearch, setCharacterSearch] = useState('');
@@ -77,6 +83,10 @@ export function DataExportModal({
         setSelectedStopPatternIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
         setSelectedMemoryIds([]); setSelectedAccountIds([]); setSelectedMultiplayerDataIds([]);
         setIncludeActions(true);
+        setIncludeActionFormatData(true);
+        setIncludeFormatPreferences(true);
+        setIncludeSessionData(true);
+        setIncludeBudgetData(true);
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
         setAudioTrackSearch(''); setWorldSearch(''); setModelSearch(''); setSamplerSearch('');
         setPromptBlockSearch(''); setStopPatternSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
@@ -94,7 +104,8 @@ export function DataExportModal({
         selectedModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
         selectedStopPatternIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
         selectedMemoryIds.length + selectedAccountIds.length + selectedMultiplayerDataIds.length +
-        (includeActions ? 1 : 0);
+        (includeActions ? 1 : 0) + (includeActionFormatData ? 1 : 0) + 
+        (includeFormatPreferences ? 1 : 0) + (includeSessionData ? 1 : 0) + (includeBudgetData ? 1 : 0);
 
     const handleExport = async () => {
         if (totalSelected === 0) { setError('Select at least one item to export.'); return; }
@@ -110,6 +121,10 @@ export function DataExportModal({
                 profileIds: selectedProfileIds, memoryIds: selectedMemoryIds,
                 accountIds: selectedAccountIds, multiplayerDataIds: selectedMultiplayerDataIds,
                 includeActions,
+                includeActionFormatData,
+                includeFormatPreferences,
+                includeSessionData,
+                includeBudgetData,
             });
             setSummary(data);
 
@@ -182,10 +197,29 @@ export function DataExportModal({
                                 <EntitySelectList label="Multiplayer Data" items={allMultiplayerData} selectedIds={selectedMultiplayerDataIds}
                                     onToggle={(id) => toggle(selectedMultiplayerDataIds, setSelectedMultiplayerDataIds, id)} searchQuery={multiplayerDataSearch} onSearchChange={setMultiplayerDataSearch} />
 
-                                <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                                    <input type="checkbox" checked={includeActions} onChange={e => setIncludeActions(e.target.checked)} className="editor-checkbox-input" />
-                                    <span>Include Interjectable Actions</span>
-                                </label>
+                                <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    <span className="editor-section-title" style={{ fontSize: '0.8rem' }}>Singleton Data</span>
+                                    <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                        <input type="checkbox" checked={includeActions} onChange={e => setIncludeActions(e.target.checked)} className="editor-checkbox-input" />
+                                        <span>Interjectable Actions (List of available actions)</span>
+                                    </label>
+                                    <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                        <input type="checkbox" checked={includeActionFormatData} onChange={e => setIncludeActionFormatData(e.target.checked)} className="editor-checkbox-input" />
+                                        <span>Action Format Data (Bayesian learning matrix & UI state)</span>
+                                    </label>
+                                    <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                        <input type="checkbox" checked={includeFormatPreferences} onChange={e => setIncludeFormatPreferences(e.target.checked)} className="editor-checkbox-input" />
+                                        <span>Format Preferences (Text formatting rules)</span>
+                                    </label>
+                                    <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                        <input type="checkbox" checked={includeSessionData} onChange={e => setIncludeSessionData(e.target.checked)} className="editor-checkbox-input" />
+                                        <span>Session & Multiplayer Join Data</span>
+                                    </label>
+                                    <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                        <input type="checkbox" checked={includeBudgetData} onChange={e => setIncludeBudgetData(e.target.checked)} className="editor-checkbox-input" />
+                                        <span>Budget Data (Includes Factorization Machine state)</span>
+                                    </label>
+                                </div>
                             </div>
 
                             <button type="button" className="editor-button editor-button-save entity-generate-button"
@@ -224,6 +258,10 @@ export function DataExportModal({
                                     <div><strong>Accounts:</strong> {summary.accounts?.length ?? 0}</div>
                                     <div><strong>Multiplayer Data:</strong> {summary.multiplayerData?.length ?? 0}</div>
                                     <div><strong>Actions:</strong> {summary.interjectableActions.length}</div>
+                                    <div><strong>Action Format Data:</strong> {summary.actionFormatData ? 'Included' : 'Excluded'}</div>
+                                    <div><strong>Format Preferences:</strong> {summary.formatPreferences ? 'Included' : 'Excluded'}</div>
+                                    <div><strong>Session Data:</strong> {summary.sessionData ? 'Included' : 'Excluded'}</div>
+                                    <div><strong>Budget Data:</strong> {summary.budgetData ? 'Included' : 'Excluded'}</div>
                                     <div><strong>Exported At:</strong> {new Date(summary.exportedAt).toLocaleString()}</div>
                                 </div>
                             </div>
