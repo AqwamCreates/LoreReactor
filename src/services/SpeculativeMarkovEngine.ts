@@ -5,70 +5,121 @@ interface NGramNode {
     totalCount: number;
 }
 
+interface CharacterSessionState {
+    nGramMap: Map<string, NGramNode>;
+    lastProcessedTimestamp: number;
+}
+
 export class SpeculativeMarkovEngine {
-    private n = 3; // Order-3 Markov (looks at the last 2 tokens to predict the 3rd)
-    private nGramMap = new Map<string, NGramNode>();
-    private lastProcessedTimestamp = 0;
-    private currentCharacterId: string | null = null;
+    private n = 3; // Order-3 Markov
+    private sessionCache = new Map<string, CharacterSessionState>();
+
+    private getOrCreateState(interactionDataId: string, characterId: string): CharacterSessionState {
+        const key = `${interactionDataId}-${characterId}`;
+        if (!this.sessionCache.has(key)) {
+            this.sessionCache.set(key, { nGramMap: new Map(), lastProcessedTimestamp: 0 });
+        }
+        return this.sessionCache.get(key)!;
+    }
 
     /**
-     * Incrementally syncs the engine with new messages.
-     * Only processes messages newer than the last sync, or resets entirely if the character changes.
+     * FULL TRAIN: Wipes existing state and rebuilds from scratch.
+     * Use this when a new chat session is loaded.
      */
-    public syncMessages(
-        messages: { textContent: string; lastUpdatedTimestamp: number }[], 
-        characterId: string
+    public fullTrain(
+        messages: { textContent: string; lastUpdatedTimestamp: number; characterId: string }[],
+        interactionDataId: string
     ) {
-        // If the character changed, wipe the slate clean to maintain voice consistency
-        if (this.currentCharacterId !== characterId) {
-            this.nGramMap.clear();
-            this.lastProcessedTimestamp = 0;
-            this.currentCharacterId = characterId;
+        // Group by character to handle multi-character sessions efficiently
+        const charMessages = new Map<string, { textContent: string; lastUpdatedTimestamp: number }[]>();
+        
+        for (const msg of messages) {
+            if (!charMessages.has(msg.characterId)) {
+                charMessages.set(msg.characterId, []);
+            }
+            charMessages.get(msg.characterId)!.push({
+                textContent: msg.textContent,
+                lastUpdatedTimestamp: msg.lastUpdatedTimestamp
+            });
         }
 
-        // Only process messages that are newer than our last sync
-        for (const msg of messages) {
-            if (msg.lastUpdatedTimestamp > this.lastProcessedTimestamp) {
-                this.addMessageToMap(msg.textContent);
-                // Update the high-water mark
-                this.lastProcessedTimestamp = Math.max(this.lastProcessedTimestamp, msg.lastUpdatedTimestamp);
+        for (const [charId, msgs] of charMessages.entries()) {
+            const state = this.getOrCreateState(interactionDataId, charId);
+            state.nGramMap.clear(); // Wipe slate clean
+            state.lastProcessedTimestamp = 0;
+            
+            for (const msg of msgs) {
+                this.addMessageToMap(state.nGramMap, msg.textContent);
+                state.lastProcessedTimestamp = Math.max(state.lastProcessedTimestamp, msg.lastUpdatedTimestamp);
             }
         }
     }
 
-    private addMessageToMap(textContent: string) {
-        const tokens = textContent.match(/\w+|[^\w\s]/g) || [];
+    /**
+     * INCREMENTAL SYNC: Only processes messages newer than the last sync.
+     * Use this during streaming to catch up on new turns.
+     */
+    public syncMessages(
+        messages: { textContent: string; lastUpdatedTimestamp: number }[], 
+        characterId: string,
+        interactionDataId: string
+    ) {
+        const state = this.getOrCreateState(interactionDataId, characterId);
+
+        for (const msg of messages) {
+            if (msg.lastUpdatedTimestamp > state.lastProcessedTimestamp) {
+                this.addMessageToMap(state.nGramMap, msg.textContent);
+                state.lastProcessedTimestamp = Math.max(state.lastProcessedTimestamp, msg.lastUpdatedTimestamp);
+            }
+        }
+    }
+
+    private addMessageToMap(map: Map<string, NGramNode>, textContent: string) {
+        // Updated regex to explicitly include whitespace (\s+), numbers/words (\w+), and punctuation ([^\w\s])
+        const tokens = textContent.match(/\w+|\s+|[^\w\s]/g) || [];
         
         for (let i = 0; i <= tokens.length - this.n; i++) {
             const prefix = tokens.slice(i, i + this.n - 1).join(' ');
             const nextToken = tokens[i + this.n - 1];
             
-            if (!this.nGramMap.has(prefix)) {
-                this.nGramMap.set(prefix, { nextTokens: new Map(), totalCount: 0 });
+            if (!map.has(prefix)) {
+                map.set(prefix, { nextTokens: new Map(), totalCount: 0 });
             }
-            const node = this.nGramMap.get(prefix)!;
+            const node = map.get(prefix)!;
             node.nextTokens.set(nextToken, (node.nextTokens.get(nextToken) || 0) + 1);
             node.totalCount++;
         }
     }
 
     /**
-     * Predicts the next sequence of tokens using temperature-scaled weighted sampling.
+     * PREDICT: Greedily generates tokens until confidence drops below the financial threshold.
+     * Formula: confidenceThreshold = cacheMissCost / outputCost
      */
     public predictSequence(
         currentText: string, 
-        minConfidence: number, 
-        maxTokens = 3,
-        temperature = 1
+        outputCost: number,
+        cacheMissCost: number,
+        temperature: number,
+        characterId: string,
+        interactionDataId: string
     ): string | null {
-        const tokens = currentText.match(/\w+|[^\w\s]/g) || [];
+        const state = this.sessionCache.get(`${interactionDataId}-${characterId}`);
+        if (!state || state.nGramMap.size === 0) return null;
+
+        const map = state.nGramMap;
+        // Updated regex to match the training tokenization
+        const tokens = currentText.match(/\w+|\s+|[^\w\s]/g) || [];
         if (tokens.length < this.n - 1) return null;
+
+        // FORMULA 1: The confidence threshold required to continue generating
+        const confidenceThreshold = cacheMissCost / outputCost;
 
         const appendedTokens: string[] = [];
         let currentPrefix = tokens.slice(-(this.n - 1)).join(' ');
 
-        for (let i = 0; i < maxTokens; i++) {
-            const node = this.nGramMap.get(currentPrefix);
+        // Loop until confidence drops or we hit a safety cap (100 tokens)
+        for (let i = 0; i < 100; i++) {
+            const node = map.get(currentPrefix);
             if (!node || node.totalCount === 0) break;
 
             let maxProb = 0;
@@ -79,18 +130,17 @@ export class SpeculativeMarkovEngine {
                 const prob = count / node.totalCount;
                 if (prob > maxProb) maxProb = prob;
 
-                // Temperature-scaled weight
                 const weight = prob ** (1 / temperature);
                 weights.set(token, weight);
                 totalWeight += weight;
             }
 
-            // BREAK-EVEN CHECK
-            if (maxProb < minConfidence) {
+            // STOP CONDITION: If the best guess isn't confident enough, stop.
+            if (maxProb < confidenceThreshold) {
                 break; 
             }
 
-            // WEIGHTED RANDOM SAMPLING
+            // Weighted Random Sampling
             let random = Math.random() * totalWeight;
             let selectedToken = '';
             for (const [token, weight] of weights.entries()) {
@@ -103,7 +153,6 @@ export class SpeculativeMarkovEngine {
             if (!selectedToken) selectedToken = Array.from(node.nextTokens.keys())[0];
 
             appendedTokens.push(selectedToken);
-            
             const newTokens = [...currentPrefix.split(' '), selectedToken];
             currentPrefix = newTokens.slice(-(this.n - 1)).join(' ');
         }
@@ -111,11 +160,23 @@ export class SpeculativeMarkovEngine {
         if (appendedTokens.length > 0) {
             const joined = appendedTokens.join('');
             const lastChar = currentText.slice(-1);
-            const needsSpace = !/[\s\p{P}]/u.test(lastChar);
+            
+            // Prevent double-spacing if the Markov chain naturally predicted a leading space
+            const alreadyHasLeadingSpace = /^\s/.test(joined);
+            const needsSpace = !/[\s\p{P}]/u.test(lastChar) && !alreadyHasLeadingSpace;
+            
             return (needsSpace ? ' ' : '') + joined; 
         }
 
         return null;
+    }
+
+    public clearSession(interactionDataId: string) {
+        for (const key of this.sessionCache.keys()) {
+            if (key.startsWith(`${interactionDataId}-`)) {
+                this.sessionCache.delete(key);
+            }
+        }
     }
 }
 

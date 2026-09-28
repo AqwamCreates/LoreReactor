@@ -1,327 +1,601 @@
-// src/services/dataSchema.ts
-import { defaultInputStrategy } from '../dictionaries/defaults';
-import type { EntityType } from './dataTypes';
+// src/services/dataConverters.ts
+import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StopPattern, tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget, tristateInteger, cacheEfficiencyConfigurationType } from '../types';
+import { v4 as uuidv4 } from 'uuid';
+import { UUID_REGEX } from './dataTypes';
+import type { GeneratedOutput } from './dataTypes';
+import { defaultCharacterTools, defaultProfileTools, defaultNarrateTexts } from '../dictionaries/defaults';
 
-const REGEX_TRIGGER_SCHEMA = `[{"trigger": "string (regex without delimiters)", "context": "'global' | 'local' | 'previous'", "target": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator'"}]`;
+function ensureId(obj: Record<string, unknown>): string {
+    return (typeof obj.id === 'string' && obj.id.length > 0) ? obj.id : uuidv4();
+}
 
-export function buildJsonSchema(selectedEntities: EntityType[]): string {
-    const parts: string[] = [];
-    const hasWorld = selectedEntities.includes('World');
+function parseToolsRecord(raw: unknown, defaults: Record<tool, boolean>): Record<tool, boolean>;
+function parseToolsRecord(raw: unknown, defaults: Record<tool, number>): Record<tool, number>;
+function parseToolsRecord(raw: unknown, defaults: Record<string, boolean | number>): Record<string, boolean | number> {
+    if (!raw || typeof raw !== 'object') return { ...defaults };
+    const result = { ...defaults };
+    for (const key of Object.keys(defaults)) {
+        if (key in (raw as Record<string, unknown>)) {
+            (result as Record<string, unknown>)[key] = (raw as Record<string, unknown>)[key];
+        }
+    }
+    return result;
+}
 
-    const includeCharacter = selectedEntities.includes('Character');
-    const includeContext = selectedEntities.includes('Context');
-    const includeLocation = selectedEntities.includes('Location');
-    const includeAudioTrack = selectedEntities.includes('AudioTrack');
-    const includePromptBlock = selectedEntities.includes('PromptBlock');
-    const includeProfile = selectedEntities.includes('Profile');
+function parseRegexTriggers(
+    raw: unknown,
+    fallbackContext: regularExpressionContext = 'global',
+    fallbackTarget: regularExpressionTarget = 'everyone',
+): RegularExpressionTrigger[] | undefined {
+    if (!raw) return undefined;
 
-    if (includeCharacter) {
-        parts.push(`  "characters": [{
-    "id": "string (UUID)",
-    "name": "string (required)",
-    "description": "string (display only, NOT used as AI input)",
-    "aliases": ["string array of alternate names/aliases for this character. Used for name detection priority: [name, ...aliases]. Characters learn these via knownCharacterNames."],
-    "images": {"expression name": "image filename string"},
-    "useFrontCameraImage": "boolean (default false). When true and profile allows per-character control, replace stored image with live front camera snapshot.",
-    "voice": "string (optional voice ID or path)",
-    "systemPrompt": "string",
-    "thinkPrompt": "string",
-    "appearancePrompt": "string",
-    "dialoguePrompts": [{
-      "id": "string (UUID)",
-      "name": "string (required)",
-      "description": "string (display only, describes this dialogue prompt)",
-      "content": "string (the dialogue text content)",
-      "dialoguePromptBindings": ["string array of DialoguePrompt UUIDs to chain to after this prompt"],
-      "dialoguePromptWeight": "number (≥0, default 1). Weight for being selected as the starting dialogue prompt or as a chained next prompt. Higher = more likely to be picked.",
-      "dialoguePromptBreakProbability": "number (0-1, default 0). Probability that the dialogue prompt chain breaks after this node. Higher = more likely to stop chaining.",
-      "dialoguePromptSkipProbability": "number (0-1, default 0). Probability of skipping this dialogue prompt node entirely. 0 = always use. 1 = always skip.",
-      "regularExpressionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-      "regularExpressionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-      "regularExpressionExclusionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-      "regularExpressionExclusionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA}
-    }],
-    "knowledgePrompts": [{
-      "id": "string (UUID)",
-      "name": "string (required)",
-      "description": "string (display only, describes this knowledge prompt)",
-      "content": "string (the knowledge/factual content)",
-      "knowledgePromptBindings": ["string array of KnowledgePrompt UUIDs this links to"],
-      "regularExpressionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-      "regularExpressionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-      "regularExpressionExclusionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-      "regularExpressionExclusionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA}
-    }],
-    "starterPrompts": {"starter text string": "weight number (≥0), higher = more likely to be sampled"},
-    "initiativeWeight": "number (≥0, default 1.2)",
-    "chatProbability": "number (0-1, default 0.5)",
-    "maximumChatStamina": "number (≥0, default 4)",
-    "maximumActionStamina": "number (≥0, default 5)",
-    "nameSensitivity": "number (≥0, default 1)",
-    "chatImpatienceSensitivity": "number (≥0, default 0)",
-    "skipProbability": "number (0-1, default 0)",
-    "memoryRetentionWeight": "number (≥0, default 1)",
-    "contextSensitivity": "number (≥0, default 1)",
-    "doNotInjectCharacterImage": "boolean (default false)",
-    "numberOfMessagesToDisableThinkPrompt": "number (≥0, default 1)",
-    "numberOfMessagesToDisableMetaThinkInstructions": "number (≥0, default 1)",
-    "numberOfMessagesToDisableDialoguePrompt": "number (≥0, default 1)",
-    "numberOfMessagesToDisableStarterPrompt": "number (≥0, default 1)",
-    "tools": {
-      "whisper": "boolean (default true)", "think": "boolean (default false)", "pick": "boolean (default true)", "date": "boolean (default false)", "coin": "boolean (default true)",
-      "dice": "boolean (default true)", "random": "boolean (default true)", "rng": "boolean (default false)",
-      "move": "boolean (default true)", "timer": "boolean (default false)", "stopwatch": "boolean (default false)",
-      "schedule": "boolean (default false)",
-      "calculator": "boolean (default false)", "web": "boolean (default false)", "dialogue": "boolean (default false)",
-      "knowledge": "boolean (default false)", "memory": "boolean (default false)",
-      "lookup": "boolean (default false)",
-      "map": "boolean (default false)", "audio": "boolean (default false)", "note": "boolean (default false)",
-      "inventory": "boolean (default false)", "trade": "boolean (default false)",
-      "invite": "boolean (default false)", "kick": "boolean (default false)",
-      "teleport": "boolean (default false)", "key": "boolean (default false)", "clothing": "boolean (default false)",
-      "summon": "boolean (default false)", "narrate": "boolean (default false)", "inspect": "boolean (default false)",
-      "administrator": "boolean (default false)", "creator": "boolean (default false)", "destroyer": "boolean (default false)"
-    },
-    "clothings": [{
-      "id": "string (UUID)",
-      "name": "string (required)",
-      "description": "string (visual description shown in appearance prompt when worn)",
-      "initialWearingProbability": "number (0-1, default 1). Likelihood of being worn when character joins a session. 1 = always worn at start. 0 = never worn at start.",
-      "regularExpressionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-      "regularExpressionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-      "clothingBindings": ["string array of clothing UUIDs this item covers/hides when worn"]
-    }],
-    "knownCharacterNames": {"character UUID": ["string array of name/alias strings this character knows about that other character. Detected automatically during chat via name reveal patterns. Defines baseline persistent knowledge."]},
-    "textCharacterInjections": [{
-      "id": "string (UUID)",
-      "name": "string (required)",
-      "description": "string (display only, describes what this injection does)",
-      "textCharacters": ["string array of text strings to randomly select from for prefix injection"],
-      "textCharacterWeights": {"positional index (number)": "selection weight (number), higher = more likely to be picked"},
-      "textCharacterInjectionBindings": ["string array of TextCharacterInjection UUIDs to chain to after this injection fires"],
-      "textCharacterInjectionWeight": "number (≥0, default 1). Weight for being selected as the starting injection or as a chained next injection. Higher = more likely to be picked.",
-      "textCharacterBreakProbability": "number (0-1, default 0). Probability that the injection chain breaks after generating this text. Higher = more likely to stop chaining.",
-      "textCharacterSkipProbability": "number (0-1, default 0). Probability of skipping text generation for this injection and moving to the next binding. 0 = always generate. 1 = always skip."
-    }]
-  }]`);
+    if (Array.isArray(raw)) {
+        const triggers: RegularExpressionTrigger[] = [];
+        for (const item of raw) {
+            if (!item || typeof item !== 'object') continue;
+            const entry = item as Record<string, unknown>;
+            const trigger = entry.trigger;
+            if (typeof trigger !== 'string' || !trigger.trim()) continue;
+            triggers.push({
+                trigger: trigger.trim(),
+                context: (entry.context as regularExpressionContext) || fallbackContext,
+                target: (entry.target as regularExpressionTarget) || fallbackTarget,
+            });
+        }
+        return triggers.length > 0 ? triggers : undefined;
     }
 
-    if (includeContext) {
-        parts.push(`  "contexts": [{
-    "id": "string (UUID)",
-    "name": "string (required)",
-    "description": "string (display only, NOT used as AI input)",
-    "text": "string",
-    "images": ["string array (image filenames)"],
-    "searchTerms": ["string array"],
-    "searchEngine": "'Google' | 'Bing' | 'DuckDuckGo' | 'Yandex' | 'Baidu' (optional)",
-    "urls": ["string array"],
-    "includeLinkImages": "boolean (default false)",
-    "maximumLinkDepth": "number (default 1)",
-    "linkFetchMode": "'full' | 'summary' | 'extract' (default 'summary')",
-    "limitLinksToSubdirectory": "boolean (default false)",
-    "fetchCacheTimeToLiveMs": "number (optional)",
-    "regularExpressionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "regularExpressionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "regularExpressionExclusionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "regularExpressionExclusionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "messageFilterRegularExpressionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "messageFilterRegularExpressionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "messageFilterRegularExpressionExclusionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "messageFilterRegularExpressionExclusionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "tokenBudget": "number (default 512)",
-    "maximumRecursionDepth": "number (default 1)",
-    "insertionDepth": "number (default 0)",
-    "characterBindings": ["string array of character UUIDs"],
-    "useBase64Encoding": "boolean (default false)",
-    "isAutoGenerated": "boolean (optional)"
-  }]`);
+    return undefined;
+}
+
+function filterValidUuids(refs: string[] | undefined): string[] {
+    if (!refs) return [];
+    return refs.filter((id): id is string => typeof id === 'string' && UUID_REGEX.test(id));
+}
+
+function filterRecordKeysByUuid<T>(record: Record<string, T> | undefined): Record<string, T> {
+    if (!record) return {};
+    const result: Record<string, T> = {};
+    for (const [key, value] of Object.entries(record)) {
+        if (UUID_REGEX.test(key)) result[key] = value;
+    }
+    return result;
+}
+
+/**
+ * Parse a record with numeric keys (e.g., positional indices for textCharacterWeights).
+ * Preserves entries where the key is a valid non-negative integer.
+ */
+function filterRecordKeysByNumber<T>(record: Record<string, T> | Record<number, T> | undefined): Record<number, T> {
+    if (!record) return {};
+    const result: Record<number, T> = {};
+    for (const [key, value] of Object.entries(record)) {
+        const numKey = Number(key);
+        if (Number.isFinite(numKey) && numKey >= 0 && String(numKey) === key) {
+            result[numKey] = value;
+        }
+    }
+    return result;
+}
+
+/**
+ * Parses starterPrompts: Record<string, number> from AI-generated JSON.
+ * Keys are text strings, values are numeric weights.
+ */
+function parseStarterPrompts(raw: unknown): Record<string, number> | undefined {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+    const result: Record<string, number> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof key === 'string' && typeof value === 'number') {
+            result[key] = value;
+        }
+    }
+    return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * Parse knownCharacterNames: Record<string, string[]> from raw data.
+ * Keys are character IDs (UUIDs), values are arrays of name strings.
+ */
+function parseKnownCharacterNames(raw: unknown): Record<string, string[]> {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const result: Record<string, string[]> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (!UUID_REGEX.test(key)) continue;
+        if (Array.isArray(value)) {
+            const names = value.filter((n): n is string => typeof n === 'string' && n.trim().length > 0);
+            if (names.length > 0) result[key] = names;
+        }
+    }
+    return result;
+}
+
+/**
+ * Parse aliases: string[] from raw data.
+ */
+function parseAliases(raw: unknown): string[] | undefined {
+    if (!Array.isArray(raw)) return undefined;
+    const aliases = raw.filter((a): a is string => typeof a === 'string' && a.trim().length > 0);
+    return aliases.length > 0 ? aliases : undefined;
+}
+
+const VALID_TOOL_USAGE_DISPLAY_MODES: toolUsageDisplayMode[] = ['none', 'icon', 'simple', 'detailed', 'full', 'raw'];
+
+function parseToolUsageDisplayMode(raw: unknown): toolUsageDisplayMode {
+    if (typeof raw === 'string' && VALID_TOOL_USAGE_DISPLAY_MODES.includes(raw as toolUsageDisplayMode)) {
+        return raw as toolUsageDisplayMode;
+    }
+    return 'none';
+}
+
+function fillDialoguePromptDefaults(d: Record<string, unknown>): DialoguePrompt {
+    const now = Date.now();
+    return {
+        id: ensureId(d),
+        name: (d.name as string) || 'Unnamed Dialogue',
+        description: (d.description as string) || '',
+        content: (d.content as string) || '',
+        dialoguePromptBindings: filterValidUuids(d.dialoguePromptBindings as string[] | undefined),
+        dialoguePromptWeight: (d.dialoguePromptWeight as number) ?? 1,
+        dialoguePromptBreakProbability: (d.dialoguePromptBreakProbability as number) ?? 0,
+        dialoguePromptSkipProbability: (d.dialoguePromptSkipProbability as number) ?? 0,
+        regularExpressionActivationTriggers: parseRegexTriggers(d.regularExpressionActivationTriggers),
+        regularExpressionDeactivationTriggers: parseRegexTriggers(d.regularExpressionDeactivationTriggers),
+        regularExpressionExclusionActivationTriggers: parseRegexTriggers(d.regularExpressionExclusionActivationTriggers),
+        regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(d.regularExpressionExclusionDeactivationTriggers),
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+}
+
+function fillKnowledgePromptDefaults(k: Record<string, unknown>): KnowledgePrompt {
+    const now = Date.now();
+    return {
+        id: ensureId(k),
+        name: (k.name as string) || 'Unnamed Knowledge',
+        description: (k.description as string) || '',
+        content: (k.content as string) || '',
+        knowledgePromptBindings: filterValidUuids(k.knowledgePromptBindings as string[] | undefined),
+        regularExpressionActivationTriggers: parseRegexTriggers(k.regularExpressionActivationTriggers),
+        regularExpressionDeactivationTriggers: parseRegexTriggers(k.regularExpressionDeactivationTriggers),
+        regularExpressionExclusionActivationTriggers: parseRegexTriggers(k.regularExpressionExclusionActivationTriggers),
+        regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(k.regularExpressionExclusionDeactivationTriggers),
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+}
+
+function fillTextCharacterInjectionDefaults(t: Record<string, unknown>): TextCharacterInjection {
+    const now = Date.now();
+    return {
+        id: ensureId(t),
+        name: (t.name as string) || 'Unnamed Injection',
+        description: (t.description as string) || '',
+        textCharacters: Array.isArray(t.textCharacters) ? (t.textCharacters as string[]).filter(c => typeof c === 'string') : [],
+        textCharacterWeights: filterRecordKeysByNumber(t.textCharacterWeights as Record<string, number> | undefined),
+        textCharacterInjectionBindings: filterValidUuids(t.textCharacterInjectionBindings as string[] | undefined),
+        textCharacterInjectionWeight: (t.textCharacterInjectionWeight as number) ?? 1,
+        textCharacterBreakProbability: (t.textCharacterBreakProbability as number) ?? 0,
+        textCharacterSkipProbability: (t.textCharacterSkipProbability as number) ?? 0,
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+}
+
+function fillClothingDefaults(c: Record<string, unknown>): Clothing {
+    const now = Date.now();
+    return {
+        id: ensureId(c),
+        name: (c.name as string) || 'Unnamed Clothing',
+        description: (c.description as string) || '',
+        initialWearingProbability: (c.initialWearingProbability as number) ?? 1,
+        regularExpressionActivationTriggers: parseRegexTriggers(c.regularExpressionActivationTriggers),
+        regularExpressionDeactivationTriggers: parseRegexTriggers(c.regularExpressionDeactivationTriggers),
+        clothingBindings: filterValidUuids(c.clothingBindings as string[] | undefined),
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+}
+
+function fillStopPatternDefaults(sp: Record<string, unknown>): StopPattern {
+    const now = Date.now();
+    return {
+        id: ensureId(sp),
+        name: (sp.name as string) || 'Unnamed Stop Pattern',
+        description: (sp.description as string) || undefined,
+        pattern: (sp.pattern as string) || '',
+        regularExpressionActivationTriggers: parseRegexTriggers(sp.regularExpressionActivationTriggers),
+        regularExpressionDeactivationTriggers: parseRegexTriggers(sp.regularExpressionDeactivationTriggers),
+        regularExpressionExclusionActivationTriggers: parseRegexTriggers(sp.regularExpressionExclusionActivationTriggers),
+        regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(sp.regularExpressionExclusionDeactivationTriggers),
+        firstCreatedTimestamp: (sp.firstCreatedTimestamp as number) || now,
+        lastUpdatedTimestamp: (sp.lastUpdatedTimestamp as number) || now,
+    };
+}
+
+function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]): Character {
+    const now = Date.now();
+    const rawClothings = Array.isArray(c.clothings) ? c.clothings as Record<string, unknown>[] : [];
+    const rawTextInjections = Array.isArray(c.textCharacterInjections) ? c.textCharacterInjections as Record<string, unknown>[] : [];
+    const rawDialoguePrompts = Array.isArray(c.dialoguePrompts) ? c.dialoguePrompts as Record<string, unknown>[] : [];
+    const rawKnowledgePrompts = Array.isArray(c.knowledgePrompts) ? c.knowledgePrompts as Record<string, unknown>[] : [];
+    return {
+        id: ensureId(c),
+        name: (c.name as string) || 'Unnamed',
+        description: (c.description as string) || '',
+        aliases: parseAliases(c.aliases),
+        images: (c.images && typeof c.images === 'object' ? c.images as Record<string, string> : {}) as Record<string, string>,
+        useFrontCameraImage: (c.useFrontCameraImage as boolean) ?? false,
+        voice: (c.voice as string) || undefined,
+        systemPrompt: (c.systemPrompt as string) || '',
+        thinkPrompt: (c.thinkPrompt as string) || undefined,
+        appearancePrompt: (c.appearancePrompt as string) || undefined,
+        dialoguePrompts: rawDialoguePrompts.map(item => fillDialoguePromptDefaults(item)),
+        knowledgePrompts: rawKnowledgePrompts.map(item => fillKnowledgePromptDefaults(item)),
+        starterPrompts: parseStarterPrompts(c.starterPrompts),
+        sampler: samplers.length > 0 ? samplers[0] : undefined,
+        initiativeWeight: (c.initiativeWeight as number) ?? 5,
+        chatProbability: (c.chatProbability as number) ?? 0.8,
+        maximumChatStamina: (c.maximumChatStamina as number) ?? 5,
+        maximumActionStamina: (c.maximumActionStamina as number) ?? 5,
+        nameSensitivity: (c.nameSensitivity as number) ?? 0.3,
+        chatImpatienceSensitivity: (c.chatImpatienceSensitivity as number) ?? 0.2,
+        skipProbability: (c.skipProbability as number) ?? 0.1,
+        memoryRetentionWeight: (c.memoryRetentionWeight as number) ?? 0.5,
+        contextSensitivity: (c.contextSensitivity as number) ?? 0.5,
+        doNotInjectCharacterImage: (c.doNotInjectCharacterImage as boolean) ?? false,
+        numberOfMessagesToDisableThinkPrompt: (c.numberOfMessagesToDisableThinkPrompt as number) ?? 0,
+        numberOfMessagesToDisableMetaThinkInstructions: (c.numberOfMessagesToDisableMetaThinkInstructions as number) ?? 0,
+        numberOfMessagesToDisableDialoguePrompt: (c.numberOfMessagesToDisableDialoguePrompt as number) ?? 0,
+        numberOfMessagesToDisableStarterPrompt: (c.numberOfMessagesToDisableStarterPrompt as number) ?? 0,
+        tools: parseToolsRecord(c.tools, defaultCharacterTools) as Record<tool, boolean>,
+        clothings: rawClothings.map(item => fillClothingDefaults(item)),
+        knownCharacterNames: parseKnownCharacterNames(c.knownCharacterNames),
+        textCharacterInjections: rawTextInjections.map(item => fillTextCharacterInjectionDefaults(item)),
+        memories: {},
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+}
+
+function fillContextDefaults(c: Record<string, unknown>): Context {
+    const now = Date.now();
+    return {
+        id: ensureId(c),
+        name: (c.name as string) || 'Unnamed',
+        description: (c.description as string) || undefined,
+        text: (c.text as string) || '',
+        images: (c.images as string[]) || undefined,
+        searchTerms: (c.searchTerms as string[]) || undefined,
+        searchEngine: (c.searchEngine as Context['searchEngine']) || undefined,
+        urls: (c.urls as string[]) || undefined,
+        includeLinkImages: (c.includeLinkImages as boolean) ?? false,
+        maximumLinkDepth: (c.maximumLinkDepth as number) ?? 1,
+        linkFetchMode: (c.linkFetchMode as Context['linkFetchMode']) ?? 'summary',
+        limitLinksToSubdirectory: (c.limitLinksToSubdirectory as boolean) ?? false,
+        fetchCacheTimeToLiveMs: (c.fetchCacheTimeToLiveMs as number) || undefined,
+        regularExpressionActivationTriggers: parseRegexTriggers(c.regularExpressionActivationTriggers),
+        regularExpressionDeactivationTriggers: parseRegexTriggers(c.regularExpressionDeactivationTriggers),
+        regularExpressionExclusionActivationTriggers: parseRegexTriggers(c.regularExpressionExclusionActivationTriggers),
+        regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(c.regularExpressionExclusionDeactivationTriggers),
+        messageFilterRegularExpressionActivationTriggers: parseRegexTriggers(c.messageFilterRegularExpressionActivationTriggers),
+        messageFilterRegularExpressionDeactivationTriggers: parseRegexTriggers(c.messageFilterRegularExpressionDeactivationTriggers),
+        messageFilterRegularExpressionExclusionActivationTriggers: parseRegexTriggers(c.messageFilterRegularExpressionExclusionActivationTriggers),
+        messageFilterRegularExpressionExclusionDeactivationTriggers: parseRegexTriggers(c.messageFilterRegularExpressionExclusionDeactivationTriggers),
+        tokenBudget: (c.tokenBudget as number) ?? 512,
+        maximumRecursionDepth: (c.maximumRecursionDepth as number) ?? 1,
+        insertionDepth: (c.insertionDepth as number) ?? 0,
+        characterBindings: filterValidUuids(c.characterBindings as string[] | undefined),
+        useBase64Encoding: (c.useBase64Encoding as boolean) ?? false,
+        isAutoGenerated: (c.isAutoGenerated as boolean) || undefined,
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+}
+
+function fillLocationDefaults(l: Record<string, unknown>): Location {
+    const now = Date.now();
+    return {
+        id: ensureId(l),
+        name: (l.name as string) || 'Unnamed',
+        description: (l.description as string) || undefined,
+        text: (l.text as string) || '',
+        images: (l.images as string[]) || [],
+        regularExpressionActivationTriggers: parseRegexTriggers(l.regularExpressionActivationTriggers),
+        regularExpressionDeactivationTriggers: parseRegexTriggers(l.regularExpressionDeactivationTriggers),
+        regularExpressionExclusionActivationTriggers: parseRegexTriggers(l.regularExpressionExclusionActivationTriggers),
+        regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(l.regularExpressionExclusionDeactivationTriggers),
+        backgroundImageRegularExpressionActivationTriggers: (l.backgroundImageRegularExpressionActivationTriggers as Record<number, string>) || {},
+        backgroundImageWeights: (l.backgroundImageWeights as Record<number, number>) || {},
+        playAudioTrackOnEnterWeights: (l.playAudioTrackOnEnterWeights as Record<string, number>) || undefined,
+        locationBindings: filterValidUuids(l.locationBindings as string[] | undefined),
+        locationBindingRegularExpressionTriggers: filterRecordKeysByUuid(l.locationBindingRegularExpressionTriggers as Record<string, string> | undefined),
+        characterBindings: filterValidUuids(l.characterBindings as string[] | undefined),
+        globalWeight: (l.globalWeight as number) ?? 1,
+        characterWeights: filterRecordKeysByUuid(l.characterWeights as Record<string, number> | undefined),
+        ownerBindings: filterValidUuids(l.ownerBindings as string[] | undefined),
+        latitude: (l.latitude as number) ?? 0,
+        longitude: (l.longitude as number) ?? 0,
+        locationDistances: filterRecordKeysByUuid(l.locationDistances as Record<string, number> | undefined),
+        messageFilterNonCoLocatedParticipants: (l.messageFilterNonCoLocatedParticipants as boolean) ?? true,
+        messageFilterRegularExpressionActivationTriggers: parseRegexTriggers(l.messageFilterRegularExpressionActivationTriggers),
+        messageFilterRegularExpressionDeactivationTriggers: parseRegexTriggers(l.messageFilterRegularExpressionDeactivationTriggers),
+        messageFilterRegularExpressionExclusionActivationTriggers: parseRegexTriggers(l.messageFilterRegularExpressionExclusionActivationTriggers),
+        messageFilterRegularExpressionExclusionDeactivationTriggers: parseRegexTriggers(l.messageFilterRegularExpressionExclusionDeactivationTriggers),
+        useBase64Encoding: (l.useBase64Encoding as boolean) ?? false,
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+}
+
+function fillAudioTrackDefaults(t: Record<string, unknown>): AudioTrack {
+    const now = Date.now();
+    return {
+        id: ensureId(t),
+        name: (t.name as string) || 'Unnamed',
+        description: (t.description as string) || undefined,
+        filename: (t.filename as string) || '',
+        loop: (t.loop as boolean) ?? true,
+        volume: (t.volume as number) ?? 1,
+        startFadeDurationMs: (t.startFadeDurationMs as number) ?? 1000,
+        endFadeDurationMs: (t.endFadeDurationMs as number) ?? 1000,
+        audioCategory: (t.audioCategory as AudioTrack['audioCategory']) ?? 'ambient',
+        priority: (t.priority as number) ?? 0,
+        playableByParticipants: (t.playableByParticipants as boolean) ?? false,
+        regularExpressionActivationTriggers: parseRegexTriggers(t.regularExpressionActivationTriggers),
+        regularExpressionDeactivationTriggers: parseRegexTriggers(t.regularExpressionDeactivationTriggers),
+        regularExpressionExclusionActivationTriggers: parseRegexTriggers(t.regularExpressionExclusionActivationTriggers),
+        regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(t.regularExpressionExclusionDeactivationTriggers),
+        locationBindings: filterValidUuids(t.locationBindings as string[] | undefined),
+        contextBindings: filterValidUuids(t.contextBindings as string[] | undefined),
+        characterBindings: filterValidUuids(t.characterBindings as string[] | undefined),
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+}
+
+function fillPromptBlockDefaults(b: Record<string, unknown>): PromptBlock {
+    const now = Date.now();
+    return {
+        id: ensureId(b),
+        name: (b.name as string) || 'Unnamed',
+        description: (b.description as string) || undefined,
+        textContent: (b.textContent as string) || '',
+        images: (b.images as string[]) || [],
+        regularExpressionActivationTriggers: parseRegexTriggers(b.regularExpressionActivationTriggers),
+        regularExpressionDeactivationTriggers: parseRegexTriggers(b.regularExpressionDeactivationTriggers),
+        regularExpressionExclusionActivationTriggers: parseRegexTriggers(b.regularExpressionExclusionActivationTriggers),
+        regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(b.regularExpressionExclusionDeactivationTriggers),
+        messageFilterRegularExpressionActivationTriggers: parseRegexTriggers(b.messageFilterRegularExpressionActivationTriggers),
+        messageFilterRegularExpressionDeactivationTriggers: parseRegexTriggers(b.messageFilterRegularExpressionDeactivationTriggers),
+        messageFilterRegularExpressionExclusionActivationTriggers: parseRegexTriggers(b.messageFilterRegularExpressionExclusionActivationTriggers),
+        messageFilterRegularExpressionExclusionDeactivationTriggers: parseRegexTriggers(b.messageFilterRegularExpressionExclusionDeactivationTriggers),
+        characterBindings: filterValidUuids(b.characterBindings as string[] | undefined),
+        contextBindings: filterValidUuids(b.contextBindings as string[] | undefined),
+        locationBindings: filterValidUuids(b.locationBindings as string[] | undefined),
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+}
+
+function parseCacheEfficiencyLevels(raw: unknown): Record<cacheEfficiencyConfigurationType, number> {
+    const defaults: Record<cacheEfficiencyConfigurationType, number> = { 'Character Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
+    const obj = raw as Record<string, unknown>;
+    const result = { ...defaults };
+    for (const key of Object.keys(defaults) as cacheEfficiencyConfigurationType[]) {
+        if (key in obj && typeof obj[key] === 'number') {
+            const val = Math.round(obj[key] as number);
+            result[key] = Math.max(0, Math.min(2, val));
+        }
+    }
+    return result;
+}
+
+function fillProfileDefaults(p: Record<string, unknown>): Profile {
+    const now = Date.now();
+    const rawNarrateTexts = (p.narrateTexts && typeof p.narrateTexts === 'object') ? p.narrateTexts as Record<string, unknown> : {};
+    return {
+        id: ensureId(p),
+        name: (p.name as string) || 'Unnamed',
+        description: (p.description as string) || undefined,
+        autonomousMode: (p.autonomousMode as boolean) ?? false,
+        autonomousInteractionIntervalMs: (p.autonomousInteractionIntervalMs as number) ?? 10000,
+        volume: (p.volume as number) ?? -1,
+        forceNameReveal: (p.forceNameReveal as boolean) ?? false,
+        enableAmbientNarration: (p.enableAmbientNarration as boolean) ?? false,
+        toolUsageDisplayMode: parseToolUsageDisplayMode(p.toolUsageDisplayMode),
+        enableCharacterExpression: (p.enableCharacterExpression as boolean) ?? false,
+        randomizeTextCharacterInjection: (p.randomizeTextCharacterInjection as boolean) ?? false,
+        randomizeTextCharacterInjectionOnRetry: (p.randomizeTextCharacterInjectionOnRetry as boolean) ?? true,
+        maximumNumberOfTextCharacterRandomizationPerModel: (p.maximumNumberOfTextCharacterRandomizationPerModel as number) ?? 1,
+        forceNoCharacterImageInjection: (p.forceNoCharacterImageInjection as boolean) ?? false,
+        forceNoContextImageInjection: (p.forceNoContextImageInjection as boolean) ?? false,
+        forceNoLocationImageInjection: (p.forceNoLocationImageInjection as boolean) ?? false,
+        useCurrentDateAndTime: (p.useCurrentDateAndTime as boolean) ?? false,
+        useWeather: (p.useWeather as boolean) ?? false,
+        weatherApiKey: (p.weatherApiKey as string) || undefined,
+        useTimeElapsed: (p.useTimeElapsed as boolean) ?? false,
+        useFrontCameraImage: (p.useFrontCameraImage as tristateInteger) ?? 0,
+        numberOfMessagesToDisableThinkPrompt: (p.numberOfMessagesToDisableThinkPrompt as number) ?? 0,
+        numberOfMessagesToDisableMetaThinkInstructions: (p.numberOfMessagesToDisableMetaThinkInstructions as number) ?? 0,
+        numberOfMessagesToDisableDialoguePrompt: (p.numberOfMessagesToDisableDialoguePrompt as number) ?? 0,
+        numberOfMessagesToDisableStarterPrompt: (p.numberOfMessagesToDisableStarterPrompt as number) ?? 0,
+        forceEqualInitiative: (p.forceEqualInitiative as boolean) ?? false,
+        chatProbability: (p.chatProbability as number) ?? 0.8,
+        maximumChatStamina: (p.maximumChatStamina as number) ?? 5,
+        maximumActionStamina: (p.maximumActionStamina as number) ?? 5,
+        nameSensitivity: (p.nameSensitivity as number) ?? 0.3,
+        chatImpatienceSensitivity: (p.chatImpatienceSensitivity as number) ?? 0.2,
+        skipProbability: (p.skipProbability as number) ?? 0.1,
+        memoryRetentionWeight: (p.memoryRetentionWeight as number) ?? 0.5,
+        contextSensitivity: (p.contextSensitivity as number) ?? 0.5,
+        cacheEfficiencyLevels: parseCacheEfficiencyLevels(p.cacheEfficiencyLevels),
+        minimalVolatileCacheMode: (p.minimalVolatileCacheMode as boolean) ?? false,
+        doNotInjectDefaultStopTokens: (p.doNotInjectDefaultStopTokens as boolean) ?? false,
+        narrateTexts: {
+            normal: (rawNarrateTexts.normal as boolean) ?? defaultNarrateTexts.normal,
+            quoted: (rawNarrateTexts.quoted as boolean) ?? defaultNarrateTexts.quoted,
+            bolded: (rawNarrateTexts.bolded as boolean) ?? defaultNarrateTexts.bolded,
+            italicized: (rawNarrateTexts.italicized as boolean) ?? defaultNarrateTexts.italicized,
+            parenthesized: (rawNarrateTexts.parenthesized as boolean) ?? defaultNarrateTexts.parenthesized,
+            bracketed: (rawNarrateTexts.bracketed as boolean) ?? defaultNarrateTexts.bracketed,
+            braced: (rawNarrateTexts.braced as boolean) ?? defaultNarrateTexts.braced,
+        },
+        stripThinkTokens: (p.stripThinkTokens as boolean) ?? true,
+        tools: parseToolsRecord(p.tools, defaultProfileTools) as Record<tool, tristateInteger>,
+        inputStrategy: (p.inputStrategy as Profile['inputStrategy']) || ['System Prompt', 'Chat History', 'Context', 'Location'],
+        summarizationSteps: ((p.summarizationSteps as Record<string, unknown>[]) || []).map(s => ({
+            id: ensureId(s),
+            name: (s.name as string) || (s.strategyType as string) || '',
+            description: (s.description as string) || undefined,
+            strategyType: (s.strategyType as Profile['summarizationSteps'] extends (infer T)[] ? T : never).strategyType ?? 'Sliding Window Replace',
+            enabled: (s.enabled as boolean) ?? true,
+            order: (s.order as number) ?? 0,
+            slidingWindowSize: s.slidingWindowSize as number | undefined,
+            periodicCompressionInterval: s.periodicCompressionInterval as number | undefined,
+            periodicCompressionChunkSize: s.periodicCompressionChunkSize as number | undefined,
+            recursiveSummaryChunkSize: s.recursiveSummaryChunkSize as number | undefined,
+            recursiveSummaryMaximumDepth: s.recursiveSummaryMaximumDepth as number | undefined,
+            maskingRelevanceThreshold: s.maskingRelevanceThreshold as number | undefined,
+            maskingKeywordWeight: s.maskingKeywordWeight as number | undefined,
+            entropyPruningChunkSize: s.entropyPruningChunkSize as number | undefined,
+            entropyPruningThreshold: s.entropyPruningThreshold as number | undefined,
+            entropyPruningTokenBudget: s.entropyPruningTokenBudget as number | undefined,
+            summaryTokenBudget: s.summaryTokenBudget as number | undefined,
+            summaryModelId: (s.summaryModelId as string) || undefined,
+            triggerTokenThreshold: s.triggerTokenThreshold as number | undefined,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+        })),
+        characterStopPattern: (p.characterStopPattern && typeof p.characterStopPattern === 'object') ? fillStopPatternDefaults(p.characterStopPattern as Record<string, unknown>) : undefined,
+        webSummarizationStopPattern: (p.webSummarizationStopPattern && typeof p.webSummarizationStopPattern === 'object') ? fillStopPatternDefaults(p.webSummarizationStopPattern as Record<string, unknown>) : undefined,
+        interactionDataSummarizationStopPattern: (p.interactionDataSummarizationStopPattern && typeof p.interactionDataSummarizationStopPattern === 'object') ? fillStopPatternDefaults(p.interactionDataSummarizationStopPattern as Record<string, unknown>) : undefined,
+        aiRecommendationStopPattern: (p.aiRecommendationStopPattern && typeof p.aiRecommendationStopPattern === 'object') ? fillStopPatternDefaults(p.aiRecommendationStopPattern as Record<string, unknown>) : undefined,
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+}
+
+export function tryParseGeneratedOutput(text: string, samplers: Sampler[]): GeneratedOutput | null {
+    let jsonStr = text.trim();
+    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim();
+    try {
+        const parsed = JSON.parse(jsonStr);
+        if (!parsed || typeof parsed !== 'object') return null;
+
+        const result: GeneratedOutput = {};
+
+        if (Array.isArray(parsed.characters)) {
+            result.characters = parsed.characters.map((c: Record<string, unknown>) => fillCharacterDefaults(c, samplers));
+        }
+        if (Array.isArray(parsed.contexts)) {
+            result.contexts = parsed.contexts.map((c: Record<string, unknown>) => fillContextDefaults(c));
+        }
+        if (Array.isArray(parsed.locations)) {
+            result.locations = parsed.locations.map((l: Record<string, unknown>) => fillLocationDefaults(l));
+        }
+        if (Array.isArray(parsed.audioTracks)) {
+            result.audioTracks = parsed.audioTracks.map((t: Record<string, unknown>) => fillAudioTrackDefaults(t));
+        }
+        if (Array.isArray(parsed.promptBlocks)) {
+            result.promptBlocks = parsed.promptBlocks.map((b: Record<string, unknown>) => fillPromptBlockDefaults(b));
+        }
+        if (parsed.profile && typeof parsed.profile === 'object') {
+            result.profile = fillProfileDefaults(parsed.profile as Record<string, unknown>);
+        }
+        if (parsed.world && typeof parsed.world === 'object') {
+            const w = parsed.world as Record<string, unknown>;
+            result.world = {
+                name: (w.name as string) || 'Unnamed World',
+                description: (w.description as string) || undefined,
+                characters: Array.isArray(w.characters) ? w.characters.map((c: Record<string, unknown>) => fillCharacterDefaults(c, samplers)) : [],
+                contexts: Array.isArray(w.contexts) ? w.contexts.map((c: Record<string, unknown>) => fillContextDefaults(c)) : [],
+                locations: Array.isArray(w.locations) ? w.locations.map((l: Record<string, unknown>) => fillLocationDefaults(l)) : [],
+                audioTracks: Array.isArray(w.audioTracks) ? w.audioTracks.map((t: Record<string, unknown>) => fillAudioTrackDefaults(t)) : [],
+                promptBlocks: Array.isArray(w.promptBlocks) ? w.promptBlocks.map((b: Record<string, unknown>) => fillPromptBlockDefaults(b)) : [],
+                profile: w.profile && typeof w.profile === 'object' ? fillProfileDefaults(w.profile as Record<string, unknown>) : undefined,
+            };
+        }
+
+        if (!result.characters && !result.contexts && !result.locations && !result.audioTracks && !result.promptBlocks && !result.profile && !result.world) return null;
+        return result;
+    } catch { return null; }
+}
+
+export function deriveHistoryLabel(output: GeneratedOutput): string {
+    if (output.world) return `🌍 ${output.world.name}`;
+    if (output.characters?.length) return `🎭 ${output.characters[0].name}${output.characters.length > 1 ? ` +${output.characters.length - 1}` : ''}`;
+    if (output.contexts?.length) return `📜 ${output.contexts[0].name}${output.contexts.length > 1 ? ` +${output.contexts.length - 1}` : ''}`;
+    if (output.locations?.length) return `📍 ${output.locations[0].name}${output.locations.length > 1 ? ` +${output.locations.length - 1}` : ''}`;
+    if (output.audioTracks?.length) return `🔊 ${output.audioTracks[0].name}${output.audioTracks.length > 1 ? ` +${output.audioTracks.length - 1}` : ''}`;
+    if (output.promptBlocks?.length) return `🧱 ${output.promptBlocks[0].name}${output.promptBlocks.length > 1 ? ` +${output.promptBlocks.length - 1}` : ''}`;
+    if (output.profile) return `👤 ${output.profile.name}`;
+    return 'Unknown';
+}
+
+export function resolveWorldCrossReferences(
+    world: NonNullable<GeneratedOutput['world']>,
+    injectLocationImages: boolean,
+    allAudioTracks: AudioTrack[],
+): { characters: Character[]; contexts: Context[]; locations: Location[]; audioTracks: AudioTrack[]; promptBlocks: PromptBlock[]; profile?: Profile } {
+    const characters = world.characters;
+    const contexts = world.contexts;
+    const locations = world.locations;
+
+    for (const context of contexts) {
+        context.characterBindings = filterValidUuids(context.characterBindings);
     }
 
-    if (includeLocation) {
-        parts.push(`  "locations": [{
-    "id": "string (UUID)",
-    "name": "string (required)",
-    "description": "string (display only, NOT used as AI input)",
-    "text": "string",
-    "images": ["string array (image filenames for location visuals)"],
-    "regularExpressionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "regularExpressionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "regularExpressionExclusionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "regularExpressionExclusionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "backgroundImageRegularExpressionActivationTriggers": {"image index (number)": "regex pattern to switch to this image based on user message"},
-    "backgroundImageWeights": {"image index (number)": "sampling weight (number)"},
-    "playAudioTrackOnEnterWeights": {"audio track UUID": "sampling weight (number), randomly plays an audio track when entering this location"},
-    "locationBindings": ["string array of origin location UUIDs. Each entry declares: 'This location is accessible to characters FROM that origin location.' Empty array = accessible from anywhere."],
-    "locationBindingRegularExpressionTriggers": {"origin location UUID": "regex pattern that must match the character's message for the path from that origin to this location to be open. Omit or leave empty for unconditional access from that origin."},
-    "characterBindings": ["string array of character UUIDs. Only these characters can enter this location. Empty = all characters can enter."],
-    "globalWeight": "number (≥0, default 1). Base likelihood for any character to enter this location.",
-    "characterWeights": {"character UUID": "weight (number). Overrides globalWeight for specific characters."},
-    "ownerBindings": ["string array of character UUIDs who own this location. Owners get exclusivity bonuses, faster stamina regen, reduced speech cost, and always feel at home."],
-    "latitude": "number (-90 to 90, optional, real-world latitude for local weather and time)",
-    "longitude": "number (-180 to 180, optional, real-world longitude for local weather and time)",
-    "locationDistances": {"location UUID": "distance in km (number). Manual override for map tool. Empty = auto-calculated from coordinates."},
-    "messageFilterNonCoLocatedParticipants": "boolean (default true). Hide messages from characters not currently at this location.",
-    "messageFilterRegularExpressionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "messageFilterRegularExpressionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "messageFilterRegularExpressionExclusionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "messageFilterRegularExpressionExclusionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "useBase64Encoding": "boolean (default false)"
-  }]`);
+    for (const character of characters) {
+        for (const clothing of character.clothings) {
+            clothing.clothingBindings = filterValidUuids(clothing.clothingBindings);
+        }
+        for (const injection of character.textCharacterInjections) {
+            injection.textCharacterInjectionBindings = filterValidUuids(injection.textCharacterInjectionBindings);
+        }
+        if (character.dialoguePrompts) {
+            for (const dp of character.dialoguePrompts) {
+                dp.dialoguePromptBindings = filterValidUuids(dp.dialoguePromptBindings);
+            }
+        }
+        if (character.knowledgePrompts) {
+            for (const kp of character.knowledgePrompts) {
+                kp.knowledgePromptBindings = filterValidUuids(kp.knowledgePromptBindings);
+            }
+        }
     }
 
-    if (includeAudioTrack) {
-        parts.push(`  "audioTracks": [{
-    "id": "string (UUID)",
-    "name": "string (required)",
-    "description": "string (display only, NOT used as AI input)",
-    "filename": "string (suggested filename, user will provide actual file)",
-    "loop": "boolean (default true)",
-    "volume": "number (0-1, default 1)",
-    "audioCategory": "'ambient' | 'music' | 'sound effect' (default 'ambient')",
-    "playableByParticipants": "boolean (default false)",
-    "startFadeDurationMs": "number (default 1000)",
-    "endFadeDurationMs": "number (default 1000)",
-    "regularExpressionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "regularExpressionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "regularExpressionExclusionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "regularExpressionExclusionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "locationBindings": ["string array of location UUIDs"],
-    "contextBindings": ["string array of context UUIDs"],
-    "characterBindings": ["string array of character UUIDs"],
-    "priority": "number (default 0)"
-  }]`);
-    }
+    const resolvedLocations: Location[] = locations.map(l => ({
+        ...l,
+        images: injectLocationImages ? l.images : [],
+        locationBindings: filterValidUuids(l.locationBindings),
+        locationBindingRegularExpressionTriggers: filterRecordKeysByUuid(l.locationBindingRegularExpressionTriggers),
+        characterBindings: filterValidUuids(l.characterBindings),
+        characterWeights: filterRecordKeysByUuid(l.characterWeights),
+        ownerBindings: filterValidUuids(l.ownerBindings),
+        locationDistances: filterRecordKeysByUuid(l.locationDistances),
+        playAudioTrackOnEnterWeights: filterRecordKeysByUuid(l.playAudioTrackOnEnterWeights),
+    }));
 
-    if (includePromptBlock) {
-        parts.push(`  "promptBlocks": [{
-    "id": "string (UUID)",
-    "name": "string (required)",
-    "description": "string (display only, NOT used as AI input)",
-    "textContent": "string (required)",
-    "images": ["string array (image filenames)"],
-    "regularExpressionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "regularExpressionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "regularExpressionExclusionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "regularExpressionExclusionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "messageFilterRegularExpressionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "messageFilterRegularExpressionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "messageFilterRegularExpressionExclusionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "messageFilterRegularExpressionExclusionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
-    "characterBindings": ["string array of character UUIDs"],
-    "contextBindings": ["string array of context UUIDs"],
-    "locationBindings": ["string array of location UUIDs"]
-  }]`);
-    }
+    const audioTracks: AudioTrack[] = world.audioTracks.map(t => {
+        const existing = allAudioTracks.find(at => at.id === t.id);
+        if (existing) return existing;
+        return {
+            ...t,
+            locationBindings: filterValidUuids(t.locationBindings),
+            contextBindings: filterValidUuids(t.contextBindings),
+            characterBindings: filterValidUuids(t.characterBindings),
+        };
+    });
 
-    if (includeProfile) {
-        parts.push(`  "profile": {
-    "id": "string (UUID)",
-    "name": "string (required)",
-    "description": "string (display only, NOT used as AI input)",
-    "autonomousMode": "boolean (default false)",
-    "autonomousInteractionIntervalMs": "number (1000-60000, default 10000)",
-    "volume": "number (-1 to 1, default -1 means per-track default)",
-    "forceNameReveal": "boolean (default false)",
-    "enableAmbientNarration": "boolean (default false). When true and no character responds, generates environmental/atmospheric narration to fill silence.",
-    "toolUsageDisplayMode": "'none' | 'icon' | 'simple' | 'detailed' | 'full' | 'raw' (default 'none'). Controls how tool invocations appear in chat output.",
-    "enableCharacterExpression": "boolean (default false)",
-    "randomizeTextCharacterInjection": "boolean (default false, master toggle for text character injection across all characters)",
-    "randomizeTextCharacterInjectionOnRetry": "boolean (default true, only randomize if the initial generation fails. Only relevant when randomizeTextCharacterInjection is true)",
-    "maximumNumberOfTextCharacterRandomizationPerModel": "number (≥1, default 1, number of retry attempts per model for text character randomization. Only relevant when randomizeTextCharacterInjection is true)",
-    "forceNoCharacterImageInjection": "boolean (default false)",
-    "forceNoContextImageInjection": "boolean (default false)",
-    "forceNoLocationImageInjection": "boolean (default false)",
-    "useCurrentDateAndTime": "boolean (default false)",
-    "useWeather": "boolean (default false)",
-    "weatherApiKey": "string (OpenWeather API key, required if useWeather is true)",
-    "useTimeElapsed": "boolean (default false)",
-    "useFrontCameraImage": "number (-1, 0, or 1, default 0). -1 = force off for all characters. 0 = per-character setting. 1 = force on for all characters. Replaces protagonist stored image with live front camera snapshot. Camera activates on first use and auto-closes after 10 minutes idle.",
-    "numberOfMessagesToDisableThinkPrompt": "number (-1 or ≥0, default -1 defers to character)",
-    "numberOfMessagesToDisableMetaThinkInstructions": "number (-1 or ≥0, default -1 defers to character)",
-    "numberOfMessagesToDisableDialoguePrompt": "number (-1 or ≥0, default -1 defers to character)",
-    "numberOfMessagesToDisableStarterPrompt": "number (-1 or ≥0, default -1 defers to character)",
-    "forceEqualInitiative": "boolean (default false)",
-    "chatProbability": "number (-1 or 0-1, default -1 defers to character)",
-    "maximumChatStamina": "number (-1 or ≥0, default -1 defers to character)",
-    "maximumActionStamina": "number (-1 or ≥0, default -1 defers to character)",
-    "nameSensitivity": "number (-1 or ≥0, default -1 defers to character)",
-    "chatImpatienceSensitivity": "number (-1 or ≥0, default -1 defers to character)",
-    "skipProbability": "number (-1 or 0-1, default -1 defers to character)",
-    "memoryRetentionWeight": "number (-1 or ≥0, default -1 defers to character)",
-    "contextSensitivity": "number (-1 or ≥0, default -1 defers to character)",
-    "cacheEfficiencyLevels": {
-      "Character Name": "number (0-2, default 0). 0 = no optimization, names resolved dynamically. 1 = freeze names for co-located participants. 2 = freeze names for all participants.",
-      "System Prompt": "number (0-2, default 0). 0 = only current character system prompt. 1 = inject co-located participants system prompts. 2 = inject all participants system prompts.",
-      "Think Prompt": "number (0-2, default 0). 0 = only current character think prompt. 1 = inject co-located participants think prompts. 2 = inject all participants think prompts."
-    },
-    "minimalVolatileCacheMode": "boolean (default false). When true, volatile sections (date/time, weather, fatigue, inventory, tools, location) are forced to end of prompt regardless of input strategy ordering to maximize cache stability.",
-    "doNotInjectDefaultStopTokens": "boolean (default false)",
-    "narrateTexts": {
-      "normal": "boolean (default false)", "quoted": "boolean (default false)", "bolded": "boolean (default false)",
-      "italicized": "boolean (default false)", "parenthesized": "boolean (default false)", "bracketed": "boolean (default false)",
-      "braced": "boolean (default false)"
-    },
-    "stripThinkTokens": "boolean (default true)",
-    "tools": {
-      "whisper": "number (-1, 0, or 1, default 0)", "think": "number (-1, 0, or 1, default 0)", "pick": "number (-1, 0, or 1, default 0)", "date": "number (-1, 0, or 1, default 0)", "coin": "number (-1, 0, or 1, default 0)",
-      "dice": "number (-1, 0, or 1, default 0)", "random": "number (-1, 0, or 1, default 0)", "rng": "number (-1, 0, or 1, default 0)",
-      "move": "number (-1, 0, or 1, default 0)", "timer": "number (-1, 0, or 1, default 0)", "stopwatch": "number (-1, 0, or 1, default 0)",
-      "schedule": "number (-1, 0, or 1, default 0)",
-      "calculator": "number (-1, 0, or 1, default 0)", "web": "number (-1, 0, or 1, default 0)", "dialogue": "number (-1, 0, or 1, default 0)",
-      "knowledge": "number (-1, 0, or 1, default 0)", "memory": "number (-1, 0, or 1, default 0)",
-      "lookup": "number (-1, 0, or 1, default 0)",
-      "map": "number (-1, 0, or 1, default 0)", "audio": "number (-1, 0, or 1, default 0)", "note": "number (-1, 0, or 1, default 0)",
-      "inventory": "number (-1, 0, or 1, default 0)", "trade": "number (-1, 0, or 1, default 0)",
-      "invite": "number (-1, 0, or 1, default 0)", "kick": "number (-1, 0, or 1, default 0)",
-      "teleport": "number (-1, 0, or 1, default 0)", "key": "number (-1, 0, or 1, default 0)", "clothing": "number (-1, 0, or 1, default 0)",
-      "summon": "number (-1, 0, or 1, default 0)", "narrate": "number (-1, 0, or 1, default 0)", "inspect": "number (-1, 0, or 1, default 0)",
-      "administrator": "number (-1, 0, or 1, default 0)", "creator": "number (-1, 0, or 1, default 0)", "destroyer": "number (-1, 0, or 1, default 0)"
-    },
-    "inputStrategy": ["array of PromptBlockType strings and/or custom prompt block UUIDs. Built-in types: ${defaultInputStrategy.join(', ')}. Custom prompt blocks are referenced by their UUID string."],
-    "summarizationSteps": [{
-      "strategyType": "'Sliding Window Replace' | 'Periodic Compression' | 'Recursive Summary' | 'Observation Masking' | 'Entropy Pruning'",
-      "enabled": "boolean (default true)",
-      "order": "number (default 0)",
-      "slidingWindowSize": "number (optional)",
-      "periodicCompressionInterval": "number (optional)",
-      "periodicCompressionChunkSize": "number (optional)",
-      "recursiveSummaryChunkSize": "number (optional)",
-      "recursiveSummaryMaximumDepth": "number (optional)",
-      "maskingRelevanceThreshold": "number (optional)",
-      "maskingKeywordWeight": "number (optional)",
-      "entropyPruningChunkSize": "number (optional, default 3). Messages per analysis unit for entropy pruning.",
-      "entropyPruningThreshold": "number (optional, default 0.35). Below this entropy score = fluff (0.0-1.0).",
-      "entropyPruningTokenBudget": "number (optional, default 2000). Max tokens to keep raw before summarizing.",
-      "summaryTokenBudget": "number (optional)",
-      "summaryModelId": "string (optional UUID)",
-      "triggerTokenThreshold": "number (optional)"
-    }],
-    "characterSampler": "object (Sampler, optional)",
-    "webSummarizationSampler": "object (Sampler, optional)",
-    "interactionDataSummarizationSampler": "object (Sampler, optional)",
-    "aiRecommendationSampler": "object (Sampler, optional)",
-    "characterStopPattern": "object (StopPattern, optional)",
-    "webSummarizationStopPattern": "object (StopPattern, optional)",
-    "interactionDataSummarizationStopPattern": "object (StopPattern, optional)",
-    "aiRecommendationStopPattern": "object (StopPattern, optional)"
-  }`);
-    }
+    const promptBlocks: PromptBlock[] = world.promptBlocks.map(b => ({
+        ...b,
+        characterBindings: filterValidUuids(b.characterBindings),
+        contextBindings: filterValidUuids(b.contextBindings),
+        locationBindings: filterValidUuids(b.locationBindings),
+    }));
 
-    if (hasWorld) {
-        const worldParts: string[] = [];
-        if (includeCharacter) worldParts.push('"characters": [/* same character schema */]');
-        if (includeContext) worldParts.push('"contexts": [/* same context schema */]');
-        if (includeLocation) worldParts.push('"locations": [/* same location schema */]');
-        if (includeAudioTrack) worldParts.push('"audioTracks": [/* same audioTrack schema */]');
-        if (includePromptBlock) worldParts.push('"promptBlocks": [/* same promptBlock schema */]');
-        if (includeProfile) worldParts.push('"profile": {/* same profile schema */}');
-        parts.push(`  "world": {
-    "name": "string (required)",
-    "description": "string (display only, NOT used as AI input)",
-    ${worldParts.join(',\n    ')}
-  }`);
-    }
-
-    return `{\n${parts.join(',\n')}\n}`;
+    return { characters, contexts, locations: resolvedLocations, audioTracks, promptBlocks, profile: world.profile };
 }

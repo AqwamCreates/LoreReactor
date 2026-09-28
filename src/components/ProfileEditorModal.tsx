@@ -198,6 +198,7 @@ function ProfileEditorContent({
     const [contextSensitivity, setContextSensitivity] = useState<number>(ep?.contextSensitivity ?? -1);
     const [maximumActionStamina, setMaximumActionStamina] = useState<number>(ep?.maximumActionStamina ?? -1);
     const [doNotInjectDefaultStopTokens, setDoNotInjectDefaultStopTokens] = useState(ep?.doNotInjectDefaultStopTokens ?? false);
+    const [enableSpeculativeMarkov, setEnableSpeculativeMarkov] = useState(ep?.enableSpeculativeMarkov ?? false);
     const [volume, setVolume] = useState<number>(ep?.volume ?? -1);
     const [stripThinkTokens, setStripThinkTokens] = useState(ep?.stripThinkTokens ?? false);
     const [tools, setTools] = useState<Record<tool, tristateInteger>>(mergeToolsWithDefaults(ep?.tools));
@@ -293,6 +294,7 @@ function ProfileEditorContent({
             cacheEfficiencyLevels: { ...cacheEfficiencyLevels },
             minimalVolatileCacheMode,
             doNotInjectDefaultStopTokens,
+            enableSpeculativeMarkov,
             volume, stripThinkTokens, tools: { ...tools },
             narrateTexts: { ...narrateTexts },
             inputStrategy: [...inputStrategy],
@@ -625,7 +627,19 @@ function ProfileEditorContent({
                         <>
                             <div className="editor-section">
                                 <span className="editor-section-title">Language Model Handling</span>
-                                <ProfileCheckbox checked={doNotInjectDefaultStopTokens} onChange={setDoNotInjectDefaultStopTokens} label="Do Not Inject Default Stop Tokens" hint="Prevent default stop tokens from being injected into the request. Only custom stop patterns will be used." />
+                                <ProfileCheckbox 
+                                    checked={enableSpeculativeMarkov} 
+                                    onChange={setEnableSpeculativeMarkov} 
+                                    label="Enable Speculative Markov" 
+                                    hint="Uses a local Markov chain to predict and append highly confident tokens during streaming, reducing API output costs. Aborts and resumes the stream only if the token savings exceed the network latency penalty." 
+                                />
+                                <ProfileCheckbox 
+                                    checked={doNotInjectDefaultStopTokens} 
+                                    onChange={setDoNotInjectDefaultStopTokens} 
+                                    label="Do Not Inject Default Stop Tokens" 
+                                    hint="Prevent default stop tokens from being injected into the request. Only custom stop patterns will be used." 
+                                    spaced 
+                                />
                             </div>
 
                             <div className="editor-section">

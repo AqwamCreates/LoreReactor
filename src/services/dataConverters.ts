@@ -433,6 +433,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         cacheEfficiencyLevels: parseCacheEfficiencyLevels(p.cacheEfficiencyLevels),
         minimalVolatileCacheMode: (p.minimalVolatileCacheMode as boolean) ?? false,
         doNotInjectDefaultStopTokens: (p.doNotInjectDefaultStopTokens as boolean) ?? false,
+        enableSpeculativeMarkov: (p.enableSpeculativeMarkov as boolean) ?? false, // <-- ADDED
         narrateTexts: {
             normal: (rawNarrateTexts.normal as boolean) ?? defaultNarrateTexts.normal,
             quoted: (rawNarrateTexts.quoted as boolean) ?? defaultNarrateTexts.quoted,

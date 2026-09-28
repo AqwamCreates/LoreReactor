@@ -214,9 +214,10 @@ export function useChatSession(options: UseChatSessionOptions) {
         if (profile?.enableSpeculativeMarkov && char && msgId && abortControllerRef.current) {
             const model = getState().selectedModel;
             const interactionData = getState().interactionData;
+            const interactionDataId = interactionData?.id || 'unknown';
+            const budgetData = getState().budgetData;
             
             // Filter history for THIS character only (INCLUDING WHISPERS)
-            // Type predicate ensures TypeScript knows these have 'textContent'
             const charHistory = interactionData?.interactionHistory.filter(
                 (m): m is ChatMessage | WhisperMessage => 
                     m.character.id === char.id && (m.messageType === 'chat' || m.messageType === 'whisper')
@@ -225,37 +226,65 @@ export function useChatSession(options: UseChatSessionOptions) {
             // INCREMENTAL SYNC: Only processes new messages, O(1) on subsequent turns
             speculativeMarkovEngine.syncMessages(
                 charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
-                char.id
+                char.id,
+                interactionDataId
             );
 
-            // Calculate Break-Even Confidence: C_in_miss / C_out
-            const outputCost = model?.outputGenerationCostPerOneMillionOfTokens || 0;
-            const inputCost = model?.cacheMissCostPerOneMillionOfTokens || 0;
-            const minConfidence = outputCost > 0 ? (inputCost / outputCost) : 0.85;
+            // Calculate Costs
+            const outputCost = model?.outputGenerationCostPerOneMillionOfTokens || 15;
+            const cacheMissCost = model?.cacheMissCostPerOneMillionOfTokens || 3;
 
             // Extract Temperature from Sampler Configuration
-            const charTemp = Number(char.sampler?.parameters?.temperature);
+            // STRICT PRECEDENCE: Profile Sampler -> Character Sampler -> 1.0
             const profileTemp = Number(profile.characterSampler?.parameters?.temperature);
-            const temperature = Math.max(0.1, Number.isNaN(charTemp) ? (Number.isNaN(profileTemp) ? 1.0 : profileTemp) : charTemp);
+            const charTemp = Number(char.sampler?.parameters?.temperature);
+            
+            let temperature = 1.0;
+            if (!Number.isNaN(profileTemp)) {
+                temperature = profileTemp;
+            } else if (!Number.isNaN(charTemp)) {
+                temperature = charTemp;
+            }
+            temperature = Math.max(0.1, temperature);
 
             // Only check on word/punctuation boundaries to save CPU cycles
             if (text.endsWith(' ') || text.endsWith('\n') || text.match(/[.!?]$/)) {
-                const prediction = speculativeMarkovEngine.predictSequence(text, minConfidence, 3, temperature);
+                const prediction = speculativeMarkovEngine.predictSequence(
+                    text, 
+                    outputCost, 
+                    cacheMissCost, 
+                    temperature, 
+                    char.id, 
+                    interactionDataId
+                );
                 
                 if (prediction) {
-                    // Append speculatively generated text locally
-                    const newText = text + prediction;
-                    throttledSetStreamingText(newText);
+                    const estimatedTokens = prediction.trim().split(/\s+/).length;
+                    const costRatio = cacheMissCost / outputCost;
                     
-                    // HARD ABORT: Sever the API connection immediately
-                    abortControllerRef.current?.abort();
+                    let minTokensThreshold = Infinity;
+                    if (costRatio < 1) {
+                        const modelId = model?.id || '';
+                        const TTFT_ms = budgetData?.modelAverageTimeToFirstToken?.[modelId] ?? 500;
+                        const msPerToken = budgetData?.modelAverageLatencyMsPerToken?.[modelId] ?? 25;
+                        
+                        const TTFT_seconds = TTFT_ms / 1000;
+                        const TPS = 1000 / msPerToken;
+                        
+                        // Exact latency-adjusted formula
+                        minTokensThreshold = Math.ceil((TTFT_seconds * TPS) / (1 - costRatio));
+                    }
                     
-                    // QUEUE RESUME
-                    setTimeout(() => {
-                        resumeGenerationRef.current?.(msgId, undefined);
-                    }, 50);
-                    
-                    return; // Stop further processing of this chunk
+                    // ONLY abort if the Markov haul exceeds the latency penalty
+                    if (estimatedTokens >= minTokensThreshold) {
+                        const newText = text + prediction;
+                        throttledSetStreamingText(newText);
+                        abortControllerRef.current?.abort();
+                        setTimeout(() => {
+                            resumeGenerationRef.current?.(msgId, undefined);
+                        }, 50);
+                        return; 
+                    }
                 }
             }
         }
@@ -328,6 +357,24 @@ export function useChatSession(options: UseChatSessionOptions) {
         })();
         return () => { cancelled = true; };
     }, [interactionData, setNumberOfTokens]);
+
+    // ─── FULL TRAIN MARKOV ON SESSION LOAD ─────────────────────────────
+    useEffect(() => {
+        if (!interactionData?.id) return;
+        if (!interactionData.Profile?.enableSpeculativeMarkov) return;
+
+        const history = interactionData.interactionHistory
+            .filter((m): m is ChatMessage | WhisperMessage => m.messageType === 'chat' || m.messageType === 'whisper')
+            .map(m => ({
+                textContent: m.textContent,
+                lastUpdatedTimestamp: m.lastUpdatedTimestamp,
+                characterId: m.character.id
+            }));
+        
+        // Full train wipes and rebuilds the map for all characters in this session
+        speculativeMarkovEngine.fullTrain(history, interactionData.id);
+    }, [interactionData?.id, interactionData?.Profile?.enableSpeculativeMarkov]);
+    // ────────────────────────────────────────────────────────────────────
 
     // Autonomous mode — depends on autonomousMode flag only
     useEffect(() => {
@@ -642,13 +689,15 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             // ─── INCREMENTAL MARKOV SYNC ────────────────────────────────
             const targetChar = activeCharacter;
+            const interactionDataId = latestState.interactionData?.id || 'unknown';
             const charHistory = latestState.interactionData?.interactionHistory.filter(
                 (m): m is ChatMessage | WhisperMessage => 
                     m.character.id === targetChar.id && (m.messageType === 'chat' || m.messageType === 'whisper')
             ) || [];
             speculativeMarkovEngine.syncMessages(
                 charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
-                targetChar.id
+                targetChar.id,
+                interactionDataId
             );
             // ────────────────────────────────────────────────────────────
 
@@ -1103,13 +1152,15 @@ export function useChatSession(options: UseChatSessionOptions) {
         try {
             // ─── INCREMENTAL MARKOV SYNC ────────────────────────────────
             const targetCharResume = char;
+            const interactionDataIdResume = currentInteractionData?.id || 'unknown';
             const charHistoryResume = currentInteractionData?.interactionHistory.filter(
                 (m): m is ChatMessage | WhisperMessage => 
                     m.character.id === targetCharResume.id && (m.messageType === 'chat' || m.messageType === 'whisper')
             ) || [];
             speculativeMarkovEngine.syncMessages(
                 charHistoryResume.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
-                targetCharResume.id
+                targetCharResume.id,
+                interactionDataIdResume
             );
             // ────────────────────────────────────────────────────────────
 
@@ -1270,13 +1321,15 @@ export function useChatSession(options: UseChatSessionOptions) {
             // ─── INCREMENTAL MARKOV SYNC ────────────────────────────────
             const targetCharRegen = protagonists[0];
             if (targetCharRegen) {
+                const interactionDataIdRegen = currentInteractionData?.id || 'unknown';
                 const charHistoryRegen = currentInteractionData?.interactionHistory.filter(
                     (m): m is ChatMessage | WhisperMessage => 
                         m.character.id === targetCharRegen.id && (m.messageType === 'chat' || m.messageType === 'whisper')
                 ) || [];
                 speculativeMarkovEngine.syncMessages(
                     charHistoryRegen.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
-                    targetCharRegen.id
+                    targetCharRegen.id,
+                    interactionDataIdRegen
                 );
             }
             // ────────────────────────────────────────────────────────────
