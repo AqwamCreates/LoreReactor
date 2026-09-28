@@ -2,7 +2,7 @@
 import { useState, useRef, useMemo } from 'react';
 import type { World } from '../types';
 import { validateExport, importSelectedData, type LoreReactorExport, type ImportResult } from '../services/DataPortabilityEngine';
-import { buildJsonSchema } from '../services/dataSchema';
+import { buildJsonSchema } from '../utilities/dataSchema';
 import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
 

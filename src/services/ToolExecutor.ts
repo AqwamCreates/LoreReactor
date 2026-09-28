@@ -1,6 +1,6 @@
 // src/services/ToolExecutor.ts
 import type { ToolInvocation } from '../services/ToolInvocationParser';
-import { fetchLinkContent, buildSearchUrl } from '../services/linkFetcher';
+import { fetchLinkContent, buildSearchUrl } from '../utilities/linkFetcher';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from '../utilities/dialoguePromptLogic';
 import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, WhisperMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension, Account, MultiplayerData, toolUsageDisplayMode } from '../types';
 import { findPreviousMessage } from '../utilities/chatLogic';

@@ -1,4 +1,4 @@
-// src/services/dataSchema.ts
+// src/utilities/dataSchema.ts
 import { defaultInputStrategy } from '../dictionaries/defaults';
 import type { EntityType } from './dataTypes';
 

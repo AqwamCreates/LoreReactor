@@ -5,7 +5,7 @@ import type { Context, Character, searchEngine, linkFetchMode, RegularExpression
 import { uploadContextImage } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { parseCharacterCard, type ParsedCharacterCardExtended } from '../services/characterCardParser';
+import { parseCharacterCard, type ParsedCharacterCardExtended } from '../utilities/characterCardParser';
 import { useSessionStore } from '../hooks/useSessionStore';
 import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
 import '../main.css';

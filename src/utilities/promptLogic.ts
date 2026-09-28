@@ -2,7 +2,7 @@
 import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger, Clothing, Profile, cacheEfficiencyConfigurationType } from '../types';
 import type { ModelTemplate } from '../dictionaries/modelTemplates';
 import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
-import { fetchMultipleContextUrls } from '../services/linkFetcher';
+import { fetchMultipleContextUrls } from './linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
 import { toolStartSring, toolEndString } from '../dictionaries/stringList';

@@ -1,4 +1,4 @@
-// src/services/characterCardParser.ts
+// src/utilities/characterCardParser.ts
 // Parses TavernAI / SillyTavern character cards
 // Supports V1, V2, and V3 specs including lorebooks, assets, and extensions
 // Handles both PNG tEXt metadata and CharX (.charx) ZIP containers

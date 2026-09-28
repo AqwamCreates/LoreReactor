@@ -6,10 +6,10 @@ import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
 import { EntitySelectList } from './EntitySelectList';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
-import type { EntityType, ViewTab, ImagePriorityItem, GeneratedOutput, JsonHistoryEntry } from '../services/dataTypes';
-import { IMAGE_PRIORITY_ITEMS, IMAGE_LABELS, IMAGE_SHORT_LABELS, IMAGE_PROMPT_DESCRIPTIONS, ENTITY_OPTIONS } from '../services/dataTypes';
-import { buildJsonSchema } from '../services/dataSchema';
-import { tryParseGeneratedOutput, deriveHistoryLabel, resolveWorldCrossReferences } from '../services/dataConverters';
+import type { EntityType, ViewTab, ImagePriorityItem, GeneratedOutput, JsonHistoryEntry } from '../utilities/dataTypes';
+import { IMAGE_PRIORITY_ITEMS, IMAGE_LABELS, IMAGE_SHORT_LABELS, IMAGE_PROMPT_DESCRIPTIONS, ENTITY_OPTIONS } from '../utilities/dataTypes';
+import { buildJsonSchema } from '../utilities/dataSchema';
+import { tryParseGeneratedOutput, deriveHistoryLabel, resolveWorldCrossReferences } from '../utilities/dataConverters';
 import '../main.css';
 
 const recommendationEngine = getLanguageModelEngine();

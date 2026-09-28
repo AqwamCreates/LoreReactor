@@ -5,7 +5,7 @@ import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacter
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from '../storages/serverStorage';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getChatImpatienceSensitivityValueFromText, getSkipProbabilityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText, getMaximumActionStaminaValueFromText } from '../utilities/chatTraitsDetection';
-import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExtended } from '../services/characterCardParser';
+import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExtended } from '../utilities/characterCardParser';
 import { v4 as uuidv4 } from 'uuid';
 import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
 import { CharacterImageEditorModal } from './CharacterImageEditorModal';

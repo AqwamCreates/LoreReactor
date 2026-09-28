@@ -2,7 +2,7 @@
 import { useState, useCallback } from 'react';
 import type { Character, InteractionData, RawInteractionData } from '../types';
 import { saveRawInteractionData, loadRawInteractionData, saveRawSessionData } from '../storages/serverStorage';
-import { clearFetchCache } from '../services/linkFetcher';
+import { clearFetchCache } from '../utilities/linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { isChatSaveable } from '../utilities/chatSaveHelper';
 
