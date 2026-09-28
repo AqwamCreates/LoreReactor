@@ -247,7 +247,6 @@ export function AppModals({
 
     const effectiveTokenizerModel = useMemo(() => {
         if (selectedModelId) return allModels.find(model => model.id === selectedModelId) ?? null;
-        if (selectedModelId) return allModels.find(model => model.id === selectedModelId) ?? null;
         return null;
     }, [selectedModelId, allModels]);
 
@@ -271,8 +270,11 @@ export function AppModals({
         for (const shell of chatShellsWithIdentifiers) {
             map.set(shell.id, shell.name || 'Untitled Chat');
         }
+        if (interactionData?.id) {
+            map.set(interactionData.id, interactionData.name || 'Untitled Chat');
+        }
         return map;
-    }, [chatShellsWithIdentifiers]);
+    }, [chatShellsWithIdentifiers, interactionData?.id, interactionData?.name]);
 
     useEffect(() => {
         if (modals.chatList.isOpen) {
@@ -281,17 +283,32 @@ export function AppModals({
     }, [modals.chatList.isOpen, ensureChatsLoaded]);
 
     const handleOpenChatInspection = useCallback(async (chatId: string) => {
+        // If inspecting the currently active chat, use the in-memory object directly
+        if (interactionData && interactionData.id === chatId) {
+            setInspectionStack([interactionData]);
+            setIsInspectionOpen(true);
+            return;
+        }
+
         const loaded = await loadRawInteractionData(chatId, allCharacters);
-        if (!loaded) { addToast('Failed to load chat for inspection.', 'error'); return; }
+        if (!loaded) { 
+            addToast('Failed to load chat for inspection.', 'error'); 
+            return; 
+        }
         setInspectionStack([loaded]);
         setIsInspectionOpen(true);
-    }, [allCharacters, addToast]);
+    }, [interactionData, allCharacters, addToast]);
 
     const handleInspectParentInteractionData = useCallback(async (parentId: string): Promise<InteractionData> => {
+        // If parent is the active chat, return directly from memory
+        if (interactionData && interactionData.id === parentId) {
+            return interactionData;
+        }
+
         const loaded = await loadRawInteractionData(parentId, allCharacters);
         if (!loaded) throw new Error(`Failed to load parent chat ${parentId}`);
         return loaded;
-    }, [allCharacters]);
+    }, [interactionData, allCharacters]);
 
     return (
         <>
@@ -387,7 +404,7 @@ export function AppModals({
                     onCreateNew={() => audioTrackModalProperties.open()}
                     renderSubtext={(audioTrack: AudioTrack) => `${audioTrack.audioCategory === 'ambient' ? '🌿' : audioTrack.audioCategory === 'music' ? '🎵' : '💥'} ${audioTrack.loop ? '🔁' : '▶️'} Vol: ${Math.round(audioTrack.volume * 100)}%${audioTrack.priority > 0 ? ` • ⬆${audioTrack.priority}` : ''}${audioTrack.locationBindings.length > 0 ? ` • 📍${audioTrack.locationBindings.length}` : ''}${audioTrack.contextBindings.length > 0 ? ` • 📜${audioTrack.contextBindings.length}` : ''}${audioTrack.characterBindings.length > 0 ? ` • 🎭${audioTrack.characterBindings.length}` : ''}`}
                     emptyMessage="No audio tracks found." 
-                    actionLabel="Delete"
+                    actionLabel="Delete" 
                     orderedListMode={true} 
                     currentOrderIds={interactionData?.audioTracks?.map(track => track.id) || []} 
                     onToggleOrder={onToggleAudioTrack} 

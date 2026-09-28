@@ -1,4 +1,4 @@
-// src/utils/costCalculator.ts
+// src/utilities/costCalculator.ts
 
 export interface ModelPricing {
     cacheHitPerMillion: number;

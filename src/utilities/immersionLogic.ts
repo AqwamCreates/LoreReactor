@@ -1,4 +1,4 @@
-// src/hooks/immersionLogic.ts
+// src/utilities/immersionLogic.ts
 import { useMemo } from 'react';
 import type { ChatMessage, InteractionData } from "../types";
 

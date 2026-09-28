@@ -3,10 +3,10 @@ import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, 
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { createChatHistoryPrompt, getParticipantTag, replacePlaceholders, getUniversalMessageFilterFlags, getFilteredChatMessages, deriveDelimiters } from '../hooks/promptLogic';
-import { detectName } from '../hooks/nameDetection';
-import { buildRequestBody } from '../hooks/genericRequestBuilderLogic';
-import { getCoLocatedProtagonists, getCoLocatedParticipants } from '../hooks/locationLogic';
+import { createChatHistoryPrompt, getParticipantTag, replacePlaceholders, getUniversalMessageFilterFlags, getFilteredChatMessages, deriveDelimiters } from '../utilities/promptLogic';
+import { detectName } from '../utilities/nameDetection';
+import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
+import { getCoLocatedProtagonists, getCoLocatedParticipants } from '../utilities/locationLogic';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { getStemmedContentWords } from '../utilities/stemmerHelper';
 

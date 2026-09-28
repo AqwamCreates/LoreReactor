@@ -1,4 +1,4 @@
-// src/hooks/messageLogic.ts
+// src/utilities/messageLogic.ts
 import { deleteRawInteractionMessage, saveRawInteractionData, loadAllRawInteractionDataShells } from '../storages/serverStorage';
 import { deleteInteractionMessage as calculateDelete, editInteractionMessageInInteractionData } from './chatLogic';
 import type { InteractionData } from '../types';

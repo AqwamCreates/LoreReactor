@@ -1,7 +1,7 @@
 // src/components/views/types.ts
 import type React from 'react';
 import type { Character, InteractionData, ChatMessage } from '../../types';
-import type { DisplayNameCache } from '../../hooks/immersionLogic';
+import type { DisplayNameCache } from '../../utilities/immersionLogic';
 
 export interface ViewModeProps {
     interactionData: InteractionData;

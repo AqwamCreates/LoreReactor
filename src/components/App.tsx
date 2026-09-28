@@ -3,12 +3,12 @@ import type React from 'react';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '../context/ToastContext';
 import { saveRawInteractionData, loadRawInteractionData, flushSaveQueue } from '../storages/serverStorage';
-import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
-import { assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
-import { useDisplayNameCache, resolveDelayedDisplayNameFromCache } from '../hooks/immersionLogic';
+import { createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
+import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
+import { useDisplayNameCache, resolveDelayedDisplayNameFromCache } from '../utilities/immersionLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { buildModelLoadArguments } from '../hooks/modelLoadArguments';
+import { buildModelLoadArguments } from '../utilities/modelLoadArguments';
 import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
@@ -148,15 +148,22 @@ function App() {
         addToast,
     });
 
-    // ─── State Bridge for Actions ────────────────────────────────────
-    // useChatSession needs the actions to learn from manual typing.
-    // Since useActionMenu loads them and is declared after useChatSession,
-    // we use a state bridge to pass them down safely without circular dependencies.
-    const [allActionsState, setAllActionsState] = useState<InterjectableAction[]>([]);
+    // Stable actions reference: updated inside useEffect to never touch refs during render
+    const actionsBridgeRef = useRef<InterjectableAction[]>([]);
+    const getAllActions = useCallback(() => actionsBridgeRef.current, []);
+
+    // Broadcast wrapper: evaluates broadcastMessageRef outside of render
+    const handleBroadcastMessage = useCallback((msg: HistoryMessage) => {
+        mp.broadcastMessageRef.current?.(msg);
+    }, [mp.broadcastMessageRef]);
+
+    const handleRequestBorrowedModel = useCallback(() => {
+        return mp.requestBorrowedModelRef.current();
+    }, [mp.requestBorrowedModelRef]);
 
     // ─── Chat Session ────────────────────────────────────────────────
     const session = useChatSession({
-        onMessageBroadcast: mp.broadcastMessageRef.current ? (msg: HistoryMessage) => mp.broadcastMessageRef.current?.(msg) : undefined,
+        onMessageBroadcast: handleBroadcastMessage,
         isMultiplayerClient: mp.isMultiplayerClient,
         joinProtagonist: mp.joinProtagonist,
         allCharacters: characters.characters,
@@ -173,8 +180,8 @@ function App() {
         allExtensions: extensions.extensions,
         allAccounts: accounts.accounts,
         allMultiplayerData: multiplayerDataManager.multiplayerDatas,
-        allActions: allActionsState,
-        requestBorrowedModel: () => mp.requestBorrowedModelRef.current(),
+        getAllActions,
+        requestBorrowedModel: handleRequestBorrowedModel,
     });
 
     const {
@@ -186,8 +193,13 @@ function App() {
         activeStrategy, budgetData,
     } = session;
 
-    // Wire triggerHostResponse into multiplayer session
-    useEffect(() => { mp.triggerHostResponseRef.current = triggerHostResponse; }, [mp.triggerHostResponseRef, triggerHostResponse]);
+    // Destructure target ref to satisfy the compiler and assign safely in effect
+    const { triggerHostResponseRef } = mp;
+    useEffect(() => {
+        if (triggerHostResponseRef) {
+            triggerHostResponseRef.current = triggerHostResponse;
+        }
+    }, [triggerHostResponseRef, triggerHostResponse]);
 
     // ─── Chat Restoration ────────────────────────────────────────────
     const { activeChatRestored } = useChatRestoration({
@@ -336,9 +348,9 @@ function App() {
         allCharacters: characters.characters, stopGeneration, sendActionAndGetResponse, addToast,
     });
 
-    // Sync loaded actions back to the state bridge for useChatSession
+    // Update actions bridge ref purely inside an effect (never during render)
     useEffect(() => {
-        setAllActionsState(actionMenu.allActions);
+        actionsBridgeRef.current = actionMenu.allActions;
     }, [actionMenu.allActions]);
 
     const messageActions = useMessageActions({
@@ -350,6 +362,7 @@ function App() {
     const chatOps = useChatOperations({
         interactionData, currentCharacter, localProtagonist, selectedCharacterId,
         allCharacters: characters.characters, rawChatShells: chatList.rawChatShells,
+        loadFullCharacter: characters.loadFullCharacter,
         setInteractionData, setSelectedCharacter,
         refreshChatList: chatList.refresh, startNewChat,
         deleteChatFromList: chatList.deleteChat, addToast,
@@ -408,7 +421,6 @@ function App() {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const editTextAreaRef = useRef<HTMLTextAreaElement>(null);
 
-    // Textarea auto-resize
     useEffect(() => { if (!textareaRef.current) return; textareaRef.current.style.height = 'auto'; textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, window.innerHeight * 0.3)}px`; });
     useEffect(() => { if (!editTextAreaRef.current || !messageActions.editingId) return; editTextAreaRef.current.style.height = 'auto'; editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`; }, [messageActions.editingId]);
 
@@ -650,29 +662,24 @@ function App() {
     }, [chatOps]);
 
     const handleRenameChat = useCallback(async (id: string, name: string) => {
-        const loaded = await loadRawInteractionData(id, characters.characters);
+        const loaded = (interactionData?.id === id)
+            ? interactionData
+            : await loadRawInteractionData(id, characters.characters);
+
         if (!loaded) { addToast('Chat not found.', 'error'); return; }
         const updated = { ...loaded, name, lastUpdatedTimestamp: Date.now() };
         await saveRawInteractionData(updated);
         chatList.refresh();
-        if (interactionData?.id === id) setInteractionData({ ...interactionData, name, lastUpdatedTimestamp: Date.now() });
+        if (interactionData?.id === id) setInteractionData(updated);
         addToast(`Renamed to "${name}"`, 'success');
-    }, [characters, interactionData, setInteractionData, chatList, addToast]);
+    }, [characters.characters, interactionData, setInteractionData, chatList, addToast]);
+
+    const parentInteractionDataId = interactionData?.parentInteractionDataId;
 
     const handleNavigateToBranchSource = useCallback(async () => {
-        if (!interactionData?.parentInteractionDataId) return;
-        try {
-            const source = await loadRawInteractionData(interactionData.parentInteractionDataId, characters.characters);
-            if (source) {
-                setInteractionData(source);
-                const srcMp = useSessionStore.getState().multiplayerData;
-                const srcProtag = deriveCurrentProtagonist(source, srcMp, mp.currentAccountId);
-                if (srcProtag) setSelectedCharacter(srcProtag);
-                chatList.refresh();
-                addToast(`Returned to source: "${source.name}"`, 'info');
-            } else addToast('Source chat not found.', 'error');
-        } catch { addToast('Failed to load source chat.', 'error'); }
-    }, [interactionData, characters, mp.currentAccountId, setInteractionData, setSelectedCharacter, chatList, addToast]);
+        if (!parentInteractionDataId) return;
+        await chatOps.handleSwitchChat(parentInteractionDataId);
+    }, [parentInteractionDataId, chatOps]);
 
     const handleLoadWorld = useCallback((world: any) => {
         if (!interactionData) return;

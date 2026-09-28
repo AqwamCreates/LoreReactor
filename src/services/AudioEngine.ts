@@ -1,6 +1,6 @@
 // src/services/AudioEngine.ts
 import type { AudioTrack, InteractionData, ChatMessage, PromptBlock, Location, RegularExpressionTrigger } from '../types';
-import { getUniversalMessageFilterFlags } from '../hooks/promptLogic';
+import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
 import { getAudioTrackUrl } from '../storages/serverStorage';
 
 interface ActiveTrackState {

@@ -2,7 +2,7 @@
 import { useMemo, useEffect, useState, useCallback } from 'react';
 import type { InteractionData, Location, Character } from '../types';
 import { getCharacterImageUrlWithFallBack } from '../storages/serverStorage';
-import { getCurrentLocation } from '../hooks/locationLogic';
+import { getCurrentLocation } from '../utilities/locationLogic';
 import {
     ReactFlow,
     Background,

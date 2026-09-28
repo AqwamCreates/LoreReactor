@@ -1,4 +1,4 @@
-// src/hooks/dynamicCharacterLogic.ts
+// src/utilities/dynamicCharacterLogic.ts
 import type { Character, InteractionData, HistoryMessage, ChatMessage } from '../types';
 import { getEffectiveInitiativeWeight, getEffectiveNameSensitivity, getNameMentionCount, getEffectiveSkipProbability, getEffectiveChatImpatienceSensitivity, getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina } from './characterLogic';
 import { findPreviousMessage } from './chatLogic';

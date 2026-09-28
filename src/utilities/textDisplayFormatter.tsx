@@ -1,5 +1,5 @@
 // src/utilities/textDisplayFormatter.tsx
-import React from 'react';
+import type React from 'react';
 
 const LEFT_DOUBLE_QUOTE = '\u201C'; // "
 const RIGHT_DOUBLE_QUOTE = '\u201D'; // "

@@ -1,4 +1,4 @@
-// src/hooks/nameDetection.ts
+// src/utilities/nameDetection.ts
 import type { Character, ChatMessage, WhisperMessage } from '../types';
 
 type TextMessage = ChatMessage | WhisperMessage;

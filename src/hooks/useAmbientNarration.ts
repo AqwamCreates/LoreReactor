@@ -1,12 +1,12 @@
 // src/hooks/useAmbientNarration.ts
 import { useCallback } from 'react';
 import type { Character, InteractionData, ChatMessage } from '../types';
-import { createChatMessage, addMessageToInteractionData } from './chatLogic';
+import { createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { useSessionStore } from './useSessionStore';
-import { getCoLocatedParticipants } from './locationLogic';
-import { getUniversalMessageFilterFlags } from './promptLogic';
+import { getCoLocatedParticipants } from '../utilities/locationLogic';
+import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
 import { detectContext, composeFallbackSentence } from '../ambientNarration/composer';
 import { AMBIENT_NARRATOR } from '../ambientNarration/narrator';
 

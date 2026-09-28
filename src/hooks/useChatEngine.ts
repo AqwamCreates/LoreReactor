@@ -6,7 +6,7 @@ import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngine';
 import { getBudgetStrategyEngine, type RequestMetadata } from '../services/BudgetStrategyEngine';
 import { saveRawInteractionData } from '../storages/serverStorage';
-import { updatePartialMessageInInteractionData } from './chatLogic';
+import { updatePartialMessageInInteractionData } from '../utilities/chatLogic';
 
 const characterActor = new CharacterActor();
 const autonomousEngine = new AutonomousSimulationEngine();

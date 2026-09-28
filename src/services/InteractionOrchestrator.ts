@@ -1,7 +1,7 @@
 // src/services/InteractionOrchestrator.ts
 import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage } from '../types';
-import { getEffectiveChatProbability, consumeChatStaminaForMessage, consumeActionStaminaForMessage, generateActionStaminaForInteractionData, generateChatStaminaForInteractionData, getEffectiveChatImpatienceSensitivity } from '../hooks/characterLogic';
-import { getCurrentLocationIndex, findLocationByRegex, getReachableLocationsByCharacter, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
+import { getEffectiveChatProbability, consumeChatStaminaForMessage, consumeActionStaminaForMessage, generateActionStaminaForInteractionData, generateChatStaminaForInteractionData, getEffectiveChatImpatienceSensitivity } from '../utilities/characterLogic';
+import { getCurrentLocationIndex, findLocationByRegex, getReachableLocationsByCharacter, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { v4 as uuidv4 } from 'uuid';
 import {
     countParagraphs,
@@ -13,8 +13,8 @@ import {
     computeEffectiveSkip,
     computeChatStaminaConsumptionCost,
     computeMovementCost,
-} from '../hooks/dynamicCharacterLogic';
-import { findPreviousMessage } from '../hooks/chatLogic';
+} from '../utilities/dynamicCharacterLogic';
+import { findPreviousMessage } from '../utilities/chatLogic';
 import type { HandleServerResponseResult } from '../hooks/useChatEngine';
 
 type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal, onToken: (t: string) => void) => Promise<HandleServerResponseResult | null>

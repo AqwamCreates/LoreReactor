@@ -5,7 +5,7 @@ import { loadAllRawModels, saveRawModel, deleteRawModel, loadRawSessionData, sav
 import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../configurations';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
-import { buildModelLoadArguments } from './modelLoadArguments';
+import { buildModelLoadArguments } from '../utilities/modelLoadArguments';
 import { useSessionStore } from './useSessionStore';
 
 interface ModelState {

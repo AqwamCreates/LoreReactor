@@ -1,7 +1,7 @@
 // src/hooks/useMessageActions.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, InteractionData } from '../types';
-import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from './messageLogic';
+import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../utilities/messageLogic';
 
 interface UseMessageActionsOptions {
     interactionData: InteractionData | null;

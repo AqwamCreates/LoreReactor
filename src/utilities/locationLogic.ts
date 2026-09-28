@@ -1,4 +1,4 @@
-// src/hooks/locationLogic.ts
+// src/utilities/locationLogic.ts
 import type { Character, InteractionData, Location } from '../types';
 import { initializeClothingWearingStatuses } from './characterLogic';
 import { findPreviousMessage } from './chatLogic';

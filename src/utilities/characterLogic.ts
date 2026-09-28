@@ -1,4 +1,4 @@
-// src/hooks/characterLogic.ts
+// src/utilities/characterLogic.ts
 import type { Character, InteractionData, HistoryMessage, Profile, tool } from "../types";
 import { findPreviousMessage } from "./chatLogic";
 

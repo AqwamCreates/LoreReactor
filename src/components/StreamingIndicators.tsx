@@ -1,7 +1,7 @@
 // src/components/StreamingIndicators.tsx
 import type React from 'react';
 import type { Character } from '../types';
-import { getDelayedDisplayName } from '../hooks/immersionLogic';
+import { getDelayedDisplayName } from '../utilities/immersionLogic';
 import { useSessionStore } from '../hooks/useSessionStore';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';

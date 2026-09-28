@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Character, Profile, Sampler, LanguageModel } from '../types';
 import { EntitySelect } from './EntitySelect';
 import { EntitySelectList } from './EntitySelectList';
-import { buildRequestBody } from '../hooks/genericRequestBuilderLogic';
+import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import '../main.css';
 

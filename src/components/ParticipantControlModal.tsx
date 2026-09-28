@@ -1,7 +1,7 @@
 // src/components/ParticipantControlModal.tsx
 import { useState, useMemo } from 'react';
 import type { Character, InteractionData } from '../types';
-import { getCurrentLocationIndex } from '../hooks/locationLogic';
+import { getCurrentLocationIndex } from '../utilities/locationLogic';
 import '../main.css';
 
 interface ParticipantControlModalProps {

@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World, PromptBlock } from '../types';
-import { buildRequestBody } from '../hooks/genericRequestBuilderLogic';
+import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
 import { EntitySelectList } from './EntitySelectList';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';

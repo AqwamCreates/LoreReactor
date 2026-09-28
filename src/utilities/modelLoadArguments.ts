@@ -1,4 +1,4 @@
-// src/hooks/modelLoadArgs.ts
+// src/utilities/modelLoadArgs.ts
 import type { LanguageModel } from '../types';
 
 /**

@@ -6,7 +6,7 @@ import { MessageBubble } from '../MessageBubble';
 import { StreamingIndicators } from '../StreamingIndicators';
 import { ChatScrollButtons } from '../ChatScrollButtons';
 import { ChatMinimap } from '../ChatMinimap';
-import { resolveDelayedDisplayNameFromCache } from '../../hooks/immersionLogic';
+import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
 
 export const CinematicView = React.memo(function CinematicView(props: ViewModeProps) {
     const {

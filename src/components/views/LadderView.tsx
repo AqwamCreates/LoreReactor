@@ -4,7 +4,7 @@ import type { ViewModeProps } from './types';
 import { MessageBubble } from '../MessageBubble';
 import { StreamingIndicators } from '../StreamingIndicators';
 import { ChatScrollButtons } from '../ChatScrollButtons';
-import { resolveDelayedDisplayNameFromCache } from '../../hooks/immersionLogic';
+import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
 
 export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
     const {

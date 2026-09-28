@@ -1,8 +1,8 @@
 // src/hooks/useActionMenu.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Character, InteractionData, InterjectableAction } from '../types';
-import { loadInterjectableActions, saveInterjectableActions } from '../storages/serverStorage';
+import type { Character, InteractionData } from '../types';
 import { initializeActionFormatEngine, getActionFormatEngine, type ActionWrap, type ActionCase, type ActionPunctuation } from '../services/ActionFormatEngine';
+import type { useActionManager } from './useActionManager';
 
 function formatActionString(label: string, targetName: string, wrap: ActionWrap, casing: ActionCase, punctuation: ActionPunctuation): string {
     let result = label;
@@ -37,6 +37,7 @@ function formatActionString(label: string, targetName: string, wrap: ActionWrap,
 }
 
 interface UseActionMenuOptions {
+    actionManager: ReturnType<typeof useActionManager>;
     interactionData: InteractionData | null;
     currentCharacter: Character | null;
     isLoading: boolean;
@@ -49,13 +50,13 @@ interface UseActionMenuOptions {
 
 export function useActionMenu(options: UseActionMenuOptions) {
     const {
-        interactionData, currentCharacter, isLoading, stopGeneration, sendActionAndGetResponse, addToast,
+        actionManager, interactionData, currentCharacter, isLoading, stopGeneration, sendActionAndGetResponse, addToast,
     } = options;
+
+    const { allActions, actionsLoading, incrementActionCount, handleAddAction, handleDeleteAction } = actionManager;
 
     const [actionMenuTarget, setActionMenuTarget] = useState<{ messageId: string; charId: string; x: number; y: number } | null>(null);
     const [menuSearchQuery, setMenuSearchQuery] = useState('');
-    const [allActions, setAllActions] = useState<InterjectableAction[]>([]);
-    const [actionsLoading, setActionsLoading] = useState(true);
     const [showActionFormat, setShowActionFormat] = useState(false);
 
     const [actionWrap, setActionWrap] = useState<ActionWrap>('*');
@@ -83,7 +84,7 @@ export function useActionMenu(options: UseActionMenuOptions) {
         return () => { cancelled = true; };
     }, []);
 
-    // Sync UI changes to the engine (which handles debounced saving)
+    // Sync UI changes to the engine
     useEffect(() => {
         if (!formatLoadedRef.current) return;
         getActionFormatEngine().setUIPreferences({
@@ -93,69 +94,6 @@ export function useActionMenu(options: UseActionMenuOptions) {
             isAutoFormat,
         });
     }, [actionWrap, actionCase, actionPunctuation, isAutoFormat]);
-
-    // Load interjectable allActions on mount
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                const loaded = await loadInterjectableActions();
-                if (!cancelled) setAllActions(loaded);
-            } catch (e) {
-                console.warn('Failed to load interjectable allActions:', e);
-            } finally {
-                if (!cancelled) setActionsLoading(false);
-            }
-        })();
-        return () => { cancelled = true; };
-    }, []);
-
-    const actionsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const scheduleActionsSave = useCallback((actionsToSave: InterjectableAction[]) => {
-        if (actionsSaveTimerRef.current !== null) clearTimeout(actionsSaveTimerRef.current);
-        actionsSaveTimerRef.current = setTimeout(() => {
-            actionsSaveTimerRef.current = null;
-            saveInterjectableActions(actionsToSave).catch(e =>
-                console.warn('Failed to save interjectable allActions:', e)
-            );
-        }, 500);
-    }, []);
-
-    useEffect(() => {
-        return () => { if (actionsSaveTimerRef.current !== null) clearTimeout(actionsSaveTimerRef.current); };
-    }, []);
-
-    const incrementActionCount = useCallback(async (label: string) => {
-        setAllActions(prev => {
-            const existing = prev.find(a => a.label === label);
-            const next = existing
-                ? prev.map(a => a.label === label ? { ...a, count: a.count + 1 } : a)
-                : [...prev, { label, count: 1 }];
-            scheduleActionsSave(next);
-            return next;
-        });
-    }, [scheduleActionsSave]);
-
-    const handleAddAction = useCallback((label: string) => {
-        const trimmed = label.trim();
-        if (!trimmed) return;
-        if (allActions.some(a => a.label.toLowerCase() === trimmed.toLowerCase())) {
-            addToast(`Action "${trimmed}" already exists.`, 'info');
-            return;
-        }
-        const next = [...allActions, { label: trimmed, count: 0 }];
-        setAllActions(next);
-        scheduleActionsSave(next);
-        setMenuSearchQuery('');
-        addToast(`Added action "${trimmed}".`, 'success');
-    }, [allActions, addToast, scheduleActionsSave]);
-
-    const handleDeleteAction = useCallback((label: string) => {
-        const next = allActions.filter(a => a.label !== label);
-        setAllActions(next);
-        scheduleActionsSave(next);
-        addToast(`Removed action "${label}".`, 'info');
-    }, [allActions, addToast, scheduleActionsSave]);
 
     const handleActionInterject = useCallback(async (label: string, targetChar: Character, protagonist: Character) => {
         setActionMenuTarget(null);

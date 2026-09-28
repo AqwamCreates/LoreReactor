@@ -56,19 +56,8 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         restorationDoneRef.current = true;
 
         const activateChat = async (chat: InteractionData) => {
-            let fullChat = chat;
-
-            if (!fullChat.interactionHistory.length && (fullChat.numberOfMessages ?? 0) > 0) {
-                try {
-                    const reloaded = await loadRawInteractionData(fullChat.id, allCharacters);
-                    if (reloaded) fullChat = reloaded;
-                } catch (e) {
-                    console.warn('Failed to reload chat messages:', e);
-                }
-            }
-
             const hydratedProtagonists = await Promise.all(
-                fullChat.protagonists.map(async (p) => {
+                (chat.protagonists || []).map(async (p) => {
                     const freshProtag = allCharacters.find(c => c.id === p.id);
                     if (freshProtag) {
                         const fullChar = await loadFullCharacter(freshProtag.id);
@@ -80,7 +69,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
             );
 
             const hydratedParticipants = await Promise.all(
-                fullChat.participants.map(async (p) => {
+                (chat.participants || []).map(async (p) => {
                     const exists = allCharacters.some(c => c.id === p.id);
                     if (!exists) {
                         console.warn(`Participant ${p.id} not found in character list after load. Keeping shell.`);
@@ -92,8 +81,8 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                 })
             );
 
-            const hydratedChat = {
-                ...fullChat,
+            const hydratedChat: InteractionData = {
+                ...chat,
                 protagonists: hydratedProtagonists,
                 participants: hydratedParticipants,
             };
@@ -117,7 +106,6 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                     const loaded = await loadRawInteractionData(firstChatId, allCharacters);
                     if (loaded) {
                         await activateChat(loaded);
-                        // Persist the fallback selection so next load doesn't repeat this
                         await saveRawSessionData({ activeChatId: firstChatId });
                         return;
                     }
@@ -149,6 +137,17 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                     setTimeout(() => setSelectedModelId(session.selectedModelId!), 0);
                 }
 
+                // If user explicitly initiated a new chat (activeChatId === null), start fresh
+                if (session.activeChatId === null) {
+                    if (allCharacters.length > 0) {
+                        startNewChat(allCharacters[0]);
+                    } else {
+                        setSelectedCharacter(null);
+                        setInteractionData(createEmptyChat());
+                    }
+                    return;
+                }
+
                 const savedChatId = session.activeChatId;
 
                 if (!savedChatId) {
@@ -172,7 +171,11 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         };
 
         restore();
-    }, [charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading, allCharacters, rawChatShells, loadFullCharacter, setInteractionData, setSelectedCharacter, setSelectedModelId, startNewChat, skipRestoration]);
+    }, [
+        charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading, 
+        allCharacters, rawChatShells, loadFullCharacter, setInteractionData, 
+        setSelectedCharacter, setSelectedModelId, startNewChat, skipRestoration
+    ]);
 
     return { activeChatRestored };
 }

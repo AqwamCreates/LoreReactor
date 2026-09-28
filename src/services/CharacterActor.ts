@@ -1,12 +1,12 @@
 // src/services/CharacterActor.ts
 import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from '../storages/serverStorage';
-import { buildChatRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
-import { detectName } from '../hooks/nameDetection';
-import { getFilteredChatMessages } from '../hooks/promptLogic';
+import { buildChatRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
+import { detectName } from '../utilities/nameDetection';
+import { getFilteredChatMessages } from '../utilities/promptLogic';
 import { getBudgetStrategyEngine, type RequestMetadata } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
-import { getEffectiveTools, initializeClothingWearingStatuses } from '../hooks/characterLogic';
+import { getEffectiveTools, initializeClothingWearingStatuses } from '../utilities/characterLogic';
 import { sentimentEngine } from './SentimentAnalysisEngine';
 import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEngine';
 import { ToolInvocationParser } from './ToolInvocationParser';

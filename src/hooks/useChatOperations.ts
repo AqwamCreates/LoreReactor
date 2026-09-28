@@ -14,7 +14,8 @@ interface UseChatOperationsOptions {
     localProtagonist: Character | null;
     selectedCharacterId: string | null;
     allCharacters: Character[];
-    rawChatShells: RawInteractionData[];
+    rawChatShells?: RawInteractionData[];
+    loadFullCharacter?: (id: string) => Promise<Character | null>;
     setInteractionData: (data: InteractionData) => void;
     setSelectedCharacter: (char: Character | null) => void;
     refreshChatList: () => void;
@@ -26,7 +27,7 @@ interface UseChatOperationsOptions {
 export function useChatOperations(options: UseChatOperationsOptions) {
     const {
         interactionData, currentCharacter, selectedCharacterId,
-        allCharacters, rawChatShells,
+        allCharacters, loadFullCharacter,
         setInteractionData, setSelectedCharacter, refreshChatList,
         startNewChat, deleteChatFromList, addToast,
     } = options;
@@ -57,16 +58,29 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         }
 
         if (chat) {
-            setInteractionData(chat);
-            // Persist active chat to server session and derive protagonist
+            let fullChat = chat;
+
+            // Hydrate protagonists with full data (system prompts, samplers) if available
+            if (loadFullCharacter && fullChat.protagonists?.length) {
+                const hydratedProtagonists = await Promise.all(
+                    fullChat.protagonists.map(async (p) => {
+                        const full = await loadFullCharacter(p.id);
+                        return full || p;
+                    })
+                );
+                fullChat = { ...fullChat, protagonists: hydratedProtagonists };
+            }
+
+            setInteractionData(fullChat);
             await saveRawSessionData({ activeChatId: id });
-            const firstProtagonist = chat.protagonists?.[0] ?? null;
+            
+            const firstProtagonist = fullChat.protagonists?.[0] ?? null;
             if (firstProtagonist) setSelectedCharacter(firstProtagonist);
         } else {
             addToast('Failed to load chat.', 'error');
         }
         refreshChatList();
-    }, [allCharacters, interactionData, setInteractionData, setSelectedCharacter, refreshChatList, addToast, safeAutoSave]);
+    }, [allCharacters, interactionData, loadFullCharacter, setInteractionData, setSelectedCharacter, refreshChatList, addToast, safeAutoSave]);
 
     const handleNewChat = useCallback(async () => {
         await safeAutoSave(interactionData);
@@ -75,19 +89,18 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         // Clear active chat in server session so restoration picks up the new chat
         await saveRawSessionData({ activeChatId: null });
 
-        let c = currentCharacter;
-        if (!c && selectedCharacterId) c = allCharacters.find(x => x.id === selectedCharacterId) || null;
-        if (!c && rawChatShells.length) {
-            // Load the first raw shell to get its first protagonist
-            const firstId = rawChatShells[0].id;
-            if (firstId) {
-                const loaded = await loadRawInteractionData(firstId, allCharacters);
-                const firstProtagonist = loaded?.protagonists?.[0];
-                if (firstProtagonist) c = firstProtagonist;
-            }
+        // Resolve protagonist directly without reading whole chat files from disk
+        const targetChar = currentCharacter
+            || (selectedCharacterId ? allCharacters.find(x => x.id === selectedCharacterId) : null)
+            || allCharacters[0]
+            || null;
+
+        if (targetChar) {
+            startNewChat(targetChar);
+        } else {
+            addToast('No characters available to start a chat.', 'error');
         }
-        if (c) startNewChat(c);
-    }, [interactionData, currentCharacter, selectedCharacterId, allCharacters, rawChatShells, startNewChat, safeAutoSave]);
+    }, [interactionData, currentCharacter, selectedCharacterId, allCharacters, startNewChat, safeAutoSave, addToast]);
 
     const handleDeleteChat = useCallback(async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
@@ -95,14 +108,19 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         if (await deleteChatFromList(id)) {
             addToast('Chat session deleted.', 'info');
             if (interactionData?.id === id) {
-                // Deleted the active chat — clear session and start fresh
+                // Deleted active chat — clear session and start fresh with fallback character
                 await saveRawSessionData({ activeChatId: null });
-                if (currentCharacter) startNewChat(currentCharacter);
+                const nextChar = currentCharacter
+                    || (selectedCharacterId ? allCharacters.find(x => x.id === selectedCharacterId) : null)
+                    || allCharacters[0]
+                    || null;
+
+                if (nextChar) startNewChat(nextChar);
             }
         } else {
             addToast('Failed to delete chat.', 'error');
         }
-    }, [interactionData, currentCharacter, deleteChatFromList, startNewChat, addToast, safeAutoSave]);
+    }, [interactionData, currentCharacter, selectedCharacterId, allCharacters, deleteChatFromList, startNewChat, addToast, safeAutoSave]);
 
     const handleStartEditTitle = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();

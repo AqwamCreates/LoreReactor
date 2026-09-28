@@ -1,4 +1,4 @@
-// src/hooks/dialoguePromptLogic.ts
+// src/utilities/dialoguePromptLogic.ts
 import type { DialoguePrompt } from '../types';
 
 /**
