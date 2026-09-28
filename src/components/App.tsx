@@ -327,8 +327,8 @@ function App() {
     }, [allModels, mp.isMultiplayerClient, models]);
 
     const modelStatusMessage = mp.isMultiplayerClient ? ''
-        : (!models.selectedModelId ? 'No model selected — open Language Models to load one'
-            : isModelLoading ? 'Model is warming up... please wait' : '');
+        : (!models.selectedModelId ? 'No model selected — open Language Models to load one.'
+            : isModelLoading ? 'Model is warming up... please wait.' : '');
 
     // ─── Feature Hooks ───────────────────────────────────────────────
     const actionMenu = useActionMenu({
