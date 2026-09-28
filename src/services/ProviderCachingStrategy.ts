@@ -139,8 +139,42 @@ function wrapContentWithCacheControl(msg: OpenAIMessage): OpenAIMessage {
     return msg;
 }
 
+/**
+ * Google Single-System Message Strategy
+ * 
+ * Google AI Platform's OpenAI-compatible API only respects the LAST system
+ * message and silently discards all previous ones. This strategy keeps the
+ * first system message as role:"system" and converts all subsequent system
+ * messages to role:"user" so they are preserved in context without being dropped.
+ * 
+ * Content is passed raw/as-is without wrapping or prefix markers.
+ */
+class GoogleSingleSystemStrategy implements ProviderCachingStrategy {
+    supports(b: backend): boolean {
+        return b === 'Google';
+    }
+
+    apply(ctx: CacheContext): CacheStrategyResult {
+        if (ctx.messages.length === 0) return {};
+
+        let foundFirstSystem = false;
+        const patched = ctx.messages.map((msg) => {
+            if (msg.role === 'system') {
+                if (!foundFirstSystem) {
+                    foundFirstSystem = true;
+                    return msg;
+                }
+                return { ...msg, role: 'user' };
+            }
+            return msg;
+        });
+
+        return { messages: patched };
+    }
+}
+
 class ImplicitCacheStrategy implements ProviderCachingStrategy {
-    private readonly backends: ReadonlySet<backend> = new Set(['DeepSeek', 'Google', 'Kimi']);
+    private readonly backends: ReadonlySet<backend> = new Set(['DeepSeek', 'Kimi']);
 
     supports(b: backend): boolean {
         return this.backends.has(b);
@@ -168,6 +202,7 @@ class NoCacheStrategy implements ProviderCachingStrategy {
 const strategies: readonly ProviderCachingStrategy[] = [
     new AnthropicExplicitCacheStrategy(),
     new QwenExplicitCacheStrategy(),
+    new GoogleSingleSystemStrategy(),
     new SessionAffinityStrategy(),
     new ImplicitCacheStrategy(),
     new NoCacheStrategy(),
