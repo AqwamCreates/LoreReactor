@@ -1,4 +1,3 @@
-// src/utilities/textReformat.ts
 import { getFormatPreferenceEngine } from '../services/FormatPreferenceEngine';
 
 export type FormatCategory = 'plain' | 'italics' | 'bold' | 'strikethrough' | 'quotes' | 'parentheses' | 'brackets';
@@ -251,24 +250,14 @@ export function buildCategoryConversions(segments: DetectedSegment[]): CategoryC
 
 // ─── Bayesian Learning UI Bridges ───────────────────────────────────
 
-/**
- * Builds category conversions with engine predictions.
- * Can be filtered to only predict for plain text (Auto-Format) or 
- * only for existing formats (Auto-Reformat).
- */
 export function buildCategoryConversionsWithLearning(
     text: string, 
-    segments: DetectedSegment[],
-    options: { includePlain?: boolean; includeFormatted?: boolean } = {}
+    segments: DetectedSegment[]
 ): CategoryConversion[] {
-    const { includePlain = true, includeFormatted = true } = options;
     const baseConversions = buildCategoryConversions(segments);
     const engine = getFormatPreferenceEngine();
     
     return baseConversions.map(conv => {
-        if (conv.detected === 'plain' && !includePlain) return conv;
-        if (conv.detected !== 'plain' && !includeFormatted) return conv;
-
         const seg = segments.find(s => s.category === conv.detected);
         if (seg) {
             const context = engine.extractContext(text, seg.start, seg.end, segments);
@@ -298,11 +287,6 @@ export function recordCategoryCorrection(
     }
 }
 
-/**
- * Compares the original AI text with the user's final edited text.
- * If the user manually wrapped or unwrapped text, this detects the 
- * formatting change and trains the engine on the specific context.
- */
 export function learnFromManualEdits(originalText: string, finalText: string): void {
     if (originalText === finalText) return;
 

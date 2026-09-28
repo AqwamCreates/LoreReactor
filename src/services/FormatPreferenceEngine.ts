@@ -5,13 +5,14 @@ import {
     saveRawFormatPreferences,
 } from '../storages/serverStorage';
 
+type lengthCategory = 'one' | 'very short' | 'short' | 'medium' | 'long' | 'very long'
 export interface FormatContext {
     position: 'start' | 'middle' | 'end';
     previousFormat?: FormatCategory;
     nextFormat?: FormatCategory;
     insideQuote: boolean;
     afterDialogueTag: boolean;
-    lengthCategory: 'short' | 'medium' | 'long';
+    lengthCategory: lengthCategory;
 }
 
 interface UserCorrection {
@@ -93,9 +94,13 @@ export class FormatPreferenceEngine {
         const beforeSegment = text.slice(Math.max(0, segmentStart - 50), segmentStart);
         const afterDialogueTag = /\b(said|asked|replied|whispered|shouted|muttered|yelled|exclaimed|answered|cried|gasped|sighed)\s*$/i.test(beforeSegment);
 
-        let lengthCategory: 'short' | 'medium' | 'long' = 'medium';
+        let lengthCategory: lengthCategory= 'medium';
+
+        if (segmentLength < 1) lengthCategory = "one";
+        if (segmentLength < 5) lengthCategory = "very short";
         if (segmentLength < 10) lengthCategory = 'short';
-        else if (segmentLength > 100) lengthCategory = 'long';
+        if (segmentLength > 50) lengthCategory = 'long' 
+        if (segmentLength > 100) lengthCategory = 'very long';
 
         return {
             position,
