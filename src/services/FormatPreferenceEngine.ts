@@ -6,8 +6,7 @@ import {
     saveRawFormatPreferences,
 } from '../storages/serverStorage';
 
-type position = 'start' | 'start middle' | 'middle' | 'middle end' | 'end'
-
+type position = 'start' | 'start middle' | 'middle' | 'middle end' | 'end';
 type lengthCategory = 'one' | 'very short' | 'short' | 'medium' | 'long' | 'very long';
 
 export interface FormatContext {
@@ -76,18 +75,26 @@ export class FormatPreferenceEngine {
         const totalLength = text.length;
         const segmentLength = segmentEnd - segmentStart;
 
+        // FIXED: Mutually exclusive if/else-if chain to prevent overwriting
         let position: position = 'middle';
-        if (segmentStart < totalLength * 0.2) position = 'start';
-        if (segmentStart < totalLength * 0.4) position = 'start middle';
-        if (segmentStart > totalLength * 0.6) position = 'middle end';
-        else if (segmentEnd > totalLength * 0.8) position = 'end';
+        if (segmentStart < totalLength * 0.2) {
+            position = 'start';
+        } else if (segmentStart < totalLength * 0.4) {
+            position = 'start middle';
+        } else if (segmentEnd > totalLength * 0.8) {
+            position = 'end';
+        } else if (segmentStart > totalLength * 0.6) {
+            position = 'middle end';
+        }
 
         const currentSegmentIndex = segments.findIndex(
             s => s.start === segmentStart && s.end === segmentEnd
         );
+        
         const previousFormat = currentSegmentIndex > 0
             ? segments[currentSegmentIndex - 1].category
             : undefined;
+            
         const nextFormat = currentSegmentIndex < segments.length - 1
             ? segments[currentSegmentIndex + 1].category
             : undefined;
@@ -102,7 +109,6 @@ export class FormatPreferenceEngine {
         const lastWord = words.length > 0 ? words[words.length - 1] : '';
         const afterDialogueTag = DIALOGUE_STEMS.has(lastWord);
 
-        // Fixed logic: use else-if to prevent overwriting
         let lengthCategory: lengthCategory = 'medium';
         if (segmentLength < 1) lengthCategory = 'one';
         else if (segmentLength < 5) lengthCategory = 'very short';
@@ -156,6 +162,7 @@ export class FormatPreferenceEngine {
             context,
             timestamp: Date.now(),
         });
+        
         if (this.data.recentCorrections.length > MAX_RECENT_CORRECTIONS) {
             this.data.recentCorrections.shift();
         }
@@ -170,6 +177,7 @@ export class FormatPreferenceEngine {
     ): { target: FormatCategory; confidence: number } | null {
         const contextKey = this.contextToKey(context);
 
+        // 1. Try context-specific prediction first
         if (this.data.contextTransitions[contextKey]) {
             const contextPrediction = this.calculateBestTarget(
                 this.data.contextTransitions[contextKey][detected]
@@ -179,6 +187,7 @@ export class FormatPreferenceEngine {
             }
         }
 
+        // 2. Fallback to global prediction
         const globalPrediction = this.calculateBestTarget(
             this.data.globalTransitions[detected]
         );
