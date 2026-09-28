@@ -631,7 +631,7 @@ function ProfileEditorContent({
                                     checked={enableSpeculativeMarkov} 
                                     onChange={setEnableSpeculativeMarkov} 
                                     label="Enable Speculative Markov" 
-                                    hint="Uses a local Markov chain to predict and append highly confident tokens during streaming, reducing API output costs. Aborts and resumes the stream only if the token savings exceed the network latency penalty." 
+                                    hint="Uses a local Markov chain to predict and append highly confident tokens during streaming, reducing API output costs and reducing perceived latency. Aborts and resumes the stream only if the token savings exceed the network latency penalty." 
                                 />
                                 <ProfileCheckbox 
                                     checked={doNotInjectDefaultStopTokens} 
