@@ -1,6 +1,17 @@
 // src/utilities/stemmerHelper.ts
 export const STOP_STEMS = new Set(['he', 'she', 'they', 'i', 'you', 'we', 'it', 'him', 'her', 'them', 'me', 'us', 'say', 'ask', 'repl', 'whisper', 'mut', 'shout', 'yell', 'think', 'respond', 'answer', 'call', 'cri', 'exclaim', 'murmur', 'mumbl', 'state', 'remark', 'comment', 'not', 'observ', 'mention', 'add', 'continu', 'be', 'have', 'do', 'will', 'would', 'could', 'should', 'can', 'may', 'might', 'must', 'in', 'on', 'at', 'to', 'from', 'with', 'by', 'for', 'of', 'the', 'a', 'an', 'and', 'but', 'or', 'so', 'if', 'then', 'than', 'this', 'that', 'these', 'those', 'here', 'there', 'when', 'where', 'how', 'what', 'which', 'who', 'whom', 'my', 'your', 'hi', 'our', 'their']);
 
+// Comprehensive set of dialogue tag stems and their common 4-letter variants
+export const DIALOGUE_STEMS = new Set([
+    'say', 'said', 'ask', 'asked', 'repl', 'reply', 'replied', 'whisper', 'whispered',
+    'shout', 'shouted', 'yell', 'yelled', 'think', 'thought', 'respond', 'responded',
+    'answer', 'answered', 'call', 'called', 'cri', 'cried', 'cry', 'exclaim', 'exclaimed',
+    'murmur', 'murmured', 'mumbl', 'mumbled', 'state', 'stated', 'remark', 'remarked',
+    'comment', 'commented', 'observ', 'observed', 'mention', 'mentioned', 'sigh', 'sighed', 
+    'gasp', 'gasped', 'mut', 'mutter', 'muttered', 'add', 'added', 'continu', 'continued'
+]);
+
+
 export function stemWord(word: string): string {
     let w = word.toLowerCase();
     if (w.length < 3) return w;

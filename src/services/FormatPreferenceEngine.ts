@@ -1,11 +1,12 @@
 // src/services/FormatPreferenceEngine.ts
 import type { FormatCategory } from '../utilities/textReformat';
+import { DIALOGUE_STEMS, getStemmedContentWords } from '../utilities/stemmerHelper';
 import {
     loadRawFormatPreferences,
     saveRawFormatPreferences,
 } from '../storages/serverStorage';
 
-type lengthCategory = 'one' | 'very short' | 'short' | 'medium' | 'long' | 'very long'
+type lengthCategory = 'one' | 'very short' | 'short' | 'medium' | 'long' | 'very long';
 
 export interface FormatContext {
     position: 'start' | 'middle' | 'end';
@@ -91,16 +92,19 @@ export class FormatPreferenceEngine {
         const quoteMatches = textBefore.match(/["“”]/g) || [];
         const insideQuote = quoteMatches.length % 2 !== 0;
 
-        const beforeSegment = text.slice(Math.max(0, segmentStart - 50), segmentStart);
-        const afterDialogueTag = /\b(said|asked|replied|whispered|shouted|muttered|yelled|exclaimed|answered|cried|gasped|sighed)\s*$/i.test(beforeSegment);
+        // Use stemmed content words to detect dialogue tags robustly
+        const beforeSegment = text.slice(Math.max(0, segmentStart - 100), segmentStart);
+        const words = getStemmedContentWords(beforeSegment);
+        const lastWord = words.length > 0 ? words[words.length - 1] : '';
+        const afterDialogueTag = DIALOGUE_STEMS.has(lastWord);
 
+        // Fixed logic: use else-if to prevent overwriting
         let lengthCategory: lengthCategory = 'medium';
-
-        if (segmentLength < 1) lengthCategory = "one";
-        if (segmentLength < 5) lengthCategory = "very short";
-        if (segmentLength < 10) lengthCategory = 'short';
-        if (segmentLength > 50) lengthCategory = 'long';
-        if (segmentLength > 100) lengthCategory = 'very long';
+        if (segmentLength < 1) lengthCategory = 'one';
+        else if (segmentLength < 5) lengthCategory = 'very short';
+        else if (segmentLength < 10) lengthCategory = 'short';
+        else if (segmentLength > 100) lengthCategory = 'very long';
+        else if (segmentLength > 50) lengthCategory = 'long';
 
         return {
             position,
@@ -197,8 +201,6 @@ export class FormatPreferenceEngine {
             }
         }
 
-        // Removed MIN_CORRECTIONS_FOR_AUTO_APPLY check. 
-        // Now relies purely on the confidence ratio (e.g., 1/1 = 100% confidence).
         if (!bestTarget || totalCorrections === 0) {
             return null;
         }
