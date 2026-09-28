@@ -6,6 +6,7 @@ import {
 } from '../storages/serverStorage';
 
 type lengthCategory = 'one' | 'very short' | 'short' | 'medium' | 'long' | 'very long'
+
 export interface FormatContext {
     position: 'start' | 'middle' | 'end';
     previousFormat?: FormatCategory;
@@ -34,7 +35,6 @@ const ALL_CATEGORIES: FormatCategory[] = [
     'quotes', 'parentheses', 'brackets',
 ];
 
-const MIN_CORRECTIONS_FOR_AUTO_APPLY = 3;
 const AUTO_APPLY_THRESHOLD = 0.75;
 const MAX_RECENT_CORRECTIONS = 100;
 const SAVE_DEBOUNCE_MS = 3000;
@@ -94,12 +94,12 @@ export class FormatPreferenceEngine {
         const beforeSegment = text.slice(Math.max(0, segmentStart - 50), segmentStart);
         const afterDialogueTag = /\b(said|asked|replied|whispered|shouted|muttered|yelled|exclaimed|answered|cried|gasped|sighed)\s*$/i.test(beforeSegment);
 
-        let lengthCategory: lengthCategory= 'medium';
+        let lengthCategory: lengthCategory = 'medium';
 
         if (segmentLength < 1) lengthCategory = "one";
         if (segmentLength < 5) lengthCategory = "very short";
         if (segmentLength < 10) lengthCategory = 'short';
-        if (segmentLength > 50) lengthCategory = 'long' 
+        if (segmentLength > 50) lengthCategory = 'long';
         if (segmentLength > 100) lengthCategory = 'very long';
 
         return {
@@ -197,7 +197,9 @@ export class FormatPreferenceEngine {
             }
         }
 
-        if (totalCorrections < MIN_CORRECTIONS_FOR_AUTO_APPLY || !bestTarget) {
+        // Removed MIN_CORRECTIONS_FOR_AUTO_APPLY check. 
+        // Now relies purely on the confidence ratio (e.g., 1/1 = 100% confidence).
+        if (!bestTarget || totalCorrections === 0) {
             return null;
         }
 
