@@ -636,6 +636,7 @@ export type PromptBlockType =
   | 'Fatigue Information'
   | 'Starter Prompt'
   | 'Tool Instructions'
+  | 'Anti-Repetition Nudge'
   | 'Text Injection'
   | 'Model Chat Template'
   | 'Model Instruction Template'

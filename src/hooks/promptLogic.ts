@@ -1265,6 +1265,91 @@ function buildFatigueLines(ctx: PromptBuildContext): string[] {
     return lines;
 }
 
+function buildAntiRepetitionLines(ctx: PromptBuildContext): string[] {
+    const lines: string[] = [];
+    
+    // Window size scales with crowd: more people = look further back in AI's history
+    const windowSize = Math.max(2, ctx.coLocatedParticipants.length * 2);
+
+    const recentAiMessages = ctx.interactionHistory
+        .filter(m => m.character.id === ctx.characterId && isTextMessage(m))
+        .slice(-windowSize) as (ChatMessage | WhisperMessage)[];
+
+    // Need at least 2 messages to detect any repetition
+    if (recentAiMessages.length < 2) return lines; 
+
+    const texts = recentAiMessages.map(m => m.textContent);
+
+    // 2. Detect Action Loops - AGGRESSIVE FIXED THRESHOLD
+    const actionRegex = /\*([^*]{2,40})\*/g;
+    const actionCounts: Record<string, number> = {};
+    
+    for (const text of texts) {
+        let match;
+        while ((match = actionRegex.exec(text)) !== null) {
+            const action = match[1].trim().toLowerCase().replace(/[.,!?]+$/, '');
+            if (action) {
+                actionCounts[action] = (actionCounts[action] || 0) + 1;
+            }
+        }
+    }
+
+    let actionLoopDetected = false;
+    let repeatedAction = '';
+    
+    // FIXED THRESHOLD: If an action appears 2+ times, it's a loop
+    const actionThreshold = 2;
+    
+    for (const [action, count] of Object.entries(actionCounts)) {
+        if (count >= actionThreshold) { 
+            actionLoopDetected = true;
+            repeatedAction = action;
+            break;
+        }
+    }
+
+    // 3. Detect Lexical Loops - AGGRESSIVE FIXED THRESHOLD
+    let consecutiveHighSimilarity = 0;
+    
+    for (let i = 0; i < texts.length - 1; i++) {
+        const wordsA = new Set(texts[i].toLowerCase().match(/\b\w{4,}\b/g) || []);
+        const wordsB = new Set(texts[i+1].toLowerCase().match(/\b\w{4,}\b/g) || []);
+        
+        if (wordsA.size === 0 || wordsB.size === 0) continue;
+        
+        let intersection = 0;
+        for (const word of wordsA) {
+            if (wordsB.has(word)) intersection++;
+        }
+        const union = wordsA.size + wordsB.size - intersection;
+        const jaccard = intersection / union;
+        
+        if (jaccard > 0.65) { 
+            consecutiveHighSimilarity++;
+        }
+    }
+
+    // FIXED THRESHOLD: If 2+ consecutive pairs are highly similar, it's a structural loop
+    const lexicalThreshold = 2;
+    const lexicalLoopDetected = consecutiveHighSimilarity >= lexicalThreshold;
+
+    // 4. Inject Nudge if needed
+    if (actionLoopDetected || lexicalLoopDetected) {
+        let nudgeText = '[System Directive: Narrative Loop Detected. ';
+        if (actionLoopDetected) {
+            nudgeText += `You are excessively repeating the physical action "*${repeatedAction}*". `;
+        }
+        if (lexicalLoopDetected) {
+            nudgeText += 'Your recent responses share too much lexical and structural similarity. ';
+        }
+        nudgeText += 'You MUST break this pattern immediately. Introduce a completely new physical action, shift the emotional tone, or alter the environment. Do not reuse recent mannerisms or sentence structures.]';
+        
+        lines.push(`${ctx.delimiters.blockStart('system')}${nudgeText}${ctx.delimiters.blockEnd}`);
+    }
+
+    return lines;
+}
+
 function buildTextInjectionLines(ctx: PromptBuildContext, hasBeenSummarized: boolean, contextLines: string[]): string[] {
     const lines: string[] = [];
 
@@ -1487,6 +1572,7 @@ const VOLATILE_BLOCK_TYPES: ReadonlySet<string> = new Set([
     'Time Elapsed',
     'Fatigue Information',
     'Tool Instructions',
+    'Anti-Repetition Nudge',
 ]);
 
 /**
@@ -1790,6 +1876,7 @@ export async function buildPrompt(
     const inventoryLines = buildInventoryLines(ctx);
     const toolInstructions = buildToolInstructionLines(ctx);
     const fatigueLines = buildFatigueLines(ctx);
+    const antiRepetitionLines = buildAntiRepetitionLines(ctx);
 
     const chatHistoryLines: string[] = [];
     let hasBeenSummarized = false;
@@ -1871,6 +1958,7 @@ export async function buildPrompt(
         'Fatigue Information': fatigueLines,
         'Starter Prompt': starterPromptLines,
         'Tool Instructions': toolInstructions,
+        'Anti-Repetition Nudge': antiRepetitionLines,
         'Text Injection': textInjectionLines,
     };
 

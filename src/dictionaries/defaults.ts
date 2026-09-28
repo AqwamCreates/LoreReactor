@@ -136,7 +136,7 @@ export const defaultActions: InterjectableAction[] = [
 export const defaultInputStrategy: PromptBlockType[] = [
     'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt',
     'Chat History', 'Context', 'Location', 'Weather', 'Inventory', 'Date And Time', 'Time Elapsed',
-    'Fatigue Information', 'Starter Prompt', 'Tool Instructions', 'Text Injection',
+    'Fatigue Information', 'Starter Prompt', 'Tool Instructions', 'Anti-Repetition Nudge', 'Text Injection',
 ];
 
 export const defaultProfileTools: Record<tool, tristateInteger> = {
