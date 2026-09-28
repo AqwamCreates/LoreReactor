@@ -39,51 +39,78 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
 
     const handleToggleParticipant = useCallback(async (charId: string) => {
         if (!interactionData) return;
-        const ids = interactionData.participants.map(p => p.id);
-        let np: Character[];
-        let updatedData: InteractionData;
+        
+        const isParticipant = interactionData.participants.some(p => p.id === charId);
+        const isProtagonist = interactionData.protagonists?.some(p => p.id === charId) ?? false;
 
-        if (ids.includes(charId)) {
-            // Removing participant — clean up orphaned silent interaction messages
-            np = interactionData.participants.filter(p => p.id !== charId);
-
-            // Check if this character has any actual chat messages
-            const hasChatMessages = interactionData.interactionHistory.some(
-                m => m.character.id === charId && m.messageType === 'chat'
-            );
-
-            if (!hasChatMessages) {
-                // Character only has silent interaction entries (location assignments) — remove them
-                const cleanedHistory = interactionData.interactionHistory.filter(m => m.character.id !== charId);
-                updatedData = { ...interactionData, participants: np, interactionHistory: cleanedHistory };
+        if (isParticipant) {
+            // ─── REMOVING ────────────────────────────────────────────
+            if (isProtagonist) {
+                const protagonistCount = interactionData.protagonists?.length || 0;
+                if (protagonistCount <= 1) {
+                    addToast('Cannot remove the only protagonist.', 'error');
+                    return;
+                }
+                
+                // Remove from protagonists array as well
+                const updatedProtagonists = (interactionData.protagonists || []).filter(p => p.id !== charId);
+                const newActiveProtagonist = updatedProtagonists[0];
+                
+                // Clean up orphaned silent interaction messages
+                const hasChatMessages = interactionData.interactionHistory.some(
+                    m => m.character.id === charId && m.messageType === 'chat'
+                );
+                const updatedHistory = hasChatMessages 
+                    ? interactionData.interactionHistory 
+                    : interactionData.interactionHistory.filter(m => m.character.id !== charId);
+                
+                const np = interactionData.participants.filter(p => p.id !== charId);
+                
+                const updatedData: InteractionData = {
+                    ...interactionData,
+                    participants: np,
+                    protagonists: updatedProtagonists,
+                    interactionHistory: updatedHistory,
+                    lastUpdatedTimestamp: Date.now(),
+                };
+                
+                setInteractionData(updatedData);
+                setCurrentCharacter(newActiveProtagonist);
+                addToast('Protagonist removed.', 'info');
             } else {
-                updatedData = { ...interactionData, participants: np };
+                // Normal participant removal
+                const np = interactionData.participants.filter(p => p.id !== charId);
+                
+                const hasChatMessages = interactionData.interactionHistory.some(
+                    m => m.character.id === charId && m.messageType === 'chat'
+                );
+                
+                let updatedData: InteractionData;
+                if (!hasChatMessages) {
+                    const cleanedHistory = interactionData.interactionHistory.filter(m => m.character.id !== charId);
+                    updatedData = { ...interactionData, participants: np, interactionHistory: cleanedHistory, lastUpdatedTimestamp: Date.now() };
+                } else {
+                    updatedData = { ...interactionData, participants: np, lastUpdatedTimestamp: Date.now() };
+                }
+                
+                setInteractionData(updatedData);
+                addToast('Participant removed.', 'info');
             }
         } else {
-            // Adding participant — assign initial location if needed
+            // ─── ADDING ──────────────────────────────────────────────
             const sh = allCharacters.find(c => c.id === charId);
             if (!sh) return;
             const ch = sh.sampler ? sh : await loadFullCharacter(charId);
             if (!ch) return;
-            np = [...interactionData.participants, ch];
-            updatedData = { ...interactionData, participants: np };
-            // Assign initial location for newly added character
+            
+            const np = [...interactionData.participants, ch];
+            let updatedData = { ...interactionData, participants: np, lastUpdatedTimestamp: Date.now() };
             updatedData = assignInitialLocationsIfNeeded(updatedData);
+            
+            setInteractionData(updatedData);
+            addToast('Participant added.', 'info');
         }
-
-        // Ensure all protagonists are in participants
-        if (updatedData.protagonists) {
-            for (const protag of updatedData.protagonists) {
-                if (!np.find(p => p.id === protag.id)) {
-                    np.unshift(protag);
-                }
-            }
-            updatedData = { ...updatedData, participants: np };
-        }
-
-        setInteractionData(updatedData);
-        addToast('Participants updated.', 'info');
-    }, [interactionData, allCharacters, setInteractionData, loadFullCharacter, addToast]);
+    }, [interactionData, allCharacters, setInteractionData, setCurrentCharacter, loadFullCharacter, addToast]);
 
     const handleToggleContext = useCallback(async (contextId: string) => {
         if (!interactionData?.contexts) return;
@@ -91,7 +118,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         const nc = ids.includes(contextId)
             ? interactionData.contexts.filter(c => c.id !== contextId)
             : [...interactionData.contexts, await loadRawContext(contextId)].filter(Boolean) as Context[];
-        setInteractionData({ ...interactionData, contexts: nc });
+        setInteractionData({ ...interactionData, contexts: nc, lastUpdatedTimestamp: Date.now() });
         addToast('Contexts updated.', 'info');
     }, [interactionData, setInteractionData, addToast]);
 
@@ -102,7 +129,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         const nl = ids.includes(locationId)
             ? currentLocations.filter(l => l.id !== locationId)
             : [...currentLocations, await loadRawLocation(locationId)].filter(Boolean) as Location[];
-        setInteractionData({ ...interactionData, locations: nl });
+        setInteractionData({ ...interactionData, locations: nl, lastUpdatedTimestamp: Date.now() });
         addToast('Locations updated.', 'info');
     }, [interactionData, setInteractionData, addToast]);
 
@@ -113,7 +140,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         const nt = ids.includes(trackId)
             ? currentTracks.filter(t => t.id !== trackId)
             : [...currentTracks, await loadRawAudioTrack(trackId)].filter(Boolean) as AudioTrack[];
-        setInteractionData({ ...interactionData, audioTracks: nt });
+        setInteractionData({ ...interactionData, audioTracks: nt, lastUpdatedTimestamp: Date.now() });
         addToast('Audio tracks updated.', 'info');
     }, [interactionData, setInteractionData, addToast]);
 
@@ -128,16 +155,13 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         const updatedProtagonists = interactionData.protagonists ? [...interactionData.protagonists] : [];
         const existingIdx = updatedProtagonists.findIndex(p => p.id === charId);
         if (existingIdx === -1) {
-            // Add new protagonist at the front
             updatedProtagonists.unshift(ch);
         } else if (existingIdx > 0) {
-            // Move existing protagonist to the front
             const [moved] = updatedProtagonists.splice(existingIdx, 1);
             updatedProtagonists.unshift(moved);
         }
-        // If existingIdx === 0, already the active protagonist, no reorder needed
 
-        // Update multiplayerDataAccountConfigurations mapping in centralized multiplayerData
+        // Update multiplayerDataAccountConfigurations mapping
         let updatedMultiplayerData: MultiplayerData | undefined = multiplayerData ? { ...multiplayerData } : undefined;
         if (currentAccountId) {
             if (!updatedMultiplayerData) {
@@ -162,7 +186,6 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             };
         }
 
-        // Persist updated multiplayerData to store
         if (updatedMultiplayerData) {
             useSessionStore.setState({ multiplayerData: updatedMultiplayerData });
         }
@@ -170,9 +193,9 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         let uc: InteractionData = {
             ...interactionData,
             protagonists: updatedProtagonists,
+            lastUpdatedTimestamp: Date.now(),
         };
         if (!uc.participants.find(p => p.id === charId)) uc.participants = [ch, ...uc.participants];
-        // Ensure new protagonist has a location assigned
         uc = assignInitialLocationsIfNeeded(uc);
         setInteractionData(uc);
         setCurrentCharacter(ch);
@@ -202,14 +225,14 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
     const handleActivateProfile = useCallback(async (pid: string) => {
         if (!interactionData) return;
         if (interactionData.Profile?.id === pid) {
-            const uc = { ...interactionData, Profile: undefined };
+            const uc = { ...interactionData, Profile: undefined, lastUpdatedTimestamp: Date.now() };
             setInteractionData(uc);
             await saveRawInteractionData(uc);
             addToast('Profile deactivated.', 'info');
         } else {
             const p = allProfiles.find(x => x.id === pid);
             if (!p) return;
-            const uc = { ...interactionData, Profile: p };
+            const uc = { ...interactionData, Profile: p, lastUpdatedTimestamp: Date.now() };
             setInteractionData(uc);
             await saveRawInteractionData(uc);
             addToast(`Profile "${p.name}" activated!`, 'success');
