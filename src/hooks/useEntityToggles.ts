@@ -124,11 +124,18 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         const ch = sh.sampler ? sh : await loadFullCharacter(charId);
         if (!ch) return;
 
-        // Update protagonists array: add if not present
+        // Update protagonists array: add if not present, then move to front
         const updatedProtagonists = interactionData.protagonists ? [...interactionData.protagonists] : [];
-        if (!updatedProtagonists.find(p => p.id === charId)) {
-            updatedProtagonists.push(ch);
+        const existingIdx = updatedProtagonists.findIndex(p => p.id === charId);
+        if (existingIdx === -1) {
+            // Add new protagonist at the front
+            updatedProtagonists.unshift(ch);
+        } else if (existingIdx > 0) {
+            // Move existing protagonist to the front
+            const [moved] = updatedProtagonists.splice(existingIdx, 1);
+            updatedProtagonists.unshift(moved);
         }
+        // If existingIdx === 0, already the active protagonist, no reorder needed
 
         // Update multiplayerDataAccountConfigurations mapping in centralized multiplayerData
         let updatedMultiplayerData: MultiplayerData | undefined = multiplayerData ? { ...multiplayerData } : undefined;
@@ -170,7 +177,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         setInteractionData(uc);
         setCurrentCharacter(ch);
         setDefaultCharacterId(charId);
-        addToast('Protagonist switched.', 'info');
+        addToast(`Switched to ${ch.name}.`, 'success');
     }, [interactionData, allCharacters, currentAccountId, multiplayerData, setInteractionData, setCurrentCharacter, setDefaultCharacterId, loadFullCharacter, addToast]);
 
     const handleToggleExtension = useCallback((extId: string) => {
