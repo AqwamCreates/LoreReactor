@@ -140,19 +140,23 @@ function wrapContentWithCacheControl(msg: OpenAIMessage): OpenAIMessage {
 }
 
 /**
- * Google Single-System Message Strategy
+ * Single-System Message Strategy
  * 
- * Google AI Platform's OpenAI-compatible API only respects the LAST system
- * message and silently discards all previous ones. Since inputStrategy is
+ * Certain providers' OpenAI-compatible APIs only respect the LAST system
+ * message and silently discard all previous ones. Since inputStrategy is
  * user-configurable and system message ordering is volatile, no single
  * system message can be reliably preserved as role:"system". All system
  * messages are converted to role:"user" to guarantee nothing is dropped.
  * 
+ * Applies to: Google AI Platform, Cohere
+ * 
  * Content is passed raw/as-is without wrapping or prefix markers.
  */
-class GoogleSingleSystemStrategy implements ProviderCachingStrategy {
+class SingleSystemStrategy implements ProviderCachingStrategy {
+    private readonly backends: ReadonlySet<backend> = new Set(['Google', 'Cohere']);
+
     supports(b: backend): boolean {
-        return b === 'Google';
+        return this.backends.has(b);
     }
 
     apply(ctx: CacheContext): CacheStrategyResult {
@@ -182,7 +186,7 @@ class ImplicitCacheStrategy implements ProviderCachingStrategy {
 }
 
 class NoCacheStrategy implements ProviderCachingStrategy {
-    private readonly backends: ReadonlySet<backend> = new Set(['Cohere', 'AI21', 'NovelAI']);
+    private readonly backends: ReadonlySet<backend> = new Set(['AI21', 'NovelAI']);
 
     supports(b: backend): boolean {
         return this.backends.has(b);
@@ -198,7 +202,7 @@ class NoCacheStrategy implements ProviderCachingStrategy {
 const strategies: readonly ProviderCachingStrategy[] = [
     new AnthropicExplicitCacheStrategy(),
     new QwenExplicitCacheStrategy(),
-    new GoogleSingleSystemStrategy(),
+    new SingleSystemStrategy(),
     new SessionAffinityStrategy(),
     new ImplicitCacheStrategy(),
     new NoCacheStrategy(),
