@@ -1,4 +1,3 @@
-// src/components/MessageBubble.tsx
 import React from 'react';
 import type { Character, ChatMessage, WhisperMessage } from '../types';
 import { MemoizedMessageText } from './MemoizedMessageText';
@@ -177,20 +176,7 @@ export const MessageBubble = React.memo(function MessageBubble({
 
     const handleAutoReformat = React.useCallback(() => {
         const segments = detectFormatSegments(rawDraftRef.current);
-        setConversions(buildCategoryConversionsWithLearning(
-            rawDraftRef.current, 
-            segments, 
-            { includePlain: false, includeFormatted: true }
-        ));
-    }, []);
-
-    const handleAutoAddMissing = React.useCallback(() => {
-        const segments = detectFormatSegments(rawDraftRef.current);
-        setConversions(buildCategoryConversionsWithLearning(
-            rawDraftRef.current, 
-            segments, 
-            { includePlain: true, includeFormatted: false }
-        ));
+        setConversions(buildCategoryConversionsWithLearning(rawDraftRef.current, segments));
     }, []);
 
     const handleCancelEditing = React.useCallback(() => {
@@ -322,17 +308,9 @@ export const MessageBubble = React.memo(function MessageBubble({
                                             type="button"
                                             onClick={handleAutoReformat}
                                             className="auto-reformat-button"
-                                            title="Fix existing formatting based on learned preferences"
+                                            title="Apply learned reformatting preferences to all text"
                                         >
                                             Auto-Reformat
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={handleAutoAddMissing}
-                                            className="auto-format-button"
-                                            title="Format plain text based on learned context"
-                                        >
-                                            Auto-Format
                                         </button>
                                         <div className="message-reformat-grid">
                                             {conversions.map(conversion => (

@@ -1,4 +1,3 @@
-// src/components/views/VisualNovelView.tsx
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import type { ViewModeProps } from './types';
 import type { Character, ChatMessage } from '../../types';
@@ -236,20 +235,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     const handleAutoReformat = useCallback(() => {
         const segments = detectFormatSegments(rawDraftRef.current);
-        setConversions(buildCategoryConversionsWithLearning(
-            rawDraftRef.current, 
-            segments, 
-            { includePlain: false, includeFormatted: true }
-        ));
-    }, []);
-
-    const handleAutoAddMissing = useCallback(() => {
-        const segments = detectFormatSegments(rawDraftRef.current);
-        setConversions(buildCategoryConversionsWithLearning(
-            rawDraftRef.current, 
-            segments, 
-            { includePlain: true, includeFormatted: false }
-        ));
+        setConversions(buildCategoryConversionsWithLearning(rawDraftRef.current, segments));
     }, []);
 
     const handleCancelEditing = useCallback(() => {
@@ -465,17 +451,9 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                             type="button"
                                             onClick={handleAutoReformat}
                                             className="vn-auto-reformat-button"
-                                            title="Fix existing formatting based on learned preferences"
+                                            title="Apply learned reformatting preferences to all text"
                                         >
                                             Auto-Reformat
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={handleAutoAddMissing}
-                                            className="vn-auto-format-button"
-                                            title="Format plain text based on learned context"
-                                        >
-                                            Auto-Format
                                         </button>
                                         <div className="vn-reformat-grid">
                                             {conversions.map(conversion => (
