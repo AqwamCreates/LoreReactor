@@ -173,7 +173,9 @@ export function learnFromUserMessage(text: string, actionLabels: string[], prevU
         const patterns = [
             { regex: new RegExp(`\\*(${escaped}[^\\*]*)\\*`, 'i'), wrap: '*' as ActionWrap },
             { regex: new RegExp(`\\((${escaped}[^\\)]*)\\)`, 'i'), wrap: '()' as ActionWrap },
-            { regex: new RegExp(`(?:^|\\s)(${escaped}[^\\.\-\\*\\)]*)(?:\\.|\\-)?(?:\\s|$)`, 'i'), wrap: 'none' as ActionWrap },
+            // FIX: Hyphen placed at the very end of the character class to prevent range evaluation errors.
+            // Excludes: . * ( ) “ ” \n \r -
+            { regex: new RegExp(`(?:^|\\s)(${escaped}[^.*()“”\\n\\r-]*)(?:[.-])?(?:\\s|$)`, 'i'), wrap: 'none' as ActionWrap },
         ];
 
         for (const { regex, wrap } of patterns) {
