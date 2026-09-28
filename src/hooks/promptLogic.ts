@@ -1267,83 +1267,149 @@ function buildFatigueLines(ctx: PromptBuildContext): string[] {
 
 function buildAntiRepetitionNudgeLines(ctx: PromptBuildContext): string[] {
     const lines: string[] = [];
-    
-    // Window size scales with crowd: more people = look further back in AI's history
     const windowSize = Math.max(2, ctx.coLocatedParticipants.length * 2);
 
     const recentAiMessages = ctx.interactionHistory
         .filter(m => m.character.id === ctx.characterId && isTextMessage(m))
         .slice(-windowSize) as (ChatMessage | WhisperMessage)[];
 
-    // Need at least 2 messages to detect any repetition
     if (recentAiMessages.length < 2) return lines; 
 
     const texts = recentAiMessages.map(m => m.textContent);
 
-    // 2. Detect Action Loops - AGGRESSIVE FIXED THRESHOLD
-    const actionRegex = /\*([^*]{2,40})\*/g;
-    const actionCounts: Record<string, number> = {};
-    
-    for (const text of texts) {
-        let match;
-        while ((match = actionRegex.exec(text)) !== null) {
-            const action = match[1].trim().toLowerCase().replace(/[.,!?]+$/, '');
-            if (action) {
-                actionCounts[action] = (actionCounts[action] || 0) + 1;
+    const stem = (word: string): string => {
+        let w = word.toLowerCase();
+        if (w.length < 3) return w;
+        
+        if (w.endsWith('ies') && w.length > 4) w = `${w.slice(0, -3)}y`;
+        else if (w.endsWith('es') && w.length > 3) w = w.slice(0, -2);
+        else if (w.endsWith('s') && w.length > 3) w = w.slice(0, -1);
+        
+        if (w.endsWith('ing') && w.length > 4) {
+            w = w.slice(0, -3);
+            if (w.endsWith('e')) w = w.slice(0, -1);
+        } else if (w.endsWith('ed') && w.length > 4) {
+            w = w.slice(0, -2);
+            if (w.endsWith('e')) w = w.slice(0, -1);
+        } else if (w.endsWith('ly') && w.length > 4) {
+            w = w.slice(0, -2);
+        }
+        
+        if (w.endsWith('bb') || w.endsWith('dd') || w.endsWith('ff') || 
+            w.endsWith('gg') || w.endsWith('mm') || w.endsWith('nn') || 
+            w.endsWith('pp') || w.endsWith('rr') || w.endsWith('tt')) {
+            w = w.slice(0, -1);
+        }
+        
+        if (w.endsWith('tion') && w.length > 5) w = w.slice(0, -4);
+        else if (w.endsWith('ness') && w.length > 5) w = w.slice(0, -4);
+        else if (w.endsWith('ment') && w.length > 5) w = w.slice(0, -4);
+        else if (w.endsWith('ful') && w.length > 4) w = w.slice(0, -3);
+        else if (w.endsWith('able') && w.length > 5) w = w.slice(0, -4);
+        
+        return w;
+    };
+
+    const stopStems = new Set([
+        'he', 'she', 'they', 'i', 'you', 'we', 'it', 'him', 'her', 'them', 'me', 'us',
+        'say', 'ask', 'repl', 'whisper', 'mut', 'shout', 'yell', 'think', 'respond', 'answer', 
+        'call', 'cri', 'exclaim', 'murmur', 'mumbl', 'state', 'remark', 'comment', 'not', 
+        'observ', 'mention', 'add', 'continu', 'be', 'have', 'do', 'will', 'would', 'could', 
+        'should', 'can', 'may', 'might', 'must', 'in', 'on', 'at', 'to', 'from', 'with', 
+        'by', 'for', 'of', 'the', 'a', 'an', 'and', 'but', 'or', 'so', 'if', 'then', 
+        'than', 'this', 'that', 'these', 'those', 'here', 'there', 'when', 'where', 'how', 
+        'what', 'which', 'who', 'whom', 'my', 'your', 'hi', 'our', 'their'
+    ]);
+
+    const extractSentenceShingles = (text: string): Set<string>[] => {
+        const rawSentences = text.split(/(?<=[.!?])\s+|\n+/).filter(s => s.trim().length > 0);
+        const sentenceShingles: Set<string>[] = [];
+
+        for (const raw of rawSentences) {
+            const words = raw.toLowerCase()
+                .replace(/[*_~"()\[\]{}.,!?;:]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .split(' ')
+                .filter(w => w.length > 1)
+                .map(stem)
+                .filter(w => !stopStems.has(w));
+
+            if (words.length < 3) continue;
+
+            const shingles = new Set<string>();
+            for (let i = 0; i < words.length - 2; i++) {
+                shingles.add(`${words[i]} ${words[i+1]} ${words[i+2]}`);
+            }
+            if (shingles.size > 0) {
+                sentenceShingles.push(shingles);
             }
         }
+        return sentenceShingles;
+    };
+
+    const allSentences: Set<string>[] = [];
+    for (const text of texts) {
+        allSentences.push(...extractSentenceShingles(text));
     }
 
-    let actionLoopDetected = false;
-    let repeatedAction = '';
-    
-    // FIXED THRESHOLD: If an action appears 2+ times, it's a loop
-    const actionThreshold = 2;
-    
-    for (const [action, count] of Object.entries(actionCounts)) {
-        if (count >= actionThreshold) { 
-            actionLoopDetected = true;
-            repeatedAction = action;
-            break;
+    let structuralLoopDetected = false;
+    for (let i = 0; i < allSentences.length; i++) {
+        for (let j = i + 1; j < allSentences.length; j++) {
+            const setA = allSentences[i];
+            const setB = allSentences[j];
+            let intersection = 0;
+            for (const shingle of setA) {
+                if (setB.has(shingle)) intersection++;
+            }
+            const union = setA.size + setB.size - intersection;
+            const jaccard = intersection / union;
+            if (jaccard > 0.45) { 
+                structuralLoopDetected = true;
+                break;
+            }
         }
+        if (structuralLoopDetected) break;
     }
 
-    // 3. Detect Lexical Loops - AGGRESSIVE FIXED THRESHOLD
     let consecutiveHighSimilarity = 0;
-    
-    for (let i = 0; i < texts.length - 1; i++) {
-        const wordsA = new Set(texts[i].toLowerCase().match(/\b\w{4,}\b/g) || []);
-        const wordsB = new Set(texts[i+1].toLowerCase().match(/\b\w{4,}\b/g) || []);
-        
-        if (wordsA.size === 0 || wordsB.size === 0) continue;
-        
+    const messageShingles: Set<string>[] = texts.map(t => {
+        const words = t.toLowerCase()
+            .replace(/[*_~"()\[\]{}.,!?;:]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .split(' ')
+            .filter(w => w.length > 2)
+            .map(stem)
+            .filter(w => !stopStems.has(w));
+        return new Set(words);
+    });
+
+    for (let i = 0; i < messageShingles.length - 1; i++) {
+        const setA = messageShingles[i];
+        const setB = messageShingles[i+1];
+        if (setA.size === 0 || setB.size === 0) continue;
         let intersection = 0;
-        for (const word of wordsA) {
-            if (wordsB.has(word)) intersection++;
+        for (const w of setA) {
+            if (setB.has(w)) intersection++;
         }
-        const union = wordsA.size + wordsB.size - intersection;
-        const jaccard = intersection / union;
-        
-        if (jaccard > 0.65) { 
+        const union = setA.size + setB.size - intersection;
+        if ((intersection / union) > 0.60) { 
             consecutiveHighSimilarity++;
         }
     }
 
-    // FIXED THRESHOLD: If 2+ consecutive pairs are highly similar, it's a structural loop
-    const lexicalThreshold = 2;
-    const lexicalLoopDetected = consecutiveHighSimilarity >= lexicalThreshold;
+    const lexicalLoopDetected = consecutiveHighSimilarity >= 2;
 
-    // 4. Inject Nudge if needed
-    if (actionLoopDetected || lexicalLoopDetected) {
+    if (structuralLoopDetected || lexicalLoopDetected) {
         let nudgeText = '[System Directive: Narrative Loop Detected. ';
-        if (actionLoopDetected) {
-            nudgeText += `You are excessively repeating the physical action "*${repeatedAction}*". `;
+        if (structuralLoopDetected) {
+            nudgeText += 'You are excessively repeating the same sentence structures and syntactic patterns. ';
         }
         if (lexicalLoopDetected) {
-            nudgeText += 'Your recent responses share too much lexical and structural similarity. ';
+            nudgeText += 'Your recent responses share too much overall lexical similarity. ';
         }
-        nudgeText += 'You MUST break this pattern immediately. Introduce a completely new physical action, shift the emotional tone, or alter the environment. Do not reuse recent mannerisms or sentence structures.]';
-        
+        nudgeText += 'You MUST break this pattern immediately. Introduce a completely new action, shift the emotional tone, advance the dialogue, or alter the environment. Do not reuse recent mannerisms, phrases, or sentence structures.]';
         lines.push(`${ctx.delimiters.blockStart('system')}${nudgeText}${ctx.delimiters.blockEnd}`);
     }
 
@@ -1575,14 +1641,8 @@ const VOLATILE_BLOCK_TYPES: ReadonlySet<string> = new Set([
     'Anti-Repetition Nudge',
 ]);
 
-/**
- * Groups blockMap entries into structured OpenAIMessage[] ordered by volatility.
- * Respects inputStrategy ordering within each tier.
- * When minimalVolatileCacheMode is true, volatile sections are forced to the end
- * regardless of inputStrategy placement.
- */
 function buildStructuredMessages(
-    blockMap: Record<string, (string[] | undefined)>,
+    blockMap: Record<string, string[] | undefined>,
     inputStrategy: (PromptBlockType | string)[],
     minimalVolatileCacheMode: boolean,
     existingCharacterText: string,
@@ -1661,6 +1721,147 @@ function buildStructuredMessages(
     return messages;
 }
 
+// ─── Builder Registry ───────────────────────────────────────────────
+
+interface BuilderContext {
+    ctx: PromptBuildContext;
+    activeContextIds: Set<string>;
+    characterClothingWearingStatuses: Record<string, boolean>;
+    contextLines: string[];
+    hasBeenSummarized: boolean;
+    latitude?: number;
+    longitude?: number;
+    localTimestamp: number | null;
+    locationImages: EntityImageRef[];
+}
+
+const PROMPT_BUILDERS: Record<string, (b: BuilderContext) => Promise<string[]>> = {
+    'System Prompt': async (b) => buildSystemPromptLines(b.ctx),
+    'Think Prompt': async (b) => buildThinkPromptLines(b.ctx),
+    'Meta Think Instructions': async (b) => buildMetaThinkLines(b.ctx),
+    'Appearance Prompt': async (b) => {
+        const lines = buildAppearanceLines(b.ctx);
+        const visibleClothingDescriptions = getVisibleClothingDescriptions(
+            b.ctx.character.clothings ?? [], 
+            b.characterClothingWearingStatuses
+        );
+        
+        if (visibleClothingDescriptions.length > 0) {
+            const clothingLines = visibleClothingDescriptions.map(desc => {
+                const replaced = replacePlaceholders(
+                    desc, b.ctx.characterParticipantTag, b.ctx.characterName,
+                    b.ctx.coLocatedProtagonists, b.ctx.participants, b.ctx.knownNames
+                );
+                return `${b.ctx.delimiters.blockStart('system')}${replaced}${b.ctx.delimiters.blockEnd}`;
+            });
+            
+            if (lines.length >= 2) {
+                lines.splice(lines.length - 1, 0, ...clothingLines);
+            } else {
+                lines.push(`${b.ctx.delimiters.blockStart('system')}Start Of The Characters' Appearances List.${b.ctx.delimiters.blockEnd}`);
+                lines.push(...clothingLines);
+                lines.push(`${b.ctx.delimiters.blockStart('system')}End Of The Characters' Appearances List.${b.ctx.delimiters.blockEnd}`);
+            }
+        }
+        return lines;
+    },
+    'Dialogue Prompt': async (b) => buildDialoguePromptLines(b.ctx),
+    'Starter Prompt': async (b) => buildStarterPromptLines(b.ctx),
+    'Chat History': async (b) => {
+        if (b.ctx.interactionHistory.length > 0) {
+            const chatHistoryPrompt = createChatHistoryPrompt(b.ctx);
+            b.hasBeenSummarized = chatHistoryPrompt.hasBeenSummarized;
+            return [chatHistoryPrompt.chatHistoryPrompt];
+        }
+        return [];
+    },
+    'Context': async (b) => {
+        if (b.contextLines.length > 0) {
+            return [
+                `${b.ctx.delimiters.blockStart('system')}Start Of The Context.${b.ctx.delimiters.blockEnd}`,
+                ...b.contextLines,
+                `${b.ctx.delimiters.blockStart('system')}End Of The Context.${b.ctx.delimiters.blockEnd}`
+            ];
+        }
+        return [];
+    },
+    'Location': async (b) => {
+        const result = buildLocationLines(b.ctx);
+        b.locationImages.push(...result.images);
+        return result.lines;
+    },
+    'Inventory': async (b) => buildInventoryLines(b.ctx),
+    'Weather': async (b) => {
+        const { profile } = b.ctx;
+        if (profile?.useWeather && profile?.weatherApiKey && b.latitude && b.longitude) {
+            const weatherLine = await fetchCurrentWeather(b.latitude, b.longitude, profile.weatherApiKey);
+            if (weatherLine) {
+                return [`${b.ctx.delimiters.blockStart('system')}${weatherLine}${b.ctx.delimiters.blockEnd}`];
+            }
+        }
+        return [];
+    },
+    'Date And Time': async (b) => {
+        const { profile } = b.ctx;
+        if (profile?.useCurrentDateAndTime && b.localTimestamp) {
+            const dateAndTime = getDateAndTimeString(b.localTimestamp);
+            return [`${b.ctx.delimiters.blockStart('system')}Today's date and time is ${dateAndTime}.${b.ctx.delimiters.blockEnd}`];
+        }
+        return [];
+    },
+    'Time Elapsed': async (b) => {
+        const { profile } = b.ctx;
+        if (profile?.useTimeElapsed && b.localTimestamp && b.ctx.interactionHistory.length > 0) {
+            const lastMsgTimestamp = b.ctx.interactionHistory[b.ctx.interactionHistory.length - 1].lastUpdatedTimestamp;
+            const diffMs = Math.max(0, b.localTimestamp - lastMsgTimestamp);
+            const totalSeconds = Math.floor(diffMs / 1000);
+            const numberOfDays = Math.floor(totalSeconds / 86400);
+            const numberOfHours = Math.floor((totalSeconds % 86400) / 3600);
+            const numberOfMinutes = Math.floor((totalSeconds % 3600) / 60);
+            const numberOfSeconds = totalSeconds % 60;
+
+            const parts: string[] = [];
+            if (numberOfDays > 0) parts.push(`${numberOfDays} day${numberOfDays !== 1 ? 's' : ''}`);
+            if (numberOfHours > 0) parts.push(`${numberOfHours} hour${numberOfHours !== 1 ? 's' : ''}`);
+            if (numberOfMinutes > 0 && numberOfDays === 0) parts.push(`${numberOfMinutes} minute${numberOfMinutes !== 1 ? 's' : ''}`);
+            if (numberOfSeconds > 0 && numberOfDays === 0 && numberOfHours === 0) parts.push(`${numberOfSeconds} second${numberOfSeconds !== 1 ? 's' : ''}`);
+
+            const timeSinceLastMessageString = (parts.length > 0) ? parts.join(', ') : 'just now';
+            return [`${b.ctx.delimiters.blockStart('system')}It has been ${timeSinceLastMessageString} since the last message in the real world. I may or may not acknowledge the time elapsed. I will update relevant information according to this information. For example, a previous time must be subtracted or added with the elapsed time to get current time.${b.ctx.delimiters.blockEnd}`];
+        }
+        return [];
+    },
+    'Fatigue Information': async (b) => buildFatigueLines(b.ctx),
+    'Tool Instructions': async (b) => buildToolInstructionLines(b.ctx),
+    'Anti-Repetition Nudge': async (b) => buildAntiRepetitionNudgeLines(b.ctx),
+    'Text Injection': async (b) => buildTextInjectionLines(b.ctx, b.hasBeenSummarized, b.contextLines),
+};
+
+async function buildPromptBlocks(
+    builderCtx: BuilderContext,
+    inputStrategy: string[]
+): Promise<Record<string, string[]>> {
+    const blockMap: Record<string, string[]> = {};
+    
+    for (const blockType of inputStrategy) {
+        const builder = PROMPT_BUILDERS[blockType];
+        if (!builder) continue;
+        
+        const { ctx } = builderCtx;
+        if (blockType === 'Think Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableThinkPrompt(ctx.character, ctx.profile)) continue;
+        if (blockType === 'Meta Think Instructions' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableMetaThinkInstructions(ctx.character, ctx.profile)) continue;
+        if (blockType === 'Dialogue Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableDialoguePrompt(ctx.character, ctx.profile)) continue;
+        if (blockType === 'Starter Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableStarterPrompt(ctx.character, ctx.profile)) continue;
+        
+        const lines = await builder(builderCtx);
+        if (lines.length > 0) {
+            blockMap[blockType] = lines;
+        }
+    }
+    
+    return blockMap;
+}
+
 // ─── Main Orchestrator ────────────────────────────────────────────
 
 interface BuildResult {
@@ -1687,41 +1888,26 @@ export async function buildPrompt(
     const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
 
     const delimiters = deriveDelimiters(resolvedChatTemplate);
-
     const ctx = buildPromptContext(interactionData, character, knownNames, modelId, allPromptBlocks, existingCharacterText, delimiters);
 
-    const sampler = character.sampler;
-    const samplerStopPatterns = sampler?.stopPatterns || [];
-    const characterStopPatterns = character.stopPatterns || [];
-    const allStopPatterns = [...samplerStopPatterns, ...characterStopPatterns];
-
     const profile = ctx.profile;
-    const useCurrentDateAndTime = profile?.useCurrentDateAndTime;
-    const useWeather = profile?.useWeather;
-    const weatherApiKey = profile?.weatherApiKey;
-    const useTimeElapsed = profile?.useTimeElapsed;
     const inputStrategy = profile?.inputStrategy ?? defaultInputStrategy;
-
     const effectiveContextSensitivity = (() => {
         const profileValue = profile?.contextSensitivity;
         if (profileValue === undefined || profileValue === -1) return character.contextSensitivity ?? 1;
         return profileValue;
     })();
 
+    // 1. Location Summaries
     const segments = detectUnsummarizedLocationDepartures(interactionData, ctx.characterId, modelId);
     for (const segment of segments) {
         try {
-            const summary = await generateLocationVisitSummary(
-                interactionData, character, modelId,
-                segment.startIdx, segment.endIdx,
-            );
+            const summary = await generateLocationVisitSummary(interactionData, character, modelId, segment.startIdx, segment.endIdx);
             if (summary) {
                 const lastMsg = ctx.interactionHistory[segment.endIdx];
                 if (lastMsg && isTextMessage(lastMsg)) {
                     const chatMsg = lastMsg as ChatMessage;
-                    if (!chatMsg.modelInteractionTextContentSummaries) {
-                        chatMsg.modelInteractionTextContentSummaries = {};
-                    }
+                    if (!chatMsg.modelInteractionTextContentSummaries) chatMsg.modelInteractionTextContentSummaries = {};
                     chatMsg.modelInteractionTextContentSummaries[modelId] = summary;
                 }
             }
@@ -1730,260 +1916,97 @@ export async function buildPrompt(
         }
     }
 
+    // 2. Context Fetching
     const activeContextImages: EntityImageRef[] = [];
     const fetchErrors: string[] = [];
     const fetchedContentMap = new Map<string, string>();
     const contexts = ctx.interactionData.contexts || [];
 
-    const webContexts = contexts.filter(c =>
-        (c.urls && c.urls.length > 0) ||
-        (c.searchTerms && c.searchTerms.length > 0)
-    );
-
+    const webContexts = contexts.filter(c => (c.urls && c.urls.length > 0) || (c.searchTerms && c.searchTerms.length > 0));
     if (webContexts.length > 0) {
-        const fetchPromises = webContexts.map(async (context) => {
-            const cacheTimeToLive = context.fetchCacheTimeToLiveMs ?? 5 * 60 * 1000;
-            const maxDepth = context.maximumLinkDepth ?? 0;
-            const fetchMode = context.linkFetchMode ?? 'full';
+        await Promise.all(webContexts.map(async (context) => {
+            const { results, errors } = await fetchMultipleContextUrls(context.urls ?? [], {
+                maxDepth: context.maximumLinkDepth ?? 0,
+                cacheTimeToLiveMs: context.fetchCacheTimeToLiveMs ?? 5 * 60 * 1000,
+                fetchMode: context.linkFetchMode ?? 'full',
+                searchTerms: context.searchTerms,
+                searchEngine: context.searchEngine,
+                model: activeModel,
+                includeImages: context.includeLinkImages ?? false,
+                limitLinksToSubdirectory: context.limitLinksToSubdirectory ?? false,
+            });
 
-            const { results, errors } = await fetchMultipleContextUrls(
-                context.urls ?? [],
-                {
-                    maxDepth,
-                    cacheTimeToLiveMs: cacheTimeToLive,
-                    fetchMode,
-                    searchTerms: context.searchTerms,
-                    searchEngine: context.searchEngine,
-                    model: activeModel,
-                    includeImages: context.includeLinkImages ?? false,
-                    limitLinksToSubdirectory: context.limitLinksToSubdirectory ?? false,
-                }
-            );
-
-            for (const error of errors) {
-                fetchErrors.push(`${context.name}: ${error}`);
-            }
+            for (const error of errors) fetchErrors.push(`${context.name}: ${error}`);
 
             const validResults = results.filter(r => !r.error && r.content.length > 0);
-
-            if (validResults.length === 0) return;
-
-            const combinedContent = validResults
-                .map(r => `[Source: ${r.url}]\n${r.content}`)
-                .join('\n\n---\n\n');
-
-            if (combinedContent.length > 0) {
-                fetchedContentMap.set(context.id, combinedContent);
+            if (validResults.length > 0) {
+                fetchedContentMap.set(context.id, validResults.map(r => `[Source: ${r.url}]\n${r.content}`).join('\n\n---\n\n'));
             }
-        });
-
-        await Promise.all(fetchPromises);
+        }));
     }
 
     const resolvedContextsWithWeb = await resolveContextEntries(
-        contexts,
-        ctx.textContentArray.join('\n'),
-        ctx.characterId,
-        [...ctx.protagonistIds],
-        ctx.characterIdArray,
-        ctx.textContentArray,
-        ctx.combinationCache,
-        fetchedContentMap,
-        effectiveContextSensitivity
+        contexts, ctx.textContentArray.join('\n'), ctx.characterId, [...ctx.protagonistIds],
+        ctx.characterIdArray, ctx.textContentArray, ctx.combinationCache, fetchedContentMap, effectiveContextSensitivity
     );
 
     const activeContextIds = new Set<string>();
-    for (const { context } of resolvedContextsWithWeb) {
-        activeContextIds.add(context.id);
-    }
-
-    let contextLines: string[] = [];
-
+    const contextLines: string[] = [];
+    
     for (const { context, combinedText } of resolvedContextsWithWeb) {
+        activeContextIds.add(context.id);
         const replacedText = replacePlaceholders(combinedText, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
-
-        let line: string;
+        
         if (context.useBase64Encoding) {
-            const encodedText = btoa(unescape(encodeURIComponent(replacedText)));
-            line = `${delimiters.blockStart('system')}[base64:${encodedText}]${delimiters.blockEnd}`;
+            contextLines.push(`${delimiters.blockStart('system')}[base64:${btoa(unescape(encodeURIComponent(replacedText)))}]${delimiters.blockEnd}`);
         } else {
-            line = `${delimiters.blockStart('system')}${replacedText}${delimiters.blockEnd}`;
+            contextLines.push(`${delimiters.blockStart('system')}${replacedText}${delimiters.blockEnd}`);
         }
-
-        contextLines.push(line);
-
-        if (context.images && context.images.length > 0) {
-            for (const img of context.images) {
-                activeContextImages.push({ entityId: context.id, filename: img });
-            }
+        
+        if (context.images) {
+            for (const img of context.images) activeContextImages.push({ entityId: context.id, filename: img });
         }
     }
 
+    // 3. Stop Patterns & Clothing
     const allTextSearchSpace = ctx.textContentArray.join('\n');
+    const allStopPatterns = [...(character.sampler?.stopPatterns || []), ...(character.stopPatterns || [])];
     const activeStopPatterns: StopPattern[] = [];
 
     for (const stopPattern of allStopPatterns) {
         if (isEntityActiveWithCache(
-            stopPattern.regularExpressionActivationTriggers,
-            stopPattern.regularExpressionDeactivationTriggers,
-            stopPattern.regularExpressionExclusionActivationTriggers,
-            stopPattern.regularExpressionExclusionDeactivationTriggers,
-            ctx.characterIdArray, ctx.textContentArray,
-            ctx.characterId, [...ctx.protagonistIds],
-            allTextSearchSpace, ctx.combinationCache,
+            stopPattern.regularExpressionActivationTriggers, stopPattern.regularExpressionDeactivationTriggers,
+            stopPattern.regularExpressionExclusionActivationTriggers, stopPattern.regularExpressionExclusionDeactivationTriggers,
+            ctx.characterIdArray, ctx.textContentArray, ctx.characterId, [...ctx.protagonistIds], allTextSearchSpace, ctx.combinationCache
         )) {
             activeStopPatterns.push(stopPattern);
         }
     }
 
-    const characterClothingWearingStatuses = resolveClothingWearingStatus(
-        character, interactionData,
-        ctx.characterIdArray, ctx.textContentArray,
-        ctx.combinationCache,
-    );
+    const characterClothingWearingStatuses = resolveClothingWearingStatus(character, interactionData, ctx.characterIdArray, ctx.textContentArray, ctx.combinationCache);
 
-    const appearancePromptLines = buildAppearanceLines(ctx);
-
-    const visibleClothingDescriptions = getVisibleClothingDescriptions(
-        character.clothings ?? [], characterClothingWearingStatuses,
-    );
-    if (visibleClothingDescriptions.length > 0) {
-        const clothingLines = visibleClothingDescriptions.map(desc => {
-            const replaced = replacePlaceholders(
-                desc,
-                ctx.characterParticipantTag, ctx.characterName,
-                ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
-            );
-            return `${delimiters.blockStart('system')}${replaced}${delimiters.blockEnd}`;
-        });
-        if (appearancePromptLines.length >= 2) {
-            appearancePromptLines.splice(appearancePromptLines.length - 1, 0, ...clothingLines);
-        } else {
-            appearancePromptLines.push(`${delimiters.blockStart('system')}Start Of The Characters' Appearances List.${delimiters.blockEnd}`);
-            appearancePromptLines.push(...clothingLines);
-            appearancePromptLines.push(`${delimiters.blockStart('system')}End Of The Characters' Appearances List.${delimiters.blockEnd}`);
-        }
-    }
-
-    const systemPromptLines = buildSystemPromptLines(ctx);
-    const thinkPromptLines = buildThinkPromptLines(ctx);
-    const metaThinkLines = buildMetaThinkLines(ctx);
-    const dialoguePromptLines = buildDialoguePromptLines(ctx);
-    const starterPromptLines = buildStarterPromptLines(ctx);
-    const locationResult = buildLocationLines(ctx);
-    const locationLines = locationResult.lines;
-    const activeLocationImages = locationResult.images;
-    const inventoryLines = buildInventoryLines(ctx);
-    const toolInstructions = buildToolInstructionLines(ctx);
-    const fatigueLines = buildFatigueLines(ctx);
-    const antiRepetitionNudgeLines = buildAntiRepetitionNudgeLines(ctx);
-
-    const chatHistoryLines: string[] = [];
-    let hasBeenSummarized = false;
-
-    if (ctx.interactionHistory.length > 0) {
-        const chatHistoryPrompt = createChatHistoryPrompt(ctx);
-        chatHistoryLines.push(chatHistoryPrompt.chatHistoryPrompt);
-        hasBeenSummarized = chatHistoryPrompt.hasBeenSummarized;
-    }
-
+    // 4. Pre-calculate async/shared dependencies for builders
     let latitude: number | undefined = ctx.currentLocation?.latitude;
     let longitude: number | undefined = ctx.currentLocation?.longitude;
 
     if (!latitude || !longitude) {
         const geoLocation = await getLocation();
-        if (geoLocation) {
-            latitude = geoLocation.latitude;
-            longitude = geoLocation.longitude;
-        }
+        if (geoLocation) { latitude = geoLocation.latitude; longitude = geoLocation.longitude; }
     }
 
-    let localTimestamp: number | null = null;
-    if (latitude && longitude) localTimestamp = getLocalTimeFromCoordinates(latitude, longitude);
+    const localTimestamp = (latitude && longitude) ? getLocalTimeFromCoordinates(latitude, longitude) : null;
 
-    const dateAndTimeLines: string[] = [];
-    if (useCurrentDateAndTime && localTimestamp) {
-        const dateAndTime = getDateAndTimeString(localTimestamp);
-        dateAndTimeLines.push(`${delimiters.blockStart('system')}Today's date and time is ${dateAndTime}.${delimiters.blockEnd}`);
-    }
-
-    const weatherLines: string[] = [];
-    if (useWeather && weatherApiKey && latitude && longitude) {
-        const weatherLine = await fetchCurrentWeather(latitude, longitude, weatherApiKey);
-        if (weatherLine) {
-            weatherLines.push(`${delimiters.blockStart('system')}${weatherLine}${delimiters.blockEnd}`);
-        }
-    }
-
-    const timeElapsedLines: string[] = [];
-    if (useTimeElapsed && localTimestamp && ctx.interactionHistory.length > 0) {
-        const lastMsgTimestamp = ctx.interactionHistory[ctx.interactionHistory.length - 1].lastUpdatedTimestamp;
-        const diffMs = Math.max(0, localTimestamp - lastMsgTimestamp);
-
-        const totalSeconds = Math.floor(diffMs / 86400);
-        const numberOfDays = Math.floor(totalSeconds / 86400);
-        const numberOfHours = Math.floor((totalSeconds % 86400) / 3600);
-        const numberOfMinutes = Math.floor((totalSeconds % 3600) / 60);
-        const numberOfSeconds = totalSeconds % 60;
-
-        const parts: string[] = [];
-        if (numberOfDays > 0) parts.push(`${numberOfDays} day${numberOfDays !== 1 ? 's' : ''}`);
-        if (numberOfHours > 0) parts.push(`${numberOfHours} hour${numberOfHours !== 1 ? 's' : ''}`);
-        if (numberOfMinutes > 0 && numberOfDays === 0) parts.push(`${numberOfMinutes} minute${numberOfMinutes !== 1 ? 's' : ''}`);
-        if (numberOfSeconds > 0 && numberOfDays === 0 && numberOfHours === 0) parts.push(`${numberOfSeconds} second${numberOfSeconds !== 1 ? 's' : ''}`);
-
-        const timeSinceLastMessageString = (parts.length > 0) ? parts.join(', ') : 'just now';
-
-        timeElapsedLines.push(`${delimiters.blockStart('system')}It has been ${timeSinceLastMessageString} since the last message in the real world. I may or may not acknowledge the time elapsed. I will update relevant information according to this information. For example, a previous time must be subtracted or added with the elapsed time to get current time.${delimiters.blockEnd}`);
-    }
-
-    if (contextLines.length > 0) {
-        contextLines = [`${delimiters.blockStart('system')}Start Of The Context.${delimiters.blockEnd}`, ...contextLines, `${delimiters.blockStart('system')}End Of The Context.${delimiters.blockEnd}`];
-    }
-    const textInjectionLines = buildTextInjectionLines(ctx, hasBeenSummarized, contextLines);
-
-    const blockMap: Record<string, (string[] | undefined)> = {
-        'System Prompt': systemPromptLines,
-        'Think Prompt': thinkPromptLines,
-        'Meta Think Instructions': metaThinkLines,
-        'Appearance Prompt': appearancePromptLines,
-        'Dialogue Prompt': dialoguePromptLines,
-        'Chat History': chatHistoryLines,
-        'Context': contextLines,
-        'Location': locationLines,
-        'Inventory': inventoryLines,
-        'Weather': weatherLines,
-        'Date And Time': dateAndTimeLines,
-        'Time Elapsed': timeElapsedLines,
-        'Fatigue Information': fatigueLines,
-        'Starter Prompt': starterPromptLines,
-        'Tool Instructions': toolInstructions,
-        'Anti-Repetition Nudge': antiRepetitionNudgeLines,
-        'Text Injection': textInjectionLines,
+    const builderCtx: BuilderContext = {
+        ctx, activeContextIds, characterClothingWearingStatuses, contextLines,
+        hasBeenSummarized: false, latitude, longitude, localTimestamp, locationImages: []
     };
 
-    const numberOfMessagesToDisableThinkPrompt = getEffectiveMessagesToDisableThinkPrompt(character, profile);
-    const numberOfMessagesToDisableMetaThinkInstructions = getEffectiveMessagesToDisableMetaThinkInstructions(character, profile);
-    const numberOfMessagesToDisableDialoguePrompt = getEffectiveMessagesToDisableDialoguePrompt(character, profile);
-    const numberOfMessagesToDisableStarterPrompt = getEffectiveMessagesToDisableStarterPrompt(character, profile);
+    // 5. Build blocks on-demand using registry (Lazy Evaluation)
+    const blockMap = await buildPromptBlocks(builderCtx, inputStrategy);
 
-    if (ctx.numberOfMessagesByParticipant >= numberOfMessagesToDisableThinkPrompt) {
-        blockMap['Think Prompt'] = undefined;
-    }
-    if (ctx.numberOfMessagesByParticipant >= numberOfMessagesToDisableMetaThinkInstructions) {
-        blockMap['Meta Think Instructions'] = undefined;
-    }
-    if (ctx.numberOfMessagesByParticipant >= numberOfMessagesToDisableDialoguePrompt) {
-        blockMap['Dialogue Prompt'] = undefined;
-    }
-    if (ctx.numberOfMessagesByParticipant >= numberOfMessagesToDisableStarterPrompt) {
-        blockMap['Starter Prompt'] = undefined;
-    }
-
+    // 6. Custom Prompt Blocks
     const promptBlockById = new Map<string, PromptBlock>();
-    for (const pb of allPromptBlocks) {
-        promptBlockById.set(pb.id, pb);
-    }
+    for (const pb of allPromptBlocks) promptBlockById.set(pb.id, pb);
 
     const activePromptBlockImages: EntityImageRef[] = [];
     const protagonistIdSet = ctx.protagonistIds;
@@ -1991,52 +2014,27 @@ export async function buildPrompt(
 
     for (const block of allPromptBlocks) {
         if (!isPromptBlockCharacterBound(block, ctx.characterId)) continue;
-        if (block.contextBindings && block.contextBindings.length > 0) {
-            if (!block.contextBindings.some(ctxId => activeContextIds.has(ctxId))) continue;
-        }
-        if (block.locationBindings && block.locationBindings.length > 0) {
-            if (!currentLocationId || !block.locationBindings.includes(currentLocationId)) continue;
-        }
+        if (block.contextBindings?.length && !block.contextBindings.some(ctxId => activeContextIds.has(ctxId))) continue;
+        if (block.locationBindings?.length && (!currentLocationId || !block.locationBindings.includes(currentLocationId))) continue;
 
         if (!isEntityActiveWithCache(
-            block.regularExpressionActivationTriggers,
-            block.regularExpressionDeactivationTriggers,
-            block.regularExpressionExclusionActivationTriggers,
-            block.regularExpressionExclusionDeactivationTriggers,
-            ctx.characterIdArray, ctx.textContentArray,
-            ctx.characterId, [...ctx.protagonistIds],
-            allTextSearchSpace, ctx.combinationCache,
-        )) {
-            continue;
+            block.regularExpressionActivationTriggers, block.regularExpressionDeactivationTriggers,
+            block.regularExpressionExclusionActivationTriggers, block.regularExpressionExclusionDeactivationTriggers,
+            ctx.characterIdArray, ctx.textContentArray, ctx.characterId, [...ctx.protagonistIds], allTextSearchSpace, ctx.combinationCache
+        )) continue;
+
+        if (block.images) {
+            for (const img of block.images) activePromptBlockImages.push({ entityId: block.id, filename: img });
         }
 
-        if (block.images && block.images.length > 0) {
-            for (const img of block.images) {
-                activePromptBlockImages.push({ entityId: block.id, filename: img });
-            }
-        }
-
-        const replacedText = replacePlaceholders(
-            block.textContent,
-            ctx.characterParticipantTag,
-            ctx.characterName,
-            ctx.coLocatedProtagonists,
-            ctx.participants,
-            ctx.knownNames,
-        );
+        const replacedText = replacePlaceholders(block.textContent, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
         const blockLines = [`${delimiters.blockStart('system')}${replacedText}${delimiters.blockEnd}`];
 
-        if (!blockMap[block.id]) {
-            blockMap[block.id] = blockLines;
-        }
+        if (!blockMap[block.id]) blockMap[block.id] = blockLines;
     }
 
-    const hasTemplateOverride = inputStrategy.some(e =>
-        e === 'Model Chat Template' ||
-        e === 'Model Instruction Template' ||
-        e === 'Model Chat-Instruction Template'
-    );
-
+    // 7. Message Assembly
+    const hasTemplateOverride = inputStrategy.some(e => e === 'Model Chat Template' || e === 'Model Instruction Template' || e === 'Model Chat-Instruction Template');
     let messages: OpenAIMessage[];
 
     if (hasTemplateOverride) {
@@ -2047,119 +2045,70 @@ export async function buildPrompt(
         const usedBuiltInTypes = new Set<string>();
 
         for (const entry of inputStrategy) {
-            if (entry === 'Model Instruction Template') {
-                if (resolvedInstructionTemplate?.instructionTemplate) {
-                    const assembledSoFar = promptLines.join('\n');
-                    const systemPrompt = ctx.character.systemPrompt || '';
-                    const wrapped = resolvedInstructionTemplate.instructionTemplate
-                        .replace(/\{instruction\}/g, assembledSoFar)
-                        .replace(/\{input\}/g, '')
-                        .replace(/\{system\}/g, systemPrompt);
-                    promptLines.length = 0;
-                    promptLines.push(wrapped);
-                }
+            if (entry === 'Model Instruction Template' && resolvedInstructionTemplate?.instructionTemplate) {
+                const assembledSoFar = promptLines.join('\n');
+                promptLines.length = 0;
+                promptLines.push(resolvedInstructionTemplate.instructionTemplate.replace(/\{instruction\}/g, assembledSoFar).replace(/\{input\}/g, '').replace(/\{system\}/g, ctx.character.systemPrompt || ''));
                 usedBuiltInTypes.add(entry);
-            } else if (entry === 'Model Chat Template') {
-                if (resolvedChatTemplate?.chatTemplate) {
-                    const chatHistoryForTemplate = ctx.interactionHistory.filter(
-                        (m): m is ChatMessage | WhisperMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
-                    );
-                    for (const msg of chatHistoryForTemplate) {
-                        const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
-                        const content = replacePlaceholders(
-                            selectModelSummary(msg, modelId),
-                            ctx.characterParticipantTag, ctx.characterName,
-                            ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
-                        );
-                        const wrapped = resolvedChatTemplate.chatTemplate
-                            .replace(/\{role\}/gi, role)
-                            .replace(/\{content\}/g, content);
-                        promptLines.push(wrapped);
-                    }
-                    const genPrompt = resolvedChatTemplate.chatTemplate
-                        .replace(/\{role\}/gi, 'assistant')
-                        .replace(/\{content\}/g, '');
-                    promptLines.push(genPrompt);
+            } else if (entry === 'Model Chat Template' && resolvedChatTemplate?.chatTemplate) {
+                const chatHistoryForTemplate = ctx.interactionHistory.filter((m): m is ChatMessage | WhisperMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId));
+                for (const msg of chatHistoryForTemplate) {
+                    const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
+                    const content = replacePlaceholders(selectModelSummary(msg, modelId), ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
+                    promptLines.push(resolvedChatTemplate.chatTemplate.replace(/\{role\}/gi, role).replace(/\{content\}/g, content));
                 }
+                promptLines.push(resolvedChatTemplate.chatTemplate.replace(/\{role\}/gi, 'assistant').replace(/\{content\}/g, ''));
                 usedBuiltInTypes.add(entry);
-            } else if (entry === 'Model Chat-Instruction Template') {
-                if (resolvedInstructionTemplate?.instructionTemplate && resolvedChatTemplate?.chatTemplate) {
-                    const assembledSoFar = promptLines.join('\n');
-                    const systemPrompt = ctx.character.systemPrompt || '';
-                    const instructionWrapped = resolvedInstructionTemplate.instructionTemplate
-                        .replace(/\{instruction\}/g, `Continue the chat dialogue below. Write a single reply for the character "${ctx.characterName}".\n\n${assembledSoFar}`)
-                        .replace(/\{input\}/g, '')
-                        .replace(/\{system\}/g, systemPrompt);
-                    promptLines.length = 0;
-                    promptLines.push(instructionWrapped);
-                    const chatHistoryForTemplate = ctx.interactionHistory.filter(
-                        (m): m is ChatMessage | WhisperMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
-                    );
-                    for (const msg of chatHistoryForTemplate) {
-                        const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
-                        const content = replacePlaceholders(
-                            selectModelSummary(msg, modelId),
-                            ctx.characterParticipantTag, ctx.characterName,
-                            ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
-                        );
-                        const wrapped = resolvedChatTemplate.chatTemplate
-                            .replace(/\{role\}/gi, role)
-                            .replace(/\{content\}/g, content);
-                        promptLines.push(wrapped);
-                    }
-                    const genPrompt = resolvedChatTemplate.chatTemplate
-                        .replace(/\{role\}/gi, 'assistant')
-                        .replace(/\{content\}/g, '');
-                    promptLines.push(genPrompt);
+            } else if (entry === 'Model Chat-Instruction Template' && resolvedInstructionTemplate?.instructionTemplate && resolvedChatTemplate?.chatTemplate) {
+                const assembledSoFar = promptLines.join('\n');
+                promptLines.length = 0;
+                promptLines.push(resolvedInstructionTemplate.instructionTemplate.replace(/\{instruction\}/g, `Continue the chat dialogue below. Write a single reply for the character "${ctx.characterName}".\n\n${assembledSoFar}`).replace(/\{input\}/g, '').replace(/\{system\}/g, ctx.character.systemPrompt || ''));
+                
+                const chatHistoryForTemplate = ctx.interactionHistory.filter((m): m is ChatMessage | WhisperMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId));
+                for (const msg of chatHistoryForTemplate) {
+                    const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
+                    const content = replacePlaceholders(selectModelSummary(msg, modelId), ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
+                    promptLines.push(resolvedChatTemplate.chatTemplate.replace(/\{role\}/gi, role).replace(/\{content\}/g, content));
                 }
+                promptLines.push(resolvedChatTemplate.chatTemplate.replace(/\{role\}/gi, 'assistant').replace(/\{content\}/g, ''));
                 usedBuiltInTypes.add(entry);
             } else if (isBuiltInBlockType(entry)) {
                 const lines = blockMap[entry];
-                if (lines && lines.length > 0) {
-                    promptLines.push(...lines);
-                }
+                if (lines?.length) promptLines.push(...lines);
                 usedBuiltInTypes.add(entry);
             } else {
                 const block = promptBlockById.get(entry);
                 if (!block) continue;
                 const lines = blockMap[block.id];
-                if (lines && lines.length > 0) {
-                    promptLines.push(...lines);
-                }
+                if (lines?.length) promptLines.push(...lines);
             }
         }
 
-        const flatPrompt = promptLines.join('\n').replaceAll('{{text}}', existingCharacterText);
-        messages = [{ role: 'user', content: flatPrompt }];
+        messages = [{ role: 'user', content: promptLines.join('\n').replaceAll('{{text}}', existingCharacterText) }];
     } else {
-        messages = buildStructuredMessages(
-            blockMap,
-            inputStrategy,
-            ctx.minimalVolatileCacheMode,
-            existingCharacterText,
-        );
+        messages = buildStructuredMessages(blockMap, inputStrategy, ctx.minimalVolatileCacheMode, existingCharacterText);
     }
 
+    // 8. Stop Tokens
     let defaultStops: string[] = [];
-
     if (!profile?.doNotInjectDefaultStopTokens) {
         const templateStops = resolvedChatTemplate?.stopPatterns || [];
         const turnEndStop = delimiters.turnEnd.trim();
-
-        defaultStops = [
-            ...templateStops,
-            turnEndStop,
-        ].filter(s => s.length > 0);
+        defaultStops = [...templateStops, turnEndStop].filter(s => s.length > 0);
     }
 
-    const stops = [
-        ...defaultStops,
-        ...activeStopPatterns.map(sp => sp.pattern),
-    ];
-
+    const stops = [...defaultStops, ...activeStopPatterns.map(sp => sp.pattern)];
     const uniqueStops = Array.from(new Set(stops)).filter(s => typeof s === 'string' && s.trim().length > 0);
 
-    return { messages, stops: uniqueStops, contextImages: activeContextImages, locationImages: activeLocationImages, promptBlockImages: activePromptBlockImages, characterClothingWearingStatuses, fetchErrors };
+    return { 
+        messages, 
+        stops: uniqueStops, 
+        contextImages: activeContextImages, 
+        locationImages: builderCtx.locationImages, 
+        promptBlockImages: activePromptBlockImages, 
+        characterClothingWearingStatuses, 
+        fetchErrors 
+    };
 }
 
 // ─── Universal Message Filter ─────────────────────────────────────
