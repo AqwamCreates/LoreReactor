@@ -497,7 +497,7 @@ function App() {
     const loadSteps = useMemo<LoadStep[]>(() => [
         { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatList.isLoading },
         { id: 'characters', label: 'Characters', icon: '🎭', done: !characters.isLoading },
-        { id: 'actions', label: 'Actions', icon: '⚡', done: !actionMenu.allActionsLoading },
+        { id: 'actions', label: 'Actions', icon: '⚡', done: !actionMenu.actionsLoading },
         { id: 'contexts', label: 'Contexts', icon: '📜', done: !contexts.isLoading },
         { id: 'locations', label: 'Locations', icon: '📍', done: !locations.isLoading },
         { id: 'audioTracks', label: 'Audio Tracks', icon: '🔊', done: !audioTracks.isLoading },
@@ -510,7 +510,7 @@ function App() {
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profiles.isLoading },
         { id: 'accounts', label: 'Accounts', icon: '🔑', done: !accounts.isLoading },
         { id: 'multiplayerData', label: 'Multiplayer Data', icon: '👥', done: !multiplayerDataManager.isLoading },
-    ], [chatList, characters, actionMenu.allActionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, budgetStrategies, profiles, accounts, multiplayerDataManager]);
+    ], [chatList, characters, actionMenu.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, budgetStrategies, profiles, accounts, multiplayerDataManager]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);

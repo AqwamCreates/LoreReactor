@@ -192,11 +192,7 @@ export function convertPlainSegmentPreservingSpacing(raw: string, target: Format
 
 export function convertFormattedSegmentPreservingSpacing(seg: DetectedSegment, target: FormatCategory): string {
     if (target === seg.category) return seg.rawMatch;
-
-    if (target === 'plain') {
-        return seg.innerText;
-    }
-
+    if (target === 'plain') return seg.innerText;
     return wrapCoreText(seg.innerText, target);
 }
 
@@ -211,7 +207,6 @@ export function applyConversions(
 
     for (const seg of segments) {
         const target = conversions[seg.category] ?? seg.category;
-
         if (target === seg.category) continue;
 
         const replacement = seg.category === 'plain'
@@ -219,18 +214,13 @@ export function applyConversions(
             : convertFormattedSegmentPreservingSpacing(seg, target);
 
         if (replacement !== seg.rawMatch) {
-            replacements.push({
-                start: seg.start,
-                end: seg.end,
-                replacement,
-            });
+            replacements.push({ start: seg.start, end: seg.end, replacement });
         }
     }
 
     if (replacements.length === 0) return text;
 
     let output = text;
-
     for (let i = replacements.length - 1; i >= 0; i--) {
         const r = replacements[i];
         output = output.slice(0, r.start) + r.replacement + output.slice(r.end);
@@ -241,18 +231,11 @@ export function applyConversions(
 
 export function buildCategoryConversions(segments: DetectedSegment[]): CategoryConversion[] {
     const counts: Record<FormatCategory, number> = {
-        plain: 0,
-        italics: 0,
-        bold: 0,
-        strikethrough: 0,
-        quotes: 0,
-        parentheses: 0,
-        brackets: 0,
+        plain: 0, italics: 0, bold: 0, strikethrough: 0,
+        quotes: 0, parentheses: 0, brackets: 0,
     };
 
-    for (const seg of segments) {
-        counts[seg.category]++;
-    }
+    for (const seg of segments) counts[seg.category]++;
 
     const order: FormatCategory[] = ['plain', 'italics', 'bold', 'strikethrough', 'quotes', 'parentheses', 'brackets'];
 
@@ -268,11 +251,24 @@ export function buildCategoryConversions(segments: DetectedSegment[]): CategoryC
 
 // ─── Bayesian Learning UI Bridges ───────────────────────────────────
 
-export function buildCategoryConversionsWithLearning(text: string, segments: DetectedSegment[]): CategoryConversion[] {
+/**
+ * Builds category conversions with engine predictions.
+ * Can be filtered to only predict for plain text (Auto-Format) or 
+ * only for existing formats (Auto-Reformat).
+ */
+export function buildCategoryConversionsWithLearning(
+    text: string, 
+    segments: DetectedSegment[],
+    options: { includePlain?: boolean; includeFormatted?: boolean } = {}
+): CategoryConversion[] {
+    const { includePlain = true, includeFormatted = true } = options;
     const baseConversions = buildCategoryConversions(segments);
     const engine = getFormatPreferenceEngine();
     
     return baseConversions.map(conv => {
+        if (conv.detected === 'plain' && !includePlain) return conv;
+        if (conv.detected !== 'plain' && !includeFormatted) return conv;
+
         const seg = segments.find(s => s.category === conv.detected);
         if (seg) {
             const context = engine.extractContext(text, seg.start, seg.end, segments);
@@ -304,10 +300,8 @@ export function recordCategoryCorrection(
 
 /**
  * Compares the original AI text with the user's final edited text.
- * If the user manually wrapped or unwrapped text (e.g., typed quotes 
- * around a plain sentence, or removed asterisks from a word), this 
- * function detects the formatting change and trains the engine on 
- * the specific context where the edit occurred.
+ * If the user manually wrapped or unwrapped text, this detects the 
+ * formatting change and trains the engine on the specific context.
  */
 export function learnFromManualEdits(originalText: string, finalText: string): void {
     if (originalText === finalText) return;
@@ -320,22 +314,18 @@ export function learnFromManualEdits(originalText: string, finalText: string): v
         const origCore = origSeg.innerText.trim();
         if (!origCore) continue;
 
-        // Look for the exact same text in the final output, but with a different format
         const matchingFinal = finalSegments.find(fSeg => {
             const finalCore = fSeg.innerText.trim();
             return finalCore === origCore && fSeg.category !== origSeg.category;
         });
 
         if (matchingFinal) {
-            // The user manually changed the formatting of this specific text!
             const context = engine.extractContext(
                 originalText, 
                 origSeg.start, 
                 origSeg.end, 
                 originalSegments
             );
-            
-            // Record the transition (e.g., 'plain' -> 'quotes', or 'italics' -> 'plain')
             engine.recordCorrection(origSeg.category, matchingFinal.category, context);
         }
     }
