@@ -143,9 +143,10 @@ function wrapContentWithCacheControl(msg: OpenAIMessage): OpenAIMessage {
  * Google Single-System Message Strategy
  * 
  * Google AI Platform's OpenAI-compatible API only respects the LAST system
- * message and silently discards all previous ones. This strategy keeps the
- * first system message as role:"system" and converts all subsequent system
- * messages to role:"user" so they are preserved in context without being dropped.
+ * message and silently discards all previous ones. Since inputStrategy is
+ * user-configurable and system message ordering is volatile, no single
+ * system message can be reliably preserved as role:"system". All system
+ * messages are converted to role:"user" to guarantee nothing is dropped.
  * 
  * Content is passed raw/as-is without wrapping or prefix markers.
  */
@@ -157,13 +158,8 @@ class GoogleSingleSystemStrategy implements ProviderCachingStrategy {
     apply(ctx: CacheContext): CacheStrategyResult {
         if (ctx.messages.length === 0) return {};
 
-        let foundFirstSystem = false;
         const patched = ctx.messages.map((msg) => {
             if (msg.role === 'system') {
-                if (!foundFirstSystem) {
-                    foundFirstSystem = true;
-                    return msg;
-                }
                 return { ...msg, role: 'user' };
             }
             return msg;
