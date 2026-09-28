@@ -3,6 +3,26 @@ import { useRef, useEffect } from 'react';
 import type { InteractionData, ChatMessage, RawInteractionData, Character } from '../types';
 import { saveRawInteractionData } from '../storages/serverStorage';
 
+/**
+ * Robustly checks if an array of entities has changed.
+ * Catches additions, removals, and replacements (same length, different IDs).
+ */
+function haveEntitiesChanged<T extends { id: string }>(prev: T[] | undefined, curr: T[] | undefined): boolean {
+    if (!prev && !curr) return false;
+    if (!prev || !curr) return true;
+    if (prev.length !== curr.length) return true;
+    
+    const prevIds = new Set(prev.map(e => e.id));
+    const currIds = new Set(curr.map(e => e.id));
+    
+    if (prevIds.size !== currIds.size) return true;
+    for (const id of currIds) {
+        if (!prevIds.has(id)) return true;
+    }
+    
+    return false;
+}
+
 function hasMessagesChanged(prev: InteractionData | null, curr: InteractionData): boolean {
     if (!prev || !prev.interactionHistory || !curr.interactionHistory) return true;
     if (prev.interactionHistory.length !== curr.interactionHistory.length) return true;
@@ -26,47 +46,48 @@ interface UseChatAutoSaveOptions {
 
 export function useChatAutoSave(options: UseChatAutoSaveOptions) {
     const { interactionData, rawChatShells, refreshChatList } = options;
-    const chatModifiedRef = useRef(false);
-    const prevMsgCountRef = useRef(0);
     const prevDataRef = useRef<InteractionData | null>(null);
 
     useEffect(() => {
-        chatModifiedRef.current = false;
-        prevMsgCountRef.current = interactionData?.interactionHistory?.length ?? 0;
-    }, [interactionData?.interactionHistory?.length]);
-
-    useEffect(() => {
         if (!interactionData || !interactionData.id) return;
+        
         const historyLength = interactionData.interactionHistory?.length ?? 0;
         const protagonistIds = new Set(interactionData.protagonists?.map((p: Character) => p.id) ?? []);
         const nonProtagonistParticipants = interactionData.participants.filter((p: Character) => !protagonistIds.has(p.id));
-        const hasContent = nonProtagonistParticipants.length > 0 || historyLength > 0
-            || (interactionData.contexts?.length ?? 0) > 0 || (interactionData.locations?.length ?? 0) > 0
-            || (interactionData.audioTracks?.length ?? 0) > 0 || !!interactionData.Profile;
+        
+        // STRICT RULE: Do not persist unless the interaction data has actual user-generated or added content.
+        // Merely having a protagonist, participants, or a default profile does NOT count as content.
+        const hasContent = 
+            historyLength > 0 ||
+            nonProtagonistParticipants.length > 0 ||
+            (interactionData.contexts?.length ?? 0) > 0 ||
+            (interactionData.locations?.length ?? 0) > 0 ||
+            (interactionData.audioTracks?.length ?? 0) > 0;
 
-        if (!chatModifiedRef.current && hasContent) chatModifiedRef.current = true;
+        // If the chat is truly empty, abort the save process entirely.
+        if (!hasContent) return;
 
-        if (chatModifiedRef.current && historyLength !== prevMsgCountRef.current) {
-            const prev = prevDataRef.current;
-            const prevProtagIds = new Set(prev?.protagonists?.map((p: Character) => p.id) ?? []);
-            const currProtagIds = new Set(interactionData.protagonists?.map((p: Character) => p.id) ?? []);
-            const protagsChanged = prevProtagIds.size !== currProtagIds.size || [...prevProtagIds].some((id: string) => !currProtagIds.has(id));
+        const prev = prevDataRef.current;
 
-            const hasActualChange = !prev
-                || prev.interactionHistory?.length !== historyLength
-                || prev.name !== interactionData.name
-                || protagsChanged
-                || prev.participants.length !== interactionData.participants.length
-                || prev.contexts?.length !== interactionData.contexts?.length
-                || prev.locations?.length !== interactionData.locations?.length
-                || prev.audioTracks?.length !== interactionData.audioTracks?.length
-                || hasMessagesChanged(prev, interactionData);
+        // Robust change detection that catches replacements, not just length changes
+        const hasActualChange = !prev
+            || prev.name !== interactionData.name
+            || prev.Profile?.id !== interactionData.Profile?.id
+            || haveEntitiesChanged(prev.protagonists, interactionData.protagonists)
+            || haveEntitiesChanged(prev.participants, interactionData.participants)
+            || haveEntitiesChanged(prev.contexts, interactionData.contexts)
+            || haveEntitiesChanged(prev.locations, interactionData.locations)
+            || haveEntitiesChanged(prev.audioTracks, interactionData.audioTracks)
+            || hasMessagesChanged(prev, interactionData);
 
-            if (hasActualChange) {
-                prevMsgCountRef.current = historyLength;
-                prevDataRef.current = interactionData;
-                saveRawInteractionData(interactionData).catch((e: unknown) => console.error('Failed to save chat:', e));
-                if (!rawChatShells.some((s: RawInteractionData) => s.id === interactionData.id)) refreshChatList();
+        if (hasActualChange) {
+            // Update the ref ONLY after a successful change detection
+            prevDataRef.current = interactionData;
+            
+            saveRawInteractionData(interactionData).catch((e: unknown) => console.error('Failed to save chat:', e));
+            
+            if (!rawChatShells.some((s: RawInteractionData) => s.id === interactionData.id)) {
+                refreshChatList();
             }
         }
     }, [interactionData, rawChatShells, refreshChatList]);

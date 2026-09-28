@@ -18,7 +18,7 @@ interface SessionState {
     selectedModel: LanguageModel | null;
     runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     activeStrategy: BudgetStrategy | null;
-    lastSelectedModelId: string | null;
+    selectedModelId: string | null;
 
     // ── Budget state ─────────────────────────────────────────────────
     budgetData: BudgetData | null;
@@ -39,19 +39,22 @@ interface SessionState {
 
     // ── UI preferences (server-persisted via serverStorage) ──────────
     selectedBudgetStrategyId: string | null;
-    defaultCharacterId: string | null;
+    selectedCharacterId: string | null;
+    selectedProfileId: string | null;
     activeExtensionIds: string[];
 
     // ── Bootstrap state ──────────────────────────────────────────────
     sessionLoaded: boolean;
 
     // ── Actions (update store + persist to server atomically) ────────
-    setCurrentAccountId: (id: string | null) => void;
-    setSelectedBudgetStrategyId: (id: string | null) => void;
-    setDefaultCharacterId: (id: string | null) => void;
-    setActiveExtensionIds: (ids: string[]) => void;
-    setActiveChatId: (id: string | null) => void;
+    setSelectedCharacterId: (id: string | null) => void;
     setSelectedModelId: (id: string | null) => void;
+    setSelectedProfileId: (id: string | null) => void;
+    setSelectedBudgetStrategyId: (id: string | null) => void;
+    setActiveChatId: (id: string | null) => void;
+    setCurrentAccountId: (id: string | null) => void;
+    setActiveExtensionIds: (ids: string[]) => void;
+
 }
 
 export const useSessionStore = create<SessionState>()((set) => {
@@ -59,9 +62,9 @@ export const useSessionStore = create<SessionState>()((set) => {
     loadRawSessionData()
         .then((session) => {
             const updates: Partial<SessionState> = { sessionLoaded: true };
-            if (session.selectedModelId !== undefined) updates.lastSelectedModelId = session.selectedModelId;
+            if (session.selectedModelId !== undefined) updates.selectedModelId = session.selectedModelId;
             if (session.selectedBudgetStrategyId !== undefined) updates.selectedBudgetStrategyId = session.selectedBudgetStrategyId;
-            if (session.defaultCharacterId !== undefined) updates.defaultCharacterId = session.defaultCharacterId;
+            if (session.selectedCharacterId !== undefined) updates.selectedCharacterId = session.selectedCharacterId;
             if (session.currentAccountId !== undefined) updates.currentAccountId = session.currentAccountId;
             set(updates);
         })
@@ -85,7 +88,7 @@ export const useSessionStore = create<SessionState>()((set) => {
         selectedModel: null,
         runningModels: {},
         activeStrategy: null,
-        lastSelectedModelId: null,
+        selectedModelId: null,
 
         // ── Budget state ─────────────────────────────────────────────
         budgetData: null,
@@ -106,21 +109,27 @@ export const useSessionStore = create<SessionState>()((set) => {
 
         // ── UI preferences ───────────────────────────────────────────
         selectedBudgetStrategyId: null,
-        defaultCharacterId: null,
+        selectedCharacterId: null,
+        selectedProfileId: null,
         activeExtensionIds: [],
 
         // ── Bootstrap state ──────────────────────────────────────────
         sessionLoaded: false,
 
         // ── Actions ──────────────────────────────────────────────────
-        setDefaultCharacterId: (id) => {
-            set({ defaultCharacterId: id });
-            saveRawSessionData({ defaultCharacterId: id });
+        setSelectedCharacterId: (id) => {
+            set({ selectedCharacterId: id });
+            saveRawSessionData({ selectedCharacterId: id });
         },
 
         setSelectedModelId: (id) => {
-            set({ lastSelectedModelId: id });
+            set({ selectedModelId: id });
             saveRawSessionData({ selectedModelId: id });
+        },
+
+        setSelectedProfileId: (id) => {
+            set({ selectedProfileId: id });
+            saveRawSessionData({ selectedProfileId: id });
         },
 
         setSelectedBudgetStrategyId: (id) => {

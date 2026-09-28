@@ -801,7 +801,7 @@ function CharacterEditorModalInner({
         { id: 'behaviour', label: 'Behaviour', icon: '🧠' },
         { id: 'stats', label: 'Stats', icon: '📊' },
         { id: 'tools', label: 'Tools', icon: '🔧' },
-        { id: 'model', label: 'Model', icon: '⚙️' },
+        { id: 'model', label: 'Model', icon: '🤖' },
         { id: 'quick-config', label: 'Quick Config', icon: '⚡' },
     ];
 

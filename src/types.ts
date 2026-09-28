@@ -864,8 +864,9 @@ export interface RawAudioTrack extends RawData {
 }
 
 export interface SessionData {
-    defaultCharacterId?: string | null;
+    selectedCharacterId?: string | null;
     selectedModelId?: string | null;
+    selectedProfileId?: string | null;
     selectedBudgetStrategyId?: string | null;
     activeChatId?: string | null;
     currentAccountId?: string | null;

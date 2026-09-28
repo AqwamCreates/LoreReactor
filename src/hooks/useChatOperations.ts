@@ -11,7 +11,7 @@ interface UseChatOperationsOptions {
     interactionData: InteractionData | null;
     currentCharacter: Character | null;
     localProtagonist: Character | null;
-    defaultCharacterId: string | null;
+    selectedCharacterId: string | null;
     allCharacters: Character[];
     rawChatShells: RawInteractionData[];
     setInteractionData: (data: InteractionData) => void;
@@ -24,7 +24,7 @@ interface UseChatOperationsOptions {
 
 export function useChatOperations(options: UseChatOperationsOptions) {
     const {
-        interactionData, currentCharacter, defaultCharacterId,
+        interactionData, currentCharacter, selectedCharacterId,
         allCharacters, rawChatShells,
         setInteractionData, setCurrentCharacter, refreshChatList,
         startNewChat, deleteChatFromList, addToast,
@@ -73,7 +73,7 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         await saveRawSessionData({ activeChatId: null });
 
         let c = currentCharacter;
-        if (!c && defaultCharacterId) c = allCharacters.find(x => x.id === defaultCharacterId) || null;
+        if (!c && selectedCharacterId) c = allCharacters.find(x => x.id === selectedCharacterId) || null;
         if (!c && rawChatShells.length) {
             // Load the first raw shell to get its first protagonist
             const firstId = rawChatShells[0].id;
@@ -84,7 +84,7 @@ export function useChatOperations(options: UseChatOperationsOptions) {
             }
         }
         if (c) startNewChat(c);
-    }, [interactionData, currentCharacter, defaultCharacterId, allCharacters, rawChatShells, startNewChat, safeAutoSave]);
+    }, [interactionData, currentCharacter, selectedCharacterId, allCharacters, rawChatShells, startNewChat, safeAutoSave]);
 
     const handleDeleteChat = useCallback(async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();

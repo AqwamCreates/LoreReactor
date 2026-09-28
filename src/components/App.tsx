@@ -135,10 +135,10 @@ function App() {
     });
 
     // ─── Session Store Selectors & Actions ───────────────────────────
-    const defaultCharacterId = useSessionStore((s: any) => s.defaultCharacterId);
+    const selectedCharacterId = useSessionStore((s: any) => s.selectedCharacterId);
     const selectedBudgetStrategyId = useSessionStore((s: any) => s.selectedBudgetStrategyId);
     const storeSetCurrentAccountId = useSessionStore((s: any) => s.setCurrentAccountId);
-    const storeSetDefaultCharacterId = useSessionStore((s: any) => s.setDefaultCharacterId);
+    const storesetSelectedCharacterId = useSessionStore((s: any) => s.setSelectedCharacterId);
     const storeSetSelectedBudgetStrategyId = useSessionStore((s: any) => s.setSelectedBudgetStrategyId);
 
     // ─── Multiplayer Session ─────────────────────────────────────────
@@ -286,7 +286,7 @@ function App() {
         allModels,
         runningModels: models.runningModels,
         setSelectedGlobalModel,
-        defaultCharacterId,
+        selectedCharacterId,
         allCharacters: characters.characters,
         currentCharacterId: currentCharacter?.id,
         setCurrentCharacter,
@@ -348,7 +348,7 @@ function App() {
     });
 
     const chatOps = useChatOperations({
-        interactionData, currentCharacter, localProtagonist, defaultCharacterId,
+        interactionData, currentCharacter, localProtagonist, selectedCharacterId,
         allCharacters: characters.characters, rawChatShells: chatList.rawChatShells,
         setInteractionData, setCurrentCharacter,
         refreshChatList: chatList.refresh, startNewChat,
@@ -365,7 +365,7 @@ function App() {
         selectedBudgetStrategyId,
         setInteractionData, setCurrentCharacter, setActiveBudgetStrategy,
         setSelectedBudgetStrategyId: storeSetSelectedBudgetStrategyId,
-        setDefaultCharacterId: storeSetDefaultCharacterId,
+        setSelectedCharacterId: storesetSelectedCharacterId,
         loadFullCharacter: characters.loadFullCharacter, addToast,
     });
 

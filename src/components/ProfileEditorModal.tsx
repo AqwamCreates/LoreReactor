@@ -379,7 +379,7 @@ function ProfileEditorContent({
         { id: 'tools', label: 'Tools', icon: '🔧' },
         { id: 'pipeline', label: 'Pipeline', icon: '🔄' },
         { id: 'cache', label: 'Cache', icon: '⚡' },
-        { id: 'model', label: 'Model', icon: '⚙️' },
+        { id: 'model', label: 'Model', icon: '🤖' },
     ];
 
     const cacheCategories: cacheEfficiencyConfigurationType[] = ['Character Name', 'System Prompt', 'Think Prompt'];

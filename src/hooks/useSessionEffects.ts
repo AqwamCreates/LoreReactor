@@ -15,7 +15,7 @@ interface UseSessionEffectsOptions {
     allModels: LanguageModel[];
     runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     setSelectedGlobalModel: (model: LanguageModel | null) => void;
-    defaultCharacterId: string | null;
+    selectedCharacterId: string | null;
     allCharacters: Character[];
     currentCharacterId: string | null | undefined;
     setCurrentCharacter: (char: Character | null) => void;
@@ -29,7 +29,7 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
         interactionDataId, isMultiplayerClient, selectedModelId, setSelectedModelId,
         selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy,
         allModels, runningModels, setSelectedGlobalModel,
-        defaultCharacterId, allCharacters, currentCharacterId, setCurrentCharacter,
+        selectedCharacterId, allCharacters, currentCharacterId, setCurrentCharacter,
         activeStrategy, budgetData, loadLocalModelForBudgetStrategyEngine,
     } = options;
 
@@ -70,13 +70,13 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
     // Apply default character when it changes
     useEffect(() => {
         if (isMultiplayerClient) return;
-        if (defaultCharacterId && allCharacters.length > 0) {
-            const defaultChar = allCharacters.find(c => c.id === defaultCharacterId);
+        if (selectedCharacterId && allCharacters.length > 0) {
+            const defaultChar = allCharacters.find(c => c.id === selectedCharacterId);
             if (defaultChar && currentCharacterId !== defaultChar.id) {
                 setCurrentCharacter(defaultChar);
             }
         }
-    }, [defaultCharacterId, allCharacters, currentCharacterId, setCurrentCharacter, isMultiplayerClient]);
+    }, [selectedCharacterId, allCharacters, currentCharacterId, setCurrentCharacter, isMultiplayerClient]);
 
     // Sync selected model to global model with runtime port
     useEffect(() => {

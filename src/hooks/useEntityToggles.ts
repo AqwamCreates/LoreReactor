@@ -18,7 +18,7 @@ interface UseEntityTogglesOptions {
     setActiveBudgetStrategy: (strategy: BudgetStrategy | null) => void;
     selectedBudgetStrategyId: string | null;
     setSelectedBudgetStrategyId: (id: string | null) => void;
-    setDefaultCharacterId: (id: string | null) => void;
+    setSelectedCharacterId: (id: string | null) => void;
     loadFullCharacter: (id: string) => Promise<Character | null>;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
@@ -30,7 +30,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         allProfiles, allBudgetStrategies,
         setInteractionData, setCurrentCharacter, setActiveBudgetStrategy,
         selectedBudgetStrategyId,
-        setSelectedBudgetStrategyId, setDefaultCharacterId,
+        setSelectedBudgetStrategyId, setSelectedCharacterId,
         loadFullCharacter, addToast,
     } = options;
 
@@ -199,9 +199,9 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         uc = assignInitialLocationsIfNeeded(uc);
         setInteractionData(uc);
         setCurrentCharacter(ch);
-        setDefaultCharacterId(charId);
+        setSelectedCharacterId(charId);
         addToast(`Switched to ${ch.name}.`, 'success');
-    }, [interactionData, allCharacters, currentAccountId, multiplayerData, setInteractionData, setCurrentCharacter, setDefaultCharacterId, loadFullCharacter, addToast]);
+    }, [interactionData, allCharacters, currentAccountId, multiplayerData, setInteractionData, setCurrentCharacter, setSelectedCharacterId, loadFullCharacter, addToast]);
 
     const handleToggleExtension = useCallback((extId: string) => {
         const nextIds = activeExtensionIds.includes(extId)

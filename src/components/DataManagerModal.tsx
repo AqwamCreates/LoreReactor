@@ -765,10 +765,11 @@ export function DataManagerModal({
         try {
             // Clear server-backed session and preferences
             await saveRawSessionData({
-                activeChatId: null,
+                selectedCharacterId: null,
                 selectedModelId: null,
+                selectedProfileId: null,
                 selectedBudgetStrategyId: null,
-                defaultCharacterId: null,
+                activeChatId: null,
                 currentAccountId: null,
             });
             await deleteSessionData();
