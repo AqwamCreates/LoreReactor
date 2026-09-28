@@ -861,8 +861,8 @@ export interface SessionData {
     selectedModelId?: string | null;
     selectedBudgetStrategyId?: string | null;
     activeChatId?: string | null;
-    activeExtensionIds?: string[]
     currentAccountId?: string | null;
+    activeExtensionIds?: string[]
 }
 
 export interface MultiplayerJoinData {

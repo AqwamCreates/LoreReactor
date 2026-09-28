@@ -113,9 +113,9 @@ export const useSessionStore = create<SessionState>()((set) => {
         sessionLoaded: false,
 
         // ── Actions ──────────────────────────────────────────────────
-        setCurrentAccountId: (id) => {
-            set({ currentAccountId: id });
-            saveRawSessionData({ currentAccountId: id });
+        setDefaultCharacterId: (id) => {
+            set({ defaultCharacterId: id });
+            saveRawSessionData({ defaultCharacterId: id });
         },
 
         setSelectedModelId: (id) => {
@@ -123,18 +123,18 @@ export const useSessionStore = create<SessionState>()((set) => {
             saveRawSessionData({ selectedModelId: id });
         },
 
+        setSelectedBudgetStrategyId: (id) => {
+            set({ selectedBudgetStrategyId: id });
+            saveRawSessionData({ selectedBudgetStrategyId: id });
+        },
+
         setActiveChatId: (id) => {
             saveRawSessionData({ activeChatId: id });
         },
 
-        setDefaultCharacterId: (id) => {
-            set({ defaultCharacterId: id });
-            saveRawSessionData({ defaultCharacterId: id });
-        },
-
-        setSelectedBudgetStrategyId: (id) => {
-            set({ selectedBudgetStrategyId: id });
-            saveRawSessionData({ selectedBudgetStrategyId: id });
+        setCurrentAccountId: (id) => {
+            set({ currentAccountId: id });
+            saveRawSessionData({ currentAccountId: id });
         },
 
         setActiveExtensionIds: (ids) => {
