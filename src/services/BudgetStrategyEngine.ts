@@ -23,7 +23,7 @@ export interface RequestMetadata {
     numberOfRequestsDuringTheLastHour?: number;
 }
 
-/** Outcome of a single model request, used for online FM training */
+/** Outcome of a single model request, used for online FM training */ 
 export interface RequestOutcome {
     modelId: string;
     prompt: string;
