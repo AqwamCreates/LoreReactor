@@ -1265,7 +1265,7 @@ function buildFatigueLines(ctx: PromptBuildContext): string[] {
     return lines;
 }
 
-function buildAntiRepetitionLines(ctx: PromptBuildContext): string[] {
+function buildAntiRepetitionNudgeLines(ctx: PromptBuildContext): string[] {
     const lines: string[] = [];
     
     // Window size scales with crowd: more people = look further back in AI's history
@@ -1876,7 +1876,7 @@ export async function buildPrompt(
     const inventoryLines = buildInventoryLines(ctx);
     const toolInstructions = buildToolInstructionLines(ctx);
     const fatigueLines = buildFatigueLines(ctx);
-    const antiRepetitionLines = buildAntiRepetitionLines(ctx);
+    const antiRepetitionNudgeLines = buildAntiRepetitionNudgeLines(ctx);
 
     const chatHistoryLines: string[] = [];
     let hasBeenSummarized = false;
@@ -1958,7 +1958,7 @@ export async function buildPrompt(
         'Fatigue Information': fatigueLines,
         'Starter Prompt': starterPromptLines,
         'Tool Instructions': toolInstructions,
-        'Anti-Repetition Nudge': antiRepetitionLines,
+        'Anti-Repetition Nudge': antiRepetitionNudgeLines,
         'Text Injection': textInjectionLines,
     };
 
