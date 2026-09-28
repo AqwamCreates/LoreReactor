@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '../context/ToastContext';
-import { saveRawInteractionData, loadRawInteractionData, flushSaveQueue, loadAllRawModels } from '../storages/serverStorage';
+import { saveRawInteractionData, loadRawInteractionData, flushSaveQueue } from '../storages/serverStorage';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { useDisplayNameCache, resolveDelayedDisplayNameFromCache } from '../hooks/immersionLogic';
@@ -297,7 +297,7 @@ function App() {
     // ─── Sentiment Engine ────────────────────────────────────────────
     useEffect(() => {
         const enabled = interactionData?.Profile?.enableCharacterExpression ?? false;
-        if (enabled) sentimentEngine.initialize(); else sentimentEngine.unload();
+        if (enabled) sentimentEngine.initialize();
     }, [interactionData?.Profile?.enableCharacterExpression]);
 
     // ─── Chat Auto-Save ──────────────────────────────────────────────

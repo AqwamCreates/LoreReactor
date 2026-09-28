@@ -22,6 +22,7 @@ import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine, type RequestMetadata } from '../services/BudgetStrategyEngine';
 import { learnFromUserMessage } from '../services/ActionFormatEngine';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
+import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import type { Character, Context, Location, AudioTrack, World, PromptBlock, Sampler, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, WhisperMessage, HistoryMessage, Memory, Extension, Account, MultiplayerData, LanguageModel, InterjectableAction } from '../types';
 
 const engine = getLanguageModelEngine();
@@ -551,6 +552,10 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         // ─── NORMAL MESSAGE OR POST-SLASH AI GENERATION ─────────────
 
+        const currentInteractionData = currentState.interactionData
+
+        if (!currentInteractionData.Profile || !currentInteractionData.Profile?.enableCharacterExpression) sentimentEngine.unload();
+
         if (!isSlashCommand && !acquireLock()) { addToast('Already generating...', 'info'); return; }
         
         // Multiplayer clients only send the user message, host handles generation
@@ -560,15 +565,15 @@ export function useChatSession(options: UseChatSessionOptions) {
                 const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
                 // Detect names for protagonist from filtered messages
-                const filteredMessages = getFilteredChatMessages(currentState.interactionData, activeCharacter.id, allPromptBlocks || []);
+                const filteredMessages = getFilteredChatMessages(currentInteractionData, activeCharacter.id, allPromptBlocks || []);
                 const knownCharacterNames = detectName(activeCharacter, filteredMessages);
 
-                const chatMessage = createChatMessage(currentState.interactionData, activeCharacter, text, { 
+                const chatMessage = createChatMessage(currentInteractionData, activeCharacter, text, { 
                     files: encodedFiles, 
                     frontCameraImage: frontCameraImageBase64,
                     knownCharacterNames
                 });
-                let td = addMessageToInteractionData(currentState.interactionData, chatMessage);
+                let td = addMessageToInteractionData(currentInteractionData, chatMessage);
 
                 // Broadcast user message to host
                 onMessageBroadcastRef.current?.(chatMessage);
@@ -916,7 +921,9 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     const sendActionAndGetResponse = useCallback(async (actionText: string, _targetChar: Character, protagonist: Character) => {
         const currentState = getState();
-        if (!currentState.interactionData) return;
+        const currentInteractionData = currentState.interactionData
+        if (!currentInteractionData) return;
+        if (!currentInteractionData.Profile || !currentInteractionData.Profile?.enableCharacterExpression) sentimentEngine.unload();
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         
         const activeProtagonist = isMultiplayerClient 
@@ -926,11 +933,11 @@ export function useChatSession(options: UseChatSessionOptions) {
         if (isMultiplayerClient) {
             try {
                 // Detect names for protagonist from filtered messages
-                const filteredMessages = getFilteredChatMessages(currentState.interactionData, activeProtagonist.id, allPromptBlocksRef.current || []);
+                const filteredMessages = getFilteredChatMessages(currentInteractionData, activeProtagonist.id, allPromptBlocksRef.current || []);
                 const knownCharacterNames = detectName(activeProtagonist, filteredMessages);
 
-                const chatMessage = createChatMessage(currentState.interactionData, activeProtagonist, actionText, { knownCharacterNames });
-                const td = addMessageToInteractionData(currentState.interactionData, chatMessage);
+                const chatMessage = createChatMessage(currentInteractionData, activeProtagonist, actionText, { knownCharacterNames });
+                const td = addMessageToInteractionData(currentInteractionData, chatMessage);
 
                 onMessageBroadcastRef.current?.(chatMessage);
 
@@ -954,11 +961,11 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         try {
             // Detect names for protagonist from filtered messages
-            const filteredMessages = getFilteredChatMessages(currentState.interactionData, protagonist.id, allPromptBlocksRef.current || []);
+            const filteredMessages = getFilteredChatMessages(currentInteractionData, protagonist.id, allPromptBlocksRef.current || []);
             const knownCharacterNames = detectName(protagonist, filteredMessages);
 
-            const chatMessage = createChatMessage(currentState.interactionData, protagonist, actionText, { knownCharacterNames });
-            const td = addMessageToInteractionData(currentState.interactionData, chatMessage);
+            const chatMessage = createChatMessage(currentInteractionData, protagonist, actionText, { knownCharacterNames });
+            const td = addMessageToInteractionData(currentInteractionData, chatMessage);
 
             onMessageBroadcastRef.current?.(chatMessage);
 
@@ -1119,6 +1126,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         
         const currentInteractionData = getState().interactionData;
         if (!currentInteractionData) return;
+        if (!currentInteractionData.Profile || !currentInteractionData.Profile?.enableCharacterExpression) sentimentEngine.unload();
         const msgIndex = currentInteractionData.interactionHistory.findIndex(m => m.id === messageId);
         if (msgIndex === -1) { addToast('Message not found.', 'error'); return; }
         const msg = currentInteractionData.interactionHistory[msgIndex];
@@ -1242,6 +1250,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         const currentInteractionData = getState().interactionData;
         if (!currentInteractionData) { addToast('Chat data missing.', 'error'); return; }
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
+        if (!currentInteractionData.Profile || !currentInteractionData.Profile?.enableCharacterExpression) sentimentEngine.unload();
         const currentState = getState();
         if (!currentState.activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
