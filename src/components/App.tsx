@@ -17,14 +17,33 @@ import { useFrontCamera } from '../hooks/useFrontCamera';
 import type { Character, Context, InteractionData, ChatMessage, MultiplayerData, WhisperMessage, LanguageModel, HistoryMessage, RawInteractionData, Account, cloudBackend } from '../types';
 import { useSessionStore } from '../hooks/useSessionStore';
 
+// ─── Manager Hooks ──────────────────────────────────────────────────
+import { useChatListManager } from '../hooks/useChatListManager';
+import { useCharacterManager } from '../hooks/useCharacterManager';
+import { useContextManager } from '../hooks/useContextManager';
+import { useLocationManager } from '../hooks/useLocationManager';
+import { useAudioTrackManager } from '../hooks/useAudioTrackManager';
+import { useWorldManager } from '../hooks/useWorldManager';
+import { useModelManager } from '../hooks/useModelManager';
+import { useSamplerManager } from '../hooks/useSamplerManager';
+import { usePromptBlockManager } from '../hooks/usePromptBlockManager';
+import { useStopPatternManager } from '../hooks/useStopPatternManager';
+import { useBudgetStrategyManager } from '../hooks/useBudgetStrategyManager';
+import { useProfileManager } from '../hooks/useProfileManager';
+import { useExtensionManager } from '../hooks/useExtensionManager';
+import { useMemoryManager } from '../hooks/useMemoryManager';
+import { useAccountManager } from '../hooks/useAccountManager';
+import { useMultiplayerDataManager } from '../hooks/useMultiplayerDataManager';
+import { useActiveExtensions } from '../hooks/useActiveExtensions';
+import { useEntityModals } from '../hooks/useEntityModals';
+
 // ─── Extracted Hooks ─────────────────────────────────────────────────
-import { useAppManagers } from '../hooks/useAppManagers';
 import { useMultiplayerSession } from '../hooks/useMultiplayerSession';
 import { useSessionEffects } from '../hooks/useSessionEffects';
 import { useChatAutoSave } from '../hooks/useChatAutoSave';
 import { useTokenCounter } from '../hooks/useTokenCounter';
 
-// ─── Existing Feature Hooks ──────────────────────────────────────────
+// ─── Feature Hooks ───────────────────────────────────────────────────
 import { useChatSession } from '../hooks/useChatSession';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
@@ -77,17 +96,43 @@ function App() {
     const { addToast } = useToast();
     const { captureImage: captureFrontCameraImage } = useFrontCamera(addToast);
 
-    // ─── Consolidated Managers ───────────────────────────────────────
-    const managers = useAppManagers();
-    const {
-        chatList, characters, contexts, locations, audioTracks, worlds,
-        models, samplers, promptBlocks, stopPatterns, budgetStrategies,
-        profiles, extensions, memories, accounts, multiplayerData: mpDataManager,
-        activeExtensions, entityModals,
-    } = managers;
+    // ─── Manager Hooks ───────────────────────────────────────────────
+    const chatList = useChatListManager();
+    const characters = useCharacterManager();
+    const contexts = useContextManager();
+    const locations = useLocationManager();
+    const audioTracks = useAudioTrackManager();
+    const worlds = useWorldManager();
+    const models = useModelManager();
+    const samplers = useSamplerManager();
+    const promptBlocks = usePromptBlockManager();
+    const stopPatterns = useStopPatternManager();
+    const budgetStrategies = useBudgetStrategyManager();
+    const profiles = useProfileManager();
+    const extensions = useExtensionManager();
+    const memories = useMemoryManager();
+    const accounts = useAccountManager();
+    const mpDataManager = useMultiplayerDataManager();
 
-    // Convenience alias: the actual LanguageModel[] array
+    const activeExtensions = useActiveExtensions(extensions.extensions);
+
     const allModels = models.models;
+
+    const entityModals = useEntityModals({
+        character: { saveFunction: characters.saveCharacter, deleteFunction: characters.deleteCharacter, entityLabel: 'Character' },
+        context: { saveFunction: contexts.saveContext, deleteFunction: contexts.deleteContext, entityLabel: 'Context' },
+        location: { saveFunction: locations.saveLocation, deleteFunction: locations.deleteLocation, entityLabel: 'Location' },
+        audioTrack: { saveFunction: audioTracks.saveAudioTrack, deleteFunction: audioTracks.deleteAudioTrack, entityLabel: 'Audio Track' },
+        world: { saveFunction: worlds.saveWorld, deleteFunction: worlds.deleteWorld, entityLabel: 'World' },
+        model: { saveFunction: models.saveModel, deleteFunction: models.deleteModel, entityLabel: 'Model' },
+        sampler: { saveFunction: samplers.saveSampler, deleteFunction: samplers.deleteSampler, entityLabel: 'Sampler' },
+        promptBlock: { saveFunction: promptBlocks.savePromptBlock, deleteFunction: promptBlocks.deletePromptBlock, entityLabel: 'Prompt Block' },
+        stopPattern: { saveFunction: stopPatterns.saveStopPattern, deleteFunction: stopPatterns.deleteStopPattern, entityLabel: 'Stop Pattern' },
+        budgetStrategy: { saveFunction: budgetStrategies.saveStrategy, deleteFunction: budgetStrategies.deleteStrategy, entityLabel: 'Budget Strategy' },
+        profile: { saveFunction: profiles.saveProfile, deleteFunction: profiles.deleteProfile, entityLabel: 'Profile' },
+        account: { saveFunction: accounts.saveAccount, deleteFunction: accounts.deleteAccount, entityLabel: 'Account' },
+        multiplayerData: { saveFunction: mpDataManager.saveMultiplayerData, deleteFunction: mpDataManager.deleteMultiplayerData, entityLabel: 'Multiplayer Data' },
+    });
 
     // ─── Session Store Selectors & Actions ───────────────────────────
     const defaultCharacterId = useSessionStore((s: any) => s.defaultCharacterId);
@@ -213,7 +258,7 @@ function App() {
             if (!res.ok) return null;
             return (await res.json()).port ?? null;
         } catch (e) { console.warn(`Auto-load of model ${target.name} failed:`, e); return null; }
-    }, [models.runningModels, allModels]);
+    }, [models.runningModels, allModels, models, localURL]);
 
     useSessionEffects({
         interactionDataId: interactionData?.id,
@@ -256,7 +301,7 @@ function App() {
         if (sel?.apiKey && sel.backend && cloudBackends.includes(sel.backend as cloudBackend)) return true;
         return models.runningModels[models.selectedModelId]?.isRunning === true
             && models.runningModels[models.selectedModelId]?.isIdle === true;
-    }, [models.selectedModelId, allModels, models.runningModels, activeStrategy, mp.isMultiplayerClient]);
+    }, [models.selectedModelId, allModels, models.runningModels, activeStrategy, mp.isMultiplayerClient, models]);
 
     const isModelLoading = useMemo(() => {
         if (mp.isMultiplayerClient || !models.selectedModelId) return false;
@@ -264,7 +309,7 @@ function App() {
         if (sel?.apiKey && sel.backend && cloudBackends.includes(sel.backend as cloudBackend)) return false;
         return models.runningModels[models.selectedModelId]?.isRunning === true
             && models.runningModels[models.selectedModelId]?.isIdle !== true;
-    }, [models.selectedModelId, allModels, models.runningModels, mp.isMultiplayerClient]);
+    }, [models.selectedModelId, allModels, models.runningModels, mp.isMultiplayerClient, models]);
 
     const modelStatusMessage = mp.isMultiplayerClient ? ''
         : (!models.selectedModelId ? 'No model selected — open Language Models to load one'
@@ -339,7 +384,7 @@ function App() {
 
     // Textarea auto-resize
     useEffect(() => { if (!textareaRef.current) return; textareaRef.current.style.height = 'auto'; textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, window.innerHeight * 0.3)}px`; });
-    useEffect(() => { if (!editTextAreaRef.current || !messageActions.editingId) return; editTextAreaRef.current.style.height = 'auto'; editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`; });
+    useEffect(() => { if (!editTextAreaRef.current || !messageActions.editingId) return; editTextAreaRef.current.style.height = 'auto'; editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`; }, [messageActions.editingId]);
 
     // ─── Derived Display Values ──────────────────────────────────────
     const canDelete = (!isMultiplayerChat || mp.multiplayerSync.isHost || mp.multiplayerSync.isAdmin) && !isLoading;
@@ -367,12 +412,12 @@ function App() {
             return m?.contextLength || defaultContextLength;
         }
         return defaultContextLength;
-    }, [activeStrategy, models.selectedModelId, allModels]);
+    }, [activeStrategy, models.selectedModelId, allModels, models]);
 
     const parentChatName = useMemo(() => {
         if (!interactionData?.parentInteractionDataId) return null;
         return chatList.rawChatShells.find((s: RawInteractionData) => s.id === interactionData.parentInteractionDataId)?.name ?? null;
-    }, [interactionData, chatList.rawChatShells]);
+    }, [interactionData, chatList.rawChatShells, chatList]);
 
     // ─── Display Messages (with streaming injection + whisper filtering) ──
     const displayMessages = useMemo(() => {
@@ -439,7 +484,7 @@ function App() {
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profiles.isLoading },
         { id: 'accounts', label: 'Accounts', icon: '🔑', done: !accounts.isLoading },
         { id: 'multiplayerData', label: 'Multiplayer Data', icon: '👥', done: !mpDataManager.isLoading },
-    ], [chatList.isLoading, characters.isLoading, actionMenu.actionsLoading, contexts.isLoading, locations.isLoading, audioTracks.isLoading, worlds.isLoading, promptBlocks.isLoading, models.isLoading, samplers.isLoading, stopPatterns.isLoading, budgetStrategies.isLoading, profiles.isLoading, accounts.isLoading, mpDataManager.isLoading]);
+    ], [chatList, characters, actionMenu.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, budgetStrategies, profiles, accounts, mpDataManager]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
@@ -458,23 +503,23 @@ function App() {
         return () => clearTimeout(timer);
     }, [loadSteps, isInitializing, activeChatRestored, interactionData]);
 
-    useEffect(() => { if (!isInitializing && activeChatRestored) chatList.ensureLoaded(); }, [isInitializing, activeChatRestored, chatList.ensureLoaded]);
+    useEffect(() => { if (!isInitializing && activeChatRestored) chatList.ensureLoaded(); }, [isInitializing, activeChatRestored, chatList]);
 
     // ─── Wrapped Multiplayer-Aware Handlers ──────────────────────────
     const wrappedSaveEdit = useCallback(async () => {
         await messageActions.handleSaveEdit();
         if (isMultiplayerChat && messageActions.editingId) mp.multiplayerSync.broadcastMessageEdit(messageActions.editingId, messageActions.editDraft);
-    }, [messageActions.handleSaveEdit, messageActions.editingId, messageActions.editDraft, isMultiplayerChat, mp.multiplayerSync]);
+    }, [messageActions, isMultiplayerChat, mp.multiplayerSync]);
 
     const wrappedDelete = useCallback(async (id: string) => {
         await messageActions.handleDelete(id);
         if (isMultiplayerChat) mp.multiplayerSync.broadcastMessageDelete(id);
-    }, [messageActions.handleDelete, isMultiplayerChat, mp.multiplayerSync]);
+    }, [messageActions, isMultiplayerChat, mp.multiplayerSync]);
 
     const wrappedBranch = useCallback((id: string) => {
         if (isMultiplayerChat) mp.multiplayerSync.initiateBranch();
         else messageActions.handleBranch(id);
-    }, [messageActions.handleBranch, isMultiplayerChat, mp.multiplayerSync]);
+    }, [messageActions, isMultiplayerChat, mp.multiplayerSync]);
 
     // ─── Input Handlers ──────────────────────────────────────────────
     const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -501,7 +546,7 @@ function App() {
         sendMessage(inputText, promptBlocks.promptBlocks, pendingFiles, frontCam);
         setInputText(''); setPendingFiles([]);
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    }, [inputText, pendingFiles, sendMessage, promptBlocks.promptBlocks, captureFrontCameraImage, interactionData, currentCharacter]);
+    }, [inputText, pendingFiles, sendMessage, promptBlocks, captureFrontCameraImage, interactionData, currentCharacter]);
 
     const toggleViewMode = () => {
         setViewMode(prev => prev === 'ladder' ? 'cinematic' : prev === 'cinematic' ? 'vn' : 'ladder');
@@ -533,7 +578,7 @@ function App() {
     };
 
     // ─── Chat Management Handlers ────────────────────────────────────
-    const handleImportComplete = useCallback(() => { getLanguageModelEngine().clearTokenCache(); chatList.refresh(); }, [chatList.refresh]);
+    const handleImportComplete = useCallback(() => { getLanguageModelEngine().clearTokenCache(); chatList.refresh(); }, [chatList]);
 
     const handleForceFirstMessage = useCallback(async (char: Character) => {
         if (!interactionData) return;
@@ -573,7 +618,7 @@ function App() {
 
     const onDeleteChatForModals = useCallback((id: string) => {
         chatOps.handleDeleteChat({ stopPropagation: () => {} } as React.MouseEvent, id);
-    }, [chatOps.handleDeleteChat]);
+    }, [chatOps]);
 
     const handleRenameChat = useCallback(async (id: string, name: string) => {
         const loaded = await loadRawInteractionData(id, characters.characters);
@@ -583,7 +628,7 @@ function App() {
         chatList.refresh();
         if (interactionData?.id === id) setInteractionData({ ...interactionData, name, lastUpdatedTimestamp: Date.now() });
         addToast(`Renamed to "${name}"`, 'success');
-    }, [characters.characters, interactionData, setInteractionData, chatList.refresh, addToast]);
+    }, [characters, interactionData, setInteractionData, chatList, addToast]);
 
     const handleNavigateToBranchSource = useCallback(async () => {
         if (!interactionData?.parentInteractionDataId) return;
@@ -598,7 +643,7 @@ function App() {
                 addToast(`Returned to source: "${source.name}"`, 'info');
             } else addToast('Source chat not found.', 'error');
         } catch { addToast('Failed to load source chat.', 'error'); }
-    }, [interactionData, characters.characters, mp.currentAccountId, setInteractionData, setCurrentCharacter, chatList.refresh, addToast]);
+    }, [interactionData, characters, mp.currentAccountId, setInteractionData, setCurrentCharacter, chatList, addToast]);
 
     const handleLoadWorld = useCallback(async (world: any) => {
         if (!interactionData) return;
@@ -623,7 +668,7 @@ function App() {
         setInteractionData(updated);
         await saveRawInteractionData(updated);
         addToast(`Loaded world "${world.name}"`, 'success');
-    }, [interactionData, characters.characters, contexts.contexts, locations.locations, audioTracks.audioTracks, profiles.profiles, setInteractionData, addToast]);
+    }, [interactionData, characters, contexts, locations, audioTracks, profiles, setInteractionData, addToast]);
 
     // ─── View Props ──────────────────────────────────────────────────
     const viewProps: ViewModeProps & { canDelete: boolean } = {
