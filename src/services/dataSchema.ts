@@ -306,7 +306,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "webSummarizationStopPattern": "object (StopPattern, optional)",
     "interactionDataSummarizationStopPattern": "object (StopPattern, optional)",
     "aiRecommendationStopPattern": "object (StopPattern, optional)"
-  }`);
+    }`);
     }
 
     if (hasWorld) {
