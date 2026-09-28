@@ -115,43 +115,32 @@ export const useSessionStore = create<SessionState>()((set) => {
         // ── Actions ──────────────────────────────────────────────────
         setCurrentAccountId: (id) => {
             set({ currentAccountId: id });
-            saveRawSessionData({ currentAccountId: id }).catch(e =>
-                console.warn('Failed to persist currentAccountId:', e)
-            );
-        },
-
-        setSelectedBudgetStrategyId: (id) => {
-            set({ selectedBudgetStrategyId: id });
-            saveRawSessionData({ selectedBudgetStrategyId: id }).catch(e =>
-                console.warn('Failed to persist selectedBudgetStrategyId:', e)
-            );
-        },
-
-        setDefaultCharacterId: (id) => {
-            set({ defaultCharacterId: id });
-            saveRawSessionData({ defaultCharacterId: id }).catch(e =>
-                console.warn('Failed to persist defaultCharacterId:', e)
-            );
-        },
-
-        setActiveExtensionIds: (ids) => {
-            set({ activeExtensionIds: ids });
-            // Extensions are not in SessionData — no server persist needed
-        },
-
-        setActiveChatId: (id) => {
-            // activeChatId is not stored in Zustand (consumed by useChatRestoration
-            // via loadRawSessionData cache), but we still need to persist it
-            saveRawSessionData({ activeChatId: id }).catch(e =>
-                console.warn('Failed to persist activeChatId:', e)
-            );
+            saveRawSessionData({ currentAccountId: id });
         },
 
         setSelectedModelId: (id) => {
             set({ lastSelectedModelId: id });
-            saveRawSessionData({ selectedModelId: id }).catch(e =>
-                console.warn('Failed to persist selectedModelId:', e)
-            );
+            saveRawSessionData({ selectedModelId: id });
         },
+
+        setActiveChatId: (id) => {
+            saveRawSessionData({ activeChatId: id });
+        },
+
+        setDefaultCharacterId: (id) => {
+            set({ defaultCharacterId: id });
+            saveRawSessionData({ defaultCharacterId: id });
+        },
+
+        setSelectedBudgetStrategyId: (id) => {
+            set({ selectedBudgetStrategyId: id });
+            saveRawSessionData({ selectedBudgetStrategyId: id });
+        },
+
+        setActiveExtensionIds: (ids) => {
+            set({ activeExtensionIds: ids });
+            saveRawSessionData({ activeExtensionIds: ids });
+        },
+
     };
 });

@@ -1625,14 +1625,17 @@ export async function loadRawSessionData(): Promise<SessionData> {
     return data || {};
 }
 
-export async function saveRawSessionData(data: SessionData): Promise<void> {
-    preferencesCache.set(SESSION_KEY, data);
+export async function saveRawSessionData(data: Partial<SessionData>): Promise<void> {
+    // Load existing session data and merge
+    const existing = preferencesCache.get<SessionData>(SESSION_KEY) || {};
+    const merged: SessionData = { ...existing, ...data };
+    
+    preferencesCache.set(SESSION_KEY, merged);
 
-    saveQueue.enqueue(SESSION_KEY, data, async (saveData) => {
+    saveQueue.enqueue(SESSION_KEY, merged, async (saveData) => {
         await savePreferences(`/${SESSION_KEY}`, saveData as SessionData);
     });
 }
-
 export async function deleteSessionData(): Promise<void> {
     preferencesCache.delete(SESSION_KEY);
 
