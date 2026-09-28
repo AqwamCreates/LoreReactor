@@ -6,10 +6,12 @@ import {
     saveRawFormatPreferences,
 } from '../storages/serverStorage';
 
+type position = 'start' | 'start middle' | 'middle' | 'middle end' | 'end'
+
 type lengthCategory = 'one' | 'very short' | 'short' | 'medium' | 'long' | 'very long';
 
 export interface FormatContext {
-    position: 'start' | 'middle' | 'end';
+    position: position;
     previousFormat?: FormatCategory;
     nextFormat?: FormatCategory;
     insideQuote: boolean;
@@ -74,8 +76,10 @@ export class FormatPreferenceEngine {
         const totalLength = text.length;
         const segmentLength = segmentEnd - segmentStart;
 
-        let position: 'start' | 'middle' | 'end' = 'middle';
+        let position: position = 'middle';
         if (segmentStart < totalLength * 0.2) position = 'start';
+        if (segmentStart < totalLength * 0.4) position = 'start middle';
+        if (segmentStart > totalLength * 0.6) position = 'middle end';
         else if (segmentEnd > totalLength * 0.8) position = 'end';
 
         const currentSegmentIndex = segments.findIndex(
