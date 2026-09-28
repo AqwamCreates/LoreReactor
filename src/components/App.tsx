@@ -66,9 +66,6 @@ import { CinematicView } from './views/CinematicView';
 import { VisualNovelView } from './views/VisualNovelView';
 import type { ViewModeProps } from './views/types';
 import { defaultContextLength } from '../dictionaries/defaults';
-
-const MINIMUM_LOADING_SCREEN_MILLISECONDS = 900;
-
 interface LoadStep { 
     id: string; 
     label: string; 
@@ -620,7 +617,7 @@ function App() {
         if (!areAllStepsDone || !activeChatRestored || !interactionData) return;
         const loadingStartedAt = loadingStartedAtReference.current ?? Date.now();
         loadingStartedAtReference.current = loadingStartedAt;
-        const remainingTime = Math.max(0, MINIMUM_LOADING_SCREEN_MILLISECONDS - (Date.now() - loadingStartedAt));
+        const remainingTime = Date.now() - loadingStartedAt;
         const holdTimer = setTimeout(() => { 
             setIsFadeOut(true); 
             const fadeTimer = setTimeout(() => { setIsInitializing(false); setIsFadeOut(false); }, 300); 
