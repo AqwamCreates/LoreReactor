@@ -56,7 +56,6 @@ function isQuotaError(e: unknown): boolean {
         message.includes('exceeded') || message.includes('insufficient') ||
         message.includes('billing') || message.includes('allowance') ||
         message.includes('subscribe') || message.includes('too many requests') ||
-        message.includes('per') ||
         message.includes('failed to fetch') || message.includes('networkerror') ||
         message.includes('err_aborted') || message.includes('econnrefused') ||
         message.includes('enotfound') || message.includes('etimedout') ||
