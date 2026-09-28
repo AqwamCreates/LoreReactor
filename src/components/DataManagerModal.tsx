@@ -749,6 +749,17 @@ export function DataManagerModal({
         import('../services/LanguageModelEngine').then(({ getLanguageModelEngine }) => { getLanguageModelEngine().clearTokenCache(); addToast('Token cache cleared.', 'success'); });
     };
 
+    // ─── NEW: Clear Action Format Preferences ───────────────────────
+    const handleClearActionFormatPreferences = async () => {
+        try {
+            await deleteActionFormatData();
+            await deleteFormatPreferences();
+            addToast('Action format preferences cleared.', 'success');
+        } catch {
+            addToast('Failed to clear action format preferences.', 'error');
+        }
+    };
+
     // ─── Danger zone ────────────────────────────────────────────────
     const handleFactoryReset = async () => {
         try {
@@ -760,10 +771,10 @@ export function DataManagerModal({
                 defaultCharacterId: null,
                 currentAccountId: null,
             });
-            await deleteSessionData()
+            await deleteSessionData();
             await deleteMultiplayerJoinData();
-            await deleteActionFormatData()
-            await deleteFormatPreferences()
+            await deleteActionFormatData();
+            await deleteFormatPreferences();
 
             // Clear in-memory caches so stale data doesn't persist after reload
             clearPreferencesCache();
@@ -954,6 +965,17 @@ export function DataManagerModal({
                             <div className="editor-section" style={{ margin: 0 }}><div className="editor-section-title">Webpage Cache</div><div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '8px' }}>Cached web pages fetched via context URLs and search terms.</div><button type="button" className="editor-button editor-button-cancel" onClick={handleClearWebpageCache} style={{ fontSize: '0.75rem', width: '100%' }}>🧹 Clear Webpage Cache</button></div>
                             <div className="editor-section" style={{ margin: 0 }}><div className="editor-section-title">Image Cache</div><div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '8px' }}>Cached character, context, location, and prompt block images.</div><button type="button" className="editor-button editor-button-cancel" onClick={handleClearImageCache} style={{ fontSize: '0.75rem', width: '100%' }}>🧹 Clear Image Cache</button></div>
                             <div className="editor-section" style={{ margin: 0 }}><div className="editor-section-title">Token Cache</div><div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '8px' }}>In-memory token counting cache used by the language model engine.</div><button type="button" className="editor-button editor-button-cancel" onClick={handleClearTokenCache} style={{ fontSize: '0.75rem', width: '100%' }}>🧹 Clear Token Cache</button></div>
+                            
+                            {/* NEW: Action Format Preferences Cache */}
+                            <div className="editor-section" style={{ margin: 0, borderColor: 'rgba(239,68,68,0.2)' }}>
+                                <div className="editor-section-title" style={{ color: '#ef4444' }}>Action Format Preferences</div>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '8px' }}>
+                                    Resets the learned formatting matrix (e.g., Auto-Format, manual edit corrections) back to defaults. Useful if the engine learns incorrect patterns.
+                                </div>
+                                <button type="button" className="editor-button editor-button-cancel" onClick={handleClearActionFormatPreferences} style={{ fontSize: '0.75rem', width: '100%', color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }}>
+                                    🧹 Clear Action Format Preferences
+                                </button>
+                            </div>
                         </div>
                     )}
 

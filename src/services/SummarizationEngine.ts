@@ -81,15 +81,15 @@ export async function runSummarization(context: SummarizationContext): Promise<v
             }
         }
 
-        if (triggered.strategyType === 'Periodic Compression' && triggered.compressionInterval && triggered.compressionChunkSize) {
+        if (triggered.strategyType === 'Periodic Compression' && triggered.periodicCompressionInterval && triggered.periodicCompressionChunkSize) {
             const budget = data.Profile?.summarizationSteps?.find(s => s.strategyType === 'Periodic Compression' && s.enabled)?.summaryTokenBudget ?? 512;
-            const nc = await generatePeriodicCompression(updated, triggered.compressionInterval, triggered.compressionChunkSize, budget);
+            const nc = await generatePeriodicCompression(updated, triggered.periodicCompressionInterval, triggered.periodicCompressionChunkSize, budget);
             if (nc.length > 0) updated = { ...updated, contexts: [...(updated.contexts || []), ...nc] };
         }
 
-        if (triggered.strategyType === 'Recursive Summary' && triggered.recursiveChunkSize && triggered.recursiveMaxDepth) {
+        if (triggered.strategyType === 'Recursive Summary' && triggered.recursiveSummaryChunkSize && triggered.recursiveSummaryMaximumDepth) {
             const budget = data.Profile?.summarizationSteps?.find(s => s.strategyType === 'Recursive Summary' && s.enabled)?.summaryTokenBudget ?? 1024;
-            const nc = await generateRecursiveSummary(updated, triggered.recursiveChunkSize, triggered.recursiveMaxDepth, budget);
+            const nc = await generateRecursiveSummary(updated, triggered.recursiveSummaryChunkSize, triggered.recursiveSummaryMaximumDepth, budget);
             if (nc.length > 0) updated = { ...updated, contexts: [...(updated.contexts || []), ...nc] };
         }
 

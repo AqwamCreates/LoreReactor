@@ -585,22 +585,26 @@ export type SummarizationStrategyType =
   | 'Sliding Window Replace'
   | 'Periodic Compression'
   | 'Recursive Summary'
-  | 'Observation Masking';
+  | 'Observation Masking'
+  | 'Entropy Pruning';
 
 export interface SummarizationStep extends ObjectData {
   strategyType: SummarizationStrategyType;
   enabled: boolean;
   order: number;
   slidingWindowSize?: number;
-  compressionInterval?: number;
-  compressionChunkSize?: number;
-  recursiveChunkSize?: number;
-  recursiveMaxDepth?: number;
+  periodicCompressionInterval?: number;
+  periodicCompressionChunkSize?: number;
+  recursiveSummaryChunkSize?: number;
+  recursiveSummaryMaximumDepth?: number;
   maskingRelevanceThreshold?: number;
   maskingKeywordWeight?: number;
   summaryTokenBudget?: number;
   summaryModelId?: string;
   triggerTokenThreshold?: number;
+  entropyPruningChunkSize?: number;        // Messages per chunk (default: 3)
+  entropyPruningThreshold?: number;        // Below this = fluff (default: 0.35)
+  entropyPruningTokenBudget?: number;      // Max tokens to keep raw (default: 2000)
 }
 
 export interface RawSummarizationStep extends RawData {
@@ -609,10 +613,10 @@ export interface RawSummarizationStep extends RawData {
   enabled: boolean;
   order: number;
   slidingWindowSize?: number;
-  compressionInterval?: number;
-  compressionChunkSize?: number;
-  recursiveChunkSize?: number;
-  recursiveMaxDepth?: number;
+  periodicCompressionInterval?: number;
+  periodicCompressionChunkSize?: number;
+  recursiveSummaryChunkSize?: number;
+  recursiveSummaryMaximumDepth?: number;
   maskingRelevanceThreshold?: number;
   maskingKeywordWeight?: number;
   summaryTokenBudget?: number;

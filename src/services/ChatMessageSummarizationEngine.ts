@@ -8,6 +8,7 @@ import { detectName } from '../hooks/nameDetection';
 import { buildRequestBody } from '../hooks/genericRequestBuilderLogic';
 import { getCoLocatedProtagonists, getCoLocatedParticipants } from '../hooks/locationLogic';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
+import { getStemmedContentWords } from '../utilities/stemmerHelper';
 
 const SUMMARIZE_SYSTEM_PROMPT = "You are a concise summarizer for roleplay chat messages. Given a single chat message, produce a brief summary that preserves: character actions, key dialogue points, emotional tone, and plot-relevant details. Output ONLY the summary text with no preamble, no markdown, no quotes.";
 
@@ -289,8 +290,8 @@ export async function generateLocationVisitSummary(
 
 export async function generatePeriodicCompression(
     interactionData: InteractionData,
-    compressionInterval: number,
-    compressionChunkSize: number,
+    periodicCompressionInterval: number,
+    periodicCompressionChunkSize: number,
     maxTokens = 512,
 ): Promise<Context[]> {
     const history = interactionData.interactionHistory;
@@ -326,10 +327,10 @@ export async function generatePeriodicCompression(
 
     const newContexts: Context[] = [];
     const now = Date.now();
-    const compressibleEnd = Math.max(0, visibleChatMessages.length - compressionInterval);
+    const compressibleEnd = Math.max(0, visibleChatMessages.length - periodicCompressionInterval);
 
-    for (let startIdx = 0; startIdx < compressibleEnd; startIdx += compressionChunkSize) {
-        const endIdx = Math.min(startIdx + compressionChunkSize, compressibleEnd);
+    for (let startIdx = 0; startIdx < compressibleEnd; startIdx += periodicCompressionChunkSize) {
+        const endIdx = Math.min(startIdx + periodicCompressionChunkSize, compressibleEnd);
         const origStart = visibleToOriginalIdx.get(visibleChatMessages[startIdx]) ?? startIdx;
         const origEnd = visibleToOriginalIdx.get(visibleChatMessages[endIdx - 1]) ?? endIdx;
         const rangeKey = `${origStart}-${origEnd}`;
@@ -496,6 +497,84 @@ export async function generateRecursiveSummary(
     return newContexts;
 }
 
+export async function generateEntropyPruningSummaries(
+    interactionData: InteractionData,
+    modelId: string,
+    maxTokens = 256,
+    entropyPruningChunkSize = 3,
+    entropyPruningThreshold = 0.35,
+    maxRawTokens = 2000,
+): Promise<Map<string, string>> {
+    const results = new Map<string, string>();
+    const history = interactionData.interactionHistory;
+    const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
+
+    const filterFlags = getUniversalMessageFilterFlags(chatMessages, interactionData.contexts || [], interactionData.locations || [], []);
+    const visibleMessages = chatMessages.filter((_, i) => !filterFlags[i]);
+    
+    if (visibleMessages.length <= entropyPruningChunkSize) return results;
+
+    let accumulatedTokens = 0;
+    let cutoffVisibleIndex = 0;
+
+    // Walk backward to find the entropy cutoff
+    for (let i = visibleMessages.length; i > entropyPruningChunkSize; i -= entropyPruningChunkSize) {
+        const chunkStart = Math.max(0, i - entropyPruningChunkSize);
+        const currentChunk = visibleMessages.slice(chunkStart, i);
+        const previousChunk = visibleMessages.slice(Math.max(0, chunkStart - entropyPruningChunkSize), chunkStart);
+
+        for (const msg of currentChunk) accumulatedTokens += Math.ceil(msg.textContent.length / 4);
+
+        // Hard boundary: location change
+        let hardBoundary = false;
+        for (let j = 1; j < currentChunk.length; j++) {
+            const prev = currentChunk[j - 1];
+            const curr = currentChunk[j];
+            if (prev.locationIndex !== undefined && curr.locationIndex !== undefined && prev.locationIndex !== curr.locationIndex) {
+                hardBoundary = true;
+                break;
+            }
+        }
+        if (hardBoundary) { cutoffVisibleIndex = i; break; }
+        if (accumulatedTokens >= maxRawTokens) { cutoffVisibleIndex = i; break; }
+
+        // Soft boundary: Lexical drift
+        if (previousChunk.length > 0) {
+            const currentWords = new Set<string>();
+            for (const msg of currentChunk) for (const w of getStemmedContentWords(msg.textContent)) currentWords.add(w);
+            
+            const previousWords = new Set<string>();
+            for (const msg of previousChunk) for (const w of getStemmedContentWords(msg.textContent)) previousWords.add(w);
+
+            let intersection = 0;
+            for (const w of currentWords) if (previousWords.has(w)) intersection++;
+            
+            const union = currentWords.size + previousWords.size - intersection;
+            const lexicalOverlap = union > 0 ? intersection / union : 0;
+            
+            if ((1 - lexicalOverlap) < entropyPruningThreshold) {
+                cutoffVisibleIndex = chunkStart;
+                break;
+            }
+        }
+        cutoffVisibleIndex = chunkStart;
+    }
+
+    // Generate summaries for everything before the cutoff
+    const sampler = interactionData.Profile?.webSummarizationSampler;
+    for (let i = 0; i < cutoffVisibleIndex; i++) {
+        const msg = visibleMessages[i];
+        if (hasModelSummary(msg, modelId)) continue;
+
+        const summary = await generateMessageSummary(msg, maxTokens, sampler);
+        if (summary) results.set(msg.id, summary);
+    }
+
+    return results;
+}
+
+// ─── UPDATE: checkTriggerThreshold ─────────────────────────────────
+
 export function checkTriggerThreshold(
     interactionData: InteractionData,
     currentNumberOfTokens: number,
@@ -503,43 +582,35 @@ export function checkTriggerThreshold(
 ): {
     strategyType: string;
     slidingWindowSize?: number;
-    compressionInterval?: number;
-    compressionChunkSize?: number;
-    recursiveChunkSize?: number;
-    recursiveMaxDepth?: number;
+    periodicCompressionInterval?: number;
+    periodicCompressionChunkSize?: number;
+    recursiveSummaryChunkSize?: number;
+    recursiveSummaryMaximumDepth?: number;
+    entropyPruningChunkSize?: number;
+    entropyPruningThreshold?: number;
+    entropyPruningTokenBudget?: number;
 } | null {
     const profile = interactionData.Profile;
     if (!profile?.summarizationSteps) return null;
 
-    const activeSteps = [...profile.summarizationSteps]
-        .sort((a, b) => a.order - b.order);
+    const activeSteps = [...profile.summarizationSteps].sort((a, b) => a.order - b.order);
 
     for (const step of activeSteps) {
         const threshold = step.triggerTokenThreshold ?? 0;
-        const effectiveThreshold = threshold > 0
-            ? threshold
-            : Math.floor(languageModelContextLength * 0.7);
+        const effectiveThreshold = threshold > 0 ? threshold : Math.floor(languageModelContextLength * 0.7);
 
         if (currentNumberOfTokens >= effectiveThreshold) {
             if (step.strategyType === 'Sliding Window Replace') {
-                return {
-                    strategyType: step.strategyType,
-                    slidingWindowSize: step.slidingWindowSize,
-                };
+                return { strategyType: step.strategyType, slidingWindowSize: step.slidingWindowSize };
             }
             if (step.strategyType === 'Periodic Compression') {
-                return {
-                    strategyType: step.strategyType,
-                    compressionInterval: step.compressionInterval,
-                    compressionChunkSize: step.compressionChunkSize,
-                };
+                return { strategyType: step.strategyType, periodicCompressionInterval: step.periodicCompressionInterval, periodicCompressionChunkSize: step.periodicCompressionChunkSize };
             }
             if (step.strategyType === 'Recursive Summary') {
-                return {
-                    strategyType: step.strategyType,
-                    recursiveChunkSize: step.recursiveChunkSize,
-                    recursiveMaxDepth: step.recursiveMaxDepth,
-                };
+                return { strategyType: step.strategyType, recursiveSummaryChunkSize: step.recursiveSummaryChunkSize, recursiveSummaryMaximumDepth: step.recursiveSummaryMaximumDepth };
+            }
+            if (step.strategyType === 'Entropy Pruning') {
+                return { strategyType: step.strategyType, entropyPruningChunkSize: step.entropyPruningChunkSize, entropyPruningThreshold: step.entropyPruningThreshold, entropyPruningTokenBudget: step.entropyPruningTokenBudget };
             }
         }
     }

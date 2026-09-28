@@ -13,6 +13,7 @@ import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { generateLocationVisitSummary } from '../services/ChatMessageSummarizationEngine';
 import { compileTriggerRegexes, findPreviousMessage } from './chatLogic';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from './dialoguePromptLogic';
+import { STOP_STEMS, getStemmedContentWords } from '../utilities/stemmerHelper';
 
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging.";
 const beingIgnoredInstructions = "Anytime a character ignores me talking, there would be an awkward atmosphere.";
@@ -54,8 +55,8 @@ interface PromptDelimiters {
 }
 
 export function deriveDelimiters(template?: ModelTemplate): PromptDelimiters {
-    const thinkStart = template?.thinkStart || '<think>';
-    const thinkEnd = template?.thinkEnd || '</think>';
+    const thinkStart = template?.thinkStart || '';
+    const thinkEnd = template?.thinkEnd || '';
     const chatTemplate = template?.chatTemplate;
 
     if (!chatTemplate) {
@@ -1273,50 +1274,6 @@ function buildAntiRepetitionNudgeLines(ctx: PromptBuildContext): string[] {
 
     const texts = recentAiMessages.map(m => m.textContent);
 
-    const stem = (word: string): string => {
-        let w = word.toLowerCase();
-        if (w.length < 3) return w;
-        
-        if (w.endsWith('ies') && w.length > 4) w = `${w.slice(0, -3)}y`;
-        else if (w.endsWith('es') && w.length > 3) w = w.slice(0, -2);
-        else if (w.endsWith('s') && w.length > 3) w = w.slice(0, -1);
-        
-        if (w.endsWith('ing') && w.length > 4) {
-            w = w.slice(0, -3);
-            if (w.endsWith('e')) w = w.slice(0, -1);
-        } else if (w.endsWith('ed') && w.length > 4) {
-            w = w.slice(0, -2);
-            if (w.endsWith('e')) w = w.slice(0, -1);
-        } else if (w.endsWith('ly') && w.length > 4) {
-            w = w.slice(0, -2);
-        }
-        
-        if (w.endsWith('bb') || w.endsWith('dd') || w.endsWith('ff') || 
-            w.endsWith('gg') || w.endsWith('mm') || w.endsWith('nn') || 
-            w.endsWith('pp') || w.endsWith('rr') || w.endsWith('tt')) {
-            w = w.slice(0, -1);
-        }
-        
-        if (w.endsWith('tion') && w.length > 5) w = w.slice(0, -4);
-        else if (w.endsWith('ness') && w.length > 5) w = w.slice(0, -4);
-        else if (w.endsWith('ment') && w.length > 5) w = w.slice(0, -4);
-        else if (w.endsWith('ful') && w.length > 4) w = w.slice(0, -3);
-        else if (w.endsWith('able') && w.length > 5) w = w.slice(0, -4);
-        
-        return w;
-    };
-
-    const stopStems = new Set([
-        'he', 'she', 'they', 'i', 'you', 'we', 'it', 'him', 'her', 'them', 'me', 'us',
-        'say', 'ask', 'repl', 'whisper', 'mut', 'shout', 'yell', 'think', 'respond', 'answer', 
-        'call', 'cri', 'exclaim', 'murmur', 'mumbl', 'state', 'remark', 'comment', 'not', 
-        'observ', 'mention', 'add', 'continu', 'be', 'have', 'do', 'will', 'would', 'could', 
-        'should', 'can', 'may', 'might', 'must', 'in', 'on', 'at', 'to', 'from', 'with', 
-        'by', 'for', 'of', 'the', 'a', 'an', 'and', 'but', 'or', 'so', 'if', 'then', 
-        'than', 'this', 'that', 'these', 'those', 'here', 'there', 'when', 'where', 'how', 
-        'what', 'which', 'who', 'whom', 'my', 'your', 'hi', 'our', 'their'
-    ]);
-
     const extractSentenceShingles = (text: string): Set<string>[] => {
         const rawSentences = text.split(/(?<=[.!?])\s+|\n+/).filter(s => s.trim().length > 0);
         const sentenceShingles: Set<string>[] = [];
@@ -1328,8 +1285,8 @@ function buildAntiRepetitionNudgeLines(ctx: PromptBuildContext): string[] {
                 .trim()
                 .split(' ')
                 .filter(w => w.length > 1)
-                .map(stem)
-                .filter(w => !stopStems.has(w));
+                .flatMap(getStemmedContentWords)
+                .filter(w => !STOP_STEMS.has(w));
 
             if (words.length < 3) continue;
 
@@ -1376,8 +1333,8 @@ function buildAntiRepetitionNudgeLines(ctx: PromptBuildContext): string[] {
             .trim()
             .split(' ')
             .filter(w => w.length > 2)
-            .map(stem)
-            .filter(w => !stopStems.has(w));
+            .flatMap(getStemmedContentWords)
+            .filter(w => !STOP_STEMS.has(w));
         return new Set(words);
     });
 
@@ -1506,6 +1463,74 @@ export function createChatHistoryPrompt(
                 const combinedScore = (keywordWeight * keywordScore) + (recencyWeight * recencyScore);
                 return combinedScore >= threshold;
             });
+        }
+
+        if (step.strategyType === 'Entropy Pruning') {
+            const chunkSize = step.entropyPruningChunkSize ?? 3;
+            const threshold = step.entropyPruningThreshold ?? 0.35;
+            const maxRawTokens = step.entropyPruningTokenBudget ?? 2000;
+
+            let accumulatedTokens = 0;
+            let cutoffIndex = 0;
+
+            for (let i = processedMessages.length; i > chunkSize; i -= chunkSize) {
+                const chunkStart = Math.max(0, i - chunkSize);
+                const currentChunk = processedMessages.slice(chunkStart, i);
+                const previousChunk = processedMessages.slice(Math.max(0, chunkStart - chunkSize), chunkStart);
+
+                for (const msg of currentChunk) accumulatedTokens += Math.ceil(msg.text.length / 4);
+
+                let hardBoundary = false;
+                for (let j = 1; j < currentChunk.length; j++) {
+                    const prev = currentChunk[j - 1].msg;
+                    const curr = currentChunk[j].msg;
+                    if (prev.locationIndex !== undefined && curr.locationIndex !== undefined && prev.locationIndex !== curr.locationIndex) {
+                        hardBoundary = true;
+                        break;
+                    }
+                }
+                if (hardBoundary) { cutoffIndex = i; break; }
+                if (accumulatedTokens >= maxRawTokens) { cutoffIndex = i; break; }
+
+                if (previousChunk.length > 0) {
+                    const currentWords = new Set<string>();
+                    for (const msg of currentChunk) {
+                        for (const w of getStemmedContentWords(msg.text)) currentWords.add(w);
+                    }
+                    
+                    const previousWords = new Set<string>();
+                    for (const msg of previousChunk) {
+                        for (const w of getStemmedContentWords(msg.text)) previousWords.add(w);
+                    }
+
+                    let intersection = 0;
+                    for (const w of currentWords) {
+                        if (previousWords.has(w)) intersection++;
+                    }
+                    
+                    const union = currentWords.size + previousWords.size - intersection;
+                    const lexicalOverlap = union > 0 ? intersection / union : 0;
+                    
+                    if ((1 - lexicalOverlap) < threshold) {
+                        cutoffIndex = chunkStart;
+                        break;
+                    }
+                }
+                cutoffIndex = chunkStart;
+            }
+
+            // Apply the cutoff: summarize before, keep raw after
+            for (let i = 0; i < processedMessages.length; i++) {
+                const msg = processedMessages[i].msg;
+                const originalIdx = processedMessages[i].idx;
+
+                if (originalIdx < cutoffIndex) {
+                    if ((msg as ChatMessage).modelTextContentSummaries?.[ctx.modelId]) {
+                        processedMessages[i].text = (msg as ChatMessage).modelTextContentSummaries[ctx.modelId];
+                        hasBeenSummarized = true;
+                    }
+                }
+            }
         }
     }
 
