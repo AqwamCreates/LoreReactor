@@ -50,7 +50,7 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
-    // Focus search input on mount — no setState needed since state initializes fresh
+    // Focus search input on mount
     useEffect(() => {
         searchInputRef.current?.focus();
     }, []);
@@ -63,6 +63,13 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
 
     const sortedItems = useMemo(() => {
         const sorted = [...items].sort((a, b) => {
+            // Priority 1: Active special action goes to the very top
+            if (activeSpecialActionId) {
+                if (a.id === activeSpecialActionId) return -1;
+                if (b.id === activeSpecialActionId) return 1;
+            }
+
+            // Priority 2: Ordered list mode
             if (orderedListMode && currentOrderIds.length > 0) {
                 const aIndex = currentOrderIds.indexOf(a.id);
                 const bIndex = currentOrderIds.indexOf(b.id);
@@ -72,6 +79,8 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
                 else if (aInOrder && !bInOrder) return -1;
                 else if (!aInOrder && bInOrder) return 1;
             }
+
+            // Priority 3: Default sort by lastUpdatedTimestamp, then firstCreatedTimestamp
             const aUpdated = a.lastUpdatedTimestamp ?? 0;
             const bUpdated = b.lastUpdatedTimestamp ?? 0;
             if (aUpdated !== bUpdated) return bUpdated - aUpdated;
@@ -80,7 +89,7 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
             return bCreated - aCreated;
         });
         return sorted;
-    }, [items, orderedListMode, currentOrderIds]);
+    }, [items, orderedListMode, currentOrderIds, activeSpecialActionId]);
 
     const filteredItems = useMemo(() => {
         if (!searchQuery.trim()) return sortedItems;
