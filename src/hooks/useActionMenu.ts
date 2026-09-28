@@ -54,7 +54,7 @@ export function useActionMenu(options: UseActionMenuOptions) {
 
     const [actionMenuTarget, setActionMenuTarget] = useState<{ messageId: string; charId: string; x: number; y: number } | null>(null);
     const [menuSearchQuery, setMenuSearchQuery] = useState('');
-    const [actions, setActions] = useState<InterjectableAction[]>([]);
+    const [allActions, setAllActions] = useState<InterjectableAction[]>([]);
     const [actionsLoading, setActionsLoading] = useState(true);
     const [showActionFormat, setShowActionFormat] = useState(false);
 
@@ -94,15 +94,15 @@ export function useActionMenu(options: UseActionMenuOptions) {
         });
     }, [actionWrap, actionCase, actionPunctuation, isAutoFormat]);
 
-    // Load interjectable actions on mount
+    // Load interjectable allActions on mount
     useEffect(() => {
         let cancelled = false;
         (async () => {
             try {
                 const loaded = await loadInterjectableActions();
-                if (!cancelled) setActions(loaded);
+                if (!cancelled) setAllActions(loaded);
             } catch (e) {
-                console.warn('Failed to load interjectable actions:', e);
+                console.warn('Failed to load interjectable allActions:', e);
             } finally {
                 if (!cancelled) setActionsLoading(false);
             }
@@ -116,7 +116,7 @@ export function useActionMenu(options: UseActionMenuOptions) {
         actionsSaveTimerRef.current = setTimeout(() => {
             actionsSaveTimerRef.current = null;
             saveInterjectableActions(actionsToSave).catch(e =>
-                console.warn('Failed to save interjectable actions:', e)
+                console.warn('Failed to save interjectable allActions:', e)
             );
         }, 500);
     }, []);
@@ -126,7 +126,7 @@ export function useActionMenu(options: UseActionMenuOptions) {
     }, []);
 
     const incrementActionCount = useCallback(async (label: string) => {
-        setActions(prev => {
+        setAllActions(prev => {
             const existing = prev.find(a => a.label === label);
             const next = existing
                 ? prev.map(a => a.label === label ? { ...a, count: a.count + 1 } : a)
@@ -139,23 +139,23 @@ export function useActionMenu(options: UseActionMenuOptions) {
     const handleAddAction = useCallback((label: string) => {
         const trimmed = label.trim();
         if (!trimmed) return;
-        if (actions.some(a => a.label.toLowerCase() === trimmed.toLowerCase())) {
+        if (allActions.some(a => a.label.toLowerCase() === trimmed.toLowerCase())) {
             addToast(`Action "${trimmed}" already exists.`, 'info');
             return;
         }
-        const next = [...actions, { label: trimmed, count: 0 }];
-        setActions(next);
+        const next = [...allActions, { label: trimmed, count: 0 }];
+        setAllActions(next);
         scheduleActionsSave(next);
         setMenuSearchQuery('');
         addToast(`Added action "${trimmed}".`, 'success');
-    }, [actions, addToast, scheduleActionsSave]);
+    }, [allActions, addToast, scheduleActionsSave]);
 
     const handleDeleteAction = useCallback((label: string) => {
-        const next = actions.filter(a => a.label !== label);
-        setActions(next);
+        const next = allActions.filter(a => a.label !== label);
+        setAllActions(next);
         scheduleActionsSave(next);
         addToast(`Removed action "${label}".`, 'info');
-    }, [actions, addToast, scheduleActionsSave]);
+    }, [allActions, addToast, scheduleActionsSave]);
 
     const handleActionInterject = useCallback(async (label: string, targetChar: Character, protagonist: Character) => {
         setActionMenuTarget(null);
@@ -209,10 +209,10 @@ export function useActionMenu(options: UseActionMenuOptions) {
         }
     }, [interactionData, currentCharacter, isLoading, actionWrap, actionCase, actionPunctuation, isAutoFormat, incrementActionCount, stopGeneration, sendActionAndGetResponse, addToast]);
 
-    const getFilteredActions = useCallback(() => actions
+    const getFilteredActions = useCallback(() => allActions
         .filter(a => a.label.toLowerCase().includes(menuSearchQuery.toLowerCase()))
         .sort((a, b) => b.count !== a.count ? b.count - a.count : a.label.localeCompare(b.label)),
-    [actions, menuSearchQuery]);
+    [allActions, menuSearchQuery]);
 
     const handleAvatarClick = useCallback((e: React.MouseEvent, mid: string, char: Character) => {
         e.stopPropagation();
@@ -228,7 +228,7 @@ export function useActionMenu(options: UseActionMenuOptions) {
     return {
         actionMenuTarget,
         menuSearchQuery, setMenuSearchQuery,
-        actions, actionsLoading,
+        allActions, actionsLoading,
         showActionFormat, setShowActionFormat,
         actionWrap, setActionWrap,
         actionCase, setActionCase,
