@@ -7,7 +7,7 @@ import { findPreviousMessage } from '../hooks/chatLogic';
 import { getAudioEngine } from './AudioEngine';
 import { getCurrentLocationIndex, getReachableLocationsByCharacter, isCharacterLockedFromLocation, getCoLocatedParticipants } from '../hooks/locationLogic';
 import { generateCharacterMemory } from './ChatMessageSummarizationEngine';
-import { saveRawCharacter } from '../storage/serverStorage';
+import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface ToolResult {

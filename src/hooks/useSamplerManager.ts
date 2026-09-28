@@ -1,7 +1,7 @@
 // src/hooks/useSamplerManager.ts
 import { useState } from 'react';
 import type { Sampler } from '../types';
-import { loadAllRawSamplers, saveRawSampler, deleteRawSampler } from '../storage/serverStorage';
+import { loadAllRawSamplers, saveRawSampler, deleteRawSampler } from '../storages/serverStorage';
 
 export function useSamplerManager() {
     const [Samplers, setSamplers] = useState<Sampler[]>([]);

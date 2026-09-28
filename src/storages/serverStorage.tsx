@@ -15,6 +15,9 @@ import type {
   RawChatMessage,
   tristateInteger,
   cacheEfficiencyConfigurationType,
+  ActionFormatData,
+  MultiplayerJoinData,
+  SessionData,
 } from '../types';
 
 import { localURL } from '../configurations';
@@ -1608,15 +1611,6 @@ async function deletePreferences(endpoint: string): Promise<void> {
 
 // ─── Session Preferences Storage ────────────────────────────────────
 
-interface SessionData {
-    defaultCharacterId?: string | null;
-    selectedModelId?: string | null;
-    selectedBudgetStrategyId?: string | null;
-    activeChatId?: string | null;
-    activeExtensionIds?: string[]
-    currentAccountId?: string | null;
-}
-
 const SESSION_KEY = 'session_data';
 
 export async function loadRawSessionData(): Promise<SessionData> {
@@ -1651,14 +1645,6 @@ export async function deleteSessionData(): Promise<void> {
 
 // ─── Multiplayer Join Data Storage ─────────────────────────────────
 
-interface MultiplayerJoinData {
-    joinSessionId?: string | null;
-    joinPassword?: string | null;
-    joinProtagonist?: Character | null;
-    joinRequestedCharacterId?: string | null;
-    joinRequestedCharacterData?: Character | null;
-}
-
 const MULTIPLAYER_JOIN_KEY = 'multiplayer_join_data';
 
 export async function loadRawMultiplayerJoinData(): Promise<MultiplayerJoinData> {
@@ -1692,13 +1678,6 @@ export async function deleteMultiplayerJoinData(): Promise<void> {
 }
 
 // ─── Action Format Data Storage ─────────────────────────────────────
-
-interface ActionFormatData {
-    actionWrap?: string;
-    actionCase?: string;
-    actionPunctuation?: string;
-    showActionFormat?: string;
-}
 
 const ACTION_FORMAT_KEY = 'action_format_data';
 

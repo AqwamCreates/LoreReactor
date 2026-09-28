@@ -22,7 +22,7 @@ import {
     loadInteractionMessages,
     loadRawAccount, saveRawAccount,
     loadRawMultiplayerData, saveRawMultiplayerData,
-} from '../storage/serverStorage';
+} from '../storages/serverStorage';
 
 export interface LoreReactorExport {
     version: 1;

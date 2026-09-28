@@ -5,7 +5,7 @@ import { CharacterActor } from '../services/CharacterActor';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngine';
 import { getBudgetStrategyEngine, type RequestMetadata } from '../services/BudgetStrategyEngine';
-import { saveRawInteractionData } from '../storage/serverStorage';
+import { saveRawInteractionData } from '../storages/serverStorage';
 import { updatePartialMessageInInteractionData } from './chatLogic';
 
 const characterActor = new CharacterActor();

@@ -27,7 +27,7 @@ import {
     loadRawMultiplayerJoinData,
     saveRawMultiplayerJoinData,
     deleteMultiplayerJoinData,
-} from '../storage/serverStorage';
+} from '../storages/serverStorage';
 import { createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
 import { useDisplayNameCache, resolveDelayedDisplayNameFromCache } from '../hooks/immersionLogic';
@@ -51,7 +51,7 @@ import { useViewAssets } from '../hooks/useViewAssets';
 import { useMessageToolbar } from '../hooks/useMessageToolbar';
 import { useAppModals } from '../hooks/useAppModals';
 import { useActiveExtensions } from '../hooks/useActiveExtensions';
-import { useSessionStore } from '../store/useSessionStore';
+import { useSessionStore } from '../hooks/useSessionStore';
 import { ActionMenu } from './ActionMenu';
 import { AppModals } from './AppModals';
 import { ChatInput } from './ChatInput';
@@ -329,7 +329,7 @@ function App() {
     useEffect(() => {
         if (!interactionData?.id || joinSessionId) return;
         if (multiplayerData?.interactionDataIds?.includes(interactionData.id)) return;
-        const matchingMultiplayerData = allMultiplayerData.find(multiplayerDataEntry => multiplayerDataEntry.interactionDataIds.includes(interactionData.id!));
+        const matchingMultiplayerData = allMultiplayerData.find(multiplayerDataEntry => multiplayerDataEntry.interactionDataIds.includes(interactionData.id));
         if (matchingMultiplayerData) {
             useSessionStore.setState({ multiplayerData: matchingMultiplayerData });
         } else if (!multiplayerData && allMultiplayerData.length > 0) {

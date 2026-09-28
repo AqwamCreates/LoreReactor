@@ -1,7 +1,7 @@
 // src/hooks/useCharacterVoice.ts
 import { useCallback, useRef, useEffect, useState } from 'react';
 import type { Character, textType } from '../types';
-import { getCharacterVoiceUrl, getMultiplayerCharacterVoiceUrl, loadRawMultiplayerJoinData } from '../storage/serverStorage';
+import { getCharacterVoiceUrl, getMultiplayerCharacterVoiceUrl, loadRawMultiplayerJoinData } from '../storages/serverStorage';
 import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
 import { localAddress } from '../configurations';
 import { useSessionStore } from './useSessionStore';

@@ -328,7 +328,7 @@ export function BudgetControlModal({
         if (!Number.isFinite(value) || value <= 0 || value >= 1) return;
         setIsSaving(true);
         try {
-            const { saveRawBudgetData } = await import('../storage/serverStorage');
+            const { saveRawBudgetData } = await import('../storages/serverStorage');
             const updated = { ...budgetData, averageLatencyMsPerTokenExponentialMovingAverageSmoothing: value };
             await saveRawBudgetData(updated);
             await refresh();
@@ -342,7 +342,7 @@ export function BudgetControlModal({
         if (!Number.isFinite(value) || value <= 0 || value >= 1) return;
         setIsSaving(true);
         try {
-            const { saveRawBudgetData } = await import('../storage/serverStorage');
+            const { saveRawBudgetData } = await import('../storages/serverStorage');
             const updated = { ...budgetData, averageTimeToFirstTokenExponentialMovingAverageSmoothing: value };
             await saveRawBudgetData(updated);
             await refresh();
@@ -352,7 +352,7 @@ export function BudgetControlModal({
 
     const clearDurationTimestamps = async (): Promise<boolean> => {
         if (!budgetData) return false;
-        const { saveRawBudgetData } = await import('../storage/serverStorage');
+        const { saveRawBudgetData } = await import('../storages/serverStorage');
         const updated = { ...budgetData, modelTotalSessionDuration: {} };
         await saveRawBudgetData(updated);
         await refresh();

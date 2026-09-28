@@ -1,7 +1,7 @@
 // src/hooks/useMemoryManager.ts
 import { useState } from 'react';
 import type { Memory } from '../types';
-import { loadAllRawMemories, saveRawMemory, deleteRawMemory } from '../storage/serverStorage';
+import { loadAllRawMemories, saveRawMemory, deleteRawMemory } from '../storages/serverStorage';
 
 export function useMemoryManager() {
     const [memories, setMemories] = useState<Memory[]>([]);

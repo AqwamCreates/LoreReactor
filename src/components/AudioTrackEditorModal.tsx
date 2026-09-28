@@ -1,7 +1,7 @@
 // src/components/AudioTrackEditorModal.tsx
 import { useState, useEffect, useRef } from 'react';
 import type { AudioTrack, Character, Context, Location, audioCategory, RegularExpressionTrigger } from '../types';
-import { uploadAudioTrack, getAudioTrackUrl } from '../storage/serverStorage';
+import { uploadAudioTrack, getAudioTrackUrl } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
 import '../main.css';

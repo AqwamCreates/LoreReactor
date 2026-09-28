@@ -9,7 +9,7 @@ import type {
 import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';
 import type { ModalController } from '../hooks/useAppModals';
 import type { EntityType } from '../hooks/useEntityModals';
-import { loadRawInteractionData } from '../storage/serverStorage';
+import { loadRawInteractionData } from '../storages/serverStorage';
 import { ManagerModal } from './ManagerModal';
 import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';

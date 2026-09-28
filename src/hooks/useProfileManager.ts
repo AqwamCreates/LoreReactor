@@ -1,7 +1,7 @@
 // src/hooks/useProfileManager.ts
 import { useState } from 'react';
 import type { Profile } from '../types';
-import { loadAllRawProfiles, saveRawProfile, deleteRawProfile } from '../storage/serverStorage';
+import { loadAllRawProfiles, saveRawProfile, deleteRawProfile } from '../storages/serverStorage';
 
 export function useProfileManager() {
     const [profiles, setProfiles] = useState<Profile[]>([]);

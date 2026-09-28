@@ -1,7 +1,7 @@
 // src/store/useSessionStore.ts
 import { create } from 'zustand';
 import type { Character, InteractionData, BudgetStrategy, LanguageModel, BudgetData, MultiplayerData } from '../types';
-import { loadRawSessionData, saveRawSessionData } from '../storage/serverStorage';
+import { loadRawSessionData, saveRawSessionData } from '../storages/serverStorage';
 
 interface SessionState {
     // ── Core chat state ──────────────────────────────────────────────

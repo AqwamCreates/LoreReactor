@@ -4,7 +4,7 @@ import { useState, useRef } from 'react';
 import type { Character, Context, Sampler } from '../types';
 import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExtended } from '../services/characterCardParser';
 import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getSkipProbabilityValueFromText, getChatImpatienceSensitivityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText, getMaximumActionStaminaValueFromText } from '../hooks/chatTraitsDetection';
-import { uploadCharacterImage } from '../storage/serverStorage';
+import { uploadCharacterImage } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { defaultCharacterTools } from '../dictionaries/defaults';
 import '../main.css';

@@ -1,7 +1,7 @@
 // src/hooks/useChatRestoration.ts
 import { useState, useRef, useEffect } from 'react';
 import type { Character, InteractionData, RawInteractionData } from '../types';
-import { loadRawInteractionData, loadRawSessionData, saveRawSessionData } from '../storage/serverStorage';
+import { loadRawInteractionData, loadRawSessionData, saveRawSessionData } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 
 interface UseChatRestorationOptions {

@@ -1,6 +1,6 @@
 // src/services/CharacterActor.ts
 import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile } from '../types';
-import { loadRawBudgetData, saveRawBudgetData } from '../storage/serverStorage';
+import { loadRawBudgetData, saveRawBudgetData } from '../storages/serverStorage';
 import { buildChatRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../hooks/chatLogic';
 import { detectName } from '../hooks/nameDetection';
 import { getFilteredChatMessages } from '../hooks/promptLogic';

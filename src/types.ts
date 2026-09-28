@@ -855,3 +855,27 @@ export interface RawAudioTrack extends RawData {
     characterBindings: string[];
     priority: number; 
 }
+
+export interface SessionData {
+    defaultCharacterId?: string | null;
+    selectedModelId?: string | null;
+    selectedBudgetStrategyId?: string | null;
+    activeChatId?: string | null;
+    activeExtensionIds?: string[]
+    currentAccountId?: string | null;
+}
+
+export interface MultiplayerJoinData {
+    joinSessionId?: string | null;
+    joinPassword?: string | null;
+    joinProtagonist?: Character | null;
+    joinRequestedCharacterId?: string | null;
+    joinRequestedCharacterData?: Character | null;
+}
+
+export interface ActionFormatData {
+    actionWrap?: string;
+    actionCase?: string;
+    actionPunctuation?: string;
+    showActionFormat?: string;
+}

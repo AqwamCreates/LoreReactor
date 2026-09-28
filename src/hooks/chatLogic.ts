@@ -4,7 +4,7 @@ import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
 import { getKnownDisplayName, deriveDelimiters } from './promptLogic';
 import type { EntityImageRef } from './promptLogic';
 import { v4 as uuidv4 } from 'uuid';
-import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storage/serverStorage';
+import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storages/serverStorage';
 import { getEffectiveUseFrontCameraImage, getEffectiveMaximumChatStamina, initializeClothingWearingStatuses } from './characterLogic';
 import { buildPrompt, getParticipantTag } from './promptLogic';
 import { getCoLocatedParticipants } from './locationLogic';

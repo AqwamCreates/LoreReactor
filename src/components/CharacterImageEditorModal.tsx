@@ -1,7 +1,7 @@
 // src/components/CharacterImageEditorModal.tsx
 import type React from 'react';
 import { useState, useRef } from 'react';
-import { uploadCharacterImage, getCharacterImageUrl } from '../storage/serverStorage';
+import { uploadCharacterImage, getCharacterImageUrl } from '../storages/serverStorage';
 import '../main.css';
 
 const EMOTION_LABELS = [

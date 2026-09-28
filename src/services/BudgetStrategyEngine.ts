@@ -7,7 +7,7 @@ import { FeatureExtractor } from './FeatureExtractor';
 import {
     loadRawFactorizationMachine,
     saveRawFactorizationMachine,
-} from '../storage/serverStorage';
+} from '../storages/serverStorage';
 
 // ─── Types ───────────────────────────────────────────────────────────
 

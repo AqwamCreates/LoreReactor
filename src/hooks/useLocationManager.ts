@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Location } from '../types';
-import { loadAllRawLocations, saveRawLocation, deleteRawLocation } from '../storage/serverStorage';
+import { loadAllRawLocations, saveRawLocation, deleteRawLocation } from '../storages/serverStorage';
 
 export function useLocationManager() {
     const [locations, setLocations] = useState<Location[]>([]);

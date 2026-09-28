@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { InteractionData, MultiplayerData, HistoryMessage, Character, ChatMessage, InteractionMessage, WhisperMessage, LanguageModel } from '../types';
 import { useMultiplayerConnection, type MultiplayerMessage, type JoinRequestPayload, type JoinResponsePayload, type MessageEditPayload, type MessageDeletePayload, type HostMigrationPayload } from './useMultiplayerConnection';
 import { useSessionStore } from './useSessionStore';
-import { saveRawMultiplayerCharacter } from '../storage/serverStorage';
+import { saveRawMultiplayerCharacter } from '../storages/serverStorage';
 
 interface SyncChatMessagePayload {
     messageId: string;

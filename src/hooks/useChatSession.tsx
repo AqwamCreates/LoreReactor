@@ -12,7 +12,7 @@ import { consumeChatStaminaForMessage } from './characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from './locationLogic';
 import { detectName } from './nameDetection';
 import { getFilteredChatMessages } from './promptLogic';
-import { saveRawInteractionData, loadRawBudgetData, saveRawBudgetData } from '../storage/serverStorage';
+import { saveRawInteractionData, loadRawBudgetData, saveRawBudgetData } from '../storages/serverStorage';
 import { useThrottledStream } from './useThrottledStream';
 import { useCharacterResponseLock } from './useCharacterResponseLock';
 import { useAmbientNarration } from './useAmbientNarration';
@@ -1125,7 +1125,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         let trimIdx = ti;
         if (isProtagonistMessage) trimIdx = trimIdx + 1;
         const toDelete = history.slice(trimIdx);
-        if (toDelete.length) try { await Promise.all(toDelete.map(m => import('../storage/serverStorage').then(s => s.deleteRawInteractionMessage(m.id)))); } catch (e) { console.error('Delete failed:', e); }
+        if (toDelete.length) try { await Promise.all(toDelete.map(m => import('../storages/serverStorage').then(s => s.deleteRawInteractionMessage(m.id)))); } catch (e) { console.error('Delete failed:', e); }
 
         const td: InteractionData = { ...currentInteractionData, interactionHistory: history.slice(0, trimIdx), lastUpdatedTimestamp: Date.now() };
         setInteractionData(td);

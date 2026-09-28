@@ -1,7 +1,7 @@
 // src/hooks/useEntityToggles.ts
 import { useCallback } from 'react';
 import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy, InteractionData, MultiplayerData } from '../types';
-import { saveRawInteractionData, loadRawContext, loadRawLocation, loadRawAudioTrack } from '../storage/serverStorage';
+import { saveRawInteractionData, loadRawContext, loadRawLocation, loadRawAudioTrack } from '../storages/serverStorage';
 import { assignInitialLocationsIfNeeded } from './locationLogic';
 import { useSessionStore } from './useSessionStore';
 import { createDefaultMultiplayerData } from '../dictionaries/defaults';

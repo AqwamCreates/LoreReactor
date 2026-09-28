@@ -1,7 +1,7 @@
 // src/hooks/useAccountManager.ts
 import { useState, useCallback } from 'react';
 import type { Account } from '../types';
-import { loadAllRawAccounts, saveRawAccount, deleteRawAccount } from '../storage/serverStorage';
+import { loadAllRawAccounts, saveRawAccount, deleteRawAccount } from '../storages/serverStorage';
 import { useSessionStore } from './useSessionStore';
 
 export function useAccountManager() {

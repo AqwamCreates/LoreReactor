@@ -2,7 +2,7 @@
 import type { Character, InteractionData, HistoryMessage, ChatMessage, InteractionMessage } from '../types';
 import { getEffectiveChatProbability, getEffectiveChatImpatienceSensitivity, generateChatStaminaForInteractionData, generateActionStaminaForInteractionData, consumeChatStaminaForMessage, consumeActionStaminaForMessage } from '../hooks/characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex, getReachableLocationsByCharacter, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../hooks/locationLogic';
-import { saveRawInteractionData } from '../storage/serverStorage';
+import { saveRawInteractionData } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import {
     countParagraphs,

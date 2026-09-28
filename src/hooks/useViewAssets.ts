@@ -1,7 +1,7 @@
 // src/hooks/useViewAssets.ts
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Character, InteractionData, ChatMessage } from '../types';
-import { getCharacterImageUrl, getLocationImageUrl, getMultiplayerCharacterImageUrl } from '../storage/serverStorage';
+import { getCharacterImageUrl, getLocationImageUrl, getMultiplayerCharacterImageUrl } from '../storages/serverStorage';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 

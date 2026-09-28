@@ -1,7 +1,7 @@
 // src/hooks/useMultiplayerDataManager.ts
 import { useState, useCallback } from 'react';
 import type { MultiplayerData } from '../types';
-import { loadAllRawMultiplayerData, saveRawMultiplayerData, deleteRawMultiplayerData } from '../storage/serverStorage';
+import { loadAllRawMultiplayerData, saveRawMultiplayerData, deleteRawMultiplayerData } from '../storages/serverStorage';
 import { useSessionStore } from './useSessionStore';
 
 export function useMultiplayerDataManager() {
