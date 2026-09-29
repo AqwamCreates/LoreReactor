@@ -17,7 +17,7 @@ import {
 import { findPreviousMessage } from '../utilities/chatLogic';
 import type { HandleServerResponseResult } from '../hooks/useChatEngine';
 
-type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal, onToken: (t: string) => void) => Promise<HandleServerResponseResult | null>
+type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal) => Promise<HandleServerResponseResult | null>
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
     return msg.messageType === 'chat';
@@ -65,8 +65,16 @@ export async function runTurnSequence(
     executor: TurnExecutor,
     abortController: AbortController,
     onSpeakerChange?: (char: Character | null) => void,
-    onTokenStream?: (text: string) => void
+    onIntermediateData?: (data: InteractionData) => void
 ): Promise<{ interactionData: InteractionData; isCompleted: boolean } | null> {
+
+    const emitIntermediateData = (data: InteractionData) => {
+        if (!onIntermediateData) return;
+        onIntermediateData({
+            ...data,
+            interactionHistory: [...data.interactionHistory],
+        });
+    };
 
     const profile = currentInteractionData.Profile;
     let workingData = { ...currentInteractionData, interactionHistory: [...currentInteractionData.interactionHistory] };
@@ -166,7 +174,6 @@ export async function runTurnSequence(
                 workingData,
                 speaker,
                 abortController.signal,
-                onTokenStream || (() => {})
             );
 
             if (!result) {
@@ -206,6 +213,8 @@ export async function runTurnSequence(
 
             workingData = resultData;
             spokenThisSequence.add(speaker.id);
+
+            emitIntermediateData(workingData);
 
             // If the last generation was incomplete, stop the sequence so caller can auto-resume
             if (!sequenceCompleted) break;
@@ -295,6 +304,8 @@ export async function runTurnSequence(
             }
 
             actedThisSequence.add(mover.id);
+            
+            emitIntermediateData(workingData);
         }
     }
 

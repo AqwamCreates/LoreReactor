@@ -143,7 +143,7 @@ export function useChatEngine(deps: EngineDependencies) {
         let lastPromptText: string | undefined = undefined;
 
         // Matches TurnExecutor: (data, character, signal, onToken)
-        const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken: (t: string) => void) => {
+        const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken?: (t: string) => void) => {
             setStreamingState(c, '');
             const result = await handleServerResponse(d, c, s, onToken, undefined, '', promptBlocks, metadata);
             
@@ -156,9 +156,10 @@ export function useChatEngine(deps: EngineDependencies) {
 
         const result = await runTurnSequence(
             initialData,
-            executor, 
+            executor,
             signal, 
-            (char) => setStreamingState(char ?? null, '')
+            (token) => setStreamingState(token ?? null, ''),
+            (data) => setInteractionData(data)
         );
 
         if (result) {

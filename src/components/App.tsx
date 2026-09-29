@@ -474,8 +474,12 @@ function App() {
             if (isLastStreaming) {
                 const idx = base.length - 1;
                 const name = resolveDelayedDisplayNameFromCache(displayNameCache, idx, streamingCharacter.id);
-                (base[idx] as any).textContent = streamingText;
-                (base[idx] as any).character = { ...last!.character, name };
+                
+                base[idx] = {
+                    ...last!,
+                    textContent: streamingText,
+                    character: { ...last!.character, name },
+                } as any;
             } else if (!last || last.character.id !== streamingCharacter.id) {
                 const name = resolveDelayedDisplayNameFromCache(displayNameCache, base.length, streamingCharacter.id);
                 base.push({
