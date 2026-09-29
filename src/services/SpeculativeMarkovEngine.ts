@@ -10,8 +10,14 @@ interface CharacterSessionState {
     lastProcessedTimestamp: number;
 }
 
+// Delimiter that cannot occur inside textual tokens
+const NGRAM_DELIMITER = '\u001F';
+
+// Unicode-aware tokenizer: matches words/letters (including non-Latin), numbers, emojis, whitespace, or punctuation
+const TOKEN_REGEX = /\p{Extended_Pictographic}|\p{L}+|\p{N}+|\s+|[^\s\p{L}\p{N}]/gu;
+
 export class SpeculativeMarkovEngine {
-    private n = 3; // Order-3 Markov
+    private n = 3; // Order-3 Markov (2 prefix tokens -> 1 next token)
     private sessionCache = new Map<string, CharacterSessionState>();
 
     private getOrCreateState(interactionDataId: string, characterId: string): CharacterSessionState {
@@ -22,6 +28,11 @@ export class SpeculativeMarkovEngine {
         return this.sessionCache.get(key)!;
     }
 
+    private tokenize(text: string): string[] {
+        if (!text) return [];
+        return text.match(TOKEN_REGEX) || [];
+    }
+
     /**
      * FULL TRAIN: Wipes existing state and rebuilds from scratch.
      * Use this when a new chat session is loaded.
@@ -30,7 +41,6 @@ export class SpeculativeMarkovEngine {
         messages: { textContent: string; lastUpdatedTimestamp: number; characterId: string }[],
         interactionDataId: string
     ) {
-        // Group by character to handle multi-character sessions efficiently
         const charMessages = new Map<string, { textContent: string; lastUpdatedTimestamp: number }[]>();
         
         for (const msg of messages) {
@@ -45,7 +55,7 @@ export class SpeculativeMarkovEngine {
 
         for (const [charId, msgs] of charMessages.entries()) {
             const state = this.getOrCreateState(interactionDataId, charId);
-            state.nGramMap.clear(); // Wipe slate clean
+            state.nGramMap.clear();
             state.lastProcessedTimestamp = 0;
             
             for (const msg of msgs) {
@@ -57,7 +67,6 @@ export class SpeculativeMarkovEngine {
 
     /**
      * INCREMENTAL SYNC: Only processes messages newer than the last sync.
-     * Use this during streaming to catch up on new turns.
      */
     public syncMessages(
         messages: { textContent: string; lastUpdatedTimestamp: number }[], 
@@ -75,25 +84,25 @@ export class SpeculativeMarkovEngine {
     }
 
     private addMessageToMap(map: Map<string, NGramNode>, textContent: string) {
-        // Updated regex to explicitly include whitespace (\s+), numbers/words (\w+), and punctuation ([^\w\s])
-        const tokens = textContent.match(/\w+|\s+|[^\w\s]/g) || [];
+        const tokens = this.tokenize(textContent);
+        if (tokens.length < this.n) return;
         
         for (let i = 0; i <= tokens.length - this.n; i++) {
-            const prefix = tokens.slice(i, i + this.n - 1).join(' ');
+            const prefix = tokens.slice(i, i + this.n - 1).join(NGRAM_DELIMITER);
             const nextToken = tokens[i + this.n - 1];
             
-            if (!map.has(prefix)) {
-                map.set(prefix, { nextTokens: new Map(), totalCount: 0 });
+            let node = map.get(prefix);
+            if (!node) {
+                node = { nextTokens: new Map(), totalCount: 0 };
+                map.set(prefix, node);
             }
-            const node = map.get(prefix)!;
             node.nextTokens.set(nextToken, (node.nextTokens.get(nextToken) || 0) + 1);
             node.totalCount++;
         }
     }
 
     /**
-     * PREDICT: Greedily generates tokens until confidence drops below the financial threshold.
-     * Formula: confidenceThreshold = cacheMissCost / outputCost
+     * PREDICT: Generates tokens speculatively until confidence drops below the threshold.
      */
     public predictSequence(
         currentText: string, 
@@ -107,65 +116,80 @@ export class SpeculativeMarkovEngine {
         if (!state || state.nGramMap.size === 0) return null;
 
         const map = state.nGramMap;
-        // Updated regex to match the training tokenization
-        const tokens = currentText.match(/\w+|\s+|[^\w\s]/g) || [];
-        if (tokens.length < this.n - 1) return null;
+        const tokens = this.tokenize(currentText);
+        const prefixLength = this.n - 1;
 
-        // FORMULA 1: The confidence threshold required to continue generating
-        const confidenceThreshold = cacheMissCost / outputCost;
+        if (tokens.length < prefixLength) return null;
+
+        // Confidence threshold calculation
+        const safeOutputCost = Math.max(0.0001, outputCost);
+        const confidenceThreshold = Math.min(1.0, cacheMissCost / safeOutputCost);
 
         const appendedTokens: string[] = [];
-        let currentPrefix = tokens.slice(-(this.n - 1)).join(' ');
+        // Maintain an array window rather than splitting strings
+        const currentWindow: string[] = tokens.slice(-prefixLength);
 
-        // Loop until confidence drops or we hit a safety cap (100 tokens)
-        for (let i = 0; i < 100; i++) {
-            const node = map.get(currentPrefix);
+        // Safety cap: up to 64 tokens
+        for (let i = 0; i < 64; i++) {
+            const currentPrefixKey = currentWindow.join(NGRAM_DELIMITER);
+            const node = map.get(currentPrefixKey);
             if (!node || node.totalCount === 0) break;
 
-            let maxProb = 0;
-            const weights = new Map<string, number>();
-            let totalWeight = 0;
+            // Find best candidate (Argmax)
+            let bestToken = '';
+            let maxCount = 0;
 
             for (const [token, count] of node.nextTokens.entries()) {
-                const prob = count / node.totalCount;
-                if (prob > maxProb) maxProb = prob;
-
-                const weight = prob ** (1 / temperature);
-                weights.set(token, weight);
-                totalWeight += weight;
-            }
-
-            // STOP CONDITION: If the best guess isn't confident enough, stop.
-            if (maxProb < confidenceThreshold) {
-                break; 
-            }
-
-            // Weighted Random Sampling
-            let random = Math.random() * totalWeight;
-            let selectedToken = '';
-            for (const [token, weight] of weights.entries()) {
-                random -= weight;
-                if (random <= 0) {
-                    selectedToken = token;
-                    break;
+                if (count > maxCount) {
+                    maxCount = count;
+                    bestToken = token;
                 }
             }
-            if (!selectedToken) selectedToken = Array.from(node.nextTokens.keys())[0];
+
+            const bestProb = maxCount / node.totalCount;
+
+            // STOP CONDITION: If confidence is lower than cost recovery threshold, break
+            if (bestProb < confidenceThreshold || !bestToken) {
+                break;
+            }
+
+            // Speculative decoding favors argmax, but if temperature is requested and valid:
+            let selectedToken = bestToken;
+            if (temperature > 0.05 && node.nextTokens.size > 1) {
+                let totalWeight = 0;
+                const weights = new Map<string, number>();
+
+                for (const [token, count] of node.nextTokens.entries()) {
+                    const prob = count / node.totalCount;
+                    // Only consider tokens meeting the threshold
+                    if (prob >= confidenceThreshold) {
+                        const weight = prob ** (1 / Math.max(0.1, temperature));
+                        weights.set(token, weight);
+                        totalWeight += weight;
+                    }
+                }
+
+                if (totalWeight > 0) {
+                    let random = Math.random() * totalWeight;
+                    for (const [token, weight] of weights.entries()) {
+                        random -= weight;
+                        if (random <= 0) {
+                            selectedToken = token;
+                            break;
+                        }
+                    }
+                }
+            }
 
             appendedTokens.push(selectedToken);
-            const newTokens = [...currentPrefix.split(' '), selectedToken];
-            currentPrefix = newTokens.slice(-(this.n - 1)).join(' ');
+
+            // Advance the sliding window
+            currentWindow.shift();
+            currentWindow.push(selectedToken);
         }
 
         if (appendedTokens.length > 0) {
-            const joined = appendedTokens.join('');
-            const lastChar = currentText.slice(-1);
-            
-            // Prevent double-spacing if the Markov chain naturally predicted a leading space
-            const alreadyHasLeadingSpace = /^\s/.test(joined);
-            const needsSpace = !/[\s\p{P}]/u.test(lastChar) && !alreadyHasLeadingSpace;
-            
-            return (needsSpace ? ' ' : '') + joined; 
+            return appendedTokens.join('');
         }
 
         return null;

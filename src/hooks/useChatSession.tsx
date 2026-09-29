@@ -158,6 +158,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     const resumingExistingTextRef = useRef<string>('');
     const isAtBottomRef = useRef(true);
     const wasStoppedRef = useRef(false);
+    const isSpeculatingRef = useRef(false);
 
     const resumeGenerationRef = useRef<(messageId: string, allPromptBlocks?: PromptBlock[]) => Promise<void>>(null);
     const streamingMessageIdRef = useRef<string | null>(null);
@@ -203,8 +204,13 @@ export function useChatSession(options: UseChatSessionOptions) {
         const char = streamingCharacterRef.current;
         const msgId = streamingMessageIdRef.current;
         
+        // Track token interval accurately
+        const now = Date.now();
+        const timeSinceLastToken = lastTokenTimestampRef.current > 0 ? (now - lastTokenTimestampRef.current) : 25;
+        lastTokenTimestampRef.current = now;
+
         const profile = getState().interactionData?.Profile;
-        if (profile?.enableSpeculativeMarkov && char && msgId && abortControllerRef.current) {
+        if (profile?.enableSpeculativeMarkov && char && msgId && abortControllerRef.current && !isSpeculatingRef.current) {
             const model = getState().selectedModel;
             const currentData = getState().interactionData;
             const currentDataId = currentData?.id || 'unknown';
@@ -239,10 +245,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                         const TTFT_ms = budgetData?.modelAverageTimeToFirstToken?.[modelId] ?? 500;
                         const msPerToken = budgetData?.modelAverageLatencyMsPerToken?.[modelId] ?? 25;
 
-                        const now = Date.now();
-                        const timeSinceLastToken = now - lastTokenTimestampRef.current;
-                        lastTokenTimestampRef.current = now;
-
                         const latencyFactor = calculateLatencyFactor(timeSinceLastToken, TTFT_ms, msPerToken);
                         
                         const TTFT_seconds = TTFT_ms / 1000;
@@ -253,13 +255,38 @@ export function useChatSession(options: UseChatSessionOptions) {
                     }
                     
                     if (estimatedTokens >= minTokensThreshold) {
-                        const newText = text + prediction;
-                        throttledSetStreamingText(newText);
+                        isSpeculatingRef.current = true;
+                        const completedText = text + prediction;
+                        throttledSetStreamingText(completedText);
                         abortControllerRef.current?.abort();
-                        setTimeout(() => {
-                            resumeGenerationRef.current?.(msgId, undefined);
-                        }, 50);
-                        return; 
+
+                        const freshData = getState().interactionData;
+                        if (freshData && char) {
+                            const existingMsgIdx = freshData.interactionHistory.findIndex(m => m.id === msgId);
+                            let updatedData: InteractionData;
+                            if (existingMsgIdx === -1) {
+                                const speculativeMsg = createChatMessage(freshData, char, completedText);
+                                speculativeMsg.id = msgId;
+                                updatedData = addMessageToInteractionData(freshData, speculativeMsg);
+                            } else {
+                                const updatedHistory = [...freshData.interactionHistory];
+                                updatedHistory[existingMsgIdx] = {
+                                    ...updatedHistory[existingMsgIdx],
+                                    textContent: completedText,
+                                    lastUpdatedTimestamp: Date.now(),
+                                } as ChatMessage;
+                                updatedData = { ...freshData, interactionHistory: updatedHistory, lastUpdatedTimestamp: Date.now() };
+                            }
+                            setInteractionData(updatedData);
+
+                            setTimeout(() => {
+                                isSpeculatingRef.current = false;
+                                resumeGenerationRef.current?.(msgId, undefined);
+                            }, 60);
+                        } else {
+                            isSpeculatingRef.current = false;
+                        }
+                        return;
                     }
                 }
             }
@@ -285,7 +312,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             };
             onMessageBroadcastRef.current(partialMsg);
         }
-    }, [throttledSetStreamingText, getState]);
+    }, [throttledSetStreamingText, getState, setInteractionData]);
 
     useEffect(() => {
         let cancelled = false;
@@ -545,10 +572,12 @@ export function useChatSession(options: UseChatSessionOptions) {
         const ctrl = new AbortController();
         abortControllerRef.current = ctrl;
         wasStoppedRef.current = false;
+        isSpeculatingRef.current = false;
         resetStream();
         setStreamingState(null, '');
         setStats({ latency: 0, timeToFirstToken: 0 });
         isAtBottomRef.current = true;
+        lastTokenTimestampRef.current = Date.now();
 
         try {
             const latestState = getState();
@@ -612,18 +641,20 @@ export function useChatSession(options: UseChatSessionOptions) {
                 numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
             };
 
-            const targetChar = activeCharacter;
             const interactionDataId = latestState.interactionData?.id || 'unknown';
             
-            const charHistory = latestState.interactionData?.interactionHistory.filter(
-                (m): m is ChatMessage | WhisperMessage => 
-                    m.character.id === targetChar.id && (m.messageType === 'chat' || m.messageType === 'whisper')
-            ) || [];
-            speculativeMarkovEngine.syncMessages(
-                charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
-                targetChar.id,
-                interactionDataId
-            );
+            // Sync all participants in the session to ensure Markov models are up-to-date
+            for (const participant of td.participants) {
+                const charHistory = td.interactionHistory.filter(
+                    (m): m is ChatMessage | WhisperMessage => 
+                        m.character.id === participant.id && (m.messageType === 'chat' || m.messageType === 'whisper')
+                );
+                speculativeMarkovEngine.syncMessages(
+                    charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
+                    participant.id,
+                    interactionDataId
+                );
+            }
 
             const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks, metadata);
             let ud = turnResult.interactionData;
@@ -687,6 +718,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             }
         } finally {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
+            isSpeculatingRef.current = false;
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
             releaseLock();
@@ -718,10 +750,12 @@ export function useChatSession(options: UseChatSessionOptions) {
         const ctrl = new AbortController();
         abortControllerRef.current = ctrl;
         wasStoppedRef.current = false;
+        isSpeculatingRef.current = false;
         resetStream();
         setStreamingState(null, '');
         setStats({ latency: 0, timeToFirstToken: 0 });
         isAtBottomRef.current = true;
+        lastTokenTimestampRef.current = Date.now();
 
         try {
             const td = currentState.interactionData;
@@ -813,6 +847,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             }
         } finally {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
+            isSpeculatingRef.current = false;
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
             releaseLock();
@@ -876,10 +911,12 @@ export function useChatSession(options: UseChatSessionOptions) {
         const ctrl = new AbortController();
         abortControllerRef.current = ctrl;
         wasStoppedRef.current = false;
+        isSpeculatingRef.current = false;
         resetStream();
         setStreamingState(null, '');
         setStats({ latency: 0, timeToFirstToken: 0 });
         isAtBottomRef.current = true;
+        lastTokenTimestampRef.current = Date.now();
 
         try {
             const filteredMessages = getFilteredChatMessages(currentInteractionData, protagonist.id, allPromptBlocksRef.current || []);
@@ -905,15 +942,17 @@ export function useChatSession(options: UseChatSessionOptions) {
             };
 
             const interactionDataId = currentInteractionData?.id || 'unknown';
-            const charHistory = currentInteractionData?.interactionHistory.filter(
-                (m): m is ChatMessage | WhisperMessage => 
-                    m.character.id === protagonist.id && (m.messageType === 'chat' || m.messageType === 'whisper')
-            ) || [];
-            speculativeMarkovEngine.syncMessages(
-                charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
-                protagonist.id,
-                interactionDataId
-            );
+            for (const participant of td.participants) {
+                const charHistory = td.interactionHistory.filter(
+                    (m): m is ChatMessage | WhisperMessage => 
+                        m.character.id === participant.id && (m.messageType === 'chat' || m.messageType === 'whisper')
+                );
+                speculativeMarkovEngine.syncMessages(
+                    charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
+                    participant.id,
+                    interactionDataId
+                );
+            }
 
             const turnResult = await chatEngine.runTurn(td, ctrl, undefined, metadata);
             let ud = turnResult.interactionData;
@@ -973,6 +1012,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             }
         } finally {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
+            isSpeculatingRef.current = false;
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
             releaseLock();
@@ -990,6 +1030,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     const stopGeneration = useCallback(() => {
         wasStoppedRef.current = true;
+        isSpeculatingRef.current = false;
 
         const resumeId = resumingMessageIdRef.current;
         const currentData = getState().interactionData;
@@ -1072,6 +1113,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         resumingMessageIdRef.current = messageId;
         resumingExistingTextRef.current = existingText;
         wasStoppedRef.current = false;
+        isSpeculatingRef.current = false;
         const ctrl = new AbortController(); 
         abortControllerRef.current = ctrl;
 
@@ -1083,6 +1125,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         setStreamingState(char, existingText);
         setStats({ latency: 0, timeToFirstToken: 0 });
         isAtBottomRef.current = true;
+        lastTokenTimestampRef.current = Date.now();
 
         try {
             const result = await chatEngine.handleServerResponse(
@@ -1127,6 +1170,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             pendingPartialRef.current = null;
         } finally {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
+            isSpeculatingRef.current = false;
             resumingMessageIdRef.current = null;
             resumingExistingTextRef.current = '';
             streamingCharacterRef.current = null;
@@ -1212,7 +1256,9 @@ export function useChatSession(options: UseChatSessionOptions) {
         setStreamingState(null, '');
         setStats({ latency: 0, timeToFirstToken: 0 });
         wasStoppedRef.current = false;
+        isSpeculatingRef.current = false;
         isAtBottomRef.current = true;
+        lastTokenTimestampRef.current = Date.now();
 
         const ctrl = new AbortController(); 
         abortControllerRef.current = ctrl;
@@ -1229,6 +1275,19 @@ export function useChatSession(options: UseChatSessionOptions) {
                 numberOfMessages: td.interactionHistory.length,
                 numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
             };
+
+            const interactionDataId = td?.id || 'unknown';
+            for (const participant of td.participants) {
+                const charHistory = td.interactionHistory.filter(
+                    (m): m is ChatMessage | WhisperMessage => 
+                        m.character.id === participant.id && (m.messageType === 'chat' || m.messageType === 'whisper')
+                );
+                speculativeMarkovEngine.syncMessages(
+                    charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
+                    participant.id,
+                    interactionDataId
+                );
+            }
 
             const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks, metadata);
             let ud = turnResult.interactionData;
@@ -1290,6 +1349,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             } 
         } finally {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
+            isSpeculatingRef.current = false;
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
             releaseLock();
