@@ -17,7 +17,7 @@ import { getCoLocatedParticipants, getCoLocatedProtagonists } from '../utilities
 import '../main.css';
 import { defaultCharacterTools } from '../dictionaries/defaults';
 import { toolLabels } from '../dictionaries/texts';
-import { emotionLabels } from '../dictionaries/characterPresets';
+import { emotions } from '../dictionaries/characterPresets';
 
 // ─── Defaults ───────────────────────────────────────────────────────
 const DEFAULT_INITIATIVE_WEIGHT = 1.2;
@@ -763,12 +763,12 @@ function CharacterEditorModalInner({
     }, []);
 
     // Memory prompts helper (Expression -> Template string)
-    const [newMemoryPromptExpression, setNewMemoryPromptExpression] = useState<string>(emotionLabels[0]);
+    const [newMemoryPromptExpression, setNewMemoryPromptExpression] = useState<string>(emotions[0]);
     const [newMemoryPromptTemplate, setNewMemoryPromptTemplate] = useState('');
 
-    const availableEmotionLabels = useMemo(() => {
+    const availableEmotions = useMemo(() => {
         const used = new Set(Object.keys(memoryPrompts));
-        return emotionLabels.filter(label => !used.has(label));
+        return emotions.filter(label => !used.has(label));
     }, [memoryPrompts]);
 
     const handleAddMemoryPrompt = useCallback(() => {
@@ -778,8 +778,8 @@ function CharacterEditorModalInner({
         setMemoryPrompts(prev => ({ ...prev, [expr]: tmpl }));
         setNewMemoryPromptTemplate('');
         const usedAfter = new Set([...Object.keys(memoryPrompts), expr]);
-        const nextAvailable = emotionLabels.find(l => !usedAfter.has(l));
-        setNewMemoryPromptExpression(nextAvailable ?? emotionLabels[0]);
+        const nextAvailable = emotions.find(l => !usedAfter.has(l));
+        setNewMemoryPromptExpression(nextAvailable ?? emotions[0]);
     }, [newMemoryPromptExpression, newMemoryPromptTemplate, memoryPrompts]);
 
     const handleRemoveMemoryPrompt = useCallback((expr: string) => {
@@ -966,18 +966,18 @@ function CharacterEditorModalInner({
                                                 className="editor-select"
                                                 value={newMemoryPromptExpression}
                                                 onChange={e => setNewMemoryPromptExpression(e.target.value)}
-                                                disabled={isUploading || availableEmotionLabels.length === 0}
+                                                disabled={isUploading || availableEmotions.length === 0}
                                                 style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }}
                                             >
-                                                {availableEmotionLabels.length === 0 && <option value="" disabled>All emotions assigned</option>}
-                                                {availableEmotionLabels.map(label => (
+                                                {availableEmotions.length === 0 && <option value="" disabled>All emotions assigned</option>}
+                                                {availableEmotions.map(label => (
                                                     <option key={label} value={label}>{label}</option>
                                                 ))}
                                             </select>
                                         </div>
                                         <div style={{ display: 'flex', gap: '4px' }}>
                                             <input type="text" value={newMemoryPromptTemplate} onChange={e => setNewMemoryPromptTemplate(e.target.value)} className="editor-input" placeholder="Memory template string..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
-                                            <button type="button" onClick={handleAddMemoryPrompt} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading || availableEmotionLabels.length === 0}>+</button>
+                                            <button type="button" onClick={handleAddMemoryPrompt} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading || availableEmotions.length === 0}>+</button>
                                         </div>
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '150px', overflowY: 'auto' }}>
@@ -1278,31 +1278,27 @@ function CharacterEditorModalInner({
                                         Batch-add known names/aliases to this character's knowledge. Merges with existing entries; never overwrites.
                                     </div>
 
+                                    {!hasSession && (
+                                        <div style={{ fontSize: '0.65rem', opacity: 0.8, fontStyle: 'italic', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                            ℹ️ Start a chat session to enable protagonist and participant shortcuts.
+                                        </div>
+                                    )}
+                                    {hasSession && !hasParticipants && (
+                                        <div style={{ fontSize: '0.65rem', opacity: 0.8, fontStyle: 'italic', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                            ℹ️ No other characters in the current session. Add participants to the chat to enable those shortcuts.
+                                        </div>
+                                    )}
+                                    {allCharacters.length === 0 && (
+                                        <div style={{ fontSize: '0.65rem', opacity: 0.8, fontStyle: 'italic', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                            ℹ️ No characters available in the global registry.
+                                        </div>
+                                    )}
+
                                     {/* Inline Feedback Indicator */}
                                     {quickConfigFeedback && (
-                                        <div
-                                            style={{
-                                                padding: '8px 10px',
-                                                background: quickConfigFeedback.label === 'Reverted to Original'
-                                                    ? 'rgba(59, 130, 246, 0.1)'
-                                                    : quickConfigFeedback.addedNames.length > 0
-                                                        ? 'rgba(34, 197, 94, 0.1)'
-                                                        : 'rgba(255, 255, 255, 0.05)',
-                                                border: `1px solid ${quickConfigFeedback.label === 'Reverted to Original'
-                                                    ? 'rgba(59, 130, 246, 0.3)'
-                                                    : quickConfigFeedback.addedNames.length > 0
-                                                        ? 'rgba(34, 197, 94, 0.3)'
-                                                        : 'rgba(255, 255, 255, 0.1)'}`,
-                                                borderRadius: '6px',
-                                                marginBottom: '8px',
-                                            }}
-                                        >
-                                            <div style={{ fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '4px', color: quickConfigFeedback.label === 'Reverted to Original' ? '#3b82f6' : (quickConfigFeedback.addedNames.length > 0 ? '#22c55e' : 'var(--text-h)') }}>
-                                                {quickConfigFeedback.label === 'Reverted to Original'
-                                                    ? `↩️ ${quickConfigFeedback.label}`
-                                                    : quickConfigFeedback.addedNames.length > 0
-                                                        ? `✓ ${quickConfigFeedback.label}`
-                                                        : `— ${quickConfigFeedback.label}`}
+                                        <div style={{ padding: '8px 10px', background: quickConfigFeedback.addedNames.length > 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255, 255, 255, 0.05)', border: `1px solid ${quickConfigFeedback.addedNames.length > 0 ? 'rgba(34, 197, 94, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`, borderRadius: '6px', marginBottom: '8px' }}>
+                                            <div style={{ fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '4px', color: quickConfigFeedback.addedNames.length > 0 ? '#22c55e' : 'var(--text-h)' }}>
+                                                {quickConfigFeedback.addedNames.length > 0 ? `✓ ${quickConfigFeedback.label}` : `ℹ️ ${quickConfigFeedback.label}`}
                                             </div>
                                             {quickConfigFeedback.addedNames.length > 0 && (
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '120px', overflowY: 'auto' }}>
@@ -1320,11 +1316,11 @@ function CharacterEditorModalInner({
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                         <button type="button" className="editor-button editor-button-cancel" onClick={handleRevertKnownNames} disabled={isUploading} title="Revert known names to their state before opening this editor" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>↩️ Revert Known Names to Original</button>
                                         <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCurrentProtagonist} disabled={isUploading || !hasLocalProtagonist} title={!hasLocalProtagonist ? 'No active local protagonist' : 'Add current protagonist name + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🎯 Know Current Protagonist's Names</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedProtagonists} disabled={isUploading || !hasSession || coLocatedProtagonistCount === 0} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Protagonists' Names {coLocatedProtagonistCount > 0 && `(${coLocatedProtagonistCount})`}</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllProtagonists} disabled={isUploading || !hasSession || !hasProtagonists} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>👥 Know All The Protagonists' Names</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedParticipants} disabled={isUploading || !hasSession || coLocatedParticipantCount === 0} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Participants' Names {coLocatedParticipantCount > 0 && `(${coLocatedParticipantCount})`}</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllParticipants} disabled={isUploading || !hasSession || !hasParticipants} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🎭 Know All Participants' Names</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllCharacters} disabled={isUploading || allCharacters.length === 0} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🌐 Know All Characters' Names</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedProtagonists} disabled={isUploading || !hasSession || coLocatedProtagonistCount === 0} title={!hasSession ? 'No active session' : coLocatedProtagonistCount === 0 ? 'No co-located protagonists' : `Add ${coLocatedProtagonistCount} co-located protagonist(s) names`} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Protagonists' Names {coLocatedProtagonistCount > 0 && `(${coLocatedProtagonistCount})`}</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllProtagonists} disabled={isUploading || !hasSession || !hasProtagonists} title={!hasSession ? 'No active session' : 'Add all protagonists names + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>👥 Know All The Protagonists' Names</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedParticipants} disabled={isUploading || !hasSession || coLocatedParticipantCount === 0} title={!hasSession ? 'No active session' : coLocatedParticipantCount === 0 ? 'No co-located participants' : `Add ${coLocatedParticipantCount} co-located participant(s) names`} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Participants' Names {coLocatedParticipantCount > 0 && `(${coLocatedParticipantCount})`}</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllParticipants} disabled={isUploading || !hasSession || !hasParticipants} title={!hasSession ? 'No active session' : 'Add all session participants names + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🎭 Know All Participants' Names</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllCharacters} disabled={isUploading || allCharacters.length === 0} title="Add every character in the global registry" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🌐 Know All Characters' Names</button>
                                     </div>
                                 </div>
 

@@ -76,7 +76,7 @@ export async function generateMissingSummaries(
 
     if (toSummarize.length === 0) return results;
 
-    const sampler = interactionData.Profile?.webSummarizationSampler;
+    const sampler = interactionData.Profile?.interactionDataSummarizationSampler;
 
     for (const msg of toSummarize) {
         const summary = await generateMessageSummary(msg, maxTokens, sampler, interactionData.Profile);
@@ -566,7 +566,7 @@ export async function generateEntropyPruningSummaries(
     }
 
     // Generate summaries for everything before the cutoff
-    const sampler = interactionData.Profile?.webSummarizationSampler;
+    const sampler = interactionData.Profile?.interactionDataSummarizationSampler;
     for (let i = 0; i < cutoffVisibleIndex; i++) {
         const msg = visibleMessages[i];
         if (hasModelSummary(msg, modelId)) continue;
