@@ -6,9 +6,36 @@ import { useSessionStore } from './useSessionStore';
 
 export function useMultiplayerDataManager() {
     const [multiplayerData, setMultiplayerData] = useState<MultiplayerData[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
+    // Initialize as true on mount so we never need a synchronous setIsLoading(true) inside an effect
+    const [isLoading, setIsLoading] = useState(true);
     const isMountedRef = useRef(true);
 
+    // Initial mount effect: fetches asynchronously without synchronous setState in effect body
+    useEffect(() => {
+        isMountedRef.current = true;
+        let isIgnored = false;
+
+        loadAllRawMultiplayerData()
+            .then((data) => {
+                if (!isIgnored) {
+                    setMultiplayerData(data);
+                    setIsLoading(false);
+                }
+            })
+            .catch((error) => {
+                console.error('Failed to load multiplayer data on mount:', error);
+                if (!isIgnored) {
+                    setIsLoading(false);
+                }
+            });
+
+        return () => {
+            isIgnored = true;
+            isMountedRef.current = false;
+        };
+    }, []);
+
+    // Imperative loader for user actions (refresh, save, delete, chat switch)
     const loadAll = useCallback(async (): Promise<MultiplayerData[]> => {
         setIsLoading(true);
         try {
@@ -18,7 +45,7 @@ export function useMultiplayerDataManager() {
             }
             return data;
         } catch (error) {
-            console.error('Failed to load multiplayer data', error);
+            console.error('Failed to reload multiplayer data:', error);
             return [];
         } finally {
             if (isMountedRef.current) {
@@ -27,14 +54,6 @@ export function useMultiplayerDataManager() {
         }
     }, []);
 
-    useEffect(() => {
-        isMountedRef.current = true;
-        loadAll();
-        return () => {
-            isMountedRef.current = false;
-        };
-    }, [loadAll]);
-
     const saveMultiplayerData = useCallback(async (data: MultiplayerData): Promise<boolean> => {
         try {
             await saveRawMultiplayerData(data);
@@ -42,7 +61,7 @@ export function useMultiplayerDataManager() {
             await loadAll();
             return true;
         } catch (error) {
-            console.error('Failed to save multiplayer data', error);
+            console.error('Failed to save multiplayer data:', error);
             return false;
         }
     }, [loadAll]);
@@ -57,7 +76,7 @@ export function useMultiplayerDataManager() {
             await loadAll();
             return true;
         } catch (error) {
-            console.error('Failed to delete multiplayer data', error);
+            console.error('Failed to delete multiplayer data:', error);
             return false;
         }
     }, [loadAll]);

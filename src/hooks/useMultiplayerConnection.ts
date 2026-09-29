@@ -82,10 +82,78 @@ interface MessageDeletePayload {
     messageId: string;
 }
 
-interface HostMigrationPayload {
+export interface HostMigrationPayload {
     newHostId: string;
     newHostPeerId: string;
     finalState: InteractionData;
+    multiplayerData?: MultiplayerData | null;
+}
+
+// ─── WebRTC Chunking Protocol ───────────────────────────────────────
+
+const CHUNK_SIZE = 32 * 1024; // 32KB chunk slice safe for SCTP buffers across all browsers
+
+interface ChunkPacket {
+    __isChunk: true;
+    transferId: string;
+    index: number;
+    total: number;
+    data: string;
+}
+
+function isChunkPacket(data: unknown): data is ChunkPacket {
+    return (
+        typeof data === 'object' &&
+        data !== null &&
+        (data as any).__isChunk === true &&
+        typeof (data as any).transferId === 'string' &&
+        typeof (data as any).index === 'number' &&
+        typeof (data as any).total === 'number' &&
+        typeof (data as any).data === 'string'
+    );
+}
+
+function sendPayloadWithChunking(conn: DataConnection, fullMsg: MultiplayerMessage) {
+    if (!conn.open) return;
+
+    let serialized: string;
+    try {
+        serialized = JSON.stringify(fullMsg);
+    } catch (err) {
+        console.error('[MP] Serialization error:', err);
+        return;
+    }
+
+    // Direct transmission for standard small payloads
+    if (serialized.length <= CHUNK_SIZE) {
+        try {
+            conn.send(fullMsg);
+        } catch (e) {
+            console.warn('[MP] Direct send failed:', e);
+        }
+        return;
+    }
+
+    // Large payload: slice and stream numbered chunks
+    const total = Math.ceil(serialized.length / CHUNK_SIZE);
+    const transferId = `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+    for (let i = 0; i < total; i++) {
+        const chunk: ChunkPacket = {
+            __isChunk: true,
+            transferId,
+            index: i,
+            total,
+            data: serialized.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE),
+        };
+
+        try {
+            conn.send(chunk);
+        } catch (err) {
+            console.error(`[MP] DataChannel buffer error sending chunk ${i + 1}/${total}:`, err);
+            break;
+        }
+    }
 }
 
 // ─── Peer ID Helpers ───────────────────────────────────────────────
@@ -95,8 +163,6 @@ function sanitizeId(id: string, maxLen = 36): string {
 }
 
 function buildPeerId(interactionDataId: string, accountId: string): string {
-    // Standard PeerJS broker limits Peer IDs to 64 chars max.
-    // 'lr_' (3) + chatId (18) + '_' (1) + accountId (36) = 58 chars max.
     const chatId = sanitizeId(interactionDataId, 18);
     const acctId = sanitizeId(accountId, 36);
     return `lr_${chatId}_${acctId}`;
@@ -148,6 +214,8 @@ export function useMultiplayerConnection({
 
     const peerRef = useRef<Peer | null>(null);
     const connectionsRef = useRef<Map<string, DataConnection>>(new Map());
+    const incomingTransfersRef = useRef<Map<string, { total: number; chunks: Map<number, string>; receivedAt: number }>>(new Map());
+
     const onReceiveMessageRef = useRef(onReceiveMessage);
     const onPeerConnectedRef = useRef(onPeerConnected);
     const onPeerDisconnectedRef = useRef(onPeerDisconnected);
@@ -169,9 +237,8 @@ export function useMultiplayerConnection({
     useEffect(() => { joinRequestedCharacterDataRef.current = joinRequestedCharacterData; }, [joinRequestedCharacterData]);
 
     const effectiveChatId = interactionData?.id;
-
-    // Derived strictly so reference changes to multiplayerData content don't recalculate peerId
     const hasMultiplayerData = !!multiplayerData;
+
     const peerId = effectiveChatId
         ? (isHost
             ? (hasMultiplayerData ? buildHostPeerId(effectiveChatId) : null)
@@ -203,6 +270,44 @@ export function useMultiplayerConnection({
             return timer;
         };
 
+        const handleIncomingChunk = (packet: ChunkPacket) => {
+            const now = Date.now();
+            const transfers = incomingTransfersRef.current;
+
+            // Clean up old stale chunks (>60s)
+            if (transfers.size > 15) {
+                for (const [id, t] of transfers.entries()) {
+                    if (now - t.receivedAt > 60000) transfers.delete(id);
+                }
+            }
+
+            let transfer = transfers.get(packet.transferId);
+            if (!transfer) {
+                transfer = { total: packet.total, chunks: new Map(), receivedAt: now };
+                transfers.set(packet.transferId, transfer);
+            }
+
+            transfer.chunks.set(packet.index, packet.data);
+
+            if (transfer.chunks.size === transfer.total) {
+                transfers.delete(packet.transferId);
+
+                let assembled = '';
+                for (let i = 0; i < transfer.total; i++) {
+                    assembled += transfer.chunks.get(i) || '';
+                }
+
+                try {
+                    const parsed = JSON.parse(assembled) as MultiplayerMessage;
+                    if (parsed?.type && parsed?.senderAccountId) {
+                        onReceiveMessageRef.current(parsed);
+                    }
+                } catch (e) {
+                    console.error('[MP Chunking] Reassembly JSON parse failed:', e);
+                }
+            }
+        };
+
         const setupConnection = (conn: DataConnection) => {
             conn.on('open', () => {
                 if (destroyed) {
@@ -228,7 +333,6 @@ export function useMultiplayerConnection({
                 const localAcctId = currentAccountIdRef.current;
                 if (localAcctId && !isHostRef.current) {
                     const sanitizedLocalAcctId = sanitizeId(localAcctId, 36);
-                    console.log('[MP] Client sending join_request:', sanitizedLocalAcctId);
                     const joinMsg: MultiplayerMessage = {
                         type: 'join_request',
                         senderAccountId: sanitizedLocalAcctId,
@@ -240,15 +344,16 @@ export function useMultiplayerConnection({
                             requestedCharacterData: joinRequestedCharacterDataRef.current ?? undefined,
                         } satisfies JoinRequestPayload,
                     };
-                    try {
-                        conn.send(joinMsg);
-                    } catch (e) {
-                        console.error('[MP] Failed to send join_request:', e);
-                    }
+                    sendPayloadWithChunking(conn, joinMsg);
                 }
             });
 
             conn.on('data', (data) => {
+                if (isChunkPacket(data)) {
+                    handleIncomingChunk(data);
+                    return;
+                }
+
                 const msg = data as MultiplayerMessage;
                 if (msg?.type && msg?.senderAccountId) {
                     onReceiveMessageRef.current(msg);
@@ -334,6 +439,7 @@ export function useMultiplayerConnection({
             }
             localConnections.clear();
             connectionsRef.current = new Map();
+            incomingTransfersRef.current.clear();
 
             if (peer && !peer.destroyed) {
                 try { peer.destroy(); } catch { /* ignore */ }
@@ -342,7 +448,7 @@ export function useMultiplayerConnection({
             setIsConnected(false);
             setConnectedPeers([]);
         };
-    }, [peerId, hostPeerId]); // multiplayerData intentionally excluded to avoid reconnect loops
+    }, [peerId, hostPeerId]);
 
     const broadcast = useCallback((msg: Omit<MultiplayerMessage, 'senderAccountId' | 'timestamp'>) => {
         const acctId = currentAccountIdRef.current;
@@ -351,13 +457,7 @@ export function useMultiplayerConnection({
         const fullMsg: MultiplayerMessage = { ...msg, senderAccountId: sanitizedAcctId, timestamp: Date.now() };
 
         for (const [, conn] of connectionsRef.current) {
-            if (conn.open) {
-                try {
-                    conn.send(fullMsg);
-                } catch (e) {
-                    console.warn('Failed to send to peer:', e);
-                }
-            }
+            sendPayloadWithChunking(conn, fullMsg);
         }
     }, []);
 
@@ -369,15 +469,11 @@ export function useMultiplayerConnection({
             || connectionsRef.current.get(accountId)
             || connectionsRef.current.get(accountId.replace(/[^A-Za-z0-9]/g, ''));
 
-        if (!conn || !conn.open) return;
+        if (!conn) return;
         const sanitizedSenderId = sanitizeId(acctId, 36);
         const fullMsg: MultiplayerMessage = { ...msg, senderAccountId: sanitizedSenderId, timestamp: Date.now() };
 
-        try {
-            conn.send(fullMsg);
-        } catch (e) {
-            console.warn(`Failed to send to ${accountId}:`, e);
-        }
+        sendPayloadWithChunking(conn, fullMsg);
     }, []);
 
     const disconnect = useCallback(() => {
@@ -385,6 +481,7 @@ export function useMultiplayerConnection({
             try { conn.close(); } catch { /* ignore */ }
         }
         connectionsRef.current.clear();
+        incomingTransfersRef.current.clear();
 
         if (peerRef.current && !peerRef.current.destroyed) {
             try { peerRef.current.destroy(); } catch { /* ignore */ }
@@ -406,6 +503,5 @@ export type {
     StateSyncPayload,
     MessageEditPayload,
     MessageDeletePayload,
-    HostMigrationPayload,
     MessageType,
 };

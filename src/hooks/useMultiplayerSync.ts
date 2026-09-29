@@ -443,13 +443,11 @@ export function useMultiplayerSync({
                 });
 
                 if (isHost) {
-                    // Rebroadcast to all other connected peers in the session
                     broadcastRef.current({
                         type: 'chat_message',
                         payload: extractSyncPayload(newMessage),
                     });
 
-                    // Trigger host response via MultiplayerEvents
                     if (isNewMessage && payload.messageType === 'chat') {
                         MultiplayerEvents.emit('peerMessageReceived', newMessage as ChatMessage);
                     }
@@ -478,7 +476,7 @@ export function useMultiplayerSync({
                                 } satisfies BorrowModelResponsePayload,
                             });
                         }
-                    }).catch(() => { /* Host will timeout */ });
+                    }).catch(() => {});
                 }
                 break;
             }
@@ -531,7 +529,6 @@ export function useMultiplayerSync({
                 const currentData = interactionDataRef.current;
                 if (!currentData) break;
 
-                // Validate that sender is editing their own character's message or is an admin
                 if (isHost && msg.senderAccountId !== currentAccountId) {
                     const md = multiplayerDataRef.current;
                     const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, msg.senderAccountId);
@@ -564,7 +561,6 @@ export function useMultiplayerSync({
                 const currentData = interactionDataRef.current;
                 if (!currentData) break;
 
-                // Validate that sender is deleting their own character's message or is an admin
                 if (isHost && msg.senderAccountId !== currentAccountId) {
                     const md = multiplayerDataRef.current;
                     const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, msg.senderAccountId);
@@ -1092,7 +1088,8 @@ export function useMultiplayerSync({
                     newHostId: oldestPeerId,
                     newHostPeerId,
                     finalState: currentData,
-                } satisfies HostMigrationPayload,
+                    multiplayerData: multiplayerDataRef.current, // Preserves settings and accounts across migration
+                } as HostMigrationPayload,
             });
 
             setTimeout(() => {
