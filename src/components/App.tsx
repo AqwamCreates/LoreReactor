@@ -231,16 +231,32 @@ function App() {
             (m: MultiplayerData) => m.interactionDataIds.includes(interactionData.id!)
         ) ?? null;
 
-        // If chat is linked to a room, activate it; otherwise strictly null (solo chat)
         if (currentStoreMpData?.id !== match?.id) {
             useSessionStore.setState({ multiplayerData: match });
         }
     }, [interactionData?.id, multiplayerDataManager.multiplayerData, mp.joinSessionId]);
 
+    // ─── Graceful Window Close & Host Failover ────────────────────────
+    const mpSyncRef = useRef(mp.multiplayerSync);
+    useEffect(() => {
+        mpSyncRef.current = mp.multiplayerSync;
+    }, [mp.multiplayerSync]);
+
     useEffect(() => {
         const handleBeforeUnload = () => {
             flushSaveQueue();
+
+            const sync = mpSyncRef.current;
+            if (sync?.isConnected) {
+                // If Host with connected peers, hand over leadership immediately
+                if (sync.isHost && sync.connectedPeers.length > 0) {
+                    sync.initiateBranch();
+                } else {
+                    sync.disconnect();
+                }
+            }
         };
+
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, []);
