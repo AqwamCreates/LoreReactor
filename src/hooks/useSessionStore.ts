@@ -37,7 +37,7 @@ interface SessionState {
     currentAccountId: string | null;
     multiplayerData: MultiplayerData | null;
 
-    // ── UI preferences (server-persisted via serverStorage) ──────────
+    // ── UI preferences ───────────────────────────────────────────────
     selectedBudgetStrategyId: string | null;
     selectedCharacterId: string | null;
     selectedProfileId: string | null;
@@ -52,7 +52,13 @@ interface SessionState {
     ) => void;
     setCurrentCharacter: (character: Character | null) => void;
 
-    // ── Preference Actions (update store + persist to server atomically)
+    // ── Streaming Actions (Isolated) ─────────────────────────────────
+    setStreamingText: (text: string) => void;
+    setStreamingCharacter: (character: Character | null) => void;
+    setIsLoading: (isLoading: boolean) => void;
+    resetStreaming: () => void;
+
+    // ── Preference Actions ───────────────────────────────────────────
     setSelectedCharacterId: (id: string | null) => void;
     setSelectedModelId: (id: string | null) => void;
     setSelectedProfileId: (id: string | null) => void;
@@ -63,7 +69,6 @@ interface SessionState {
 }
 
 export const useSessionStore = create<SessionState>()((set) => {
-    // Fire-and-forget async bootstrap
     loadRawSessionData()
         .then((session) => {
             const updates: Partial<SessionState> = { sessionLoaded: true };
@@ -79,26 +84,21 @@ export const useSessionStore = create<SessionState>()((set) => {
         });
 
     return {
-        // ── Core chat state ──────────────────────────────────────────
         interactionData: null,
         currentCharacter: null,
 
-        // ── Generation state ─────────────────────────────────────────
         isLoading: false,
         streamingText: '',
         streamingCharacter: null,
         currentCharacterExpression: 'neutral',
 
-        // ── Model state ──────────────────────────────────────────────
         selectedModel: null,
         runningModels: {},
         activeStrategy: null,
         selectedModelId: null,
 
-        // ── Budget state ─────────────────────────────────────────────
         budgetData: null,
 
-        // ── Stats ────────────────────────────────────────────────────
         latency: 0,
         timeToFirstToken: 0,
         numberOfCacheInvalidations: 0,
@@ -108,20 +108,16 @@ export const useSessionStore = create<SessionState>()((set) => {
         numberOfTokens: 0,
         sessionStartTimestamp: null,
 
-        // ── Multiplayer state ────────────────────────────────────────
         currentAccountId: null,
         multiplayerData: null,
 
-        // ── UI preferences ───────────────────────────────────────────
         selectedBudgetStrategyId: null,
         selectedCharacterId: null,
         selectedProfileId: null,
         activeExtensionIds: [],
 
-        // ── Bootstrap state ──────────────────────────────────────────
         sessionLoaded: false,
 
-        // ── Core State Actions ───────────────────────────────────────
         setInteractionData: (data) => {
             set((state) => ({
                 interactionData: typeof data === 'function' ? data(state.interactionData) : data,
@@ -132,7 +128,11 @@ export const useSessionStore = create<SessionState>()((set) => {
             set({ currentCharacter: character });
         },
 
-        // ── Preference Actions ───────────────────────────────────────
+        setStreamingText: (text) => set({ streamingText: text }),
+        setStreamingCharacter: (character) => set({ streamingCharacter: character }),
+        setIsLoading: (isLoading) => set({ isLoading }),
+        resetStreaming: () => set({ streamingText: '', streamingCharacter: null, isLoading: false }),
+
         setSelectedCharacterId: (id) => {
             set({ selectedCharacterId: id });
             saveRawSessionData({ selectedCharacterId: id });

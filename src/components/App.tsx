@@ -5,13 +5,12 @@ import { useToast } from '../context/ToastContext';
 import { saveRawInteractionData, loadRawInteractionData, flushSaveQueue } from '../storages/serverStorage';
 import { createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
 import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
-import { useDisplayNameCache, resolveDelayedDisplayNameFromCache } from '../utilities/immersionLogic';
+import { useDisplayNameCache } from '../utilities/immersionLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { buildModelLoadArguments } from '../utilities/modelLoadArguments';
 import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
-import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useFrontCamera } from '../hooks/useFrontCamera';
 import type { Character, Context, InteractionData, ChatMessage, MultiplayerData, WhisperMessage, LanguageModel, HistoryMessage, RawInteractionData, Account, cloudBackend } from '../types';
@@ -64,9 +63,7 @@ import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ChatMinimap } from './ChatMinimap';
-import { LadderView } from './views/LadderView';
-import { CinematicView } from './views/CinematicView';
-import { VisualNovelView } from './views/VisualNovelView';
+import { ChatViewArea } from './views/ChatViewArea';
 import type { ViewModeProps, viewMode } from './views/types';
 import { defaultContextLength } from '../dictionaries/defaults';
 import { v4 as uuidv4 } from 'uuid';
@@ -183,14 +180,14 @@ function App() {
 
     const {
         interactionData, setInteractionData, setSelectedCharacter,
-        isLoading, streamingText, streamingCharacter, currentCharacterExpression,
+        isLoading, currentCharacterExpression, // streamingText removed from top-level to prevent root re-renders
         sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage,
         messageEndRef, chatHistoryRef, startNewChat, sendActionAndGetResponse,
         setActiveBudgetStrategy, setSelectedGlobalModel,
         activeStrategy, budgetData,
     } = session;
 
-    // ─── Chat Restoration ────────────────────────────────────────────
+    // ─── Chat Restoration ────────────────────────────────────
     const { activeChatRestored } = useChatRestoration({
         charsLoading: characters.isLoading,
         chatsLoading: chatList.isLoading,
@@ -370,7 +367,6 @@ function App() {
     const isMultiplayerChat = mp.isMultiplayerClient || !!(mp.multiplayerData && interactionData?.id && mp.multiplayerData.interactionDataIds.includes(interactionData.id));
 
     // ─── Local UI State ──────────────────────────────────────────────
-    // Fully typed with viewMode from ./views/types ("ladder" | "cinematic" | "visual novel")
     const [viewMode, setViewMode] = useState<viewMode>('ladder');
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -385,9 +381,9 @@ function App() {
     const suppressAutoScrollRef = useRef(false);
 
     const viewAssets = useViewAssets({
-        viewMode, // Cleanly passed without undefined as any
+        viewMode,
         interactionData, localProtagonist, currentCharacter,
-        streamingCharacter, currentCharacterExpression, chatHistoryRef,
+        streamingCharacter: session.streamingCharacter, currentCharacterExpression, chatHistoryRef,
         isMultiplayerChat,
         lastViewedMessageIdRef,
         suppressAutoScrollRef,
@@ -407,24 +403,23 @@ function App() {
         activeStrategy,
     });
 
-    // Auto-resize textarea when text actually changes (avoids layout thrashing on every render)
+    // Auto-resize textarea when text actually changes
     useEffect(() => { 
         if (!textareaRef.current) return; 
         textareaRef.current.style.height = 'auto'; 
         textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, window.innerHeight * 0.3)}px`; 
-    }, [inputText]);
+    }, []);
 
-    // Auto-resize edit textarea when opened and as the user types
+    // Auto-resize edit textarea when opened and as user types
     useEffect(() => { 
         if (!editTextAreaRef.current || !messageActions.editingId) return; 
         editTextAreaRef.current.style.height = 'auto'; 
         editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`; 
-    }, [messageActions.editingId, messageActions.editDraft]);
+    }, [messageActions.editingId]);
 
     // ─── Derived Display Values ──────────────────────────────────────
     const canDelete = (!isMultiplayerChat || mp.multiplayerSync.isHost || mp.multiplayerSync.isAdmin) && !isLoading;
     const safeMessages = useMemo(() => viewAssets.chatMessages || [], [viewAssets.chatMessages]);
-    const formattedStreamingText = useMemo(() => streamingText ? formatDisplayMessageText(streamingText) : null, [streamingText]);
 
     const maxContextTokens = useMemo(() => {
         if (!interactionData?.contexts?.length) return 0;
@@ -449,7 +444,6 @@ function App() {
         return defaultContextLength;
     }, [activeStrategy, allModels, models]);
 
-    // Extracted primitive ID outside hooks to preserve React Compiler memoization
     const parentInteractionDataId = interactionData?.parentInteractionDataId;
 
     const parentChatName = useMemo(() => {
@@ -457,8 +451,8 @@ function App() {
         return chatList.rawChatShells.find((s: RawInteractionData) => s.id === parentInteractionDataId)?.name ?? null;
     }, [parentInteractionDataId, chatList.rawChatShells]);
 
-    // ─── Display Messages (with streaming injection + whisper filtering) ──
-    const displayMessages = useMemo(() => {
+    // ─── Stable Committed Messages (Only updates when history changes, NOT on stream tokens) ──
+    const committedMessages = useMemo(() => {
         let base = [...safeMessages] as (ChatMessage | WhisperMessage)[];
         if (isMultiplayerChat && localProtagonist) {
             base = base.filter((msg: ChatMessage | WhisperMessage) => {
@@ -469,33 +463,11 @@ function App() {
                 return true;
             });
         }
-        if (isLoading && streamingText && streamingCharacter) {
-            const last = base[base.length - 1];
-            const isLastStreaming = last?.character.id === streamingCharacter.id;
-            if (isLastStreaming) {
-                const idx = base.length - 1;
-                const name = resolveDelayedDisplayNameFromCache(displayNameCache, idx, streamingCharacter.id);
-                
-                base[idx] = {
-                    ...last!,
-                    textContent: streamingText,
-                    character: { ...last!.character, name },
-                } as any;
-            } else if (!last || last.character.id !== streamingCharacter.id) {
-                const name = resolveDelayedDisplayNameFromCache(displayNameCache, base.length, streamingCharacter.id);
-                base.push({
-                    id: `streaming-${streamingCharacter.id}`, messageType: 'chat',
-                    character: { ...streamingCharacter, name }, textContent: streamingText,
-                    files: [], firstCreatedTimestamp: 0, lastUpdatedTimestamp: 0,
-                    locationIndex: undefined, characterLockedLocations: {}, parentInteractionMessageId: null,
-                } as any);
-            }
-        }
         return base;
-    }, [safeMessages, isLoading, streamingText, streamingCharacter, displayNameCache, isMultiplayerChat, localProtagonist]);
+    }, [safeMessages, isMultiplayerChat, localProtagonist]);
 
     const massStartIndex = messageActions.massDeleteId !== null
-        ? displayMessages.findIndex((m: ChatMessage | WhisperMessage) => m.id === messageActions.massDeleteId) : -1;
+        ? committedMessages.findIndex((m: ChatMessage | WhisperMessage) => m.id === messageActions.massDeleteId) : -1;
 
     // ─── Budget Reset Timer ──────────────────────────────────────────
     const timeUntilResetRef = useRef<number | undefined>(undefined);
@@ -672,7 +644,6 @@ function App() {
     }, [chatOps]);
 
     const handleRenameChat = useCallback(async (id: string, name: string) => {
-        // Use in-memory chat state directly if renaming the currently active chat
         const loaded = (interactionData?.id === id)
             ? interactionData
             : await loadRawInteractionData(id, characters.characters);
@@ -714,12 +685,11 @@ function App() {
         addToast(`Loaded world "${world.name}"`, 'success');
     }, [interactionData, characters, contexts, locations, audioTracks, profiles, setInteractionData, addToast]);
 
-    // ─── View Props ──────────────────────────────────────────────────
-    // Cleanly typed as ViewModeProps without redundant intersection
-    const viewProps: ViewModeProps = {
+    // ─── Base View Props (Stable, contains only committed messages) ───
+    const baseViewProps: ViewModeProps = {
         interactionData: interactionData!,
         localProtagonist,
-        displayMessages: displayMessages as ChatMessage[],
+        displayMessages: committedMessages as ChatMessage[],
         selectedCharacterId: currentCharacter?.id,
         editingId: messageActions.editingId, editDraft: messageActions.editDraft,
         massDeleteId: messageActions.massDeleteId, isMassActive: messageActions.massDeleteId !== null,
@@ -727,11 +697,13 @@ function App() {
         portraitUrlCache: viewAssets.portraitUrlCache, displayNameCache,
         characterScales: new Map(), centerAvatar: viewAssets.centerAvatar,
         streamingPortraitUrl: viewAssets.streamingPortraitUrl,
-        formattedStreamingText, locationBackgroundUrl: viewAssets.locationBackgroundUrl, isLoading,
+        formattedStreamingText: null, // Managed inside ChatViewArea
+        locationBackgroundUrl: viewAssets.locationBackgroundUrl, isLoading,
         isEditingTitle: chatOps.isEditingTitle, editTitleValue: chatOps.editTitleValue,
         parentInteractionMessageId: interactionData?.parentInteractionMessageId ?? null,
         parentInteractionDataName: parentChatName,
-        streamingCharacter, chatHistoryRef, messageEndRef,
+        streamingCharacter: null, // Managed inside ChatViewArea
+        chatHistoryRef, messageEndRef,
         editTextAreaRef, focusedMessageId, setFocusedMessageId,
         onAvatarClick: actionMenu.handleAvatarClick,
         onStartEditing: messageActions.startEditing, onCancelEditing: messageActions.cancelEditing,
@@ -812,9 +784,15 @@ function App() {
                             </div>
                         </header>
 
-                        {viewMode === 'ladder' && <LadderView {...viewProps} />}
-                        {viewMode === 'cinematic' && <CinematicView {...viewProps} />}
-                        {viewMode === 'visual novel' && <VisualNovelView {...viewProps} />}
+                        {/* Isolated View Area: App.tsx will NOT re-render during streaming */}
+                        <ChatViewArea
+                            viewMode={viewMode}
+                            baseProps={baseViewProps}
+                            safeMessages={committedMessages}
+                            displayNameCache={displayNameCache}
+                            isMultiplayerChat={isMultiplayerChat}
+                            localProtagonistId={localProtagonist?.id}
+                        />
 
                         <ContextBar
                             viewMode={viewMode}

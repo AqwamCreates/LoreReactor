@@ -215,6 +215,11 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     const throttledSetStreamingTextWithBroadcast = useCallback((text: string) => {
         throttledSetStreamingText(text);
+        streamingTextRef.current = text;
+
+        // Push directly to isolated store state for ChatViewArea without re-rendering App
+        useSessionStore.setState({ streamingText: text });
+
         const char = streamingCharacterRef.current;
         const msgId = streamingMessageIdRef.current;
         
@@ -271,6 +276,8 @@ export function useChatSession(options: UseChatSessionOptions) {
                         isSpeculatingRef.current = true;
                         const completedText = text + prediction;
                         throttledSetStreamingText(completedText);
+                        streamingTextRef.current = completedText;
+                        useSessionStore.setState({ streamingText: completedText });
                         abortControllerRef.current?.abort();
 
                         const freshData = getState().interactionData;
@@ -325,7 +332,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             };
             onMessageBroadcastRef.current(partialMsg);
         }
-    }, [throttledSetStreamingText, getState, setInteractionData]);
+    }, [throttledSetStreamingText, getState, setInteractionData,streamingTextRef]);
 
     useEffect(() => {
         let cancelled = false;
@@ -501,6 +508,13 @@ export function useChatSession(options: UseChatSessionOptions) {
         streamingCharacterRef.current = responderChar ?? null;
         streamingMessageIdRef.current = `gen-${responderChar?.id || 'ai'}-${Date.now()}`;
 
+        // Signal generation start directly in store
+        useSessionStore.setState({
+            isLoading: true,
+            streamingCharacter: responderChar ?? null,
+            streamingText: '',
+        });
+
         try {
             requestTimestampsRef.current.push(Date.now());
             const metadata: RequestMetadata = {
@@ -585,6 +599,14 @@ export function useChatSession(options: UseChatSessionOptions) {
             isSpeculatingRef.current = false;
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
+
+            // Cleanly reset isolated streaming state
+            useSessionStore.setState({
+                isLoading: false,
+                streamingCharacter: null,
+                streamingText: '',
+            });
+
             releaseLock();
 
             if (pendingResumeRef.current) {
@@ -869,6 +891,13 @@ export function useChatSession(options: UseChatSessionOptions) {
             });
         }
 
+        // Reset store streaming state
+        useSessionStore.setState({
+            isLoading: false,
+            streamingCharacter: null,
+            streamingText: '',
+        });
+
         isLoadingRef.current = false;
         resetStream();
         streamingCharacterRef.current = null;
@@ -910,8 +939,15 @@ export function useChatSession(options: UseChatSessionOptions) {
         streamingCharacterRef.current = char;
         streamingMessageIdRef.current = messageId;
 
-        setStreamingText(existingText);
+        // Sync local ref and isolated store
         streamingTextRef.current = existingText;
+        useSessionStore.setState({
+            isLoading: true,
+            streamingCharacter: char,
+            streamingText: existingText,
+        });
+
+        setStreamingText(existingText);
         setStreamingState(char, existingText);
         setStats({ latency: 0, timeToFirstToken: 0 });
         isAtBottomRef.current = true;
@@ -965,6 +1001,13 @@ export function useChatSession(options: UseChatSessionOptions) {
             resumingExistingTextRef.current = '';
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
+
+            useSessionStore.setState({
+                isLoading: false,
+                streamingCharacter: null,
+                streamingText: '',
+            });
+
             releaseLock();
             
             if (pendingResumeRef.current) {
