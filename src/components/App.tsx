@@ -559,6 +559,22 @@ function App() {
     }, [isInitializing, activeChatRestored, ensureChatsLoaded]);
 
     // ─── Wrapped Multiplayer-Aware Handlers ──────────────────────────
+    const handleSetProtagonistAndBroadcast = useCallback((charId: string) => {
+        // 1. Update local state
+        entityToggles.handleSetChatProtagonist(charId);
+        
+        // 2. If we are a connected joiner, broadcast the character change to the host
+        if (mp.isMultiplayerClient && mp.multiplayerSync.isConnected) {
+            const char = characters.characters.find(c => c.id === charId) 
+                      || interactionData?.participants.find(p => p.id === charId)
+                      || interactionData?.protagonists.find(p => p.id === charId);
+            
+            if (char) {
+                mp.multiplayerSync.sendProtagonist(char);
+            }
+        }
+    }, [entityToggles, mp, characters.characters, interactionData]);
+
     const wrappedSaveEdit = useCallback(async () => {
         await messageActions.handleSaveEdit();
         if (isMultiplayerChat && messageActions.editingId) mp.multiplayerSync.broadcastMessageEdit(messageActions.editingId, messageActions.editDraft);
@@ -868,7 +884,7 @@ function App() {
                     onRenameChat={handleRenameChat}
                     onDeleteCharacter={entityModals.getModalProperties('character').delete}
                     onLoadFullCharacter={characters.loadFullCharacter} onToggleParticipant={entityToggles.handleToggleParticipant}
-                    onSetProtagonist={entityToggles.handleSetChatProtagonist} onSaveCharacter={characters.saveCharacter}
+                    onSetProtagonist={handleSetProtagonistAndBroadcast} onSaveCharacter={characters.saveCharacter}
                     onDeleteContext={entityModals.getModalProperties('context').delete} onToggleContext={entityToggles.handleToggleContext} onSaveContext={contexts.saveContext}
                     onDeleteLocation={entityModals.getModalProperties('location').delete} onToggleLocation={entityToggles.handleToggleLocation} onSaveLocation={locations.saveLocation}
                     onDeleteAudioTrack={entityModals.getModalProperties('audioTrack').delete} onToggleAudioTrack={entityToggles.handleToggleAudioTrack} onSaveAudioTrack={audioTracks.saveAudioTrack}
