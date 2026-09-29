@@ -127,13 +127,13 @@ interface ApplicationModalsProperties {
     onImportComplete: () => void;
     addToast: (message: string, type: 'success' | 'error' | 'info') => void;
     ensureChatsLoaded: () => void;
-    pendingJoinRequests?: PendingJoinRequest[];
-    onAcceptJoinRequest?: (accountId: string) => void;
-    onRejectJoinRequest?: (accountId: string) => void;
-    pendingSessionInitialState?: any;
-    pendingSessionRules?: any;
-    onSelectJoinCharacter?: (character: Character) => void;
-    onCancelJoinCharacter?: () => void;
+    pendingJoinRequests: PendingJoinRequest[];
+    onAcceptJoinRequest: (accountId: string) => void;
+    onRejectJoinRequest: (accountId: string) => void;
+    pendingSessionInitialState: any;
+    pendingSessionRules: any;
+    onSelectJoinCharacter: (character: Character) => void;
+    onCancelJoinCharacter: () => void;
 }
 
 type ChatShellWithIdentifier = RawInteractionData & { id: string };
