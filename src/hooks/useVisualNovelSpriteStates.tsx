@@ -1,5 +1,5 @@
 // src/hooks/useVisualNovelSpriteStates.ts
-import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import type { ChatMessage } from '../types';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';

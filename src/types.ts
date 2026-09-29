@@ -266,6 +266,7 @@ export interface Character extends ObjectData {
   dialoguePrompts?: DialoguePrompt[];
   knowledgePrompts?: KnowledgePrompt[];
   starterPrompts?: Record<string, number>; // Text -> Weight value for that text during the sampling.
+  memoryPrompts?: Record<string, number>; // Expression -> string. If the string for this expression is not found, then use neutral. If no neutral string, then use system default. Used for creation of memories.
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;
@@ -300,6 +301,7 @@ export interface RawCharacter extends RawData {
   dialoguePrompts?: DialoguePrompt[];
   knowledgePrompts?: KnowledgePrompt[];
   starterPrompts?: Record<string, number>; // Text -> Weight value for that text during the sampling.
+  memoryPrompts?: Record<string, number>; // Expression -> string. If the string for this expression is not found, then use neutral. If no neutral string, then use system default. Used for creation of memories.
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;
@@ -723,6 +725,7 @@ export interface Profile extends ObjectData {
   tools: Record<tool, tristateInteger>;
   inputStrategy: (PromptBlockType | string)[];
   summarizationSteps: SummarizationStep[];
+  summarizationInstruction?: string // If empty, then use in-built default.
   enableSpeculativeMarkov: boolean;
   characterSampler?: Sampler;
   webSummarizationSampler?: Sampler;
@@ -774,6 +777,7 @@ export interface RawProfile extends RawData {
   tools: Record<tool, tristateInteger>;
   inputStrategy: (PromptBlockType | string)[];
   summarizationSteps: RawSummarizationStep[];
+  summarizationInstruction?: string // If empty, then use in-built default.
   enableSpeculativeMarkov: boolean;
   characterSamplerId?: string;
   webSummarizationSamplerId?: string;

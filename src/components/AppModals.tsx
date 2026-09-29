@@ -1,611 +1,1053 @@
-// src/components/SuperSearchModal.tsx
-import { useState, useEffect, useMemo, useRef } from 'react';
+// src/components/AppModals.tsx
 import type { 
-    Character, Context, Location, AudioTrack, World, PromptBlock, 
-    LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, 
-    Memory, Account, MultiplayerData, RawInteractionData, InteractionData, 
-    ObjectData
+    Character, Context, Location, Sampler, StopPattern, 
+    LanguageModel, BudgetStrategy, Profile, Extension, 
+    InteractionData, World, AudioTrack, PromptBlock, 
+    RawInteractionData, Memory, MultiplayerData, Account, 
+    cloudBackend 
 } from '../types';
-import { localURL } from '../configurations';
-import '../main.css';
+import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';
+import type { ModalController } from '../hooks/useAppModals';
+import type { EntityType } from '../hooks/useEntityModals';
+import { loadRawInteractionData } from '../storages/serverStorage';
+import { ManagerModal } from './ManagerModal';
+import { CharacterEditorModal } from './CharacterEditorModal';
+import { ModelEditorModal } from './ModelEditorModal';
+import { SamplerEditorModal } from './SamplerEditorModal';
+import { PromptBlockEditorModal } from './PromptBlockEditorModal';
+import { ContextEditorModal } from './ContextEditorModal';
+import { LocationEditorModal } from './LocationEditorModal';
+import { AudioTrackEditorModal } from './AudioTrackEditorModal';
+import { StopPatternEditorModal } from './StopPatternEditorModal';
+import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
+import { ProfileEditorModal } from './ProfileEditorModal';
+import { AccountEditorModal } from './AccountEditorModal';
+import { MultiplayerEditorModal } from './MultiplayerEditorModal';
+import { SettingsModal } from './SettingsModal';
+import { JoinSessionModal } from './JoinSessionModal';
+import { BudgetControlModal } from './BudgetControlModal';
+import { GpuMonitorModal } from './GpuMonitorModal';
+import { WorldEditorModal } from './WorldEditorModal';
+import { ParticipantControlModal } from './ParticipantControlModal';
+import { AIRecommendationModal } from './AIRecommendationModal';
+import { RestrictionReductionModal } from './RestrictionReductionModal';
+import { CharacterCardImportModal } from './CharacterCardImportModal';
+import { DataImportModal } from './DataImportModal';
+import { DataExportModal } from './DataExportModal';
+import { DataManagerModal } from './DataManagerModal';
+import { AlternateTimelinesModal } from './AlternateTimelinesModal';
+import { ChatInspectionModal } from './ChatInspectionModal';
+import { SuperSearchModal } from './SuperSearchModal';
+import { 
+    renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, 
+    renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext 
+} from './renderHelpers';
+import { cloudBackends } from '../dictionaries/languageModelInformation';
+import { useSessionStore } from '../hooks/useSessionStore';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 
-export type SearchTabId = 
-    | 'all' 
-    | 'message' 
-    | 'chat' 
-    | 'character' 
-    | 'context' 
-    | 'location' 
-    | 'audioTrack' 
-    | 'world' 
-    | 'promptBlock' 
-    | 'model' 
-    | 'sampler' 
-    | 'stopPattern' 
-    | 'budgetStrategy' 
-    | 'profile' 
-    | 'memory' 
-    | 'account' 
-    | 'multiplayerData';
-
-export interface SuperSearchModalProps {
+interface EntityModalController {
     isOpen: boolean;
-    onClose: () => void;
+    edit: any | null;
+    open: (item?: any) => void;
+    close: () => void;
+    save: (item: any) => Promise<void>;
+    delete: (identifier: string) => Promise<void>;
+}
+
+interface ApplicationModalsProperties {
+    isMultiplayerClient?: boolean;
+    modals: Record<string, ModalController>;
+    entityModals: {
+        getModalProperties: (entityType: EntityType) => EntityModalController;
+    };
+    runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
+    rawChatShells: RawInteractionData[];
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
     allAudioTracks: AudioTrack[];
-    allWorlds: World[];
     allPromptBlocks: PromptBlock[];
     allModels: LanguageModel[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
     allBudgetStrategies: BudgetStrategy[];
     allProfiles: Profile[];
+    allExtensions: Extension[];
+    allWorlds: World[];
     allMemories: Memory[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
-    rawChatShells: RawInteractionData[];
-    currentInteractionData: InteractionData | null;
-
-    onSelectEntity?: (tabId: SearchTabId, entity: ObjectData, parentEntity?: ObjectData) => void;
+    onSwitchChat: (identifier: string) => void;
+    onDeleteChat: (identifier: string) => void;
+    onNewChat: () => void;
+    onRenameChat: (identifier: string, name: string) => void;
+    onDeleteCharacter: (identifier: string) => void;
+    onLoadFullCharacter: (identifier: string) => Promise<Character | null>;
+    onToggleParticipant: (identifier: string) => void;
+    onSetProtagonist: (identifier: string) => void;
+    onSaveCharacter: (character: Character) => void;
+    onDeleteContext: (identifier: string) => void;
+    onToggleContext: (identifier: string) => void;
+    onSaveContext: (context: Context) => void;
+    onDeleteLocation: (identifier: string) => void;
+    onToggleLocation: (identifier: string) => void;
+    onSaveLocation: (location: Location) => void;
+    onDeleteAudioTrack: (identifier: string) => void;
+    onToggleAudioTrack: (identifier: string) => void;
+    onSaveAudioTrack: (audioTrack: AudioTrack) => void;
+    onDeletePromptBlock: (identifier: string) => void;
+    onDeleteModel: (identifier: string) => void;
+    onToggleModelLoad: (identifier: string) => void;
+    onDeleteSampler: (identifier: string) => void;
+    onDeleteStopPattern: (identifier: string) => void;
+    onDeleteBudgetStrategy: (identifier: string) => void;
+    onActivateBudgetStrategy: (identifier: string) => void;
+    onDeleteProfile: (identifier: string) => void;
+    onActivateProfile: (identifier: string) => void;
+    onSaveProfile: (profile: Profile) => void;
+    onDeleteExtension: (identifier: string) => void;
+    onToggleExtension: (identifier: string) => void;
+    onSaveWorld: (world: World) => void;
+    onLoadWorld: (world: World) => void;
+    onDeleteWorld: (identifier: string) => void;
+    onDeleteMemory: (identifier: string) => void;
+    onDeleteAccount: (identifier: string) => void;
+    onToggleAccount: (identifier: string) => void;
+    onDeleteMultiplayerData: (identifier: string) => void;
+    onJoinSession: (sessionId: string, password: string, requestedCharacterIdentifier: string | null, requestedCharacterData: Character | null) => void;
+    onUpdateInteractionData: (data: InteractionData) => void;
+    onForceFirstMessage: (character: Character) => void;
+    onSendCustomMessage: (character: Character, text: string) => void;
+    onInjectCustomMessage: (character: Character, text: string) => void;
+    onInjectFirstMessage: (character: Character) => void;
+    onImportComplete: () => void;
+    addToast: (message: string, type: 'success' | 'error' | 'info') => void;
+    ensureChatsLoaded: () => void;
+    pendingJoinRequests?: PendingJoinRequest[];
+    onAcceptJoinRequest?: (accountId: string) => void;
+    onRejectJoinRequest?: (accountId: string) => void;
 }
 
-interface ServerMessageResult {
-    type: 'message';
-    id: string;
-    chats: Array<{ chatId: string; chatName: string }>;
-    characterId?: string;
-    snippet: string;
-    timestamp: number;
-}
+type ChatShellWithIdentifier = RawInteractionData & { id: string };
 
-interface FieldMatch {
-    field: string;
-    text: string;
-    snippet: string;
-}
-
-interface SearchMatchResult {
-    tabId: SearchTabId;
-    id: string;
-    title: string;
-    subtitle?: string;
-    snippet?: string;
-    matches?: FieldMatch[];
-    chats?: Array<{ chatId: string; chatName: string }>;
-    rawEntity?: any;
-    parentEntity?: any;
-}
-
-const TAB_CONFIG: { id: SearchTabId; label: string; icon: string }[] = [
-    { id: 'all', label: 'All', icon: '🔍' },
-    { id: 'message', label: 'Messages', icon: '💬' },
-    { id: 'chat', label: 'Chats', icon: '📂' },
-    { id: 'character', label: 'Characters', icon: '🎭' },
-    { id: 'context', label: 'Contexts', icon: '📜' },
-    { id: 'location', label: 'Locations', icon: '📍' },
-    { id: 'promptBlock', label: 'Prompts', icon: '🧱' },
-    { id: 'audioTrack', label: 'Audio', icon: '🔊' },
-    { id: 'world', label: 'Worlds', icon: '🌍' },
-    { id: 'model', label: 'Models', icon: '🤖' },
-    { id: 'sampler', label: 'Samplers', icon: '🎚️' },
-    { id: 'stopPattern', label: 'Stop Patterns', icon: '🛑' },
-    { id: 'budgetStrategy', label: 'Budgets', icon: '💰' },
-    { id: 'profile', label: 'Profiles', icon: '👤' },
-    { id: 'memory', label: 'Memories', icon: '🧠' },
-    { id: 'account', label: 'Accounts', icon: '🔑' },
-    { id: 'multiplayerData', label: 'Multiplayer', icon: '👥' },
-];
-
-// O(1) lookup for fields we never want to expose in search results
-const IGNORED_FIELD_KEYS = new Set([
-    'id',
-    'firstCreatedTimestamp',
-    'lastUpdatedTimestamp',
-    'images',
-    'base64',
-    'apiKey',
-    'password',
-]);
-
-function makeSnippet(text: string, query: string, radius = 45): string {
-    if (typeof text !== 'string') return '';
-    const lower = text.toLowerCase();
-    const idx = lower.indexOf(query.toLowerCase());
-    if (idx === -1) return text.slice(0, radius * 2);
-
-    const start = Math.max(0, idx - radius);
-    const end = Math.min(text.length, idx + query.length + radius);
-    const prefix = start > 0 ? '...' : '';
-    const suffix = end < text.length ? '...' : '';
-    return `${prefix}${text.slice(start, end).trim()}${suffix}`;
-}
-
-function cleanFieldPath(path: string): string {
-    return path
-        .replace(/\[\d+\]/g, '') // remove array indices like [0]
-        .replace(/^\./, '') || 'content';
-}
-
-function formatFieldName(field: string): string {
-    return field
-        .replace(/([A-Z])/g, ' $1') // camelCase to spaces (systemPrompt -> system Prompt)
-        .replace(/[._]/g, ' ')       // dots/underscores to spaces
-        .replace(/^./, str => str.toUpperCase())
-        .trim();
-}
-
-/** Recursively walks an entity to find ALL fields containing the query string */
-function findMatchingFields(obj: any, query: string): FieldMatch[] {
-    const matches: FieldMatch[] = [];
-    const visited = new Set();
-    const lowerQuery = query.toLowerCase();
-
-    function walk(val: any, path: string) {
-        if (val === null || val === undefined) return;
-        if (typeof val === 'string') {
-            if (val.length < 5000 && !val.startsWith('data:image')) {
-                if (val.toLowerCase().includes(lowerQuery)) {
-                    const fieldName = cleanFieldPath(path);
-                    if (!matches.some(m => m.field === fieldName && m.text === val)) {
-                        matches.push({
-                            field: fieldName,
-                            text: val,
-                            snippet: makeSnippet(val, query)
-                        });
-                    }
-                }
-            }
-            return;
-        }
-
-        if (typeof val !== 'object') return;
-        if (visited.has(val)) return;
-        visited.add(val);
-
-        if (Array.isArray(val)) {
-            val.forEach((item, index) => walk(item, `${path}[${index}]`));
-        } else {
-            for (const [key, v] of Object.entries(val)) {
-                // O(1) check for ignored keys, plus substring checks for dynamic cache/path keys
-                if (IGNORED_FIELD_KEYS.has(key) || key.includes('Cache') || key.includes('Path')) continue;
-                
-                const currentPath = path ? `${path}.${key}` : key;
-                walk(v, currentPath);
-            }
-        }
+function deriveLocalProtagonist(
+    interactionData: InteractionData | null,
+    multiplayerData: MultiplayerData | null,
+    currentAccountId: string | null,
+): Character | null {
+    if (!interactionData?.protagonists?.length) return null;
+    if (!multiplayerData || !currentAccountId) {
+        return interactionData.protagonists[0] ?? null;
     }
-
-    walk(obj, '');
-    return matches;
+    const activeCharacterIdentifier = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.activeCharacterId;
+    if (activeCharacterIdentifier) {
+        const foundCharacter = interactionData.protagonists.find(participant => participant.id === activeCharacterIdentifier) || 
+                               interactionData.participants.find(participant => participant.id === activeCharacterIdentifier);
+        if (foundCharacter) return foundCharacter;
+    }
+    return interactionData.protagonists[0] ?? null;
 }
 
-function SuperSearchContent({
-    onClose,
+export function AppModals({
+    isMultiplayerClient,
+    modals,
+    entityModals,
+    runningModels,
+    rawChatShells,
     allCharacters,
     allContexts,
     allLocations,
     allAudioTracks,
-    allWorlds,
-    allPromptBlocks,
-    allModels,
     allSamplers,
     allStopPatterns,
+    allModels,
     allBudgetStrategies,
     allProfiles,
+    allExtensions,
+    allWorlds,
+    allPromptBlocks,
     allMemories,
     allAccounts,
     allMultiplayerData,
-    rawChatShells,
-    currentInteractionData,
-    onSelectEntity,
-}: Omit<SuperSearchModalProps, 'isOpen'>) {
-    const [query, setQuery] = useState('');
-    const [activeTab, setActiveTab] = useState<SearchTabId>('all');
-    const [serverMessages, setServerMessages] = useState<ServerMessageResult[]>([]);
-    const [isSearchingServer, setIsSearchingServer] = useState(false);
-    const searchInputRef = useRef<HTMLInputElement>(null);
+    onSwitchChat,
+    onDeleteChat,
+    onNewChat,
+    onRenameChat,
+    onDeleteCharacter,
+    onLoadFullCharacter,
+    onToggleParticipant,
+    onSetProtagonist,
+    onSaveCharacter,
+    onDeleteContext,
+    onToggleContext,
+    onSaveContext,
+    onDeleteLocation,
+    onToggleLocation,
+    onSaveLocation,
+    onDeleteAudioTrack,
+    onToggleAudioTrack,
+    onSaveAudioTrack,
+    onDeletePromptBlock,
+    onDeleteModel,
+    onToggleModelLoad,
+    onDeleteSampler,
+    onDeleteStopPattern,
+    onDeleteBudgetStrategy,
+    onActivateBudgetStrategy,
+    onDeleteProfile,
+    onActivateProfile,
+    onSaveProfile,
+    onDeleteExtension,
+    onToggleExtension,
+    onSaveWorld,
+    onLoadWorld,
+    onDeleteWorld,
+    onDeleteMemory,
+    onDeleteAccount,
+    onToggleAccount,
+    onDeleteMultiplayerData,
+    onJoinSession,
+    onUpdateInteractionData,
+    onForceFirstMessage,
+    onSendCustomMessage,
+    onInjectCustomMessage,
+    onInjectFirstMessage,
+    onImportComplete,
+    addToast,
+    ensureChatsLoaded,
+    pendingJoinRequests,
+    onAcceptJoinRequest,
+    onRejectJoinRequest,
+}: ApplicationModalsProperties) {
+    const interactionData = useSessionStore(state => state.interactionData);
+    const activeStrategy = useSessionStore(state => state.activeStrategy);
+    const selectedModelId = useSessionStore(state => state.selectedModel?.id ?? null);
+    const selectedBudgetStrategyId = useSessionStore(state => state.activeStrategy?.id ?? null);
+    const currentAccountId = useSessionStore(state => state.currentAccountId);
+    const multiplayerData = useSessionStore(state => state.multiplayerData);
+
+    const characterModalProperties = entityModals.getModalProperties('character');
+    const contextModalProperties = entityModals.getModalProperties('context');
+    const locationModalProperties = entityModals.getModalProperties('location');
+    const audioTrackModalProperties = entityModals.getModalProperties('audioTrack');
+    const worldModalProperties = entityModals.getModalProperties('world');
+    const modelModalProperties = entityModals.getModalProperties('model');
+    const samplerModalProperties = entityModals.getModalProperties('sampler');
+    const promptBlockModalProperties = entityModals.getModalProperties('promptBlock');
+    const stopPatternModalProperties = entityModals.getModalProperties('stopPattern');
+    const budgetStrategyModalProperties = entityModals.getModalProperties('budgetStrategy');
+    const profileModalProperties = entityModals.getModalProperties('profile');
+    const accountModalProperties = entityModals.getModalProperties('account');
+    const multiplayerDataModalProperties = entityModals.getModalProperties('multiplayerData');
+
+    const localProtagonist = useMemo(
+        () => deriveLocalProtagonist(interactionData, multiplayerData, currentAccountId),
+        [interactionData, multiplayerData, currentAccountId],
+    );
+
+    const effectiveTokenizerModel = useMemo(() => {
+        if (selectedModelId) return allModels.find(model => model.id === selectedModelId) ?? null;
+        return null;
+    }, [selectedModelId, allModels]);
+
+    const [aiCharacterSaveRedirect, setAiCharacterSaveRedirect] = useState<((character: Character) => void) | null>(null);
+    const [aiContextSaveRedirect, setAiContextSaveRedirect] = useState<((context: Context) => void) | null>(null);
+    const [aiLocationSaveRedirect, setAiLocationSaveRedirect] = useState<((location: Location) => void) | null>(null);
+    const [aiAudioTrackSaveRedirect, setAiAudioTrackSaveRedirect] = useState<((audioTrack: AudioTrack) => void) | null>(null);
+    const [aiPromptBlockSaveRedirect, setAiPromptBlockSaveRedirect] = useState<((promptBlock: PromptBlock) => void) | null>(null);
+    const [aiProfileSaveRedirect, setAiProfileSaveRedirect] = useState<((profile: Profile) => void) | null>(null);
+
+    const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
+    const [isInspectionOpen, setIsInspectionOpen] = useState(false);
+
+    const chatShellsWithIdentifiers = useMemo(
+        () => rawChatShells.filter((shell): shell is ChatShellWithIdentifier => !!shell.id),
+        [rawChatShells],
+    );
+
+    const chatNameMap = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const shell of chatShellsWithIdentifiers) {
+            map.set(shell.id, shell.name || 'Untitled Chat');
+        }
+        if (interactionData?.id) {
+            map.set(interactionData.id, interactionData.name || 'Untitled Chat');
+        }
+        return map;
+    }, [chatShellsWithIdentifiers, interactionData?.id, interactionData?.name]);
 
     useEffect(() => {
-        searchInputRef.current?.focus();
-    }, []);
+        if (modals.chatList.isOpen) {
+            ensureChatsLoaded();
+        }
+    }, [modals.chatList.isOpen, ensureChatsLoaded]);
 
-    const lowerQuery = query.toLowerCase().trim();
-
-    const characterMap = useMemo(() => {
-        const map = new Map<string, Character>();
-        for (const c of allCharacters) map.set(c.id, c);
-        return map;
-    }, [allCharacters]);
-
-    const messageToChatsMap = useMemo(() => {
-        const map = new Map<string, Array<{ chatId: string; chatName: string }>>();
-
-        for (const shell of rawChatShells) {
-            if (!shell.id) continue;
-            const chatName = shell.name || 'Untitled Chat';
-            for (const msgId of (shell.interactionIdHistory || [])) {
-                let list = map.get(msgId);
-                if (!list) {
-                    list = [];
-                    map.set(msgId, list);
-                }
-                if (!list.some(c => c.chatId === shell.id)) {
-                    list.push({ chatId: shell.id, chatName });
-                }
-            }
+    const handleOpenChatInspection = useCallback(async (chatId: string) => {
+        if (interactionData && interactionData.id === chatId) {
+            setInspectionStack([interactionData]);
+            setIsInspectionOpen(true);
+            return;
         }
 
-        if (currentInteractionData?.id) {
-            const activeId = currentInteractionData.id;
-            const activeName = currentInteractionData.name || 'Untitled Chat';
-            for (const msg of (currentInteractionData.interactionHistory || [])) {
-                let list = map.get(msg.id);
-                if (!list) {
-                    list = [];
-                    map.set(msg.id, list);
-                }
-                if (!list.some(c => c.chatId === activeId)) {
-                    list.push({ chatId: activeId, chatName: activeName });
-                }
-            }
+        const loaded = await loadRawInteractionData(chatId, allCharacters);
+        if (!loaded) { 
+            addToast('Failed to load chat for inspection.', 'error'); 
+            return; 
+        }
+        setInspectionStack([loaded]);
+        setIsInspectionOpen(true);
+    }, [interactionData, allCharacters, addToast]);
+
+    const handleInspectParentInteractionData = useCallback(async (parentId: string): Promise<InteractionData> => {
+        if (interactionData && interactionData.id === parentId) {
+            return interactionData;
         }
 
-        return map;
-    }, [rawChatShells, currentInteractionData]);
-
-    useEffect(() => {
-        if (!lowerQuery) return;
-
-        let ignore = false;
-        const timer = setTimeout(async () => {
-            setIsSearchingServer(true);
-            try {
-                const res = await fetch(`${localURL}/search?q=${encodeURIComponent(lowerQuery)}&limit=50`);
-                if (res.ok && !ignore) {
-                    const data = await res.json();
-                    const messagesOnly = (data.results || []).filter((r: any) => r.type === 'message');
-                    setServerMessages(messagesOnly);
-                }
-            } catch (e) {
-                console.warn('[SuperSearch] Server query failed:', e);
-            } finally {
-                if (!ignore) {
-                    setIsSearchingServer(false);
-                }
-            }
-        }, 150);
-
-        return () => {
-            ignore = true;
-            clearTimeout(timer);
-        };
-    }, [lowerQuery]);
-
-    const categorizedResults = useMemo<Record<SearchTabId, SearchMatchResult[]>>(() => {
-        const emptyMap: Record<SearchTabId, SearchMatchResult[]> = {
-            all: [], message: [], chat: [], character: [], context: [],
-            location: [], promptBlock: [], audioTrack: [], world: [], model: [],
-            sampler: [], stopPattern: [], budgetStrategy: [], profile: [], memory: [],
-            account: [], multiplayerData: []
-        };
-
-        if (!lowerQuery) return emptyMap;
-
-        const scanEntities = (items: any[], tabId: SearchTabId, getTitle: (item: any) => string) => {
-            const results: SearchMatchResult[] = [];
-            if (!Array.isArray(items)) return results;
-
-            for (const item of items) {
-                if (!item || typeof item !== 'object') continue;
-                const matches = findMatchingFields(item, lowerQuery);
-                if (matches.length > 0) {
-                    results.push({
-                        tabId,
-                        id: String(item.id || ''),
-                        title: String(getTitle(item) || ''),
-                        matches,
-                        rawEntity: item,
-                    });
-                }
-            }
-            return results;
-        };
-
-        emptyMap.character = scanEntities(allCharacters, 'character', c => `🎭 ${c.name}`);
-        emptyMap.context = scanEntities(allContexts, 'context', c => `📜 ${c.name}`);
-        emptyMap.location = scanEntities(allLocations, 'location', l => `📍 ${l.name}`);
-        emptyMap.promptBlock = scanEntities(allPromptBlocks, 'promptBlock', p => `🧱 ${p.name}`);
-        emptyMap.audioTrack = scanEntities(allAudioTracks, 'audioTrack', a => `🔊 ${a.filename || a.name}`);
-        emptyMap.world = scanEntities(allWorlds, 'world', w => `🌍 ${w.name}`);
-        emptyMap.model = scanEntities(allModels, 'model', m => `🤖 ${m.name}`);
-        emptyMap.sampler = scanEntities(allSamplers, 'sampler', s => `🎚️ ${s.name}`);
-        emptyMap.stopPattern = scanEntities(allStopPatterns, 'stopPattern', sp => `🛑 ${sp.name}`);
-        emptyMap.budgetStrategy = scanEntities(allBudgetStrategies, 'budgetStrategy', b => `💰 ${b.name}`);
-        emptyMap.profile = scanEntities(allProfiles, 'profile', p => `👤 ${p.name}`);
-        emptyMap.memory = scanEntities(allMemories, 'memory', m => `🧠 ${typeof m.name === 'string' ? m.name : 'Untitled Memory'}`);
-        
-        // Attach parent character to memory results
-        for (const res of emptyMap.memory) {
-            const parentChar = allCharacters.find(c => 
-                Array.isArray(c.memories) && c.memories.some((m: any) => m.id === res.id)
-            );
-            if (parentChar) res.parentEntity = parentChar;
-        }
-
-        emptyMap.account = scanEntities(allAccounts, 'account', a => `🔑 ${a.name || a.username}`);
-        emptyMap.multiplayerData = scanEntities(allMultiplayerData, 'multiplayerData', m => `👥 ${m.name}`);
-        emptyMap.chat = scanEntities(rawChatShells, 'chat', s => `📂 ${s.name || 'Untitled Chat'}`);
-
-        const seenMessageIds = new Set<string>();
-        const messageResults: SearchMatchResult[] = [];
-
-        if (currentInteractionData) {
-            for (const msg of (currentInteractionData.interactionHistory || [])) {
-                if (msg.messageType === 'chat' && typeof msg.textContent === 'string' && msg.textContent.toLowerCase().includes(lowerQuery)) {
-                    seenMessageIds.add(msg.id);
-                    const chats = messageToChatsMap.get(msg.id) || [{ chatId: currentInteractionData.id, chatName: currentInteractionData.name || 'Untitled Chat' }];
-                    messageResults.push({
-                        tabId: 'message',
-                        id: msg.id,
-                        title: `🎭 ${msg.character.name}`,
-                        matches: [{ field: 'textContent', text: msg.textContent, snippet: makeSnippet(msg.textContent, lowerQuery) }],
-                        chats,
-                        rawEntity: msg,
-                        parentEntity: currentInteractionData,
-                    });
-                }
-            }
-        }
-
-        for (const sMsg of serverMessages) {
-            if (!seenMessageIds.has(sMsg.id)) {
-                seenMessageIds.add(sMsg.id);
-                const speaker = sMsg.characterId ? characterMap.get(sMsg.characterId) : null;
-                const chats = (sMsg.chats && sMsg.chats.length > 0) 
-                    ? sMsg.chats 
-                    : (messageToChatsMap.get(sMsg.id) || [{ chatId: 'unknown', chatName: 'Unknown Session' }]);
-
-                let parentChat: any = null;
-                if (chats[0]?.chatId && chats[0].chatId !== 'unknown') {
-                    if (currentInteractionData?.id === chats[0].chatId) {
-                        parentChat = currentInteractionData;
-                    } else {
-                        parentChat = rawChatShells.find(s => s.id === chats[0].chatId) || { id: chats[0].chatId, name: chats[0].chatName };
-                    }
-                }
-
-                messageResults.push({
-                    tabId: 'message',
-                    id: sMsg.id,
-                    title: speaker ? `🎭 ${speaker.name}` : '🎭 Character',
-                    matches: [{ field: 'textContent', text: sMsg.snippet, snippet: typeof sMsg.snippet === 'string' ? sMsg.snippet : '' }],
-                    chats,
-                    parentEntity: parentChat,
-                });
-            }
-        }
-
-        emptyMap.message = messageResults;
-
-        emptyMap.all = [
-            ...emptyMap.message.slice(0, 10),
-            ...emptyMap.chat.slice(0, 5),
-            ...emptyMap.character.slice(0, 5),
-            ...emptyMap.context.slice(0, 5),
-            ...emptyMap.location.slice(0, 5),
-            ...emptyMap.promptBlock.slice(0, 5),
-            ...emptyMap.world.slice(0, 5),
-            ...emptyMap.model.slice(0, 5),
-            ...emptyMap.sampler.slice(0, 5),
-            ...emptyMap.stopPattern.slice(0, 5),
-            ...emptyMap.budgetStrategy.slice(0, 5),
-            ...emptyMap.profile.slice(0, 5),
-            ...emptyMap.memory.slice(0, 5),
-            ...emptyMap.account.slice(0, 5),
-            ...emptyMap.multiplayerData.slice(0, 5),
-            ...emptyMap.audioTrack.slice(0, 5),
-        ];
-
-        return emptyMap;
-    }, [
-        lowerQuery, allCharacters, allContexts, allLocations, allPromptBlocks, allAudioTracks,
-        allWorlds, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles,
-        allMemories, allAccounts, allMultiplayerData, rawChatShells, currentInteractionData,
-        messageToChatsMap, serverMessages, characterMap
-    ]);
-
-    const displayedResults = useMemo(() => {
-        return categorizedResults[activeTab] || [];
-    }, [categorizedResults, activeTab]);
-
-    const totalResultsCount = useMemo(() => {
-        return Object.values(categorizedResults).reduce((sum, arr) => sum + arr.length, 0) - categorizedResults.all.length;
-    }, [categorizedResults]);
+        const loaded = await loadRawInteractionData(parentId, allCharacters);
+        if (!loaded) throw new Error(`Failed to load parent chat ${parentId}`);
+        return loaded;
+    }, [interactionData, allCharacters]);
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div 
-                className="modal-content editor-modal-content" 
-                onClick={e => e.stopPropagation()} 
-                style={{ maxWidth: '850px', height: '88vh', maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}
-            >
-                {/* Modal Header */}
-                <div className="modal-header">
-                    <h2>Super Search</h2>
-                    <div className="editor-modal-actions">
-                        {isSearchingServer && <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>Scanning disk...</span>}
-                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Close</button>
-                    </div>
-                </div>
+        <>
+            {/* ─── Manager Lists ─── */}
 
-                {/* Search Bar */}
-                <div className="modal-search-container" style={{ padding: '0 20px 12px 20px' }}>
-                    <input
-                        ref={searchInputRef}
-                        type="text"
-                        placeholder="Search anything across all entities, lore, and messages..."
-                        value={query}
-                        onChange={e => setQuery(e.target.value)}
-                        className="modal-search-input"
-                    />
-                </div>
+            {modals.chatList.isOpen && (
+                <ManagerModal
+                    title="Chat Sessions"
+                    items={chatShellsWithIdentifiers}
+                    isOpen={modals.chatList.isOpen}
+                    onClose={modals.chatList.close}
+                    onSelect={(item) => { handleOpenChatInspection(item.id); modals.chatList.close(); }}
+                    onDelete={(identifier: string) => onDeleteChat(identifier)}
+                    onCreateNew={onNewChat}
+                    renderSubtext={renderChatSubtext}
+                    emptyMessage="No saved chat sessions found."
+                    specialActionIcon="★"
+                    onSpecialAction={(item) => onSwitchChat(item.id)}
+                    specialActionTooltip={(item) => interactionData?.id === item.id ? `✓ Active — "${item.name}"` : `Activate "${item.name}"`}
+                    activeSpecialActionId={interactionData?.id}
+                />
+            )}
 
-                {/* ─── Entity Tab Bar (5 tabs per row, expanded across remaining space) ─── */}
-                <div 
-                    className="entity-tab-bar" 
-                    style={{ 
-                        padding: '0 20px', 
-                        marginBottom: 0, 
-                        borderBottom: '1px solid var(--border)', 
-                        background: 'var(--social-bg)',
-                        flexShrink: 0
+            {modals.charList.isOpen && (
+                <ManagerModal
+                    title="Characters"
+                    items={allCharacters}
+                    isOpen={modals.charList.isOpen}
+                    onClose={modals.charList.close}
+                    onSelect={isMultiplayerClient ? undefined : async (character: Character) => { 
+                        const fullCharacter = character.sampler ? character : await onLoadFullCharacter(character.id); 
+                        characterModalProperties.open(fullCharacter || character); 
                     }}
-                >
-                    {TAB_CONFIG.map(tab => {
-                        const count = tab.id === 'all' ? totalResultsCount : (categorizedResults[tab.id]?.length || 0);
-                        return (
-                            <button
-                                key={tab.id}
-                                type="button"
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`entity-tab-button ${activeTab === tab.id ? 'entity-tab-button-active' : ''}`}
-                                style={{ 
-                                    flex: '1 1 calc(20% - 4px)',
-                                    minWidth: 'calc(20% - 4px)',
-                                    fontSize: '0.7rem', 
-                                    padding: '8px 6px'
-                                }}
-                            >
-                                <span>{tab.icon}</span>
-                                <span>{tab.label}</span>
-                                {lowerQuery.length > 0 && count > 0 && (
-                                    <span style={{ opacity: 0.8, fontSize: '0.65rem', marginLeft: '2px' }}>
-                                        ({count})
-                                    </span>
-                                )}
-                            </button>
-                        );
-                    })}
-                </div>
+                    onDelete={isMultiplayerClient ? undefined : onDeleteCharacter}
+                    onCreateNew={isMultiplayerClient ? () => {} : () => characterModalProperties.open()}
+                    renderSubtext={(character: Character) => character.description || 'No description'}
+                    emptyMessage="No characters found."
+                    actionLabel="Delete"
+                    orderedListMode={!!interactionData && !isMultiplayerClient}
+                    currentOrderIds={interactionData?.participants.map(participant => participant.id) || []}
+                    onToggleOrder={isMultiplayerClient ? undefined : onToggleParticipant}
+                    specialActionIcon="★"
+                    onSpecialAction={isMultiplayerClient ? undefined : (character: Character) => onSetProtagonist(character.id)}
+                    specialActionTooltip={(character: Character) => `set ${character.name} as the protagonist`}
+                    activeSpecialActionId={localProtagonist?.id}
+                />
+            )}
 
-                {/* Results List */}
-                <div className="modal-body editor-modal-body" style={{ flex: 1, padding: '16px 20px' }}>
-                    {!lowerQuery ? (
-                        <div style={{ textAlign: 'center', padding: '60px 20px', opacity: 0.5, fontSize: '0.85rem' }}>
-                            Type to search across all lore, entities, prompts, and chat sessions.
-                        </div>
-                    ) : displayedResults.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '60px 20px', opacity: 0.5, fontSize: '0.85rem' }}>
-                            No matches found for "{query}" in {TAB_CONFIG.find(t => t.id === activeTab)?.label}.
-                        </div>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {displayedResults.map(item => (
-                                <div 
-                                    key={`${item.tabId}-${item.id}`}
-                                    className="manager-item"
-                                    style={{ 
-                                        flexDirection: 'column', 
-                                        alignItems: 'flex-start', 
-                                        gap: '6px',
-                                        padding: '12px 14px',
-                                        cursor: 'default'
-                                    }}
-                                >
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'baseline' }}>
-                                        <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-h)' }}>
-                                            {String(item.title || '')}
-                                        </div>
-                                        <span style={{ fontSize: '0.65rem', opacity: 0.5, textTransform: 'uppercase' }}>
-                                            {item.tabId}
-                                        </span>
-                                    </div>
+            {modals.contextList.isOpen && (
+                <ManagerModal 
+                    title="Contexts" 
+                    items={allContexts} 
+                    isOpen={modals.contextList.isOpen} 
+                    onClose={modals.contextList.close}
+                    onSelect={(context: Context) => contextModalProperties.open(context)} 
+                    onDelete={onDeleteContext} 
+                    onCreateNew={() => contextModalProperties.open()}
+                    renderSubtext={renderContextSubtext} 
+                    emptyMessage="No contexts found." 
+                    actionLabel="Delete"
+                    orderedListMode={true} 
+                    currentOrderIds={interactionData?.contexts?.map(context => context.id) || []} 
+                    onToggleOrder={onToggleContext} 
+                />
+            )}
 
-                                    {/* Render all matching fields with clean spacing */}
-                                    {item.matches && item.matches.length > 0 && (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', marginTop: '4px' }}>
-                                            {item.matches.map((m, idx) => (
-                                                <div 
-                                                    key={idx}
-                                                    style={{ 
-                                                        fontSize: '0.8rem', 
-                                                        opacity: 0.9, 
-                                                        background: 'rgba(0,0,0,0.15)', 
-                                                        padding: '8px 10px', 
-                                                        borderRadius: '6px', 
-                                                        width: '100%', 
-                                                        boxSizing: 'border-box', 
-                                                        borderLeft: '3px solid var(--accent)' 
-                                                    }}
-                                                >
-                                                    <div style={{ fontSize: '0.65rem', opacity: 0.8, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '3px', color: 'var(--accent)' }}>
-                                                        {formatFieldName(m.field)}
-                                                    </div>
-                                                    <div>"{m.snippet}"</div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    {/* Action Row: Interactive badges / Open buttons */}
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: '4px', flexWrap: 'wrap', gap: '6px' }}>
-                                        {item.tabId === 'message' && item.chats && (
-                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
-                                                <span style={{ fontSize: '0.65rem', opacity: 0.5 }}>Belongs to:</span>
-                                                {item.chats.map(c => {
-                                                    const isCurrent = currentInteractionData?.id === c.chatId;
-                                                    return (
-                                                        <button
-                                                            key={c.chatId}
-                                                            type="button"
-                                                            onClick={() => {
-                                                                onSelectEntity?.('message', item.rawEntity, { id: c.chatId, name: c.chatName } as ObjectData);
-                                                                onClose();
-                                                            }}
-                                                            style={{
-                                                                fontSize: '0.68rem',
-                                                                padding: '2px 8px',
-                                                                borderRadius: '10px',
-                                                                background: isCurrent ? 'var(--accent-bg)' : 'var(--social-bg)',
-                                                                color: isCurrent ? 'var(--accent)' : 'var(--text-h)',
-                                                                border: isCurrent ? '1px solid var(--accent)' : '1px solid var(--border)',
-                                                                cursor: 'pointer'
-                                                            }}
-                                                        >
-                                                            💬 {c.chatName} {isCurrent ? '(Active)' : ''}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
+            {modals.locationList.isOpen && (
+                <ManagerModal 
+                    title="Locations" 
+                    items={allLocations} 
+                    isOpen={modals.locationList.isOpen} 
+                    onClose={modals.locationList.close}
+                    onSelect={(location: Location) => locationModalProperties.open(location)} 
+                    onDelete={onDeleteLocation} 
+                    onCreateNew={() => locationModalProperties.open()}
+                    renderSubtext={renderLocationSubtext} 
+                    emptyMessage="No locations found." 
+                    actionLabel="Delete"
+                    orderedListMode={true} 
+                    currentOrderIds={interactionData?.locations?.map(location => location.id) || []} 
+                    onToggleOrder={onToggleLocation} 
+                />
+            )}
 
-                                        {item.tabId !== 'message' && (
-                                            <div style={{ marginLeft: 'auto' }}>
-                                                <button
-                                                    type="button"
-                                                    className="editor-button editor-button-save"
-                                                    onClick={() => {
-                                                        onSelectEntity?.(item.tabId, item.rawEntity, item.parentEntity);
-                                                    }}
-                                                    style={{ minHeight: '26px', fontSize: '0.7rem', padding: '2px 10px' }}
-                                                >
-                                                    {item.tabId === 'chat' ? 'Open Chat' : 'Edit Entity'}
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
+            {modals.audioTrackList.isOpen && (
+                <ManagerModal 
+                    title="Audio Tracks" 
+                    items={allAudioTracks} 
+                    isOpen={modals.audioTrackList.isOpen} 
+                    onClose={modals.audioTrackList.close}
+                    onSelect={(audioTrack: AudioTrack) => audioTrackModalProperties.open(audioTrack)} 
+                    onDelete={onDeleteAudioTrack} 
+                    onCreateNew={() => audioTrackModalProperties.open()}
+                    renderSubtext={(audioTrack: AudioTrack) => `${audioTrack.audioCategory === 'ambient' ? '🌿' : audioTrack.audioCategory === 'music' ? '🎵' : '💥'} ${audioTrack.loop ? '🔁' : '▶️'} Vol: ${Math.round(audioTrack.volume * 100)}%${audioTrack.priority > 0 ? ` • ⬆${audioTrack.priority}` : ''}${audioTrack.locationBindings.length > 0 ? ` • 📍${audioTrack.locationBindings.length}` : ''}${audioTrack.contextBindings.length > 0 ? ` • 📜${audioTrack.contextBindings.length}` : ''}${audioTrack.characterBindings.length > 0 ? ` • 🎭${audioTrack.characterBindings.length}` : ''}`}
+                    emptyMessage="No audio tracks found." 
+                    actionLabel="Delete" 
+                    orderedListMode={true} 
+                    currentOrderIds={interactionData?.audioTracks?.map(track => track.id) || []} 
+                    onToggleOrder={onToggleAudioTrack} 
+                />
+            )}
+
+            {modals.worldManager.isOpen && (
+                <ManagerModal 
+                    title="Worlds" 
+                    items={allWorlds} 
+                    isOpen={modals.worldManager.isOpen} 
+                    onClose={modals.worldManager.close}
+                    onSelect={(world: World) => worldModalProperties.open(world)} 
+                    onDelete={onDeleteWorld} 
+                    onCreateNew={() => worldModalProperties.open()}
+                    renderSubtext={(world: World) => {
+                        const parts = [
+                            world.characterIds.length > 0 ? `${world.characterIds.length} characters` : null,
+                            world.contextIds.length > 0 ? `${world.contextIds.length} contexts` : null,
+                            world.locationIds.length > 0 ? `${world.locationIds.length} locations` : null,
+                            world.audioTrackIds?.length > 0 ? `${world.audioTrackIds.length} audios` : null,
+                            world.promptBlockIds?.length > 0 ? `${world.promptBlockIds.length} prompts` : null,
+                            world.profileId ? 'Has profile' : null,
+                            world.description ? `— ${world.description}` : null,
+                        ].filter(Boolean);
+                        return parts.join(' • ');
+                    }}
+                    emptyMessage="No worlds saved yet." 
+                    actionLabel="Delete" 
+                />
+            )}
+
+            {modals.promptBlockList.isOpen && (
+                <ManagerModal 
+                    title="Prompt Blocks" 
+                    items={allPromptBlocks} 
+                    isOpen={modals.promptBlockList.isOpen} 
+                    onClose={modals.promptBlockList.close}
+                    onSelect={(promptBlock: PromptBlock) => promptBlockModalProperties.open(promptBlock)} 
+                    onDelete={promptBlockModalProperties.delete} 
+                    onCreateNew={() => promptBlockModalProperties.open()}
+                    renderSubtext={(promptBlock: PromptBlock) => `${promptBlock.textContent ? `📝 ${promptBlock.textContent.length} characters` : ''}${promptBlock.images.length > 0 ? ` • 🖼️ ${promptBlock.images.length}` : ''}${promptBlock.characterBindings.length > 0 ? ` • 🎭${promptBlock.characterBindings.length}` : ''}${promptBlock.contextBindings.length > 0 ? ` • 📜${promptBlock.contextBindings.length}` : ''}${promptBlock.locationBindings.length > 0 ? ` • 📍${promptBlock.locationBindings.length}` : ''}`}
+                    emptyMessage="No prompt blocks found." 
+                    actionLabel="Delete" 
+                />
+            )}
+
+            {useMemo(() => {
+                if (!modals.modelList.isOpen) return null;
+                const strategyModelIds = new Set<string>();
+                if (activeStrategy) {
+                    for (const modelId of activeStrategy.modelIds) strategyModelIds.add(modelId);
+                }
+                return (
+                    <ManagerModal 
+                        title="Language Models" 
+                        items={allModels} 
+                        isOpen={modals.modelList.isOpen} 
+                        onClose={modals.modelList.close}
+                        onSelect={(model: LanguageModel) => modelModalProperties.open(model)} 
+                        onDelete={onDeleteModel} 
+                        onCreateNew={() => modelModalProperties.open()}
+                        renderSubtext={(model: LanguageModel) => renderModelSubtext(model, runningModels, selectedModelId)}
+                        emptyMessage="No models available." 
+                        actionLabel="Delete" 
+                        orderedListMode={false}
+                        activeSpecialActionId={selectedModelId || undefined} 
+                        secondaryActiveIds={strategyModelIds}
+                        specialActionIcon="★" 
+                        onSpecialAction={(model: LanguageModel) => onToggleModelLoad(model.id)}
+                        specialActionTooltip={(model: LanguageModel) => {
+                            const modelStatus = runningModels[model.id];
+                            const isCloud = !!model.apiKey && !!model.backend && cloudBackends.includes(model.backend as cloudBackend);
+                            const inStrategy = strategyModelIds.has(model.id);
+                            if (inStrategy && activeStrategy && selectedModelId !== model.id) return `★ In strategy "${activeStrategy.name}" — Click to override & select`;
+                            if (isCloud && selectedModelId === model.id) return '☁️ Cloud Model — Click to Deselect';
+                            if (isCloud) return '☁️ Cloud Model — Click to Select';
+                            if (modelStatus?.isRunning && modelStatus?.isIdle && selectedModelId === model.id) return '⏹ Stop & Deselect';
+                            if (modelStatus?.isRunning && modelStatus?.isIdle) return '⏹ Stop Model';
+                            if (modelStatus?.isRunning && !modelStatus?.isIdle) return '⏳ Loading...';
+                            if (selectedModelId === model.id) return '✓ Already Selected — Click to Load';
+                            return '▶ Load & Select Model';
+                        }} 
+                    />
+                );
+            }, [modals.modelList.isOpen, modals.modelList.close, allModels, modelModalProperties, onDeleteModel, runningModels, selectedModelId, activeStrategy, onToggleModelLoad])}
+
+            {modals.samplerList.isOpen && (
+                <ManagerModal 
+                    title="Samplers" 
+                    items={allSamplers} 
+                    isOpen={modals.samplerList.isOpen} 
+                    onClose={modals.samplerList.close}
+                    onSelect={(sampler: Sampler) => samplerModalProperties.open(sampler)} 
+                    onDelete={onDeleteSampler} 
+                    onCreateNew={() => samplerModalProperties.open()}
+                    renderSubtext={(sampler: Sampler) => `Temp: ${sampler?.parameters?.temperature}, TopP: ${sampler?.parameters?.top_p}, Tokens: ${sampler?.maximumNumberOfTokens}`}
+                    emptyMessage="No samplers found." 
+                    actionLabel="Delete" 
+                />
+            )}
+
+            {modals.stopList.isOpen && (
+                <ManagerModal 
+                    title="Stop Patterns" 
+                    items={allStopPatterns} 
+                    isOpen={modals.stopList.isOpen} 
+                    onClose={modals.stopList.close}
+                    onSelect={(stopPattern: StopPattern) => stopPatternModalProperties.open(stopPattern)} 
+                    onDelete={onDeleteStopPattern} 
+                    onCreateNew={() => stopPatternModalProperties.open()}
+                    renderSubtext={(stopPattern: StopPattern) => {
+                        const hasActivationTriggers = (stopPattern.regularExpressionActivationTriggers?.length ?? 0) > 0;
+                        return (<span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{hasActivationTriggers ? '⚡' : '📌'} Pattern: {stopPattern.pattern}</span>);
+                    }}
+                    emptyMessage="No stop patterns found." 
+                    actionLabel="Delete" 
+                    orderedListMode={false} 
+                />
+            )}
+
+            {modals.budgetStrategyList.isOpen && (
+                <ManagerModal 
+                    title="Budget Strategies" 
+                    items={allBudgetStrategies} 
+                    isOpen={modals.budgetStrategyList.isOpen} 
+                    onClose={modals.budgetStrategyList.close}
+                    onSelect={(budgetStrategy: BudgetStrategy) => budgetStrategyModalProperties.open(budgetStrategy)} 
+                    onDelete={onDeleteBudgetStrategy} 
+                    onCreateNew={() => budgetStrategyModalProperties.open()}
+                    renderSubtext={renderBudgetStrategySubtext} 
+                    emptyMessage="No budget strategies found." 
+                    actionLabel="Delete" 
+                    orderedListMode={false}
+                    activeSpecialActionId={selectedBudgetStrategyId || undefined} 
+                    specialActionIcon="★"
+                    onSpecialAction={(budgetStrategy: BudgetStrategy) => onActivateBudgetStrategy(budgetStrategy.id)}
+                    specialActionTooltip={(budgetStrategy: BudgetStrategy) => selectedBudgetStrategyId === budgetStrategy.id ? `Deactivate ${budgetStrategy.name}` : `Activate ${budgetStrategy.name}`} 
+                />
+            )}
+
+            {modals.profileList.isOpen && (
+                <ManagerModal 
+                    title="Profiles" 
+                    items={allProfiles} 
+                    isOpen={modals.profileList.isOpen} 
+                    onClose={modals.profileList.close}
+                    onSelect={(profile: Profile) => profileModalProperties.open(profile)} 
+                    onDelete={onDeleteProfile} 
+                    onCreateNew={() => profileModalProperties.open()}
+                    renderSubtext={renderProfileSubtext} 
+                    emptyMessage="No profiles found." 
+                    actionLabel="Delete" 
+                    orderedListMode={false}
+                    activeSpecialActionId={interactionData?.Profile?.id || undefined} 
+                    specialActionIcon="★"
+                    onSpecialAction={(profile: Profile) => onActivateProfile(profile.id)}
+                    specialActionTooltip={(profile: Profile) => interactionData?.Profile?.id === profile.id ? `Deactivate ${profile.name}` : `Activate ${profile.name}`} 
+                />
+            )}
+
+            {modals.extList.isOpen && (
+                <ManagerModal 
+                    title="Extensions" 
+                    items={allExtensions} 
+                    isOpen={modals.extList.isOpen} 
+                    onClose={modals.extList.close}
+                    onSelect={undefined} 
+                    onDelete={onDeleteExtension} 
+                    onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')}
+                    renderSubtext={(extension: Extension) => renderExtensionSubtext({ extensionType: extension.extensionType, description: extension.description ?? '' })}
+                    emptyMessage="No extensions available." 
+                    actionLabel="Delete" 
+                    orderedListMode={true} 
+                    onToggleOrder={onToggleExtension} 
+                />
+            )}
+
+            {/* ─── Tool / Utility Modals ─── */}
+
+            {modals.settings.isOpen && (
+                <SettingsModal
+                    isOpen={modals.settings.isOpen}
+                    onClose={modals.settings.close}
+                    onOpenBudgetControl={modals.budgetControl.open}
+                    onOpenParticipantControl={modals.participantControl.open}
+                    onOpenAccountData={modals.accountList.open}
+                    onOpenMultiplayerData={modals.multiplayerDataList.open}
+                    onOpenJoinSession={modals.joinSession.open}
+                    onOpenAIRecommendation={modals.aiRecommendation.open}
+                    onOpenRestrictionReduction={modals.restrictionReduction.open}
+                    onOpenAlternateTimelines={modals.alternateTimelines.open}
+                    onOpenImportCharacterCard={modals.cardImport.open}
+                    onOpenExportData={modals.exportData.open}
+                    onOpenImportData={modals.importData.open}
+                    onOpenDataManager={modals.dataManager.open}
+                    onOpenSuperSearch={modals.superSearch.open}
+                    onOpenGpuMonitor={modals.gpuMonitor.open}
+                />
+            )}
+
+            {modals.budgetControl.isOpen && (
+                <BudgetControlModal isOpen={modals.budgetControl.isOpen} onClose={modals.budgetControl.close} allModels={allModels} activeStrategy={activeStrategy} />
+            )}
+
+            {modals.participantControl.isOpen && (
+                <ParticipantControlModal 
+                    isOpen={modals.participantControl.isOpen} 
+                    onClose={modals.participantControl.close}
+                    interactionData={interactionData} 
+                    onUpdateInteractionData={onUpdateInteractionData}
+                    onForceFirstMessage={onForceFirstMessage} 
+                    onSendCustomMessage={onSendCustomMessage} 
+                    onInjectCustomMessage={onInjectCustomMessage}
+                    onInjectFirstMessage={onInjectFirstMessage}
+                />
+            )}
+
+            {modals.accountList.isOpen && (
+                <ManagerModal 
+                    title="Accounts" 
+                    items={allAccounts} 
+                    isOpen={modals.accountList.isOpen} 
+                    onClose={modals.accountList.close}
+                    onSelect={(account: Account) => accountModalProperties.open(account)} 
+                    onDelete={accountModalProperties.delete} 
+                    onCreateNew={() => accountModalProperties.open()}
+                    renderSubtext={(account: Account) => `👤 ${account.username}${account.url ? ` • 🔗 ${account.url}` : ''}`}
+                    emptyMessage="No accounts found." 
+                    actionLabel="Delete"
+                    specialActionIcon="★"
+                    onSpecialAction={(account: Account) => onToggleAccount(account.id)}
+                    specialActionTooltip={(account: Account) => currentAccountId === account.id ? `Deactivate ${account.name}` : `Activate ${account.name}`}
+                    activeSpecialActionId={currentAccountId || undefined} 
+                />
+            )}
+
+            {modals.multiplayerDataList.isOpen && (
+                <ManagerModal 
+                    title="Multiplayer Data" 
+                    items={allMultiplayerData} 
+                    isOpen={modals.multiplayerDataList.isOpen} 
+                    onClose={modals.multiplayerDataList.close}
+                    onSelect={(multiplayerDataEntry: MultiplayerData) => multiplayerDataModalProperties.open(multiplayerDataEntry)} 
+                    onDelete={onDeleteMultiplayerData} 
+                    onCreateNew={() => multiplayerDataModalProperties.open()}
+                    renderSubtext={(multiplayerDataEntry: MultiplayerData) => `${multiplayerDataEntry.password ? '🔒' : '🔓'} ${Object.keys(multiplayerDataEntry.multiplayerDataAccountConfigurations || {}).length} accounts • ${multiplayerDataEntry.interactionDataIds.length} sessions`}
+                    emptyMessage="No multiplayer data found." 
+                    actionLabel="Delete" 
+                />
+            )}
+
+            {modals.aiRecommendation.isOpen && (
+                <AIRecommendationModal 
+                    isOpen={modals.aiRecommendation.isOpen} 
+                    onClose={modals.aiRecommendation.close}
+                    onSaveCharacter={async (character: Character) => { onSaveCharacter(character); return true; }}
+                    onSaveContext={async (context: Context) => { onSaveContext(context); return true; }}
+                    onSaveLocation={async (location: Location) => { onSaveLocation(location); return true; }}
+                    onSaveAudioTrack={async (audioTrack: AudioTrack) => { onSaveAudioTrack(audioTrack); return true; }}
+                    onSaveProfile={async (profile: Profile) => { onSaveProfile(profile); return true; }}
+                    onSaveWorld={async (world: World) => { onSaveWorld(world); return true; }}
+                    onSavePromptBlock={async (promptBlock: PromptBlock) => { promptBlockModalProperties.save(promptBlock); return true; }}
+                    onOpenCharacterEditor={(character, onApplyToRecommendation) => { setAiCharacterSaveRedirect(() => onApplyToRecommendation); characterModalProperties.open(character ?? undefined); }}
+                    onOpenContextEditor={(context, onApplyToRecommendation) => { setAiContextSaveRedirect(() => onApplyToRecommendation); contextModalProperties.open(context ?? undefined); }}
+                    onOpenLocationEditor={(location, onApplyToRecommendation) => { setAiLocationSaveRedirect(() => onApplyToRecommendation); locationModalProperties.open(location ?? undefined); }}
+                    onOpenAudioTrackEditor={(audioTrack, onApplyToRecommendation) => { setAiAudioTrackSaveRedirect(() => onApplyToRecommendation); audioTrackModalProperties.open(audioTrack ?? undefined); }}
+                    onOpenPromptBlockEditor={(promptBlock, onApplyToRecommendation) => { setAiPromptBlockSaveRedirect(() => onApplyToRecommendation); promptBlockModalProperties.open(promptBlock ?? undefined); }}
+                    onOpenProfileEditor={(profile, onApplyToRecommendation) => { setAiProfileSaveRedirect(() => onApplyToRecommendation); profileModalProperties.open(profile ?? undefined); }}
+                    allSamplers={allSamplers} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations}
+                    allAudioTracks={allAudioTracks} allPromptBlocks={allPromptBlocks} selectedModel={effectiveTokenizerModel} runningModels={runningModels} 
+                />
+            )}
+
+            {modals.restrictionReduction.isOpen && (
+                <RestrictionReductionModal 
+                    isOpen={modals.restrictionReduction.isOpen} 
+                    onClose={modals.restrictionReduction.close}
+                    onSaveCharacter={async (character: Character) => { onSaveCharacter(character); return true; }}
+                    allCharacters={allCharacters} allProfiles={allProfiles} allModels={allModels} allSamplers={allSamplers}
+                    runningModels={runningModels} 
+                />
+            )}
+
+            {modals.alternateTimelines.isOpen && (
+                <AlternateTimelinesModal 
+                    isOpen={modals.alternateTimelines.isOpen} 
+                    onClose={modals.alternateTimelines.close}
+                    currentInteractionId={interactionData?.id ?? ''} 
+                    rawChatShells={chatShellsWithIdentifiers}
+                    onSwitchChat={onSwitchChat} 
+                    onDeleteChat={onDeleteChat} 
+                    onInspectChat={handleOpenChatInspection} 
+                    onRenameChat={onRenameChat} 
+                />
+            )}
+
+            {modals.cardImport.isOpen && (
+                <CharacterCardImportModal 
+                    isOpen={modals.cardImport.isOpen} 
+                    onClose={modals.cardImport.close}
+                    onSaveCharacter={async (character: Character) => { onSaveCharacter(character); return true; }}
+                    onSaveContext={async (context: Context) => { onSaveContext(context); return true; }} 
+                    allSamplers={allSamplers} 
+                />
+            )}
+
+            {modals.importData.isOpen && (
+                <DataImportModal isOpen={modals.importData.isOpen} onClose={modals.importData.close} onImportComplete={onImportComplete} />
+            )}
+
+            {modals.exportData.isOpen && (
+                <DataExportModal 
+                    isOpen={modals.exportData.isOpen} 
+                    onClose={modals.exportData.close}
+                    allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} allAudioTracks={allAudioTracks}
+                    allWorlds={allWorlds} allModels={allModels} allSamplers={allSamplers} allPromptBlocks={allPromptBlocks}
+                    allStopPatterns={allStopPatterns} allBudgetStrategies={allBudgetStrategies} allProfiles={allProfiles}
+                    allMemories={allMemories} allAccounts={allAccounts} allMultiplayerData={allMultiplayerData}
+                    rawChatShells={chatShellsWithIdentifiers} 
+                />
+            )}
+
+            {modals.dataManager.isOpen && (
+                <DataManagerModal 
+                    isOpen={modals.dataManager.isOpen} 
+                    onClose={modals.dataManager.close}
+                    allCharacters={allCharacters} 
+                    allContexts={allContexts} 
+                    allLocations={allLocations} 
+                    allAudioTracks={allAudioTracks}
+                    allWorlds={allWorlds} 
+                    allModels={allModels} 
+                    allSamplers={allSamplers} 
+                    allPromptBlocks={allPromptBlocks}
+                    allStopPatterns={allStopPatterns} 
+                    allBudgetStrategies={allBudgetStrategies} 
+                    allProfiles={allProfiles}
+                    allMemories={allMemories} 
+                    allAccounts={allAccounts} 
+                    allMultiplayerData={allMultiplayerData} 
+                    rawChatShells={chatShellsWithIdentifiers}
+                    onDeleteCharacter={onDeleteCharacter} 
+                    onDeleteContext={onDeleteContext} 
+                    onDeleteLocation={onDeleteLocation}
+                    onDeleteAudioTrack={onDeleteAudioTrack} 
+                    onDeleteWorld={onDeleteWorld} 
+                    onDeleteModel={onDeleteModel}
+                    onDeleteSampler={onDeleteSampler} 
+                    onDeletePromptBlock={onDeletePromptBlock} 
+                    onDeleteStopPattern={onDeleteStopPattern}
+                    onDeleteBudgetStrategy={onDeleteBudgetStrategy} 
+                    onDeleteProfile={onDeleteProfile} 
+                    onDeleteMemory={onDeleteMemory}
+                    onDeleteAccount={onDeleteAccount} 
+                    onDeleteMultiplayerData={onDeleteMultiplayerData} 
+                    onDeleteChat={onDeleteChat} 
+                />
+            )}
+
+            {/* ─── Super Search Modal (Managed directly by modals.superSearch) ─── */}
+            {modals.superSearch?.isOpen && (
+                <SuperSearchModal
+                    isOpen={modals.superSearch.isOpen}
+                    onClose={modals.superSearch.close}
+                    allCharacters={allCharacters}
+                    allContexts={allContexts}
+                    allLocations={allLocations}
+                    allAudioTracks={allAudioTracks}
+                    allWorlds={allWorlds}
+                    allPromptBlocks={allPromptBlocks}
+                    allModels={allModels}
+                    allSamplers={allSamplers}
+                    allStopPatterns={allStopPatterns}
+                    allBudgetStrategies={allBudgetStrategies}
+                    allProfiles={allProfiles}
+                    allMemories={allMemories}
+                    allAccounts={allAccounts}
+                    allMultiplayerData={allMultiplayerData}
+                    rawChatShells={chatShellsWithIdentifiers}
+                    currentInteractionData={interactionData}
+                    onSelectEntity={(tabId, entity, parentEntity) => {
+                        switch (tabId) {
+                            case 'character': characterModalProperties.open(entity); break;
+                            case 'context': contextModalProperties.open(entity); break;
+                            case 'location': locationModalProperties.open(entity); break;
+                            case 'audioTrack': audioTrackModalProperties.open(entity); break;
+                            case 'world': worldModalProperties.open(entity); break;
+                            case 'promptBlock': promptBlockModalProperties.open(entity); break;
+                            case 'model': modelModalProperties.open(entity); break;
+                            case 'sampler': samplerModalProperties.open(entity); break;
+                            case 'stopPattern': stopPatternModalProperties.open(entity); break;
+                            case 'budgetStrategy': budgetStrategyModalProperties.open(entity); break;
+                            case 'profile': profileModalProperties.open(entity); break;
+                            case 'account': accountModalProperties.open(entity); break;
+                            case 'multiplayerData': multiplayerDataModalProperties.open(entity); break;
+                            case 'chat': onSwitchChat(entity.id); break;
+                            case 'memory':
+                                addToast('Memories are managed inside Character settings.', 'info');
+                                characterModalProperties.open(parentEntity);
+                                break;
+                            case 'message':
+                                if (interactionData?.id !== parentEntity?.id) {
+                                    if (parentEntity) onSwitchChat(parentEntity.id);
+                                }
+                                if (entity.id) {
+                                    const targetId = entity.id;
+                                    const observer = new MutationObserver(() => {
+                                        const el = document.querySelector(`[data-message-id="${targetId}"]`);
+                                        if (el) {
+                                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                            observer.disconnect();
+                                        }
+                                    });
+                                    observer.observe(document.body, { childList: true, subtree: true });
+                                    setTimeout(() => observer.disconnect(), 3000); 
+                                }
+                                break;
+                            default:
+                                entityModals.getModalProperties(tabId as any)?.open(entity);
+                                break;
+                        }
+                    }}
+                />
+            )}
+
+            <GpuMonitorModal isOpen={modals.gpuMonitor.isOpen} onClose={modals.gpuMonitor.close} />
+
+            {/* ─── Editor Modals ─── */}
+
+            {characterModalProperties.isOpen && (
+                <CharacterEditorModal 
+                    isOpen={characterModalProperties.isOpen} 
+                    onClose={() => { setAiCharacterSaveRedirect(null); characterModalProperties.close(); }}
+                    onSave={(character: Character) => { 
+                        if (aiCharacterSaveRedirect) { 
+                            aiCharacterSaveRedirect(character); 
+                            addToast('Applied character changes to AI recommendation.', 'success'); 
+                        } else { 
+                            characterModalProperties.save(character); 
+                        } 
+                    }}
+                    existingCharacter={characterModalProperties.edit} 
+                    allSamplers={allSamplers} 
+                    allCharacters={allCharacters}
+                    localProtagonist={localProtagonist}
+                    interactionData={interactionData}
+                    selectedModel={effectiveTokenizerModel} 
+                    runningModels={runningModels} 
+                    chatNameMap={chatNameMap} 
+                />
+            )}
+
+            {contextModalProperties.isOpen && (
+                <ContextEditorModal 
+                    isOpen={contextModalProperties.isOpen} 
+                    onClose={() => { setAiContextSaveRedirect(null); contextModalProperties.close(); }}
+                    onSave={(context: Context) => { 
+                        if (aiContextSaveRedirect) { 
+                            aiContextSaveRedirect(context); 
+                            addToast('Applied context changes to AI recommendation.', 'success'); 
+                        } else { 
+                            contextModalProperties.save(context); 
+                        } 
+                    }}
+                    existingContext={contextModalProperties.edit} 
+                    allCharacters={allCharacters} 
+                />
+            )}
+
+            {locationModalProperties.isOpen && (
+                <LocationEditorModal 
+                    isOpen={locationModalProperties.isOpen} 
+                    onClose={() => { setAiLocationSaveRedirect(null); locationModalProperties.close(); }}
+                    onSave={(location: Location) => { 
+                        if (aiLocationSaveRedirect) { 
+                            aiLocationSaveRedirect(location); 
+                            addToast('Applied location changes to AI recommendation.', 'success'); 
+                        } else { 
+                            locationModalProperties.save(location); 
+                        } 
+                    }}
+                    existingLocation={locationModalProperties.edit} 
+                    allCharacters={allCharacters} 
+                    allLocations={allLocations} 
+                    allAudioTracks={allAudioTracks} 
+                />
+            )}
+
+            {audioTrackModalProperties.isOpen && (
+                <AudioTrackEditorModal 
+                    isOpen={audioTrackModalProperties.isOpen} 
+                    onClose={() => { setAiAudioTrackSaveRedirect(null); audioTrackModalProperties.close(); }}
+                    onSave={(audioTrack: AudioTrack) => { 
+                        if (aiAudioTrackSaveRedirect) { 
+                            aiAudioTrackSaveRedirect(audioTrack); 
+                            addToast('Applied audio track changes to AI recommendation.', 'success'); 
+                        } else { 
+                            audioTrackModalProperties.save(audioTrack); 
+                        } 
+                    }}
+                    existingTrack={audioTrackModalProperties.edit} 
+                    allCharacters={allCharacters} 
+                    allContexts={allContexts} 
+                    allLocations={allLocations} 
+                />
+            )}
+
+            {worldModalProperties.isOpen && (
+                <WorldEditorModal 
+                    isOpen={worldModalProperties.isOpen} 
+                    onClose={worldModalProperties.close} 
+                    onSave={worldModalProperties.save} 
+                    onLoadWorld={onLoadWorld}
+                    existingWorld={worldModalProperties.edit} 
+                    allCharacters={allCharacters} 
+                    allContexts={allContexts} 
+                    allLocations={allLocations} 
+                    allProfiles={allProfiles} 
+                    allAudioTracks={allAudioTracks} 
+                    allPromptBlocks={allPromptBlocks}
+                    selectedCharacterIds={interactionData?.participants.map(participant => participant.id) || []}
+                    currentContextIds={interactionData?.contexts?.map(context => context.id) || []}
+                    currentLocationIds={interactionData?.locations?.map(location => location.id) || []}
+                    currentProfileId={interactionData?.Profile?.id}
+                    currentAudioTrackIds={interactionData?.audioTracks?.map(track => track.id) || []} 
+                />
+            )}
+
+            {modelModalProperties.isOpen && (
+                <ModelEditorModal 
+                    isOpen={modelModalProperties.isOpen} 
+                    onClose={modelModalProperties.close} 
+                    onSave={modelModalProperties.save}
+                    existingModel={modelModalProperties.edit} 
+                    allStopPatterns={allStopPatterns} 
+                />
+            )}
+
+            {samplerModalProperties.isOpen && (
+                <SamplerEditorModal 
+                    isOpen={samplerModalProperties.isOpen} 
+                    onClose={samplerModalProperties.close} 
+                    onSave={samplerModalProperties.save}
+                    existingSampler={samplerModalProperties.edit} 
+                    allStopPatterns={allStopPatterns} 
+                />
+            )}
+
+            {promptBlockModalProperties.isOpen && (
+                <PromptBlockEditorModal 
+                    isOpen={promptBlockModalProperties.isOpen} 
+                    onClose={() => { setAiPromptBlockSaveRedirect(null); promptBlockModalProperties.close(); }}
+                    onSave={(promptBlock: PromptBlock) => { 
+                        if (aiPromptBlockSaveRedirect) { 
+                            aiPromptBlockSaveRedirect(promptBlock); 
+                            addToast('Applied prompt block changes to AI recommendation.', 'success'); 
+                        } else { 
+                            promptBlockModalProperties.save(promptBlock); 
+                        } 
+                    }}
+                    existingBlock={promptBlockModalProperties.edit} 
+                    allCharacters={allCharacters} 
+                    allContexts={allContexts} 
+                    allLocations={allLocations} 
+                />
+            )}
+
+            {stopPatternModalProperties.isOpen && (
+                <StopPatternEditorModal 
+                    isOpen={stopPatternModalProperties.isOpen} 
+                    onClose={stopPatternModalProperties.close} 
+                    onSave={stopPatternModalProperties.save}
+                    existingStopPattern={stopPatternModalProperties.edit} 
+                />
+            )}
+
+            {budgetStrategyModalProperties.isOpen && (
+                <BudgetStrategyEditorModal 
+                    isOpen={budgetStrategyModalProperties.isOpen} 
+                    onClose={budgetStrategyModalProperties.close} 
+                    onSave={budgetStrategyModalProperties.save}
+                    existingStrategy={budgetStrategyModalProperties.edit} 
+                    allModels={allModels} 
+                />
+            )}
+
+            {profileModalProperties.isOpen && (
+                <ProfileEditorModal 
+                    isOpen={profileModalProperties.isOpen} 
+                    onClose={() => { setAiProfileSaveRedirect(null); profileModalProperties.close(); }}
+                    onSave={(profile: Profile) => { 
+                        if (aiProfileSaveRedirect) { 
+                            aiProfileSaveRedirect(profile); 
+                            addToast('Applied profile changes to AI recommendation.', 'success'); 
+                        } else { 
+                            profileModalProperties.save(profile); 
+                        } 
+                    }}
+                    existingProfile={profileModalProperties.edit} 
+                    allPromptBlocks={allPromptBlocks} 
+                    allSamplers={allSamplers} 
+                />
+            )}
+
+            {accountModalProperties.isOpen && (
+                <AccountEditorModal 
+                    isOpen={accountModalProperties.isOpen} 
+                    onClose={accountModalProperties.close} 
+                    onSave={accountModalProperties.save}
+                    existingAccount={accountModalProperties.edit} 
+                />
+            )}
+
+            {multiplayerDataModalProperties.isOpen && (
+                <MultiplayerEditorModal
+                    isOpen={multiplayerDataModalProperties.isOpen}
+                    onClose={multiplayerDataModalProperties.close}
+                    onSave={multiplayerDataModalProperties.save}
+                    existingMultiplayerData={multiplayerDataModalProperties.edit}
+                    allCharacters={allCharacters}
+                    rawChatShells={chatShellsWithIdentifiers}
+                    pendingJoinRequests={pendingJoinRequests}
+                    onAcceptJoinRequest={onAcceptJoinRequest}
+                    onRejectJoinRequest={onRejectJoinRequest}
+                />
+            )}
+
+            {/* ─── Join Session Modal ─── */}
+            <JoinSessionModal
+                isOpen={modals.joinSession.isOpen}
+                onClose={modals.joinSession.close}
+                onJoin={onJoinSession}
+            />
+
+            {/* ─── Chat Inspection Modal ─── */}
+            <ChatInspectionModal
+                isOpen={isInspectionOpen}
+                onClose={() => { setIsInspectionOpen(false); setInspectionStack([]); }}
+                inspectionStack={inspectionStack}
+                onInspectingParentInteractionData={handleInspectParentInteractionData}
+            />
+        </>
     );
 }
 
-export function SuperSearchModal(props: SuperSearchModalProps) {
-    if (!props.isOpen) return null;
-    return <SuperSearchContent {...props} />;
-}
+export default AppModals;
