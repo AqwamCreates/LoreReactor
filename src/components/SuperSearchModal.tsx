@@ -48,8 +48,7 @@ export interface SuperSearchModalProps {
     currentInteractionData: InteractionData | null;
 
     onSelectEntity?: (type: SearchTabId, entity: any) => void;
-    onJumpToMessage?: (messageId: string) => void;
-    onSwitchToChatAndJump?: (chatId: string, messageId?: string) => void;
+    onJumpToMessage?: (chatId: string, messageId?: string) => void;
 }
 
 interface ServerMessageResult {
@@ -188,7 +187,6 @@ function SuperSearchContent({
     currentInteractionData,
     onSelectEntity,
     onJumpToMessage,
-    onSwitchToChatAndJump,
 }: Omit<SuperSearchModalProps, 'isOpen'>) {
     const [query, setQuery] = useState('');
     const [activeTab, setActiveTab] = useState<SearchTabId>('all');
@@ -530,11 +528,7 @@ function SuperSearchContent({
                                                             key={c.chatId}
                                                             type="button"
                                                             onClick={() => {
-                                                                if (isCurrent) {
-                                                                    onJumpToMessage?.(item.id);
-                                                                } else {
-                                                                    onSwitchToChatAndJump?.(c.chatId, item.id);
-                                                                }
+                                                                onJumpToMessage?.(c.chatId, item.id);
                                                                 onClose();
                                                             }}
                                                             style={{

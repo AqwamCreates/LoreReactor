@@ -810,12 +810,8 @@ export function AppModals({
                                 break;
                         }
                     }}
-                    onJumpToMessage={(msgId) => {
-                        const el = document.querySelector(`[data-message-id="${msgId}"]`);
-                        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }}
-                    onSwitchToChatAndJump={async (chatId, msgId) => {
-                        onSwitchChat(chatId);
+                    onJumpToMessage={async (chatId, msgId) => {
+                        if ((!interactionData) || (interactionData?.id !== chatId)) onSwitchChat(chatId);
                         if (msgId) {
                             setTimeout(() => {
                                 const el = document.querySelector(`[data-message-id="${msgId}"]`);
