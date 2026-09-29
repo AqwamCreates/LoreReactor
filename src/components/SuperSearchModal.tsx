@@ -1,9 +1,9 @@
 // src/components/SuperSearchModal.tsx
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { 
     Character, Context, Location, AudioTrack, World, PromptBlock, 
     LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, 
-    Memory, Account, MultiplayerData, RawInteractionData, InteractionData, ChatMessage 
+    Memory, Account, MultiplayerData, RawInteractionData, InteractionData 
 } from '../types';
 import { localURL } from '../configurations';
 import '../main.css';
@@ -47,10 +47,9 @@ export interface SuperSearchModalProps {
     rawChatShells: RawInteractionData[];
     currentInteractionData: InteractionData | null;
 
-    onSelectEntity?: (type: SearchTabId, id: string, entity: any) => void;
+    onSelectEntity?: (type: SearchTabId, entity: any) => void;
     onJumpToMessage?: (messageId: string) => void;
     onSwitchToChatAndJump?: (chatId: string, messageId?: string) => void;
-    onSwitchChat?: (chatId: string) => void;
 }
 
 interface ServerMessageResult {
@@ -190,7 +189,6 @@ function SuperSearchContent({
     onSelectEntity,
     onJumpToMessage,
     onSwitchToChatAndJump,
-    onSwitchChat,
 }: Omit<SuperSearchModalProps, 'isOpen'>) {
     const [query, setQuery] = useState('');
     const [activeTab, setActiveTab] = useState<SearchTabId>('all');
@@ -562,12 +560,7 @@ function SuperSearchContent({
                                                     type="button"
                                                     className="editor-button editor-button-save"
                                                     onClick={() => {
-                                                        if (item.tabId === 'chat') {
-                                                            onSwitchChat?.(item.id);
-                                                        } else {
-                                                            onSelectEntity?.(item.tabId, item.id, item.rawEntity);
-                                                        }
-                                                        onClose();
+                                                        onSelectEntity?.(item.tabId, item.rawEntity);
                                                     }}
                                                     style={{ minHeight: '26px', fontSize: '0.7rem', padding: '2px 10px' }}
                                                 >

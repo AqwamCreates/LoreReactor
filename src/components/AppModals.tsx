@@ -785,14 +785,35 @@ export function AppModals({
                     allMultiplayerData={allMultiplayerData}
                     rawChatShells={chatShellsWithIdentifiers}
                     currentInteractionData={interactionData}
-                    onSelectEntity={(tabId, id, entity) => {
-                        entityModals.getModalProperties(tabId as any)?.open(entity);
+                    onSelectEntity={(tabId, entity) => {
+                        switch (tabId) {
+                            case 'character': characterModalProperties.open(entity); break;
+                            case 'context': contextModalProperties.open(entity); break;
+                            case 'location': locationModalProperties.open(entity); break;
+                            case 'audioTrack': audioTrackModalProperties.open(entity); break;
+                            case 'world': worldModalProperties.open(entity); break;
+                            case 'promptBlock': promptBlockModalProperties.open(entity); break;
+                            case 'model': modelModalProperties.open(entity); break;
+                            case 'sampler': samplerModalProperties.open(entity); break;
+                            case 'stopPattern': stopPatternModalProperties.open(entity); break;
+                            case 'budgetStrategy': budgetStrategyModalProperties.open(entity); break;
+                            case 'profile': profileModalProperties.open(entity); break;
+                            case 'account': accountModalProperties.open(entity); break;
+                            case 'multiplayerData': multiplayerDataModalProperties.open(entity); break;
+                            case 'chat': onSwitchChat(entity.id); break;
+                            case 'memory':
+                                addToast('Memories are managed inside Character settings.', 'info');
+                                modals.charList.open();
+                                break;
+                            default:
+                                entityModals.getModalProperties(tabId as any)?.open(entity);
+                                break;
+                        }
                     }}
                     onJumpToMessage={(msgId) => {
                         const el = document.querySelector(`[data-message-id="${msgId}"]`);
                         el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }}
-                    onSwitchChat={(chatId) => onSwitchChat(chatId)}
                     onSwitchToChatAndJump={async (chatId, msgId) => {
                         onSwitchChat(chatId);
                         if (msgId) {
