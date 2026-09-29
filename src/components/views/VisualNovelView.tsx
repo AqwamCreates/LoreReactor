@@ -437,7 +437,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                             ) : displayText ? (
                                 <MemoizedMessageText text={displayText} />
                             ) : (
-                                <span style={{ opacity: 0.5, fontStyle: 'italic' }}>Waiting for interaction...</span>
+                                <span style={{ opacity: 0.5, fontStyle: 'italic' }}>Waiting for an interaction...</span>
                             )}
                         </div>
 

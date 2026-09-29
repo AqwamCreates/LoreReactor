@@ -148,14 +148,13 @@ APP LAYOUT & HEADER (Shared)
 }
 
 .chat-container.mode-vn {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100dvh;
-    max-width: none;
-    margin: 0;
-    border: none;
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: none !important;
+    margin: 0 !important;
+    border: none !important;
     z-index: 9998;
     transition: none;
     transform-origin: center center;
@@ -350,12 +349,11 @@ SHARED CHAT COMPONENTS (Used by Ladder & Cinematic)
     border-color: var(--accent);
 }
 
-/* FIX: Ensure placeholder matches loaded avatar border-radius */
 .character-avatar.placeholder {
     opacity: 0.5;
     width: clamp(80px, 20vw, 160px);
     aspect-ratio: 9 / 16;
-    border-radius: 20px; /* Matches .character-avatar */
+    border-radius: 20px;
     border: 4px solid var(--border);
     background: var(--social-bg);
 }
@@ -874,10 +872,6 @@ SHARED CHAT COMPONENTS (Used by Ladder & Cinematic)
 }
 
 /* =============================================================================
-SHARED UI COMPONENTS (Context Bar, Input, Modals, etc.)
-============================================================================= */
-
-/* =============================================================================
 3. CONTEXT BAR
 ============================================================================= */
 .context-bar {
@@ -947,7 +941,6 @@ SHARED UI COMPONENTS (Context Bar, Input, Modals, etc.)
     opacity: 1;
 }
 
-/* Match extended row button size when expanded */
 .context-bar .context-bar-toggle[title="Hide advanced panels"] {
     height: clamp(24px, 3vw, 32px);
     min-height: clamp(24px, 3vw, 32px);
@@ -955,7 +948,6 @@ SHARED UI COMPONENTS (Context Bar, Input, Modals, etc.)
     max-width: clamp(24px, 3vw, 32px) !important;
 }
 
-/* Rotate gear icon when expanded */
 .context-bar .context-bar-toggle[title="Hide advanced panels"] span {
     display: inline-block;
     transform: rotate(180deg);
@@ -968,7 +960,6 @@ SHARED UI COMPONENTS (Context Bar, Input, Modals, etc.)
     transition: transform 0.2s ease;
 }
 
-/* Extended row buttons are slightly smaller to visually distinguish from core */
 .context-bar-extended-row .nav-button {
     height: clamp(24px, 3vw, 32px);
     font-size: clamp(0.4rem, 0.9vw, 0.7rem);
@@ -979,7 +970,6 @@ SHARED UI COMPONENTS (Context Bar, Input, Modals, etc.)
     opacity: 1;
 }
 
-/* Shared nav button styles for both rows */
 .context-bar .nav-button {
     flex: 1 1 0;
     min-width: 0;
@@ -1178,7 +1168,7 @@ SHARED UI COMPONENTS (Context Bar, Input, Modals, etc.)
     cursor: not-allowed;
 }
 
-/* Slash Command Autocomplete - Hierarchical */
+/* Slash Command Autocomplete */
 .slash-autocomplete {
     position: absolute;
     bottom: 100%;
@@ -1291,11 +1281,6 @@ SHARED UI COMPONENTS (Context Bar, Input, Modals, etc.)
 /* =============================================================================
 MODE: LADDER (Standard Chat View)
 ============================================================================= */
-.mode-ladder {
-    /* Base styles inherited from .chat-container */
-}
-
-/* Mobile Ladder Overrides */
 @media (max-width: 768px) {
     .mode-ladder .message-row.message-left {
         flex-direction: column;
@@ -1654,6 +1639,13 @@ MODE: CINEMATIC (Centered Avatar View)
     margin: 0;
 }
 
+.mode-cinematic .model-status-banner {
+    background: rgba(10, 10, 20, 0.8) !important;
+    backdrop-filter: blur(10px);
+    border-color: rgba(245, 158, 11, 0.4) !important;
+    margin-bottom: 8px;
+}
+
 @media (max-width: 768px) and (orientation: portrait) {
     .cinematic-stage {
         width: min(90vw, 45vh);
@@ -1665,14 +1657,13 @@ MODE: CINEMATIC (Centered Avatar View)
 }
 
 /* =============================================================================
-MODE: VISUAL NOVEL (Sprite Stage View)
+MODE: VISUAL NOVEL (Sprite Stage View - Fixed Viewport & No Clipping)
 ============================================================================= */
 .vn-stage-container {
-    position: fixed;  /* Changed from absolute to fixed */
-    top: 0;
-    left: 0;
-    width: 100vw;  /* Changed from 100% to 100vw */
-    height: 100vh;  /* Changed from 100% to 100vh */
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
     overflow: hidden;
     pointer-events: none;
     display: flex;
@@ -1691,7 +1682,7 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     left: 0;
     right: 0;
     width: 100%;
-    height: 75%;
+    height: 68%;
     pointer-events: none;
     display: flex;
     align-items: flex-end;
@@ -1702,19 +1693,19 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 
 .vn-character-layer {
     position: absolute;
-    bottom: 15%;
+    bottom: 5%;
     display: flex;
     flex-direction: column;
     align-items: center;
     pointer-events: auto;
     will-change: transform, opacity, filter;
-    max-height: 85vh;
+    max-height: 80vh;
     transition: all 0.5s ease-out;
 }
 
 .vn-sprite {
-    height: 50vh;
-    width: calc(50vh * 9 / 16);
+    height: 48vh;
+    width: calc(48vh * 9 / 16);
     max-height: 100%;
     max-width: 100%;
     object-fit: cover;
@@ -1743,28 +1734,32 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 /* --- DIALOGUE BOX --- */
 .vn-dialogue-layer {
     position: absolute;
-    bottom: 80px;
+    bottom: calc(65px + env(safe-area-inset-bottom, 0px));
     left: 0;
     right: 0;
     z-index: 50;
-    padding: 0 12px 12px 12px;
+    padding: 0 16px 8px 16px;
     pointer-events: auto;
     width: 100%;
     box-sizing: border-box;
+    display: flex;
+    justify-content: center;
 }
 
 .vn-dialogue-box {
     background: rgba(10, 10, 20, 0.95);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     border: 2px solid rgba(255, 255, 255, 0.2);
-    border-radius: 12px;
-    padding: 20px 24px;
+    border-radius: 14px;
+    padding: 18px 22px 14px 22px;
     width: 100%;
-    box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.5);
+    max-width: 950px;
+    box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.6);
     position: relative;
-    max-height: 35vh;
-    overflow: visible; /* CHANGED BACK TO visible SO THE NAME PLATE ISN'T CLIPPED */
+    height: 28vh;
+    min-height: 130px;
+    max-height: 240px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -1772,36 +1767,35 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 
 .vn-name-plate {
     position: absolute;
-    top: -15px;
+    top: -14px;
     left: 20px;
     background: var(--accent);
     color: #fff;
     padding: 4px 16px;
     border-radius: 6px;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 1px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.4);
     z-index: 60;
 }
 
 .vn-message-toolbar {
     position: absolute;
-    top: -15px;
+    top: -14px;
     right: 20px;
     display: flex;
     gap: 4px;
     background: rgba(10, 10, 20, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    padding: 4px 8px;
+    padding: 3px 6px;
     border-radius: 6px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.4);
     z-index: 60;
     pointer-events: auto;
     flex-wrap: wrap;
     justify-content: flex-end;
-    max-width: calc(100% - 40px);
 }
 
 .vn-toolbar-btn {
@@ -1835,22 +1829,25 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 .vn-dialogue-content {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    flex: 1;
     min-height: 0;
+    height: 100%;
+    overflow: hidden;
 }
 
 .vn-dialogue-text {
     flex: 1;
     min-height: 0;
-    overflow-y: auto; /* THE SCROLLBAR */
+    height: 100%;
+    overflow-y: auto;
     overflow-x: hidden;
-    font-size: 17px; /* RESTORED */
-    color: #e0e0e0;
-    line-height: 1.6; /* RESTORED */
+    font-size: 16px;
+    color: #f0f0f0;
+    line-height: 1.55;
     white-space: pre-wrap;
     word-break: break-word;
-    margin-top: 10px; /* RESTORED */
-    padding-right: 12px; /* Prevents the scrollbar from squashing the text */
+    margin-top: 6px;
+    padding-right: 8px;
     text-align: left;
     -webkit-overflow-scrolling: touch;
 }
@@ -2116,10 +2113,7 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 .chat-container.mode-vn,
 .mode-vn {
     position: fixed !important;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    inset: 0 !important;
     width: 100vw !important;
     max-width: none !important;
     margin: 0 !important;
@@ -2147,26 +2141,36 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 
 .mode-vn .input-wrapper {
     position: fixed !important;
-    top: auto !important;
     bottom: 0 !important;
     left: 0 !important;
     right: 0 !important;
     z-index: 100 !important;
-    background: rgba(10, 10, 20, 0.8) !important;
-    backdrop-filter: blur(10px) !important;
-    -webkit-backdrop-filter: blur(10px) !important;
-    border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
-    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)) 12px !important;
+    background: rgba(10, 10, 20, 0.92) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.15) !important;
+    padding: 6px 12px calc(6px + env(safe-area-inset-bottom, 0px)) 12px !important;
     max-width: 100% !important;
-    margin: 0 auto !important;
+    margin: 0 !important;
     box-sizing: border-box !important;
     width: 100% !important;
+    height: auto !important;
 }
 
 .mode-vn .chat-input {
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
     color: #fff;
+    min-height: 38px !important;
+    max-height: 20vh !important;
+    padding: 8px 12px !important;
+    font-size: 0.85rem !important;
+}
+
+.mode-vn .send-button,
+.mode-vn .attach-button {
+    min-height: 38px !important;
+    height: 38px !important;
 }
 
 .mode-vn .send-button {
@@ -2174,17 +2178,49 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     color: #fff;
 }
 
+.mode-vn .model-status-banner {
+    position: fixed;
+    top: calc(55px + env(safe-area-inset-top, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 120;
+    padding: 4px 14px;
+    font-size: 0.72rem;
+    background: rgba(15, 15, 25, 0.9) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(245, 158, 11, 0.5);
+    border-radius: 20px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+    margin: 0;
+    width: max-content;
+    max-width: 90vw;
+    pointer-events: auto;
+}
+
+.mode-vn .model-status-banner .model-status-action-button {
+    padding: 2px 8px;
+    font-size: 0.65rem;
+    min-height: 22px;
+}
+
 /* --- RESPONSIVE --- */
 @media (max-width: 768px) {
-    .vn-sprite { height: 45vh; width: calc(45vh * 9 / 16); }
+    .vn-sprite { height: 40vh; width: calc(40vh * 9 / 16); }
     .vn-sprites-layer { height: 60%; }
-    .vn-dialogue-box { padding: 16px 14px; max-height: 30vh; }
+    .vn-dialogue-layer {
+        bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+        padding: 0 8px 4px 8px;
+    }
+    .vn-dialogue-box {
+        height: 26vh;
+        min-height: 120px;
+        padding: 14px 14px 10px 14px;
+    }
     .vn-name-plate { font-size: 0.75rem; top: -12px; left: 12px; padding: 3px 12px; }
     .vn-message-toolbar { top: -12px; right: 12px; padding: 2px 4px; gap: 2px; max-width: calc(100% - 24px); }
     .vn-toolbar-btn { font-size: 0.85rem; padding: 2px 4px; min-width: 28px; min-height: 28px; }
-    .vn-dialogue-text { font-size: 0.9rem; }
-    .vn-dialogue-layer { bottom: 70px; padding: 0 8px 8px 8px; }
-    .vn-character-layer { bottom: 10%; }
+    .vn-dialogue-text { font-size: 0.85rem; }
+    .vn-character-layer { bottom: 8%; }
     .vn-nav-arrow { width: 36px; height: 36px; font-size: 1rem; }
     .vn-nav-group:first-child { left: 8px; }
     .vn-nav-group:last-child { right: 8px; }
@@ -2193,20 +2229,15 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 }
 
 @media (max-width: 480px) {
-    .vn-sprite { height: 35vh; width: calc(35vh * 9 / 16); }
+    .vn-sprite { height: 34vh; width: calc(34vh * 9 / 16); }
     .vn-sprites-layer { height: 55%; }
     .vn-dialogue-box { padding: 12px 10px; max-height: 25vh; }
-    .vn-dialogue-text { font-size: 0.85rem; }
+    .vn-dialogue-text { font-size: 0.82rem; }
     .vn-name-plate { font-size: 0.65rem; top: -10px; left: 8px; padding: 2px 8px; }
     .vn-message-toolbar { top: -10px; right: 8px; padding: 2px 3px; gap: 1px; }
     .vn-toolbar-btn { font-size: 0.75rem; padding: 2px 3px; min-width: 24px; min-height: 24px; }
     .vn-nav-arrow { width: 32px; height: 32px; font-size: 0.9rem; }
 }
-
-/* =============================================================================
-SHARED UTILITIES & MODALS (Unchanged sections follow)
-============================================================================= */
-/* ... (Sections 6 through 23 from original file remain here) ... */
 
 /* =============================================================================
 6. MODEL READINESS INDICATOR
@@ -2815,7 +2846,6 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
 
 .editor-textarea { resize: vertical; font-family: monospace; min-height: 80px; line-height: 1.6; }
 
-/* FIX: Prevent textareas from stretching modal width */
 .editor-modal-content {
     max-width: 600px;
     min-width: 0;
@@ -4081,12 +4111,12 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
     background: var(--social-bg);
     border-bottom-color: var(--accent-border);
 }
+
 .entity-tab-button-active {
     background: var(--accent);
     color: #fff;
     border-bottom-color: var(--accent);
 }
-.entity-tab-button-active:hover { opacity: 0.9; }
 
 .entity-tab-button-active:hover {
     opacity: 0.9;
