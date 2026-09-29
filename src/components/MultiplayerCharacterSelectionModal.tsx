@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import type { Character } from '../types';
 import '../main.css';
 
@@ -12,9 +12,11 @@ interface MultiplayerCharacterSelectionModalProps {
     localCharacters: Character[];
     sessionRules?: {
         canUseJoinerCharacterId: boolean;
-        canUseHosterCharacterId: boolean;
+        canUseHosterParticipantingCharacterId: boolean;
+        canUseHosterNonParticipantingCharacterId: boolean;
         joinerCharacterIdRequiresHosterApproval: boolean;
-        hosterCharacterIdRequiresHosterApproval: boolean;
+        hosterParticipantingCharacterIdRequiresHosterApproval: boolean;
+        hosterNonParticipantingCharacterIdRequiresHosterApproval: boolean;
     } | null;
 }
 
@@ -26,21 +28,29 @@ export function MultiplayerCharacterSelectionModal({
     localCharacters,
     sessionRules,
 }: MultiplayerCharacterSelectionModalProps) {
-    // Treat null rules as "allow all" until host sends specifics
-    const canUseHostChars = sessionRules ? sessionRules.canUseHosterCharacterId !== false : true;
+    const canUseHostChars = sessionRules 
+        ? (sessionRules.canUseHosterParticipantingCharacterId !== false || sessionRules.canUseHosterNonParticipantingCharacterId !== false) 
+        : true;
     const canUseJoinerChars = sessionRules ? sessionRules.canUseJoinerCharacterId !== false : true;
 
     const [activeTab, setActiveTab] = useState<SelectionTab>(canUseHostChars ? 'session' : 'local');
     const [selectedCharId, setSelectedCharId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
 
-    useEffect(() => {
-        if (isOpen) {
-            setSelectedCharId(null);
-            setSearchQuery('');
-            setActiveTab(canUseHostChars ? 'session' : 'local');
-        }
-    }, [isOpen, canUseHostChars]);
+    // ─── Adjusting state during render (React's recommended alternative to useEffect) ───
+    // This avoids the "cascading renders" warning while perfectly resetting state on open.
+    const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+    const [prevCanUseHostChars, setPrevCanUseHostChars] = useState(canUseHostChars);
+
+    if (isOpen && (!prevIsOpen || canUseHostChars !== prevCanUseHostChars)) {
+        setSelectedCharId(null);
+        setSearchQuery('');
+        setActiveTab(canUseHostChars ? 'session' : 'local');
+    }
+
+    if (isOpen !== prevIsOpen) setPrevIsOpen(isOpen);
+    if (canUseHostChars !== prevCanUseHostChars) setPrevCanUseHostChars(canUseHostChars);
+    // ─────────────────────────────────────────────────────────────────────────────────────
 
     const availableCharacters = useMemo(() => {
         const pool = activeTab === 'session' ? sessionCharacters : localCharacters;

@@ -29,18 +29,22 @@ const USE_JOINER_LM_OPTIONS: { value: tristateInteger; label: string; descriptio
 
 function createDefaultAccountConfig(sessionDefaults: {
     canUseJoinerCharacterId: boolean;
-    canUseHosterCharacterId: boolean;
+    canUseHosterParticipantingCharacterId: boolean;
+    canUseHosterNonParticipantingCharacterId: boolean;
     joinerCharacterIdRequiresHosterApproval: boolean;
-    hosterCharacterIdRequiresHosterApproval: boolean;
+    hosterParticipantingCharacterIdRequiresHosterApproval: boolean;
+    hosterNonParticipantingCharacterIdRequiresHosterApproval: boolean;
 }): MultiplayerDataAccountConfiguration {
     return {
         isWhitelisted: true,
         isBlacklisted: false,
         isAdministrator: false,
         canUseJoinerCharacterId: sessionDefaults.canUseJoinerCharacterId,
-        canUseHosterCharacterId: sessionDefaults.canUseHosterCharacterId,
+        canUseHosterParticipantingCharacterId: sessionDefaults.canUseHosterParticipantingCharacterId,
+        canUseHosterNonParticipantingCharacterId: sessionDefaults.canUseHosterNonParticipantingCharacterId,
         joinerCharacterIdRequiresHosterApproval: sessionDefaults.joinerCharacterIdRequiresHosterApproval,
-        hosterCharacterIdRequiresHosterApproval: sessionDefaults.hosterCharacterIdRequiresHosterApproval,
+        hosterParticipantingCharacterIdRequiresHosterApproval: sessionDefaults.hosterParticipantingCharacterIdRequiresHosterApproval,
+        hosterNonParticipantingCharacterIdRequiresHosterApproval: sessionDefaults.hosterNonParticipantingCharacterIdRequiresHosterApproval,
         whitelistedCharacterIds: [],
         blacklistedCharacterIds: [],
         pendingCharacterIds: [],
@@ -97,9 +101,11 @@ function MultiplayerEditorModalInner({
     
     // Session-level defaults
     const [canUseJoinerCharacterId, setCanUseJoinerCharacterId] = useState(existingMultiplayerData?.canUseJoinerCharacterId ?? true);
-    const [canUseHosterCharacterId, setCanUseHosterCharacterId] = useState(existingMultiplayerData?.canUseHosterCharacterId ?? true);
+    const [canUseHosterParticipantingCharacterId, setCanUseHosterParticipantingCharacterId] = useState(existingMultiplayerData?.canUseHosterParticipantingCharacterId ?? true);
+    const [canUseHosterNonParticipantingCharacterId, setCanUseHosterNonParticipantingCharacterId] = useState(existingMultiplayerData?.canUseHosterNonParticipantingCharacterId ?? true);
     const [joinerCharacterIdRequiresHosterApproval, setJoinerCharacterIdRequiresHosterApproval] = useState(existingMultiplayerData?.joinerCharacterIdRequiresHosterApproval ?? false);
-    const [hosterCharacterIdRequiresHosterApproval, setHosterCharacterIdRequiresHosterApproval] = useState(existingMultiplayerData?.hosterCharacterIdRequiresHosterApproval ?? false);
+    const [hosterParticipantingCharacterIdRequiresHosterApproval, setHosterParticipantingCharacterIdRequiresHosterApproval] = useState(existingMultiplayerData?.hosterParticipantingCharacterIdRequiresHosterApproval ?? false);
+    const [hosterNonParticipantingCharacterIdRequiresHosterApproval, setHosterNonParticipantingCharacterIdRequiresHosterApproval] = useState(existingMultiplayerData?.hosterNonParticipantingCharacterIdRequiresHosterApproval ?? false);
     const [useJoinerLanguageModel, setUseJoinerLanguageModel] = useState<tristateInteger>(existingMultiplayerData?.useJoinerLanguageModel ?? 0);
     
     const [accountConfigs, setAccountConfigs] = useState<Record<string, MultiplayerDataAccountConfiguration>>(
@@ -109,6 +115,7 @@ function MultiplayerEditorModalInner({
 
     const [sessionSearchQuery, setSessionSearchQuery] = useState('');
     const [mappingCharSearchQuery, setMappingCharSearchQuery] = useState('');
+    const [accountSearchQuery, setAccountSearchQuery] = useState('');
 
     const [newAccountIdInput, setNewAccountIdInput] = useState('');
     const [expandedAccountId, setExpandedAccountId] = useState<string | null>(null);
@@ -142,9 +149,11 @@ function MultiplayerEditorModalInner({
             description: description.trim() || undefined,
             password,
             canUseJoinerCharacterId,
-            canUseHosterCharacterId,
+            canUseHosterParticipantingCharacterId,
+            canUseHosterNonParticipantingCharacterId,
             joinerCharacterIdRequiresHosterApproval,
-            hosterCharacterIdRequiresHosterApproval,
+            hosterParticipantingCharacterIdRequiresHosterApproval,
+            hosterNonParticipantingCharacterIdRequiresHosterApproval,
             useJoinerLanguageModel,
             interactionDataIds,
             multiplayerDataAccountConfigurations: accountConfigs,
@@ -182,13 +191,15 @@ function MultiplayerEditorModalInner({
                 ...prev,
                 [trimmed]: createDefaultAccountConfig({
                     canUseJoinerCharacterId,
-                    canUseHosterCharacterId,
+                    canUseHosterParticipantingCharacterId,
+                    canUseHosterNonParticipantingCharacterId,
                     joinerCharacterIdRequiresHosterApproval,
-                    hosterCharacterIdRequiresHosterApproval,
+                    hosterParticipantingCharacterIdRequiresHosterApproval,
+                    hosterNonParticipantingCharacterIdRequiresHosterApproval,
                 }),
             };
         });
-    }, [canUseJoinerCharacterId, canUseHosterCharacterId, joinerCharacterIdRequiresHosterApproval, hosterCharacterIdRequiresHosterApproval]);
+    }, [canUseJoinerCharacterId, canUseHosterParticipantingCharacterId, canUseHosterNonParticipantingCharacterId, joinerCharacterIdRequiresHosterApproval, hosterParticipantingCharacterIdRequiresHosterApproval, hosterNonParticipantingCharacterIdRequiresHosterApproval]);
 
     const removeAccount = useCallback((id: string) => {
         setAccountConfigs(prev => {
@@ -251,13 +262,15 @@ function MultiplayerEditorModalInner({
                 ...prev,
                 [accountId]: createDefaultAccountConfig({
                     canUseJoinerCharacterId,
-                    canUseHosterCharacterId,
+                    canUseHosterParticipantingCharacterId,
+                    canUseHosterNonParticipantingCharacterId,
                     joinerCharacterIdRequiresHosterApproval,
-                    hosterCharacterIdRequiresHosterApproval,
+                    hosterParticipantingCharacterIdRequiresHosterApproval,
+                    hosterNonParticipantingCharacterIdRequiresHosterApproval,
                 }),
             };
         });
-    }, [onAcceptJoinRequest, canUseJoinerCharacterId, canUseHosterCharacterId, joinerCharacterIdRequiresHosterApproval, hosterCharacterIdRequiresHosterApproval]);
+    }, [onAcceptJoinRequest, canUseJoinerCharacterId, canUseHosterParticipantingCharacterId, canUseHosterNonParticipantingCharacterId, joinerCharacterIdRequiresHosterApproval, hosterParticipantingCharacterIdRequiresHosterApproval, hosterNonParticipantingCharacterIdRequiresHosterApproval]);
 
     const handleRejectLiveRequest = useCallback((accountId: string) => {
         onRejectJoinRequest?.(accountId);
@@ -271,6 +284,20 @@ function MultiplayerEditorModalInner({
             lastUpdatedTimestamp: s.lastUpdatedTimestamp,
         }));
     }, [rawChatShells]);
+
+    const filteredAccountConfigs = useMemo(() => {
+        const entries = Object.entries(accountConfigs);
+        if (!accountSearchQuery.trim()) return entries;
+        const q = accountSearchQuery.toLowerCase();
+        return entries.filter(([acctId, cfg]) => {
+            if (acctId.toLowerCase().includes(q)) return true;
+            if (cfg.activeCharacterId) {
+                const char = allCharacters.find(c => c.id === cfg.activeCharacterId);
+                if (char && char.name.toLowerCase().includes(q)) return true;
+            }
+            return false;
+        });
+    }, [accountConfigs, accountSearchQuery, allCharacters]);
 
     const multiplayerTabs: { id: MultiplayerTabId; label: string; icon: string; badge?: number }[] = [
         { id: 'general', label: 'General', icon: '📝' },
@@ -393,12 +420,25 @@ function MultiplayerEditorModalInner({
                                     
                                     <div>
                                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
-                                            <input type="checkbox" checked={canUseHosterCharacterId} onChange={e => setCanUseHosterCharacterId(e.target.checked)} /> 
-                                            Allow Host Characters (Pick from Session)
+                                            <input type="checkbox" checked={canUseHosterParticipantingCharacterId} onChange={e => setCanUseHosterParticipantingCharacterId(e.target.checked)} /> 
+                                            Allow Host Characters (Active Participants)
                                         </label>
-                                        {canUseHosterCharacterId && (
+                                        {canUseHosterParticipantingCharacterId && (
                                             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', marginLeft: '24px', marginTop: '6px', opacity: 0.8 }}>
-                                                <input type="checkbox" checked={hosterCharacterIdRequiresHosterApproval} onChange={e => setHosterCharacterIdRequiresHosterApproval(e.target.checked)} /> 
+                                                <input type="checkbox" checked={hosterParticipantingCharacterIdRequiresHosterApproval} onChange={e => setHosterParticipantingCharacterIdRequiresHosterApproval(e.target.checked)} /> 
+                                                Requires Host Approval
+                                            </label>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
+                                            <input type="checkbox" checked={canUseHosterNonParticipantingCharacterId} onChange={e => setCanUseHosterNonParticipantingCharacterId(e.target.checked)} /> 
+                                            Allow Host Characters (Background / Non-Participants)
+                                        </label>
+                                        {canUseHosterNonParticipantingCharacterId && (
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', marginLeft: '24px', marginTop: '6px', opacity: 0.8 }}>
+                                                <input type="checkbox" checked={hosterNonParticipantingCharacterIdRequiresHosterApproval} onChange={e => setHosterNonParticipantingCharacterIdRequiresHosterApproval(e.target.checked)} /> 
                                                 Requires Host Approval
                                             </label>
                                         )}
@@ -511,8 +551,17 @@ function MultiplayerEditorModalInner({
                                     </button>
                                 </div>
 
+                                <input 
+                                    type="text" 
+                                    value={accountSearchQuery} 
+                                    onChange={e => setAccountSearchQuery(e.target.value)}
+                                    className="editor-input"
+                                    placeholder="Search configured accounts..."
+                                    style={{ marginBottom: '12px' }}
+                                />
+
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
-                                    {Object.entries(accountConfigs).map(([acctId, cfg]) => {
+                                    {filteredAccountConfigs.map(([acctId, cfg]) => {
                                         return (
                                             <div key={acctId} style={{ border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', background: 'rgba(255,255,255,0.02)' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -553,18 +602,31 @@ function MultiplayerEditorModalInner({
                                                         
                                                         <div>
                                                             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-                                                                <input type="checkbox" checked={cfg.canUseHosterCharacterId} onChange={e => updateCfg(acctId, 'canUseHosterCharacterId', e.target.checked)} /> 
-                                                                Allow Host Characters (Pick from Session)
+                                                                <input type="checkbox" checked={cfg.canUseHosterParticipantingCharacterId} onChange={e => updateCfg(acctId, 'canUseHosterParticipantingCharacterId', e.target.checked)} /> 
+                                                                Allow Host Characters (Active Participants)
                                                             </label>
-                                                            {cfg.canUseHosterCharacterId && (
+                                                            {cfg.canUseHosterParticipantingCharacterId && (
                                                                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', marginLeft: '16px', marginTop: '4px', opacity: 0.8 }}>
-                                                                    <input type="checkbox" checked={cfg.hosterCharacterIdRequiresHosterApproval} onChange={e => updateCfg(acctId, 'hosterCharacterIdRequiresHosterApproval', e.target.checked)} /> 
+                                                                    <input type="checkbox" checked={cfg.hosterParticipantingCharacterIdRequiresHosterApproval} onChange={e => updateCfg(acctId, 'hosterParticipantingCharacterIdRequiresHosterApproval', e.target.checked)} /> 
+                                                                    Requires Host Approval
+                                                                </label>
+                                                            )}
+                                                        </div>
+
+                                                        <div>
+                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
+                                                                <input type="checkbox" checked={cfg.canUseHosterNonParticipantingCharacterId} onChange={e => updateCfg(acctId, 'canUseHosterNonParticipantingCharacterId', e.target.checked)} /> 
+                                                                Allow Host Characters (Background / Non-Participants)
+                                                            </label>
+                                                            {cfg.canUseHosterNonParticipantingCharacterId && (
+                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', marginLeft: '16px', marginTop: '4px', opacity: 0.8 }}>
+                                                                    <input type="checkbox" checked={cfg.hosterNonParticipantingCharacterIdRequiresHosterApproval} onChange={e => updateCfg(acctId, 'hosterNonParticipantingCharacterIdRequiresHosterApproval', e.target.checked)} /> 
                                                                     Requires Host Approval
                                                                 </label>
                                                             )}
                                                         </div>
                                                         
-                                                        {cfg.canUseHosterCharacterId && (
+                                                        {(cfg.canUseHosterParticipantingCharacterId || cfg.canUseHosterNonParticipantingCharacterId) && (
                                                             <div style={{ marginTop: '4px' }}>
                                                                 <div style={{fontSize: '0.7rem', marginBottom: '4px', fontWeight: 'bold'}}>Whitelisted Host Characters:</div>
                                                                 <EntitySelectList
@@ -586,7 +648,13 @@ function MultiplayerEditorModalInner({
                                             </div>
                                         );
                                     })}
-                                    {Object.keys(accountConfigs).length === 0 && <div style={{opacity: 0.5, fontSize: '0.8rem', textAlign: 'center', padding: '12px'}}>No accounts configured. Add an account ID above.</div>}
+                                    {filteredAccountConfigs.length === 0 && (
+                                        <div style={{opacity: 0.5, fontSize: '0.8rem', textAlign: 'center', padding: '12px'}}>
+                                            {Object.keys(accountConfigs).length === 0 
+                                                ? 'No accounts configured. Add an account ID above.' 
+                                                : 'No accounts match your search.'}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </>

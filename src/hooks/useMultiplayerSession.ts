@@ -1,11 +1,11 @@
 // src/hooks/useMultiplayerSession.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Character, HistoryMessage, LanguageModel, MultiplayerData } from '../types';
-import { 
-    loadRawMultiplayerJoinData, 
-    saveRawMultiplayerJoinData, 
+import {
+    loadRawMultiplayerJoinData,
+    saveRawMultiplayerJoinData,
     deleteMultiplayerJoinData,
-    saveRawInteractionData 
+    saveRawInteractionData
 } from '../storages/serverStorage';
 import { useMultiplayerSync } from './useMultiplayerSync';
 import { useSessionStore } from '../hooks/useSessionStore';
@@ -21,7 +21,6 @@ interface UseMultiplayerSessionOptions {
 export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
     const { allCharacters, saveMultiplayerData, addToast } = options;
 
-    // Reactively subscribe to store state and typed actions
     const interactionData = useSessionStore((s) => s.interactionData);
     const setInteractionData = useSessionStore((s) => s.setInteractionData);
     const setCurrentCharacter = useSessionStore((s) => s.setCurrentCharacter);
@@ -34,7 +33,6 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
     const [joinRequestedCharacterId, setJoinRequestedCharacterId] = useState<string | null>(null);
     const [joinRequestedCharacterData, setJoinRequestedCharacterData] = useState<Character | null>(null);
 
-    // Modal state for joiner character selection
     const [isCharacterSelectionModalOpen, setIsCharacterSelectionModalOpen] = useState(false);
     const [pendingSessionInitialState, setPendingSessionInitialState] = useState<any | null>(null);
     const [pendingSessionRules, setPendingSessionRules] = useState<any | null>(null);
@@ -122,7 +120,6 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         await saveMultiplayerData(data);
     }, [saveMultiplayerData]);
 
-    // ─── Host Migration Handler ──────────────────────────────────────
     const handleHostMigration = useCallback(async (payload: HostMigrationPayload) => {
         const myAcctId = currentAccountId;
         if (!myAcctId) return;
@@ -134,14 +131,13 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         if (isPromotedToHost) {
             addToast('The host has disconnected. You are now the host of this session!', 'success');
 
-            // 1. Commit and persist final interaction data locally
             if (payload.finalState) {
                 setInteractionData(payload.finalState);
                 await saveRawInteractionData(payload.finalState);
             }
 
-            // 2. Inherit existing room settings or build a new host MultiplayerData
             const baseMpData = (payload as any).multiplayerData as MultiplayerData | undefined;
+
             const newMpData: MultiplayerData = {
                 id: baseMpData?.id || uuidv4(),
                 name: baseMpData?.name || payload.finalState?.name || 'Migrated Session',
@@ -149,9 +145,11 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
                 password: baseMpData?.password || '',
                 interactionDataIds: payload.finalState ? [payload.finalState.id] : [],
                 canUseJoinerCharacterId: baseMpData?.canUseJoinerCharacterId ?? true,
-                canUseHosterCharacterId: baseMpData?.canUseHosterCharacterId ?? true,
+                canUseHosterParticipantingCharacterId: baseMpData?.canUseHosterParticipantingCharacterId ?? true,
+                canUseHosterNonParticipantingCharacterId: baseMpData?.canUseHosterNonParticipantingCharacterId ?? true,
                 joinerCharacterIdRequiresHosterApproval: baseMpData?.joinerCharacterIdRequiresHosterApproval ?? false,
-                hosterCharacterIdRequiresHosterApproval: baseMpData?.hosterCharacterIdRequiresHosterApproval ?? false,
+                hosterParticipantingCharacterIdRequiresHosterApproval: baseMpData?.hosterParticipantingCharacterIdRequiresHosterApproval ?? false,
+                hosterNonParticipantingCharacterIdRequiresHosterApproval: baseMpData?.hosterNonParticipantingCharacterIdRequiresHosterApproval ?? false,
                 useJoinerLanguageModel: baseMpData?.useJoinerLanguageModel ?? 0,
                 multiplayerDataAccountConfigurations: {
                     ...(baseMpData?.multiplayerDataAccountConfigurations || {}),
@@ -160,9 +158,11 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
                         isBlacklisted: false,
                         isAdministrator: true,
                         canUseJoinerCharacterId: true,
-                        canUseHosterCharacterId: true,
+                        canUseHosterParticipantingCharacterId: true,
+                        canUseHosterNonParticipantingCharacterId: true,
                         joinerCharacterIdRequiresHosterApproval: false,
-                        hosterCharacterIdRequiresHosterApproval: false,
+                        hosterParticipantingCharacterIdRequiresHosterApproval: false,
+                        hosterNonParticipantingCharacterIdRequiresHosterApproval: false,
                         whitelistedCharacterIds: [],
                         blacklistedCharacterIds: [],
                         pendingCharacterIds: [],
@@ -177,25 +177,20 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
             await saveMultiplayerDataVoid(newMpData);
             useSessionStore.setState({ multiplayerData: newMpData });
 
-            // 3. Clear client join state: Setting joinSessionId = null turns this peer into Host mode
             clearJoinState();
-
             if (joinProtagonist) {
                 setCurrentCharacter(joinProtagonist);
             }
         } else {
             addToast(`Host migration in progress. Re-anchoring to new host...`, 'info');
-
             if (payload.finalState) {
                 setInteractionData(payload.finalState);
             }
 
-            // Other clients reconnect to the newly promoted host at lr_${chatId}_host
             const currentSession = joinSessionId;
             const currentPass = joinPassword;
             const currentCharId = joinRequestedCharacterId;
             const currentCharData = joinRequestedCharacterData;
-
             setJoinSessionId(null);
             setTimeout(() => {
                 setJoinSessionId(currentSession);
@@ -224,7 +219,7 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         onJoinRejected: handleJoinRejected,
         onSaveMultiplayerData: saveMultiplayerDataVoid,
         onConnectionFailed: handleConnectionFailed,
-        onHostMigration: handleHostMigration, // Active migration listener
+        onHostMigration: handleHostMigration,
         onCharacterSelectionRequired: handleCharacterSelectionRequired,
     });
 
@@ -232,7 +227,6 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         setIsCharacterSelectionModalOpen(false);
         setPendingSessionInitialState(null);
         setPendingSessionRules(null);
-
         handleJoinAccepted(character);
         multiplayerSync.sendProtagonist(character);
     }, [handleJoinAccepted, multiplayerSync]);

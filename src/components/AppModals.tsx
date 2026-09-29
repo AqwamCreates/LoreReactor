@@ -1,53 +1,53 @@
 // src/components/AppModals.tsx
-import { useMemo, useState, useEffect, useCallback, lazy, Suspense } from 'react';
-import type { 
-    Character, Context, Location, Sampler, StopPattern, 
-    LanguageModel, BudgetStrategy, Profile, Extension, 
-    InteractionData, World, AudioTrack, PromptBlock, 
-    RawInteractionData, Memory, MultiplayerData, Account, 
-    cloudBackend 
+import { useMemo, useState, useEffect, useCallback } from 'react';
+import type {
+    Character, Context, Location, Sampler, StopPattern,
+    LanguageModel, BudgetStrategy, Profile, Extension,
+    InteractionData, World, AudioTrack, PromptBlock,
+    RawInteractionData, Memory, MultiplayerData, Account,
+    cloudBackend
 } from '../types';
 import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';
 import type { ModalController } from '../hooks/useAppModals';
 import type { EntityType } from '../hooks/useEntityModals';
 import { loadRawInteractionData } from '../storages/serverStorage';
 import { ManagerModal } from './ManagerModal';
-import { 
-    renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, 
-    renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext 
+import {
+    renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext,
+    renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext
 } from './renderHelpers';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useSessionStore } from '../hooks/useSessionStore';
 
-// ─── Lazy-Loaded Modals (Code-Split on Demand) ────────────────────────
-const CharacterEditorModal = lazy(() => import('./CharacterEditorModal').then(m => ({ default: m.CharacterEditorModal })));
-const ModelEditorModal = lazy(() => import('./ModelEditorModal').then(m => ({ default: m.ModelEditorModal })));
-const SamplerEditorModal = lazy(() => import('./SamplerEditorModal').then(m => ({ default: m.SamplerEditorModal })));
-const PromptBlockEditorModal = lazy(() => import('./PromptBlockEditorModal').then(m => ({ default: m.PromptBlockEditorModal })));
-const ContextEditorModal = lazy(() => import('./ContextEditorModal').then(m => ({ default: m.ContextEditorModal })));
-const LocationEditorModal = lazy(() => import('./LocationEditorModal').then(m => ({ default: m.LocationEditorModal })));
-const AudioTrackEditorModal = lazy(() => import('./AudioTrackEditorModal').then(m => ({ default: m.AudioTrackEditorModal })));
-const StopPatternEditorModal = lazy(() => import('./StopPatternEditorModal').then(m => ({ default: m.StopPatternEditorModal })));
-const BudgetStrategyEditorModal = lazy(() => import('./BudgetStrategyEditorModal').then(m => ({ default: m.BudgetStrategyEditorModal })));
-const ProfileEditorModal = lazy(() => import('./ProfileEditorModal').then(m => ({ default: m.ProfileEditorModal })));
-const AccountEditorModal = lazy(() => import('./AccountEditorModal').then(m => ({ default: m.AccountEditorModal })));
-const MultiplayerEditorModal = lazy(() => import('./MultiplayerEditorModal').then(m => ({ default: m.MultiplayerEditorModal })));
-const SettingsModal = lazy(() => import('./SettingsModal').then(m => ({ default: m.SettingsModal })));
-const JoinSessionModal = lazy(() => import('./JoinSessionModal').then(m => ({ default: m.JoinSessionModal })));
-const MultiplayerCharacterSelectionModal = lazy(() => import('./MultiplayerCharacterSelectionModal').then(m => ({ default: m.MultiplayerCharacterSelectionModal })));
-const BudgetControlModal = lazy(() => import('./BudgetControlModal').then(m => ({ default: m.BudgetControlModal })));
-const GpuMonitorModal = lazy(() => import('./GpuMonitorModal').then(m => ({ default: m.GpuMonitorModal })));
-const WorldEditorModal = lazy(() => import('./WorldEditorModal').then(m => ({ default: m.WorldEditorModal })));
-const ParticipantControlModal = lazy(() => import('./ParticipantControlModal').then(m => ({ default: m.ParticipantControlModal })));
-const AIRecommendationModal = lazy(() => import('./AIRecommendationModal').then(m => ({ default: m.AIRecommendationModal })));
-const RestrictionReductionModal = lazy(() => import('./RestrictionReductionModal').then(m => ({ default: m.RestrictionReductionModal })));
-const CharacterCardImportModal = lazy(() => import('./CharacterCardImportModal').then(m => ({ default: m.CharacterCardImportModal })));
-const DataImportModal = lazy(() => import('./DataImportModal').then(m => ({ default: m.DataImportModal })));
-const DataExportModal = lazy(() => import('./DataExportModal').then(m => ({ default: m.DataExportModal })));
-const DataManagerModal = lazy(() => import('./DataManagerModal').then(m => ({ default: m.DataManagerModal })));
-const AlternateTimelinesModal = lazy(() => import('./AlternateTimelinesModal').then(m => ({ default: m.AlternateTimelinesModal })));
-const ChatInspectionModal = lazy(() => import('./ChatInspectionModal').then(m => ({ default: m.ChatInspectionModal })));
-const SuperSearchModal = lazy(() => import('./SuperSearchModal').then(m => ({ default: m.SuperSearchModal })));
+// ─── Direct Imports ──────────────────────────────────────────────────
+import { CharacterEditorModal } from './CharacterEditorModal';
+import { ModelEditorModal } from './ModelEditorModal';
+import { SamplerEditorModal } from './SamplerEditorModal';
+import { PromptBlockEditorModal } from './PromptBlockEditorModal';
+import { ContextEditorModal } from './ContextEditorModal';
+import { LocationEditorModal } from './LocationEditorModal';
+import { AudioTrackEditorModal } from './AudioTrackEditorModal';
+import { StopPatternEditorModal } from './StopPatternEditorModal';
+import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
+import { ProfileEditorModal } from './ProfileEditorModal';
+import { AccountEditorModal } from './AccountEditorModal';
+import { MultiplayerEditorModal } from './MultiplayerEditorModal';
+import { SettingsModal } from './SettingsModal';
+import { JoinSessionModal } from './JoinSessionModal';
+import { MultiplayerCharacterSelectionModal } from './MultiplayerCharacterSelectionModal';
+import { BudgetControlModal } from './BudgetControlModal';
+import { GpuMonitorModal } from './GpuMonitorModal';
+import { WorldEditorModal } from './WorldEditorModal';
+import { ParticipantControlModal } from './ParticipantControlModal';
+import { AIRecommendationModal } from './AIRecommendationModal';
+import { RestrictionReductionModal } from './RestrictionReductionModal';
+import { CharacterCardImportModal } from './CharacterCardImportModal';
+import { DataImportModal } from './DataImportModal';
+import { DataExportModal } from './DataExportModal';
+import { DataManagerModal } from './DataManagerModal';
+import { AlternateTimelinesModal } from './AlternateTimelinesModal';
+import { ChatInspectionModal } from './ChatInspectionModal';
+import { SuperSearchModal } from './SuperSearchModal';
 
 interface EntityModalController {
     isOpen: boolean;
@@ -149,7 +149,7 @@ function deriveLocalProtagonist(
     }
     const activeCharacterIdentifier = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.activeCharacterId;
     if (activeCharacterIdentifier) {
-        const foundCharacter = interactionData.protagonists.find(participant => participant.id === activeCharacterIdentifier) || 
+        const foundCharacter = interactionData.protagonists.find(participant => participant.id === activeCharacterIdentifier) ||
                                interactionData.participants.find(participant => participant.id === activeCharacterIdentifier);
         if (foundCharacter) return foundCharacter;
     }
@@ -157,6 +157,7 @@ function deriveLocalProtagonist(
 }
 
 export function AppModals({
+    isMultiplayerClient,
     modals,
     entityModals,
     runningModels,
@@ -316,6 +317,20 @@ export function AppModals({
         return res;
     }, [pendingSessionInitialState]);
 
+    // ✅ FIX: Merge local characters with session characters so Joiners can see Host's characters
+    const availableCharactersForList = useMemo(() => {
+        if (!isMultiplayerClient || !interactionData) return allCharacters;
+        
+        const localMap = new Map(allCharacters.map(c => [c.id, c]));
+        for (const p of interactionData.protagonists || []) {
+            if (!localMap.has(p.id)) localMap.set(p.id, p);
+        }
+        for (const p of interactionData.participants || []) {
+            if (!localMap.has(p.id)) localMap.set(p.id, p);
+        }
+        return Array.from(localMap.values());
+    }, [allCharacters, isMultiplayerClient, interactionData]);
+
     useEffect(() => {
         if (modals.chatList.isOpen) {
             ensureChatsLoaded();
@@ -349,7 +364,7 @@ export function AppModals({
     }, [interactionData, allCharacters]);
 
     return (
-        <Suspense fallback={null}>
+        <>
             {/* ─── Manager Lists ─── */}
 
             {modals.chatList.isOpen && (
@@ -373,11 +388,12 @@ export function AppModals({
             {modals.charList.isOpen && (
                 <ManagerModal
                     title="Characters"
-                    items={allCharacters}
+                    items={availableCharactersForList} // ✅ CHANGED: Shows session characters too
                     isOpen={modals.charList.isOpen}
                     onClose={modals.charList.close}
                     onSelect={async (character: Character) => { 
-                        const fullCharacter = character.sampler ? character : await onLoadFullCharacter(character.id); 
+                        const isLocal = allCharacters.some(c => c.id === character.id);
+                        const fullCharacter = (isLocal && character.sampler) ? character : (isLocal ? await onLoadFullCharacter(character.id) : character);
                         characterModalProperties.open(fullCharacter || character); 
                     }}
                     onDelete={onDeleteCharacter}
@@ -614,7 +630,7 @@ export function AppModals({
                 />
             )}
 
-            {/* ─── Tool / Utility Modals (Lazy) ─── */}
+            {/* ─── Tool / Utility Modals ─── */}
 
             {modals.settings.isOpen && (
                 <SettingsModal
@@ -863,7 +879,7 @@ export function AppModals({
 
             <GpuMonitorModal isOpen={modals.gpuMonitor.isOpen} onClose={modals.gpuMonitor.close} />
 
-            {/* ─── Editor Modals (Lazy) ─── */}
+            {/* ─── Editor Modals ─── */}
 
             {characterModalProperties.isOpen && (
                 <CharacterEditorModal 
@@ -1102,7 +1118,7 @@ export function AppModals({
                     sessionRules={pendingSessionRules}
                 />
             )}
-        </Suspense>
+        </>
     );
 }
 
