@@ -35,7 +35,7 @@ function getSummarizationStopTokens(stopPattern?: StopPattern): string[] {
     const stops = [
         ...templateStops,
         ...profileStops,
-        turnEndStop(delimiters),
+        delimiters.turnEnd.trim(),
         delimiters.thinkStart.trim(),
         delimiters.thinkEnd.trim(),
         '\n\n',
@@ -43,10 +43,6 @@ function getSummarizationStopTokens(stopPattern?: StopPattern): string[] {
     ].filter(s => s.length > 0);
 
     return [...new Set(stops)];
-}
-
-function turnEndStop(delimiters: any): string {
-    return delimiters.turnEnd.trim();
 }
 
 export async function generateMessageSummary(
@@ -148,7 +144,30 @@ export async function generateCharacterMemory(
     const { chatHistoryPrompt } = createChatHistoryPrompt(ctx);
     const participantTag = ctx.characterParticipantTag;
 
-    const perspectiveInstruction = `${delimiters.blockStart('system')}I am ${participantTag}. I am reflecting on what I have experienced. I will express my memory as natural, personal thoughts that others will not hear, read or respond to. I will use this memory in the future. Only I can access this memory. I will never use 'Character #' or 'Character # (Name)' unless I require it.${delimiters.blockEnd}`;
+    // ─── Resolve Memory Prompt Template ─────────────────────────────
+    // 1. Find the most recent expression for this character in the history
+    let recentExpression = 'neutral';
+    for (let i = history.length - 1; i >= 0; i--) {
+        const msg = history[i];
+        if (msg.character.id === character.id && msg.characterExpression) {
+            recentExpression = msg.characterExpression;
+            break;
+        }
+    }
+
+    // 2. Look up template: recent expression -> 'neutral' -> system default
+    let memoryPromptTemplate = character.memoryPrompts?.[recentExpression];
+    if (!memoryPromptTemplate) {
+        memoryPromptTemplate = character.memoryPrompts?.['neutral'];
+    }
+    
+    const systemDefaultPerspective = `I am ${participantTag}. I am reflecting on what I have experienced. I will express my memory as natural, personal thoughts that others will not hear, read or respond to. I will use this memory in the future. Only I can access this memory. I will never use 'Character #' or 'Character # (Name)' unless I require it.`;
+
+    const finalMemoryInstruction = memoryPromptTemplate 
+        ? replacePlaceholders(memoryPromptTemplate, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)
+        : systemDefaultPerspective;
+
+    const perspectiveInstruction = `${delimiters.blockStart('system')}${finalMemoryInstruction}${delimiters.blockEnd}`;
 
     const systemPrompt = character.systemPrompt
         ? `${delimiters.blockStart('system')}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}`
@@ -157,16 +176,9 @@ export async function generateCharacterMemory(
         ? `${delimiters.blockStart('system')}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}`
         : '';
 
-    // ─── Inject Character Memory Prompt ─────────────────────────────
-    // Falls back to 'neutral' expression as defined in the Character type comments
-    const memoryPromptTemplate = character.memoryPrompts?.['neutral'];
-    const memoryPrompt = memoryPromptTemplate
-        ? `${delimiters.blockStart('system')}Memory Formation Guide: ${replacePlaceholders(memoryPromptTemplate, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}`
-        : '';
-
     const memoryInjection = `${delimiters.turnStart(participantTag)}`;
 
-    const promptLines = [systemPrompt, thinkPrompt, memoryPrompt, `${delimiters.blockStart('system')}The Start Of My Memory${delimiters.blockEnd}`, chatHistoryPrompt, `${delimiters.blockStart('system')}The End Of My Memory${delimiters.blockEnd}`, perspectiveInstruction, memoryInjection];
+    const promptLines = [systemPrompt, thinkPrompt, `${delimiters.blockStart('system')}The Start Of My Memory${delimiters.blockEnd}`, chatHistoryPrompt, `${delimiters.blockStart('system')}The End Of My Memory${delimiters.blockEnd}`, perspectiveInstruction, memoryInjection];
     const prompt = promptLines.filter(l => l.length > 0).join('\n\n');
 
     // Use dynamic model-specific and profile-specific stop tokens
@@ -187,9 +199,7 @@ export async function generateCharacterMemory(
     const { text } = await bse.generateCompletion(requestBody);
     if (!text || !text.trim()) return null;
 
-    const finalText = text.trim()
-
-    return finalText;
+    return text.trim();
 }
 
 export async function generateMissingSummaries(
@@ -322,18 +332,43 @@ export async function generateLocationVisitSummary(
         ? `${delimiters.blockStart('system')}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}`
         : '';
 
-    // ─── Inject Character Memory Prompt ─────────────────────────────
-    // Falls back to 'neutral' expression as defined in the Character type comments
-    const memoryPromptTemplate = character.memoryPrompts?.['neutral'];
-    const memoryPrompt = memoryPromptTemplate
-        ? `${delimiters.blockStart('system')}Memory Formation Guide: ${replacePlaceholders(memoryPromptTemplate, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}`
-        : '';
-
     const scopedHistoryBlock = `${delimiters.blockStart('system')}Events at ${locationName}:\n${scopedMessages.join('\n')}${delimiters.blockEnd}`;
 
-    const perspectiveInstruction = `${delimiters.blockStart('system')}I am ${participantTag}. ${LOCATION_VISIT_MEMORY_PROMPT} I will never use 'Character #' or 'Character # (Name)' unless I require it.${delimiters.blockEnd}`;
+    // ─── Resolve Memory Prompt Template ─────────────────────────────
+    // 1. Find the most recent expression for this character in the scoped range (or fallback to overall history)
+    let recentExpression = 'neutral';
+    for (let i = endIdx; i >= startIdx; i--) {
+        const msg = history[i];
+        if (msg.character.id === character.id && msg.characterExpression) {
+            recentExpression = msg.characterExpression;
+            break;
+        }
+    }
+    if (recentExpression === 'neutral') {
+        for (let i = history.length - 1; i >= 0; i--) {
+            const msg = history[i];
+            if (msg.character.id === character.id && msg.characterExpression) {
+                recentExpression = msg.characterExpression;
+                break;
+            }
+        }
+    }
 
-    const promptLines = [systemPrompt, thinkPrompt, memoryPrompt, scopedHistoryBlock, perspectiveInstruction];
+    // 2. Look up template: recent expression -> 'neutral' -> system default
+    let memoryPromptTemplate = character.memoryPrompts?.[recentExpression];
+    if (!memoryPromptTemplate) {
+        memoryPromptTemplate = character.memoryPrompts?.['neutral'];
+    }
+
+    const systemDefaultPerspective = `I am ${participantTag}. ${LOCATION_VISIT_MEMORY_PROMPT} I will never use 'Character #' or 'Character # (Name)' unless I require it.`;
+
+    const finalMemoryInstruction = memoryPromptTemplate 
+        ? replacePlaceholders(memoryPromptTemplate, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)
+        : systemDefaultPerspective;
+
+    const perspectiveInstruction = `${delimiters.blockStart('system')}${finalMemoryInstruction}${delimiters.blockEnd}`;
+
+    const promptLines = [systemPrompt, thinkPrompt, scopedHistoryBlock, perspectiveInstruction];
     const prompt = promptLines.filter(l => l.length > 0).join('\n\n');
 
     // Use dynamic model-specific and profile-specific stop tokens
