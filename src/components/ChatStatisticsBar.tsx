@@ -183,7 +183,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                 )}
 
                 {/* Session Cost (only when no budget) */}
-                {!hasBudget && totalCost > 0 && (
+                {!hasBudget && (
                     <div className="chat-stat-item" title={`Session Cost: $${formatCost(totalCost)}`}>
                         <span className="chat-stat-label">💰</span>
                         <span className="chat-stat-value">${formatCost(totalCost)}</span>
