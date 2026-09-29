@@ -238,6 +238,15 @@ export function AppModals({
     const currentAccountId = useSessionStore(state => state.currentAccountId);
     const multiplayerData = useSessionStore(state => state.multiplayerData);
 
+    // ─── Authorization Logic ─────────────────────────────────────────
+    const accountConfig = useMemo(() => {
+        if (!currentAccountId || !multiplayerData) return null;
+        return multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId];
+    }, [currentAccountId, multiplayerData]);
+
+    const isAdmin = !isMultiplayerClient || !!accountConfig?.isAdministrator;
+    const canManage = !!isAdmin;
+
     const characterModalProperties = entityModals.getModalProperties('character');
     const contextModalProperties = entityModals.getModalProperties('context');
     const locationModalProperties = entityModals.getModalProperties('location');
@@ -377,20 +386,20 @@ export function AppModals({
                     items={allCharacters}
                     isOpen={modals.charList.isOpen}
                     onClose={modals.charList.close}
-                    onSelect={isMultiplayerClient ? undefined : async (character: Character) => { 
+                    onSelect={canManage ? async (character: Character) => { 
                         const fullCharacter = character.sampler ? character : await onLoadFullCharacter(character.id); 
                         characterModalProperties.open(fullCharacter || character); 
-                    }}
-                    onDelete={isMultiplayerClient ? undefined : onDeleteCharacter}
-                    onCreateNew={isMultiplayerClient ? () => {} : () => characterModalProperties.open()}
+                    } : undefined}
+                    onDelete={canManage ? onDeleteCharacter : undefined}
+                    onCreateNew={canManage ? () => characterModalProperties.open() : undefined}
                     renderSubtext={(character: Character) => character.description || 'No description'}
                     emptyMessage="No characters found."
-                    actionLabel="Delete"
-                    orderedListMode={!!interactionData && !isMultiplayerClient}
+                    actionLabel={canManage ? "Delete" : undefined}
+                    orderedListMode={canManage}
                     currentOrderIds={interactionData?.participants.map(participant => participant.id) || []}
-                    onToggleOrder={isMultiplayerClient ? undefined : onToggleParticipant}
+                    onToggleOrder={canManage ? onToggleParticipant : undefined}
                     specialActionIcon="★"
-                    onSpecialAction={isMultiplayerClient ? undefined : (character: Character) => onSetProtagonist(character.id)}
+                    onSpecialAction={canManage ? (character: Character) => onSetProtagonist(character.id) : undefined}
                     specialActionTooltip={(character: Character) => `set ${character.name} as the protagonist`}
                     activeSpecialActionId={localProtagonist?.id}
                 />
@@ -402,15 +411,15 @@ export function AppModals({
                     items={allContexts} 
                     isOpen={modals.contextList.isOpen} 
                     onClose={modals.contextList.close}
-                    onSelect={(context: Context) => contextModalProperties.open(context)} 
-                    onDelete={onDeleteContext} 
-                    onCreateNew={() => contextModalProperties.open()}
+                    onSelect={canManage ? (context: Context) => contextModalProperties.open(context) : undefined} 
+                    onDelete={canManage ? onDeleteContext : undefined} 
+                    onCreateNew={canManage ? () => contextModalProperties.open() : undefined}
                     renderSubtext={renderContextSubtext} 
                     emptyMessage="No contexts found." 
-                    actionLabel="Delete"
-                    orderedListMode={true} 
+                    actionLabel={canManage ? "Delete" : undefined}
+                    orderedListMode={canManage} 
                     currentOrderIds={interactionData?.contexts?.map(context => context.id) || []} 
-                    onToggleOrder={onToggleContext} 
+                    onToggleOrder={canManage ? onToggleContext : undefined} 
                 />
             )}
 
@@ -420,15 +429,15 @@ export function AppModals({
                     items={allLocations} 
                     isOpen={modals.locationList.isOpen} 
                     onClose={modals.locationList.close}
-                    onSelect={(location: Location) => locationModalProperties.open(location)} 
-                    onDelete={onDeleteLocation} 
-                    onCreateNew={() => locationModalProperties.open()}
+                    onSelect={canManage ? (location: Location) => locationModalProperties.open(location) : undefined} 
+                    onDelete={canManage ? onDeleteLocation : undefined} 
+                    onCreateNew={canManage ? () => locationModalProperties.open() : undefined}
                     renderSubtext={renderLocationSubtext} 
                     emptyMessage="No locations found." 
-                    actionLabel="Delete"
-                    orderedListMode={true} 
+                    actionLabel={canManage ? "Delete" : undefined}
+                    orderedListMode={canManage} 
                     currentOrderIds={interactionData?.locations?.map(location => location.id) || []} 
-                    onToggleOrder={onToggleLocation} 
+                    onToggleOrder={canManage ? onToggleLocation : undefined} 
                 />
             )}
 
@@ -438,15 +447,15 @@ export function AppModals({
                     items={allAudioTracks} 
                     isOpen={modals.audioTrackList.isOpen} 
                     onClose={modals.audioTrackList.close}
-                    onSelect={(audioTrack: AudioTrack) => audioTrackModalProperties.open(audioTrack)} 
-                    onDelete={onDeleteAudioTrack} 
-                    onCreateNew={() => audioTrackModalProperties.open()}
+                    onSelect={canManage ? (audioTrack: AudioTrack) => audioTrackModalProperties.open(audioTrack) : undefined} 
+                    onDelete={canManage ? onDeleteAudioTrack : undefined} 
+                    onCreateNew={canManage ? () => audioTrackModalProperties.open() : undefined}
                     renderSubtext={(audioTrack: AudioTrack) => `${audioTrack.audioCategory === 'ambient' ? '🌿' : audioTrack.audioCategory === 'music' ? '🎵' : '💥'} ${audioTrack.loop ? '🔁' : '▶️'} Vol: ${Math.round(audioTrack.volume * 100)}%${audioTrack.priority > 0 ? ` • ⬆${audioTrack.priority}` : ''}${audioTrack.locationBindings.length > 0 ? ` • 📍${audioTrack.locationBindings.length}` : ''}${audioTrack.contextBindings.length > 0 ? ` • 📜${audioTrack.contextBindings.length}` : ''}${audioTrack.characterBindings.length > 0 ? ` • 🎭${audioTrack.characterBindings.length}` : ''}`}
                     emptyMessage="No audio tracks found." 
-                    actionLabel="Delete" 
-                    orderedListMode={true} 
+                    actionLabel={canManage ? "Delete" : undefined} 
+                    orderedListMode={canManage} 
                     currentOrderIds={interactionData?.audioTracks?.map(track => track.id) || []} 
-                    onToggleOrder={onToggleAudioTrack} 
+                    onToggleOrder={canManage ? onToggleAudioTrack : undefined} 
                 />
             )}
 
@@ -456,9 +465,9 @@ export function AppModals({
                     items={allWorlds} 
                     isOpen={modals.worldManager.isOpen} 
                     onClose={modals.worldManager.close}
-                    onSelect={(world: World) => worldModalProperties.open(world)} 
-                    onDelete={onDeleteWorld} 
-                    onCreateNew={() => worldModalProperties.open()}
+                    onSelect={canManage ? (world: World) => worldModalProperties.open(world) : undefined} 
+                    onDelete={canManage ? onDeleteWorld : undefined} 
+                    onCreateNew={canManage ? () => worldModalProperties.open() : undefined}
                     renderSubtext={(world: World) => {
                         const parts = [
                             world.characterIds.length > 0 ? `${world.characterIds.length} characters` : null,
@@ -472,7 +481,7 @@ export function AppModals({
                         return parts.join(' • ');
                     }}
                     emptyMessage="No worlds saved yet." 
-                    actionLabel="Delete" 
+                    actionLabel={canManage ? "Delete" : undefined} 
                 />
             )}
 
@@ -482,12 +491,12 @@ export function AppModals({
                     items={allPromptBlocks} 
                     isOpen={modals.promptBlockList.isOpen} 
                     onClose={modals.promptBlockList.close}
-                    onSelect={(promptBlock: PromptBlock) => promptBlockModalProperties.open(promptBlock)} 
-                    onDelete={promptBlockModalProperties.delete} 
-                    onCreateNew={() => promptBlockModalProperties.open()}
+                    onSelect={canManage ? (promptBlock: PromptBlock) => promptBlockModalProperties.open(promptBlock) : undefined} 
+                    onDelete={canManage ? promptBlockModalProperties.delete : undefined} 
+                    onCreateNew={canManage ? () => promptBlockModalProperties.open() : undefined}
                     renderSubtext={(promptBlock: PromptBlock) => `${promptBlock.textContent ? `📝 ${promptBlock.textContent.length} characters` : ''}${promptBlock.images.length > 0 ? ` • 🖼️ ${promptBlock.images.length}` : ''}${promptBlock.characterBindings.length > 0 ? ` • 🎭${promptBlock.characterBindings.length}` : ''}${promptBlock.contextBindings.length > 0 ? ` • 📜${promptBlock.contextBindings.length}` : ''}${promptBlock.locationBindings.length > 0 ? ` • 📍${promptBlock.locationBindings.length}` : ''}`}
                     emptyMessage="No prompt blocks found." 
-                    actionLabel="Delete" 
+                    actionLabel={canManage ? "Delete" : undefined} 
                 />
             )}
 
@@ -497,17 +506,17 @@ export function AppModals({
                     items={allModels} 
                     isOpen={modals.modelList.isOpen} 
                     onClose={modals.modelList.close}
-                    onSelect={(model: LanguageModel) => modelModalProperties.open(model)} 
-                    onDelete={onDeleteModel} 
-                    onCreateNew={() => modelModalProperties.open()}
+                    onSelect={canManage ? (model: LanguageModel) => modelModalProperties.open(model) : undefined} 
+                    onDelete={canManage ? onDeleteModel : undefined} 
+                    onCreateNew={canManage ? () => modelModalProperties.open() : undefined}
                     renderSubtext={(model: LanguageModel) => renderModelSubtext(model, runningModels, selectedModelId)}
                     emptyMessage="No models available." 
-                    actionLabel="Delete" 
+                    actionLabel={canManage ? "Delete" : undefined} 
                     orderedListMode={false}
                     activeSpecialActionId={selectedModelId || undefined} 
                     secondaryActiveIds={strategyModelIds}
                     specialActionIcon="★" 
-                    onSpecialAction={(model: LanguageModel) => onToggleModelLoad(model.id)}
+                    onSpecialAction={canManage ? (model: LanguageModel) => onToggleModelLoad(model.id) : undefined}
                     specialActionTooltip={(model: LanguageModel) => {
                         const modelStatus = runningModels[model.id];
                         const isCloud = !!model.apiKey && !!model.backend && cloudBackends.includes(model.backend as cloudBackend);
@@ -530,12 +539,12 @@ export function AppModals({
                     items={allSamplers} 
                     isOpen={modals.samplerList.isOpen} 
                     onClose={modals.samplerList.close}
-                    onSelect={(sampler: Sampler) => samplerModalProperties.open(sampler)} 
-                    onDelete={onDeleteSampler} 
-                    onCreateNew={() => samplerModalProperties.open()}
+                    onSelect={canManage ? (sampler: Sampler) => samplerModalProperties.open(sampler) : undefined} 
+                    onDelete={canManage ? onDeleteSampler : undefined} 
+                    onCreateNew={canManage ? () => samplerModalProperties.open() : undefined}
                     renderSubtext={(sampler: Sampler) => `Temp: ${sampler?.parameters?.temperature}, TopP: ${sampler?.parameters?.top_p}, Tokens: ${sampler?.maximumNumberOfTokens}`}
                     emptyMessage="No samplers found." 
-                    actionLabel="Delete" 
+                    actionLabel={canManage ? "Delete" : undefined} 
                 />
             )}
 
@@ -545,15 +554,15 @@ export function AppModals({
                     items={allStopPatterns} 
                     isOpen={modals.stopList.isOpen} 
                     onClose={modals.stopList.close}
-                    onSelect={(stopPattern: StopPattern) => stopPatternModalProperties.open(stopPattern)} 
-                    onDelete={onDeleteStopPattern} 
-                    onCreateNew={() => stopPatternModalProperties.open()}
+                    onSelect={canManage ? (stopPattern: StopPattern) => stopPatternModalProperties.open(stopPattern) : undefined} 
+                    onDelete={canManage ? onDeleteStopPattern : undefined} 
+                    onCreateNew={canManage ? () => stopPatternModalProperties.open() : undefined}
                     renderSubtext={(stopPattern: StopPattern) => {
                         const hasActivationTriggers = (stopPattern.regularExpressionActivationTriggers?.length ?? 0) > 0;
                         return (<span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{hasActivationTriggers ? '⚡' : '📌'} Pattern: {stopPattern.pattern}</span>);
                     }}
                     emptyMessage="No stop patterns found." 
-                    actionLabel="Delete" 
+                    actionLabel={canManage ? "Delete" : undefined} 
                     orderedListMode={false} 
                 />
             )}
@@ -564,16 +573,16 @@ export function AppModals({
                     items={allBudgetStrategies} 
                     isOpen={modals.budgetStrategyList.isOpen} 
                     onClose={modals.budgetStrategyList.close}
-                    onSelect={(budgetStrategy: BudgetStrategy) => budgetStrategyModalProperties.open(budgetStrategy)} 
-                    onDelete={onDeleteBudgetStrategy} 
-                    onCreateNew={() => budgetStrategyModalProperties.open()}
+                    onSelect={canManage ? (budgetStrategy: BudgetStrategy) => budgetStrategyModalProperties.open(budgetStrategy) : undefined} 
+                    onDelete={canManage ? onDeleteBudgetStrategy : undefined} 
+                    onCreateNew={canManage ? () => budgetStrategyModalProperties.open() : undefined}
                     renderSubtext={renderBudgetStrategySubtext} 
                     emptyMessage="No budget strategies found." 
-                    actionLabel="Delete" 
+                    actionLabel={canManage ? "Delete" : undefined} 
                     orderedListMode={false}
                     activeSpecialActionId={selectedBudgetStrategyId || undefined} 
                     specialActionIcon="★"
-                    onSpecialAction={(budgetStrategy: BudgetStrategy) => onActivateBudgetStrategy(budgetStrategy.id)}
+                    onSpecialAction={canManage ? (budgetStrategy: BudgetStrategy) => onActivateBudgetStrategy(budgetStrategy.id) : undefined}
                     specialActionTooltip={(budgetStrategy: BudgetStrategy) => selectedBudgetStrategyId === budgetStrategy.id ? `Deactivate ${budgetStrategy.name}` : `Activate ${budgetStrategy.name}`} 
                 />
             )}
@@ -584,16 +593,16 @@ export function AppModals({
                     items={allProfiles} 
                     isOpen={modals.profileList.isOpen} 
                     onClose={modals.profileList.close}
-                    onSelect={(profile: Profile) => profileModalProperties.open(profile)} 
-                    onDelete={onDeleteProfile} 
-                    onCreateNew={() => profileModalProperties.open()}
+                    onSelect={canManage ? (profile: Profile) => profileModalProperties.open(profile) : undefined} 
+                    onDelete={canManage ? onDeleteProfile : undefined} 
+                    onCreateNew={canManage ? () => profileModalProperties.open() : undefined}
                     renderSubtext={renderProfileSubtext} 
                     emptyMessage="No profiles found." 
-                    actionLabel="Delete" 
+                    actionLabel={canManage ? "Delete" : undefined} 
                     orderedListMode={false}
                     activeSpecialActionId={interactionData?.Profile?.id || undefined} 
                     specialActionIcon="★"
-                    onSpecialAction={(profile: Profile) => onActivateProfile(profile.id)}
+                    onSpecialAction={canManage ? (profile: Profile) => onActivateProfile(profile.id) : undefined}
                     specialActionTooltip={(profile: Profile) => interactionData?.Profile?.id === profile.id ? `Deactivate ${profile.name}` : `Activate ${profile.name}`} 
                 />
             )}
@@ -605,13 +614,13 @@ export function AppModals({
                     isOpen={modals.extList.isOpen} 
                     onClose={modals.extList.close}
                     onSelect={undefined} 
-                    onDelete={onDeleteExtension} 
-                    onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')}
+                    onDelete={canManage ? onDeleteExtension : undefined} 
+                    onCreateNew={canManage ? () => addToast('Create Extension Modal coming soon!', 'info') : undefined}
                     renderSubtext={(extension: Extension) => renderExtensionSubtext({ extensionType: extension.extensionType, description: extension.description ?? '' })}
                     emptyMessage="No extensions available." 
-                    actionLabel="Delete" 
-                    orderedListMode={true} 
-                    onToggleOrder={onToggleExtension} 
+                    actionLabel={canManage ? "Delete" : undefined} 
+                    orderedListMode={canManage} 
+                    onToggleOrder={canManage ? onToggleExtension : undefined} 
                 />
             )}
 
@@ -681,11 +690,11 @@ export function AppModals({
                     isOpen={modals.multiplayerDataList.isOpen} 
                     onClose={modals.multiplayerDataList.close}
                     onSelect={(multiplayerDataEntry: MultiplayerData) => multiplayerDataModalProperties.open(multiplayerDataEntry)} 
-                    onDelete={onDeleteMultiplayerData} 
-                    onCreateNew={() => multiplayerDataModalProperties.open()}
+                    onDelete={canManage ? onDeleteMultiplayerData : undefined} 
+                    onCreateNew={canManage ? () => multiplayerDataModalProperties.open() : undefined}
                     renderSubtext={(multiplayerDataEntry: MultiplayerData) => `${multiplayerDataEntry.password ? '🔒' : '🔓'} ${Object.keys(multiplayerDataEntry.multiplayerDataAccountConfigurations || {}).length} accounts • ${multiplayerDataEntry.interactionDataIds.length} sessions`}
                     emptyMessage="No multiplayer data found." 
-                    actionLabel="Delete" 
+                    actionLabel={canManage ? "Delete" : undefined} 
                 />
             )}
 

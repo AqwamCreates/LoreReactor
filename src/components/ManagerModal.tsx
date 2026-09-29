@@ -9,7 +9,7 @@ interface ManagerModalProps<T> {
     onClose: () => void;
     onSelect?: (item: T) => void;
     onDelete?: (id: string) => void;
-    onCreateNew: () => void;
+    onCreateNew?: () => void;
     renderSubtext?: (item: T) => React.ReactNode;
     emptyMessage?: string;
     actionLabel?: string;
@@ -133,7 +133,7 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
                 <div className="modal-header">
                     <h2>{title}</h2>
                     <div className="modal-header-actions">
-                        <button type="button" className="create-new-button" onClick={e => { e.stopPropagation(); onCreateNew(); }} title={`Create New ${singularTitle}`}>
+                        <button type="button" className="create-new-button" onClick={e => { e.stopPropagation(); if (onCreateNew) onCreateNew(); }} title={`Create New ${singularTitle}`}>
                             ➕ New {singularTitle}
                         </button>
                         <button type="button" className="close-button close-button-spaced" onClick={onClose}>×</button>
