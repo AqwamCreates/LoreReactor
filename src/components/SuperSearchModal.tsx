@@ -548,7 +548,7 @@ function SuperSearchContent({
                                                             key={c.chatId}
                                                             type="button"
                                                             onClick={() => {
-                                                                onSelectEntity?.('message', item.rawEntity, { id: c.chatId, name: c.chatName });
+                                                                onSelectEntity?.('message', item.rawEntity, { id: c.chatId, name: c.chatName } as ObjectData);
                                                                 onClose();
                                                             }}
                                                             style={{
