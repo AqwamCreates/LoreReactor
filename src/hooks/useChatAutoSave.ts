@@ -48,18 +48,23 @@ interface UseChatAutoSaveOptions {
 export function useChatAutoSave(options: UseChatAutoSaveOptions) {
     const { interactionData, rawChatShells, refreshChatList } = options;
     const prevDataRef = useRef<InteractionData | null>(null);
+    const isFirstRun = useRef(true);
 
     useEffect(() => {
         if (!interactionData || !interactionData.id) return;
-
-        // STRICT RULE: Abort if the chat is pristine/empty.
-        // Merely having a protagonist or default profile does NOT count as content.
         if (!isChatSaveable(interactionData)) return;
+
+        // If this is the initial hydration of interactionData, just sync the ref
+        if (isFirstRun.current) {
+            isFirstRun.current = false;
+            prevDataRef.current = interactionData;
+            return;
+        }
 
         const prev = prevDataRef.current;
 
-        // Robust change detection that catches replacements, not just length changes
         const hasActualChange = !prev
+            || prev.id !== interactionData.id // switched to a different chat
             || prev.name !== interactionData.name
             || prev.Profile?.id !== interactionData.Profile?.id
             || haveEntitiesChanged(prev.protagonists, interactionData.protagonists)
@@ -70,7 +75,6 @@ export function useChatAutoSave(options: UseChatAutoSaveOptions) {
             || hasMessagesChanged(prev, interactionData);
 
         if (hasActualChange) {
-            // Update the ref ONLY after a successful change detection
             prevDataRef.current = interactionData;
             
             saveRawInteractionData(interactionData).catch((e: unknown) => console.error('Failed to save chat:', e));
