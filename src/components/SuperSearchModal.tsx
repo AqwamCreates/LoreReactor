@@ -315,7 +315,9 @@ function SuperSearchContent({
         
         // Attach parent character to memory results
         for (const res of emptyMap.memory) {
-            const parentChar = allCharacters.find(c => c.memories?.some((m: any) => m.id === res.id));
+            const parentChar = allCharacters.find(c => 
+                Array.isArray(c.memories) && c.memories.some((m: any) => m.id === res.id)
+            );
             if (parentChar) res.parentEntity = parentChar;
         }
 
