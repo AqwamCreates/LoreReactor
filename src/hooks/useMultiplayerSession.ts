@@ -33,9 +33,7 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
     const [joinRequestedCharacterId, setJoinRequestedCharacterId] = useState<string | null>(null);
     const [joinRequestedCharacterData, setJoinRequestedCharacterData] = useState<Character | null>(null);
 
-    const [isCharacterSelectionModalOpen, setIsCharacterSelectionModalOpen] = useState(false);
-    const [pendingSessionInitialState, setPendingSessionInitialState] = useState<any | null>(null);
-    const [pendingSessionRules, setPendingSessionRules] = useState<any | null>(null);
+    const [needsCharacterSelection, setNeedsCharacterSelection] = useState(false);
 
     const broadcastMessageRef = useRef<((message: HistoryMessage) => void) | undefined>(undefined);
     const requestBorrowedModelRef = useRef<() => Promise<LanguageModel | null>>(async () => null);
@@ -66,9 +64,7 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         setJoinProtagonist(null);
         setJoinRequestedCharacterId(null);
         setJoinRequestedCharacterData(null);
-        setIsCharacterSelectionModalOpen(false);
-        setPendingSessionInitialState(null);
-        setPendingSessionRules(null);
+        setNeedsCharacterSelection(false);
         deleteMultiplayerJoinData().catch((e: unknown) => console.warn('Failed to clear join data:', e));
     }, []);
 
@@ -81,12 +77,15 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         }).catch((e: unknown) => console.warn('Failed to save join data:', e));
         setJoinProtagonist(assignedCharacter);
         setCurrentCharacter(assignedCharacter);
+        setNeedsCharacterSelection(false);
     }, [addToast, joinSessionId, joinPassword, setCurrentCharacter]);
 
-    const handleCharacterSelectionRequired = useCallback((initialState: any, sessionRules: any) => {
-        setPendingSessionInitialState(initialState);
-        setPendingSessionRules(sessionRules);
-        setIsCharacterSelectionModalOpen(true);
+    const handleCharacterSelectionRequired = useCallback((_initialState: any, _sessionRules: any) => {
+        setNeedsCharacterSelection(true);
+    }, []);
+
+    const clearNeedsCharacterSelection = useCallback(() => {
+        setNeedsCharacterSelection(false);
     }, []);
 
     const handleJoinRejected = useCallback((reason: string) => {
@@ -223,23 +222,6 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         onCharacterSelectionRequired: handleCharacterSelectionRequired,
     });
 
-    const handleSelectJoinCharacter = useCallback((character: Character) => {
-        setIsCharacterSelectionModalOpen(false);
-        setPendingSessionInitialState(null);
-        setPendingSessionRules(null);
-        handleJoinAccepted(character);
-        multiplayerSync.sendProtagonist(character);
-    }, [handleJoinAccepted, multiplayerSync]);
-
-    const handleCancelJoinCharacter = useCallback(() => {
-        setIsCharacterSelectionModalOpen(false);
-        setPendingSessionInitialState(null);
-        setPendingSessionRules(null);
-        clearJoinState();
-        multiplayerSync.disconnect();
-        addToast('Left multiplayer session.', 'info');
-    }, [clearJoinState, multiplayerSync, addToast]);
-
     useEffect(() => {
         requestBorrowedModelRef.current = multiplayerSync.requestAndAwaitBorrowedModel;
     }, [multiplayerSync.requestAndAwaitBorrowedModel]);
@@ -265,10 +247,7 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         requestBorrowedModelRef,
         currentAccountId,
         multiplayerData,
-        isCharacterSelectionModalOpen,
-        pendingSessionInitialState,
-        pendingSessionRules,
-        handleSelectJoinCharacter,
-        handleCancelJoinCharacter,
+        needsCharacterSelection,
+        clearNeedsCharacterSelection,
     };
 }

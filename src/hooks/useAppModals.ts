@@ -31,7 +31,6 @@ export type ModalName =
     | 'superSearch'
     | 'gpuMonitor'
     | 'chatInspection'
-    | 'multiplayerCharacterSelection'
 
 export interface ModalController {
     isOpen: boolean;
@@ -61,7 +60,6 @@ export function useAppModals() {
         setModalStates({});
     }, []);
 
-    // Generate a stable dictionary of controllers for every modal type
     const modals = useMemo(() => {
         const names: ModalName[] = [
             'chatList', 'charList', 'contextList', 'locationList', 'audioTrackList',
@@ -70,7 +68,7 @@ export function useAppModals() {
             'settings', 'budgetControl', 'participantControl', 'alternateTimelines',
             'aiRecommendation', 'restrictionReduction', 'cardImport', 'importData',
             'exportData', 'dataManager', 'joinSession', 'superSearch', 'gpuMonitor', 
-            'chatInspection', 'multiplayerCharacterSelection', 
+            'chatInspection',
         ];
 
         const acc = {} as Record<ModalName, ModalController>;

@@ -5,6 +5,8 @@ import '../main.css';
 interface ManagerModalProps<T> {
     title: string;
     items: T[];
+    sessionItems?: T[]; // If provided, enables the "Session" tab
+    isAdministrator?: boolean; // Required to toggle order (add/remove/reorder) session items in InteractionData
     isOpen: boolean;
     onClose: () => void;
     onSelect?: (item: T) => void;
@@ -40,7 +42,7 @@ function extractTextContent(node: React.ReactNode): string {
 }
 
 function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedTimestamp?: number; firstCreatedTimestamp?: number }>({
-    title, items, onClose, onSelect, onDelete, onCreateNew,
+    title, items, sessionItems, isAdministrator, onClose, onSelect, onDelete, onCreateNew,
     renderSubtext, emptyMessage = "No items found.", actionLabel = "Delete",
     orderedListMode = false, currentOrderIds = [], onToggleOrder,
     specialActionIcon, onSpecialAction, specialActionTooltip, activeSpecialActionId,
@@ -50,26 +52,57 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
-    // Focus search input on mount
+    const hasSessionTab = sessionItems !== undefined;
+    const [activeTab, setActiveTab] = useState<'local' | 'session'>('local');
+
+    // Focus search input on mount (DOM interaction is allowed in useEffect)
     useEffect(() => {
         searchInputRef.current?.focus();
     }, []);
 
-    const activeConfirmDeleteId = confirmDeleteId && items.some(item => item.id === confirmDeleteId)
+    // ─── Adjusting state during render (React 19 recommended pattern) ───
+    // Resets search and delete confirmations when switching tabs without triggering cascading renders.
+    const [prevActiveTab, setPrevActiveTab] = useState(activeTab);
+    if (activeTab !== prevActiveTab) {
+        setSearchQuery('');
+        setConfirmDeleteId(null);
+        setPrevActiveTab(activeTab);
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
+    // FIX: Wrapped in useMemo to prevent dependency array from changing on every render
+    const currentItems = useMemo(
+        () => (activeTab === 'session' ? (sessionItems || []) : items),
+        [activeTab, sessionItems, items]
+    );
+    const isSessionTab = activeTab === 'session';
+
+    // Session tab: NEVER allow deletion. Items belong to the host's permanent library.
+    // Local tab: Allow deletion if onDelete is provided.
+    const canDelete = isSessionTab ? false : !!onDelete;
+
+    // Session tab: Toggle order (add/remove/reorder in InteractionData) ONLY for administrators.
+    // Local tab: Always allow toggle order if the props are provided.
+    const canToggleOrder = isSessionTab
+        ? (isAdministrator === true && orderedListMode && !!onToggleOrder)
+        : (orderedListMode && !!onToggleOrder);
+
+    // Hide "+ New" if onCreateNew isn't passed, OR if we are in the session tab
+    const showCreateNew = !!onCreateNew && !isSessionTab;
+
+    const activeConfirmDeleteId = confirmDeleteId && currentItems.some(item => item.id === confirmDeleteId)
         ? confirmDeleteId
         : null;
 
     const singularTitle = useMemo(() => getSingularNoun(title), [title]);
 
     const sortedItems = useMemo(() => {
-        const sorted = [...items].sort((a, b) => {
-            // Priority 1: Active special action goes to the very top
+        const sorted = [...currentItems].sort((a, b) => {
             if (activeSpecialActionId) {
                 if (a.id === activeSpecialActionId) return -1;
                 if (b.id === activeSpecialActionId) return 1;
             }
 
-            // Priority 2: Ordered list mode
             if (orderedListMode && currentOrderIds.length > 0) {
                 const aIndex = currentOrderIds.indexOf(a.id);
                 const bIndex = currentOrderIds.indexOf(b.id);
@@ -80,7 +113,6 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
                 else if (!aInOrder && bInOrder) return 1;
             }
 
-            // Priority 3: Default sort by lastUpdatedTimestamp, then firstCreatedTimestamp
             const aUpdated = a.lastUpdatedTimestamp ?? 0;
             const bUpdated = b.lastUpdatedTimestamp ?? 0;
             if (aUpdated !== bUpdated) return bUpdated - aUpdated;
@@ -89,7 +121,7 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
             return bCreated - aCreated;
         });
         return sorted;
-    }, [items, orderedListMode, currentOrderIds, activeSpecialActionId]);
+    }, [currentItems, orderedListMode, currentOrderIds, activeSpecialActionId]);
 
     const filteredItems = useMemo(() => {
         if (!searchQuery.trim()) return sortedItems;
@@ -133,12 +165,33 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
                 <div className="modal-header">
                     <h2>{title}</h2>
                     <div className="modal-header-actions">
-                        <button type="button" className="create-new-button" onClick={e => { e.stopPropagation(); if (onCreateNew) onCreateNew(); }} title={`Create New ${singularTitle}`}>
-                            ➕ New {singularTitle}
-                        </button>
+                        {showCreateNew && (
+                            <button type="button" className="create-new-button" onClick={e => { e.stopPropagation(); onCreateNew!(); }} title={`Create New ${singularTitle}`}>
+                                ➕ New {singularTitle}
+                            </button>
+                        )}
                         <button type="button" className="close-button close-button-spaced" onClick={onClose}>×</button>
                     </div>
                 </div>
+
+                {hasSessionTab && (
+                    <div className="entity-tab-bar" style={{ padding: '0 20px', marginBottom: 0, borderBottom: '1px solid var(--border)', background: 'var(--social-bg)' }}>
+                        <button
+                            type="button"
+                            className={`entity-tab-button ${activeTab === 'local' ? 'entity-tab-button-active' : ''}`}
+                            onClick={() => setActiveTab('local')}
+                        >
+                            💾 Local ({items.length})
+                        </button>
+                        <button
+                            type="button"
+                            className={`entity-tab-button ${activeTab === 'session' ? 'entity-tab-button-active' : ''}`}
+                            onClick={() => setActiveTab('session')}
+                        >
+                            🌐 Session ({sessionItems?.length || 0})
+                        </button>
+                    </div>
+                )}
 
                 <div className="modal-search-container">
                     <input
@@ -179,10 +232,10 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
                                         </div>
 
                                         <div className="manager-item-actions">
-                                            {orderedListMode && onToggleOrder && (
+                                            {canToggleOrder && (
                                                 <button
                                                     type="button"
-                                                    onClick={e => { e.stopPropagation(); onToggleOrder(item.id); }}
+                                                    onClick={e => { e.stopPropagation(); onToggleOrder!(item.id); }}
                                                     className={`toolbar-button order-toggle-button ${isInCurrentOrder ? 'order-toggle-button-active' : ''}`}
                                                     title={isInCurrentOrder ? "Remove from active list" : "Add to active list"}
                                                 >{isInCurrentOrder ? orderNumber : '+'}</button>
@@ -197,7 +250,7 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
                                                 >{isActive ? '⭐' : isSecondaryActive ? '★' : '☆'}</button>
                                             )}
 
-                                            {onDelete && (
+                                            {canDelete && (
                                                 isConfirmingDelete ? (
                                                     <div className="delete-confirm-group">
                                                         <button type="button" onClick={e => handleConfirmDelete(e, item.id)} className="toolbar-button delete-confirm-button" title="Confirm delete">✓</button>

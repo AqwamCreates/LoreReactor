@@ -417,14 +417,14 @@ function App() {
     const displayNameCache = useDisplayNameCache(interactionData);
     const { modals } = useAppModals();
 
-    // ─── Sync Multiplayer Character Selection Modal ────────────────────
+    // ─── Sync Multiplayer Character Selection ────────────────────
     useEffect(() => {
-        if (mp.isCharacterSelectionModalOpen && !modals.multiplayerCharacterSelection.isOpen) {
-            modals.multiplayerCharacterSelection.open();
-        } else if (!mp.isCharacterSelectionModalOpen && modals.multiplayerCharacterSelection.isOpen) {
-            modals.multiplayerCharacterSelection.close();
+        if (mp.needsCharacterSelection) {
+            modals.charList.open();
+            addToast('Select a character from the Session or Local tab and click the ★ icon to join.', 'info');
+            mp.clearNeedsCharacterSelection();
         }
-    }, [mp.isCharacterSelectionModalOpen, modals.multiplayerCharacterSelection]);
+    }, [mp.needsCharacterSelection, modals.charList, addToast, mp]);
 
     // ─── Token Counter ───────────────────────────────────────────────
     const maxParticipantTokens = useTokenCounter({
@@ -910,10 +910,6 @@ function App() {
                     pendingJoinRequests={mp.multiplayerSync.pendingJoinRequests}
                     onAcceptJoinRequest={mp.multiplayerSync.acceptJoinRequest}
                     onRejectJoinRequest={mp.multiplayerSync.rejectJoinRequest}
-                    pendingSessionInitialState={mp.pendingSessionInitialState}
-                    pendingSessionRules={mp.pendingSessionRules}
-                    onSelectJoinCharacter={mp.handleSelectJoinCharacter}
-                    onCancelJoinCharacter={mp.handleCancelJoinCharacter}
                 />
             </div>
 

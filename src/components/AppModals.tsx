@@ -34,7 +34,6 @@ import { AccountEditorModal } from './AccountEditorModal';
 import { MultiplayerEditorModal } from './MultiplayerEditorModal';
 import { SettingsModal } from './SettingsModal';
 import { JoinSessionModal } from './JoinSessionModal';
-import { MultiplayerCharacterSelectionModal } from './MultiplayerCharacterSelectionModal';
 import { BudgetControlModal } from './BudgetControlModal';
 import { GpuMonitorModal } from './GpuMonitorModal';
 import { WorldEditorModal } from './WorldEditorModal';
@@ -127,13 +126,9 @@ interface ApplicationModalsProperties {
     onImportComplete: () => void;
     addToast: (message: string, type: 'success' | 'error' | 'info') => void;
     ensureChatsLoaded: () => void;
-    pendingJoinRequests: PendingJoinRequest[];
-    onAcceptJoinRequest: (accountId: string) => void;
-    onRejectJoinRequest: (accountId: string) => void;
-    pendingSessionInitialState: any;
-    pendingSessionRules: any;
-    onSelectJoinCharacter: (character: Character) => void;
-    onCancelJoinCharacter: () => void;
+    pendingJoinRequests?: PendingJoinRequest[];
+    onAcceptJoinRequest?: (accountId: string) => void;
+    onRejectJoinRequest?: (accountId: string) => void;
 }
 
 type ChatShellWithIdentifier = RawInteractionData & { id: string };
@@ -226,10 +221,6 @@ export function AppModals({
     pendingJoinRequests,
     onAcceptJoinRequest,
     onRejectJoinRequest,
-    pendingSessionInitialState,
-    pendingSessionRules,
-    onSelectJoinCharacter,
-    onCancelJoinCharacter,
 }: ApplicationModalsProperties) {
     const interactionData = useSessionStore(state => state.interactionData);
     const activeStrategy = useSessionStore(state => state.activeStrategy);
@@ -300,13 +291,19 @@ export function AppModals({
         return set;
     }, [activeStrategy]);
 
-    const sessionCharacters = useMemo<Character[]>(() => {
-        if (!pendingSessionInitialState) return [];
+    // ─── Multiplayer Session Entities & Permissions ──────────────────
+    const isAdministrator = useMemo(() => {
+        if (!multiplayerData || !currentAccountId) return false;
+        return multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.isAdministrator === true;
+    }, [multiplayerData, currentAccountId]);
+
+    const sessionCharacters = useMemo(() => {
+        if (!isMultiplayerClient || !interactionData) return undefined;
         const seen = new Set<string>();
         const res: Character[] = [];
         const combined = [
-            ...(pendingSessionInitialState.protagonists || []),
-            ...(pendingSessionInitialState.participants || [])
+            ...(interactionData.protagonists || []),
+            ...(interactionData.participants || [])
         ];
         for (const p of combined) {
             if (p?.id && !seen.has(p.id)) {
@@ -315,21 +312,11 @@ export function AppModals({
             }
         }
         return res;
-    }, [pendingSessionInitialState]);
+    }, [isMultiplayerClient, interactionData]);
 
-    // ✅ FIX: Merge local characters with session characters so Joiners can see Host's characters
-    const availableCharactersForList = useMemo(() => {
-        if (!isMultiplayerClient || !interactionData) return allCharacters;
-        
-        const localMap = new Map(allCharacters.map(c => [c.id, c]));
-        for (const p of interactionData.protagonists || []) {
-            if (!localMap.has(p.id)) localMap.set(p.id, p);
-        }
-        for (const p of interactionData.participants || []) {
-            if (!localMap.has(p.id)) localMap.set(p.id, p);
-        }
-        return Array.from(localMap.values());
-    }, [allCharacters, isMultiplayerClient, interactionData]);
+    const sessionContexts = useMemo(() => isMultiplayerClient ? interactionData?.contexts : undefined, [isMultiplayerClient, interactionData]);
+    const sessionLocations = useMemo(() => isMultiplayerClient ? interactionData?.locations : undefined, [isMultiplayerClient, interactionData]);
+    const sessionAudioTracks = useMemo(() => isMultiplayerClient ? interactionData?.audioTracks : undefined, [isMultiplayerClient, interactionData]);
 
     useEffect(() => {
         if (modals.chatList.isOpen) {
@@ -388,7 +375,9 @@ export function AppModals({
             {modals.charList.isOpen && (
                 <ManagerModal
                     title="Characters"
-                    items={availableCharactersForList} // ✅ CHANGED: Shows session characters too
+                    items={allCharacters}
+                    sessionItems={sessionCharacters}
+                    isAdministrator={isAdministrator}
                     isOpen={modals.charList.isOpen}
                     onClose={modals.charList.close}
                     onSelect={async (character: Character) => { 
@@ -414,7 +403,9 @@ export function AppModals({
             {modals.contextList.isOpen && (
                 <ManagerModal 
                     title="Contexts" 
-                    items={allContexts} 
+                    items={allContexts}
+                    sessionItems={sessionContexts}
+                    isAdministrator={isAdministrator}
                     isOpen={modals.contextList.isOpen} 
                     onClose={modals.contextList.close}
                     onSelect={(context: Context) => contextModalProperties.open(context)} 
@@ -432,7 +423,9 @@ export function AppModals({
             {modals.locationList.isOpen && (
                 <ManagerModal 
                     title="Locations" 
-                    items={allLocations} 
+                    items={allLocations}
+                    sessionItems={sessionLocations}
+                    isAdministrator={isAdministrator}
                     isOpen={modals.locationList.isOpen} 
                     onClose={modals.locationList.close}
                     onSelect={(location: Location) => locationModalProperties.open(location)} 
@@ -450,7 +443,9 @@ export function AppModals({
             {modals.audioTrackList.isOpen && (
                 <ManagerModal 
                     title="Audio Tracks" 
-                    items={allAudioTracks} 
+                    items={allAudioTracks}
+                    sessionItems={sessionAudioTracks}
+                    isAdministrator={isAdministrator}
                     isOpen={modals.audioTrackList.isOpen} 
                     onClose={modals.audioTrackList.close}
                     onSelect={(audioTrack: AudioTrack) => audioTrackModalProperties.open(audioTrack)} 
@@ -1098,24 +1093,6 @@ export function AppModals({
                     }}
                     inspectionStack={inspectionStack}
                     onInspectingParentInteractionData={handleInspectParentInteractionData}
-                />
-            )}
-
-            {/* ─── Joiner Character Selection Modal ─── */}
-            {modals.multiplayerCharacterSelection?.isOpen && (
-                <MultiplayerCharacterSelectionModal
-                    isOpen={modals.multiplayerCharacterSelection.isOpen}
-                    onClose={() => {
-                        modals.multiplayerCharacterSelection.close();
-                        onCancelJoinCharacter?.();
-                    }}
-                    onSelectCharacter={(character: Character) => {
-                        onSelectJoinCharacter?.(character);
-                        modals.multiplayerCharacterSelection.close();
-                    }}
-                    sessionCharacters={sessionCharacters}
-                    localCharacters={allCharacters}
-                    sessionRules={pendingSessionRules}
                 />
             )}
         </>
