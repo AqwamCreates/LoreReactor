@@ -81,76 +81,6 @@ function hasModelSummary(msg: HistoryMessage, modelId: string): boolean {
     return !!(chatMsg.modelTextContentSummaries?.[modelId]);
 }
 
-export async function generateMissingSummaries(
-    interactionData: InteractionData,
-    windowSize: number,
-    modelId: string,
-    maxTokens = 256,
-): Promise<Map<string, string>> {
-    const results = new Map<string, string>();
-    const history = interactionData.interactionHistory;
-    const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
-
-    const filterFlags = getUniversalMessageFilterFlags(
-        chatMessages,
-        interactionData.contexts || [],
-        interactionData.locations || [],
-        [],
-    );
-
-    const cutoff = Math.max(0, history.length - windowSize);
-    const toSummarize: ChatMessage[] = [];
-
-    for (let i = 0; i < cutoff; i++) {
-        const msg = history[i];
-        if (msg.messageType !== 'chat') continue;
-        const chatIdx = chatMessages.indexOf(msg as ChatMessage);
-        if (chatIdx >= 0 && filterFlags[chatIdx]) continue;
-        if (hasModelSummary(msg, modelId)) continue;
-        const text = (msg as ChatMessage).textContent;
-        if (!text || !text.trim()) continue;
-        toSummarize.push(msg as ChatMessage);
-    }
-
-    if (toSummarize.length === 0) return results;
-
-    const sampler = interactionData.Profile?.interactionDataSummarizationSampler;
-
-    for (const msg of toSummarize) {
-        const summary = await generateMessageSummary(msg, maxTokens, sampler, interactionData.Profile);
-        if (summary) {
-            results.set(msg.id, summary);
-        }
-    }
-    return results;
-}
-
-async function compressChunk(
-    messages: HistoryMessage[],
-    maxTokens = 512,
-    sampler?: Sampler,
-    profile?: Profile,
-): Promise<string | null> {
-    // Filter to only chat messages with actual content
-    const chatMessages = messages.filter(
-        (m): m is ChatMessage => m.messageType === 'chat' && !!(m as ChatMessage).textContent?.trim()
-    );
-    if (chatMessages.length === 0) return null;
-
-    const formattedMessages = chatMessages.map(m =>
-        `${m.character.name}: ${m.textContent}`
-    ).join('\n\n');
-
-    const stops = getSummarizationStopTokens(profile?.interactionDataSummarizationStopPattern);
-    const prompt = `${COMPRESS_CHUNK_PROMPT}\n\nConversation chunk:\n${formattedMessages}\n\nCompressed paragraph:`;
-
-    const requestBody = buildRequestBody(prompt, maxTokens, sampler, stops);
-
-    const bse = getBudgetStrategyEngine();
-    const { text } = await bse.generateCompletion(requestBody);
-    return text || null;
-}
-
 /**
  * Generate a character-specific memory summary text.
  * Returns the summary text or null if generation failed.
@@ -253,6 +183,76 @@ export async function generateCharacterMemory(
     const finalText = text.trim()
 
     return finalText;
+}
+
+export async function generateMissingSummaries(
+    interactionData: InteractionData,
+    windowSize: number,
+    modelId: string,
+    maxTokens = 256,
+): Promise<Map<string, string>> {
+    const results = new Map<string, string>();
+    const history = interactionData.interactionHistory;
+    const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
+
+    const filterFlags = getUniversalMessageFilterFlags(
+        chatMessages,
+        interactionData.contexts || [],
+        interactionData.locations || [],
+        [],
+    );
+
+    const cutoff = Math.max(0, history.length - windowSize);
+    const toSummarize: ChatMessage[] = [];
+
+    for (let i = 0; i < cutoff; i++) {
+        const msg = history[i];
+        if (msg.messageType !== 'chat') continue;
+        const chatIdx = chatMessages.indexOf(msg as ChatMessage);
+        if (chatIdx >= 0 && filterFlags[chatIdx]) continue;
+        if (hasModelSummary(msg, modelId)) continue;
+        const text = (msg as ChatMessage).textContent;
+        if (!text || !text.trim()) continue;
+        toSummarize.push(msg as ChatMessage);
+    }
+
+    if (toSummarize.length === 0) return results;
+
+    const sampler = interactionData.Profile?.interactionDataSummarizationSampler;
+
+    for (const msg of toSummarize) {
+        const summary = await generateMessageSummary(msg, maxTokens, sampler, interactionData.Profile);
+        if (summary) {
+            results.set(msg.id, summary);
+        }
+    }
+    return results;
+}
+
+async function compressChunk(
+    messages: HistoryMessage[],
+    maxTokens = 512,
+    sampler?: Sampler,
+    profile?: Profile,
+): Promise<string | null> {
+    // Filter to only chat messages with actual content
+    const chatMessages = messages.filter(
+        (m): m is ChatMessage => m.messageType === 'chat' && !!(m as ChatMessage).textContent?.trim()
+    );
+    if (chatMessages.length === 0) return null;
+
+    const formattedMessages = chatMessages.map(m =>
+        `${m.character.name}: ${m.textContent}`
+    ).join('\n\n');
+
+    const stops = getSummarizationStopTokens(profile?.interactionDataSummarizationStopPattern);
+    const prompt = `${COMPRESS_CHUNK_PROMPT}\n\nConversation chunk:\n${formattedMessages}\n\nCompressed paragraph:`;
+
+    const requestBody = buildRequestBody(prompt, maxTokens, sampler, stops);
+
+    const bse = getBudgetStrategyEngine();
+    const { text } = await bse.generateCompletion(requestBody);
+    return text || null;
 }
 
 /**
