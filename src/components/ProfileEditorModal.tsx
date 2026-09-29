@@ -5,6 +5,7 @@ import { SliderInput } from './SliderInput';
 import '../main.css';
 import { defaultInputStrategy, defaultProfileTools } from '../dictionaries/defaults';
 import { toolLabels } from '../dictionaries/texts';
+import { v4 as uuidv4 } from 'uuid';
 
 interface ProfileEditorModalProps {
     isOpen: boolean;
@@ -79,11 +80,11 @@ function mergeToolsWithDefaults(saved: Partial<Record<tool, tristateInteger>> | 
 function getDefaultSummarizationSteps(): SummarizationStep[] {
     const now = Date.now();
     return [
-        { id: `step-${crypto.randomUUID()}`, name: 'Sliding Window Replace', strategyType: 'Sliding Window Replace', enabled: true, order: 0, slidingWindowSize: 10, summaryTokenBudget: 256, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
-        { id: `step-${crypto.randomUUID()}`, name: 'Periodic Compression', strategyType: 'Periodic Compression', enabled: false, order: 1, periodicCompressionInterval: 20, periodicCompressionChunkSize: 10, summaryTokenBudget: 512, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
-        { id: `step-${crypto.randomUUID()}`, name: 'Recursive Summary', strategyType: 'Recursive Summary', enabled: false, order: 2, recursiveSummaryChunkSize: 10, recursiveSummaryMaximumDepth: 3, summaryTokenBudget: 1024, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
-        { id: `step-${crypto.randomUUID()}`, name: 'Observation Masking', strategyType: 'Observation Masking', enabled: false, order: 3, maskingRelevanceThreshold: 0.3, maskingKeywordWeight: 0.7, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
-        { id: `step-${crypto.randomUUID()}`, name: 'Entropy Pruning', strategyType: 'Entropy Pruning', enabled: false, order: 4, entropyPruningChunkSize: 3, entropyPruningThreshold: 0.35, entropyPruningTokenBudget: 2000, summaryTokenBudget: 256, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${uuidv4()}`, name: 'Sliding Window Replace', strategyType: 'Sliding Window Replace', enabled: true, order: 0, slidingWindowSize: 10, summaryTokenBudget: 256, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${uuidv4()}`, name: 'Periodic Compression', strategyType: 'Periodic Compression', enabled: false, order: 1, periodicCompressionInterval: 20, periodicCompressionChunkSize: 10, summaryTokenBudget: 512, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${uuidv4()}`, name: 'Recursive Summary', strategyType: 'Recursive Summary', enabled: false, order: 2, recursiveSummaryChunkSize: 10, recursiveSummaryMaximumDepth: 3, summaryTokenBudget: 1024, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${uuidv4()}`, name: 'Observation Masking', strategyType: 'Observation Masking', enabled: false, order: 3, maskingRelevanceThreshold: 0.3, maskingKeywordWeight: 0.7, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
+        { id: `step-${uuidv4()}`, name: 'Entropy Pruning', strategyType: 'Entropy Pruning', enabled: false, order: 4, entropyPruningChunkSize: 3, entropyPruningThreshold: 0.35, entropyPruningTokenBudget: 2000, summaryTokenBudget: 256, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now },
     ];
 }
 
@@ -300,7 +301,7 @@ function ProfileEditorContent({
             narrateTexts: { ...narrateTexts },
             inputStrategy: [...inputStrategy],
             summarizationSteps: summarizationSteps.map((s, i) => ({
-                ...s, id: s.id || `step-${crypto.randomUUID()}`, order: i,
+                ...s, id: s.id || `step-${uuidv4()}`, order: i,
                 firstCreatedTimestamp: s.firstCreatedTimestamp || now, lastUpdatedTimestamp: now,
             })),
             summarizationInstruction: summarizationInstruction.trim() || undefined,
@@ -317,8 +318,8 @@ function ProfileEditorContent({
         };
     };
 
-    const handleSubmit = () => { if (!validate()) return; onSave(buildProfile(ep?.id || crypto.randomUUID(), name.trim())); onClose(); };
-    const handleClone = () => { if (!validate()) return; onSave(buildProfile(crypto.randomUUID(), `${name.trim()} (Clone)`)); onClose(); };
+    const handleSubmit = () => { if (!validate()) return; onSave(buildProfile(ep?.id || uuidv4(), name.trim())); onClose(); };
+    const handleClone = () => { if (!validate()) return; onSave(buildProfile(uuidv4(), `${name.trim()} (Clone)`)); onClose(); };
 
     const handleDragStart = (e: React.DragEvent, index: number) => { setDraggedIndex(index); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(index)); setTimeout(() => { (e.target as HTMLElement).style.opacity = '0.5'; }, 0); };
     const handleDragEnd = (e: React.DragEvent) => { (e.target as HTMLElement).style.opacity = '1'; setDraggedIndex(null); };
@@ -338,7 +339,7 @@ function ProfileEditorContent({
     const updateStepField = <K extends keyof SummarizationStep>(index: number, field: K, value: SummarizationStep[K]) => { setSummarizationSteps(prev => prev.map((s, i) => i === index ? { ...s, [field]: value, lastUpdatedTimestamp: Date.now() } : s)); };
     const addSummarizationStep = (strategyType: SummarizationStrategyType) => {
         const now = Date.now();
-        const newStep: SummarizationStep = { id: `step-${crypto.randomUUID()}`, name: strategyType, strategyType, enabled: true, order: summarizationSteps.length, summaryTokenBudget: 512, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now };
+        const newStep: SummarizationStep = { id: `step-${uuidv4()}`, name: strategyType, strategyType, enabled: true, order: summarizationSteps.length, summaryTokenBudget: 512, triggerTokenThreshold: 0, firstCreatedTimestamp: now, lastUpdatedTimestamp: now };
         if (strategyType === 'Sliding Window Replace') newStep.slidingWindowSize = 10;
         if (strategyType === 'Periodic Compression') { newStep.periodicCompressionInterval = 20; newStep.periodicCompressionChunkSize = 10; }
         if (strategyType === 'Recursive Summary') { newStep.recursiveSummaryChunkSize = 10; newStep.recursiveSummaryMaximumDepth = 3; }

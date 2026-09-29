@@ -5,6 +5,7 @@ import { EntitySelect } from './EntitySelect';
 import { EntitySelectList } from './EntitySelectList';
 import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+import { v4 as uuidv4 } from 'uuid';
 import '../main.css';
 
 const languageModelEngine = getLanguageModelEngine();
@@ -632,7 +633,7 @@ Do not output markdown codeblocks, conversational filler, or commentary. Output 
                 for (const item of parsed) {
                     if (item.section && item.originalText) {
                         newFlags.push({
-                            id: crypto.randomUUID(),
+                            id: uuidv4(),
                             section: item.section,
                             originalText: item.originalText,
                             risk: item.risk || 'Policy restriction trigger',
@@ -884,7 +885,7 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
             }
             const currentTimestamp = Date.now();
             if (isSaveAsCopy) {
-                finalCharacter.id = crypto.randomUUID();
+                finalCharacter.id = uuidv4();
                 finalCharacter.name = `${selectedCharacter.name} (Copy)`;
                 finalCharacter.firstCreatedTimestamp = currentTimestamp;
             }

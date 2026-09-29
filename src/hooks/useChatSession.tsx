@@ -31,6 +31,23 @@ const engine = getLanguageModelEngine();
 const NO_ARG_TOOLS = ['coin', 'date'];
 const HOST_ONLY_TOOLS = ['administrator', 'creator', 'destroyer'];
 
+/**
+ * Calculates a latency interference factor using sigmoid scaling.
+ * Returns a value between 0 and 1. 
+ * 0 = No interference (normal speed).
+ * 1 = Maximum interference (desperate for tokens).
+ */
+function calculateLatencyFactor(
+    timeSinceLastTokenMs: number, 
+    averageTTFTMs: number
+): number {
+    // Sigmoid parameters
+    const painPoint = averageTTFTMs * 2; // The "tipping point" where we start getting desperate
+    
+    // Sigmoid function: 1 / (1 + e^(-k(x - x0)))
+    return 1 / (1 + Math.exp(-(timeSinceLastTokenMs - painPoint)));
+}
+
 function finalizeMessageById(
     data: InteractionData,
     messageId: string,
@@ -233,16 +250,13 @@ export function useChatSession(options: UseChatSessionOptions) {
                         const timeSinceLastToken = now - lastTokenTimestampRef.current;
                         lastTokenTimestampRef.current = now;
 
-                        // Sigmoid function: 1 / (1 + e^(-k(x - x0)))
-                        // x = timeSinceLastToken, x0 = TTFT_ms * 2 (the "pain point"), k = steepness
-                        const steepness = 0.002; 
-                        const painPoint = TTFT_ms * 2; 
-                        const latencyFactor = 1 / (1 + Math.exp(-steepness * (timeSinceLastToken - painPoint)));
+                        const latencyFactor = calculateLatencyFactor(timeSinceLastToken, TTFT_ms);
                         
                         const TTFT_seconds = TTFT_ms / 1000;
                         const TPS = 1000 / msPerToken;
                         
                         // Base threshold adjusted by how "desperate" we are for tokens
+                        // As latencyFactor approaches 1, the required token haul drops significantly
                         const baseThreshold = (TTFT_seconds * TPS) / (1 - costRatio);
                         minTokensThreshold = Math.ceil(baseThreshold * (1 - latencyFactor));
                     }
