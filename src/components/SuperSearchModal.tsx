@@ -98,6 +98,17 @@ const TAB_CONFIG: { id: SearchTabId; label: string; icon: string }[] = [
     { id: 'multiplayerData', label: 'Multiplayer', icon: '👥' },
 ];
 
+// O(1) lookup for fields we never want to expose in search results
+const IGNORED_FIELD_KEYS = new Set([
+    'id',
+    'firstCreatedTimestamp',
+    'lastUpdatedTimestamp',
+    'images',
+    'base64',
+    'apiKey',
+    'password',
+]);
+
 function makeSnippet(text: string, query: string, radius = 45): string {
     if (typeof text !== 'string') return '';
     const lower = text.toLowerCase();
@@ -157,7 +168,9 @@ function findMatchingFields(obj: any, query: string): FieldMatch[] {
             val.forEach((item, index) => walk(item, `${path}[${index}]`));
         } else {
             for (const [key, v] of Object.entries(val)) {
-                if (key === 'id' || key === 'firstCreatedTimestamp' || key === 'lastUpdatedTimestamp' || key === 'images' || key === 'base64' || key.includes('Cache') || key.includes('Path')) continue;
+                // O(1) check for ignored keys, plus substring checks for dynamic cache/path keys
+                if (IGNORED_FIELD_KEYS.has(key) || key.includes('Cache') || key.includes('Path')) continue;
+                
                 const currentPath = path ? `${path}.${key}` : key;
                 walk(v, currentPath);
             }
@@ -535,7 +548,6 @@ function SuperSearchContent({
                                             ))}
                                         </div>
                                     )}
-
                                     {/* Action Row: Interactive badges / Open buttons */}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: '4px', flexWrap: 'wrap', gap: '6px' }}>
                                         {item.tabId === 'message' && item.chats && (

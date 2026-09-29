@@ -50,6 +50,26 @@ function getDefaultState(): VisualNovelSpriteState {
     return { depth: 0.5, screenX: 50, facingTargetId: null, scale: 1.0, verticalOffset: 0 };
 }
 
+function getDistributedState(index: number, total: number): VisualNovelSpriteState {
+    if (total <= 1) {
+        return { depth: 0.5, screenX: 50, facingTargetId: null, scale: 1.0, verticalOffset: 0 };
+    }
+    
+    const min = 15;
+    const max = 85;
+    const step = (max - min) / (total - 1);
+    const screenX = min + step * index;
+    const depth = 0.5 + (index % 2 === 0 ? -0.02 : 0.02);
+    
+    return { 
+        depth, 
+        screenX, 
+        facingTargetId: null, 
+        scale: computeScaleFromDepth(depth), 
+        verticalOffset: 0 
+    };
+}
+
 function computeScaleFromDepth(depth: number): number {
     return 0.5 + (1 - depth) * 1.0;
 }
@@ -59,7 +79,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 // =============================================================================
-// MOVEMENT PARSING (sequential multi-action support)
+// MOVEMENT PARSING
 // =============================================================================
 
 function splitIntoClauses(text: string): string[] {
@@ -399,7 +419,7 @@ function applyMovement(
 }
 
 // =============================================================================
-// STATE REPLAY (pure function of history up to an index)
+// STATE REPLAY
 // =============================================================================
 function computeStatesAtHistoryIndex(
     history: VisualNovelMovementEntry[],
@@ -407,7 +427,10 @@ function computeStatesAtHistoryIndex(
     visibleCharacterIds: string[],
 ): Map<string, VisualNovelSpriteState> {
     const states = new Map<string, VisualNovelSpriteState>();
-    for (const id of visibleCharacterIds) states.set(id, getDefaultState());
+    const total = visibleCharacterIds.length;
+    for (let i = 0; i < visibleCharacterIds.length; i++) {
+        states.set(visibleCharacterIds[i], getDistributedState(i, total));
+    }
 
     for (const entry of history) {
         if (entry.messageIndex > upToIndex) break;
@@ -422,122 +445,150 @@ function computeStatesAtHistoryIndex(
 export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOptions) {
     const { chatMessages, visibleCharacterIds, viewedMessageIndex } = options;
 
-    const [spriteStates, setSpriteStates] = useState<Map<string, VisualNovelSpriteState>>(new Map());
-    const [isInitialLoad, setIsInitialLoad] = useState(true);
-    const [jumpingCharacterIds, setJumpingCharacterIds] = useState<Set<string>>(new Set());
-    const [_parseVersion, setParseVersion] = useState(0);
-
     const movementHistoryRef = useRef<VisualNovelMovementEntry[]>([]);
     const lastParsedIndexRef = useRef<number>(-1);
     const statesRef = useRef<Map<string, VisualNovelSpriteState>>(new Map());
+    
+    const [isInitialLoad, setIsInitialLoad] = useState(true);
+    const [jumpingCharacterIds, setJumpingCharacterIds] = useState<Set<string>>(new Set());
+    
+    const scheduledJumpIdsRef = useRef<Set<string>>(new Set());
 
-    // Initialize/reset states when visible characters change
-    useEffect(() => {
-        const currentStates = statesRef.current;
-        const existingIds = new Set(currentStates.keys());
-        const newIds = new Set(visibleCharacterIds);
+    // ─── Synchronous Parsing & Computation (Runs during render) ───
+    // This avoids the React Compiler warning about deriving state in useEffect.
+    const currentStates = statesRef.current;
+    const existingIds = new Set(currentStates.keys());
+    const newIds = new Set(visibleCharacterIds);
+    const total = visibleCharacterIds.length;
 
-        for (const characterId of visibleCharacterIds) {
-            if (!currentStates.has(characterId)) {
-                currentStates.set(characterId, getDefaultState());
-            }
+    let syncChanged = false;
+    for (let i = 0; i < visibleCharacterIds.length; i++) {
+        const characterId = visibleCharacterIds[i];
+        if (!currentStates.has(characterId)) {
+            currentStates.set(characterId, getDistributedState(i, total));
+            syncChanged = true;
         }
-        for (const characterId of existingIds) {
-            if (!newIds.has(characterId)) {
-                currentStates.delete(characterId);
-            }
+    }
+    for (const characterId of existingIds) {
+        if (!newIds.has(characterId)) {
+            currentStates.delete(characterId);
+            syncChanged = true;
         }
+    }
+    if (syncChanged && movementHistoryRef.current.length === 0) {
+        visibleCharacterIds.forEach((id, index) => {
+            currentStates.set(id, getDistributedState(index, total));
+        });
+    }
 
-        lastParsedIndexRef.current = -1;
+    let isFullReload = lastParsedIndexRef.current >= chatMessages.length || lastParsedIndexRef.current === -1;
+    let newJumpingIds = new Set<string>();
+
+    if (isFullReload) {
+        statesRef.current = new Map();
         movementHistoryRef.current = [];
-    }, [visibleCharacterIds]);
+        for (let i = 0; i < visibleCharacterIds.length; i++) {
+            statesRef.current.set(visibleCharacterIds[i], getDistributedState(i, total));
+        }
+        lastParsedIndexRef.current = 0;
+    }
 
-    // Parse messages incrementally and append to history (keyed by messageId)
+    let workingStates = statesRef.current;
+
+    for (let i = lastParsedIndexRef.current; i < chatMessages.length; i++) {
+        const message = chatMessages[i];
+        if (message.messageType !== 'chat') continue;
+
+        const speakerId = message.character.id;
+        if (speakerId === AMBIENT_NARRATOR_ID) continue;
+        if (!workingStates.has(speakerId)) continue;
+
+        const movements = parseMovementFromText(message.textContent, speakerId, visibleCharacterIds);
+
+        for (const movement of movements) {
+            const result = applyMovement(workingStates, movement, visibleCharacterIds);
+            workingStates = result.newState;
+            for (const partial of result.entries) {
+                const entry: VisualNovelMovementEntry = {
+                    ...partial,
+                    messageId: message.id,
+                    messageIndex: i,
+                };
+                movementHistoryRef.current.push(entry);
+                if (entry.type === 'jump') newJumpingIds.add(entry.characterId);
+            }
+            if (movement.type === 'vertical' && movement.verticalAction === 'jump') {
+                newJumpingIds.add(movement.characterId);
+            }
+        }
+    }
+
+    lastParsedIndexRef.current = chatMessages.length;
+    statesRef.current = workingStates;
+
+    const isLatest = viewedMessageIndex === null || viewedMessageIndex >= chatMessages.length - 1;
+    const spriteStates = isLatest 
+        ? new Map(statesRef.current) 
+        : computeStatesAtHistoryIndex(movementHistoryRef.current, viewedMessageIndex, visibleCharacterIds);
+
+    // Store latest jumping IDs in a ref so the effect doesn't need it as a dependency
+    const newJumpingIdsRef = useRef(newJumpingIds);
+    newJumpingIdsRef.current = newJumpingIds;
+
+    // ─── Asynchronous Side Effects (Timeouts & Animations) ───
+    
+    // Handle Initial Load Animation
     useEffect(() => {
-        if (chatMessages.length === 0) return;
-
-        const isFullReload = lastParsedIndexRef.current >= chatMessages.length || lastParsedIndexRef.current === -1;
-
         if (isFullReload) {
             setIsInitialLoad(true);
-            setJumpingCharacterIds(new Set());
-            statesRef.current = new Map();
-            movementHistoryRef.current = [];
-            for (const characterId of visibleCharacterIds) {
-                statesRef.current.set(characterId, getDefaultState());
-            }
-            lastParsedIndexRef.current = 0;
-        }
-
-        const participantIds = visibleCharacterIds;
-        let currentStates = statesRef.current;
-        const newJumpingIds = new Set<string>();
-        let appended = false;
-
-        for (let i = lastParsedIndexRef.current; i < chatMessages.length; i++) {
-            const message = chatMessages[i];
-            if (message.messageType !== 'chat') continue;
-
-            const speakerId = message.character.id;
-            if (speakerId === AMBIENT_NARRATOR_ID) continue;
-            if (!currentStates.has(speakerId)) continue;
-
-            const movements = parseMovementFromText(message.textContent, speakerId, participantIds);
-
-            for (const movement of movements) {
-                const result = applyMovement(currentStates, movement, participantIds);
-                currentStates = result.newState;
-                for (const partial of result.entries) {
-                    const entry: VisualNovelMovementEntry = {
-                        ...partial,
-                        messageId: message.id,
-                        messageIndex: i,
-                    };
-                    movementHistoryRef.current.push(entry);
-                    appended = true;
-                    if (entry.type === 'jump') newJumpingIds.add(entry.characterId);
-                }
-                if (movement.type === 'vertical' && movement.verticalAction === 'jump') {
-                    newJumpingIds.add(movement.characterId);
-                }
-            }
-        }
-
-        lastParsedIndexRef.current = chatMessages.length;
-        statesRef.current = currentStates;
-
-        if (appended) setParseVersion(v => v + 1);
-
-        if (newJumpingIds.size > 0 && !isFullReload) {
-            setJumpingCharacterIds(newJumpingIds);
-            setTimeout(() => setJumpingCharacterIds(new Set()), 600);
-        }
-
-        if (isFullReload) {
-            requestAnimationFrame(() => setIsInitialLoad(false));
+            const raf = requestAnimationFrame(() => setIsInitialLoad(false));
+            return () => cancelAnimationFrame(raf);
         } else {
             setIsInitialLoad(false);
         }
+    }, [isFullReload]);
+
+    // Handle Jumping Animations
+    useEffect(() => {
+        const unscheduledJumps = new Set<string>();
+        for (const id of newJumpingIdsRef.current) {
+            if (!scheduledJumpIdsRef.current.has(id)) {
+                unscheduledJumps.add(id);
+            }
+        }
+
+        if (unscheduledJumps.size > 0) {
+            for (const id of unscheduledJumps) {
+                scheduledJumpIdsRef.current.add(id);
+            }
+            
+            setJumpingCharacterIds(prev => {
+                const next = new Set(prev);
+                for (const id of unscheduledJumps) next.add(id);
+                return next;
+            });
+
+            const timer = setTimeout(() => {
+                setJumpingCharacterIds(prev => {
+                    const next = new Set(prev);
+                    for (const id of unscheduledJumps) next.delete(id);
+                    return next;
+                });
+                for (const id of unscheduledJumps) {
+                    scheduledJumpIdsRef.current.delete(id);
+                }
+            }, 600);
+
+            return () => clearTimeout(timer);
+        }
     }, [chatMessages, visibleCharacterIds]);
 
-    // Displayed states = live (latest) OR replayed up to viewedMessageIndex
-    useEffect(() => {
-        const isLatest = viewedMessageIndex === null || viewedMessageIndex >= chatMessages.length - 1;
-        if (isLatest) {
-            setSpriteStates(new Map(statesRef.current));
-        } else {
-            setSpriteStates(computeStatesAtHistoryIndex(movementHistoryRef.current, viewedMessageIndex, visibleCharacterIds));
-        }
-    }, [viewedMessageIndex, chatMessages.length, visibleCharacterIds]);
-
-    // Rollback for regenerate/branch: truncate history at a message index
     const rollbackToMessage = useCallback((messageIndex: number) => {
         movementHistoryRef.current = movementHistoryRef.current.filter(e => e.messageIndex < messageIndex);
         statesRef.current = computeStatesAtHistoryIndex(movementHistoryRef.current, messageIndex - 1, visibleCharacterIds);
         lastParsedIndexRef.current = messageIndex;
-        setSpriteStates(new Map(statesRef.current));
         setJumpingCharacterIds(new Set());
-        setParseVersion(v => v + 1);
+        scheduledJumpIdsRef.current.clear();
     }, [visibleCharacterIds]);
 
     return {
