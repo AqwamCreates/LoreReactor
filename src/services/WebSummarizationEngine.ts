@@ -1,9 +1,9 @@
 // src/utilities/linkFetcher.ts
-import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+import { getLanguageModelEngine } from './LanguageModelEngine';
 import type { LanguageModel } from '../types';
-import { summarizeWebpageContent, mergeWebpageSummaries, type WebpageImageInfo } from '../services/WebSummarizationEngine';
+import { summarizeWebpageContent, mergeWebpageSummaries, type WebpageImageInfo } from './WebSummarizationEngine';
 import { findWebpageByUrl, saveRawWebpage } from '../storages/serverStorage';
-import type { linkFetchMode, searchEngine, Sampler } from '../types';
+import type { linkFetchMode, searchEngine, Sampler, StopPattern } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 const DEFAULT_CACHE_TIME_TO_LIVE_MS = 5 * 60 * 1000;
@@ -514,6 +514,7 @@ export async function fetchMultipleContextUrls(
         includeImages?: boolean;
         limitLinksToSubdirectory?: boolean;
         sampler?: Sampler;
+        stopPattern?: StopPattern;
     } = {}
 ): Promise<{ results: FetchResult[]; errors: string[] }> {
     const allUrls = [...urls];
@@ -566,6 +567,7 @@ export async function fetchMultipleContextUrls(
                     result.url,
                     imagesForSummary,
                     options.sampler,
+                    options.stopPattern,
                 );
                 if (summary) {
                     summarizedEntries.push({ url: result.url, summary });
@@ -581,6 +583,7 @@ export async function fetchMultipleContextUrls(
                     const merged = await mergeWebpageSummaries(
                         summarizedEntries,
                         options.sampler,
+                        options.stopPattern,
                     );
                     if (merged) {
                         const sourceList = summarizedEntries.map(e => e.url).join(', ');

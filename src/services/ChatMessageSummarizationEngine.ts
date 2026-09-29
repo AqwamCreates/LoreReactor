@@ -1,5 +1,5 @@
 // src/services/ChatMessageSummarizationEngine.ts
-import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock, cacheEfficiencyConfigurationType, Profile } from '../types';
+import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock, cacheEfficiencyConfigurationType, Profile, SummarizationStep, StopPattern } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
@@ -18,20 +18,56 @@ const RECURSIVE_MERGE_PROMPT = "You are a narrative merger for roleplay chat his
 
 const LOCATION_VISIT_MEMORY_PROMPT = "You are a reflective character in a roleplay. Below is a record of events that occurred at a specific location during your visit. Reflect on what happened there from your personal perspective. Express your memory as natural, personal thoughts. Preserve key events, conversations, emotional moments, and outcomes. Write in first person. Output ONLY your reflection with no preamble, no markdown, no quotes.";
 
+const tokenEngine = getLanguageModelEngine();
+
+/**
+ * Derive model-specific and profile-specific stop tokens for summarization requests.
+ */
+function getSummarizationStopTokens(stopPattern?: StopPattern): string[] {
+    const activeModel = getLanguageModelEngine().getContext();
+    const effectiveChatTemplateKey = activeModel?.chatTemplate;
+    const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
+    const delimiters = deriveDelimiters(resolvedChatTemplate);
+
+    const templateStops = resolvedChatTemplate?.stopPatterns || [];
+    const profileStops = stopPattern?.pattern ? [stopPattern.pattern] : [];
+
+    const stops = [
+        ...templateStops,
+        ...profileStops,
+        turnEndStop(delimiters),
+        delimiters.thinkStart.trim(),
+        delimiters.thinkEnd.trim(),
+        '\n\n',
+        '\nMessage from',
+    ].filter(s => s.length > 0);
+
+    return [...new Set(stops)];
+}
+
+function turnEndStop(delimiters: any): string {
+    return delimiters.turnEnd.trim();
+}
+
 export async function generateMessageSummary(
     message: HistoryMessage,
     maxTokens = 256,
     sampler?: Sampler,
     profile?: Profile,
 ): Promise<string | null> {
-    const text = message.messageType === 'chat' ? message.textContent : '';
+    if (message.messageType !== 'chat') return null;
+    const chatMsg = message as ChatMessage;
+    const text = chatMsg.textContent;
+    if (!text || !text.trim()) return null;
+
+    const stops = getSummarizationStopTokens(profile?.interactionDataSummarizationStopPattern);
     const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${text}\n\nSummary:`;
 
     const requestBody = buildRequestBody(
         prompt,
         maxTokens,
         sampler,
-        ['\n\n', '\nMessage from'],
+        stops,
     );
 
     const bse = getBudgetStrategyEngine();
@@ -71,6 +107,8 @@ export async function generateMissingSummaries(
         const chatIdx = chatMessages.indexOf(msg as ChatMessage);
         if (chatIdx >= 0 && filterFlags[chatIdx]) continue;
         if (hasModelSummary(msg, modelId)) continue;
+        const text = (msg as ChatMessage).textContent;
+        if (!text || !text.trim()) continue;
         toSummarize.push(msg as ChatMessage);
     }
 
@@ -93,12 +131,20 @@ async function compressChunk(
     sampler?: Sampler,
     profile?: Profile,
 ): Promise<string | null> {
-    const formattedMessages = messages.map(m =>
-        `${m.character.name}: ${m.messageType === 'chat' ? m.textContent : ''}`
+    // Filter to only chat messages with actual content
+    const chatMessages = messages.filter(
+        (m): m is ChatMessage => m.messageType === 'chat' && !!(m as ChatMessage).textContent?.trim()
+    );
+    if (chatMessages.length === 0) return null;
+
+    const formattedMessages = chatMessages.map(m =>
+        `${m.character.name}: ${m.textContent}`
     ).join('\n\n');
+
+    const stops = getSummarizationStopTokens(profile?.interactionDataSummarizationStopPattern);
     const prompt = `${COMPRESS_CHUNK_PROMPT}\n\nConversation chunk:\n${formattedMessages}\n\nCompressed paragraph:`;
 
-    const requestBody = buildRequestBody(prompt, maxTokens, sampler, ['\n\n\n']);
+    const requestBody = buildRequestBody(prompt, maxTokens, sampler, stops);
 
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
@@ -120,6 +166,7 @@ export async function generateCharacterMemory(
 
     const participants = interactionData.participants;
     const sampler = interactionData.Profile?.characterSampler || character.sampler;
+    const stopPattern = interactionData.Profile?.characterStopPattern;
 
     const allPromptBlocks: PromptBlock[] = [];
     const filteredMessages = getFilteredChatMessages(interactionData, character.id, allPromptBlocks);
@@ -185,12 +232,14 @@ export async function generateCharacterMemory(
     const promptLines = [systemPrompt, thinkPrompt, `${delimiters.blockStart('system')}The Start Of My Memory${delimiters.blockEnd}`, chatHistoryPrompt, `${delimiters.blockStart('system')}The End Of My Memory${delimiters.blockEnd}`, perspectiveInstruction, memoryInjection];
     const prompt = promptLines.join('\n\n');
 
-    // Use dynamic model-specific stop tokens
+    // Use dynamic model-specific and profile-specific stop tokens
     const templateStops = resolvedChatTemplate?.stopPatterns || [];
-    const turnEndStop = delimiters.turnEnd.trim();
+    const profileStops = stopPattern?.pattern ? [stopPattern.pattern] : [];
+    const turnEndStopStr = delimiters.turnEnd.trim();
     const stops = [
         ...templateStops,
-        turnEndStop,
+        ...profileStops,
+        turnEndStopStr,
         delimiters.thinkStart.trim(),
         delimiters.thinkEnd.trim(),
     ].filter(s => s.length > 0);
@@ -223,6 +272,7 @@ export async function generateLocationVisitSummary(
     const participants = interactionData.participants;
     const participantTag = getParticipantTag(character, participants);
     const sampler = interactionData.Profile?.characterSampler || character.sampler;
+    const stopPattern = interactionData.Profile?.characterStopPattern;
 
     const allPromptBlocks: PromptBlock[] = [];
     const filteredMessages = getFilteredChatMessages(interactionData, character.id, allPromptBlocks);
@@ -239,6 +289,7 @@ export async function generateLocationVisitSummary(
         const msg = history[i];
         if (msg.messageType !== 'chat') continue;
         const chatMsg = msg as ChatMessage;
+        if (!chatMsg.textContent?.trim()) continue;
         const otherParticipantId = participants.findIndex(p => p.id === chatMsg.character.id);
         const tag = otherParticipantId !== -1 ? `Character ${otherParticipantId + 1}` : 'Unknown';
         const charName = chatMsg.character.name;
@@ -271,12 +322,14 @@ export async function generateLocationVisitSummary(
     const promptLines = [systemPrompt, thinkPrompt, scopedHistoryBlock, perspectiveInstruction];
     const prompt = promptLines.filter(l => l.length > 0).join('\n\n');
 
-    // Use dynamic model-specific stop tokens
+    // Use dynamic model-specific and profile-specific stop tokens
     const templateStops = resolvedChatTemplate?.stopPatterns || [];
-    const turnEndStop = delimiters.turnEnd.trim();
+    const profileStops = stopPattern?.pattern ? [stopPattern.pattern] : [];
+    const turnEndStopStr = delimiters.turnEnd.trim();
     const stops = [
         ...templateStops,
-        turnEndStop,
+        ...profileStops,
+        turnEndStopStr,
         delimiters.thinkStart.trim(),
         delimiters.thinkEnd.trim(),
     ].filter(s => s.length > 0);
@@ -340,7 +393,7 @@ export async function generatePeriodicCompression(
 
         const chunk = visibleChatMessages.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
-        const compressed = await compressChunk(chunk, maxTokens, sampler);
+        const compressed = await compressChunk(chunk, maxTokens, sampler, interactionData.Profile);
         if (!compressed) continue;
         newContexts.push({
             id: `auto-summary-${uuidv4()}`,
@@ -363,17 +416,19 @@ async function mergeSummaries(
     summaries: string[],
     maxTokens = 512,
     sampler?: Sampler,
+    stopPattern?: StopPattern,
 ): Promise<string | null> {
     if (summaries.length === 0) return null;
     if (summaries.length === 1) return summaries[0];
     const formatted = summaries.map((s, i) => `Segment ${i + 1}: ${s}`).join('\n\n');
+    const stops = getSummarizationStopTokens(stopPattern);
     const prompt = `${RECURSIVE_MERGE_PROMPT}\n\nSegments to merge:\n${formatted}\n\nMerged paragraph:`;
 
     const requestBody = buildRequestBody(
         prompt,
         maxTokens,
         sampler,
-        ['\n\n\n'],
+        stops,
     );
 
     const bse = getBudgetStrategyEngine();
@@ -394,7 +449,7 @@ export async function generateRecursiveSummary(
     const profile = interactionData.Profile
 
     const sampler = profile?.interactionDataSummarizationSampler;
-    const summarizationInstruction = profile?.summarizationInstruction;
+    const stopPattern = profile?.interactionDataSummarizationStopPattern;
 
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
     const filterFlags = getUniversalMessageFilterFlags(
@@ -417,7 +472,7 @@ export async function generateRecursiveSummary(
         const endIdx = Math.min(startIdx + chunkSize, visibleMessages.length);
         const chunk = visibleMessages.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
-        const compressed = await compressChunk(chunk, maxTokens, sampler);
+        const compressed = await compressChunk(chunk, maxTokens, sampler, profile);
         if (!compressed) continue;
         layer0Summaries.push(compressed);
         newContexts.push({
@@ -445,7 +500,7 @@ export async function generateRecursiveSummary(
         const nextLayerSummaries: string[] = [];
         for (let i = 0; i < currentLayerSummaries.length; i += 2) {
             const batch = currentLayerSummaries.slice(i, Math.min(i + 2, currentLayerSummaries.length));
-            const merged = await mergeSummaries(batch, maxTokens, sampler);
+            const merged = await mergeSummaries(batch, maxTokens, sampler, stopPattern);
             if (merged) {
                 nextLayerSummaries.push(merged);
                 newContexts.push({
@@ -467,7 +522,7 @@ export async function generateRecursiveSummary(
     }
 
     if (currentLayerSummaries.length > 1) {
-        const globalSummary = await mergeSummaries(currentLayerSummaries, maxTokens, sampler);
+        const globalSummary = await mergeSummaries(currentLayerSummaries, maxTokens, sampler, stopPattern);
         if (globalSummary) {
             newContexts.push({
                 id: `auto-recursive-global-${uuidv4()}`,
@@ -516,21 +571,26 @@ export async function generateEntropyPruningSummaries(
 
     const filterFlags = getUniversalMessageFilterFlags(chatMessages, interactionData.contexts || [], interactionData.locations || [], []);
     const visibleMessages = chatMessages.filter((_, i) => !filterFlags[i]);
-    
+
     if (visibleMessages.length <= entropyPruningChunkSize) return results;
 
     let accumulatedTokens = 0;
-    let cutoffVisibleIndex = 0;
+    let cutoffVisibleIndex = visibleMessages.length;
 
-    // Walk backward to find the entropy cutoff
+    // Walk backward to find the entropy cutoff point.
+    // Everything BEFORE the cutoff is old/fluff that should be summarized.
+    // Everything FROM the cutoff onward is recent/meaningful and stays raw.
     for (let i = visibleMessages.length; i > entropyPruningChunkSize; i -= entropyPruningChunkSize) {
         const chunkStart = Math.max(0, i - entropyPruningChunkSize);
         const currentChunk = visibleMessages.slice(chunkStart, i);
         const previousChunk = visibleMessages.slice(Math.max(0, chunkStart - entropyPruningChunkSize), chunkStart);
 
-        for (const msg of currentChunk) accumulatedTokens += Math.ceil(msg.textContent.length / 4);
+        // Use token engine for accurate counting
+        for (const msg of currentChunk) {
+            accumulatedTokens += await tokenEngine.countTokens(msg.textContent);
+        }
 
-        // Hard boundary: location change
+        // Hard boundary: location change — always keep location transitions raw
         let hardBoundary = false;
         for (let j = 1; j < currentChunk.length; j++) {
             const prev = currentChunk[j - 1];
@@ -541,23 +601,28 @@ export async function generateEntropyPruningSummaries(
             }
         }
         if (hardBoundary) { cutoffVisibleIndex = i; break; }
+
+        // Hard boundary: token budget exceeded — must summarize everything before this point
         if (accumulatedTokens >= maxRawTokens) { cutoffVisibleIndex = i; break; }
 
-        // Soft boundary: Lexical drift
+        // Soft boundary: Lexical drift (high drift = new topic = keep raw, low drift = repetitive = summarize)
         if (previousChunk.length > 0) {
             const currentWords = new Set<string>();
             for (const msg of currentChunk) for (const w of getStemmedContentWords(msg.textContent)) currentWords.add(w);
-            
+
             const previousWords = new Set<string>();
             for (const msg of previousChunk) for (const w of getStemmedContentWords(msg.textContent)) previousWords.add(w);
 
             let intersection = 0;
             for (const w of currentWords) if (previousWords.has(w)) intersection++;
-            
+
             const union = currentWords.size + previousWords.size - intersection;
             const lexicalOverlap = union > 0 ? intersection / union : 0;
-            
-            if ((1 - lexicalOverlap) < entropyPruningThreshold) {
+            const driftScore = 1 - lexicalOverlap;
+
+            // If drift is BELOW threshold, this chunk is repetitive/fluff relative to the previous one.
+            // Mark the cutoff here — everything before this will be summarized.
+            if (driftScore < entropyPruningThreshold) {
                 cutoffVisibleIndex = chunkStart;
                 break;
             }
@@ -565,59 +630,44 @@ export async function generateEntropyPruningSummaries(
         cutoffVisibleIndex = chunkStart;
     }
 
-    // Generate summaries for everything before the cutoff
+    // Generate summaries for everything before the cutoff (the old/fluff portion)
     const sampler = interactionData.Profile?.interactionDataSummarizationSampler;
     for (let i = 0; i < cutoffVisibleIndex; i++) {
         const msg = visibleMessages[i];
         if (hasModelSummary(msg, modelId)) continue;
+        if (!msg.textContent?.trim()) continue;
 
-        const summary = await generateMessageSummary(msg, maxTokens, sampler);
+        const summary = await generateMessageSummary(msg, maxTokens, sampler, interactionData.Profile);
         if (summary) results.set(msg.id, summary);
     }
 
     return results;
 }
 
-// ─── UPDATE: checkTriggerThreshold ─────────────────────────────────
+// ─── UPDATE: checkTriggerThreshold — returns ALL triggered steps ─────────────────────────────────
 
 export function checkTriggerThreshold(
     interactionData: InteractionData,
     currentNumberOfTokens: number,
     languageModelContextLength: number
-): {
-    strategyType: string;
-    slidingWindowSize?: number;
-    periodicCompressionInterval?: number;
-    periodicCompressionChunkSize?: number;
-    recursiveSummaryChunkSize?: number;
-    recursiveSummaryMaximumDepth?: number;
-    entropyPruningChunkSize?: number;
-    entropyPruningThreshold?: number;
-    entropyPruningTokenBudget?: number;
-} | null {
+): SummarizationStep[] {
     const profile = interactionData.Profile;
-    if (!profile?.summarizationSteps) return null;
+    if (!profile?.summarizationSteps) return [];
 
-    const activeSteps = [...profile.summarizationSteps].sort((a, b) => a.order - b.order);
+    const activeSteps = [...profile.summarizationSteps]
+        .filter(s => s.enabled)
+        .sort((a, b) => a.order - b.order);
+
+    const triggered: SummarizationStep[] = [];
 
     for (const step of activeSteps) {
         const threshold = step.triggerTokenThreshold ?? 0;
         const effectiveThreshold = threshold > 0 ? threshold : Math.floor(languageModelContextLength * 0.7);
 
         if (currentNumberOfTokens >= effectiveThreshold) {
-            if (step.strategyType === 'Sliding Window Replace') {
-                return { strategyType: step.strategyType, slidingWindowSize: step.slidingWindowSize };
-            }
-            if (step.strategyType === 'Periodic Compression') {
-                return { strategyType: step.strategyType, periodicCompressionInterval: step.periodicCompressionInterval, periodicCompressionChunkSize: step.periodicCompressionChunkSize };
-            }
-            if (step.strategyType === 'Recursive Summary') {
-                return { strategyType: step.strategyType, recursiveSummaryChunkSize: step.recursiveSummaryChunkSize, recursiveSummaryMaximumDepth: step.recursiveSummaryMaximumDepth };
-            }
-            if (step.strategyType === 'Entropy Pruning') {
-                return { strategyType: step.strategyType, entropyPruningChunkSize: step.entropyPruningChunkSize, entropyPruningThreshold: step.entropyPruningThreshold, entropyPruningTokenBudget: step.entropyPruningTokenBudget };
-            }
+            triggered.push(step);
         }
     }
-    return null;
+
+    return triggered;
 }
