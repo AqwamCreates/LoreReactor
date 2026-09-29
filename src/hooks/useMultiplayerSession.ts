@@ -1,9 +1,10 @@
 // src/hooks/useMultiplayerSession.ts
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Character, ChatMessage, HistoryMessage, InteractionData, LanguageModel, MultiplayerData } from '../types';
-import { loadRawMultiplayerJoinData, saveRawMultiplayerJoinData, deleteMultiplayerJoinData } from '../storages/serverStorage';
-import { useMultiplayerSync } from './useMultiplayerSync';
-import { useSessionStore } from '../hooks/useSessionStore';
+
+import { useState, useRef, useEffect, useCallback } from "react";
+import { loadRawMultiplayerJoinData, deleteMultiplayerJoinData, saveRawMultiplayerJoinData } from "../storages/serverStorage";
+import type { InteractionData, Character, HistoryMessage, LanguageModel, MultiplayerData } from "../types";
+import { useMultiplayerSync } from "./useMultiplayerSync";
+import { useSessionStore } from "./useSessionStore";
 
 interface UseMultiplayerSessionOptions {
     allCharacters: Character[];
@@ -27,11 +28,9 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
 
     const broadcastMessageRef = useRef<((message: HistoryMessage) => void) | undefined>(undefined);
     const requestBorrowedModelRef = useRef<() => Promise<LanguageModel | null>>(async () => null);
-    const triggerHostResponseRef = useRef<() => void>(() => {});
 
     const isMultiplayerClient = !!joinSessionId;
 
-    // Load join data on mount
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -70,6 +69,16 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         setSelectedCharacter?.(assignedCharacter);
     }, [addToast, joinSessionId, joinPassword, setSelectedCharacter]);
 
+    const handleCharacterSelectionRequired = useCallback((initialState: any) => {
+        // Automatically default to the first available protagonist/participant if none explicitly chosen
+        const fallbackChar = initialState?.protagonists?.[0] || initialState?.participants?.[0] || allCharacters[0];
+        if (fallbackChar) {
+            handleJoinAccepted(fallbackChar);
+        } else {
+            addToast('Connected! Please select a character to participate.', 'info');
+        }
+    }, [allCharacters, handleJoinAccepted, addToast]);
+
     const handleJoinRejected = useCallback((reason: string) => {
         addToast(`Join rejected: ${reason}`, 'error');
         clearJoinState();
@@ -92,21 +101,11 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         }).catch((e: unknown) => console.warn('Failed to save join data:', e));
     }, [currentAccountId, addToast]);
 
-    const handlePeerChatMessage = useCallback((message: ChatMessage, senderAccountId: string) => {
-        if (!message?.id || message.messageType !== 'chat') return;
-        const localAccountId = currentAccountId ? currentAccountId.replace(/[^A-Za-z0-9]/g, '') : null;
-        if (localAccountId && senderAccountId === localAccountId) return;
-        const hasContent = (message.textContent?.trim().length ?? 0) > 0 || (message.files?.length ?? 0) > 0 || Boolean(message.frontCameraImage);
-        if (!hasContent) return;
-        triggerHostResponseRef.current();
-    }, [currentAccountId]);
-
     const handleConnectionFailed = useCallback(() => {
         addToast('Could not connect to host. Returning to local mode.', 'error');
         clearJoinState();
     }, [addToast, clearJoinState]);
 
-    // Wrap saveMultiplayerData to match the void-returning signature expected by useMultiplayerSync
     const saveMultiplayerDataVoid = useCallback(async (data: MultiplayerData): Promise<void> => {
         await saveMultiplayerData(data);
     }, [saveMultiplayerData]);
@@ -123,12 +122,11 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         joinRequestedCharacterData,
         onJoinAccepted: handleJoinAccepted,
         onJoinRejected: handleJoinRejected,
-        onPeerChatMessage: handlePeerChatMessage,
         onSaveMultiplayerData: saveMultiplayerDataVoid,
         onConnectionFailed: handleConnectionFailed,
+        onCharacterSelectionRequired: handleCharacterSelectionRequired,
     });
 
-    // Bridge refs to sync
     useEffect(() => {
         requestBorrowedModelRef.current = multiplayerSync.requestAndAwaitBorrowedModel;
     }, [multiplayerSync.requestAndAwaitBorrowedModel]);
@@ -152,7 +150,6 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         multiplayerSync,
         broadcastMessageRef,
         requestBorrowedModelRef,
-        triggerHostResponseRef,
         currentAccountId,
         multiplayerData,
     };

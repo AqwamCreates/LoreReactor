@@ -8,7 +8,7 @@ import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayName
 import { processPendingToolActions, executeTool, type ToolExecutionContext } from '../services/ToolExecutor';
 import { parseSlashCommand } from '../services/ToolInvocationParser';
 import { runSummarization } from '../services/SummarizationEngine';
-import { consumeChatStaminaForMessage } from '../utilities//characterLogic';
+import { consumeChatStaminaForMessage } from '../utilities/characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from '../utilities/locationLogic';
 import { detectName } from '../utilities/nameDetection';
 import { getFilteredChatMessages } from '../utilities/promptLogic';
@@ -36,16 +36,9 @@ function calculateLatencyFactor(
     averageTTFTMs: number,
     msPerToken: number
 ): number {
-    // Sigmoid parameters
-    const painPoint = averageTTFTMs * 2; // We get impatient if our next token has more than double than the average TTFT.
-    const zValue = timeSinceLastTokenMs - painPoint // Still in ms.
-    const scaledZValue = zValue / msPerToken // ms / (ms per token) = token.
-
-    // Negative Z-value (z < 0): Output is < 0.5. The value is below average.
-    // Zero Z-value (z = 0): Output is exactly 0.5. The current value is perfectly equal to the average.
-    // Positive Z-value (z > 0): Output is > 0.5. The value is above average.
-    
-    // Sigmoid function without the negative sign to invert it.
+    const painPoint = averageTTFTMs * 2;
+    const zValue = timeSinceLastTokenMs - painPoint;
+    const scaledZValue = zValue / msPerToken;
     return 1 / (1 + Math.exp(scaledZValue));
 }
 
@@ -607,8 +600,11 @@ export function useChatSession(options: UseChatSessionOptions) {
             }
 
             const preTurnCount = td.interactionHistory.length;
-            streamingCharacterRef.current = null;
-            streamingMessageIdRef.current = null;
+            
+            // Set streaming references for live broadcasting
+            const responderChar = td.participants.find(p => p.id !== activeCharacter.id) || activeCharacter;
+            streamingCharacterRef.current = responderChar;
+            streamingMessageIdRef.current = `gen-${responderChar.id}-${Date.now()}`;
 
             requestTimestampsRef.current.push(Date.now());
             const metadata: RequestMetadata = {
@@ -729,10 +725,12 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         try {
             const td = currentState.interactionData;
-            
             const preTurnCount = td.interactionHistory.length;
-            streamingCharacterRef.current = null;
-            streamingMessageIdRef.current = null;
+
+            // Set streaming references for live broadcasting
+            const responderChar = td.participants.find(p => p.id !== currentState.currentCharacter?.id) || currentState.currentCharacter;
+            streamingCharacterRef.current = responderChar;
+            streamingMessageIdRef.current = `gen-${responderChar.id}-${Date.now()}`;
 
             requestTimestampsRef.current.push(Date.now());
             const metadata: RequestMetadata = {
@@ -834,6 +832,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         triggerHostResponseRef.current = triggerHostResponse;
     }, [triggerHostResponse]);
 
+    // Single source of truth: Listener for peer messages to trigger the AI response
     useEffect(() => {
         if (isMultiplayerClient) return;
 
@@ -893,8 +892,11 @@ export function useChatSession(options: UseChatSessionOptions) {
             setInteractionData(td);
 
             const preTurnCount = td.interactionHistory.length;
-            streamingCharacterRef.current = null;
-            streamingMessageIdRef.current = null;
+            
+            // Set streaming references for live broadcasting
+            const responderChar = td.participants.find(p => p.id !== protagonist.id) || protagonist;
+            streamingCharacterRef.current = responderChar;
+            streamingMessageIdRef.current = `gen-${responderChar.id}-${Date.now()}`;
 
             requestTimestampsRef.current.push(Date.now());
             const metadata: RequestMetadata = {
@@ -1070,7 +1072,8 @@ export function useChatSession(options: UseChatSessionOptions) {
         resumingMessageIdRef.current = messageId;
         resumingExistingTextRef.current = existingText;
         wasStoppedRef.current = false;
-        const ctrl = new AbortController(); abortControllerRef.current = ctrl;
+        const ctrl = new AbortController(); 
+        abortControllerRef.current = ctrl;
 
         streamingCharacterRef.current = char;
         streamingMessageIdRef.current = messageId;
@@ -1211,11 +1214,14 @@ export function useChatSession(options: UseChatSessionOptions) {
         wasStoppedRef.current = false;
         isAtBottomRef.current = true;
 
-        const ctrl = new AbortController(); abortControllerRef.current = ctrl;
+        const ctrl = new AbortController(); 
+        abortControllerRef.current = ctrl;
         const preCount = td.interactionHistory.length;
 
-        streamingCharacterRef.current = null;
-        streamingMessageIdRef.current = null;
+        const primaryProtagonistId = protagonists[0]?.id ?? '';
+        const responderChar = td.participants.find(p => !protagonistIds.has(p.id)) || protagonists[0];
+        streamingCharacterRef.current = responderChar;
+        streamingMessageIdRef.current = `gen-${responderChar?.id || 'ai'}-${Date.now()}`;
 
         try {
             requestTimestampsRef.current.push(Date.now());
@@ -1226,7 +1232,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks, metadata);
             let ud = turnResult.interactionData;
-            const primaryProtagonistId = protagonists[0]?.id ?? '';
 
             if (turnResult.promptText) {
                 const currentModelId = useSessionStore.getState().selectedModelId;
@@ -1278,8 +1283,12 @@ export function useChatSession(options: UseChatSessionOptions) {
                     broadcastNewMessages(preCount, ud);
                 }
             }
-        } catch (e) { if ((e as Error).name !== 'AbortError') { console.error('Regen failed:', e); addToast(`Regen error: ${(e as Error).message}`, 'error'); } }
-        finally {
+        } catch (e) { 
+            if ((e as Error).name !== 'AbortError') { 
+                console.error('Regen failed:', e); 
+                addToast(`Regen error: ${(e as Error).message}`, 'error'); 
+            } 
+        } finally {
             if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
