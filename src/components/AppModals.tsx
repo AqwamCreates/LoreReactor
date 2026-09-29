@@ -785,7 +785,7 @@ export function AppModals({
                     allMultiplayerData={allMultiplayerData}
                     rawChatShells={chatShellsWithIdentifiers}
                     currentInteractionData={interactionData}
-                    onSelectEntity={(tabId, entity) => {
+                    onSelectEntity={(tabId, entity, parentEntity) => {
                         switch (tabId) {
                             case 'character': characterModalProperties.open(entity); break;
                             case 'context': contextModalProperties.open(entity); break;
@@ -803,20 +803,30 @@ export function AppModals({
                             case 'chat': onSwitchChat(entity.id); break;
                             case 'memory':
                                 addToast('Memories are managed inside Character settings.', 'info');
-                                modals.charList.open();
+                                characterModalProperties.open(parentEntity);
+                                break;
+                            case 'message':
+                                if ((!interactionData) || (interactionData?.id !== parentEntity.id)) {
+                                    onSwitchChat(parentEntity.id);
+                                }
+                                if (entity.id) {
+                                    const targetId = entity.id;
+                                    const observer = new MutationObserver(() => {
+                                        const el = document.querySelector(`[data-message-id="${targetId}"]`);
+                                        if (el) {
+                                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                            observer.disconnect();
+                                        }
+                                    });
+                                    observer.observe(document.body, { childList: true, subtree: true });
+                                    
+                                    // Fallback timeout just in case the message was deleted or never renders
+                                    setTimeout(() => observer.disconnect(), 5000); 
+                                }
                                 break;
                             default:
                                 entityModals.getModalProperties(tabId as any)?.open(entity);
                                 break;
-                        }
-                    }}
-                    onJumpToMessage={async (chatId, msgId) => {
-                        if ((!interactionData) || (interactionData?.id !== chatId)) onSwitchChat(chatId);
-                        if (msgId) {
-                            setTimeout(() => {
-                                const el = document.querySelector(`[data-message-id="${msgId}"]`);
-                                el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            }, 3000);
                         }
                     }}
                 />
