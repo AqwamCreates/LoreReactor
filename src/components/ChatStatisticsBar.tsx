@@ -41,7 +41,7 @@ function formatSessionDuration(ms: number): string {
     if (minutes > 0) parts.push(`${minutes} minute${minutes === 1 ? '' : 's'}`);
     if (seconds > 0) parts.push(`${seconds} second${seconds === 1 ? '' : 's'}`);
 
-    return parts.length > 0 ? parts.join(' ') : '0 second';
+    return parts.length > 0 ? parts.join(' ') : '—';
 }
 
 export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
