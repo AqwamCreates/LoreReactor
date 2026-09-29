@@ -1,5 +1,5 @@
 // src/hooks/useSessionEffects.ts
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { BudgetData, BudgetStrategy, Character, LanguageModel } from '../types';
 import { saveRawSessionData } from '../storages/serverStorage';
 import { getBudgetStrategyEngine, initializeBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
@@ -33,6 +33,8 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
         activeStrategy, budgetData, loadLocalModelForBudgetStrategyEngine,
     } = options;
 
+    const isInitialMount = useRef(true);
+
     // Persist active chat ID when it changes
     useEffect(() => {
         if (isMultiplayerClient) return;
@@ -41,15 +43,23 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
         }
     }, [interactionDataId, isMultiplayerClient]);
 
+    // Persist active profile ID
     useEffect(() => {
         if (isMultiplayerClient) return;
         if (selectedProfileId) {
-            saveRawSessionData({ selectedProfileId: selectedProfileId });
+            saveRawSessionData({ selectedProfileId });
         }
     }, [selectedProfileId, isMultiplayerClient]);
 
-    // Persist selected model ID when it changes
+    // Persist selected model ID (skips initial empty mount to avoid overwriting stored value)
     useEffect(() => {
+        if (isInitialMount.current) {
+            isInitialMount.current = false;
+            if (selectedModelId) {
+                saveRawSessionData({ selectedModelId });
+            }
+            return;
+        }
         saveRawSessionData({ selectedModelId: selectedModelId ?? null });
     }, [selectedModelId]);
 
@@ -68,18 +78,24 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
     useEffect(() => {
         if (!selectedModelId || allModels.length === 0) return;
         const selectedModel = allModels.find(m => m.id === selectedModelId);
-        if (!selectedModel) { setSelectedModelId(null); return; }
-        const isCloudModel = selectedModel.apiKey && selectedModel.backend;
+        if (!selectedModel) { 
+            setSelectedModelId(null); 
+            return; 
+        }
+        const isCloudModel = !!(selectedModel.apiKey && selectedModel.backend);
         if (isCloudModel) return;
-        if (!runningModels[selectedModelId]?.isRunning) setSelectedModelId(null);
+        
+        if (!runningModels[selectedModelId]?.isRunning) {
+            setSelectedModelId(null);
+        }
     }, [selectedModelId, allModels, runningModels, setSelectedModelId]);
 
-    // Apply default character when it changes
+    // Apply default character when selectedCharacterId changes
     useEffect(() => {
         if (isMultiplayerClient) return;
         if (selectedCharacterId && allCharacters.length > 0) {
             const defaultChar = allCharacters.find(c => c.id === selectedCharacterId);
-            if (defaultChar && selectedCharacterId !== defaultChar.id) {
+            if (defaultChar) {
                 setSelectedCharacter(defaultChar);
             }
         }

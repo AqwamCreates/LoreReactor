@@ -12,65 +12,138 @@ interface UseTokenCounterOptions {
     activeStrategy: BudgetStrategy | null;
 }
 
+interface CachedTokenEntry {
+    tokenCount: number;
+    timestamp: number;
+    modelId: string;
+}
+
 export function useTokenCounter(options: UseTokenCounterOptions) {
     const { messages, interactionData, selectedModelId, allModels, runningModels, activeStrategy } = options;
     const [maxTokens, setMaxTokens] = useState(0);
+
     const abortRef = useRef<AbortController | null>(null);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const lastCountedIdsRef = useRef<Set<string>>(new Set());
+    
+    // Persistent message token cache: messageId -> { tokenCount, timestamp, modelId }
+    const tokenCacheRef = useRef<Map<string, CachedTokenEntry>>(new Map());
 
     useEffect(() => {
-        if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-        if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
+        if (timerRef.current) { 
+            clearTimeout(timerRef.current); 
+            timerRef.current = null; 
+        }
+        if (abortRef.current) { 
+            abortRef.current.abort(); 
+            abortRef.current = null; 
+        }
 
         timerRef.current = setTimeout(async () => {
-            if (messages.length === 0 || !interactionData?.participants) {
+            if (messages.length === 0 || !interactionData?.participants?.length) {
                 setMaxTokens(0);
-                lastCountedIdsRef.current.clear();
                 return;
             }
+
+            // Determine active tokenizer model
+            let tokenizer: LanguageModel | undefined;
+            if (selectedModelId) {
+                tokenizer = allModels.find(m => m.id === selectedModelId);
+            }
+            if (!tokenizer && activeStrategy && activeStrategy.modelIds.length > 0) {
+                tokenizer = allModels.find(m => m.id === activeStrategy.modelIds[0]);
+            }
+            if (!tokenizer) return;
+
             const abort = new AbortController();
             abortRef.current = abort;
+
             try {
-                const counts: Record<string, number> = {};
-                for (const p of interactionData.participants) counts[p.id] = 0;
-
-                let tokenizer: LanguageModel | undefined;
-                if (selectedModelId) tokenizer = allModels.find(m => m.id === selectedModelId);
-                if (!tokenizer && activeStrategy && activeStrategy.modelIds.length > 0) {
-                    tokenizer = allModels.find(m => m.id === activeStrategy.modelIds[0]);
-                }
                 const engine = getLanguageModelEngine();
-                if (tokenizer) { engine.setRunningModels(runningModels); engine.setContext(tokenizer); } else return;
+                engine.setRunningModels(runningModels);
+                engine.setContext(tokenizer);
 
-                const prevIds = lastCountedIdsRef.current;
-                const currIds = new Set<string>();
-                let hasNew = false;
-                for (const msg of messages) { currIds.add(msg.id); if (!prevIds.has(msg.id)) hasNew = true; }
-                if (!hasNew && prevIds.size === currIds.size) return;
+                const cache = tokenCacheRef.current;
+                const currentModelId = tokenizer.id;
 
+                // 1. Identify which messages need fresh token counting (new, edited, or model switched)
+                const messagesToCount: ChatMessage[] = [];
                 for (const msg of messages) {
+                    if (msg.messageType !== 'chat' || !msg.textContent) continue;
+
+                    const cached = cache.get(msg.id);
+                    if (
+                        !cached ||
+                        cached.timestamp !== msg.lastUpdatedTimestamp ||
+                        cached.modelId !== currentModelId
+                    ) {
+                        messagesToCount.push(msg);
+                    }
+                }
+
+                // 2. Tokenize only uncached / modified messages
+                for (const msg of messagesToCount) {
                     if (abort.signal.aborted) return;
-                    if (prevIds.has(msg.id)) continue;
-                    if (msg.character && (msg as ChatMessage).textContent) {
-                        const charId = msg.character.id;
-                        if (counts[charId] !== undefined || charId === '__ambient_narrator__') {
-                            const tokens = await engine.countTokens((msg as ChatMessage).textContent);
-                            if (abort.signal.aborted) return;
-                            if (counts[charId] !== undefined) counts[charId] += tokens;
+                    const tokens = await engine.countTokens(msg.textContent);
+                    if (abort.signal.aborted) return;
+
+                    cache.set(msg.id, {
+                        tokenCount: tokens,
+                        timestamp: msg.lastUpdatedTimestamp,
+                        modelId: currentModelId,
+                    });
+                }
+
+                if (abort.signal.aborted) return;
+
+                // 3. Prune deleted messages from cache to prevent unbounded memory growth
+                if (cache.size > messages.length + 50) {
+                    const activeIds = new Set(messages.map(m => m.id));
+                    for (const id of cache.keys()) {
+                        if (!activeIds.has(id)) {
+                            cache.delete(id);
                         }
                     }
                 }
-                lastCountedIdsRef.current = currIds;
-                if (!abort.signal.aborted) setMaxTokens(Math.max(...Object.values(counts), 0));
-            } catch (e) { if ((e as Error).name !== 'AbortError') console.error('Token counting failed:', e); }
-        }, 500);
+
+                // 4. Sum up total tokens per participant accurately
+                const participantCounts: Record<string, number> = {};
+                for (const p of interactionData.participants) {
+                    participantCounts[p.id] = 0;
+                }
+
+                for (const msg of messages) {
+                    if (msg.messageType !== 'chat') continue;
+                    const charId = msg.character?.id;
+
+                    if (charId && participantCounts[charId] !== undefined) {
+                        const entry = cache.get(msg.id);
+                        if (entry) {
+                            participantCounts[charId] += entry.tokenCount;
+                        }
+                    }
+                }
+
+                // 5. Update highest participant token total
+                const highestTotal = Math.max(...Object.values(participantCounts), 0);
+                setMaxTokens(highestTotal);
+            } catch (e) {
+                if ((e as Error).name !== 'AbortError') {
+                    console.error('[useTokenCounter] Token counting failed:', e);
+                }
+            }
+        }, 350);
 
         return () => {
-            if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-            if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
+            if (timerRef.current) { 
+                clearTimeout(timerRef.current); 
+                timerRef.current = null; 
+            }
+            if (abortRef.current) { 
+                abortRef.current.abort(); 
+                abortRef.current = null; 
+            }
         };
-    }, [messages, interactionData?.participants, selectedModelId, allModels, runningModels, activeStrategy]);
+    }, [messages, selectedModelId, allModels, runningModels, activeStrategy, interactionData]);
 
     return maxTokens;
 }
