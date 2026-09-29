@@ -695,8 +695,10 @@ export function useMultiplayerSync({
                     if (!md.pendingAccountIds.includes(requestingAccountId)) {
                         const updatedMd = { ...md, pendingAccountIds: [...md.pendingAccountIds, requestingAccountId] };
                         multiplayerDataRef.current = updatedMd;
-                        useSessionStore.setState({ multiplayerData: updatedMd });
-                        onSaveMultiplayerDataRef.current?.(updatedMd);
+                        setTimeout(() => {
+                            useSessionStore.setState({ multiplayerData: updatedMd });
+                            onSaveMultiplayerDataRef.current?.(updatedMd);
+                        }, 0);
                     }
                     sendToRef.current(requestingAccountId, { type: 'join_pending', payload: { message: 'Waiting for host approval' } });
                     setPendingJoinRequests((prev) =>
@@ -765,8 +767,10 @@ export function useMultiplayerSync({
                     lastUpdatedTimestamp: Date.now(),
                 };
                 multiplayerDataRef.current = updatedMd;
-                useSessionStore.setState({ multiplayerData: updatedMd });
-                onSaveMultiplayerDataRef.current?.(updatedMd);
+                setTimeout(() => {
+                    useSessionStore.setState({ multiplayerData: updatedMd });
+                    onSaveMultiplayerDataRef.current?.(updatedMd);
+                }, 0);
 
                 const initialState = currentData ? {
                     protagonists: currentData.protagonists,
@@ -815,15 +819,33 @@ export function useMultiplayerSync({
 
                     if (payload.initialState) {
                         const freshData = interactionDataRef.current;
-                        if (freshData) {
-                            setInteractionData({
-                                ...freshData,
-                                ...payload.initialState,
-                                interactionHistory: [],
-                                numberOfMessages: 0,
-                                lastUpdatedTimestamp: Date.now(),
-                            });
-                        }
+                        
+                        // Fallback InteractionData so the joiner doesn't drop messages if they lack local state
+                        const fallbackData: InteractionData = {
+                            id: joinSessionId ?? `mp-${Date.now()}`,
+                            name: 'Multiplayer Session',
+                            protagonists: [],
+                            participants: [],
+                            contexts: [],
+                            locations: [],
+                            audioTracks: [],
+                            interactionHistory: [],
+                            numberOfMessages: 0,
+                            firstCreatedTimestamp: Date.now(),
+                            lastUpdatedTimestamp: Date.now(),
+                            parentInteractionDataId: null,
+                            parentInteractionMessageId: null,
+                        };
+
+                        const baseData = freshData ?? fallbackData;
+
+                        setInteractionData({
+                            ...baseData,
+                            ...payload.initialState,
+                            interactionHistory: [],
+                            numberOfMessages: 0,
+                            lastUpdatedTimestamp: Date.now(),
+                        });
 
                         if (payload.assignedCharacter) {
                             onJoinAcceptedRef.current?.(payload.assignedCharacter);
@@ -853,6 +875,32 @@ export function useMultiplayerSync({
 
                 if (isHost) {
                     peerCharacterMapRef.current.set(senderAccountId, char.id);
+                    
+                    // Sync activeCharacterId to multiplayerData so the security check passes
+                    const md = multiplayerDataRef.current;
+                    if (md) {
+                        const foundAcct = findAccountConfig(md.multiplayerDataAccountConfigurations, senderAccountId);
+                        if (foundAcct && foundAcct.config.activeCharacterId !== char.id) {
+                            const updatedMd = {
+                                ...md,
+                                multiplayerDataAccountConfigurations: {
+                                    ...md.multiplayerDataAccountConfigurations,
+                                    [foundAcct.key]: {
+                                        ...foundAcct.config,
+                                        activeCharacterId: char.id,
+                                    }
+                                },
+                                lastUpdatedTimestamp: Date.now(),
+                            };
+                            multiplayerDataRef.current = updatedMd;
+                            
+                            // Defer to next tick to prevent React "Cannot update during render" warnings
+                            setTimeout(() => {
+                                useSessionStore.setState({ multiplayerData: updatedMd });
+                                onSaveMultiplayerDataRef.current?.(updatedMd);
+                            }, 0);
+                        }
+                    }
                 }
 
                 const hasParticipant = currentData.participants.some((p) => p.id === char.id);
@@ -950,6 +998,7 @@ export function useMultiplayerSync({
     useEffect(() => { broadcastRef.current = broadcast; }, [broadcast]);
 
     const broadcastMessage = useCallback((message: HistoryMessage) => {
+        console.log('[MP] Broadcasting message', message.id, message.character.id);
         broadcast({
             type: 'chat_message',
             payload: extractSyncPayload(message),
@@ -1077,8 +1126,10 @@ export function useMultiplayerSync({
                     lastUpdatedTimestamp: Date.now(),
                 };
                 multiplayerDataRef.current = updatedMd;
-                useSessionStore.setState({ multiplayerData: updatedMd });
-                onSaveMultiplayerDataRef.current?.(updatedMd);
+                setTimeout(() => {
+                    useSessionStore.setState({ multiplayerData: updatedMd });
+                    onSaveMultiplayerDataRef.current?.(updatedMd);
+                }, 0);
 
                 const initialState = currentData ? {
                     protagonists: currentData.protagonists,
@@ -1117,8 +1168,10 @@ export function useMultiplayerSync({
                     lastUpdatedTimestamp: Date.now(),
                 };
                 multiplayerDataRef.current = updatedMd;
-                useSessionStore.setState({ multiplayerData: updatedMd });
-                onSaveMultiplayerDataRef.current?.(updatedMd);
+                setTimeout(() => {
+                    useSessionStore.setState({ multiplayerData: updatedMd });
+                    onSaveMultiplayerDataRef.current?.(updatedMd);
+                }, 0);
             }
             sendToRef.current(accountId, {
                 type: 'join_response',
