@@ -2,7 +2,7 @@
 import { useSessionStore } from './useSessionStore';
 
 export function useChatState() {
-    // --- Stable Structural Selectors Only (Does NOT subscribe to streaming text or stats) ---
+    // --- Stable Structural Selectors (Does NOT subscribe to streaming text or live stats) ---
     const interactionData = useSessionStore(s => s.interactionData);
     const currentCharacter = useSessionStore(s => s.currentCharacter);
     const activeStrategy = useSessionStore(s => s.activeStrategy);
@@ -12,6 +12,8 @@ export function useChatState() {
     const selectedModelId = useSessionStore(s => s.selectedModelId);
     const isLoading = useSessionStore(s => s.isLoading);
     const currentCharacterExpression = useSessionStore(s => s.currentCharacterExpression);
+    // Added back: only flips on turn start/stop, safe from per-token re-renders
+    const streamingCharacter = useSessionStore(s => s.streamingCharacter);
 
     // --- Direct Store Actions (Identity stable, zero re-renders) ---
     const setInteractionData = useSessionStore(s => s.setInteractionData);
@@ -27,7 +29,7 @@ export function useChatState() {
     const setSelectedCharacterExpression = useSessionStore(s => s.setSelectedCharacterExpression);
 
     return {
-        // State (Only changes when session structure changes)
+        // State
         interactionData,
         currentCharacter,
         activeStrategy,
@@ -37,6 +39,7 @@ export function useChatState() {
         selectedModelId,
         isLoading,
         currentCharacterExpression,
+        streamingCharacter, // Expose to session & viewAssets
         
         // Actions
         setInteractionData,

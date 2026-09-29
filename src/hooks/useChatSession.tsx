@@ -195,7 +195,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         return requestTimestampsRef.current.length;
     }, []);
 
-    const ui = useChatUI(state.interactionData, state.isLoading, state.streamingText, isAtBottomRef);
+    const ui = useChatUI(state.interactionData, isAtBottomRef);
 
     const chatEngine = useChatEngine({
         getState,

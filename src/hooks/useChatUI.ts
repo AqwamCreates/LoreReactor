@@ -4,11 +4,8 @@ import { getAudioEngine } from '../services/AudioEngine';
 import { useCharacterVoice } from './useCharacterVoice';
 import type { Character, InteractionData } from '../types';
 
-// Accept isAtBottomRef as an argument to avoid "modify local variable" errors in parent
 export function useChatUI(
     interactionData: InteractionData | null, 
-    isLoading: boolean, 
-    streamingText: string,
     isAtBottomRef: React.MutableRefObject<boolean>
 ) {
     const chatHistoryRef = useRef<HTMLDivElement>(null);
@@ -18,7 +15,6 @@ export function useChatUI(
 
     const { speakMessage } = useCharacterVoice();
 
-    // Primitive so effect deps match exactly what is read inside
     const interactionDataId = interactionData?.id ?? null;
 
     // --- Audio Engine Lifecycle ---
@@ -37,8 +33,6 @@ export function useChatUI(
     }, [interactionData]);
 
     // --- Reset scroll tracking whenever the active chat changes ---
-    // Declared BEFORE the scroll effect so the reset lands first
-    // in the same commit (effects run in declaration order).
     useEffect(() => {
         if (interactionDataId !== previousChatIdRef.current) {
             previousChatIdRef.current = interactionDataId;
@@ -70,21 +64,8 @@ export function useChatUI(
         return () => el.removeEventListener('scroll', fn);
     }, [isAtBottomRef]);
 
-    // FIX: Only auto-scroll during active streaming.
-    // When isLoading transitions to false (stop/completion), do NOT auto-scroll
-    // to messageEndRef — the relevant message may not be at the bottom
-    // (e.g., stopped mid-resume). Fresh sends handle their own scrolling
-    // via isAtBottomRef being set to true before generation starts.
-    useEffect(() => {
-        if (!isAtBottomRef.current) return;
-        
-        if (isLoading && streamingText && messageEndRef.current) {
-            messageEndRef.current.scrollIntoView({ behavior: 'auto' });
-        }
-    }, [streamingText, isLoading, isAtBottomRef]);
-
     const playVoice = useCallback((text: string, character: Character) => {
-        speakMessage(text, character)
+        speakMessage(text, character);
     }, [speakMessage]);
 
     return {
