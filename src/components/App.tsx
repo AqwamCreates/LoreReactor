@@ -176,7 +176,7 @@ function App() {
         allMultiplayerData: multiplayerDataManager.multiplayerData,
         allActions: actionManager.allActions,
         requestBorrowedModel: handleRequestBorrowedModel,
-        requestPeerInference: mp.requestPeerInference, // <--- Connected here
+        requestPeerInference: mp.multiplayerSync.requestPeerInference, // <--- Connected here
     });
 
     const {
