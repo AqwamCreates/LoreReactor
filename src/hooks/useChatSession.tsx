@@ -713,7 +713,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
             const filteredMessages = getFilteredChatMessages(currentInteractionData, activeCharacter.id, allPromptBlocks || []);
-            const knownCharacterNames = detectName(activeCharacter, filteredMessages);
+            const knownCharacterNames = detectName(activeCharacter, filteredMessages, text);
 
             const chatMessage = createChatMessage(currentInteractionData, activeCharacter, text, { 
                 files: encodedFiles, 

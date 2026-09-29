@@ -1,8 +1,10 @@
+// src/components/views/VisualNovelView.tsx
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import type { ViewModeProps } from './types';
 import type { Character, ChatMessage } from '../../types';
 import { MemoizedMessageText } from '../MemoizedMessageText';
 import { useVisualNovelSpriteStates } from '../../hooks/useVisualNovelSpriteStates';
+import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
 import {
     detectFormatSegments,
     applyConversions,
@@ -23,7 +25,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         interactionData, localProtagonist, displayMessages,
         portraitUrlCache, locationBackgroundUrl,
         formattedStreamingText, isLoading, streamingCharacter,
-        centerAvatar,
+        centerAvatar, displayNameCache,
         messageEndRef, editTextAreaRef,
         editingId, editDraft, setEditDraft,
         onSaveEdit, onCancelEditing, onRegenerateFromEdit,
@@ -101,6 +103,13 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
             || visibleCharacters[0]
             || null;
     }, [viewIndex, displayedMessage, isLoading, streamingCharacter, isStreamingInList, lastMsg, centerAvatar, visibleCharacters, protagonistId]);
+
+    // Compute the resolved display name for the active speaker using the immersion cache (one message behind)
+    const activeSpeakerDisplayName = useMemo(() => {
+        if (!activeSpeaker || activeSpeaker.id === AMBIENT_NARRATOR_ID) return 'System';
+        const msgIdx = displayedMessage ? chatMessages.findIndex(m => m.id === displayedMessage.id) : chatMessages.length - 1;
+        return resolveDelayedDisplayNameFromCache(displayNameCache, msgIdx, activeSpeaker.id);
+    }, [displayNameCache, displayedMessage, chatMessages, activeSpeaker]);
 
     const isWaitingForGeneration = isLoading && !activeStreamingText && viewIndex === null;
     const isEditingLastSpeaker = editingId !== null && displayedMessage?.id === editingId;
@@ -368,7 +377,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                     transition: 'opacity 0.3s ease'
                 }}>
                     <div className="vn-name-plate">
-                        {isAmbientSpeaker ? '✦ Narration' : (activeSpeaker ? activeSpeaker.name : 'System')}
+                        {isAmbientSpeaker ? '✦ Narration' : activeSpeakerDisplayName}
                     </div>
 
                     <div className="vn-message-toolbar">

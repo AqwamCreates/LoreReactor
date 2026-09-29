@@ -63,7 +63,6 @@ function extractCapturedName(text: string, patterns: RegExp[]): string | null {
     return null;
 }
 
-/** Get all name variants for a character: real name + aliases */
 function getAllNameVariants(character: Character): string[] {
     const variants: string[] = [];
     if (character.name) variants.push(character.name);
@@ -75,7 +74,6 @@ function getAllNameVariants(character: Character): string[] {
     return variants;
 }
 
-/** Check if captured text matches any variant of a character's name */
 function isNameMatchAgainstCharacter(captured: string, character: Character): string | null {
     const capturedLower = captured.toLowerCase().trim();
     if (!capturedLower) return null;
@@ -104,7 +102,6 @@ function isNameMatchAgainstCharacter(captured: string, character: Character): st
     return null;
 }
 
-/** Check if text contains any variant of a character's name */
 function containsAnyCharacterName(text: string, character: Character): boolean {
     for (const variant of getAllNameVariants(character)) {
         const targetLower = variant.toLowerCase().trim();
@@ -160,62 +157,16 @@ function detectNameQuestion(text: string): boolean {
     return matchesAnyPattern(text, NAME_REVEAL_QUESTION_PATTERNS);
 }
 
-function detectNamePermissionSequenceVariant(
-    filteredMessages: TextMessage[],
-    authorCharacter: Character,
-    targetCharacter: Character,
-    text: string,
-): string | null {
-    if (!containsAnyCharacterName(text, targetCharacter)) return null;
-    if (isFalsePositive(text)) return null;
-
-    let previousMessageBySameCharacter: TextMessage | null = null;
-    for (let i = filteredMessages.length - 1; i >= 0; i--) {
-        if (filteredMessages[i].character.id === authorCharacter.id) {
-            previousMessageBySameCharacter = filteredMessages[i];
-            break;
-        }
-    }
-
-    if (!previousMessageBySameCharacter) return null;
-
-    const wasPermissionAsked = matchesAnyPattern(
-        previousMessageBySameCharacter.textContent,
-        NAME_PERMISSION_QUESTION_PATTERNS,
-    );
-
-    if (!wasPermissionAsked) return null;
-
-    const directReveal = detectDirectNameRevealVariant(text, targetCharacter);
-    if (directReveal) return directReveal;
-
-    const trimmed = text.trim();
-    const isLikelyJustAName = trimmed.split(/\s+/).length <= 3 && !/[.!?]/.test(trimmed);
-    if (isLikelyJustAName) {
-        const matched = isNameMatchAgainstCharacter(trimmed, targetCharacter);
-        if (matched) return matched;
-    }
-
-    return null;
-}
-
-/**
- * Detect name reveals in the latest message authored by `character`.
- * Returns an updated knownCharacterNames snapshot reflecting newly detected knowledge.
- * Uses character.knownCharacterNames as the baseline for existing persistent knowledge.
- *
- * @param character The character whose knowledge is being updated
- * @param filteredMessages Pre-filtered text messages scoped to visible messages.
- *   The caller is responsible for filtering; this function only processes what it receives.
- */
 export function detectName(
-    character: Character,
+    authorCharacter: Character,
     filteredMessages: TextMessage[],
+    currentMessageText?: string,
 ): Record<string, Record<string, boolean>> {
-    // Start from the character's persistent knowledge as baseline
     const result: Record<string, Record<string, boolean>> = {};
-    if (character.knownCharacterNames) {
-        for (const [charId, names] of Object.entries(character.knownCharacterNames)) {
+
+    // 1. Initialize with persistent knowledge from the character sheet
+    if (authorCharacter.knownCharacterNames) {
+        for (const [charId, names] of Object.entries(authorCharacter.knownCharacterNames)) {
             result[charId] = {};
             for (const name of names) {
                 result[charId][name] = true;
@@ -223,61 +174,46 @@ export function detectName(
         }
     }
 
-    // Get the latest text message by this character from the filtered messages
-    let latestMessage: TextMessage | null = null;
-    for (let i = filteredMessages.length - 1; i >= 0; i--) {
-        if (filteredMessages[i].character.id === character.id) {
-            latestMessage = filteredMessages[i];
-            break;
+    // 2. Author always knows their own name
+    if (authorCharacter.id) {
+        if (!result[authorCharacter.id]) result[authorCharacter.id] = {};
+        for (const name of getAllNameVariants(authorCharacter)) {
+            result[authorCharacter.id][name] = true;
         }
     }
-    if (!latestMessage) return result;
 
-    const text = latestMessage.textContent;
-    if (!text) return result;
+    // 3. Determine the message to evaluate
+    const textToEvaluate = currentMessageText !== undefined
+        ? currentMessageText
+        : filteredMessages[filteredMessages.length - 1]?.textContent || '';
 
-    // Check for name questions in recent filtered messages
+    if (!textToEvaluate.trim()) return result;
+
+    // Check if the author is introducing THEMSELVES in this message
+    const selfReveal = detectNameRevealVariant(textToEvaluate, authorCharacter, false);
+    if (selfReveal) {
+        if (!result[authorCharacter.id]) result[authorCharacter.id] = {};
+        result[authorCharacter.id][selfReveal] = true;
+    }
+
+    // Check if someone recently asked for a name
     const nameQuestionRecentlyAsked = filteredMessages.some(msg =>
-        msg.character.id !== character.id && detectNameQuestion(msg.textContent),
+        msg.character.id !== authorCharacter.id && detectNameQuestion(msg.textContent),
     );
 
-    // Collect unique participant characters from the filtered messages
+    // Check if the message reveals names of OTHER characters present
     const participantMap = new Map<string, Character>();
     for (const msg of filteredMessages) {
-        if (msg.character.id !== character.id && !participantMap.has(msg.character.id)) {
+        if (msg.character.id !== authorCharacter.id && !participantMap.has(msg.character.id)) {
             participantMap.set(msg.character.id, msg.character);
         }
     }
 
-    // Check each other participant for name reveals
     for (const [, participant] of participantMap) {
-        // Direct reveal detection
-        const revealedVariant = detectNameRevealVariant(text, participant, nameQuestionRecentlyAsked);
-        if (revealedVariant) {
+        const revealed = detectNameRevealVariant(textToEvaluate, participant, nameQuestionRecentlyAsked);
+        if (revealed) {
             if (!result[participant.id]) result[participant.id] = {};
-            result[participant.id][revealedVariant] = true;
-            continue;
-        }
-
-        // Bare name after question
-        if (nameQuestionRecentlyAsked && !isFalsePositive(text)) {
-            const trimmed = text.trim();
-            const isLikelyJustAName = trimmed.split(/\s+/).length <= 3 && !/[.!?]/.test(trimmed);
-            if (isLikelyJustAName) {
-                const matched = isNameMatchAgainstCharacter(trimmed, participant);
-                if (matched) {
-                    if (!result[participant.id]) result[participant.id] = {};
-                    result[participant.id][matched] = true;
-                    continue;
-                }
-            }
-        }
-
-        // Permission sequence detection
-        const permissionVariant = detectNamePermissionSequenceVariant(filteredMessages, character, participant, text);
-        if (permissionVariant) {
-            if (!result[participant.id]) result[participant.id] = {};
-            result[participant.id][permissionVariant] = true;
+            result[participant.id][revealed] = true;
         }
     }
 
