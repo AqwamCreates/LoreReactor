@@ -149,7 +149,6 @@ function App() {
         addToast,
     });
 
-    // Wrapped broadcast callback avoiding ref access during render
     const handleBroadcastMessage = useCallback((msg: HistoryMessage) => {
         mp.broadcastMessageRef.current?.(msg);
     }, [mp.broadcastMessageRef]);
@@ -308,7 +307,7 @@ function App() {
         refreshChatList: chatList.refresh,
     });
 
-    // ─── Model Readiness ─────────────────────────────────────
+    // ─── Model Readiness ─────────────────────────────────────────────
     const isModelReady = useMemo(() => {
         if (mp.isMultiplayerClient) return true;
         if (activeStrategy) return true;
@@ -370,7 +369,7 @@ function App() {
     const isMultiplayerChat = mp.isMultiplayerClient || !!(mp.multiplayerData && interactionData?.id && mp.multiplayerData.interactionDataIds.includes(interactionData.id));
 
     // ─── Local UI State ──────────────────────────────────────────────
-    // Hoisted and strictly typed to match `viewMode` from ./views/types
+    // Fully typed with viewMode from ./views/types ("ladder" | "cinematic" | "visual novel")
     const [viewMode, setViewMode] = useState<viewMode>('ladder');
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -385,7 +384,7 @@ function App() {
     const suppressAutoScrollRef = useRef(false);
 
     const viewAssets = useViewAssets({
-        viewMode, // Correctly typed as viewMode without `undefined as any`
+        viewMode, // Cleanly passed without undefined as any
         interactionData, localProtagonist, currentCharacter,
         streamingCharacter, currentCharacterExpression, chatHistoryRef,
         isMultiplayerChat,
@@ -407,14 +406,14 @@ function App() {
         activeStrategy,
     });
 
-    // Auto-resize textarea only when text changes (avoids layout thrashing on every streaming chunk)
+    // Auto-resize textarea when text actually changes (avoids layout thrashing on every render)
     useEffect(() => { 
         if (!textareaRef.current) return; 
         textareaRef.current.style.height = 'auto'; 
         textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, window.innerHeight * 0.3)}px`; 
     }, [inputText]);
 
-    // Auto-resize edit textarea when opened and as user edits
+    // Auto-resize edit textarea when opened and as the user types
     useEffect(() => { 
         if (!editTextAreaRef.current || !messageActions.editingId) return; 
         editTextAreaRef.current.style.height = 'auto'; 
@@ -516,8 +515,8 @@ function App() {
         { id: 'worlds', label: 'Worlds', icon: '🌍', done: !worlds.isLoading },
         { id: 'promptBlocks', label: 'Prompt Blocks', icon: '🧱', done: !promptBlocks.isLoading },
         { id: 'models', label: 'Language Models', icon: '🤖', done: !models.isLoading },
-        { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplers.Samplers },
-        { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopPatterns.stopPatterns },
+        { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplers.isLoading },
+        { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopPatterns.isLoading },
         { id: 'budget', label: 'Budget', icon: '💰', done: !budgetStrategies.isLoading },
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profiles.isLoading },
         { id: 'accounts', label: 'Accounts', icon: '🔑', done: !accounts.isLoading },
@@ -658,10 +657,11 @@ function App() {
     }, [interactionData, addToast, setInteractionData]);
 
     const onDeleteChatForModals = useCallback((id: string) => {
-        chatOps.handleDeleteChat(id);
+        chatOps.handleDeleteChat({ stopPropagation: () => {} } as React.MouseEvent, id);
     }, [chatOps]);
 
     const handleRenameChat = useCallback(async (id: string, name: string) => {
+        // Use in-memory chat state directly if renaming the currently active chat
         const loaded = (interactionData?.id === id)
             ? interactionData
             : await loadRawInteractionData(id, characters.characters);
@@ -704,10 +704,10 @@ function App() {
     }, [interactionData, characters, contexts, locations, audioTracks, profiles, setInteractionData, addToast]);
 
     // ─── View Props ──────────────────────────────────────────────────
-    // canDelete is already declared inside ViewModeProps
+    // Cleanly typed as ViewModeProps without redundant intersection
     const viewProps: ViewModeProps = {
         interactionData: interactionData!,
-        localProtagonist: localProtagonist!,
+        localProtagonist,
         displayMessages: displayMessages as ChatMessage[],
         selectedCharacterId: currentCharacter?.id,
         editingId: messageActions.editingId, editDraft: messageActions.editDraft,
