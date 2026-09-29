@@ -12,20 +12,37 @@ class MultiplayerEventBus {
     private listeners = new Map<keyof MultiplayerEventMap, Set<EventCallback>>();
 
     on<K extends keyof MultiplayerEventMap>(event: K, cb: EventCallback<MultiplayerEventMap[K]>): () => void {
-        if (!this.listeners.has(event)) {
-            this.listeners.set(event, new Set());
+        let set = this.listeners.get(event);
+        if (!set) {
+            set = new Set();
+            this.listeners.set(event, set);
         }
-        const set = this.listeners.get(event)!;
         set.add(cb as EventCallback);
         return () => {
-            set.delete(cb as EventCallback);
+            const currentSet = this.listeners.get(event);
+            if (currentSet) {
+                currentSet.delete(cb as EventCallback);
+                if (currentSet.size === 0) {
+                    this.listeners.delete(event);
+                }
+            }
         };
+    }
+
+    once<K extends keyof MultiplayerEventMap>(event: K, cb: EventCallback<MultiplayerEventMap[K]>): () => void {
+        const unsubscribe = this.on(event, (data) => {
+            unsubscribe();
+            return cb(data);
+        });
+        return unsubscribe;
     }
 
     emit<K extends keyof MultiplayerEventMap>(event: K, data: MultiplayerEventMap[K]): void {
         const set = this.listeners.get(event);
-        if (set) {
-            for (const cb of set) {
+        if (set && set.size > 0) {
+            // Snapshot listeners to prevent iteration bugs if callbacks unsubscribe during dispatch
+            const snapshot = Array.from(set);
+            for (const cb of snapshot) {
                 try {
                     const res = cb(data);
                     if (res instanceof Promise) {

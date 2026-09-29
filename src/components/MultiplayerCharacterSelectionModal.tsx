@@ -1,5 +1,5 @@
 // src/components/MultiplayerCharacterSelectionModal.tsx
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { Character } from '../types';
 import '../main.css';
 
@@ -30,11 +30,33 @@ export function MultiplayerCharacterSelectionModal({
     const canUseHostChars = sessionRules?.canUseHosterCharacterId !== false;
     const canUseJoinerChars = sessionRules?.canUseJoinerCharacterId !== false;
 
-    // Default to the first permitted tab
-    const initialTab: SelectionTab = canUseHostChars ? 'session' : 'local';
-    const [activeTab, setActiveTab] = useState<SelectionTab>(initialTab);
+    const [activeTab, setActiveTab] = useState<SelectionTab>(() => canUseHostChars ? 'session' : 'local');
     const [selectedCharId, setSelectedCharId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+
+    // Reset selection and sync with permitted tabs whenever the modal opens
+    useEffect(() => {
+        if (isOpen) {
+            setSelectedCharId(null);
+            setSearchQuery('');
+            if (canUseHostChars) {
+                setActiveTab('session');
+            } else if (canUseJoinerChars) {
+                setActiveTab('local');
+            }
+        }
+    }, [isOpen, canUseHostChars, canUseJoinerChars]);
+
+    // Handle asynchronous sessionRules updates while modal is already open
+    useEffect(() => {
+        if (activeTab === 'session' && !canUseHostChars && canUseJoinerChars) {
+            setActiveTab('local');
+            setSelectedCharId(null);
+        } else if (activeTab === 'local' && !canUseJoinerChars && canUseHostChars) {
+            setActiveTab('session');
+            setSelectedCharId(null);
+        }
+    }, [canUseHostChars, canUseJoinerChars, activeTab]);
 
     const availableCharacters = useMemo(() => {
         const pool = activeTab === 'session' ? sessionCharacters : localCharacters;
@@ -46,10 +68,12 @@ export function MultiplayerCharacterSelectionModal({
         );
     }, [activeTab, sessionCharacters, localCharacters, searchQuery]);
 
+    // Constrain selection to the active tab's permitted character pool
     const selectedCharacter = useMemo(() => {
-        const pool = [...sessionCharacters, ...localCharacters];
-        return pool.find(c => c.id === selectedCharId) || null;
-    }, [selectedCharId, sessionCharacters, localCharacters]);
+        if (!selectedCharId) return null;
+        const activePool = activeTab === 'session' ? sessionCharacters : localCharacters;
+        return activePool.find(c => c.id === selectedCharId) || null;
+    }, [selectedCharId, activeTab, sessionCharacters, localCharacters]);
 
     if (!isOpen) return null;
 
@@ -57,6 +81,9 @@ export function MultiplayerCharacterSelectionModal({
         if (!selectedCharacter) return;
         onSelectCharacter(selectedCharacter);
     };
+
+    const isCurrentTabDisabled = (activeTab === 'session' && !canUseHostChars) || (activeTab === 'local' && !canUseJoinerChars);
+    const areAllTabsDisabled = !canUseHostChars && !canUseJoinerChars;
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -98,15 +125,23 @@ export function MultiplayerCharacterSelectionModal({
 
                 <div className="modal-body editor-modal-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {/* Permission Notices */}
-                    {activeTab === 'session' && !canUseHostChars && (
+                    {areAllTabsDisabled ? (
                         <div style={{ padding: '12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', fontSize: '0.75rem', color: '#f87171' }}>
-                            The host has disabled playing as existing room characters.
+                            The host does not permit joiners to select or upload any characters in this session.
                         </div>
-                    )}
-                    {activeTab === 'local' && !canUseJoinerChars && (
-                        <div style={{ padding: '12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', fontSize: '0.75rem', color: '#f87171' }}>
-                            The host has disabled using custom or local characters in this session.
-                        </div>
+                    ) : (
+                        <>
+                            {activeTab === 'session' && !canUseHostChars && (
+                                <div style={{ padding: '12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', fontSize: '0.75rem', color: '#f87171' }}>
+                                    The host has disabled playing as existing room characters.
+                                </div>
+                            )}
+                            {activeTab === 'local' && !canUseJoinerChars && (
+                                <div style={{ padding: '12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', fontSize: '0.75rem', color: '#f87171' }}>
+                                    The host has disabled using custom or local characters in this session.
+                                </div>
+                            )}
+                        </>
                     )}
 
                     {/* Search Bar */}
@@ -116,12 +151,13 @@ export function MultiplayerCharacterSelectionModal({
                         onChange={e => setSearchQuery(e.target.value)}
                         placeholder="Search characters by name or description..."
                         className="editor-input"
+                        disabled={isCurrentTabDisabled}
                         style={{ width: '100%', padding: '8px 12px', fontSize: '0.8rem' }}
                     />
 
                     {/* Character Grid */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px', maxHeight: '350px', overflowY: 'auto' }}>
-                        {availableCharacters.map(char => {
+                        {!isCurrentTabDisabled && availableCharacters.map(char => {
                             const isSelected = selectedCharId === char.id;
                             const avatar = char.images?.['neutral'] || Object.values(char.images || {})[0];
 
@@ -162,7 +198,7 @@ export function MultiplayerCharacterSelectionModal({
                             );
                         })}
 
-                        {availableCharacters.length === 0 && (
+                        {(!isCurrentTabDisabled && availableCharacters.length === 0) && (
                             <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '24px', opacity: 0.5, fontSize: '0.8rem' }}>
                                 No characters available under this selection.
                             </div>
@@ -177,7 +213,7 @@ export function MultiplayerCharacterSelectionModal({
                     <button
                         type="button"
                         className="editor-button editor-button-save"
-                        disabled={!selectedCharacter}
+                        disabled={!selectedCharacter || isCurrentTabDisabled}
                         onClick={handleConfirm}
                         style={{ padding: '8px 20px', fontSize: '0.8rem' }}
                     >
