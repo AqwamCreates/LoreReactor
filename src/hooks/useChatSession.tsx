@@ -239,7 +239,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                     const estimatedTokens = prediction.trim().split(/\s+/).length;
                     const costRatio = cacheMissCost / outputCost;
                     
-                    let minTokensThreshold = Number.POSITIVE_INFINITY;
+                    let minimumTokensThreshold = Number.POSITIVE_INFINITY;
                     if (costRatio < 1) {
                         const modelId = model?.id || '';
                         const TTFT_ms = budgetData?.modelAverageTimeToFirstToken?.[modelId] ?? 500;
@@ -251,10 +251,10 @@ export function useChatSession(options: UseChatSessionOptions) {
                         const TPS = 1000 / msPerToken;
                         
                         const baseThreshold = (TTFT_seconds * TPS) / (1 - costRatio);
-                        minTokensThreshold = Math.ceil(baseThreshold * latencyFactor);
+                        minimumTokensThreshold = Math.ceil(baseThreshold * latencyFactor);
                     }
                     
-                    if (estimatedTokens >= minTokensThreshold) {
+                    if (estimatedTokens >= minimumTokensThreshold) {
                         isSpeculatingRef.current = true;
                         const completedText = text + prediction;
                         throttledSetStreamingText(completedText);
