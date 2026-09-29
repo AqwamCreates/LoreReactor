@@ -1,6 +1,6 @@
 // src/hooks/useMultiplayerSession.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Character, HistoryMessage, InteractionData, LanguageModel, MultiplayerData } from '../types';
+import type { Character, HistoryMessage, LanguageModel, MultiplayerData } from '../types';
 import { loadRawMultiplayerJoinData, saveRawMultiplayerJoinData, deleteMultiplayerJoinData } from '../storages/serverStorage';
 import { useMultiplayerSync } from './useMultiplayerSync';
 import { useSessionStore } from '../hooks/useSessionStore';
@@ -14,10 +14,12 @@ interface UseMultiplayerSessionOptions {
 export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
     const { allCharacters, saveMultiplayerData, addToast } = options;
 
-    const currentAccountId = useSessionStore((s: any) => s.currentAccountId);
-    const multiplayerData = useSessionStore((s: any) => s.multiplayerData);
-    const setInteractionData = useSessionStore((s: any) => s.setInteractionData) as ((data: InteractionData) => void) | undefined;
-    const setSelectedCharacter = useSessionStore((s: any) => s.setSelectedCharacter) as ((char: Character | null) => void) | undefined;
+    // Reactively subscribe to store state and typed actions
+    const interactionData = useSessionStore((s) => s.interactionData);
+    const setInteractionData = useSessionStore((s) => s.setInteractionData);
+    const setCurrentCharacter = useSessionStore((s) => s.setCurrentCharacter);
+    const currentAccountId = useSessionStore((s) => s.currentAccountId);
+    const multiplayerData = useSessionStore((s) => s.multiplayerData);
 
     const [joinSessionId, setJoinSessionId] = useState<string | null>(null);
     const [joinPassword, setJoinPassword] = useState('');
@@ -25,7 +27,7 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
     const [joinRequestedCharacterId, setJoinRequestedCharacterId] = useState<string | null>(null);
     const [joinRequestedCharacterData, setJoinRequestedCharacterData] = useState<Character | null>(null);
 
-    // Modal state for joiner character selection (aligned name)
+    // Modal state for joiner character selection
     const [isCharacterSelectionModalOpen, setIsCharacterSelectionModalOpen] = useState(false);
     const [pendingSessionInitialState, setPendingSessionInitialState] = useState<any | null>(null);
     const [pendingSessionRules, setPendingSessionRules] = useState<any | null>(null);
@@ -73,8 +75,8 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
             joinProtagonist: assignedCharacter,
         }).catch((e: unknown) => console.warn('Failed to save join data:', e));
         setJoinProtagonist(assignedCharacter);
-        setSelectedCharacter?.(assignedCharacter);
-    }, [addToast, joinSessionId, joinPassword, setSelectedCharacter]);
+        setCurrentCharacter(assignedCharacter);
+    }, [addToast, joinSessionId, joinPassword, setCurrentCharacter]);
 
     const handleCharacterSelectionRequired = useCallback((initialState: any, sessionRules: any) => {
         setPendingSessionInitialState(initialState);
@@ -114,10 +116,10 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
     }, [saveMultiplayerData]);
 
     const multiplayerSync = useMultiplayerSync({
-        interactionData: useSessionStore.getState().interactionData,
+        interactionData, // Reactive subscription: updates seamlessly whenever chat data changes
         multiplayerData,
         currentAccountId,
-        setInteractionData: setInteractionData ?? (() => {}),
+        setInteractionData, // Functional setter: properly commits peer messages to store
         allCharacters,
         joinSessionId,
         joinPassword,
@@ -173,7 +175,6 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         requestBorrowedModelRef,
         currentAccountId,
         multiplayerData,
-        // Aligned modal state & handlers for joiner character selection
         isCharacterSelectionModalOpen,
         pendingSessionInitialState,
         pendingSessionRules,

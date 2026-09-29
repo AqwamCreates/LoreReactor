@@ -46,7 +46,13 @@ interface SessionState {
     // ── Bootstrap state ──────────────────────────────────────────────
     sessionLoaded: boolean;
 
-    // ── Actions (update store + persist to server atomically) ────────
+    // ── Core State Actions ───────────────────────────────────────────
+    setInteractionData: (
+        data: InteractionData | null | ((prev: InteractionData | null) => InteractionData | null)
+    ) => void;
+    setCurrentCharacter: (character: Character | null) => void;
+
+    // ── Preference Actions (update store + persist to server atomically)
     setSelectedCharacterId: (id: string | null) => void;
     setSelectedModelId: (id: string | null) => void;
     setSelectedProfileId: (id: string | null) => void;
@@ -54,7 +60,6 @@ interface SessionState {
     setActiveChatId: (id: string | null) => void;
     setCurrentAccountId: (id: string | null) => void;
     setActiveExtensionIds: (ids: string[]) => void;
-
 }
 
 export const useSessionStore = create<SessionState>()((set) => {
@@ -116,7 +121,18 @@ export const useSessionStore = create<SessionState>()((set) => {
         // ── Bootstrap state ──────────────────────────────────────────
         sessionLoaded: false,
 
-        // ── Actions ──────────────────────────────────────────────────
+        // ── Core State Actions ───────────────────────────────────────
+        setInteractionData: (data) => {
+            set((state) => ({
+                interactionData: typeof data === 'function' ? data(state.interactionData) : data,
+            }));
+        },
+
+        setCurrentCharacter: (character) => {
+            set({ currentCharacter: character });
+        },
+
+        // ── Preference Actions ───────────────────────────────────────
         setSelectedCharacterId: (id) => {
             set({ selectedCharacterId: id });
             saveRawSessionData({ selectedCharacterId: id });
@@ -150,6 +166,5 @@ export const useSessionStore = create<SessionState>()((set) => {
             set({ activeExtensionIds: ids });
             saveRawSessionData({ activeExtensionIds: ids });
         },
-
     };
 });

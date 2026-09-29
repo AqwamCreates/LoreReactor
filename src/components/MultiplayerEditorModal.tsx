@@ -1,9 +1,10 @@
 // src/components/MultiplayerEditorModal.tsx
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import type { MultiplayerData, Character, RawInteractionData, MultiplayerDataAccountConfiguration, tristateInteger } from '../types';
 import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';
 import { v4 as uuidv4 } from 'uuid';
 import { EntitySelectList } from './EntitySelectList';
+import { useSessionStore } from '../hooks/useSessionStore';
 import '../main.css';
 
 type MultiplayerTabId = 'general' | 'accounts';
@@ -122,6 +123,19 @@ function MultiplayerEditorModalInner({
     const buildFromForm = (isNewClone: boolean): MultiplayerData | null => {
         if (!validate()) return null;
         const now = Date.now();
+
+        // Pull the live pending IDs directly from the store to avoid overwriting background updates
+        const liveMultiplayerData = useSessionStore.getState().multiplayerData;
+        
+        // Narrow liveMultiplayerData explicitly so TypeScript knows it is not null
+        const currentPendingList = (liveMultiplayerData && liveMultiplayerData.id === existingMultiplayerData?.id)
+            ? liveMultiplayerData.pendingAccountIds
+            : (existingMultiplayerData?.pendingAccountIds || []);
+
+        // Filter out any accounts that were explicitly configured in the UI
+        const configuredAccountIds = new Set(Object.keys(accountConfigs));
+        const resolvedPendingAccountIds = currentPendingList.filter(id => !configuredAccountIds.has(id));
+
         return {
             id: isNewClone ? uuidv4() : (existingMultiplayerData?.id || uuidv4()),
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
@@ -134,7 +148,7 @@ function MultiplayerEditorModalInner({
             useJoinerLanguageModel,
             interactionDataIds,
             multiplayerDataAccountConfigurations: accountConfigs,
-            pendingAccountIds: existingMultiplayerData?.pendingAccountIds || [],
+            pendingAccountIds: resolvedPendingAccountIds,
             firstCreatedTimestamp: isNewClone ? now : (existingMultiplayerData?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
@@ -159,18 +173,22 @@ function MultiplayerEditorModalInner({
     }, []);
 
     const addAccount = useCallback((id: string) => {
-        if (id && !accountConfigs[id]) {
-            setAccountConfigs(prev => ({
+        const trimmed = id.trim();
+        if (!trimmed) return;
+
+        setAccountConfigs(prev => {
+            if (prev[trimmed]) return prev;
+            return {
                 ...prev,
-                [id]: createDefaultAccountConfig({
+                [trimmed]: createDefaultAccountConfig({
                     canUseJoinerCharacterId,
                     canUseHosterCharacterId,
                     joinerCharacterIdRequiresHosterApproval,
                     hosterCharacterIdRequiresHosterApproval,
                 }),
-            }));
-        }
-    }, [accountConfigs, canUseJoinerCharacterId, canUseHosterCharacterId, joinerCharacterIdRequiresHosterApproval, hosterCharacterIdRequiresHosterApproval]);
+            };
+        });
+    }, [canUseJoinerCharacterId, canUseHosterCharacterId, joinerCharacterIdRequiresHosterApproval, hosterCharacterIdRequiresHosterApproval]);
 
     const removeAccount = useCallback((id: string) => {
         setAccountConfigs(prev => {
@@ -196,7 +214,11 @@ function MultiplayerEditorModalInner({
         });
     }, []);
 
-    const updateCfg = useCallback(<K extends keyof MultiplayerDataAccountConfiguration>(id: string, key: K, value: MultiplayerDataAccountConfiguration[K]) => {
+    const updateCfg = useCallback(<K extends keyof MultiplayerDataAccountConfiguration>(
+        id: string, 
+        key: K, 
+        value: MultiplayerDataAccountConfiguration[K]
+    ) => {
         setAccountConfigs(prev => {
             const cfg = prev[id];
             if (!cfg) return prev;
@@ -223,8 +245,9 @@ function MultiplayerEditorModalInner({
 
     const handleAcceptLiveRequest = useCallback((accountId: string) => {
         onAcceptJoinRequest?.(accountId);
-        if (!accountConfigs[accountId]) {
-            setAccountConfigs(prev => ({
+        setAccountConfigs(prev => {
+            if (prev[accountId]) return prev;
+            return {
                 ...prev,
                 [accountId]: createDefaultAccountConfig({
                     canUseJoinerCharacterId,
@@ -232,20 +255,22 @@ function MultiplayerEditorModalInner({
                     joinerCharacterIdRequiresHosterApproval,
                     hosterCharacterIdRequiresHosterApproval,
                 }),
-            }));
-        }
-    }, [onAcceptJoinRequest, accountConfigs, canUseJoinerCharacterId, canUseHosterCharacterId, joinerCharacterIdRequiresHosterApproval, hosterCharacterIdRequiresHosterApproval]);
+            };
+        });
+    }, [onAcceptJoinRequest, canUseJoinerCharacterId, canUseHosterCharacterId, joinerCharacterIdRequiresHosterApproval, hosterCharacterIdRequiresHosterApproval]);
 
     const handleRejectLiveRequest = useCallback((accountId: string) => {
         onRejectJoinRequest?.(accountId);
     }, [onRejectJoinRequest]);
 
-    const chatShellItems = rawChatShells.filter(s => s.id).map(s => ({
-        id: s.id!,
-        name: s.name || 'Untitled Chat',
-        description: `${s.interactionIdHistory?.length ?? 0} messages`,
-        lastUpdatedTimestamp: s.lastUpdatedTimestamp,
-    }));
+    const chatShellItems = useMemo(() => {
+        return rawChatShells.filter(s => s.id).map(s => ({
+            id: s.id!,
+            name: s.name || 'Untitled Chat',
+            description: `${s.interactionIdHistory?.length ?? 0} messages`,
+            lastUpdatedTimestamp: s.lastUpdatedTimestamp,
+        }));
+    }, [rawChatShells]);
 
     const multiplayerTabs: { id: MultiplayerTabId; label: string; icon: string; badge?: number }[] = [
         { id: 'general', label: 'General', icon: '📝' },
@@ -463,14 +488,22 @@ function MultiplayerEditorModalInner({
                                         type="text" 
                                         value={newAccountIdInput} 
                                         onChange={e => setNewAccountIdInput(e.target.value)}
-                                        onKeyDown={e => { if (e.key === 'Enter') { addAccount(newAccountIdInput.trim()); setNewAccountIdInput(''); } }}
+                                        onKeyDown={e => { 
+                                            if (e.key === 'Enter') { 
+                                                addAccount(newAccountIdInput); 
+                                                setNewAccountIdInput(''); 
+                                            } 
+                                        }}
                                         className="editor-input"
                                         placeholder="Add Account ID..."
                                         style={{ flex: 1 }}
                                     />
                                     <button 
                                         type="button"
-                                        onClick={() => { addAccount(newAccountIdInput.trim()); setNewAccountIdInput(''); }}
+                                        onClick={() => { 
+                                            addAccount(newAccountIdInput); 
+                                            setNewAccountIdInput(''); 
+                                        }}
                                         className="editor-button editor-button-save"
                                         style={{ fontSize: '0.7rem', padding: '0 12px' }}
                                     >
