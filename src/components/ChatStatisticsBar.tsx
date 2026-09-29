@@ -157,7 +157,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                 </div>
 
                 {/* Cache Invalidation Count */}
-                {numberOfCacheInvalidations > 0 && (
+                {(
                     <div className="chat-stat-item" title={`${numberOfCacheInvalidations} cache invalidations`}>
                         <span className="chat-stat-label">🔄</span>
                         <span className="chat-stat-value">{numberOfCacheInvalidations}</span>
