@@ -1,9 +1,9 @@
 // src/components/SuperSearchModal.tsx
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { 
     Character, Context, Location, AudioTrack, World, PromptBlock, 
     LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, 
-    Memory, Account, MultiplayerData, RawInteractionData, InteractionData, ChatMessage 
+    Memory, Account, MultiplayerData, RawInteractionData, InteractionData
 } from '../types';
 import { localURL } from '../configurations';
 import '../main.css';
@@ -22,7 +22,7 @@ export type SearchTabId =
     | 'sampler' 
     | 'stopPattern' 
     | 'budgetStrategy' 
-    | 'profile' 
+    | 'profile'
     | 'memory' 
     | 'account' 
     | 'multiplayerData';
@@ -30,7 +30,6 @@ export type SearchTabId =
 export interface SuperSearchModalProps {
     isOpen: boolean;
     onClose: () => void;
-    // In-memory entity collections
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
@@ -48,7 +47,6 @@ export interface SuperSearchModalProps {
     rawChatShells: RawInteractionData[];
     currentInteractionData: InteractionData | null;
 
-    // Navigation and inspection callbacks
     onSelectEntity?: (type: SearchTabId, id: string, entity: any) => void;
     onJumpToMessage?: (messageId: string) => void;
     onSwitchToChatAndJump?: (chatId: string, messageId?: string) => void;
@@ -70,7 +68,7 @@ interface SearchMatchResult {
     title: string;
     subtitle?: string;
     snippet?: string;
-    chats?: Array<{ chatId: string; chatName: string }>; // For messages
+    chats?: Array<{ chatId: string; chatName: string }>;
     rawEntity?: any;
 }
 
@@ -94,8 +92,8 @@ const TAB_CONFIG: { id: SearchTabId; label: string; icon: string }[] = [
     { id: 'multiplayerData', label: 'Multiplayer', icon: '👥' },
 ];
 
-/** Fast contextual snippet generator */
 function makeSnippet(text: string, query: string, radius = 45): string {
+    if (typeof text !== 'string') return '';
     const lower = text.toLowerCase();
     const idx = lower.indexOf(query.toLowerCase());
     if (idx === -1) return text.slice(0, radius * 2);
@@ -107,13 +105,12 @@ function makeSnippet(text: string, query: string, radius = 45): string {
     return `${prefix}${text.slice(start, end).trim()}${suffix}`;
 }
 
-/** Recursively extracts all searchable string fields from any entity while ignoring base64/media */
 function extractDeepStrings(obj: any): string[] {
     const list: string[] = [];
     const visited = new Set();
 
     function walk(val: any) {
-        if (!val || typeof val !== 'object' && typeof val !== 'string') return;
+        if (val === null || val === undefined) return;
         if (typeof val === 'string') {
             if (val.length < 5000 && !val.startsWith('data:image')) {
                 list.push(val);
@@ -121,6 +118,7 @@ function extractDeepStrings(obj: any): string[] {
             return;
         }
 
+        if (typeof val !== 'object') return;
         if (visited.has(val)) return;
         visited.add(val);
 
@@ -128,7 +126,6 @@ function extractDeepStrings(obj: any): string[] {
             for (const item of val) walk(item);
         } else {
             for (const [key, v] of Object.entries(val)) {
-                // Ignore raw image dictionaries, base64 strings, and cache paths
                 if (key === 'images' || key === 'base64' || key.includes('Cache') || key.includes('Path')) continue;
                 walk(v);
             }
@@ -139,8 +136,7 @@ function extractDeepStrings(obj: any): string[] {
     return list;
 }
 
-export function SuperSearchModal({
-    isOpen,
+function SuperSearchContent({
     onClose,
     allCharacters,
     allContexts,
@@ -162,51 +158,28 @@ export function SuperSearchModal({
     onJumpToMessage,
     onSwitchToChatAndJump,
     onSwitchChat,
-}: SuperSearchModalProps) {
+}: Omit<SuperSearchModalProps, 'isOpen'>) {
     const [query, setQuery] = useState('');
     const [activeTab, setActiveTab] = useState<SearchTabId>('all');
     const [serverMessages, setServerMessages] = useState<ServerMessageResult[]>([]);
     const [isSearchingServer, setIsSearchingServer] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
-    // Auto-focus input on open
     useEffect(() => {
-        if (isOpen) {
-            setQuery('');
-            setServerMessages([]);
-            setTimeout(() => searchInputRef.current?.focus(), 50);
-        }
-    }, [isOpen]);
-
-    // Keyboard shortcut handlers
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-                e.preventDefault();
-                onClose();
-            }
-            if (e.key === 'Escape' && isOpen) {
-                onClose();
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose]);
+        searchInputRef.current?.focus();
+    }, []);
 
     const lowerQuery = query.toLowerCase().trim();
 
-    // Map character ID -> Character object for quick lookups
     const characterMap = useMemo(() => {
         const map = new Map<string, Character>();
         for (const c of allCharacters) map.set(c.id, c);
         return map;
     }, [allCharacters]);
 
-    // ─── 1-to-Many Map: MessageId -> All Containing Chats (Parent + Branches) ───
     const messageToChatsMap = useMemo(() => {
         const map = new Map<string, Array<{ chatId: string; chatName: string }>>();
 
-        // Include raw chat shells from storage
         for (const shell of rawChatShells) {
             if (!shell.id) continue;
             const chatName = shell.name || 'Untitled Chat';
@@ -222,7 +195,6 @@ export function SuperSearchModal({
             }
         }
 
-        // Include active interaction data
         if (currentInteractionData?.id) {
             const activeId = currentInteractionData.id;
             const activeName = currentInteractionData.name || 'Untitled Chat';
@@ -241,19 +213,16 @@ export function SuperSearchModal({
         return map;
     }, [rawChatShells, currentInteractionData]);
 
-    // ─── Strategy B: Server Deep-Search for All Messages on Disk ──────
+    // Asynchronous debounce effect with ZERO synchronous setState calls in the effect body
     useEffect(() => {
-        if (!lowerQuery || lowerQuery.length < 2) {
-            setServerMessages([]);
-            setIsSearchingServer(false);
-            return;
-        }
+        if (!lowerQuery) return;
 
-        setIsSearchingServer(true);
+        let ignore = false;
         const timer = setTimeout(async () => {
+            setIsSearchingServer(true);
             try {
                 const res = await fetch(`${localURL}/search?q=${encodeURIComponent(lowerQuery)}&limit=50`);
-                if (res.ok) {
+                if (res.ok && !ignore) {
                     const data = await res.json();
                     const messagesOnly = (data.results || []).filter((r: any) => r.type === 'message');
                     setServerMessages(messagesOnly);
@@ -261,14 +230,18 @@ export function SuperSearchModal({
             } catch (e) {
                 console.warn('[SuperSearch] Server query failed:', e);
             } finally {
-                setIsSearchingServer(false);
+                if (!ignore) {
+                    setIsSearchingServer(false);
+                }
             }
         }, 150);
 
-        return () => clearTimeout(timer);
+        return () => {
+            ignore = true;
+            clearTimeout(timer);
+        };
     }, [lowerQuery]);
 
-    // ─── Strategy A: Instant Client-Side Deep String Search ────────────
     const categorizedResults = useMemo<Record<SearchTabId, SearchMatchResult[]>>(() => {
         const emptyMap: Record<SearchTabId, SearchMatchResult[]> = {
             all: [], message: [], chat: [], character: [], context: [],
@@ -277,20 +250,35 @@ export function SuperSearchModal({
             account: [], multiplayerData: []
         };
 
-        if (!lowerQuery || lowerQuery.length < 2) return emptyMap;
+        if (!lowerQuery) return emptyMap;
 
-        // Generic deep scanner for entity items
-        const scanEntities = (items: any[], tabId: SearchTabId, getTitle: (item: any) => string, getSub?: (item: any) => string) => {
+        // Defensive scanner guaranteeing title, subtitle, and snippet are ALWAYS primitive strings
+        const scanEntities = (items: any[], tabId: SearchTabId, getTitle: (item: any) => string, getSub?: (item: any) => string | undefined) => {
             const results: SearchMatchResult[] = [];
+            if (!Array.isArray(items)) return results;
+
             for (const item of items) {
+                if (!item || typeof item !== 'object') continue;
                 const allStrings = extractDeepStrings(item);
                 const matchedStr = allStrings.find(s => s.toLowerCase().includes(lowerQuery));
                 if (matchedStr) {
+                    let subVal: any = getSub ? getSub(item) : item.description;
+                    let subStr = '';
+                    if (typeof subVal === 'string') {
+                        subStr = subVal;
+                    } else if (subVal && typeof subVal === 'object') {
+                        // Extract text from object if accidentally nested
+                        subStr = typeof subVal.text === 'string' ? subVal.text 
+                               : typeof subVal.content === 'string' ? subVal.content 
+                               : typeof subVal.name === 'string' ? subVal.name 
+                               : '';
+                    }
+
                     results.push({
                         tabId,
-                        id: item.id,
-                        title: getTitle(item),
-                        subtitle: getSub ? getSub(item) : item.description,
+                        id: String(item.id || ''),
+                        title: String(getTitle(item) || ''),
+                        subtitle: subStr || undefined,
                         snippet: makeSnippet(matchedStr, lowerQuery),
                         rawEntity: item,
                     });
@@ -299,11 +287,10 @@ export function SuperSearchModal({
             return results;
         };
 
-        // Entities
-        emptyMap.character = scanEntities(allCharacters, 'character', c => `🎭 ${c.name}`, c => c.description || c.systemPrompt);
-        emptyMap.context = scanEntities(allContexts, 'context', c => `📜 ${c.name}`, c => c.text);
-        emptyMap.location = scanEntities(allLocations, 'location', l => `📍 ${l.name}`, l => l.text);
-        emptyMap.promptBlock = scanEntities(allPromptBlocks, 'promptBlock', p => `🧱 ${p.name}`, p => p.textContent);
+        emptyMap.character = scanEntities(allCharacters, 'character', c => `🎭 ${c.name}`, c => typeof c.description === 'string' ? c.description : c.systemPrompt);
+        emptyMap.context = scanEntities(allContexts, 'context', c => `📜 ${c.name}`, c => typeof c.text === 'string' ? c.text : c.description);
+        emptyMap.location = scanEntities(allLocations, 'location', l => `📍 ${l.name}`, l => typeof l.text === 'string' ? l.text : l.description);
+        emptyMap.promptBlock = scanEntities(allPromptBlocks, 'promptBlock', p => `🧱 ${p.name}`, p => typeof p.textContent === 'string' ? p.textContent : p.description);
         emptyMap.audioTrack = scanEntities(allAudioTracks, 'audioTrack', a => `🔊 ${a.filename || a.name}`, a => a.audioCategory);
         emptyMap.world = scanEntities(allWorlds, 'world', w => `🌍 ${w.name}`);
         emptyMap.model = scanEntities(allModels, 'model', m => `🤖 ${m.name}`, m => m.model || m.backend);
@@ -311,19 +298,17 @@ export function SuperSearchModal({
         emptyMap.stopPattern = scanEntities(allStopPatterns, 'stopPattern', sp => `🛑 ${sp.name}`, sp => sp.pattern);
         emptyMap.budgetStrategy = scanEntities(allBudgetStrategies, 'budgetStrategy', b => `💰 ${b.name}`);
         emptyMap.profile = scanEntities(allProfiles, 'profile', p => `👤 ${p.name}`);
-        emptyMap.memory = scanEntities(allMemories, 'memory', m => `🧠 ${m.name}`, m => m.content);
+        emptyMap.memory = scanEntities(allMemories, 'memory', m => `🧠 ${typeof m.name === 'string' ? m.name : 'Untitled Memory'}`, m => typeof m.content === 'string' ? m.content : (typeof m.description === 'string' ? m.description : undefined));
         emptyMap.account = scanEntities(allAccounts, 'account', a => `🔑 ${a.name || a.username}`, a => `User: ${a.username}`);
         emptyMap.multiplayerData = scanEntities(allMultiplayerData, 'multiplayerData', m => `👥 ${m.name}`);
         emptyMap.chat = scanEntities(rawChatShells, 'chat', s => `📂 ${s.name || 'Untitled Chat'}`);
 
-        // ─── Messages: Merge Active Chat (in-memory) + Server Results (disk) ───
         const seenMessageIds = new Set<string>();
         const messageResults: SearchMatchResult[] = [];
 
-        // 1. Current chat messages
         if (currentInteractionData) {
             for (const msg of (currentInteractionData.interactionHistory || [])) {
-                if (msg.messageType === 'chat' && msg.textContent.toLowerCase().includes(lowerQuery)) {
+                if (msg.messageType === 'chat' && typeof msg.textContent === 'string' && msg.textContent.toLowerCase().includes(lowerQuery)) {
                     seenMessageIds.add(msg.id);
                     const chats = messageToChatsMap.get(msg.id) || [{ chatId: currentInteractionData.id, chatName: currentInteractionData.name || 'Untitled Chat' }];
                     messageResults.push({
@@ -338,7 +323,6 @@ export function SuperSearchModal({
             }
         }
 
-        // 2. Server-side disk results
         for (const sMsg of serverMessages) {
             if (!seenMessageIds.has(sMsg.id)) {
                 seenMessageIds.add(sMsg.id);
@@ -351,7 +335,7 @@ export function SuperSearchModal({
                     tabId: 'message',
                     id: sMsg.id,
                     title: speaker ? `🎭 ${speaker.name}` : '🎭 Character',
-                    snippet: sMsg.snippet,
+                    snippet: typeof sMsg.snippet === 'string' ? sMsg.snippet : '',
                     chats,
                 });
             }
@@ -359,7 +343,6 @@ export function SuperSearchModal({
 
         emptyMap.message = messageResults;
 
-        // "All" view combines top hits from every category
         emptyMap.all = [
             ...emptyMap.message.slice(0, 10),
             ...emptyMap.chat.slice(0, 5),
@@ -395,29 +378,24 @@ export function SuperSearchModal({
         return Object.values(categorizedResults).reduce((sum, arr) => sum + arr.length, 0) - categorizedResults.all.length;
     }, [categorizedResults]);
 
-    if (!isOpen) return null;
-
     return (
-        <div className="modal-overlay" onClick={onClose} style={{ zIndex: 100000 }}>
+        <div className="modal-overlay" onClick={onClose}>
             <div 
                 className="modal-content editor-modal-content" 
                 onClick={e => e.stopPropagation()} 
-                style={{ maxWidth: '820px', height: '85vh', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+                style={{ maxWidth: '850px', height: '88vh', maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}
             >
-                {/* Header / Search Input */}
-                <div className="modal-header" style={{ padding: '16px 20px 12px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                        <h2 style={{ fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span>⚡</span> Super Search
-                        </h2>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            {isSearchingServer && <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>Scanning disk...</span>}
-                            <button type="button" className="editor-button editor-button-cancel" onClick={onClose} style={{ minHeight: '32px', padding: '4px 12px' }}>
-                                Esc
-                            </button>
-                        </div>
+                {/* Modal Header */}
+                <div className="modal-header">
+                    <h2>Super Search</h2>
+                    <div className="editor-modal-actions">
+                        {isSearchingServer && <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>Scanning disk...</span>}
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Close</button>
                     </div>
-                    
+                </div>
+
+                {/* Search Bar */}
+                <div className="modal-search-container" style={{ padding: '0 20px 12px 20px' }}>
                     <input
                         ref={searchInputRef}
                         type="text"
@@ -425,12 +403,20 @@ export function SuperSearchModal({
                         value={query}
                         onChange={e => setQuery(e.target.value)}
                         className="modal-search-input"
-                        style={{ width: '100%', fontSize: '1rem', padding: '10px 14px' }}
                     />
                 </div>
 
-                {/* Entity Filter Tabs */}
-                <div style={{ display: 'flex', gap: '4px', padding: '0 16px', borderBottom: '1px solid var(--border)', overflowX: 'auto', flexShrink: 0, scrollbarWidth: 'none' }}>
+                {/* ─── Entity Tab Bar (5 tabs per row, expanded across remaining space) ─── */}
+                <div 
+                    className="entity-tab-bar" 
+                    style={{ 
+                        padding: '0 20px', 
+                        marginBottom: 0, 
+                        borderBottom: '1px solid var(--border)', 
+                        background: 'var(--social-bg)',
+                        flexShrink: 0
+                    }}
+                >
                     {TAB_CONFIG.map(tab => {
                         const count = tab.id === 'all' ? totalResultsCount : (categorizedResults[tab.id]?.length || 0);
                         return (
@@ -439,13 +425,18 @@ export function SuperSearchModal({
                                 type="button"
                                 onClick={() => setActiveTab(tab.id)}
                                 className={`entity-tab-button ${activeTab === tab.id ? 'entity-tab-button-active' : ''}`}
-                                style={{ fontSize: '0.7rem', padding: '8px 10px', gap: '6px' }}
+                                style={{ 
+                                    flex: '1 1 calc(20% - 4px)',
+                                    minWidth: 'calc(20% - 4px)',
+                                    fontSize: '0.7rem', 
+                                    padding: '8px 6px'
+                                }}
                             >
                                 <span>{tab.icon}</span>
                                 <span>{tab.label}</span>
-                                {lowerQuery.length >= 2 && count > 0 && (
-                                    <span style={{ fontSize: '0.65rem', opacity: 0.8, borderRadius: '10px', background: activeTab === tab.id ? 'rgba(255,255,255,0.25)' : 'var(--social-bg)', padding: '1px 6px' }}>
-                                        {count}
+                                {lowerQuery.length > 0 && count > 0 && (
+                                    <span style={{ opacity: 0.8, fontSize: '0.65rem', marginLeft: '2px' }}>
+                                        ({count})
                                     </span>
                                 )}
                             </button>
@@ -454,10 +445,10 @@ export function SuperSearchModal({
                 </div>
 
                 {/* Results List */}
-                <div className="modal-body editor-modal-body" style={{ flex: 1, padding: '16px' }}>
-                    {lowerQuery.length < 1 ? (
+                <div className="modal-body editor-modal-body" style={{ flex: 1, padding: '16px 20px' }}>
+                    {!lowerQuery ? (
                         <div style={{ textAlign: 'center', padding: '60px 20px', opacity: 0.5, fontSize: '0.85rem' }}>
-                            Type at least 1 characters to search across all lore, entities, prompts, and chat sessions.
+                            Type to search across all lore, entities, prompts, and chat sessions.
                         </div>
                     ) : displayedResults.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '60px 20px', opacity: 0.5, fontSize: '0.85rem' }}>
@@ -479,28 +470,27 @@ export function SuperSearchModal({
                                 >
                                     <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'baseline' }}>
                                         <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-h)' }}>
-                                            {item.title}
+                                            {String(item.title || '')}
                                         </div>
                                         <span style={{ fontSize: '0.65rem', opacity: 0.5, textTransform: 'uppercase' }}>
                                             {item.tabId}
                                         </span>
                                     </div>
 
-                                    {item.subtitle && (
+                                    {item.subtitle && typeof item.subtitle === 'string' && (
                                         <div style={{ fontSize: '0.75rem', opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
                                             {item.subtitle}
                                         </div>
                                     )}
 
-                                    {item.snippet && (
+                                    {item.snippet && typeof item.snippet === 'string' && (
                                         <div style={{ fontSize: '0.8rem', opacity: 0.9, background: 'rgba(0,0,0,0.15)', padding: '6px 8px', borderRadius: '4px', width: '100%', boxSizing: 'border-box', borderLeft: '3px solid var(--accent)' }}>
                                             "{item.snippet}"
                                         </div>
                                     )}
 
-                                    {/* Action row: Interactive buttons / Chat branch tags */}
+                                    {/* Action Row: Interactive badges / Open buttons */}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: '4px', flexWrap: 'wrap', gap: '6px' }}>
-                                        {/* If it's a message, show clickable badges for every chat session it belongs to */}
                                         {item.tabId === 'message' && item.chats && (
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
                                                 <span style={{ fontSize: '0.65rem', opacity: 0.5 }}>Belongs to:</span>
@@ -535,7 +525,6 @@ export function SuperSearchModal({
                                             </div>
                                         )}
 
-                                        {/* Regular Entity Open / Inspect Action */}
                                         {item.tabId !== 'message' && (
                                             <div style={{ marginLeft: 'auto' }}>
                                                 <button
@@ -564,4 +553,9 @@ export function SuperSearchModal({
             </div>
         </div>
     );
+}
+
+export function SuperSearchModal(props: SuperSearchModalProps) {
+    if (!props.isOpen) return null;
+    return <SuperSearchContent {...props} />;
 }
