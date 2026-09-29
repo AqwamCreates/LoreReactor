@@ -196,16 +196,8 @@ export function useChatSession(options: UseChatSessionOptions) {
             const currentDataId = currentData?.id || 'unknown';
             const budgetData = getState().budgetData;
             
-            const charHistory = currentData?.interactionHistory.filter(
-                (m): m is ChatMessage | WhisperMessage => 
-                    m.character.id === char.id && (m.messageType === 'chat' || m.messageType === 'whisper')
-            ) || [];
-            
-            speculativeMarkovEngine.syncMessages(
-                charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
-                char.id,
-                currentDataId
-            );
+            // ─── REMOVED: syncMessages from streaming callback ─────────────────────
+            // The Markov engine no longer learns from live, unedited streaming tokens.
 
             const outputCost = model?.outputGenerationCostPerOneMillionOfTokens || 15;
             const cacheMissCost = model?.cacheMissCostPerOneMillionOfTokens || 3;
@@ -230,7 +222,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                     const estimatedTokens = prediction.trim().split(/\s+/).length;
                     const costRatio = cacheMissCost / outputCost;
                     
-                    let minTokensThreshold = Infinity;
+                    let minTokensThreshold = Number.POSITIVE_INFINITY;
                     if (costRatio < 1) {
                         const modelId = model?.id || '';
                         const TTFT_ms = budgetData?.modelAverageTimeToFirstToken?.[modelId] ?? 500;
@@ -318,20 +310,9 @@ export function useChatSession(options: UseChatSessionOptions) {
         return () => { cancelled = true; };
     }, [interactionData, setNumberOfTokens]);
 
-    useEffect(() => {
-        if (!interactionData?.id) return;
-        if (!interactionData.Profile?.enableSpeculativeMarkov) return;
-
-        const history = interactionData.interactionHistory
-            .filter((m): m is ChatMessage | WhisperMessage => m.messageType === 'chat' || m.messageType === 'whisper')
-            .map(m => ({
-                textContent: m.textContent,
-                lastUpdatedTimestamp: m.lastUpdatedTimestamp,
-                characterId: m.character.id
-            }));
-        
-        speculativeMarkovEngine.fullTrain(history, interactionData.id);
-    }, [interactionData?.id, interactionData?.Profile?.enableSpeculativeMarkov, interactionData?.interactionHistory]);
+    // ─── REMOVED: Generic fullTrain useEffect ─────────────────────────────────────
+    // The Markov engine no longer automatically retrains every time the history changes.
+    // Training now ONLY happens explicitly when the user sends a new message/action.
 
     useEffect(() => {
         if (autonomousMode && interactionData && !isMultiplayerClient) {
@@ -614,6 +595,8 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             const targetChar = activeCharacter;
             const interactionDataId = latestState.interactionData?.id || 'unknown';
+            
+            // ─── MARKOV SYNC: Train on current history (including user edits) right before generation ───
             const charHistory = latestState.interactionData?.interactionHistory.filter(
                 (m): m is ChatMessage | WhisperMessage => 
                     m.character.id === targetChar.id && (m.messageType === 'chat' || m.messageType === 'whisper')
@@ -734,6 +717,20 @@ export function useChatSession(options: UseChatSessionOptions) {
                 numberOfMessages: td.interactionHistory.length,
                 numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
             };
+
+            // ─── MARKOV SYNC: Sync all participants since orchestrator picks the speaker ───
+            const interactionDataId = td?.id || 'unknown';
+            for (const p of td.participants) {
+                const charHistory = td.interactionHistory.filter(
+                    (m): m is ChatMessage | WhisperMessage => 
+                        m.character.id === p.id && (m.messageType === 'chat' || m.messageType === 'whisper')
+                );
+                speculativeMarkovEngine.syncMessages(
+                    charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
+                    p.id,
+                    interactionDataId
+                );
+            }
 
             const turnResult = await chatEngine.runTurn(td, ctrl, undefined, metadata);
             let ud = turnResult.interactionData;
@@ -884,6 +881,18 @@ export function useChatSession(options: UseChatSessionOptions) {
                 numberOfMessages: td.interactionHistory.length,
                 numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
             };
+
+            // ─── MARKOV SYNC: Train on current history right before generation ───
+            const interactionDataId = currentInteractionData?.id || 'unknown';
+            const charHistory = currentInteractionData?.interactionHistory.filter(
+                (m): m is ChatMessage | WhisperMessage => 
+                    m.character.id === protagonist.id && (m.messageType === 'chat' || m.messageType === 'whisper')
+            ) || [];
+            speculativeMarkovEngine.syncMessages(
+                charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
+                protagonist.id,
+                interactionDataId
+            );
 
             const turnResult = await chatEngine.runTurn(td, ctrl, undefined, metadata);
             let ud = turnResult.interactionData;
@@ -1054,17 +1063,8 @@ export function useChatSession(options: UseChatSessionOptions) {
         isAtBottomRef.current = true;
 
         try {
-            const targetCharResume = char;
-            const interactionDataIdResume = currentInteractionData?.id || 'unknown';
-            const charHistoryResume = currentInteractionData?.interactionHistory.filter(
-                (m): m is ChatMessage | WhisperMessage => 
-                    m.character.id === targetCharResume.id && (m.messageType === 'chat' || m.messageType === 'whisper')
-            ) || [];
-            speculativeMarkovEngine.syncMessages(
-                charHistoryResume.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
-                targetCharResume.id,
-                interactionDataIdResume
-            );
+            // ─── REMOVED: syncMessages from resumeGeneration ─────────────────────
+            // The Markov engine does not learn from resumed generations.
 
             const result = await chatEngine.handleServerResponse(
                 currentInteractionData, char, ctrl.signal,
@@ -1208,19 +1208,9 @@ export function useChatSession(options: UseChatSessionOptions) {
                 numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
             };
 
-            const targetCharRegen = protagonists[0];
-            if (targetCharRegen) {
-                const interactionDataIdRegen = currentInteractionData?.id || 'unknown';
-                const charHistoryRegen = currentInteractionData?.interactionHistory.filter(
-                    (m): m is ChatMessage | WhisperMessage => 
-                        m.character.id === targetCharRegen.id && (m.messageType === 'chat' || m.messageType === 'whisper')
-                ) || [];
-                speculativeMarkovEngine.syncMessages(
-                    charHistoryRegen.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
-                    targetCharRegen.id,
-                    interactionDataIdRegen
-                );
-            }
+            // ─── REMOVED: syncMessages from regenerateFromMessage ─────────────────────
+            // The Markov engine does NOT learn from regenerated outputs, because the user 
+            // explicitly rejected the previous output (which may have had bad formatting).
 
             const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks, metadata);
             let ud = turnResult.interactionData;
@@ -1301,6 +1291,9 @@ export function useChatSession(options: UseChatSessionOptions) {
         setSelectedCharacter(char);
         isAtBottomRef.current = true;
         setState({ sessionStartTimestamp: Date.now() });
+        
+        // ─── MARKOV CLEAR: Wipe slate clean for new chat ───
+        speculativeMarkovEngine.clearSession(c.id);
     }, [setInteractionData, setSelectedCharacter, setState]);
 
     return {
