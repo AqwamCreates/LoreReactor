@@ -180,7 +180,7 @@ function App() {
 
     const {
         interactionData, setInteractionData, setSelectedCharacter,
-        isLoading, currentCharacterExpression, // streamingText removed from top-level to prevent root re-renders
+        isLoading, currentCharacterExpression,
         sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage,
         messageEndRef, chatHistoryRef, startNewChat, sendActionAndGetResponse,
         setActiveBudgetStrategy, setSelectedGlobalModel,
@@ -222,14 +222,19 @@ function App() {
         prevChatIdRef.current = currentChatId;
     }, [interactionData?.id, mp, activeChatRestored]);
 
-    // Auto-associate multiplayer data with current chat
+    // ─── Auto-Associate Multiplayer Room (Strict Match or Reset to Solo) ──
     useEffect(() => {
         if (!interactionData?.id || mp.joinSessionId) return;
-        const mpData = useSessionStore.getState().multiplayerData;
-        if (mpData?.interactionDataIds?.includes(interactionData.id)) return;
-        const match = multiplayerDataManager.multiplayerData.find((m: MultiplayerData) => m.interactionDataIds.includes(interactionData.id!));
-        if (match) useSessionStore.setState({ multiplayerData: match });
-        else if (!mpData && multiplayerDataManager.multiplayerData.length > 0) useSessionStore.setState({ multiplayerData: multiplayerDataManager.multiplayerData[0] });
+
+        const currentStoreMpData = useSessionStore.getState().multiplayerData;
+        const match = multiplayerDataManager.multiplayerData.find(
+            (m: MultiplayerData) => m.interactionDataIds.includes(interactionData.id!)
+        ) ?? null;
+
+        // If chat is linked to a room, activate it; otherwise strictly null (solo chat)
+        if (currentStoreMpData?.id !== match?.id) {
+            useSessionStore.setState({ multiplayerData: match });
+        }
     }, [interactionData?.id, multiplayerDataManager.multiplayerData, mp.joinSessionId]);
 
     useEffect(() => {
@@ -408,14 +413,14 @@ function App() {
         if (!textareaRef.current) return; 
         textareaRef.current.style.height = 'auto'; 
         textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, window.innerHeight * 0.3)}px`; 
-    }, []);
+    }, [inputText]);
 
     // Auto-resize edit textarea when opened and as user types
     useEffect(() => { 
         if (!editTextAreaRef.current || !messageActions.editingId) return; 
         editTextAreaRef.current.style.height = 'auto'; 
         editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`; 
-    }, [messageActions.editingId]);
+    }, [messageActions.editingId, messageActions.editDraft]);
 
     // ─── Derived Display Values ──────────────────────────────────────
     const canDelete = (!isMultiplayerChat || mp.multiplayerSync.isHost || mp.multiplayerSync.isAdmin) && !isLoading;
