@@ -1,4 +1,4 @@
-// src/hooks/useChatSession.tsx
+// src/hooks/useChatSession.ts
 import { useRef, useCallback, useEffect } from 'react';
 import { useChatState } from './useChatState';
 import { useChatEngine } from './useChatEngine';
