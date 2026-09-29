@@ -23,7 +23,8 @@ export function useChatListManager() {
         }
     }, []);
 
-    const deleteChat = async (id: string) => {
+    // FIX: Wrap deleteChat in useCallback to maintain a stable reference
+    const deleteChat = useCallback(async (id: string) => {
         try {
             await deleteRawInteractionData(id);
             await loadChats(true);
@@ -32,9 +33,15 @@ export function useChatListManager() {
             console.error("Failed to delete chat", error);
             return false;
         }
-    };
+    }, [loadChats]);
 
     const refresh = useCallback(() => loadChats(true), [loadChats]);
 
-    return { rawChatShells, isLoading, deleteChat, refresh, ensureLoaded: loadChats };
+    return { 
+        rawChatShells, 
+        isLoading, 
+        deleteChat, 
+        refresh, 
+        ensureLoaded: loadChats 
+    };
 }

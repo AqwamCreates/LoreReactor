@@ -544,7 +544,13 @@ function App() {
         return () => clearTimeout(timer);
     }, [loadSteps, isInitializing, activeChatRestored, interactionData]);
 
-    useEffect(() => { if (!isInitializing && activeChatRestored) chatList.ensureLoaded(); }, [isInitializing, activeChatRestored, chatList]);
+    const ensureChatsLoaded = chatList.ensureLoaded;
+
+    useEffect(() => { 
+        if (!isInitializing && activeChatRestored) {
+            ensureChatsLoaded(); 
+        } 
+    }, [isInitializing, activeChatRestored, ensureChatsLoaded]);
 
     // ─── Wrapped Multiplayer-Aware Handlers ──────────────────────────
     const wrappedSaveEdit = useCallback(async () => {
