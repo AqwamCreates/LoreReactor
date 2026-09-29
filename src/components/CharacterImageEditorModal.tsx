@@ -3,7 +3,7 @@ import type React from 'react';
 import { useState, useRef } from 'react';
 import { uploadCharacterImage, getCharacterImageUrl } from '../storages/serverStorage';
 import '../main.css';
-import type { emotions } from '../dictionaries/characterPresets';
+import { emotions } from '../dictionaries/characterPresets';
 
 type EmotionLabel = typeof emotions[number];
 
