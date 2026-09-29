@@ -31,20 +31,14 @@ const engine = getLanguageModelEngine();
 const NO_ARG_TOOLS = ['coin', 'date'];
 const HOST_ONLY_TOOLS = ['administrator', 'creator', 'destroyer'];
 
-/**
- * Calculates a latency interference factor using sigmoid scaling.
- * Returns a value between 0 and 1. 
- * 0 = No interference (normal speed).
- * 1 = Maximum interference (desperate for tokens).
- */
 function calculateLatencyFactor(
     timeSinceLastTokenMs: number, 
     averageTTFTMs: number,
     msPerToken: number
 ): number {
     // Sigmoid parameters
-    const painPoint = timeSinceLastTokenMs * 2; // The "tipping point" where we start getting desperate
-    const zValue = painPoint - averageTTFTMs // Still in ms.
+    const painPoint = averageTTFTMs * 2; // We get impatient if our next token has more than double than the average TTFT.
+    const zValue = timeSinceLastTokenMs - painPoint // Still in ms.
     const scaledZValue = zValue / msPerToken // ms / (ms per token) = token.
 
     // Negative Z-value (z < 0): Output is < 0.5. The value is below average.
