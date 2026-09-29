@@ -39,18 +39,20 @@ const HOST_ONLY_TOOLS = ['administrator', 'creator', 'destroyer'];
  */
 function calculateLatencyFactor(
     timeSinceLastTokenMs: number, 
-    averageTTFTMs: number
+    averageTTFTMs: number,
+    msPerToken: number
 ): number {
     // Sigmoid parameters
-    const painPoint = averageTTFTMs * 2; // The "tipping point" where we start getting desperate
-    const zValue = painPoint - timeSinceLastTokenMs
+    const painPoint = timeSinceLastTokenMs * 2; // The "tipping point" where we start getting desperate
+    const zValue = painPoint - averageTTFTMs // Still in ms.
+    const scaledZValue = zValue / msPerToken // ms / ms per token = token.
 
     // Negative Z-value (z < 0): Output is < 0.5. The value is below average.
     // Zero Z-value (z = 0): Output is exactly 0.5. The current value is perfectly equal to the average.
     // Positive Z-value (z > 0): Output is > 0.5. The value is above average.
     
     // Sigmoid function without the negative sign to invert it.
-    return 1 / (1 + Math.exp(zValue));
+    return 1 / (1 + Math.exp(scaledZValue));
 }
 
 function finalizeMessageById(
@@ -254,7 +256,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                         const timeSinceLastToken = now - lastTokenTimestampRef.current;
                         lastTokenTimestampRef.current = now;
 
-                        const latencyFactor = calculateLatencyFactor(timeSinceLastToken, TTFT_ms);
+                        const latencyFactor = calculateLatencyFactor(timeSinceLastToken, TTFT_ms, msPerToken);
                         
                         const TTFT_seconds = TTFT_ms / 1000;
                         const TPS = 1000 / msPerToken;
