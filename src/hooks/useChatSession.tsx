@@ -24,7 +24,13 @@ import { learnFromUserMessage } from '../services/ActionFormatEngine';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { MultiplayerEvents } from '../services/MultiplayerEvents';
-import type { Character, Context, Location, AudioTrack, World, PromptBlock, Sampler, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, WhisperMessage, HistoryMessage, Memory, Extension, Account, MultiplayerData, LanguageModel, InterjectableAction } from '../types';
+import type { 
+    Character, Context, Location, AudioTrack, World, 
+    PromptBlock, Sampler, StopPattern, BudgetStrategy, 
+    Profile, InteractionData, ChatMessage, WhisperMessage, 
+    HistoryMessage, Memory, Extension, Account, 
+    MultiplayerData, LanguageModel, InterjectableAction 
+} from '../types';
 
 const engine = getLanguageModelEngine();
 
@@ -97,6 +103,16 @@ interface UseChatSessionOptions {
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
 }
 
+interface GenerationTurnOptions {
+    data: InteractionData;
+    protagonistId: string;
+    allPromptBlocks?: PromptBlock[];
+    responderCharacter?: Character;
+    isProtagonistCharId?: (charId: string) => boolean;
+    errorPrefix?: string;
+    lockAlreadyAcquired?: boolean;
+}
+
 export function useChatSession(options: UseChatSessionOptions) {
     const { addToast } = useToast();
     const onMessageBroadcastRef = useRef(options?.onMessageBroadcast);
@@ -166,12 +182,10 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     const pendingHostResponseRef = useRef(false);
     const triggerHostResponseRef = useRef<() => Promise<void>>(null);
-    const pendingResumeRef = useRef<{messageId: string, allPromptBlocks?: PromptBlock[]} | null>(null);
+    const pendingResumeRef = useRef<{ messageId: string; allPromptBlocks?: PromptBlock[] } | null>(null);
 
     const lastTurnContextRef = useRef<{ modelId: string; prompt: string; metadata: RequestMetadata } | null>(null);
     const requestTimestampsRef = useRef<number[]>([]);
-    
-    // Track timing for latency-based Markov interference
     const lastTokenTimestampRef = useRef<number>(0);
 
     const getRequestsLastHour = useCallback(() => {
@@ -204,7 +218,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         const char = streamingCharacterRef.current;
         const msgId = streamingMessageIdRef.current;
         
-        // Track token interval accurately
         const now = Date.now();
         const timeSinceLastToken = lastTokenTimestampRef.current > 0 ? (now - lastTokenTimestampRef.current) : 25;
         lastTokenTimestampRef.current = now;
@@ -448,7 +461,154 @@ export function useChatSession(options: UseChatSessionOptions) {
         addToast,
     }), [addToast]);
 
-    const sendMessage = useCallback(async (text: string, allPromptBlocks: PromptBlock[] | undefined, files: File[] | undefined, frontCameraImageBase64: string | undefined) => {
+    // ─── Unified Generation Pipeline ─────────────────────────────────
+    const executeTurnPipeline = useCallback(async ({
+        data,
+        protagonistId,
+        allPromptBlocks,
+        responderCharacter,
+        isProtagonistCharId,
+        errorPrefix = 'Generation failed',
+        lockAlreadyAcquired = false,
+    }: GenerationTurnOptions) => {
+        if (!lockAlreadyAcquired && !acquireLock()) return;
+        if (!data.Profile || !data.Profile?.enableCharacterExpression) sentimentEngine.unload();
+
+        const currentState = getState();
+        if (!currentState.activeStrategy && !isModelReadyForGeneration()) {
+            addToast('Model not ready.', 'error');
+            releaseLock();
+            return;
+        }
+
+        const ctrl = new AbortController();
+        abortControllerRef.current = ctrl;
+        wasStoppedRef.current = false;
+        isSpeculatingRef.current = false;
+        resetStream();
+        setStreamingState(null, '');
+        setStats({ latency: 0, timeToFirstToken: 0 });
+        isAtBottomRef.current = true;
+        lastTokenTimestampRef.current = Date.now();
+
+        const preTurnCount = data.interactionHistory.length;
+        const isProtagonist = isProtagonistCharId || ((id: string) => id === protagonistId);
+        const responderChar = responderCharacter
+            || data.participants.find(p => !isProtagonist(p.id))
+            || data.participants[0]
+            || currentState.currentCharacter;
+
+        streamingCharacterRef.current = responderChar ?? null;
+        streamingMessageIdRef.current = `gen-${responderChar?.id || 'ai'}-${Date.now()}`;
+
+        try {
+            requestTimestampsRef.current.push(Date.now());
+            const metadata: RequestMetadata = {
+                numberOfMessages: data.interactionHistory.length,
+                numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
+            };
+
+            const interactionDataId = data.id || 'unknown';
+            for (const participant of data.participants) {
+                const charHistory = data.interactionHistory.filter(
+                    (m): m is ChatMessage | WhisperMessage =>
+                        m.character.id === participant.id && (m.messageType === 'chat' || m.messageType === 'whisper')
+                );
+                speculativeMarkovEngine.syncMessages(
+                    charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })),
+                    participant.id,
+                    interactionDataId
+                );
+            }
+
+            const turnResult = await chatEngine.runTurn(data, ctrl, allPromptBlocks, metadata);
+            let ud = turnResult.interactionData;
+
+            if (turnResult.promptText) {
+                const currentModelId = useSessionStore.getState().selectedModelId;
+                if (currentModelId) {
+                    lastTurnContextRef.current = {
+                        modelId: currentModelId,
+                        prompt: turnResult.promptText,
+                        metadata,
+                    };
+                }
+            }
+
+            if (pendingPartialRef.current) {
+                const fd = await applyPendingPartial(ud, protagonistId);
+                setInteractionData(fd);
+                broadcastNewMessages(preTurnCount, fd);
+                return;
+            }
+
+            ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
+
+            if (ud.interactionHistory.length > preTurnCount) {
+                setInteractionData(ud);
+                broadcastNewMessages(preTurnCount, ud);
+
+                if (!turnResult.isCompleted && !wasStoppedRef.current) {
+                    autoResumeOnCutoff(ud, protagonistId, allPromptBlocks);
+                    return;
+                }
+
+                runSummarization({
+                    data: ud,
+                    setData: setInteractionData,
+                    addToast,
+                });
+
+                const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
+                if (lm && lm.messageType === 'chat' && !isProtagonist(lm.character.id)) {
+                    ui.playVoice(lm.textContent, lm.character);
+                }
+            } else {
+                const enableAmbientNarration = ud?.Profile?.enableAmbientNarration ?? false;
+                if (enableAmbientNarration) {
+                    const ad = await generateAmbientNarration(ud, ctrl.signal);
+                    const sd = ad || ud;
+                    setInteractionData(sd);
+                    broadcastNewMessages(preTurnCount, sd);
+                } else {
+                    setInteractionData(ud);
+                    broadcastNewMessages(preTurnCount, ud);
+                }
+            }
+        } catch (e) {
+            if ((e as Error).name !== 'AbortError') {
+                console.error(`${errorPrefix}:`, e);
+                addToast(`${errorPrefix}: ${(e as Error).message}`, 'error');
+            }
+        } finally {
+            if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
+            isSpeculatingRef.current = false;
+            streamingCharacterRef.current = null;
+            streamingMessageIdRef.current = null;
+            releaseLock();
+
+            if (pendingResumeRef.current) {
+                const { messageId, allPromptBlocks: blocks } = pendingResumeRef.current;
+                pendingResumeRef.current = null;
+                setTimeout(() => resumeGenerationRef.current?.(messageId, blocks), 0);
+            } else if (pendingHostResponseRef.current) {
+                pendingHostResponseRef.current = false;
+                setTimeout(() => triggerHostResponseRef.current?.(), 0);
+            }
+        }
+    }, [
+        acquireLock, getState, isModelReadyForGeneration, addToast, releaseLock, 
+        resetStream, setStreamingState, setStats, getRequestsLastHour, chatEngine, 
+        applyPendingPartial, setInteractionData, broadcastNewMessages, 
+        autoResumeOnCutoff, ui, generateAmbientNarration
+    ]);
+
+    const sendMessage = useCallback(async (
+        text: string, 
+        allPromptBlocks: PromptBlock[] | undefined, 
+        files: File[] | undefined, 
+        frontCameraImageBase64: string | undefined
+    ) => {
         const currentState = getState();
         const activeCharacter = isMultiplayerClient 
             ? (joinProtagonistRef.current || currentState.currentCharacter)
@@ -498,241 +658,98 @@ export function useChatSession(options: UseChatSessionOptions) {
 
                 if (isMultiplayerClient) {
                     onMessageBroadcastRef.current?.(slashMessage);
+                    releaseLock();
+                    return;
                 }
+
+                await executeTurnPipeline({
+                    data: updatedData,
+                    protagonistId: activeCharacter.id,
+                    allPromptBlocks,
+                    errorPrefix: 'Send failed',
+                    lockAlreadyAcquired: true,
+                });
+                return;
             } catch (e) {
                 console.error('Slash command failed:', e);
                 addToast(`Command failed: ${(e as Error).message}`, 'error');
                 releaseLock();
                 return;
             }
+        }
+
+        if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
+
+        try {
+            const currentInteractionData = currentState.interactionData;
+            const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = error => reject(error);
+            });
+            const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
+
+            const filteredMessages = getFilteredChatMessages(currentInteractionData, activeCharacter.id, allPromptBlocks || []);
+            const knownCharacterNames = detectName(activeCharacter, filteredMessages);
+
+            const chatMessage = createChatMessage(currentInteractionData, activeCharacter, text, { 
+                files: encodedFiles, 
+                frontCameraImage: frontCameraImageBase64,
+                knownCharacterNames
+            });
+            let td = addMessageToInteractionData(currentInteractionData, chatMessage);
+
+            onMessageBroadcastRef.current?.(chatMessage);
+
+            if (allActionsRef.current.length > 0) {
+                let prevWrap: '*' | '()' | 'none' | 'unknown' = 'unknown';
+                for (let i = td.interactionHistory.length - 2; i >= 0; i--) {
+                    const prevMsg = td.interactionHistory[i];
+                    if (prevMsg.character.id === activeCharacter.id && prevMsg.messageType === 'chat') {
+                        const prevText = prevMsg.textContent;
+                        if (prevText.includes('*')) prevWrap = '*';
+                        else if (prevText.includes('(') && prevText.includes(')')) prevWrap = '()';
+                        else prevWrap = 'none';
+                        break;
+                    }
+                }
+                learnFromUserMessage(text, allActionsRef.current.map(a => a.label), prevWrap);
+            }
+
+            const hasLocations = td.locations && td.locations.length > 0;
+            if (hasLocations) {
+                const protagonistMsg = td.interactionHistory[td.interactionHistory.length - 1];
+                if (protagonistMsg && protagonistMsg.character.id === activeCharacter.id && protagonistMsg.messageType === 'chat') {
+                    const currentLoc = getCurrentLocationIndex(td, activeCharacter);
+                    const regexLoc = findLocationByRegex(td.locations, protagonistMsg.textContent, activeCharacter);
+                    const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
+                    td = { ...td, interactionHistory: td.interactionHistory.map((m, i) => i === td.interactionHistory.length - 1 ? { ...m, locationIndex: finalLoc } : m) };
+                }
+            }
+
+            setInteractionData(td);
 
             if (isMultiplayerClient) {
                 releaseLock();
                 return;
             }
-        }
 
-        const currentInteractionData = currentState.interactionData;
-        if (!currentInteractionData.Profile || !currentInteractionData.Profile?.enableCharacterExpression) sentimentEngine.unload();
-
-        if (!isSlashCommand && !acquireLock()) { addToast('Already generating...', 'info'); return; }
-        
-        if (isMultiplayerClient && !isSlashCommand) {
-            try {
-                const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error); });
-                const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
-
-                const filteredMessages = getFilteredChatMessages(currentInteractionData, activeCharacter.id, allPromptBlocks || []);
-                const knownCharacterNames = detectName(activeCharacter, filteredMessages);
-
-                const chatMessage = createChatMessage(currentInteractionData, activeCharacter, text, { 
-                    files: encodedFiles, 
-                    frontCameraImage: frontCameraImageBase64,
-                    knownCharacterNames
-                });
-                let td = addMessageToInteractionData(currentInteractionData, chatMessage);
-
-                onMessageBroadcastRef.current?.(chatMessage);
-
-                if (allActionsRef.current.length > 0) {
-                    let prevWrap: '*' | '()' | 'none' | 'unknown' = 'unknown';
-                    for (let i = td.interactionHistory.length - 2; i >= 0; i--) {
-                        const prevMsg = td.interactionHistory[i];
-                        if (prevMsg.character.id === activeCharacter.id && prevMsg.messageType === 'chat') {
-                            const prevText = prevMsg.textContent;
-                            if (prevText.includes('*')) prevWrap = '*';
-                            else if (prevText.includes('(') && prevText.includes(')')) prevWrap = '()';
-                            else prevWrap = 'none';
-                            break;
-                        }
-                    }
-                    learnFromUserMessage(text, allActionsRef.current.map(a => a.label), prevWrap);
-                }
-
-                const hasLocations = td.locations && td.locations.length > 0;
-                if (hasLocations) {
-                    const protagonistMsg = td.interactionHistory[td.interactionHistory.length - 1];
-                    if (protagonistMsg && protagonistMsg.character.id === activeCharacter.id && protagonistMsg.messageType === 'chat') {
-                        const currentLoc = getCurrentLocationIndex(td, activeCharacter);
-                        const regexLoc = findLocationByRegex(td.locations, protagonistMsg.textContent, activeCharacter);
-                        const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
-                        td = { ...td, interactionHistory: td.interactionHistory.map((m, i) => i === td.interactionHistory.length - 1 ? { ...m, locationIndex: finalLoc } : m) };
-                    }
-                }
-
-                setInteractionData(td);
-            } finally {
-                releaseLock();
-            }
-            return;
-        }
-        
-        if (!currentState.activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
-
-        const ctrl = new AbortController();
-        abortControllerRef.current = ctrl;
-        wasStoppedRef.current = false;
-        isSpeculatingRef.current = false;
-        resetStream();
-        setStreamingState(null, '');
-        setStats({ latency: 0, timeToFirstToken: 0 });
-        isAtBottomRef.current = true;
-        lastTokenTimestampRef.current = Date.now();
-
-        try {
-            const latestState = getState();
-            let td = latestState.interactionData as InteractionData;
-
-            if (!isSlashCommand) {
-                const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error); });
-                const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
-
-                const filteredMessages = getFilteredChatMessages(td, activeCharacter.id, allPromptBlocks || []);
-                const knownCharacterNames = detectName(activeCharacter, filteredMessages);
-
-                const chatMessage = createChatMessage(td, activeCharacter, text, { 
-                    files: encodedFiles, 
-                    frontCameraImage: frontCameraImageBase64,
-                    knownCharacterNames
-                });
-                td = addMessageToInteractionData(td, chatMessage);
-
-                onMessageBroadcastRef.current?.(chatMessage);
-
-                if (allActionsRef.current.length > 0) {
-                    let prevWrap: '*' | '()' | 'none' | 'unknown' = 'unknown';
-                    for (let i = td.interactionHistory.length - 2; i >= 0; i--) {
-                        const prevMsg = td.interactionHistory[i];
-                        if (prevMsg.character.id === activeCharacter.id && prevMsg.messageType === 'chat') {
-                            const prevText = prevMsg.textContent;
-                            if (prevText.includes('*')) prevWrap = '*';
-                            else if (prevText.includes('(') && prevText.includes(')')) prevWrap = '()';
-                            else prevWrap = 'none';
-                            break;
-                        }
-                    }
-                    learnFromUserMessage(text, allActionsRef.current.map(a => a.label), prevWrap);
-                }
-
-                const hasLocations = td.locations && td.locations.length > 0;
-                if (hasLocations) {
-                    const protagonistMsg = td.interactionHistory[td.interactionHistory.length - 1];
-                    if (protagonistMsg && protagonistMsg.character.id === activeCharacter.id && protagonistMsg.messageType === 'chat') {
-                        const currentLoc = getCurrentLocationIndex(td, activeCharacter);
-                        const regexLoc = findLocationByRegex(td.locations, protagonistMsg.textContent, activeCharacter);
-                        const finalLoc = regexLoc !== undefined ? regexLoc : currentLoc;
-                        td = { ...td, interactionHistory: td.interactionHistory.map((m, i) => i === td.interactionHistory.length - 1 ? { ...m, locationIndex: finalLoc } : m) };
-                    }
-                }
-
-                setInteractionData(td);
-            }
-
-            const preTurnCount = td.interactionHistory.length;
-            
-            // Set streaming references for live broadcasting
-            const responderChar = td.participants.find(p => p.id !== activeCharacter.id) || activeCharacter;
-            streamingCharacterRef.current = responderChar;
-            streamingMessageIdRef.current = `gen-${responderChar.id}-${Date.now()}`;
-
-            requestTimestampsRef.current.push(Date.now());
-            const metadata: RequestMetadata = {
-                numberOfMessages: td.interactionHistory.length,
-                numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
-            };
-
-            const interactionDataId = latestState.interactionData?.id || 'unknown';
-            
-            // Sync all participants in the session to ensure Markov models are up-to-date
-            for (const participant of td.participants) {
-                const charHistory = td.interactionHistory.filter(
-                    (m): m is ChatMessage | WhisperMessage => 
-                        m.character.id === participant.id && (m.messageType === 'chat' || m.messageType === 'whisper')
-                );
-                speculativeMarkovEngine.syncMessages(
-                    charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
-                    participant.id,
-                    interactionDataId
-                );
-            }
-
-            const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks, metadata);
-            let ud = turnResult.interactionData;
-
-            if (turnResult.promptText) {
-                const currentModelId = useSessionStore.getState().selectedModelId;
-                if (currentModelId) {
-                    lastTurnContextRef.current = {
-                        modelId: currentModelId,
-                        prompt: turnResult.promptText,
-                        metadata,
-                    };
-                }
-            }
-
-            if (pendingPartialRef.current) {
-                const fd = await applyPendingPartial(ud, activeCharacter.id);
-                setInteractionData(fd);
-                broadcastNewMessages(preTurnCount, fd);
-                return;
-            }
-
-            ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
-
-            if (ud.interactionHistory.length > td.interactionHistory.length) {
-                setInteractionData(ud);
-                broadcastNewMessages(preTurnCount, ud);
-
-                if (!turnResult.isCompleted && !wasStoppedRef.current) {
-                    autoResumeOnCutoff(ud, activeCharacter.id, allPromptBlocks);
-                    return;
-                }
-
-                runSummarization({
-                    data: ud,
-                    setData: setInteractionData,
-                    addToast,
-                });
-
-                const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
-                if (lm && lm.messageType === 'chat' && lm.character.id !== activeCharacter.id) {
-                    ui.playVoice(lm.textContent, lm.character);
-                }
-            } else {
-                const enableAmbientNarration = ud?.Profile?.enableAmbientNarration ?? false;
-                
-                if (enableAmbientNarration) {
-                    const ad = await generateAmbientNarration(ud, ctrl.signal);
-                    const sd = ad || ud;
-                    setInteractionData(sd);
-                    broadcastNewMessages(preTurnCount, sd);
-                } else {
-                    setInteractionData(ud);
-                    broadcastNewMessages(preTurnCount, ud);
-                }
-            }
+            await executeTurnPipeline({
+                data: td,
+                protagonistId: activeCharacter.id,
+                allPromptBlocks,
+                errorPrefix: 'Send failed',
+                lockAlreadyAcquired: true,
+            });
         } catch (e) {
-            if ((e as Error).name !== 'AbortError') {
-                console.error('Send failed:', e);
-                addToast(`Send failed: ${(e as Error).message}`, 'error');
-            }
-        } finally {
-            if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
-            isSpeculatingRef.current = false;
-            streamingCharacterRef.current = null;
-            streamingMessageIdRef.current = null;
+            console.error('Send error:', e);
             releaseLock();
-            
-            if (pendingResumeRef.current) {
-                const { messageId, allPromptBlocks: blocks } = pendingResumeRef.current;
-                pendingResumeRef.current = null;
-                setTimeout(() => resumeGenerationRef.current?.(messageId, blocks), 0);
-            } else if (pendingHostResponseRef.current) {
-                pendingHostResponseRef.current = false;
-                setTimeout(() => triggerHostResponseRef.current?.(), 0);
-            }
         }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, autoResumeOnCutoff, broadcastNewMessages, isMultiplayerClient, buildToolContext, getRequestsLastHour]);
+    }, [
+        getState, isMultiplayerClient, buildToolContext, addToast, 
+        acquireLock, releaseLock, executeTurnPipeline, setInteractionData
+    ]);
 
     const triggerHostResponse = useCallback(async () => {
         const currentState = getState();
@@ -741,127 +758,14 @@ export function useChatSession(options: UseChatSessionOptions) {
             pendingHostResponseRef.current = true;
             return; 
         }
-        if (!currentState.activeStrategy && !isModelReadyForGeneration()) { 
-            addToast('Model not ready.', 'error'); 
-            releaseLock(); 
-            return; 
-        }
 
-        const ctrl = new AbortController();
-        abortControllerRef.current = ctrl;
-        wasStoppedRef.current = false;
-        isSpeculatingRef.current = false;
-        resetStream();
-        setStreamingState(null, '');
-        setStats({ latency: 0, timeToFirstToken: 0 });
-        isAtBottomRef.current = true;
-        lastTokenTimestampRef.current = Date.now();
-
-        try {
-            const td = currentState.interactionData;
-            const preTurnCount = td.interactionHistory.length;
-
-            // Set streaming references for live broadcasting
-            const responderChar = td.participants.find(p => p.id !== currentState.currentCharacter?.id) || currentState.currentCharacter;
-            streamingCharacterRef.current = responderChar;
-            streamingMessageIdRef.current = `gen-${responderChar.id}-${Date.now()}`;
-
-            requestTimestampsRef.current.push(Date.now());
-            const metadata: RequestMetadata = {
-                numberOfMessages: td.interactionHistory.length,
-                numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
-            };
-
-            const interactionDataId = td?.id || 'unknown';
-            for (const p of td.participants) {
-                const charHistory = td.interactionHistory.filter(
-                    (m): m is ChatMessage | WhisperMessage => 
-                        m.character.id === p.id && (m.messageType === 'chat' || m.messageType === 'whisper')
-                );
-                speculativeMarkovEngine.syncMessages(
-                    charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
-                    p.id,
-                    interactionDataId
-                );
-            }
-
-            const turnResult = await chatEngine.runTurn(td, ctrl, undefined, metadata);
-            let ud = turnResult.interactionData;
-
-            if (turnResult.promptText) {
-                const currentModelId = useSessionStore.getState().selectedModelId;
-                if (currentModelId) {
-                    lastTurnContextRef.current = {
-                        modelId: currentModelId,
-                        prompt: turnResult.promptText,
-                        metadata,
-                    };
-                }
-            }
-
-            if (pendingPartialRef.current) {
-                const fd = await applyPendingPartial(ud, currentState.currentCharacter.id);
-                setInteractionData(fd);
-                broadcastNewMessages(preTurnCount, fd);
-                return;
-            }
-
-            ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
-
-            if (ud.interactionHistory.length > td.interactionHistory.length) {
-                setInteractionData(ud);
-                broadcastNewMessages(preTurnCount, ud);
-
-                if (!turnResult.isCompleted && !wasStoppedRef.current) {
-                    autoResumeOnCutoff(ud, currentState.currentCharacter.id);
-                    return;
-                }
-
-                runSummarization({
-                    data: ud,
-                    setData: setInteractionData,
-                    addToast,
-                });
-
-                const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
-                if (lm && lm.messageType === 'chat' && lm.character.id !== currentState.currentCharacter?.id) {
-                    ui.playVoice(lm.textContent, lm.character);
-                }
-            } else {
-                const enableAmbientNarration = currentState.interactionData?.Profile?.enableAmbientNarration ?? false;
-                
-                if (enableAmbientNarration) {
-                    const ad = await generateAmbientNarration(ud, ctrl.signal);
-                    const sd = ad || ud;
-                    setInteractionData(sd);
-                    broadcastNewMessages(preTurnCount, sd);
-                } else {
-                    setInteractionData(ud);
-                    broadcastNewMessages(preTurnCount, ud);
-                }
-            }
-        } catch (e) {
-            if ((e as Error).name !== 'AbortError') {
-                console.error('[MP] Host response failed:', e);
-                addToast(`Host response failed: ${(e as Error).message}`, 'error');
-            }
-        } finally {
-            if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
-            isSpeculatingRef.current = false;
-            streamingCharacterRef.current = null;
-            streamingMessageIdRef.current = null;
-            releaseLock();
-            
-            if (pendingResumeRef.current) {
-                const { messageId, allPromptBlocks: blocks } = pendingResumeRef.current;
-                pendingResumeRef.current = null;
-                setTimeout(() => resumeGenerationRef.current?.(messageId, blocks), 0);
-            } else if (pendingHostResponseRef.current) {
-                pendingHostResponseRef.current = false;
-                setTimeout(() => triggerHostResponseRef.current?.(), 0);
-            }
-        }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, autoResumeOnCutoff, broadcastNewMessages, getRequestsLastHour]);
+        await executeTurnPipeline({
+            data: currentState.interactionData,
+            protagonistId: currentState.currentCharacter.id,
+            errorPrefix: 'Host response failed',
+            lockAlreadyAcquired: true,
+        });
+    }, [getState, acquireLock, executeTurnPipeline]);
 
     useEffect(() => {
         triggerHostResponseRef.current = triggerHostResponse;
@@ -872,161 +776,47 @@ export function useChatSession(options: UseChatSessionOptions) {
         if (isMultiplayerClient) return;
 
         const unsubscribe = MultiplayerEvents.on('peerMessageReceived', async () => {
-            console.log('[useChatSession] Triggering host response from MultiplayerEvents');
             await triggerHostResponse();
         });
 
         return unsubscribe;
     }, [isMultiplayerClient, triggerHostResponse]);
 
-    const sendActionAndGetResponse = useCallback(async (actionText: string, _targetChar: Character, protagonist: Character) => {
+    const sendActionAndGetResponse = useCallback(async (
+        actionText: string, 
+        _targetChar: Character, 
+        protagonist: Character
+    ) => {
         const currentState = getState();
         const currentInteractionData = currentState.interactionData;
         if (!currentInteractionData) return;
-        if (!currentInteractionData.Profile || !currentInteractionData.Profile?.enableCharacterExpression) sentimentEngine.unload();
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
         
         const activeProtagonist = isMultiplayerClient 
             ? (joinProtagonistRef.current || protagonist) 
             : protagonist;
 
+        const filteredMessages = getFilteredChatMessages(currentInteractionData, activeProtagonist.id, allPromptBlocksRef.current || []);
+        const knownCharacterNames = detectName(activeProtagonist, filteredMessages);
+
+        const chatMessage = createChatMessage(currentInteractionData, activeProtagonist, actionText, { knownCharacterNames });
+        const td = addMessageToInteractionData(currentInteractionData, chatMessage);
+
+        onMessageBroadcastRef.current?.(chatMessage);
+        setInteractionData(td);
+
         if (isMultiplayerClient) {
-            try {
-                const filteredMessages = getFilteredChatMessages(currentInteractionData, activeProtagonist.id, allPromptBlocksRef.current || []);
-                const knownCharacterNames = detectName(activeProtagonist, filteredMessages);
-
-                const chatMessage = createChatMessage(currentInteractionData, activeProtagonist, actionText, { knownCharacterNames });
-                const td = addMessageToInteractionData(currentInteractionData, chatMessage);
-
-                onMessageBroadcastRef.current?.(chatMessage);
-                setInteractionData(td);
-            } finally {
-                releaseLock();
-            }
+            releaseLock();
             return;
         }
-        
-        if (!currentState.activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
-        const ctrl = new AbortController();
-        abortControllerRef.current = ctrl;
-        wasStoppedRef.current = false;
-        isSpeculatingRef.current = false;
-        resetStream();
-        setStreamingState(null, '');
-        setStats({ latency: 0, timeToFirstToken: 0 });
-        isAtBottomRef.current = true;
-        lastTokenTimestampRef.current = Date.now();
-
-        try {
-            const filteredMessages = getFilteredChatMessages(currentInteractionData, protagonist.id, allPromptBlocksRef.current || []);
-            const knownCharacterNames = detectName(protagonist, filteredMessages);
-
-            const chatMessage = createChatMessage(currentInteractionData, protagonist, actionText, { knownCharacterNames });
-            const td = addMessageToInteractionData(currentInteractionData, chatMessage);
-
-            onMessageBroadcastRef.current?.(chatMessage);
-            setInteractionData(td);
-
-            const preTurnCount = td.interactionHistory.length;
-            
-            // Set streaming references for live broadcasting
-            const responderChar = td.participants.find(p => p.id !== protagonist.id) || protagonist;
-            streamingCharacterRef.current = responderChar;
-            streamingMessageIdRef.current = `gen-${responderChar.id}-${Date.now()}`;
-
-            requestTimestampsRef.current.push(Date.now());
-            const metadata: RequestMetadata = {
-                numberOfMessages: td.interactionHistory.length,
-                numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
-            };
-
-            const interactionDataId = currentInteractionData?.id || 'unknown';
-            for (const participant of td.participants) {
-                const charHistory = td.interactionHistory.filter(
-                    (m): m is ChatMessage | WhisperMessage => 
-                        m.character.id === participant.id && (m.messageType === 'chat' || m.messageType === 'whisper')
-                );
-                speculativeMarkovEngine.syncMessages(
-                    charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
-                    participant.id,
-                    interactionDataId
-                );
-            }
-
-            const turnResult = await chatEngine.runTurn(td, ctrl, undefined, metadata);
-            let ud = turnResult.interactionData;
-
-            if (turnResult.promptText) {
-                const currentModelId = useSessionStore.getState().selectedModelId;
-                if (currentModelId) {
-                    lastTurnContextRef.current = {
-                        modelId: currentModelId,
-                        prompt: turnResult.promptText,
-                        metadata,
-                    };
-                }
-            }
-
-            if (pendingPartialRef.current) {
-                const fd = await applyPendingPartial(ud, protagonist.id);
-                setInteractionData(fd);
-                broadcastNewMessages(preTurnCount, fd);
-                return;
-            }
-
-            ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
-
-            if (ud.interactionHistory.length > td.interactionHistory.length) {
-                setInteractionData(ud);
-                broadcastNewMessages(preTurnCount, ud);
-
-                if (!turnResult.isCompleted && !wasStoppedRef.current) {
-                    autoResumeOnCutoff(ud, protagonist.id);
-                    return;
-                }
-
-                runSummarization({ data: ud, setData: setInteractionData, addToast });
-
-                const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
-                if (lm && lm.messageType === 'chat' && lm.character.id !== protagonist.id) {
-                    ui.playVoice(lm.textContent, lm.character);
-                }
-            } else {
-                const enableAmbientNarration = currentState.interactionData?.Profile?.enableAmbientNarration ?? false;
-                
-                if (enableAmbientNarration) {
-                    const ad = await generateAmbientNarration(ud, ctrl.signal);
-                    const sd = ad || ud;
-                    setInteractionData(sd);
-                    broadcastNewMessages(preTurnCount, sd);
-                } else {
-                    setInteractionData(ud);
-                    broadcastNewMessages(preTurnCount, ud);
-                }
-            }
-        } catch (e) {
-            if ((e as Error).name !== 'AbortError') {
-                console.error('Action failed:', e);
-                addToast(`Action failed: ${(e as Error).message}`, 'error');
-            }
-        } finally {
-            if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
-            isSpeculatingRef.current = false;
-            streamingCharacterRef.current = null;
-            streamingMessageIdRef.current = null;
-            releaseLock();
-            
-            if (pendingResumeRef.current) {
-                const { messageId, allPromptBlocks: blocks } = pendingResumeRef.current;
-                pendingResumeRef.current = null;
-                setTimeout(() => resumeGenerationRef.current?.(messageId, blocks), 0);
-            } else if (pendingHostResponseRef.current) {
-                pendingHostResponseRef.current = false;
-                setTimeout(() => triggerHostResponseRef.current?.(), 0);
-            }
-        }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, autoResumeOnCutoff, broadcastNewMessages, isMultiplayerClient, getRequestsLastHour]);
+        await executeTurnPipeline({
+            data: td,
+            protagonistId: protagonist.id,
+            errorPrefix: 'Action failed',
+            lockAlreadyAcquired: true,
+        });
+    }, [getState, acquireLock, addToast, isMultiplayerClient, setInteractionData, executeTurnPipeline, releaseLock]);
 
     const stopGeneration = useCallback(() => {
         wasStoppedRef.current = true;
@@ -1186,13 +976,21 @@ export function useChatSession(options: UseChatSessionOptions) {
                 setTimeout(() => triggerHostResponseRef.current?.(), 0);
             }
         }
-    }, [getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine, throttledSetStreamingTextWithBroadcast, ui, setStreamingState, setStats, isMultiplayerClient]);
+    }, [
+        getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration, 
+        setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine, 
+        throttledSetStreamingTextWithBroadcast, ui, setStreamingState, setStats, isMultiplayerClient
+    ]);
 
     useEffect(() => {
         resumeGenerationRef.current = resumeGeneration;
     }, [resumeGeneration]);
 
-    const regenerateFromMessage = useCallback(async (messageId: string, protagonists: Character[], allPromptBlocks?: PromptBlock[]) => {
+    const regenerateFromMessage = useCallback(async (
+        messageId: string, 
+        protagonists: Character[], 
+        allPromptBlocks?: PromptBlock[]
+    ) => {
         if (isMultiplayerClient) {
             addToast('Generation is handled by the host.', 'info');
             return;
@@ -1201,12 +999,8 @@ export function useChatSession(options: UseChatSessionOptions) {
         const currentInteractionData = getState().interactionData;
         if (!currentInteractionData) { addToast('Chat data missing.', 'error'); return; }
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
-        if (!currentInteractionData.Profile || !currentInteractionData.Profile?.enableCharacterExpression) sentimentEngine.unload();
-        const currentState = getState();
-        if (!currentState.activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
 
         const protagonistIds = new Set(protagonists.map(p => p.id));
-
         const history = currentInteractionData.interactionHistory;
         const ti = history.findIndex(m => m.id === messageId);
         if (ti === -1) { addToast('Message not found.', 'error'); releaseLock(); return; }
@@ -1244,126 +1038,36 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         const tm = history[ti];
         const isProtagonistMessage = protagonistIds.has(tm.character.id);
-        let trimIdx = ti;
-        if (isProtagonistMessage) trimIdx = trimIdx + 1;
+        const trimIdx = isProtagonistMessage ? ti + 1 : ti;
         const toDelete = history.slice(trimIdx);
-        if (toDelete.length) try { await Promise.all(toDelete.map(m => import('../storages/serverStorage').then(s => s.deleteRawInteractionMessage(m.id)))); } catch (e) { console.error('Delete failed:', e); }
+        if (toDelete.length) {
+            try { 
+                await Promise.all(toDelete.map(m => import('../storages/serverStorage').then(s => s.deleteRawInteractionMessage(m.id)))); 
+            } catch (e) { 
+                console.error('Delete failed:', e); 
+            }
+        }
 
-        const td: InteractionData = { ...currentInteractionData, interactionHistory: history.slice(0, trimIdx), lastUpdatedTimestamp: Date.now() };
+        const td: InteractionData = { 
+            ...currentInteractionData, 
+            interactionHistory: history.slice(0, trimIdx), 
+            lastUpdatedTimestamp: Date.now() 
+        };
         setInteractionData(td);
-
-        resetStream();
-        setStreamingState(null, '');
-        setStats({ latency: 0, timeToFirstToken: 0 });
-        wasStoppedRef.current = false;
-        isSpeculatingRef.current = false;
-        isAtBottomRef.current = true;
-        lastTokenTimestampRef.current = Date.now();
-
-        const ctrl = new AbortController(); 
-        abortControllerRef.current = ctrl;
-        const preCount = td.interactionHistory.length;
 
         const primaryProtagonistId = protagonists[0]?.id ?? '';
         const responderChar = td.participants.find(p => !protagonistIds.has(p.id)) || protagonists[0];
-        streamingCharacterRef.current = responderChar;
-        streamingMessageIdRef.current = `gen-${responderChar?.id || 'ai'}-${Date.now()}`;
 
-        try {
-            requestTimestampsRef.current.push(Date.now());
-            const metadata: RequestMetadata = {
-                numberOfMessages: td.interactionHistory.length,
-                numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
-            };
-
-            const interactionDataId = td?.id || 'unknown';
-            for (const participant of td.participants) {
-                const charHistory = td.interactionHistory.filter(
-                    (m): m is ChatMessage | WhisperMessage => 
-                        m.character.id === participant.id && (m.messageType === 'chat' || m.messageType === 'whisper')
-                );
-                speculativeMarkovEngine.syncMessages(
-                    charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
-                    participant.id,
-                    interactionDataId
-                );
-            }
-
-            const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks, metadata);
-            let ud = turnResult.interactionData;
-
-            if (turnResult.promptText) {
-                const currentModelId = useSessionStore.getState().selectedModelId;
-                if (currentModelId) {
-                    lastTurnContextRef.current = {
-                        modelId: currentModelId,
-                        prompt: turnResult.promptText,
-                        metadata,
-                    };
-                }
-            }
-
-            if (pendingPartialRef.current) { 
-                const fd = await applyPendingPartial(ud, primaryProtagonistId); 
-                setInteractionData(fd); 
-                broadcastNewMessages(preCount, fd); 
-                return; 
-            }
-
-            ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
-
-            if (ud.interactionHistory.length > preCount) {
-                setInteractionData(ud);
-                broadcastNewMessages(preCount, ud);
-
-                if (!turnResult.isCompleted && !wasStoppedRef.current) {
-                    autoResumeOnCutoff(ud, primaryProtagonistId, allPromptBlocks);
-                    return;
-                }
-
-                runSummarization({
-                    data: ud,
-                    setData: setInteractionData,
-                    addToast,
-                });
-
-                const lm = ud.interactionHistory[ud.interactionHistory.length - 1];
-                if (lm && lm.messageType === 'chat' && !protagonistIds.has(lm.character.id)) ui.playVoice(lm.textContent, lm.character);
-            } else {
-                const enableAmbientNarration = currentState.interactionData?.Profile?.enableAmbientNarration ?? false;
-                
-                if (enableAmbientNarration) {
-                    const ad = await generateAmbientNarration(ud, ctrl.signal);
-                    const sd = ad || ud;
-                    setInteractionData(sd);
-                    broadcastNewMessages(preCount, sd);
-                } else {
-                    setInteractionData(ud);
-                    broadcastNewMessages(preCount, ud);
-                }
-            }
-        } catch (e) { 
-            if ((e as Error).name !== 'AbortError') { 
-                console.error('Regen failed:', e); 
-                addToast(`Regen error: ${(e as Error).message}`, 'error'); 
-            } 
-        } finally {
-            if (abortControllerRef.current === ctrl) abortControllerRef.current = null;
-            isSpeculatingRef.current = false;
-            streamingCharacterRef.current = null;
-            streamingMessageIdRef.current = null;
-            releaseLock();
-            
-            if (pendingResumeRef.current) {
-                const { messageId, allPromptBlocks: blocks } = pendingResumeRef.current;
-                pendingResumeRef.current = null;
-                setTimeout(() => resumeGenerationRef.current?.(messageId, blocks), 0);
-            } else if (pendingHostResponseRef.current) {
-                pendingHostResponseRef.current = false;
-                setTimeout(() => triggerHostResponseRef.current?.(), 0);
-            }
-        }
-    }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setInteractionData, setStreamingState, setStats, autoResumeOnCutoff, broadcastNewMessages, isMultiplayerClient, getRequestsLastHour]);
+        await executeTurnPipeline({
+            data: td,
+            protagonistId: primaryProtagonistId,
+            allPromptBlocks,
+            responderCharacter: responderChar,
+            isProtagonistCharId: (id: string) => protagonistIds.has(id),
+            errorPrefix: 'Regen failed',
+            lockAlreadyAcquired: true,
+        });
+    }, [getState, isMultiplayerClient, addToast, acquireLock, releaseLock, setInteractionData, executeTurnPipeline]);
 
     const startNewChat = useCallback((char: Character) => {
         const c = createNewInteractionData(char);
