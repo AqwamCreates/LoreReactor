@@ -454,8 +454,12 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
         if (rollbackOverride && rollbackOverride.chatRef === chatMessages) {
             effectiveIndex = rollbackOverride.index;
         }
+        
         const isLatest = effectiveIndex === null || effectiveIndex >= chatMessages.length - 1;
-        if (isLatest) return new Map(finalStates);
+        
+        // Adding `|| effectiveIndex === null` explicitly narrows the type to `number` below this line
+        if (isLatest || effectiveIndex === null) return new Map(finalStates);
+        
         return computeStatesAtHistoryIndex(movementHistory, effectiveIndex, visibleCharacterIds);
     }, [movementHistory, finalStates, viewedMessageIndex, rollbackOverride, chatMessages, visibleCharacterIds]);
 
