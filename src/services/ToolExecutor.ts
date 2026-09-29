@@ -1207,7 +1207,7 @@ function executeMap(args: string, _nextMessage: BaseMessage, interactionData: In
         distanceKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
     const rounded = Math.round(distanceKm * 10) / 10;
-    return { toolType: 'map', args, content: `Distance: ${rounded} km. ~${Math.round((distanceKm / 5) * 10) / 10}h walking, ~${Math.round((distanceKm / 30) * 10) / 10}h riding.`, displayReplacement: `[🗺️ ${fromLoc.name} → ${toLoc.name}: ${rounded} km]` };
+    return { toolType: 'map', args, content: `Distance: ${rounded} km. ~${Math.round((distanceKm / 5) * 10) / 10} hours of walking, ~${Math.round((distanceKm / 30) * 10) / 10}h riding.`, displayReplacement: `[🗺️ ${fromLoc.name} → ${toLoc.name}: ${rounded} km]` };
 }
 
 // ─── Audio ──────────────────────────────────────────────────────────

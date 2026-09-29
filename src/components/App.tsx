@@ -176,6 +176,7 @@ function App() {
         allMultiplayerData: multiplayerDataManager.multiplayerData,
         allActions: actionManager.allActions,
         requestBorrowedModel: handleRequestBorrowedModel,
+        requestPeerInference: mp.requestPeerInference, // <--- Connected here
     });
 
     const {
@@ -331,6 +332,7 @@ function App() {
         if (mp.isMultiplayerClient) return true;
         if (activeStrategy) return true;
         if (!models.selectedModelId) return false;
+        if (models.selectedModelId.startsWith('borrowed-')) return true; // Borrowed models ready via PeerJS
         const sel = allModels.find((m: LanguageModel) => m.id === models.selectedModelId);
         if (sel?.apiKey && sel.backend && cloudBackends.includes(sel.backend as cloudBackend)) return true;
         return models.runningModels[models.selectedModelId]?.isRunning === true
@@ -339,6 +341,7 @@ function App() {
 
     const isModelLoading = useMemo(() => {
         if (mp.isMultiplayerClient || !models.selectedModelId) return false;
+        if (models.selectedModelId.startsWith('borrowed-')) return false;
         const sel = allModels.find((m: LanguageModel) => m.id === models.selectedModelId);
         if (sel?.apiKey && sel.backend && cloudBackends.includes(sel.backend as cloudBackend)) return false;
         return models.runningModels[models.selectedModelId]?.isRunning === true

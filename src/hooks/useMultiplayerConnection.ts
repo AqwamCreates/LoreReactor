@@ -5,7 +5,7 @@ import type { MultiplayerData, InteractionData, HistoryMessage, Character, Conte
 
 // ─── Message Protocol ──────────────────────────────────────────────
 
-type MessageType =
+export type MessageType =
     | 'set_protagonist'
     | 'protagonist_change'
     | 'typing_indicator'
@@ -20,6 +20,9 @@ type MessageType =
     | 'borrow_model_request'
     | 'borrow_model_response'
     | 'shared_model_usage'
+    | 'borrow_inference_request'
+    | 'borrow_inference_chunk'
+    | 'borrow_inference_cancel'
     | 'leave';
 
 interface MultiplayerMessage {
@@ -89,6 +92,24 @@ export interface HostMigrationPayload {
     multiplayerData?: MultiplayerData | null;
 }
 
+export interface BorrowInferenceRequestPayload {
+    requestId: string;
+    modelName: string;
+    promptOrMessages: any;
+    parameters?: Record<string, unknown>;
+}
+
+export interface BorrowInferenceChunkPayload {
+    requestId: string;
+    token?: string;
+    done: boolean;
+    error?: string;
+}
+
+export interface BorrowInferenceCancelPayload {
+    requestId: string;
+}
+
 // ─── WebRTC Chunking Protocol ───────────────────────────────────────
 
 const CHUNK_SIZE = 32 * 1024; // 32KB chunk slice safe for SCTP buffers across all browsers
@@ -124,7 +145,6 @@ function sendPayloadWithChunking(conn: DataConnection, fullMsg: MultiplayerMessa
         return;
     }
 
-    // Direct transmission for standard small payloads
     if (serialized.length <= CHUNK_SIZE) {
         try {
             conn.send(fullMsg);
@@ -134,7 +154,6 @@ function sendPayloadWithChunking(conn: DataConnection, fullMsg: MultiplayerMessa
         return;
     }
 
-    // Large payload: slice and stream numbered chunks
     const total = Math.ceil(serialized.length / CHUNK_SIZE);
     const transferId = `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
@@ -274,7 +293,6 @@ export function useMultiplayerConnection({
             const now = Date.now();
             const transfers = incomingTransfersRef.current;
 
-            // Clean up old stale chunks (>60s)
             if (transfers.size > 15) {
                 for (const [id, t] of transfers.entries()) {
                     if (now - t.receivedAt > 60000) transfers.delete(id);
@@ -469,7 +487,7 @@ export function useMultiplayerConnection({
             || connectionsRef.current.get(accountId)
             || connectionsRef.current.get(accountId.replace(/[^A-Za-z0-9]/g, ''));
 
-        if (!conn) return;
+            if (!conn) return;
         const sanitizedSenderId = sanitizeId(acctId, 36);
         const fullMsg: MultiplayerMessage = { ...msg, senderAccountId: sanitizedSenderId, timestamp: Date.now() };
 
@@ -503,5 +521,4 @@ export type {
     StateSyncPayload,
     MessageEditPayload,
     MessageDeletePayload,
-    MessageType,
 };

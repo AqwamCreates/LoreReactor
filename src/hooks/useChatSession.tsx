@@ -101,6 +101,7 @@ interface UseChatSessionOptions {
     allMultiplayerData?: MultiplayerData[];
     allActions?: InterjectableAction[];
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
+    requestPeerInference?: (peerAccountId: string, modelName: string, promptOrMessages: any, onToken: (token: string) => void, signal?: AbortSignal) => Promise<void>;
 }
 
 interface GenerationTurnOptions {
@@ -119,6 +120,32 @@ export function useChatSession(options: UseChatSessionOptions) {
     const isMultiplayerClient = options?.isMultiplayerClient ?? false;
     const requestBorrowedModel = options?.requestBorrowedModel;
     
+    const requestPeerInferenceRef = useRef(options?.requestPeerInference);
+    useEffect(() => { requestPeerInferenceRef.current = options?.requestPeerInference; }, [options?.requestPeerInference]);
+
+    // Register peer inference handler with Language Model Engine for borrowed models
+    useEffect(() => {
+        const engineInstance = getLanguageModelEngine();
+        if (typeof (engineInstance as any).setPeerInferenceHandler === 'function') {
+            (engineInstance as any).setPeerInferenceHandler(async (modelId: string, prompt: any, onToken: (token: string) => void, signal?: AbortSignal) => {
+                if (modelId.startsWith('borrowed-')) {
+                    const parts = modelId.split('-');
+                    const ownerAccountId = parts[1];
+                    if (ownerAccountId && requestPeerInferenceRef.current) {
+                        await requestPeerInferenceRef.current(ownerAccountId, modelId, prompt, onToken, signal);
+                        return true;
+                    }
+                }
+                return false;
+            });
+        }
+        return () => {
+            if (typeof (engineInstance as any).setPeerInferenceHandler === 'function') {
+                (engineInstance as any).setPeerInferenceHandler(undefined);
+            }
+        };
+    }, []);
+
     useEffect(() => { onMessageBroadcastRef.current = options?.onMessageBroadcast; }, [options?.onMessageBroadcast]);
 
     const joinProtagonistRef = useRef(options?.joinProtagonist ?? null);
@@ -407,7 +434,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     const isModelReadyForGeneration = useCallback((): boolean => {
         const m = getState().selectedModel;
         if (!m) return false;
-        if (m.apiKey) return true;
+        if (m.apiKey || m.id?.startsWith('borrowed-')) return true;
         const models = getState().runningModels;
         return !!(m.id && models[m.id]?.port);
     }, [getState]);

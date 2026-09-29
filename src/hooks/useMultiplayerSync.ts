@@ -1,10 +1,22 @@
 // src/hooks/useMultiplayerSync.ts
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { InteractionData, MultiplayerData, HistoryMessage, Character, ChatMessage, InteractionMessage, WhisperMessage, LanguageModel, backend } from '../types';
-import { useMultiplayerConnection, type MultiplayerMessage, type JoinRequestPayload, type JoinResponsePayload, type MessageEditPayload, type MessageDeletePayload, type HostMigrationPayload } from './useMultiplayerConnection';
+import { 
+    useMultiplayerConnection, 
+    type MultiplayerMessage, 
+    type JoinRequestPayload, 
+    type JoinResponsePayload, 
+    type MessageEditPayload, 
+    type MessageDeletePayload, 
+    type HostMigrationPayload,
+    type BorrowInferenceRequestPayload,
+    type BorrowInferenceChunkPayload,
+    type BorrowInferenceCancelPayload
+} from './useMultiplayerConnection';
 import { useSessionStore } from './useSessionStore';
 import { saveRawMultiplayerCharacter } from '../storages/serverStorage';
 import { MultiplayerEvents } from '../services/MultiplayerEvents';
+import { localURL } from '../configurations';
 
 interface SyncChatMessagePayload {
     messageId: string;
@@ -311,6 +323,7 @@ export function useMultiplayerSync({
     const characterMapRef = useRef<Map<string, Character>>(new Map());
     const peerJoinTimesRef = useRef<Map<string, number>>(new Map());
     const pendingBorrowRequestsRef = useRef<Map<string, (model: LanguageModel | null) => void>>(new Map());
+    const activeInferenceStreamsRef = useRef<Map<string, { onToken: (token: string) => void; resolve: () => void; reject: (err: Error) => void }>>(new Map());
 
     useEffect(() => {
         const map = new Map<string, Character>();
@@ -330,7 +343,6 @@ export function useMultiplayerSync({
 
                 if (msg.senderAccountId === currentAccountId) return;
 
-                // ─── Security Validation Guard ─────────────────────────
                 if (isHost) {
                     const md = multiplayerDataRef.current;
                     const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, msg.senderAccountId);
@@ -518,6 +530,79 @@ export function useMultiplayerSync({
                 break;
             }
 
+            case 'borrow_inference_request': {
+                if (!isHost) {
+                    const payload = msg.payload as BorrowInferenceRequestPayload;
+                    const hostAccountId = msg.senderAccountId;
+
+                    (async () => {
+                        try {
+                            const statusRes = await fetch(`${localURL}/models/status`);
+                            const statusData = await statusRes.json();
+                            const activeModel = statusData.activeModels?.[0];
+
+                            if (!activeModel || !activeModel.port) {
+                                throw new Error('No active local model running on joiner machine');
+                            }
+
+                            const targetUrl = `http://127.0.0.1:${activeModel.port}/v1/chat/completions`;
+
+                            const response = await fetch(targetUrl, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload.promptOrMessages)
+                            });
+
+                            if (!response.ok || !response.body) {
+                                throw new Error('Failed to run inference on peer model');
+                            }
+
+                            const reader = response.body.getReader();
+                            const decoder = new TextDecoder();
+
+                            while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+                                const chunkText = decoder.decode(value, { stream: true });
+
+                                sendToRef.current(hostAccountId, {
+                                    type: 'borrow_inference_chunk',
+                                    payload: { requestId: payload.requestId, token: chunkText, done: false } satisfies BorrowInferenceChunkPayload
+                                });
+                            }
+
+                            sendToRef.current(hostAccountId, {
+                                type: 'borrow_inference_chunk',
+                                payload: { requestId: payload.requestId, done: true } satisfies BorrowInferenceChunkPayload
+                            });
+                        } catch (err) {
+                            sendToRef.current(hostAccountId, {
+                                type: 'borrow_inference_chunk',
+                                payload: { requestId: payload.requestId, done: true, error: (err as Error).message } satisfies BorrowInferenceChunkPayload
+                            });
+                        }
+                    })();
+                }
+                break;
+            }
+
+            case 'borrow_inference_chunk': {
+                const payload = msg.payload as BorrowInferenceChunkPayload;
+                const stream = activeInferenceStreamsRef.current.get(payload.requestId);
+                if (stream) {
+                    if (payload.error) {
+                        stream.reject(new Error(payload.error));
+                        activeInferenceStreamsRef.current.delete(payload.requestId);
+                    } else if (payload.done) {
+                        stream.resolve();
+                        activeInferenceStreamsRef.current.delete(payload.requestId);
+                    } else if (payload.token) {
+                        stream.onToken(payload.token);
+                    }
+                }
+                break;
+            }
+
             case 'shared_model_usage': {
                 const payload = msg.payload as SharedModelUsagePayload;
                 sharedModelTracker.recordUsage(payload.accountId);
@@ -596,8 +681,6 @@ export function useMultiplayerSync({
                 if (!md) return;
                 const payload = msg.payload as JoinRequestPayload;
                 const requestingAccountId = payload.accountId;
-
-                console.log('[MP] Host received join_request from:', requestingAccountId);
 
                 if (md.password && payload.password !== md.password) {
                     sendToRef.current(requestingAccountId, { type: 'join_response', payload: { accepted: false, reason: 'Invalid password' } });
@@ -727,7 +810,6 @@ export function useMultiplayerSync({
             case 'join_response': {
                 if (isHost) return;
                 const payload = msg.payload as JoinResponsePayload;
-                console.log('[MP] Client received join_response:', payload.accepted ? 'accepted' : 'rejected');
                 if (payload.accepted) {
                     setJoinCompletedSessionId(joinSessionId ?? null);
 
@@ -757,7 +839,6 @@ export function useMultiplayerSync({
 
             case 'join_pending': {
                 if (isHost) return;
-                console.log('[MP] Client received join_pending notification');
                 onJoinPendingRef.current?.();
                 break;
             }
@@ -803,6 +884,7 @@ export function useMultiplayerSync({
                 break;
             }
 
+            case 'borrow_inference_cancel':
             case 'typing_indicator':
             case 'protagonist_change':
             case 'leave':
@@ -811,15 +893,12 @@ export function useMultiplayerSync({
     }, [currentAccountId, isHost, joinSessionId, setInteractionData]);
 
     const handlePeerConnected = useCallback((accountId: string) => {
-        console.log(`[MP] Peer connected: ${accountId}`);
         if (isHost) {
             peerJoinTimesRef.current.set(accountId, Date.now());
         }
     }, [isHost]);
 
     const handlePeerDisconnected = useCallback((accountId: string) => {
-        console.log(`[MP] Peer disconnected: ${accountId}`);
-
         if (!isHost) return;
         const charId = peerCharacterMapRef.current.get(accountId);
         if (charId) {
@@ -870,7 +949,6 @@ export function useMultiplayerSync({
     useEffect(() => { sendToRef.current = sendTo; }, [sendTo]);
     useEffect(() => { broadcastRef.current = broadcast; }, [broadcast]);
 
-    // ─── Broadcast Message Handlers ─────────────────────────────────────
     const broadcastMessage = useCallback((message: HistoryMessage) => {
         broadcast({
             type: 'chat_message',
@@ -921,6 +999,34 @@ export function useMultiplayerSync({
             });
         });
     }, [connectedPeers, isHost]);
+
+    const requestPeerInference = useCallback((
+        peerAccountId: string,
+        modelName: string,
+        promptOrMessages: any,
+        onToken: (token: string) => void,
+        signal?: AbortSignal
+    ): Promise<void> => {
+        return new Promise((resolve, reject) => {
+            const requestId = `inf-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+            activeInferenceStreamsRef.current.set(requestId, { onToken, resolve, reject });
+
+            signal?.addEventListener('abort', () => {
+                activeInferenceStreamsRef.current.delete(requestId);
+                sendToRef.current(peerAccountId, {
+                    type: 'borrow_inference_cancel',
+                    payload: { requestId } satisfies BorrowInferenceCancelPayload
+                });
+                reject(new Error('Inference aborted'));
+            });
+
+            sendToRef.current(peerAccountId, {
+                type: 'borrow_inference_request',
+                payload: { requestId, modelName, promptOrMessages } satisfies BorrowInferenceRequestPayload
+            });
+        });
+    }, []);
 
     const acceptJoinRequest = useCallback((accountId: string) => {
         setPendingJoinRequests((prev) => {
@@ -1078,7 +1184,6 @@ export function useMultiplayerSync({
             const currentData = interactionDataRef.current;
             if (!currentData) return;
 
-            // Clamped to 18 characters to match buildHostPeerId in useMultiplayerConnection
             const chatId = currentData.id.replace(/[^A-Za-z0-9]/g, '').slice(0, 18);
             const newHostPeerId = `lr_${chatId}_host`;
 
@@ -1088,7 +1193,7 @@ export function useMultiplayerSync({
                     newHostId: oldestPeerId,
                     newHostPeerId,
                     finalState: currentData,
-                    multiplayerData: multiplayerDataRef.current, // Preserves settings and accounts across migration
+                    multiplayerData: multiplayerDataRef.current,
                 } as HostMigrationPayload,
             });
 
@@ -1119,5 +1224,6 @@ export function useMultiplayerSync({
         peerId,
         hostPeerId,
         requestAndAwaitBorrowedModel,
+        requestPeerInference,
     };
 }

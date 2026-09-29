@@ -129,8 +129,8 @@ export interface Location extends ObjectData {
   globalWeight: number;
   characterWeights: Record<string, number>;
   ownerBindings: string[]
-  latitude: number;
-  longitude: number;
+  latitude: number | undefined;
+  longitude: number | undefined;
   locationDistances: Record<string, number>;
   messageFilterNonCoLocatedParticipants?: boolean;
   messageFilterRegularExpressionActivationTriggers?: RegularExpressionTrigger[];
@@ -156,8 +156,8 @@ export interface RawLocation extends RawData {
   globalWeight: number;
   characterWeights: Record<string, number>;
   ownerBindings: string[]
-  latitude: number;
-  longitude: number;
+  latitude: number | undefined;
+  longitude: number | undefined;
   locationDistances?: Record<string, number>;
   messageFilterNonCoLocatedParticipants?: boolean;
   messageFilterRegularExpressionActivationTriggers?: RegularExpressionTrigger[];
