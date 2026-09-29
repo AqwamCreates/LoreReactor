@@ -5,7 +5,7 @@ export type tristateInteger = -1 | 0 | 1
 export type regularExpressionContext = 'global' | 'local' | 'previous';
 
 export type regularExpressionTarget = 'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator';
-interface ObjectData {
+export interface ObjectData {
   id: string;
   name: string;
   description?: string;
@@ -13,7 +13,7 @@ interface ObjectData {
   lastUpdatedTimestamp: number;
 }
 
-interface RawData {
+export interface RawData {
   id?: string;
   name: string;
   description?: string;

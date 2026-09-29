@@ -806,8 +806,8 @@ export function AppModals({
                                 characterModalProperties.open(parentEntity);
                                 break;
                             case 'message':
-                                if ((!interactionData) || (interactionData?.id !== parentEntity.id)) {
-                                    onSwitchChat(parentEntity.id);
+                                if (interactionData?.id !== parentEntity?.id) {
+                                    if (parentEntity) onSwitchChat(parentEntity.id);
                                 }
                                 if (entity.id) {
                                     const targetId = entity.id;

@@ -3,7 +3,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import type { 
     Character, Context, Location, AudioTrack, World, PromptBlock, 
     LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, 
-    Memory, Account, MultiplayerData, RawInteractionData, InteractionData 
+    Memory, Account, MultiplayerData, RawInteractionData, InteractionData, 
+    ObjectData
 } from '../types';
 import { localURL } from '../configurations';
 import '../main.css';
@@ -47,8 +48,7 @@ export interface SuperSearchModalProps {
     rawChatShells: RawInteractionData[];
     currentInteractionData: InteractionData | null;
 
-    onSelectEntity?: (type: SearchTabId, entity: any) => void;
-    onJumpToMessage?: (chatId: string, messageId?: string) => void;
+    onSelectEntity?: (tabId: SearchTabId, entity: ObjectData, parentEntity?: ObjectData) => void;
 }
 
 interface ServerMessageResult {
@@ -75,6 +75,7 @@ interface SearchMatchResult {
     matches?: FieldMatch[];
     chats?: Array<{ chatId: string; chatName: string }>;
     rawEntity?: any;
+    parentEntity?: any;
 }
 
 const TAB_CONFIG: { id: SearchTabId; label: string; icon: string }[] = [
@@ -186,7 +187,6 @@ function SuperSearchContent({
     rawChatShells,
     currentInteractionData,
     onSelectEntity,
-    onJumpToMessage,
 }: Omit<SuperSearchModalProps, 'isOpen'>) {
     const [query, setQuery] = useState('');
     const [activeTab, setActiveTab] = useState<SearchTabId>('all');
@@ -312,6 +312,13 @@ function SuperSearchContent({
         emptyMap.budgetStrategy = scanEntities(allBudgetStrategies, 'budgetStrategy', b => `💰 ${b.name}`);
         emptyMap.profile = scanEntities(allProfiles, 'profile', p => `👤 ${p.name}`);
         emptyMap.memory = scanEntities(allMemories, 'memory', m => `🧠 ${typeof m.name === 'string' ? m.name : 'Untitled Memory'}`);
+        
+        // Attach parent character to memory results
+        for (const res of emptyMap.memory) {
+            const parentChar = allCharacters.find(c => c.memories?.some((m: any) => m.id === res.id));
+            if (parentChar) res.parentEntity = parentChar;
+        }
+
         emptyMap.account = scanEntities(allAccounts, 'account', a => `🔑 ${a.name || a.username}`);
         emptyMap.multiplayerData = scanEntities(allMultiplayerData, 'multiplayerData', m => `👥 ${m.name}`);
         emptyMap.chat = scanEntities(rawChatShells, 'chat', s => `📂 ${s.name || 'Untitled Chat'}`);
@@ -331,6 +338,7 @@ function SuperSearchContent({
                         matches: [{ field: 'textContent', text: msg.textContent, snippet: makeSnippet(msg.textContent, lowerQuery) }],
                         chats,
                         rawEntity: msg,
+                        parentEntity: currentInteractionData,
                     });
                 }
             }
@@ -344,12 +352,22 @@ function SuperSearchContent({
                     ? sMsg.chats 
                     : (messageToChatsMap.get(sMsg.id) || [{ chatId: 'unknown', chatName: 'Unknown Session' }]);
 
+                let parentChat: any = null;
+                if (chats[0]?.chatId && chats[0].chatId !== 'unknown') {
+                    if (currentInteractionData?.id === chats[0].chatId) {
+                        parentChat = currentInteractionData;
+                    } else {
+                        parentChat = rawChatShells.find(s => s.id === chats[0].chatId) || { id: chats[0].chatId, name: chats[0].chatName };
+                    }
+                }
+
                 messageResults.push({
                     tabId: 'message',
                     id: sMsg.id,
                     title: speaker ? `🎭 ${speaker.name}` : '🎭 Character',
                     matches: [{ field: 'textContent', text: sMsg.snippet, snippet: typeof sMsg.snippet === 'string' ? sMsg.snippet : '' }],
                     chats,
+                    parentEntity: parentChat,
                 });
             }
         }
@@ -528,7 +546,7 @@ function SuperSearchContent({
                                                             key={c.chatId}
                                                             type="button"
                                                             onClick={() => {
-                                                                onJumpToMessage?.(c.chatId, item.id);
+                                                                onSelectEntity?.('message', item.rawEntity, { id: c.chatId, name: c.chatName });
                                                                 onClose();
                                                             }}
                                                             style={{
@@ -554,7 +572,7 @@ function SuperSearchContent({
                                                     type="button"
                                                     className="editor-button editor-button-save"
                                                     onClick={() => {
-                                                        onSelectEntity?.(item.tabId, item.rawEntity);
+                                                        onSelectEntity?.(item.tabId, item.rawEntity, item.parentEntity);
                                                     }}
                                                     style={{ minHeight: '26px', fontSize: '0.7rem', padding: '2px 10px' }}
                                                 >
