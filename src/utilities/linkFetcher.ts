@@ -1,7 +1,7 @@
 // src/utilities/linkFetcher.ts
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import type { LanguageModel } from '../types';
-import { summarizeWebpageContent, mergeWebpageSummaries, type WebpageImageInfo } from '../services/WebpageSummarizationEngine';
+import { summarizeWebpageContent, mergeWebpageSummaries, type WebpageImageInfo } from '../services/WebSummarizationEngine';
 import { findWebpageByUrl, saveRawWebpage } from '../storages/serverStorage';
 import type { linkFetchMode, searchEngine, Sampler, StopPattern } from '../types';
 import { v4 as uuidv4 } from 'uuid';

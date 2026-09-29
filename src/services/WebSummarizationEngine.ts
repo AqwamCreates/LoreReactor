@@ -1,623 +1,109 @@
-// src/utilities/linkFetcher.ts
+// src/services/WebpageSummarizationEngine.ts
+import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
-import type { LanguageModel } from '../types';
-import { summarizeWebpageContent, mergeWebpageSummaries, type WebpageImageInfo } from './WebSummarizationEngine';
-import { findWebpageByUrl, saveRawWebpage } from '../storages/serverStorage';
-import type { linkFetchMode, searchEngine, Sampler, StopPattern } from '../types';
-import { v4 as uuidv4 } from 'uuid';
+import { getModelTemplate } from '../dictionaries/modelTemplates';
+import { deriveDelimiters } from '../utilities/promptLogic';
+import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
+import type { Sampler, StopPattern } from '../types';
 
-const DEFAULT_CACHE_TIME_TO_LIVE_MS = 5 * 60 * 1000;
-const MAX_FETCH_DEPTH = 3;
-const FETCH_PROXY_URL = '/api/web/fetch';
+const WEBPAGE_SUMMARIZE_PROMPT = "You are a concise summarizer for web content used as roleplay context. Given raw webpage text and associated images, produce a dense summary that preserves: key facts, names, dates, locations, relationships, definitions, visual details from images, and any lore-relevant details. Eliminate navigation text, ads, boilerplate, and redundancy. Write in third person, present tense. Output ONLY the summary with no preamble, no markdown, no quotes.";
 
-const tokenEngine = getLanguageModelEngine();
+const WEBPAGE_SUMMARIZE_TEXT_ONLY_PROMPT = "You are a concise summarizer for web content used as roleplay context. Given raw webpage text, produce a dense summary that preserves: key facts, names, dates, locations, relationships, definitions, and any lore-relevant details. Eliminate navigation text, ads, boilerplate, and redundancy. Write in third person, present tense. Output ONLY the summary with no preamble, no markdown, no quotes.";
 
-interface FetchResult {
+const MULTI_PAGE_MERGE_PROMPT = "You are a context merger for roleplay lore. Given multiple webpage summaries from related sources, merge them into a single coherent reference document. Preserve all unique facts, resolve contradictions by noting both perspectives, eliminate redundancy, and maintain clear organization. Write in third person, present tense. Output ONLY the merged document with no preamble, no markdown, no quotes.";
+
+export interface WebpageImageInfo {
     url: string;
-    content: string;
-    links: string[];
-    images: WebpageImageInfo[];
-    fetchedAt: number;
-    tokenEstimate: number;
-    error?: string;
-}
-
-const fetchCache = new Map<string, FetchResult>();
-
-function getCacheKey(url: string, mode: string): string {
-    return `${mode}::${url}`;
-}
-
-/**
- * Proxied fetch through the Express server to bypass CORS restrictions.
- * The server handles the actual HTTP request and returns the response.
- */
-async function proxiedFetch(url: string, acceptHeader: string): Promise<{
-    ok: boolean;
-    status: number;
-    contentType: string;
-    text?: string;
     base64?: string;
-    error?: string;
-}> {
-    try {
-        const response = await fetch(FETCH_PROXY_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                url,
-                headers: {
-                    'User-Agent': 'LoreReactor/1.0 (Context Fetcher)',
-                    'Accept': acceptHeader,
-                },
-            }),
-        });
-
-        const contentType = response.headers.get('content-type') || '';
-
-        // Handle non-JSON proxy responses gracefully
-        if (!contentType.includes('application/json')) {
-            const rawText = await response.text().catch(() => '');
-            return {
-                ok: false,
-                status: response.status,
-                contentType: contentType,
-                text: rawText || undefined,
-                error: `Proxy returned non-JSON response (HTTP ${response.status}): ${rawText.substring(0, 200)}`,
-            };
-        }
-
-        const json = await response.json();
-
-        // Proxy may return its own error structure
-        if (!response.ok) {
-            return {
-                ok: false,
-                status: response.status,
-                contentType: contentType,
-                error: json.error || `HTTP ${response.status}`,
-            };
-        }
-
-        return {
-            ok: true,
-            status: response.status,
-            contentType: json.contentType || contentType,
-            text: json.text,
-            base64: json.base64,
-        };
-    } catch (e) {
-        return {
-            ok: false,
-            status: 0,
-            contentType: '',
-            error: `Proxy request failed: ${(e as Error).message}`,
-        };
-    }
+    mimeType?: string;
 }
 
 /**
- * Extracts the subdirectory scope from a URL.
+ * Derive model-specific and profile-specific stop tokens for webpage summarization.
  */
-function getSubdirectoryScope(url: string): string {
-    try {
-        const parsed = new URL(url);
-        const pathParts = parsed.pathname.split('/');
-        pathParts.pop();
-        const directoryPath = `${pathParts.join('/')}/`;
-        return `${parsed.origin}${directoryPath}`;
-    } catch {
-        return url;
-    }
+function getWebpageStopTokens(stopPattern?: StopPattern): string[] {
+    const activeModel = getLanguageModelEngine().getContext();
+    const effectiveChatTemplateKey = activeModel?.chatTemplate;
+    const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
+    const delimiters = deriveDelimiters(resolvedChatTemplate);
+
+    const templateStops = resolvedChatTemplate?.stopPatterns || [];
+    const profileStops = stopPattern?.pattern ? [stopPattern.pattern] : [];
+
+    const stops = [
+        ...templateStops,
+        ...profileStops,
+        '\n\n\n',
+        '```',
+        '\nSource:',
+        delimiters.turnEnd.trim(),
+    ].filter(s => s.length > 0);
+
+    return [...new Set(stops)];
 }
 
 /**
- * Checks whether a candidate link falls within the subdirectory scope.
+ * Summarizes a single webpage's extracted text content using the budget-aware engine.
+ * Respects the active model's chat template stop tokens, the profile's stop pattern, and the provided sampler.
  */
-function isWithinSubdirectory(candidateUrl: string, scopePrefix: string): boolean {
-    try {
-        const parsed = new URL(candidateUrl);
-        const fullUrl = `${parsed.origin}${parsed.pathname}`;
-        return fullUrl.startsWith(scopePrefix);
-    } catch {
-        return false;
-    }
-}
+export async function summarizeWebpageContent(
+    content: string,
+    sourceUrl: string,
+    images?: WebpageImageInfo[],
+    sampler?: Sampler,
+    stopPattern?: StopPattern,
+): Promise<string | null> {
+    if (!content || !content.trim()) return null;
 
-/**
- * Constructs a search engine URL from search terms.
- */
-export function buildSearchUrl(terms: string[], engine?: searchEngine): string {
-    const query = encodeURIComponent(terms.join(' '));
-    switch (engine) {
-        case 'Google':
-            return `https://www.google.com/search?q=${query}`;
-        case 'Bing':
-            return `https://www.bing.com/search?q=${query}`;
-        case 'DuckDuckGo':
-            return `https://html.duckduckgo.com/html/?q=${query}`;
-        case 'Yandex':
-            return `https://yandex.com/search/?text=${query}`;
-        case 'Baidu':
-            return `https://www.baidu.com/s?wd=${query}`;
-        default:
-            return `https://www.google.com/search?q=${query}`;
-    }
-}
+    const hasImages = images && images.length > 0;
+    const basePrompt = hasImages ? WEBPAGE_SUMMARIZE_PROMPT : WEBPAGE_SUMMARIZE_TEXT_ONLY_PROMPT;
 
-/**
- * Cleans an image URL by stripping everything after the file extension.
- */
-function cleanImageUrl(url: string): string {
-    const extensionMatch = url.match(/(\.(png|jpe?g|gif|webp|svg|bmp|ico|avif|tiff?))/i);
-    if (extensionMatch && extensionMatch.index !== undefined) {
-        return url.substring(0, extensionMatch.index + extensionMatch[1].length);
-    }
-    return url;
-}
+    const stops = getWebpageStopTokens(stopPattern);
+    const prompt = `${basePrompt}\n\nSource: ${sourceUrl}\n\nWebpage content:\n${content}\n\nSummary:`;
 
-/**
- * Downloads an image from a URL via proxy and returns it as base64 + mime type.
- */
-async function downloadImageAsBase64(imageUrl: string): Promise<{ base64: string; mimeType: string } | null> {
-    try {
-        const result = await proxiedFetch(imageUrl, 'image/*');
+    const requestBody = buildRequestBody(prompt, 1024, sampler, stops);
 
-        if (!result.ok || !result.base64 || !result.contentType?.startsWith('image/')) {
-            return null;
-        }
-
-        return {
-            base64: result.base64,
-            mimeType: result.contentType.split(';')[0].trim(),
-        };
-    } catch {
-        return null;
-    }
-}
-
-function parseHtml(html: string, baseUrl: string): { text: string; links: string[]; imageUrls: string[] } {
-    const linkRegex = /href=["']([^"']+)["']/gi;
-    const links: string[] = [];
-    let match: RegExpExecArray | null;
-    match = linkRegex.exec(html);
-    while (match !== null) {
-        let href = match[1];
-
-        if (href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('data:')) {
-            match = linkRegex.exec(html);
-            continue;
-        }
-
-        if (!href.startsWith('http')) {
-            try {
-                href = new URL(href, baseUrl).href;
-            } catch {
-                match = linkRegex.exec(html);
-                continue;
+    // Inject image data into the request body if images are present
+    if (hasImages) {
+        const imageData: { data: string; id: number }[] = [];
+        let imageIdCounter = 100;
+        for (const img of images!) {
+            if (img.base64) {
+                imageData.push({ data: img.base64, id: imageIdCounter++ });
             }
         }
-
-        if (!href.startsWith('http')) {
-            match = linkRegex.exec(html);
-            continue;
-        }
-
-        if (!links.includes(href)) {
-            links.push(href);
-        }
-
-        match = linkRegex.exec(html);
-    }
-
-    const imgRegex = /<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi;
-    const imageUrls: string[] = [];
-    let imgMatch: RegExpExecArray | null;
-
-    while ((imgMatch = imgRegex.exec(html)) !== null) {
-        let imgUrl = imgMatch[1];
-
-        if (!imgUrl.startsWith('http')) {
-            try {
-                imgUrl = new URL(imgUrl, baseUrl).href;
-            } catch {
-                continue;
-            }
-        }
-
-        if (imgUrl.startsWith('data:') || imgUrl.includes('pixel') || imgUrl.includes('spacer') || imgUrl.includes('1x1') || imgUrl.includes('blank.gif')) {
-            continue;
-        }
-
-        const cleaned = cleanImageUrl(imgUrl);
-        if (!imageUrls.includes(cleaned)) {
-            imageUrls.push(cleaned);
+        if (imageData.length > 0) {
+            (requestBody as Record<string, unknown>).image_data = imageData;
         }
     }
 
-    let cleaned = html
-        .replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[\s\S]*?<\/style>/gi, '')
-        .replace(/<nav[\s\S]*?<\/nav>/gi, '')
-        .replace(/<footer[\s\S]*?<\/footer>/gi, '')
-        .replace(/<header[\s\S]*?<\/header>/gi, '');
-
-    cleaned = cleaned.replace(/<\/(p|div|h[1-6]|li|tr|blockquote)>/gi, '\n');
-    cleaned = cleaned.replace(/<br\s*\/?>/gi, '\n');
-    cleaned = cleaned.replace(/<[^>]+>/g, '');
-
-    cleaned = cleaned
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&nbsp;/g, ' ');
-
-    cleaned = cleaned.replace(/[ \t]+/g, ' ').replace(/\n\s*\n/g, '\n\n').trim();
-
-    return { text: cleaned, links, imageUrls };
+    const bse = getBudgetStrategyEngine();
+    const { text } = await bse.generateCompletion(requestBody);
+    return text || null;
 }
 
 /**
- * Extract mode: keeps only structured content.
+ * Merges multiple webpage summaries into a single coherent reference.
+ * Respects the active model's chat template stop tokens, the profile's stop pattern, and the provided sampler.
  */
-function extractStructuredContent(text: string): string {
-    const lines = text.split('\n');
-    const kept: string[] = [];
+export async function mergeWebpageSummaries(
+    summaries: { url: string; summary: string }[],
+    sampler?: Sampler,
+    stopPattern?: StopPattern,
+): Promise<string | null> {
+    if (summaries.length === 0) return null;
+    if (summaries.length === 1) return summaries[0].summary;
 
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
+    const formatted = summaries.map((s, i) =>
+        `Source ${i + 1} (${s.url}):\n${s.summary}`
+    ).join('\n\n---\n\n');
 
-        if (/^(#{1,6}\s|[A-Z][A-Z\s]{2,}:?\s*$|\d+[\.\)]\s)/.test(trimmed)) {
-            kept.push(trimmed);
-            continue;
-        }
+    const stops = getWebpageStopTokens(stopPattern);
+    const prompt = `${MULTI_PAGE_MERGE_PROMPT}\n\nSources to merge:\n${formatted}\n\nMerged document:`;
 
-        if (/^[-•*]\s/.test(trimmed)) {
-            kept.push(trimmed);
-            continue;
-        }
+    const requestBody = buildRequestBody(prompt, 2048, sampler, stops);
 
-        if (/^[^:—=]{1,60}[:—=]/.test(trimmed) && trimmed.length < 300) {
-            kept.push(trimmed);
-            continue;
-        }
-
-        if (/^\d+[\.\)]\s/.test(trimmed)) {
-            kept.push(trimmed);
-            continue;
-        }
-
-        kept.push(trimmed);
-    }
-
-    const result = kept.join('\n');
-    return result || '[No structured content extracted]';
-}
-
-async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode: string, includeImages: boolean): Promise<FetchResult> {
-    const now = Date.now();
-
-    // Layer 1: In-memory cache
-    const cacheKey = getCacheKey(url, fetchMode);
-    const cached = fetchCache.get(cacheKey);
-    if (cached && (now - cached.fetchedAt) < cacheTimeToLiveMs) {
-        return cached;
-    }
-
-    // Layer 2: Persistent disk cache (raw content only — mode-specific processing happens after)
-    if (cacheTimeToLiveMs > 0) {
-        try {
-            const diskCached = await findWebpageByUrl(url);
-            if (diskCached && (now - diskCached.lastUpdatedTimestamp) < cacheTimeToLiveMs) {
-                let content = diskCached.content;
-
-                // Apply mode-specific processing to disk-cached raw content
-                if (fetchMode === 'extract') {
-                    content = extractStructuredContent(content);
-                }
-
-                const result: FetchResult = {
-                    url,
-                    content,
-                    links: [],
-                    images: [],
-                    fetchedAt: diskCached.lastUpdatedTimestamp,
-                    tokenEstimate: await tokenEngine.countTokens(content),
-                };
-                fetchCache.set(cacheKey, result);
-                return result;
-            }
-        } catch (e) {
-            console.warn(`Failed to check disk cache for ${url}:`, e);
-        }
-    }
-
-    // Layer 3: Network fetch via proxy
-    try {
-        const result = await proxiedFetch(url, 'text/html,text/plain,*/*');
-
-        if (!result.ok) {
-            throw new Error(`HTTP ${result.status}: ${result.error || 'Unknown error'}`);
-        }
-
-        const contentType = result.contentType || '';
-        const rawBody = result.text || '';
-
-        let content: string;
-        let links: string[] = [];
-        let imageUrls: string[] = [];
-
-        if (contentType.includes('text/html')) {
-            const parsed = parseHtml(rawBody, url);
-            content = parsed.text;
-            links = parsed.links;
-            imageUrls = parsed.imageUrls;
-        } else {
-            content = rawBody;
-        }
-
-        // Apply mode-specific processing
-        if (fetchMode === 'extract') {
-            content = extractStructuredContent(content);
-        }
-
-        let images: WebpageImageInfo[] = [];
-        if (includeImages && imageUrls.length > 0) {
-            const downloadPromises = imageUrls.map(async (imgUrl) => {
-                const downloaded = await downloadImageAsBase64(imgUrl);
-                if (downloaded) {
-                    return {
-                        url: imgUrl,
-                        base64: downloaded.base64,
-                        mimeType: downloaded.mimeType,
-                    } as WebpageImageInfo;
-                }
-                return null;
-            });
-
-            const downloadResults = await Promise.all(downloadPromises);
-            images = downloadResults.filter((r): r is WebpageImageInfo => r !== null);
-        }
-
-        const fetchResult: FetchResult = {
-            url,
-            content,
-            links,
-            images,
-            fetchedAt: now,
-            tokenEstimate: await tokenEngine.countTokens(content),
-        };
-
-        fetchCache.set(cacheKey, fetchResult);
-
-        // Persist raw content to disk cache (before mode-specific processing)
-        // We save the raw version so other modes can reuse it
-        try {
-            const rawContent = contentType.includes('text/html') ? parseHtml(rawBody, url).text : rawBody;
-            await saveRawWebpage({
-                id: uuidv4(),
-                name: url,
-                url,
-                content: rawContent,
-                firstCreatedTimestamp: now,
-                lastUpdatedTimestamp: now,
-            });
-        } catch (e) {
-            console.warn(`Failed to persist webpage cache for ${url}:`, e);
-        }
-
-        return fetchResult;
-
-    } catch (e) {
-        const errorMsg = (e as Error).message;
-
-        console.warn(`Failed to fetch ${url}: ${errorMsg}`);
-
-        const errorResult: FetchResult = {
-            url,
-            content: '',
-            links: [],
-            images: [],
-            fetchedAt: now,
-            tokenEstimate: 0,
-            error: errorMsg,
-        };
-
-        fetchCache.set(cacheKey, errorResult);
-        return errorResult;
-    }
-}
-
-/**
- * Fetches a single URL with optional recursive link following.
- */
-export async function fetchLinkContent(
-    url: string,
-    options: {
-        maxDepth?: number;
-        cacheTimeToLiveMs?: number;
-        visitedUrls?: Set<string>;
-        currentDepth?: number;
-        fetchMode?: linkFetchMode;
-        includeImages?: boolean;
-        limitLinksToSubdirectory?: boolean;
-        subdirectoryScope?: string;
-    } = {}
-): Promise<FetchResult[]> {
-    const maxDepth = options.maxDepth ?? MAX_FETCH_DEPTH;
-    const cacheTimeToLiveMs = options.cacheTimeToLiveMs ?? DEFAULT_CACHE_TIME_TO_LIVE_MS;
-    const visited = options.visitedUrls ?? new Set<string>();
-    const depth = options.currentDepth ?? 0;
-    const fetchMode = options.fetchMode ?? 'full';
-    const includeImages = options.includeImages ?? false;
-    const limitLinksToSubdirectory = options.limitLinksToSubdirectory ?? false;
-
-    const subdirectoryScope = options.subdirectoryScope ?? (limitLinksToSubdirectory ? getSubdirectoryScope(url) : '');
-
-    if (depth > maxDepth) return [];
-    if (visited.has(url)) return [];
-
-    if (limitLinksToSubdirectory && subdirectoryScope && depth > 0) {
-        if (!isWithinSubdirectory(url, subdirectoryScope)) {
-            return [];
-        }
-    }
-
-    visited.add(url);
-
-    const result = await fetchSingleUrl(url, cacheTimeToLiveMs, fetchMode, includeImages);
-
-    if (result.error || !result.content) {
-        return [result];
-    }
-
-    const allResults: FetchResult[] = [result];
-
-    if (depth < maxDepth && result.links.length > 0) {
-        const childPromises = result.links.map(linkUrl =>
-            fetchLinkContent(linkUrl, {
-                maxDepth,
-                cacheTimeToLiveMs,
-                visitedUrls: visited,
-                currentDepth: depth + 1,
-                fetchMode,
-                includeImages,
-                limitLinksToSubdirectory,
-                subdirectoryScope,
-            })
-        );
-
-        const childResults = await Promise.all(childPromises);
-        for (const childBatch of childResults) {
-            allResults.push(...childBatch);
-        }
-    }
-
-    return allResults;
-}
-
-/**
- * Batch entry point: fetches multiple URLs for a single context entry.
- * Engine context should already be set by caller before calling this function.
- */
-export async function fetchMultipleContextUrls(
-    urls: string[],
-    options: {
-        maxDepth?: number;
-        cacheTimeToLiveMs?: number;
-        fetchMode?: linkFetchMode;
-        searchTerms?: string[];
-        searchEngine?: searchEngine;
-        includeImages?: boolean;
-        limitLinksToSubdirectory?: boolean;
-        sampler?: Sampler;
-        stopPattern?: StopPattern;
-    } = {}
-): Promise<{ results: FetchResult[]; errors: string[] }> {
-    const allUrls = [...urls];
-
-    if (options.searchTerms && options.searchTerms.length > 0 && options.searchEngine) {
-        const searchUrl = buildSearchUrl(options.searchTerms, options.searchEngine);
-        allUrls.push(searchUrl);
-    }
-
-    const visited = new Set<string>();
-    const allResults: FetchResult[] = [];
-    const errors: string[] = [];
-    const includeImages = options.includeImages ?? false;
-    const limitLinksToSubdirectory = options.limitLinksToSubdirectory ?? false;
-
-    const promises = allUrls.map(url =>
-        fetchLinkContent(url, {
-            ...options,
-            visitedUrls: visited,
-            includeImages,
-            limitLinksToSubdirectory,
-        })
-    );
-
-    const batches = await Promise.all(promises);
-
-    for (const batch of batches) {
-        for (const result of batch) {
-            allResults.push(result);
-            if (result.error) {
-                errors.push(`${result.url}: ${result.error}`);
-            }
-        }
-    }
-
-    // Summary mode: summarize each page individually, then merge if multiple
-    if (options.fetchMode === 'summary') {
-        const validResults = allResults.filter(r => !r.error && r.content.length > 0);
-
-        if (validResults.length > 0) {
-            const summarizedEntries: { url: string; summary: string }[] = [];
-
-            for (const result of validResults) {
-                const imagesForSummary = includeImages && result.images.length > 0
-                    ? result.images
-                    : undefined;
-
-                const summary = await summarizeWebpageContent(
-                    result.content,
-                    result.url,
-                    imagesForSummary,
-                    options.sampler,
-                    options.stopPattern,
-                );
-                if (summary) {
-                    summarizedEntries.push({ url: result.url, summary });
-                }
-            }
-
-            if (summarizedEntries.length > 0) {
-                let finalContent: string;
-
-                if (summarizedEntries.length === 1) {
-                    finalContent = `[Summarized: ${summarizedEntries[0].url}]\n${summarizedEntries[0].summary}`;
-                } else {
-                    const merged = await mergeWebpageSummaries(
-                        summarizedEntries,
-                        options.sampler,
-                        options.stopPattern,
-                    );
-                    if (merged) {
-                        const sourceList = summarizedEntries.map(e => e.url).join(', ');
-                        finalContent = `[Summarized & Merged from: ${sourceList}]\n${merged}`;
-                    } else {
-                        finalContent = summarizedEntries
-                            .map(e => `[Summarized: ${e.url}]\n${e.summary}`)
-                            .join('\n\n---\n\n');
-                    }
-                }
-
-                allResults.length = 0;
-                allResults.push({
-                    url: summarizedEntries.length === 1 ? summarizedEntries[0].url : 'merged-summary',
-                    content: finalContent,
-                    links: [],
-                    images: [],
-                    fetchedAt: Date.now(),
-                    tokenEstimate: await tokenEngine.countTokens(finalContent),
-                });
-            }
-        }
-    }
-
-    return { results: allResults, errors };
-}
-
-export function clearFetchCache(): void {
-    fetchCache.clear();
-}
-
-export function getFetchCacheStats(): { size: number; urls: string[] } {
-    return {
-        size: fetchCache.size,
-        urls: Array.from(fetchCache.keys()),
-    };
+    const bse = getBudgetStrategyEngine();
+    const { text } = await bse.generateCompletion(requestBody);
+    return text || null;
 }
