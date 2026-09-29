@@ -816,7 +816,7 @@ export function AppModals({
                             setTimeout(() => {
                                 const el = document.querySelector(`[data-message-id="${msgId}"]`);
                                 el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            }, 350);
+                            }, 300);
                         }
                     }}
                 />
