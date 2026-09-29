@@ -8,7 +8,7 @@ import { createChatMessage, addMessageToInteractionData, convertIdsToDisplayName
 import { processPendingToolActions, executeTool, type ToolExecutionContext } from '../services/ToolExecutor';
 import { parseSlashCommand } from '../services/ToolInvocationParser';
 import { runSummarization } from '../services/SummarizationEngine';
-import { consumeChatStaminaForMessage } from '../utilities/characterLogic';
+import { consumeChatStaminaForMessage } from '../utilities//characterLogic';
 import { getCurrentLocationIndex, findLocationByRegex } from '../utilities/locationLogic';
 import { detectName } from '../utilities/nameDetection';
 import { getFilteredChatMessages } from '../utilities/promptLogic';
@@ -23,14 +23,12 @@ import { getBudgetStrategyEngine, type RequestMetadata } from '../services/Budge
 import { learnFromUserMessage } from '../services/ActionFormatEngine';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
+import { MultiplayerEvents } from '../services/MultiplayerEvents';
 import type { Character, Context, Location, AudioTrack, World, PromptBlock, Sampler, StopPattern, BudgetStrategy, Profile, InteractionData, ChatMessage, WhisperMessage, HistoryMessage, Memory, Extension, Account, MultiplayerData, LanguageModel, InterjectableAction } from '../types';
 
 const engine = getLanguageModelEngine();
 
-/** Tools that are valid without any arguments */
 const NO_ARG_TOOLS = ['coin', 'date'];
-
-/** Meta-tools that require administrator privileges for joiners */
 const HOST_ONLY_TOOLS = ['administrator', 'creator', 'destroyer'];
 
 function finalizeMessageById(
@@ -52,10 +50,6 @@ function finalizeMessageById(
     return { ...data, interactionHistory: history, lastUpdatedTimestamp: Date.now() };
 }
 
-/**
- * Find the last AI chat message ID for resumption.
- * Returns the message ID, or null if no suitable message found.
- */
 function findLastAIMessageId(
     data: InteractionData,
     protagonistId: string,
@@ -72,11 +66,8 @@ function findLastAIMessageId(
 
 interface UseChatSessionOptions {
     onMessageBroadcast?: (message: HistoryMessage) => void;
-    /** When true, this client is a multiplayer joiner and should not generate locally */
     isMultiplayerClient?: boolean;
-    /** The character assigned to this client by the host. Used to lock message authoring. */
     joinProtagonist?: Character | null;
-    /** All entity collections for tool execution context */
     allCharacters?: Character[];
     allContexts?: Context[];
     allLocations?: Location[];
@@ -103,11 +94,9 @@ export function useChatSession(options: UseChatSessionOptions) {
     
     useEffect(() => { onMessageBroadcastRef.current = options?.onMessageBroadcast; }, [options?.onMessageBroadcast]);
 
-    // LOCK: Keep the assigned multiplayer character in a ref so callbacks always use the locked identity
     const joinProtagonistRef = useRef(options?.joinProtagonist ?? null);
     useEffect(() => { joinProtagonistRef.current = options?.joinProtagonist ?? null; }, [options?.joinProtagonist]);
 
-    // ─── Entity Collections (refs to avoid stale closures) ──────────
     const allCharactersRef = useRef(options?.allCharacters ?? []);
     const allContextsRef = useRef(options?.allContexts ?? []);
     const allLocationsRef = useRef(options?.allLocations ?? []);
@@ -148,7 +137,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         getState, setState, setActiveStrategy, setSelectedModel, setSelectedCharacter,
     } = state;
 
-    // Direct Zustand selectors for stable effect dependencies
     const interactionData = useSessionStore(s => s.interactionData);
     const selectedModel = useSessionStore(s => s.selectedModel);
     const autonomousMode = useSessionStore(s => s.interactionData?.Profile?.autonomousMode ?? false);
@@ -160,23 +148,15 @@ export function useChatSession(options: UseChatSessionOptions) {
     const isAtBottomRef = useRef(true);
     const wasStoppedRef = useRef(false);
 
-    // Ref to hold resumeGeneration for use in autoResumeOnCutoff (breaks circular dependency)
     const resumeGenerationRef = useRef<(messageId: string, allPromptBlocks?: PromptBlock[]) => Promise<void>>(null);
-
-    // Track the current streaming message ID for broadcast during streaming
     const streamingMessageIdRef = useRef<string | null>(null);
     const streamingCharacterRef = useRef<Character | null>(null);
 
-    // ─── Lock Queueing Refs ──────────────────────────────────────────
     const pendingHostResponseRef = useRef(false);
     const triggerHostResponseRef = useRef<() => Promise<void>>(null);
     const pendingResumeRef = useRef<{messageId: string, allPromptBlocks?: PromptBlock[]} | null>(null);
 
-    // ─── FM Context Tracking ─────────────────────────────────────────
-    // Stores the context of the last successful turn so we can correct the FM label on regeneration.
     const lastTurnContextRef = useRef<{ modelId: string; prompt: string; metadata: RequestMetadata } | null>(null);
-    
-    // Rolling counter for rate limit prediction feature
     const requestTimestampsRef = useRef<number[]>([]);
 
     const getRequestsLastHour = useCallback(() => {
@@ -204,39 +184,32 @@ export function useChatSession(options: UseChatSessionOptions) {
     const { acquireLock, releaseLock, isLoadingRef } = useCharacterResponseLock();
     const { generateAmbientNarration } = useAmbientNarration(setStreamingState, setStreamingText, streamingTextRef);
 
-    // Wrapped throttled stream setter that also broadcasts partial messages
     const throttledSetStreamingTextWithBroadcast = useCallback((text: string) => {
         throttledSetStreamingText(text);
         const char = streamingCharacterRef.current;
         const msgId = streamingMessageIdRef.current;
         
-        // ─── SPECULATIVE MARKOV INTERCEPTOR ─────────────────────────────
         const profile = getState().interactionData?.Profile;
         if (profile?.enableSpeculativeMarkov && char && msgId && abortControllerRef.current) {
             const model = getState().selectedModel;
-            const interactionData = getState().interactionData;
-            const interactionDataId = interactionData?.id || 'unknown';
+            const currentData = getState().interactionData;
+            const currentDataId = currentData?.id || 'unknown';
             const budgetData = getState().budgetData;
             
-            // Filter history for THIS character only (INCLUDING WHISPERS)
-            const charHistory = interactionData?.interactionHistory.filter(
+            const charHistory = currentData?.interactionHistory.filter(
                 (m): m is ChatMessage | WhisperMessage => 
                     m.character.id === char.id && (m.messageType === 'chat' || m.messageType === 'whisper')
             ) || [];
             
-            // INCREMENTAL SYNC: Only processes new messages, O(1) on subsequent turns
             speculativeMarkovEngine.syncMessages(
                 charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })), 
                 char.id,
-                interactionDataId
+                currentDataId
             );
 
-            // Calculate Costs
             const outputCost = model?.outputGenerationCostPerOneMillionOfTokens || 15;
             const cacheMissCost = model?.cacheMissCostPerOneMillionOfTokens || 3;
 
-            // Extract Temperature from Sampler Configuration
-            // STRICT PRECEDENCE: Profile Sampler -> Character Sampler -> 1.0
             const profileTemp = Number(profile.characterSampler?.parameters?.temperature);
             const charTemp = Number(char.sampler?.parameters?.temperature);
             
@@ -248,15 +221,9 @@ export function useChatSession(options: UseChatSessionOptions) {
             }
             temperature = Math.max(0.1, temperature);
 
-            // Only check on word/punctuation boundaries to save CPU cycles
             if (text.endsWith(' ') || text.endsWith('\n') || text.match(/[.!?]$/)) {
                 const prediction = speculativeMarkovEngine.predictSequence(
-                    text, 
-                    outputCost, 
-                    cacheMissCost, 
-                    temperature, 
-                    char.id, 
-                    interactionDataId
+                    text, outputCost, cacheMissCost, temperature, char.id, currentDataId
                 );
                 
                 if (prediction) {
@@ -268,15 +235,11 @@ export function useChatSession(options: UseChatSessionOptions) {
                         const modelId = model?.id || '';
                         const TTFT_ms = budgetData?.modelAverageTimeToFirstToken?.[modelId] ?? 500;
                         const msPerToken = budgetData?.modelAverageLatencyMsPerToken?.[modelId] ?? 25;
-                        
                         const TTFT_seconds = TTFT_ms / 1000;
                         const TPS = 1000 / msPerToken;
-                        
-                        // Exact latency-adjusted formula
                         minTokensThreshold = Math.ceil((TTFT_seconds * TPS) / (1 - costRatio));
                     }
                     
-                    // ONLY abort if the Markov haul exceeds the latency penalty
                     if (estimatedTokens >= minTokensThreshold) {
                         const newText = text + prediction;
                         throttledSetStreamingText(newText);
@@ -289,7 +252,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 }
             }
         }
-        // ────────────────────────────────────────────────────────────────
 
         if (char && msgId && onMessageBroadcastRef.current) {
             const partialMsg: ChatMessage = {
@@ -313,7 +275,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
     }, [throttledSetStreamingText, getState]);
 
-    // Load budget data once on mount
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -325,7 +286,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         return () => { cancelled = true; };
     }, [setBudgetData]);
 
-    // Fetch model status once on mount
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -345,7 +305,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         if (selectedModel) engine.setContext(selectedModel);
     }, [selectedModel]);
 
-    // Token counting — depends on interactionData changes only
     useEffect(() => {
         if (!interactionData) return;
         let cancelled = false;
@@ -359,7 +318,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         return () => { cancelled = true; };
     }, [interactionData, setNumberOfTokens]);
 
-    // ─── FULL TRAIN MARKOV ON SESSION LOAD ─────────────────────────────
     useEffect(() => {
         if (!interactionData?.id) return;
         if (!interactionData.Profile?.enableSpeculativeMarkov) return;
@@ -372,12 +330,9 @@ export function useChatSession(options: UseChatSessionOptions) {
                 characterId: m.character.id
             }));
         
-        // Full train wipes and rebuilds the map for all characters in this session
         speculativeMarkovEngine.fullTrain(history, interactionData.id);
-    }, [interactionData?.id, interactionData?.Profile?.enableSpeculativeMarkov]);
-    // ────────────────────────────────────────────────────────────────────
+    }, [interactionData?.id, interactionData?.Profile?.enableSpeculativeMarkov, interactionData?.interactionHistory]);
 
-    // Autonomous mode — depends on autonomousMode flag only
     useEffect(() => {
         if (autonomousMode && interactionData && !isMultiplayerClient) {
             const checkCanAct = () => !isLoadingRef.current && !abortControllerRef.current;
@@ -393,7 +348,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         return () => { chatEngine.stopAutonomousMode(); };
     }, [autonomousMode, interactionData, chatEngine, isLoadingRef, resetStream, getState, setState, isMultiplayerClient]);
 
-    // Persist FMs on tab close to prevent data loss
     useEffect(() => {
         const handleBeforeUnload = () => {
             try {
@@ -435,18 +389,15 @@ export function useChatSession(options: UseChatSessionOptions) {
         return addMessageToInteractionData(base, chatMessage);
     }, []);
 
-    // Auto-resume helper: finds last AI message and triggers resumeGeneration
     const autoResumeOnCutoff = useCallback((data: InteractionData, protagonistId: string, allPromptBlocks?: PromptBlock[]) => {
         const messageId = findLastAIMessageId(data, protagonistId);
         if (!messageId) return;
 
-        // Use setTimeout to avoid re-entrancy issues with the current callback stack
         setTimeout(() => {
             resumeGenerationRef.current?.(messageId, allPromptBlocks);
         }, 0);
     }, []);
 
-    // Helper to broadcast new messages added by a turn
     const broadcastNewMessages = useCallback((beforeCount: number, afterData: InteractionData) => {
         if (!onMessageBroadcastRef.current) return;
         const newMessages = afterData.interactionHistory.slice(beforeCount);
@@ -455,7 +406,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
     }, []);
 
-    /** Build the ToolExecutionContext from current refs with comprehensive entity data bindings */
     const buildToolContext = useCallback((): ToolExecutionContext => ({
         allCharacters: allCharactersRef.current,
         allContexts: allContextsRef.current,
@@ -476,20 +426,16 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     const sendMessage = useCallback(async (text: string, allPromptBlocks: PromptBlock[] | undefined, files: File[] | undefined, frontCameraImageBase64: string | undefined) => {
         const currentState = getState();
-        
-        // LOCK: Force multiplayer clients to use their assigned protagonist, ignoring local UI state
         const activeCharacter = isMultiplayerClient 
             ? (joinProtagonistRef.current || currentState.currentCharacter)
             : currentState.currentCharacter;
 
         if (!currentState.interactionData || !activeCharacter || (!text && (!files || !files.length))) return;
 
-        // ─── SLASH COMMAND DETECTION ───────────────────────────────
         const slashInvocation = parseSlashCommand(text);
         const isSlashCommand = !!(slashInvocation && !files?.length && !frontCameraImageBase64);
 
         if (isSlashCommand && slashInvocation) {
-            // ─── GATE HOST-ONLY META-TOOLS FROM NON-ADMIN JOINERS ─────────────
             if (isMultiplayerClient && HOST_ONLY_TOOLS.includes(slashInvocation.toolType)) {
                 const mpData = useSessionStore.getState().multiplayerData;
                 const accountId = useSessionStore.getState().currentAccountId;
@@ -502,13 +448,11 @@ export function useChatSession(options: UseChatSessionOptions) {
                 }
             }
 
-            // ─── VALIDATE ARGS ──────────────────────────────────────
             if (!slashInvocation.args && !NO_ARG_TOOLS.includes(slashInvocation.toolType)) {
                 addToast(`/${slashInvocation.toolType} requires arguments.`, 'error');
                 return;
             }
 
-            // ─── EXECUTE TOOL ────────────────────────────────────────
             if (!acquireLock()) { addToast('Already processing...', 'info'); return; }
             try {
                 const slashMessage = createChatMessage(currentState.interactionData, activeCharacter, '', {});
@@ -521,7 +465,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                     currentState.interactionData.Profile?.toolUsageDisplayMode
                 );
 
-                // Use the raw mechanical display replacement directly
                 slashMessage.textContent = toolResult.displayReplacement || toolResult.content || `[${slashInvocation.toolType}]`;
 
                 let updatedData = addMessageToInteractionData(currentState.interactionData, slashMessage);
@@ -539,31 +482,22 @@ export function useChatSession(options: UseChatSessionOptions) {
                 return;
             }
 
-            // ─── MULTIPLAYER: tool executed locally, host handles AI ─
             if (isMultiplayerClient) {
                 releaseLock();
                 return;
             }
-
-            // ─── FALL THROUGH TO AI GENERATION ─────────────────────
-            // Tool result is already in chat history. AI will see it and respond.
         }
 
-        // ─── NORMAL MESSAGE OR POST-SLASH AI GENERATION ─────────────
-
-        const currentInteractionData = currentState.interactionData
-
+        const currentInteractionData = currentState.interactionData;
         if (!currentInteractionData.Profile || !currentInteractionData.Profile?.enableCharacterExpression) sentimentEngine.unload();
 
         if (!isSlashCommand && !acquireLock()) { addToast('Already generating...', 'info'); return; }
         
-        // Multiplayer clients only send the user message, host handles generation
         if (isMultiplayerClient && !isSlashCommand) {
             try {
                 const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error); });
                 const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
-                // Detect names for protagonist from filtered messages
                 const filteredMessages = getFilteredChatMessages(currentInteractionData, activeCharacter.id, allPromptBlocks || []);
                 const knownCharacterNames = detectName(activeCharacter, filteredMessages);
 
@@ -574,10 +508,8 @@ export function useChatSession(options: UseChatSessionOptions) {
                 });
                 let td = addMessageToInteractionData(currentInteractionData, chatMessage);
 
-                // Broadcast user message to host
                 onMessageBroadcastRef.current?.(chatMessage);
 
-                // --- ACTION FORMAT LEARNING ---
                 if (allActionsRef.current.length > 0) {
                     let prevWrap: '*' | '()' | 'none' | 'unknown' = 'unknown';
                     for (let i = td.interactionHistory.length - 2; i >= 0; i--) {
@@ -592,7 +524,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                     }
                     learnFromUserMessage(text, allActionsRef.current.map(a => a.label), prevWrap);
                 }
-                // ------------------------------
 
                 const hasLocations = td.locations && td.locations.length > 0;
                 if (hasLocations) {
@@ -623,16 +554,13 @@ export function useChatSession(options: UseChatSessionOptions) {
         isAtBottomRef.current = true;
 
         try {
-            // Get the latest interaction data (may have been updated by slash command)
             const latestState = getState();
             let td = latestState.interactionData as InteractionData;
 
-            // If NOT a slash command, add the user's text as a chat message
             if (!isSlashCommand) {
                 const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result as string); reader.onerror = error => reject(error); });
                 const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
-                // Detect names for protagonist from filtered messages
                 const filteredMessages = getFilteredChatMessages(td, activeCharacter.id, allPromptBlocks || []);
                 const knownCharacterNames = detectName(activeCharacter, filteredMessages);
 
@@ -643,10 +571,8 @@ export function useChatSession(options: UseChatSessionOptions) {
                 });
                 td = addMessageToInteractionData(td, chatMessage);
 
-                // Broadcast user message
                 onMessageBroadcastRef.current?.(chatMessage);
 
-                // --- ACTION FORMAT LEARNING ---
                 if (allActionsRef.current.length > 0) {
                     let prevWrap: '*' | '()' | 'none' | 'unknown' = 'unknown';
                     for (let i = td.interactionHistory.length - 2; i >= 0; i--) {
@@ -661,7 +587,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                     }
                     learnFromUserMessage(text, allActionsRef.current.map(a => a.label), prevWrap);
                 }
-                // ------------------------------
 
                 const hasLocations = td.locations && td.locations.length > 0;
                 if (hasLocations) {
@@ -677,19 +602,16 @@ export function useChatSession(options: UseChatSessionOptions) {
                 setInteractionData(td);
             }
 
-            // Set up streaming broadcast tracking
             const preTurnCount = td.interactionHistory.length;
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
-            // Track request for FM metadata
             requestTimestampsRef.current.push(Date.now());
             const metadata: RequestMetadata = {
                 numberOfMessages: td.interactionHistory.length,
                 numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
             };
 
-            // ─── INCREMENTAL MARKOV SYNC ────────────────────────────────
             const targetChar = activeCharacter;
             const interactionDataId = latestState.interactionData?.id || 'unknown';
             const charHistory = latestState.interactionData?.interactionHistory.filter(
@@ -701,12 +623,10 @@ export function useChatSession(options: UseChatSessionOptions) {
                 targetChar.id,
                 interactionDataId
             );
-            // ────────────────────────────────────────────────────────────
 
             const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks, metadata);
             let ud = turnResult.interactionData;
 
-            // Store context for potential regeneration correction
             if (turnResult.promptText) {
                 const currentModelId = useSessionStore.getState().selectedModelId;
                 if (currentModelId) {
@@ -725,16 +645,12 @@ export function useChatSession(options: UseChatSessionOptions) {
                 return;
             }
 
-            // Always process pending tool actions and bind back into 'ud'
             ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
                 setInteractionData(ud);
-
-                // Broadcast finalized AI messages
                 broadcastNewMessages(preTurnCount, ud);
 
-                // Auto-resume if model cut off mid-generation
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
                     autoResumeOnCutoff(ud, activeCharacter.id, allPromptBlocks);
                     return;
@@ -751,7 +667,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                     ui.playVoice(lm.textContent, lm.character);
                 }
             } else {
-                // Check if ambient narration is enabled in the profile
                 const enableAmbientNarration = ud?.Profile?.enableAmbientNarration ?? false;
                 
                 if (enableAmbientNarration) {
@@ -786,7 +701,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
     }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, autoResumeOnCutoff, broadcastNewMessages, isMultiplayerClient, buildToolContext, getRequestsLastHour]);
 
-    // Trigger host response when a peer sends a message
     const triggerHostResponse = useCallback(async () => {
         const currentState = getState();
         if (!currentState.interactionData || !currentState.currentCharacter) return;
@@ -846,7 +760,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
                 setInteractionData(ud);
-
                 broadcastNewMessages(preTurnCount, ud);
 
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
@@ -899,9 +812,25 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
     }, [getState, chatEngine, ui, addToast, acquireLock, releaseLock, isModelReadyForGeneration, resetStream, applyPendingPartial, generateAmbientNarration, setStreamingState, setStats, setInteractionData, autoResumeOnCutoff, broadcastNewMessages, getRequestsLastHour]);
 
+    useEffect(() => {
+        triggerHostResponseRef.current = triggerHostResponse;
+    }, [triggerHostResponse]);
+
+    // ─── Direct EventBus Subscription for Multiplayer Peer Messages ───
+    useEffect(() => {
+        if (isMultiplayerClient) return;
+
+        const unsubscribe = MultiplayerEvents.on('peerMessageReceived', async () => {
+            console.log('[useChatSession] Triggering host response from MultiplayerEvents');
+            await triggerHostResponse();
+        });
+
+        return unsubscribe;
+    }, [isMultiplayerClient, triggerHostResponse]);
+
     const sendActionAndGetResponse = useCallback(async (actionText: string, _targetChar: Character, protagonist: Character) => {
         const currentState = getState();
-        const currentInteractionData = currentState.interactionData
+        const currentInteractionData = currentState.interactionData;
         if (!currentInteractionData) return;
         if (!currentInteractionData.Profile || !currentInteractionData.Profile?.enableCharacterExpression) sentimentEngine.unload();
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
@@ -919,7 +848,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 const td = addMessageToInteractionData(currentInteractionData, chatMessage);
 
                 onMessageBroadcastRef.current?.(chatMessage);
-
                 setInteractionData(td);
             } finally {
                 releaseLock();
@@ -945,7 +873,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             const td = addMessageToInteractionData(currentInteractionData, chatMessage);
 
             onMessageBroadcastRef.current?.(chatMessage);
-
             setInteractionData(td);
 
             const preTurnCount = td.interactionHistory.length;
@@ -983,7 +910,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             if (ud.interactionHistory.length > td.interactionHistory.length) {
                 setInteractionData(ud);
-
                 broadcastNewMessages(preTurnCount, ud);
 
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
@@ -1202,10 +1128,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     useEffect(() => {
         resumeGenerationRef.current = resumeGeneration;
     }, [resumeGeneration]);
-    
-    useEffect(() => {
-        triggerHostResponseRef.current = triggerHostResponse;
-    }, [triggerHostResponse]);
 
     const regenerateFromMessage = useCallback(async (messageId: string, protagonists: Character[], allPromptBlocks?: PromptBlock[]) => {
         if (isMultiplayerClient) {
@@ -1326,7 +1248,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             if (ud.interactionHistory.length > preCount) {
                 setInteractionData(ud);
-
                 broadcastNewMessages(preCount, ud);
 
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {

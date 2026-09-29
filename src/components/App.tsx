@@ -190,14 +190,6 @@ function App() {
         activeStrategy, budgetData,
     } = session;
 
-    // Destructure ref before assignment in effect to satisfy React Compiler purity checks
-    const { triggerHostResponseRef } = mp;
-    useEffect(() => {
-        if (triggerHostResponseRef) {
-            triggerHostResponseRef.current = triggerHostResponse;
-        }
-    }, [triggerHostResponseRef, triggerHostResponse]);
-
     // ─── Chat Restoration ────────────────────────────────────────────
     const { activeChatRestored } = useChatRestoration({
         charsLoading: characters.isLoading,
@@ -377,12 +369,22 @@ function App() {
 
     const isMultiplayerChat = mp.isMultiplayerClient || !!(mp.multiplayerData && interactionData?.id && mp.multiplayerData.interactionDataIds.includes(interactionData.id));
 
+    // ─── Local UI State (Hoisted above useViewAssets to eliminate undefined as any) ──
+    const [viewMode, setViewMode] = useState<'ladder' | 'cinematic' | 'vn'>('ladder');
+    const [inputText, setInputText] = useState('');
+    const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+    const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
+    const [isRecording, setIsRecording] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const editTextAreaRef = useRef<HTMLTextAreaElement>(null);
+
     // ─── Local Refs for View Assets ──────────────────────────────────
     const lastViewedMessageIdRef = useRef<string | null>(null);
     const suppressAutoScrollRef = useRef(false);
 
     const viewAssets = useViewAssets({
-        viewMode: undefined as any,
+        viewMode,
         interactionData, localProtagonist, currentCharacter,
         streamingCharacter, currentCharacterExpression, chatHistoryRef,
         isMultiplayerChat,
@@ -403,16 +405,6 @@ function App() {
         runningModels: models.runningModels,
         activeStrategy,
     });
-
-    // ─── Local UI State ──────────────────────────────────────────────
-    const [viewMode, setViewMode] = useState<'ladder' | 'cinematic' | 'vn'>('ladder');
-    const [inputText, setInputText] = useState('');
-    const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-    const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
-    const [isRecording, setIsRecording] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const editTextAreaRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => { if (!textareaRef.current) return; textareaRef.current.style.height = 'auto'; textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, window.innerHeight * 0.3)}px`; });
     useEffect(() => { if (!editTextAreaRef.current || !messageActions.editingId) return; editTextAreaRef.current.style.height = 'auto'; editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`; }, [messageActions.editingId]);
@@ -658,7 +650,6 @@ function App() {
     }, [chatOps]);
 
     const handleRenameChat = useCallback(async (id: string, name: string) => {
-        // Use in-memory chat state directly if renaming the currently active chat
         const loaded = (interactionData?.id === id)
             ? interactionData
             : await loadRawInteractionData(id, characters.characters);

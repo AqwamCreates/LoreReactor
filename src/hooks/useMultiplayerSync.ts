@@ -1,9 +1,10 @@
 // src/hooks/useMultiplayerSync.ts
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { InteractionData, MultiplayerData, HistoryMessage, Character, ChatMessage, InteractionMessage, WhisperMessage, LanguageModel } from '../types';
+import type { InteractionData, MultiplayerData, HistoryMessage, Character, ChatMessage, InteractionMessage, WhisperMessage, LanguageModel, backend } from '../types';
 import { useMultiplayerConnection, type MultiplayerMessage, type JoinRequestPayload, type JoinResponsePayload, type MessageEditPayload, type MessageDeletePayload, type HostMigrationPayload } from './useMultiplayerConnection';
 import { useSessionStore } from './useSessionStore';
 import { saveRawMultiplayerCharacter } from '../storages/serverStorage';
+import { MultiplayerEvents } from '../services/MultiplayerEvents';
 
 interface SyncChatMessagePayload {
     messageId: string;
@@ -87,6 +88,47 @@ export interface PendingJoinRequest {
     timestamp: number;
     requestedCharacterId?: string;
     requestedCharacterData?: Character;
+}
+
+// ─── Pure Payload Extractor (Hoisted to Module Scope) ────────────────
+function extractSyncPayload(message: HistoryMessage): SyncMessagePayload {
+    const base = {
+        messageId: message.id,
+        characterId: message.character.id,
+        remainingChatStamina: message.remainingChatStamina,
+        remainingActionStamina: message.remainingActionStamina,
+        knownCharacterNames: message.knownCharacterNames,
+        locationIndex: message.locationIndex,
+        characterExpression: message.characterExpression,
+        inventory: message.inventory,
+        characterClothingWearingStatuses: message.characterClothingWearingStatuses,
+        characterLockedLocations: message.characterLockedLocations,
+        parentInteractionMessageId: message.parentInteractionMessageId ?? null,
+    };
+
+    if (message.messageType === 'whisper') {
+        return {
+            ...base,
+            messageType: 'whisper',
+            textContent: message.textContent,
+            targetCharacterIds: message.targetCharacterIds,
+        } satisfies SyncWhisperMessagePayload;
+    }
+
+    if (message.messageType === 'chat') {
+        return {
+            ...base,
+            messageType: 'chat',
+            textContent: message.textContent,
+            files: message.files,
+            frontCameraImage: message.frontCameraImage,
+        } satisfies SyncChatMessagePayload;
+    }
+
+    return {
+        ...base,
+        messageType: 'interaction',
+    } satisfies SyncInteractionMessagePayload;
 }
 
 class SharedModelTracker {
@@ -355,6 +397,7 @@ export function useMultiplayerSync({
 
                 if (isNewMessage && payload.messageType === 'chat' && isHost) {
                     onPeerChatMessageRef.current?.(newMessage as ChatMessage, msg.senderAccountId);
+                    MultiplayerEvents.emit('peerMessageReceived', newMessage as ChatMessage);
                 }
                 break;
             }
@@ -396,7 +439,7 @@ export function useMultiplayerSync({
                     const model: LanguageModel = {
                         id: `borrowed-${msg.senderAccountId}-${Date.now()}`,
                         name: payload.modelName,
-                        backend: payload.modelConfig.backend as any,
+                        backend: payload.modelConfig.backend as backend,
                         contextLength: payload.modelConfig.contextLength,
                         model: payload.modelConfig.model,
                         apiKey: payload.modelConfig.apiKey,
@@ -724,6 +767,22 @@ export function useMultiplayerSync({
     useEffect(() => { sendToRef.current = sendTo; }, [sendTo]);
     useEffect(() => { broadcastRef.current = broadcast; }, [broadcast]);
 
+    // ─── Broadcast Message Handlers (Declared BEFORE useEffect) ─────────
+    const broadcastMessage = useCallback((message: HistoryMessage) => {
+        broadcast({
+            type: 'chat_message',
+            payload: extractSyncPayload(message),
+        });
+    }, [broadcast]);
+
+    // Direct EventBus Listener: Broadcast messages emitted from anywhere without prop drilling
+    useEffect(() => {
+        const unsubscribe = MultiplayerEvents.on('broadcastMessage', (message: HistoryMessage) => {
+            broadcastMessage(message);
+        });
+        return unsubscribe;
+    }, [broadcastMessage]);
+
     const requestAndAwaitBorrowedModel = useCallback(async (): Promise<LanguageModel | null> => {
         if (!isHost) return null;
         const md = multiplayerDataRef.current;
@@ -850,53 +909,6 @@ export function useMultiplayerSync({
             return prev.filter(r => r.accountId !== accountId);
         });
     }, [multiplayerData]);
-
-    const extractSyncPayload = useCallback((message: HistoryMessage): SyncMessagePayload => {
-        const base = {
-            messageId: message.id,
-            characterId: message.character.id,
-            remainingChatStamina: message.remainingChatStamina,
-            remainingActionStamina: message.remainingActionStamina,
-            knownCharacterNames: message.knownCharacterNames,
-            locationIndex: message.locationIndex,
-            characterExpression: message.characterExpression,
-            inventory: message.inventory,
-            characterClothingWearingStatuses: message.characterClothingWearingStatuses,
-            characterLockedLocations: message.characterLockedLocations,
-            parentInteractionMessageId: message.parentInteractionMessageId ?? null,
-        };
-
-        if (message.messageType === 'whisper') {
-            return {
-                ...base,
-                messageType: 'whisper',
-                textContent: message.textContent,
-                targetCharacterIds: message.targetCharacterIds,
-            } satisfies SyncWhisperMessagePayload;
-        }
-
-        if (message.messageType === 'chat') {
-            return {
-                ...base,
-                messageType: 'chat',
-                textContent: message.textContent,
-                files: message.files,
-                frontCameraImage: message.frontCameraImage,
-            } satisfies SyncChatMessagePayload;
-        }
-
-        return {
-            ...base,
-            messageType: 'interaction',
-        } satisfies SyncInteractionMessagePayload;
-    }, []);
-
-    const broadcastMessage = useCallback((message: HistoryMessage) => {
-        broadcast({
-            type: 'chat_message',
-            payload: extractSyncPayload(message),
-        });
-    }, [broadcast, extractSyncPayload]);
 
     const sendProtagonist = useCallback((character: Character) => {
         broadcast({
