@@ -821,7 +821,7 @@ export function AppModals({
                                     observer.observe(document.body, { childList: true, subtree: true });
                                     
                                     // Fallback timeout just in case the message was deleted or never renders
-                                    setTimeout(() => observer.disconnect(), 5000); 
+                                    setTimeout(() => observer.disconnect(), 3000); 
                                 }
                                 break;
                             default:
