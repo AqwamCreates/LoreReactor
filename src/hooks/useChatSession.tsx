@@ -43,9 +43,10 @@ function calculateLatencyFactor(
 ): number {
     // Sigmoid parameters
     const painPoint = averageTTFTMs * 2; // The "tipping point" where we start getting desperate
+    const zValue = painPoint - timeSinceLastTokenMs
     
-    // Sigmoid function: 1 / (1 + e^(-k(x - x0)))
-    return 1 / (1 + Math.exp(-(timeSinceLastTokenMs - painPoint)));
+    // Sigmoid function
+    return 1 / (1 + Math.exp(-zValue));
 }
 
 function finalizeMessageById(
@@ -257,7 +258,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                         // Base threshold adjusted by how "desperate" we are for tokens
                         // As latencyFactor approaches 1, the required token haul drops significantly
                         const baseThreshold = (TTFT_seconds * TPS) / (1 - costRatio);
-                        minTokensThreshold = Math.ceil(baseThreshold * (1 - latencyFactor));
+                        minTokensThreshold = Math.ceil(baseThreshold * latencyFactor);
                     }
                     
                     if (estimatedTokens >= minTokensThreshold) {
