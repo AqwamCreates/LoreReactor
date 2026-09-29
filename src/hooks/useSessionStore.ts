@@ -2,6 +2,9 @@
 import { create } from 'zustand';
 import type { Character, InteractionData, BudgetStrategy, LanguageModel, BudgetData, MultiplayerData } from '../types';
 import { loadRawSessionData, saveRawSessionData } from '../storages/serverStorage';
+import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+
+const engine = getLanguageModelEngine();
 
 interface SessionState {
     // ── Core chat state ──────────────────────────────────────────────
@@ -46,19 +49,28 @@ interface SessionState {
     // ── Bootstrap state ──────────────────────────────────────────────
     sessionLoaded: boolean;
 
-    // ── Core State Actions ───────────────────────────────────────────
+    // ── Core Actions ─────────────────────────────────────────────────
     setInteractionData: (
         data: InteractionData | null | ((prev: InteractionData | null) => InteractionData | null)
     ) => void;
     setCurrentCharacter: (character: Character | null) => void;
+    setActiveStrategy: (strategy: BudgetStrategy | null) => void;
+    setSelectedModel: (model: LanguageModel | null) => void;
+    updateRunningModels: (models: Record<string, any>) => void;
+    setBudgetData: (data: BudgetData | null) => void;
+    setLastSelectedModelId: (id: string | null) => void;
+    setStats: (newStats: any) => void;
+    setNumberOfTokens: (count: number) => void;
+    setSelectedCharacterExpression: (expr: string) => void;
 
-    // ── Streaming Actions (Isolated) ─────────────────────────────────
+    // ── Streaming Actions ────────────────────────────────────────────
+    setStreamingState: (char: Character | null, text: string) => void;
     setStreamingText: (text: string) => void;
     setStreamingCharacter: (character: Character | null) => void;
     setIsLoading: (isLoading: boolean) => void;
     resetStreaming: () => void;
 
-    // ── Preference Actions ───────────────────────────────────────────
+    // ── Preference Actions (Server-Persisted) ─────────────────────────
     setSelectedCharacterId: (id: string | null) => void;
     setSelectedModelId: (id: string | null) => void;
     setSelectedProfileId: (id: string | null) => void;
@@ -118,14 +130,72 @@ export const useSessionStore = create<SessionState>()((set) => {
 
         sessionLoaded: false,
 
+        // ── Core Actions ─────────────────────────────────────────────
         setInteractionData: (data) => {
-            set((state) => ({
-                interactionData: typeof data === 'function' ? data(state.interactionData) : data,
-            }));
+            set((state) => {
+                const nextData = typeof data === 'function' ? data(state.interactionData) : data;
+                return {
+                    interactionData: nextData,
+                    ...(nextData ? {} : { numberOfTokens: 0 }),
+                };
+            });
         },
 
         setCurrentCharacter: (character) => {
             set({ currentCharacter: character });
+        },
+
+        setActiveStrategy: (strategy) => {
+            set({ activeStrategy: strategy });
+        },
+
+        setSelectedModel: (model) => {
+            set({ selectedModel: model });
+        },
+
+        updateRunningModels: (models) => {
+            set({ runningModels: models });
+            engine.setRunningModels(models);
+        },
+
+        setBudgetData: (data) => {
+            set({ budgetData: data });
+        },
+
+        setLastSelectedModelId: (id) => {
+            set({ selectedModelId: id });
+        },
+
+        setStats: (newStats) => {
+            set((prev) => {
+                const current = {
+                    numberOfCacheInvalidations: prev.numberOfCacheInvalidations,
+                    numberOfRequests: prev.numberOfRequests,
+                    totalCost: prev.totalCost,
+                    costWithoutCacheMisses: prev.costWithoutCacheMisses,
+                    latency: prev.latency,
+                    timeToFirstToken: prev.timeToFirstToken,
+                };
+                const next = typeof newStats === 'function' ? newStats(current) : { ...current, ...newStats };
+                return next;
+            });
+        },
+
+        setNumberOfTokens: (count) => {
+            set({ numberOfTokens: count });
+        },
+
+        setSelectedCharacterExpression: (expr) => {
+            set({ currentCharacterExpression: expr });
+        },
+
+        // ── Streaming Actions ────────────────────────────────────────
+        setStreamingState: (char, text) => {
+            set({ 
+                streamingCharacter: char, 
+                streamingText: text,
+                isLoading: char !== null 
+            });
         },
 
         setStreamingText: (text) => set({ streamingText: text }),
@@ -133,6 +203,7 @@ export const useSessionStore = create<SessionState>()((set) => {
         setIsLoading: (isLoading) => set({ isLoading }),
         resetStreaming: () => set({ streamingText: '', streamingCharacter: null, isLoading: false }),
 
+        // ── Preference Actions ───────────────────────────────────────
         setSelectedCharacterId: (id) => {
             set({ selectedCharacterId: id });
             saveRawSessionData({ selectedCharacterId: id });
