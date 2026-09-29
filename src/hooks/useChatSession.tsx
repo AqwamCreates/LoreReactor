@@ -244,8 +244,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                         const modelId = model?.id || '';
                         const TTFT_ms = budgetData?.modelAverageTimeToFirstToken?.[modelId] ?? 500;
                         const msPerToken = budgetData?.modelAverageLatencyMsPerToken?.[modelId] ?? 25;
-                        
-                        // ─── LATENCY INTERFERENCE: Sigmoid Scaling ─────────────────────
+
                         const now = Date.now();
                         const timeSinceLastToken = now - lastTokenTimestampRef.current;
                         lastTokenTimestampRef.current = now;
