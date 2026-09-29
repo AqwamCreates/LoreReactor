@@ -36,7 +36,6 @@ function CharacterMemoryEditorContent({
     const [showMassDeleteConfirm, setShowMassDeleteConfirm] = useState(false);
     const editTextAreaRef = useRef<HTMLTextAreaElement>(null);
 
-    // Focus textarea when editing starts
     useEffect(() => {
         if (editingId && editTextAreaRef.current) {
             editTextAreaRef.current.focus();
@@ -104,10 +103,8 @@ function CharacterMemoryEditorContent({
         onClose();
     };
 
-    const handleClose = () => {
-        if (hasChanges) {
-            onSaveMemories(localMemories);
-        }
+    // Discard simply closes without executing onSaveMemories
+    const handleDiscardAndClose = () => {
         onClose();
     };
 
@@ -115,7 +112,7 @@ function CharacterMemoryEditorContent({
     const totalMemories = entries.reduce((sum, [, mems]) => sum + mems.length, 0);
 
     return (
-        <div className="modal-overlay" onClick={handleClose}>
+        <div className="modal-overlay" onClick={handleDiscardAndClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
                     <h2>Memories ({totalMemories})</h2>
@@ -156,7 +153,7 @@ function CharacterMemoryEditorContent({
                             <button type="button" className="editor-button editor-button-save" onClick={handleSaveAndClose}>Save</button>
                         )}
                         {!showMassDeleteConfirm && (
-                            <button type="button" className="editor-button editor-button-cancel" onClick={handleClose}>
+                            <button type="button" className="editor-button editor-button-cancel" onClick={handleDiscardAndClose}>
                                 {hasChanges ? 'Discard' : 'Close'}
                             </button>
                         )}

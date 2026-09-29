@@ -439,7 +439,7 @@ function CharacterEditorModalInner({
         const crsIsAuto = currentCRS === -1;
         const masIsAuto = currentMAS === -1;
 
-        if (!iwIsAuto && !cpIsAuto && !msIsAuto && !nsIsAuto && !cisIsAuto && !spIsAuto && !mrwIsAuto && !masIsAuto) return;
+        if (!iwIsAuto && !cpIsAuto && !msIsAuto && !nsIsAuto && !cisIsAuto && !spIsAuto && !mrwIsAuto && !crsIsAuto && !masIsAuto) return;
 
         const combinedText = `${name} ${description} ${systemPrompt}`;
         const newDetected = { ...autoDetected };
@@ -457,21 +457,45 @@ function CharacterEditorModalInner({
         setAutoDetected(newDetected);
     };
 
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files?.[0]) { setImageFile(e.target.files[0]); setImagePreview(URL.createObjectURL(e.target.files[0])); } };
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files?.[0]) {
+            setImageFile(e.target.files[0]);
+            setImagePreview(URL.createObjectURL(e.target.files[0]));
+        }
+    };
+
     const handleRemoveImage = (e: React.MouseEvent) => {
         e.stopPropagation();
-        setImageFile(null); setImagePreview(null);
-        setEmotionImages(prev => { const { ...next } = prev; return next; });
+        setImageFile(null);
+        setImagePreview(null);
+        setEmotionImages(prev => {
+            const next = { ...prev };
+            delete next.neutral;
+            return next;
+        });
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
+
     const handleVoiceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.[0]) {
             const file = e.target.files[0];
-            if (file.size > MAX_VOICE_FILE_SIZE) { setSubmitError(`Voice file too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 5MB.`); e.target.value = ''; return; }
-            setVoiceFile(file); setVoiceName(file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_')); setSubmitError(null);
+            if (file.size > MAX_VOICE_FILE_SIZE) { 
+                setSubmitError(`Voice file too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 5MB.`); 
+                e.target.value = ''; 
+                return; 
+            }
+            setVoiceFile(file); 
+            setVoiceName(file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_')); 
+            setSubmitError(null);
         }
     };
-    const handleRemoveVoice = () => { setVoiceFile(null); setVoiceName(''); setExistingVoiceName(''); if (voiceInputRef.current) voiceInputRef.current.value = ''; };
+
+    const handleRemoveVoice = () => { 
+        setVoiceFile(null); 
+        setVoiceName(''); 
+        setExistingVoiceName(''); 
+        if (voiceInputRef.current) voiceInputRef.current.value = ''; 
+    };
 
     const handleCardImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]; if (!file) return; e.target.value = '';
@@ -596,23 +620,36 @@ function CharacterEditorModalInner({
 
         const targetCharacterId = isNewClone ? uuidv4() : (existingCharacter?.id || pendingCharacterId || uuidv4());
 
-        let finalImages: Record<string, string> = isNewClone ? {} : { ...(existingCharacter?.images ?? {}) };
-        finalImages = { ...finalImages, ...emotionImages };
+        let finalImages: Record<string, string> = { ...emotionImages };
 
         if (imageFile) {
             setIsUploading(true);
-            try { finalImages.neutral = await uploadCharacterImage(targetCharacterId, imageFile); }
-            catch { setSubmitError("Failed to upload image."); setIsUploading(false); return null; }
+            try { 
+                finalImages.neutral = await uploadCharacterImage(targetCharacterId, imageFile); 
+            } catch { 
+                setSubmitError("Failed to upload image."); 
+                setIsUploading(false); 
+                return null; 
+            }
             setIsUploading(false);
+        } else if (!imagePreview) {
+            delete finalImages.neutral;
         }
 
         let finalVoiceFilename: string | undefined = isNewClone ? undefined : existingCharacter?.voice;
         if (voiceFile) {
             setIsUploading(true);
-            try { finalVoiceFilename = await uploadCharacterVoice(targetCharacterId, voiceFile); }
-            catch { setSubmitError("Failed to upload voice."); setIsUploading(false); return null; }
+            try { 
+                finalVoiceFilename = await uploadCharacterVoice(targetCharacterId, voiceFile); 
+            } catch { 
+                setSubmitError("Failed to upload voice."); 
+                setIsUploading(false); 
+                return null; 
+            }
             setIsUploading(false);
-        } else if (!isNewClone && voiceName === '' && existingVoiceName !== '') { finalVoiceFilename = undefined; }
+        } else if (!isNewClone && voiceName === '' && existingVoiceName !== '') { 
+            finalVoiceFilename = undefined; 
+        }
 
         const rawIW = Number.parseFloat(initiativeWeightStr);
         const rawCP = Number.parseFloat(chatProbabilityStr);
@@ -1345,8 +1382,12 @@ function CharacterEditorModalInner({
                 onSave={(updatedImages) => {
                     setEmotionImages(updatedImages);
                     const neutral = updatedImages.neutral;
-                    if (neutral) { setImagePreview(getCharacterImageUrl(effectiveCharacterId, neutral)); setImageFile(null); }
-                    else if (!imageFile) { setImagePreview(null); }
+                    if (neutral) { 
+                        setImagePreview(getCharacterImageUrl(effectiveCharacterId, neutral)); 
+                        setImageFile(null); 
+                    } else if (!imageFile) { 
+                        setImagePreview(null); 
+                    }
                 }}
             />
 

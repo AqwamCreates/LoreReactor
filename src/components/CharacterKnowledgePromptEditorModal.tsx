@@ -1,5 +1,5 @@
 // src/components/CharacterKnowledgePromptEditorModal.tsx
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import type { KnowledgePrompt } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
@@ -28,8 +28,6 @@ interface CharacterKnowledgePromptEditorModalProps {
     knowledgePrompts: KnowledgePrompt[];
     onSaveKnowledgePrompts: (knowledgePrompts: KnowledgePrompt[]) => void;
 }
-
-// ─── Custom Knowledge Prompt Node ────────────────────────────────────
 
 interface KnowledgeNodeData extends Record<string, unknown> {
     name: string;
@@ -127,8 +125,6 @@ function KnowledgeNode({ data }: NodeProps<Node<KnowledgeNodeData>>) {
 
 const nodeTypes = { knowledgeNode: KnowledgeNode };
 
-// ─── Component ───────────────────────────────────────────────────────
-
 export function CharacterKnowledgePromptEditorModal({
     isOpen,
     onClose,
@@ -140,7 +136,6 @@ export function CharacterKnowledgePromptEditorModal({
     const [prevKnowledgePrompts, setPrevKnowledgePrompts] = useState<KnowledgePrompt[]>(knowledgePrompts);
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
-    // Adjust state during render when prop changes (no useEffect, no ref reads during render)
     if (knowledgePrompts !== prevKnowledgePrompts) {
         setPrevKnowledgePrompts(knowledgePrompts);
         setItems(knowledgePrompts.length > 0 ? [...knowledgePrompts] : []);
@@ -189,6 +184,15 @@ export function CharacterKnowledgePromptEditorModal({
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
+    // Synchronize graph nodes whenever items change
+    useEffect(() => {
+        setNodes(prev => prev.map(node => {
+            const item = items.find(i => i.id === node.id);
+            if (!item) return node;
+            return { ...node, data: buildNodeData(item) };
+        }));
+    }, [items, setNodes]);
+
     const onConnect = useCallback((connection: Connection) => {
         if (!connection.source || !connection.target) return;
         setItems(prev => prev.map(item => {
@@ -203,11 +207,9 @@ export function CharacterKnowledgePromptEditorModal({
             markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' },
             style: { stroke: '#8b5cf6', strokeWidth: 2, opacity: 0.7 },
         }, prev));
-    }, [setItems, setEdges]);
+    }, [setEdges]);
 
-    const onReconnectStart = useCallback((_event: unknown, _edge: Edge, _handleType: string) => {
-        // No-op: just tracking that a reconnect drag started
-    }, []);
+    const onReconnectStart = useCallback((_event: unknown, _edge: Edge, _handleType: string) => {}, []);
 
     const onReconnectEnd = useCallback((_event: unknown, edge: Edge) => {
         setItems(prev => prev.map(item => {
@@ -258,7 +260,13 @@ export function CharacterKnowledgePromptEditorModal({
     }, [items.length, setNodes]);
 
     const handleRemove = useCallback((id: string) => {
-        setItems(prev => prev.filter(item => item.id !== id));
+        setItems(prev => prev
+            .filter(item => item.id !== id)
+            .map(item => ({
+                ...item,
+                knowledgePromptBindings: item.knowledgePromptBindings.filter(b => b !== id),
+            }))
+        );
         setNodes(prev => prev.filter(n => n.id !== id));
         setEdges(prev => prev.filter(e => e.source !== id && e.target !== id));
         if (selectedId === id) setSelectedId(null);

@@ -23,6 +23,10 @@ interface PromptBlockEditorModalProps {
 
 type PromptBlockTabId = 'general' | 'detection' | 'filter' | 'bindings';
 
+type ImageEntry = 
+    | { type: 'existing'; filename: string; previewUrl: string }
+    | { type: 'staged'; file: File; previewUrl: string };
+
 export function PromptBlockEditorModal({
     isOpen,
     onClose,
@@ -62,14 +66,19 @@ function PromptBlockEditorModalInner({
     const [name, setName] = useState(existingBlock?.name || '');
     const [description, setDescription] = useState(existingBlock?.description || '');
     const [textContent, setTextContent] = useState(existingBlock?.textContent ?? '');
-    const [imageFiles, setImageFiles] = useState<File[]>([]);
-    const [imagePreviews, setImagePreviews] = useState<string[]>(() => {
+    
+    // Unified image management
+    const [images, setImages] = useState<ImageEntry[]>(() => {
         if (existingBlock?.images && existingBlock.images.length > 0) {
-            // FIXED: Use correct storage path matching ENTITY_REGISTRY.promptBlockImages
-            return existingBlock.images.map(img => `/user_data/prompt_block_images/${existingBlock.id}/${img}`);
+            return existingBlock.images.map(filename => ({
+                type: 'existing',
+                filename,
+                previewUrl: `/user_data/prompt_block_images/${existingBlock.id}/${filename}`,
+            }));
         }
         return [];
     });
+
     const [isUploading, setIsUploading] = useState(false);
 
     const [regexActivationTriggers, setRegexActivationTriggers] = useState<RegularExpressionTrigger[]>(existingBlock?.regularExpressionActivationTriggers ?? []);
@@ -92,10 +101,11 @@ function PromptBlockEditorModalInner({
     const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
-        const selectedModel = useSessionStore.getState().selectedModel;
-        const runningModels = useSessionStore.getState().runningModels;
+        const state = useSessionStore.getState() as any;
+        const selectedModel = state.selectedModel;
+        const runningModels = state.runningModels;
         if (selectedModel) {
-            tokenEngine.setRunningModels(runningModels);
+            tokenEngine.setRunningModels(runningModels ?? {});
             tokenEngine.setContext(selectedModel);
         }
         const initialText = existingBlock?.textContent ?? '';
@@ -108,13 +118,15 @@ function PromptBlockEditorModalInner({
 
     useEffect(() => {
         let cancelled = false;
-        const debounceRef = tokenDebounceRef.current;
-        if (debounceRef) clearTimeout(debounceRef);
+        if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
         tokenDebounceRef.current = setTimeout(async () => {
             const count = await tokenEngine.countTokens(textContent);
             if (!cancelled) setTextTokenCount(count);
         }, 400);
-        return () => { cancelled = true; const ref = tokenDebounceRef.current; if (ref) clearTimeout(ref); };
+        return () => { 
+            cancelled = true; 
+            if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current); 
+        };
     }, [textContent]);
 
     const validate = (): boolean => {
@@ -122,7 +134,7 @@ function PromptBlockEditorModalInner({
         if (!name.trim()) newErrors.name = 'Name is required.';
 
         const hasText = textContent.trim().length > 0;
-        const hasImages = imagePreviews.length > 0 || imageFiles.length > 0;
+        const hasImages = images.length > 0;
         if (!hasText && !hasImages) {
             newErrors.textContent = 'Either text or images are required.';
             newErrors.images = 'Either text or images are required.';
@@ -156,35 +168,47 @@ function PromptBlockEditorModalInner({
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.length) {
             const files = Array.from(e.target.files);
-            setImageFiles(prev => [...prev, ...files]);
-            setImagePreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
+            const newEntries: ImageEntry[] = files.map(file => ({
+                type: 'staged',
+                file,
+                previewUrl: URL.createObjectURL(file),
+            }));
+            setImages(prev => [...prev, ...newEntries]);
             if (errors.images) setErrors(prev => ({ ...prev, images: undefined }));
         }
         e.target.value = '';
     };
 
     const handleRemoveImage = (index: number) => {
-        setImageFiles(prev => prev.filter((_, i) => i !== index));
-        if (!imagePreviews[index].startsWith('data:image')) URL.revokeObjectURL(imagePreviews[index]);
-        setImagePreviews(prev => prev.filter((_, i) => i !== index));
+        setImages(prev => {
+            const item = prev[index];
+            if (item && item.type === 'staged') {
+                URL.revokeObjectURL(item.previewUrl);
+            }
+            return prev.filter((_, i) => i !== index);
+        });
     };
 
     const buildBlockFromForm = async (isNewClone: boolean): Promise<PromptBlock | null> => {
         if (!validate()) return null;
 
-        // FIXED: Determine ID upfront so uploads have a valid path
         const blockId = isNewClone ? uuidv4() : (existingBlock?.id || uuidv4());
 
-        let finalImageFilenames: string[] = isNewClone ? [] : (existingBlock?.images ?? []);
+        const existingFilenames = isNewClone 
+            ? [] 
+            : images.filter((img): img is ImageEntry & { type: 'existing' } => img.type === 'existing').map(img => img.filename);
 
-        if (imageFiles.length > 0) {
+        const filesToUpload = images.filter((img): img is ImageEntry & { type: 'staged' } => img.type === 'staged').map(img => img.file);
+
+        let finalImageFilenames: string[] = [...existingFilenames];
+
+        if (filesToUpload.length > 0) {
             setIsUploading(true);
             try {
-                // FIXED: Pass blockId as first argument to uploadPromptBlockImage
                 const uploaded = await Promise.all(
-                    imageFiles.map(f => uploadPromptBlockImage(blockId, f))
+                    filesToUpload.map(f => uploadPromptBlockImage(blockId, f))
                 );
-                finalImageFilenames = [...(isNewClone ? [] : (existingBlock?.images ?? [])), ...uploaded];
+                finalImageFilenames = [...finalImageFilenames, ...uploaded];
             } catch (error) {
                 console.error('Failed to upload images:', error);
                 alert('Failed to upload images. Prompt block not saved.');
@@ -227,7 +251,7 @@ function PromptBlockEditorModalInner({
     const handleClone = async () => { const cloned = await buildBlockFromForm(true); if (!cloned) return; onSave(cloned); onClose(); };
 
     const hasText = textContent.trim().length > 0;
-    const hasImages = imagePreviews.length > 0 || imageFiles.length > 0;
+    const hasImages = images.length > 0;
     const textRequiresAsterisk = !hasImages;
     const imagesRequiresAsterisk = !hasText;
 
@@ -293,9 +317,9 @@ function PromptBlockEditorModalInner({
                             <div className="context-field-group">
                                 <label className="editor-label">Images {imagesRequiresAsterisk && <span className="context-required-asterisk">*</span>}</label>
                                 <div className="editor-image-grid">
-                                    {imagePreviews.map((preview, index) => (
-                                        <div key={index} className="editor-image-square active">
-                                            <img src={preview} alt={`Block image ${index + 1}`} />
+                                    {images.map((entry, index) => (
+                                        <div key={`${entry.previewUrl}-${index}`} className="editor-image-square active">
+                                            <img src={entry.previewUrl} alt={`Block image ${index + 1}`} />
                                             <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-button">×</button>
                                         </div>
                                     ))}

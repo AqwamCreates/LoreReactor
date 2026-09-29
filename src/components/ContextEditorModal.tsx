@@ -24,6 +24,10 @@ const SEARCH_ENGINE_OPTIONS: searchEngine[] = ['Google', 'Bing', 'DuckDuckGo', '
 
 type ContextTabId = 'general' | 'web' | 'detection' | 'filter' | 'lorebook';
 
+type ImageEntry = 
+    | { type: 'existing'; filename: string; previewUrl: string }
+    | { type: 'staged'; file: File; previewUrl: string };
+
 export function ContextEditorModal({
     isOpen,
     onClose,
@@ -57,14 +61,19 @@ function ContextEditorModalInner({
     const [name, setName] = useState(existingContext?.name || '');
     const [description, setDescription] = useState(existingContext?.description || '');
     const [text, setText] = useState(existingContext?.text || '');
-    const [imageFiles, setImageFiles] = useState<File[]>([]);
-    const [imagePreviews, setImagePreviews] = useState<string[]>(() => {
+    
+    // Unified image management
+    const [images, setImages] = useState<ImageEntry[]>(() => {
         if (existingContext?.images && existingContext.images.length > 0) {
-            // FIXED: Use correct storage path matching ENTITY_REGISTRY.contextImages
-            return existingContext.images.map(img => `/user_data/context_images/${existingContext.id}/${img}`);
+            return existingContext.images.map(filename => ({
+                type: 'existing',
+                filename,
+                previewUrl: `/user_data/context_images/${existingContext.id}/${filename}`,
+            }));
         }
         return [];
     });
+
     const [isUploading, setIsUploading] = useState(false);
     const [useBase64Encoding, setUseBase64Encoding] = useState<boolean>(existingContext?.useBase64Encoding ?? false);
 
@@ -103,10 +112,11 @@ function ContextEditorModalInner({
     const [limitLinksToSubdirectory, setLimitLinksToSubdirectory] = useState<boolean>(existingContext?.limitLinksToSubdirectory ?? false);
 
     useEffect(() => {
-        const selectedModel = useSessionStore.getState().selectedModel;
-        const runningModels = useSessionStore.getState().runningModels;
+        const state = useSessionStore.getState() as any;
+        const selectedModel = state.selectedModel;
+        const runningModels = state.runningModels;
         if (selectedModel) {
-            tokenEngine.setRunningModels(runningModels);
+            tokenEngine.setRunningModels(runningModels ?? {});
             tokenEngine.setContext(selectedModel);
         }
         const initialText = existingContext?.text || '';
@@ -119,13 +129,15 @@ function ContextEditorModalInner({
 
     useEffect(() => {
         let cancelled = false;
-        const debounceRef = tokenDebounceRef.current;
-        if (debounceRef) clearTimeout(debounceRef);
+        if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
         tokenDebounceRef.current = setTimeout(async () => {
             const count = await tokenEngine.countTokens(text);
             if (!cancelled) setTextnumberOfTokens(count);
         }, 400);
-        return () => { cancelled = true; const ref = tokenDebounceRef.current; if (ref) clearTimeout(ref); };
+        return () => { 
+            cancelled = true; 
+            if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current); 
+        };
     }, [text]);
 
     const validate = (): boolean => {
@@ -135,7 +147,7 @@ function ContextEditorModalInner({
         const hasUrls = urls.length > 0;
         const hasSearchTerms = searchTerms.length > 0;
         const hasText = text.trim().length > 0;
-        const hasImages = imagePreviews.length > 0 || imageFiles.length > 0;
+        const hasImages = images.length > 0;
 
         if (!hasText && !hasImages && !hasUrls && !hasSearchTerms) {
             newErrors.text = 'Either text, images, URLs, or search terms are required.';
@@ -205,17 +217,25 @@ function ContextEditorModalInner({
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.[0]) {
             const files = Array.from(e.target.files);
-            setImageFiles(prev => [...prev, ...files]);
-            setImagePreviews(prev => [...prev, ...files.map(file => URL.createObjectURL(file))]);
+            const newEntries: ImageEntry[] = files.map(file => ({
+                type: 'staged',
+                file,
+                previewUrl: URL.createObjectURL(file),
+            }));
+            setImages(prev => [...prev, ...newEntries]);
             if (errors.images) setErrors(prev => ({ ...prev, images: undefined }));
         }
         e.target.value = '';
     };
 
     const handleRemoveImage = (index: number) => {
-        setImageFiles(prev => prev.filter((_, i) => i !== index));
-        if (!imagePreviews[index].startsWith('data:image')) URL.revokeObjectURL(imagePreviews[index]);
-        setImagePreviews(prev => prev.filter((_, i) => i !== index));
+        setImages(prev => {
+            const item = prev[index];
+            if (item && item.type === 'staged') {
+                URL.revokeObjectURL(item.previewUrl);
+            }
+            return prev.filter((_, i) => i !== index);
+        });
     };
 
     const handleCardImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -240,18 +260,23 @@ function ContextEditorModalInner({
     const buildContextFromForm = async (isNewClone: boolean): Promise<Context | null> => {
         if (!validate()) return null;
 
-        // FIXED: Determine ID upfront so uploads have a valid path
         const contextId = isNewClone ? uuidv4() : (existingContext?.id || uuidv4());
 
-        let finalImageFilenames: string[] | undefined = isNewClone ? [] : (existingContext?.images || []);
-        if (imageFiles.length > 0) {
+        const existingFilenames = isNewClone 
+            ? [] 
+            : images.filter((img): img is ImageEntry & { type: 'existing' } => img.type === 'existing').map(img => img.filename);
+
+        const filesToUpload = images.filter((img): img is ImageEntry & { type: 'staged' } => img.type === 'staged').map(img => img.file);
+
+        let finalImageFilenames: string[] = [...existingFilenames];
+
+        if (filesToUpload.length > 0) {
             setIsUploading(true);
             try {
-                // FIXED: Pass contextId as first argument to uploadContextImage
                 const uploadedFilenames = await Promise.all(
-                    imageFiles.map(file => uploadContextImage(contextId, file))
+                    filesToUpload.map(file => uploadContextImage(contextId, file))
                 );
-                finalImageFilenames = [...(isNewClone ? [] : (existingContext?.images || [])), ...uploadedFilenames];
+                finalImageFilenames = [...finalImageFilenames, ...uploadedFilenames];
             } catch (error) {
                 console.error("Failed to upload images:", error);
                 alert("Failed to upload images. Context not saved.");
@@ -276,7 +301,7 @@ function ContextEditorModalInner({
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             text: text.trim() || undefined,
-            images: finalImageFilenames && finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
+            images: finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
             regularExpressionActivationTriggers: filterTriggers(regexActivationTriggers),
             regularExpressionDeactivationTriggers: filterTriggers(regexDeactivationTriggers),
             regularExpressionExclusionActivationTriggers: filterTriggers(regexExclusionActivationTriggers),
@@ -318,7 +343,7 @@ function ContextEditorModalInner({
     };
 
     const hasText = text.trim().length > 0;
-    const hasImages = imagePreviews.length > 0 || imageFiles.length > 0;
+    const hasImages = images.length > 0;
     const hasUrls = urls.length > 0;
     const hasSearchTerms = searchTerms.length > 0;
     const hasWebContent = hasUrls || hasSearchTerms;
@@ -389,9 +414,9 @@ function ContextEditorModalInner({
                             <div className="context-field-group">
                                 <label className="editor-label">Images {imagesRequiresAsterisk && <span className="context-required-asterisk">*</span>}</label>
                                 <div className="editor-image-grid">
-                                    {imagePreviews.map((preview, index) => (
-                                        <div key={index} className="editor-image-square active">
-                                            <img src={preview} alt={`Context image ${index + 1}`} />
+                                    {images.map((entry, index) => (
+                                        <div key={`${entry.previewUrl}-${index}`} className="editor-image-square active">
+                                            <img src={entry.previewUrl} alt={`Context image ${index + 1}`} />
                                             <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-button">×</button>
                                         </div>
                                     ))}

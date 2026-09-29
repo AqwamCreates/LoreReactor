@@ -44,7 +44,7 @@ interface ResolvedParams {
   stop?: string[];
   extraParams?: Record<string, unknown>;
   sessionId?: string;
-  messages?: CacheOpenAIMessage[]; // ← STRUCTURED
+  messages?: CacheOpenAIMessage[];
 }
 
 interface ResolvedRequest {
@@ -192,8 +192,12 @@ export class LanguageModelEngine {
 
   private buildCacheKey(text: string): string {
     const ctxPart = `${this.runtimePort ?? ''}:${this.model?.backend ?? ''}:${this.model?.model ?? ''}`;
-    const textFingerprint = `${text.length}:${text.slice(0, 32)}:${text.slice(-32)}`;
-    return `${ctxPart}|${textFingerprint}`;
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      hash = (hash << 5) - hash + text.charCodeAt(i);
+      hash |= 0;
+    }
+    return `${ctxPart}|${text.length}:${hash}`;
   }
 
   private buildBackendFailureKey(): string | null {
@@ -238,7 +242,7 @@ export class LanguageModelEngine {
     stream: boolean,
     params: ResolvedParams,
     sessionId?: string,
-    incomingMessages?: CacheOpenAIMessage[], // ← STRUCTURED
+    incomingMessages?: CacheOpenAIMessage[],
   ): ResolvedRequest {
     let url: string;
     const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -262,12 +266,11 @@ export class LanguageModelEngine {
 
     const payloadModelName = modelPath || 'default-model';
 
-    // Use structured messages if provided, otherwise fall back to flat prompt
     const bodyObj: Record<string, unknown> = {
       model: payloadModelName,
-      ...(incomingMessages // ← STRUCTURED
-        ? { messages: incomingMessages } // ← STRUCTURED
-        : { messages: [{ role: "user", content: prompt }] }), // ← STRUCTURED
+      ...(incomingMessages
+        ? { messages: incomingMessages }
+        : { messages: [{ role: "user", content: prompt }] }),
       stream,
       temperature: params.temperature,
       top_p: params.top_p,
@@ -378,7 +381,7 @@ export class LanguageModelEngine {
       return this.buildCloudRequest(
         apiKey, backendName, modelPath, finalPrompt, stream, params,
         params.sessionId,
-        params.messages, // ← STRUCTURED
+        params.messages,
       );
     }
 
@@ -399,16 +402,16 @@ export class LanguageModelEngine {
     stop?: string[];
     extraParams?: Record<string, unknown>;
     sessionId?: string;
-    messages?: CacheOpenAIMessage[]; // ← STRUCTURED
+    messages?: CacheOpenAIMessage[];
   } {
     let prompt = (requestBody.prompt as string) || '';
-    let messages: CacheOpenAIMessage[] | undefined; // ← STRUCTURED
+    let messages: CacheOpenAIMessage[] | undefined;
 
-    if (requestBody.messages && Array.isArray(requestBody.messages)) { // ← STRUCTURED
-      messages = requestBody.messages as CacheOpenAIMessage[]; // ← STRUCTURED
-      const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user'); // ← STRUCTURED
-      prompt = (typeof lastUserMsg?.content === 'string' ? lastUserMsg.content : '') || ''; // ← STRUCTURED
-    } // ← STRUCTURED
+    if (requestBody.messages && Array.isArray(requestBody.messages)) {
+      messages = requestBody.messages as CacheOpenAIMessage[];
+      const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
+      prompt = (typeof lastUserMsg?.content === 'string' ? lastUserMsg.content : '') || '';
+    }
 
     return {
       prompt,
@@ -418,17 +421,17 @@ export class LanguageModelEngine {
       stop: requestBody.stop as string[] | undefined,
       extraParams: requestBody.extra_cloud_params as Record<string, unknown> | undefined,
       sessionId: requestBody.session_id as string | undefined,
-      messages, // ← STRUCTURED
+      messages,
     };
   }
 
   private extractContent(data: OpenAICompletionResponse): string | null {
     if (data.choices?.[0]?.message?.content !== undefined) {
-      const content = data.choices[0].message.content
+      const content = data.choices[0].message.content;
       return content && content.length > 0 ? content : null;
     }
     if (data.content !== undefined) {
-      const content = data.content
+      const content = data.content;
       return content && content.length > 0 ? content : null;
     }
     return null;
@@ -441,10 +444,7 @@ export class LanguageModelEngine {
     const promptTokens = usage.prompt_tokens;
     const completionTokens = usage.completion_tokens;
     
-    // OpenAI format: usage.prompt_tokens_details.cached_tokens
     let cachedTokens = usage.prompt_tokens_details?.cached_tokens;
-    
-    // Anthropic format: usage.cache_read_input_tokens
     if (cachedTokens === undefined) {
       cachedTokens = usage.cache_read_input_tokens;
     }
@@ -459,11 +459,17 @@ export class LanguageModelEngine {
   // ─── Token Counting ──────────────────────────────────────────────
 
   async countTokens(text: string): Promise<number> {
+    if (!text || text.length === 0) return 0;
     const estimatedTokens = Math.ceil(text.length / 4);
 
     const cacheKey = this.buildCacheKey(text);
     const cached = this.getCachedTokenCount(cacheKey);
     if (cached !== null) return cached;
+
+    // Deduplicate in-flight requests per specific text cache key
+    if (this.inFlightTokenize.has(cacheKey)) {
+      return this.inFlightTokenize.get(cacheKey)!;
+    }
 
     const failureKey = this.buildBackendFailureKey();
     if (failureKey && this.failedTokenizeBackends.has(failureKey)) {
@@ -485,16 +491,9 @@ export class LanguageModelEngine {
 
     const modelPath = this.model?.model;
 
+    // ─── Local Tokenization ──────────────────────────────────────────
     if (this.runtimePort) {
       const localKey = `local:${this.runtimePort}`;
-
-      if (this.inFlightTokenize.has(localKey)) {
-        await this.inFlightTokenize.get(localKey);
-        const recheck = this.getCachedTokenCount(cacheKey);
-        if (recheck !== null) return recheck;
-        this.setCachedTokenCount(cacheKey, estimatedTokens);
-        return estimatedTokens;
-      }
 
       const fetchPromise = (async (): Promise<number> => {
         try {
@@ -515,26 +514,19 @@ export class LanguageModelEngine {
           this.failedTokenizeBackends.add(localKey);
           return estimatedTokens;
         } finally {
-          this.inFlightTokenize.delete(localKey);
+          this.inFlightTokenize.delete(cacheKey);
         }
       })();
 
-      this.inFlightTokenize.set(localKey, fetchPromise);
+      this.inFlightTokenize.set(cacheKey, fetchPromise);
       const count = await fetchPromise;
       this.setCachedTokenCount(cacheKey, count);
       return count;
     }
 
+    // ─── Cloud Tokenization ──────────────────────────────────────────
     if (backendName && apiKey && cloudTokenizeEndpoints[backendName]) {
       const cloudKey = `${backendName}:${modelPath ?? ''}`;
-
-      if (this.inFlightTokenize.has(cloudKey)) {
-        await this.inFlightTokenize.get(cloudKey);
-        const recheck = this.getCachedTokenCount(cacheKey);
-        if (recheck !== null) return recheck;
-        this.setCachedTokenCount(cacheKey, estimatedTokens);
-        return estimatedTokens;
-      }
 
       const fetchPromise = (async (): Promise<number> => {
         try {
@@ -592,9 +584,6 @@ export class LanguageModelEngine {
               body = JSON.stringify({ text, model: modelPath || 'clio-v1' });
               break;
             }
-            case 'OpenRouter': {
-              return estimatedTokens;
-            }
             default:
               return estimatedTokens;
           }
@@ -623,11 +612,11 @@ export class LanguageModelEngine {
           this.failedTokenizeBackends.add(cloudKey);
           return estimatedTokens;
         } finally {
-          this.inFlightTokenize.delete(cloudKey);
+          this.inFlightTokenize.delete(cacheKey);
         }
       })();
 
-      this.inFlightTokenize.set(cloudKey, fetchPromise);
+      this.inFlightTokenize.set(cacheKey, fetchPromise);
       const count = await fetchPromise;
       this.setCachedTokenCount(cacheKey, count);
       return count;
@@ -642,7 +631,7 @@ export class LanguageModelEngine {
   async generateCompletion(
     requestBody: Record<string, unknown>,
   ): Promise<StreamResult> {
-    const { prompt, temperature, top_p, maxTokens, stop, extraParams, sessionId, messages } = this.extractFromRequestBody(requestBody); // ← STRUCTURED
+    const { prompt, temperature, top_p, maxTokens, stop, extraParams, sessionId, messages } = this.extractFromRequestBody(requestBody);
 
     try {
       const { url, headers, body } = this.resolveRequest(prompt, false, {
@@ -652,7 +641,7 @@ export class LanguageModelEngine {
         stop,
         extraParams,
         sessionId,
-        messages, // ← STRUCTURED
+        messages,
       });
 
       const response = await fetch(url, { method: 'POST', headers, body });
@@ -685,7 +674,7 @@ export class LanguageModelEngine {
     existingText?: string,
   ): Promise<StreamResult> {
     const paragraphLimit = (maxParagraphs && maxParagraphs > 0) ? maxParagraphs : 0;
-    const { prompt, temperature, top_p, maxTokens, stop, extraParams, sessionId, messages } = this.extractFromRequestBody(requestBody); // ← STRUCTURED
+    const { prompt, temperature, top_p, maxTokens, stop, extraParams, sessionId, messages } = this.extractFromRequestBody(requestBody);
 
     const { url, headers, body } = this.resolveRequest(prompt, true, {
       temperature,
@@ -694,7 +683,7 @@ export class LanguageModelEngine {
       stop,
       extraParams,
       sessionId,
-      messages, // ← STRUCTURED
+      messages,
     }, existingText);
 
     const requestStartTime = performance.now();
@@ -791,7 +780,6 @@ export class LanguageModelEngine {
           try {
             const json = JSON.parse(jsonStr) as OpenAIStreamChunk;
             
-            // Extract usage if present (some providers send it in final chunk)
             if (json.usage) {
               finalUsage = this.extractUsage(json);
             }

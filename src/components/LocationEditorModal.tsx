@@ -23,6 +23,10 @@ interface LocationEditorModalProps {
 
 type LocationTabId = 'general' | 'movement' | 'filter' | 'bindings';
 
+type ImageEntry = 
+    | { type: 'existing'; filename: string; previewUrl: string }
+    | { type: 'staged'; file: File; previewUrl: string };
+
 export function LocationEditorModal({
     isOpen,
     onClose,
@@ -62,13 +66,19 @@ function LocationEditorModalInner({
     const [name, setName] = useState(existingLocation?.name || '');
     const [description, setDescription] = useState(existingLocation?.description || '');
     const [text, setText] = useState(existingLocation?.text || '');
-    const [imageFiles, setImageFiles] = useState<File[]>([]);
-    const [imagePreviews, setImagePreviews] = useState<string[]>(() => {
+    
+    // Unified image management
+    const [images, setImages] = useState<ImageEntry[]>(() => {
         if (existingLocation?.images && existingLocation.images.length > 0) {
-            return existingLocation.images.map(img => `/user_data/location_images/${existingLocation.id}/${img}`);
+            return existingLocation.images.map(filename => ({
+                type: 'existing',
+                filename,
+                previewUrl: `/user_data/location_images/${existingLocation.id}/${filename}`,
+            }));
         }
         return [];
     });
+
     const [isUploading, setIsUploading] = useState(false);
 
     const [regexActivationTriggers, setRegexActivationTriggers] = useState<RegularExpressionTrigger[]>(existingLocation?.regularExpressionActivationTriggers ?? []);
@@ -104,10 +114,11 @@ function LocationEditorModalInner({
     const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
-        const selectedModel = useSessionStore.getState().selectedModel;
-        const runningModels = useSessionStore.getState().runningModels;
+        const state = useSessionStore.getState() as any;
+        const selectedModel = state.selectedModel;
+        const runningModels = state.runningModels;
         if (selectedModel) {
-            tokenEngine.setRunningModels(runningModels);
+            tokenEngine.setRunningModels(runningModels ?? {});
             tokenEngine.setContext(selectedModel);
         }
         const initialText = existingLocation?.text || '';
@@ -120,13 +131,15 @@ function LocationEditorModalInner({
 
     useEffect(() => {
         let cancelled = false;
-        const debounceRef = tokenDebounceRef.current;
-        if (debounceRef) clearTimeout(debounceRef);
+        if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
         tokenDebounceRef.current = setTimeout(async () => {
             const count = await tokenEngine.countTokens(text);
             if (!cancelled) setTextNumberOfTokens(count);
         }, 400);
-        return () => { cancelled = true; const ref = tokenDebounceRef.current; if (ref) clearTimeout(ref); };
+        return () => { 
+            cancelled = true; 
+            if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current); 
+        };
     }, [text]);
 
     const validate = (): boolean => {
@@ -134,7 +147,7 @@ function LocationEditorModalInner({
         if (!name.trim()) newErrors.name = 'Name is required.';
 
         const hasText = text.trim().length > 0;
-        const hasImages = imagePreviews.length > 0 || imageFiles.length > 0;
+        const hasImages = images.length > 0;
         if (!hasText && !hasImages) {
             newErrors.text = 'Either text or images are required.';
             newErrors.images = 'Either text or images are required.';
@@ -207,35 +220,64 @@ function LocationEditorModalInner({
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.[0]) {
             const files = Array.from(e.target.files);
-            setImageFiles(prev => [...prev, ...files]);
-            setImagePreviews(prev => [...prev, ...files.map(file => URL.createObjectURL(file))]);
+            const newEntries: ImageEntry[] = files.map(file => ({
+                type: 'staged',
+                file,
+                previewUrl: URL.createObjectURL(file),
+            }));
+            setImages(prev => [...prev, ...newEntries]);
             if (errors.images) setErrors(prev => ({ ...prev, images: undefined }));
         }
         e.target.value = '';
     };
 
     const handleRemoveImage = (index: number) => {
-        setImageFiles(prev => prev.filter((_, i) => i !== index));
-        if (!imagePreviews[index].startsWith('data:image')) URL.revokeObjectURL(imagePreviews[index]);
-        setImagePreviews(prev => prev.filter((_, i) => i !== index));
+        setImages(prev => {
+            const item = prev[index];
+            if (item && item.type === 'staged') {
+                URL.revokeObjectURL(item.previewUrl);
+            }
+            return prev.filter((_, i) => i !== index);
+        });
+
+        // Remap background image weights & regexes
         setBgImageRegexTriggers(prev => {
             const next: Record<number, string> = {};
-            for (const [k, v] of Object.entries(prev)) { const ki = Number(k); if (ki < index) next[ki] = v; else if (ki > index) next[ki - 1] = v; }
+            for (const [k, v] of Object.entries(prev)) {
+                const ki = Number(k);
+                if (ki < index) next[ki] = v;
+                else if (ki > index) next[ki - 1] = v;
+            }
             return next;
         });
+
         setBgImageWeights(prev => {
             const next: Record<number, number> = {};
-            for (const [k, v] of Object.entries(prev)) { const ki = Number(k); if (ki < index) next[ki] = v; else if (ki > index) next[ki - 1] = v; }
+            for (const [k, v] of Object.entries(prev)) {
+                const ki = Number(k);
+                if (ki < index) next[ki] = v;
+                else if (ki > index) next[ki - 1] = v;
+            }
             return next;
         });
+
         setBgImageTestTexts(prev => {
             const next: Record<number, string> = {};
-            for (const [k, v] of Object.entries(prev)) { const ki = Number(k); if (ki < index) next[ki] = v; else if (ki > index) next[ki - 1] = v; }
+            for (const [k, v] of Object.entries(prev)) {
+                const ki = Number(k);
+                if (ki < index) next[ki] = v;
+                else if (ki > index) next[ki - 1] = v;
+            }
             return next;
         });
+
         setBgImageTestResults(prev => {
             const next: Record<number, boolean | null> = {};
-            for (const [k, v] of Object.entries(prev)) { const ki = Number(k); if (ki < index) next[ki] = v; else if (ki > index) next[ki - 1] = v; }
+            for (const [k, v] of Object.entries(prev)) {
+                const ki = Number(k);
+                if (ki < index) next[ki] = v;
+                else if (ki > index) next[ki - 1] = v;
+            }
             return next;
         });
     };
@@ -245,14 +287,21 @@ function LocationEditorModalInner({
 
         const locationId = isNewClone ? uuidv4() : (existingLocation?.id || uuidv4());
 
-        let finalImageFilenames: string[] | undefined = isNewClone ? [] : (existingLocation?.images || []);
-        if (imageFiles.length > 0) {
+        const existingFilenames = isNewClone 
+            ? [] 
+            : images.filter((img): img is ImageEntry & { type: 'existing' } => img.type === 'existing').map(img => img.filename);
+
+        const filesToUpload = images.filter((img): img is ImageEntry & { type: 'staged' } => img.type === 'staged').map(img => img.file);
+
+        let finalImageFilenames: string[] = [...existingFilenames];
+
+        if (filesToUpload.length > 0) {
             setIsUploading(true);
             try {
                 const uploadedFilenames = await Promise.all(
-                    imageFiles.map(file => uploadLocationImage(locationId, file))
+                    filesToUpload.map(file => uploadLocationImage(locationId, file))
                 );
-                finalImageFilenames = [...(isNewClone ? [] : (existingLocation?.images || [])), ...uploadedFilenames];
+                finalImageFilenames = [...finalImageFilenames, ...uploadedFilenames];
             } catch (error) {
                 console.error("Failed to upload images:", error);
                 alert("Failed to upload images. Location not saved.");
@@ -276,7 +325,7 @@ function LocationEditorModalInner({
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             text: text.trim() || undefined,
-            images: finalImageFilenames && finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
+            images: finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
             regularExpressionActivationTriggers: filterTriggers(regexActivationTriggers),
             regularExpressionExclusionActivationTriggers: filterTriggers(regexExclusionActivationTriggers),
             regularExpressionExclusionDeactivationTriggers: filterTriggers(regexExclusionDeactivationTriggers),
@@ -289,8 +338,8 @@ function LocationEditorModalInner({
             ownerBindings: ownerBindings.length > 0 ? ownerBindings : [],
             globalWeight,
             characterWeights: Object.keys(characterWeights).length > 0 ? characterWeights : {},
-            latitude: parsedLat != null && !Number.isNaN(parsedLat) ? parsedLat : 0,
-            longitude: parsedLng != null && !Number.isNaN(parsedLng) ? parsedLng : 0,
+            latitude: parsedLat != null && !Number.isNaN(parsedLat) ? parsedLat : undefined,
+            longitude: parsedLng != null && !Number.isNaN(parsedLng) ? parsedLng : undefined,
             locationDistances: Object.keys(locationDistances).length > 0 ? locationDistances : {},
             messageFilterNonCoLocatedParticipants: messageFilterNonCoLocatedParticipants || undefined,
             messageFilterRegularExpressionActivationTriggers: filterTriggers(messageFilterActivationTriggers),
@@ -307,7 +356,7 @@ function LocationEditorModalInner({
     const handleClone = async () => { const cloned = await buildLocationFromForm(true); if (!cloned) return; onSave(cloned); onClose(); };
 
     const hasText = text.trim().length > 0;
-    const hasImages = imagePreviews.length > 0 || imageFiles.length > 0;
+    const hasImages = images.length > 0;
     const textRequiresAsterisk = !hasImages;
     const imagesRequiresAsterisk = !hasText;
 
@@ -375,9 +424,9 @@ function LocationEditorModalInner({
                             <div className="context-field-group">
                                 <label className="editor-label">Images {imagesRequiresAsterisk && <span className="context-required-asterisk">*</span>}</label>
                                 <div className="editor-image-grid">
-                                    {imagePreviews.map((preview, index) => (
-                                        <div key={index} className="editor-image-square active">
-                                            <img src={preview} alt={`Location image ${index + 1}`} />
+                                    {images.map((entry, index) => (
+                                        <div key={`${entry.previewUrl}-${index}`} className="editor-image-square active">
+                                            <img src={entry.previewUrl} alt={`Location image ${index + 1}`} />
                                             <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-button">×</button>
                                         </div>
                                     ))}
@@ -393,12 +442,12 @@ function LocationEditorModalInner({
                             </div>
 
                             {/* Background Image Settings */}
-                            {imagePreviews.length > 0 && (
+                            {images.length > 0 && (
                                 <div className="editor-section">
                                     <span className="editor-section-title">Background Image Settings</span>
                                     <div className="context-binding-hint">Configure per-image sampling weights and optional regex triggers. When the user enters this location, an image is randomly sampled by weight. If a regex trigger matches the user's message, it will display that image as background.</div>
 
-                                    {imagePreviews.map((preview, index) => {
+                                    {images.map((entry, index) => {
                                         const currentWeight = bgImageWeights[index] ?? 1;
                                         const currentRegex = bgImageRegexTriggers[index] ?? '';
                                         const hasRegexError = errors.bgImageRegex?.[index];
@@ -407,7 +456,7 @@ function LocationEditorModalInner({
                                         return (
                                             <div key={index} style={{ marginBottom: '10px', padding: '8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '6px' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                                                    <img src={preview} alt={`Image ${index + 1}`} style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
+                                                    <img src={entry.previewUrl} alt={`Image ${index + 1}`} style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
                                                     <span style={{ fontSize: '0.75rem', fontWeight: 'bold', flex: 1 }}>Image {index + 1}</span>
                                                 </div>
                                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>

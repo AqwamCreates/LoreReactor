@@ -29,8 +29,6 @@ interface CharacterTextCharacterInjectionEditorModalProps {
     onSaveInjections: (injections: TextCharacterInjection[]) => void;
 }
 
-// ─── Custom Injection Node ──────────────────────────────────────────
-
 interface InjectionNodeData extends Record<string, unknown> {
     name: string;
     characterCount: number;
@@ -124,8 +122,6 @@ function InjectionNode({ data }: NodeProps<Node<InjectionNodeData>>) {
 
 const nodeTypes = { injectionNode: InjectionNode };
 
-// ─── Component ───────────────────────────────────────────────────────
-
 export function CharacterTextCharacterInjectionEditorModal({
     isOpen,
     onClose,
@@ -191,7 +187,6 @@ export function CharacterTextCharacterInjectionEditorModal({
 
     const onConnect = useCallback((connection: Connection) => {
         if (!connection.source || !connection.target) return;
-        // Allow self-connections (source === target)
         setItems(prev => prev.map(item => {
             if (item.id !== connection.source) return item;
             const bindings = item.textCharacterInjectionBindings ?? [];
@@ -205,11 +200,9 @@ export function CharacterTextCharacterInjectionEditorModal({
             markerEnd: { type: MarkerType.ArrowClosed, color: '#f59e0b' },
             style: { stroke: '#f59e0b', strokeWidth: 2, opacity: 0.7 },
         }, prev));
-    }, [setItems, setEdges]);
+    }, [setEdges]);
 
-    const onReconnectStart = useCallback((_event: unknown, _edge: Edge, _handleType: string) => {
-        // No-op: just tracking that a reconnect drag started
-    }, []);
+    const onReconnectStart = useCallback((_event: unknown, _edge: Edge, _handleType: string) => {}, []);
 
     const onReconnectEnd = useCallback((_event: unknown, edge: Edge) => {
         setItems(prev => prev.map(item => {
@@ -283,7 +276,13 @@ export function CharacterTextCharacterInjectionEditorModal({
     }, [items.length, setNodes]);
 
     const handleRemove = useCallback((id: string) => {
-        setItems(prev => prev.filter(item => item.id !== id));
+        setItems(prev => prev
+            .filter(item => item.id !== id)
+            .map(item => ({
+                ...item,
+                textCharacterInjectionBindings: (item.textCharacterInjectionBindings ?? []).filter(b => b !== id),
+            }))
+        );
         setNodes(prev => prev.filter(n => n.id !== id));
         setEdges(prev => prev.filter(e => e.source !== id && e.target !== id));
         if (selectedId === id) setSelectedId(null);
