@@ -157,10 +157,17 @@ export async function generateCharacterMemory(
         ? `${delimiters.blockStart('system')}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}`
         : '';
 
+    // ─── Inject Character Memory Prompt ─────────────────────────────
+    // Falls back to 'neutral' expression as defined in the Character type comments
+    const memoryPromptTemplate = character.memoryPrompts?.['neutral'];
+    const memoryPrompt = memoryPromptTemplate
+        ? `${delimiters.blockStart('system')}Memory Formation Guide: ${replacePlaceholders(memoryPromptTemplate, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}`
+        : '';
+
     const memoryInjection = `${delimiters.turnStart(participantTag)}`;
 
-    const promptLines = [systemPrompt, thinkPrompt, `${delimiters.blockStart('system')}The Start Of My Memory${delimiters.blockEnd}`, chatHistoryPrompt, `${delimiters.blockStart('system')}The End Of My Memory${delimiters.blockEnd}`, perspectiveInstruction, memoryInjection];
-    const prompt = promptLines.join('\n\n');
+    const promptLines = [systemPrompt, thinkPrompt, memoryPrompt, `${delimiters.blockStart('system')}The Start Of My Memory${delimiters.blockEnd}`, chatHistoryPrompt, `${delimiters.blockStart('system')}The End Of My Memory${delimiters.blockEnd}`, perspectiveInstruction, memoryInjection];
+    const prompt = promptLines.filter(l => l.length > 0).join('\n\n');
 
     // Use dynamic model-specific and profile-specific stop tokens
     const templateStops = resolvedChatTemplate?.stopPatterns || [];
@@ -315,11 +322,18 @@ export async function generateLocationVisitSummary(
         ? `${delimiters.blockStart('system')}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}`
         : '';
 
+    // ─── Inject Character Memory Prompt ─────────────────────────────
+    // Falls back to 'neutral' expression as defined in the Character type comments
+    const memoryPromptTemplate = character.memoryPrompts?.['neutral'];
+    const memoryPrompt = memoryPromptTemplate
+        ? `${delimiters.blockStart('system')}Memory Formation Guide: ${replacePlaceholders(memoryPromptTemplate, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}`
+        : '';
+
     const scopedHistoryBlock = `${delimiters.blockStart('system')}Events at ${locationName}:\n${scopedMessages.join('\n')}${delimiters.blockEnd}`;
 
     const perspectiveInstruction = `${delimiters.blockStart('system')}I am ${participantTag}. ${LOCATION_VISIT_MEMORY_PROMPT} I will never use 'Character #' or 'Character # (Name)' unless I require it.${delimiters.blockEnd}`;
 
-    const promptLines = [systemPrompt, thinkPrompt, scopedHistoryBlock, perspectiveInstruction];
+    const promptLines = [systemPrompt, thinkPrompt, memoryPrompt, scopedHistoryBlock, perspectiveInstruction];
     const prompt = promptLines.filter(l => l.length > 0).join('\n\n');
 
     // Use dynamic model-specific and profile-specific stop tokens
