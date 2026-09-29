@@ -1192,7 +1192,12 @@ function executeMap(args: string, _nextMessage: BaseMessage, interactionData: In
         toLoc = resolveLocation(toMatch[2].trim(), interactionData); 
     } else {
         let currentLocationIndex: number | undefined;
-        for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) { if (interactionData.interactionHistory[i].locationIndex !== undefined) { currentLocationIndex = interactionData.interactionHistory[i].locationIndex; break; } }
+        for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) { 
+            if (interactionData.interactionHistory[i].locationIndex !== undefined) { 
+                currentLocationIndex = interactionData.interactionHistory[i].locationIndex; 
+                break; 
+            } 
+        }
         if (currentLocationIndex !== undefined) fromLoc = locations[currentLocationIndex] || locations[0];
         toLoc = resolveLocation(trimmed, interactionData);
     }
@@ -1201,13 +1206,34 @@ function executeMap(args: string, _nextMessage: BaseMessage, interactionData: In
     if (fromLoc.id === toLoc.id) return { toolType: 'map', args, content: `Already at "${toLoc.name}".`, displayReplacement: `[🗺️ Already at "${toLoc.name}"]` };
 
     let distanceKm = fromLoc.locationDistances?.[toLoc.id];
-    if (distanceKm === undefined) {
-        const R = 6371, dLat = (toLoc.latitude - fromLoc.latitude) * Math.PI / 180, dLon = (toLoc.longitude - fromLoc.longitude) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) ** 2 + Math.cos(fromLoc.latitude * Math.PI / 180) * Math.cos(toLoc.latitude * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    
+    // Check if coordinates exist before calculating Haversine distance
+    if (distanceKm === undefined && 
+        fromLoc.latitude !== undefined && fromLoc.longitude !== undefined && 
+        toLoc.latitude !== undefined && toLoc.longitude !== undefined) {
+        
+        const R = 6371;
+        const dLat = (toLoc.latitude - fromLoc.latitude) * Math.PI / 180;
+        const dLon = (toLoc.longitude - fromLoc.longitude) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + 
+                  Math.cos(fromLoc.latitude * Math.PI / 180) * 
+                  Math.cos(toLoc.latitude * Math.PI / 180) * 
+                  Math.sin(dLon / 2) ** 2;
         distanceKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    } else if (distanceKm === undefined) {
+        return { toolType: 'map', args, content: `[Error: Distance unknown and coordinates missing for one or both locations.]`, displayReplacement: `[Error: Distance unknown]` };
     }
+
     const rounded = Math.round(distanceKm * 10) / 10;
-    return { toolType: 'map', args, content: `Distance: ${rounded} km. ~${Math.round((distanceKm / 5) * 10) / 10} hours of walking, ~${Math.round((distanceKm / 30) * 10) / 10}h riding.`, displayReplacement: `[🗺️ ${fromLoc.name} → ${toLoc.name}: ${rounded} km]` };
+    const walkHours = Math.round((distanceKm / 5) * 10) / 10;
+    const rideHours = Math.round((distanceKm / 30) * 10) / 10;
+
+    return { 
+        toolType: 'map', 
+        args, 
+        content: `Distance: ${rounded} km. ~${walkHours} hours of walking, ~${rideHours}h riding.`, 
+        displayReplacement: `[🗺️ ${fromLoc.name} → ${toLoc.name}: ${rounded} km]` 
+    };
 }
 
 // ─── Audio ──────────────────────────────────────────────────────────
