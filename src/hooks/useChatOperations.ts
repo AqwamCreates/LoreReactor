@@ -46,10 +46,11 @@ export function useChatOperations(options: UseChatOperationsOptions) {
 
     const handleSwitchChat = useCallback(async (id: string) => {
         if (interactionData?.id === id) return;
+        
         tokenEngine.clearTokenCache();
         await safeAutoSave(interactionData);
         clearFetchCache();
-
+        
         let chat: InteractionData | null = null;
         try {
             chat = await loadRawInteractionData(id, allCharacters);
@@ -73,19 +74,22 @@ export function useChatOperations(options: UseChatOperationsOptions) {
 
             setInteractionData(fullChat);
             await saveRawSessionData({ activeChatId: id });
-            
+
             const firstProtagonist = fullChat.protagonists?.[0] ?? null;
             if (firstProtagonist) setSelectedCharacter(firstProtagonist);
         } else {
             addToast('Failed to load chat.', 'error');
         }
-        refreshChatList();
-    }, [allCharacters, interactionData, loadFullCharacter, setInteractionData, setSelectedCharacter, refreshChatList, addToast, safeAutoSave]);
+
+        // REMOVED: refreshChatList()
+        // Switching chats does not change the list of chat shells, only the active chat state.
+        // Calling refresh here was causing unnecessary loading state toggles and flickers.
+    }, [allCharacters, interactionData, loadFullCharacter, setInteractionData, setSelectedCharacter, addToast, safeAutoSave]);
 
     const handleNewChat = useCallback(async () => {
         await safeAutoSave(interactionData);
         clearFetchCache();
-
+        
         // Clear active chat in server session so restoration picks up the new chat
         await saveRawSessionData({ activeChatId: null });
 
@@ -105,6 +109,7 @@ export function useChatOperations(options: UseChatOperationsOptions) {
     const handleDeleteChat = useCallback(async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
         await safeAutoSave(interactionData);
+
         if (await deleteChatFromList(id)) {
             addToast('Chat session deleted.', 'info');
             if (interactionData?.id === id) {
@@ -114,7 +119,6 @@ export function useChatOperations(options: UseChatOperationsOptions) {
                     || (selectedCharacterId ? allCharacters.find(x => x.id === selectedCharacterId) : null)
                     || allCharacters[0]
                     || null;
-
                 if (nextChar) startNewChat(nextChar);
             }
         } else {
@@ -133,7 +137,10 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         const t = editTitleValue.trim() || 'Untitled Chat';
         setInteractionData({ ...interactionData, name: t } as InteractionData);
         saveRawInteractionData({ ...interactionData, name: t });
-        refreshChatList();
+        
+        // This refresh is kept because renaming a chat actually changes the shell data
+        refreshChatList(); 
+        
         setIsEditingTitle(false);
         addToast('Chat title updated', 'success');
     }, [interactionData, editTitleValue, setInteractionData, refreshChatList, addToast]);

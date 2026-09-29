@@ -158,6 +158,9 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     const lastTurnContextRef = useRef<{ modelId: string; prompt: string; metadata: RequestMetadata } | null>(null);
     const requestTimestampsRef = useRef<number[]>([]);
+    
+    // Track timing for latency-based Markov interference
+    const lastTokenTimestampRef = useRef<number>(0);
 
     const getRequestsLastHour = useCallback(() => {
         const now = Date.now();
@@ -196,9 +199,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             const currentDataId = currentData?.id || 'unknown';
             const budgetData = getState().budgetData;
             
-            // ─── REMOVED: syncMessages from streaming callback ─────────────────────
-            // The Markov engine no longer learns from live, unedited streaming tokens.
-
             const outputCost = model?.outputGenerationCostPerOneMillionOfTokens || 15;
             const cacheMissCost = model?.cacheMissCostPerOneMillionOfTokens || 3;
 
@@ -227,9 +227,24 @@ export function useChatSession(options: UseChatSessionOptions) {
                         const modelId = model?.id || '';
                         const TTFT_ms = budgetData?.modelAverageTimeToFirstToken?.[modelId] ?? 500;
                         const msPerToken = budgetData?.modelAverageLatencyMsPerToken?.[modelId] ?? 25;
+                        
+                        // ─── LATENCY INTERFERENCE: Sigmoid Scaling ─────────────────────
+                        const now = Date.now();
+                        const timeSinceLastToken = now - lastTokenTimestampRef.current;
+                        lastTokenTimestampRef.current = now;
+
+                        // Sigmoid function: 1 / (1 + e^(-k(x - x0)))
+                        // x = timeSinceLastToken, x0 = TTFT_ms * 2 (the "pain point"), k = steepness
+                        const steepness = 0.002; 
+                        const painPoint = TTFT_ms * 2; 
+                        const latencyFactor = 1 / (1 + Math.exp(-steepness * (timeSinceLastToken - painPoint)));
+                        
                         const TTFT_seconds = TTFT_ms / 1000;
                         const TPS = 1000 / msPerToken;
-                        minTokensThreshold = Math.ceil((TTFT_seconds * TPS) / (1 - costRatio));
+                        
+                        // Base threshold adjusted by how "desperate" we are for tokens
+                        const baseThreshold = (TTFT_seconds * TPS) / (1 - costRatio);
+                        minTokensThreshold = Math.ceil(baseThreshold * (1 - latencyFactor));
                     }
                     
                     if (estimatedTokens >= minTokensThreshold) {
@@ -309,10 +324,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         })();
         return () => { cancelled = true; };
     }, [interactionData, setNumberOfTokens]);
-
-    // ─── REMOVED: Generic fullTrain useEffect ─────────────────────────────────────
-    // The Markov engine no longer automatically retrains every time the history changes.
-    // Training now ONLY happens explicitly when the user sends a new message/action.
 
     useEffect(() => {
         if (autonomousMode && interactionData && !isMultiplayerClient) {
@@ -596,7 +607,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             const targetChar = activeCharacter;
             const interactionDataId = latestState.interactionData?.id || 'unknown';
             
-            // ─── MARKOV SYNC: Train on current history (including user edits) right before generation ───
             const charHistory = latestState.interactionData?.interactionHistory.filter(
                 (m): m is ChatMessage | WhisperMessage => 
                     m.character.id === targetChar.id && (m.messageType === 'chat' || m.messageType === 'whisper')
@@ -718,7 +728,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
             };
 
-            // ─── MARKOV SYNC: Sync all participants since orchestrator picks the speaker ───
             const interactionDataId = td?.id || 'unknown';
             for (const p of td.participants) {
                 const charHistory = td.interactionHistory.filter(
@@ -813,7 +822,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         triggerHostResponseRef.current = triggerHostResponse;
     }, [triggerHostResponse]);
 
-    // ─── Direct EventBus Subscription for Multiplayer Peer Messages ───
     useEffect(() => {
         if (isMultiplayerClient) return;
 
@@ -882,7 +890,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
             };
 
-            // ─── MARKOV SYNC: Train on current history right before generation ───
             const interactionDataId = currentInteractionData?.id || 'unknown';
             const charHistory = currentInteractionData?.interactionHistory.filter(
                 (m): m is ChatMessage | WhisperMessage => 
@@ -1063,9 +1070,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         isAtBottomRef.current = true;
 
         try {
-            // ─── REMOVED: syncMessages from resumeGeneration ─────────────────────
-            // The Markov engine does not learn from resumed generations.
-
             const result = await chatEngine.handleServerResponse(
                 currentInteractionData, char, ctrl.signal,
                 throttledSetStreamingTextWithBroadcast, undefined, existingText, allPromptBlocks
@@ -1208,10 +1212,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
             };
 
-            // ─── REMOVED: syncMessages from regenerateFromMessage ─────────────────────
-            // The Markov engine does NOT learn from regenerated outputs, because the user 
-            // explicitly rejected the previous output (which may have had bad formatting).
-
             const turnResult = await chatEngine.runTurn(td, ctrl, allPromptBlocks, metadata);
             let ud = turnResult.interactionData;
             const primaryProtagonistId = protagonists[0]?.id ?? '';
@@ -1292,7 +1292,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         isAtBottomRef.current = true;
         setState({ sessionStartTimestamp: Date.now() });
         
-        // ─── MARKOV CLEAR: Wipe slate clean for new chat ───
         speculativeMarkovEngine.clearSession(c.id);
     }, [setInteractionData, setSelectedCharacter, setState]);
 
