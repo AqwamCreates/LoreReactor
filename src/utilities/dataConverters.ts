@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';
 import type { GeneratedOutput } from './dataTypes';
 import { defaultCharacterTools, defaultProfileTools, defaultNarrateTexts } from '../dictionaries/defaults';
+import { emotions } from '../dictionaries/characterPresets';
 
 function ensureId(obj: Record<string, unknown>): string {
     return (typeof obj.id === 'string' && obj.id.length > 0) ? obj.id : uuidv4();
@@ -87,6 +88,23 @@ function parseStarterPrompts(raw: unknown): Record<string, number> | undefined {
     const result: Record<string, number> = {};
     for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
         if (typeof key === 'string' && typeof value === 'number') {
+            result[key] = value;
+        }
+    }
+    return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * Parses memoryPrompts: Record<emotion, string> from AI-generated JSON.
+ * Only accepts keys that match the predefined emotions list.
+ */
+function parseMemoryPrompts(raw: unknown): Record<string, string> | undefined {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+    const result: Record<string, string> = {};
+    const allowedEmotions = new Set(emotions);
+    
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (allowedEmotions.has(key as any) && typeof value === 'string') {
             result[key] = value;
         }
     }
@@ -233,6 +251,7 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
         dialoguePrompts: rawDialoguePrompts.map(item => fillDialoguePromptDefaults(item)),
         knowledgePrompts: rawKnowledgePrompts.map(item => fillKnowledgePromptDefaults(item)),
         starterPrompts: parseStarterPrompts(c.starterPrompts),
+        memoryPrompts: parseMemoryPrompts(c.memoryPrompts),
         sampler: samplers.length > 0 ? samplers[0] : undefined,
         initiativeWeight: (c.initiativeWeight as number) ?? 5,
         chatProbability: (c.chatProbability as number) ?? 0.8,
@@ -433,7 +452,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         cacheEfficiencyLevels: parseCacheEfficiencyLevels(p.cacheEfficiencyLevels),
         minimalVolatileCacheMode: (p.minimalVolatileCacheMode as boolean) ?? false,
         doNotInjectDefaultStopTokens: (p.doNotInjectDefaultStopTokens as boolean) ?? false,
-        enableSpeculativeMarkov: (p.enableSpeculativeMarkov as boolean) ?? false, // <-- ADDED
+        enableSpeculativeMarkov: (p.enableSpeculativeMarkov as boolean) ?? false,
         narrateTexts: {
             normal: (rawNarrateTexts.normal as boolean) ?? defaultNarrateTexts.normal,
             quoted: (rawNarrateTexts.quoted as boolean) ?? defaultNarrateTexts.quoted,

@@ -1,5 +1,6 @@
 // src/utilities/dataSchema.ts
 import { defaultInputStrategy } from '../dictionaries/defaults';
+import { emotions } from '../dictionaries/characterPresets';
 import type { EntityType } from './dataTypes';
 
 const REGEX_TRIGGER_SCHEMA = `[{"trigger": "string (regex without delimiters)", "context": "'global' | 'local' | 'previous'", "target": "'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator'"}]`;
@@ -53,6 +54,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
       "regularExpressionExclusionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA}
     }],
     "starterPrompts": {"starter text string": "weight number (≥0), higher = more likely to be sampled"},
+    "memoryPrompts": {${emotions.map(e => `"${e}": "string (memory content for '${e}' expression)"`).join(', ')}},
     "initiativeWeight": "number (≥0, default 1.2)",
     "chatProbability": "number (0-1, default 0.5)",
     "maximumChatStamina": "number (≥0, default 4)",
@@ -306,7 +308,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "webSummarizationStopPattern": "object (StopPattern, optional)",
     "interactionDataSummarizationStopPattern": "object (StopPattern, optional)",
     "aiRecommendationStopPattern": "object (StopPattern, optional)"
-    }`);
+  }`);
     }
 
     if (hasWorld) {
@@ -321,7 +323,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "name": "string (required)",
     "description": "string (display only, NOT used as AI input)",
     ${worldParts.join(',\n    ')}
-    }`);
+  }`);
     }
 
     return `{\n${parts.join(',\n')}\n}`;

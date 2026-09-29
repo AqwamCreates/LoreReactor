@@ -17,6 +17,7 @@ import { getCoLocatedParticipants, getCoLocatedProtagonists } from '../utilities
 import '../main.css';
 import { defaultCharacterTools } from '../dictionaries/defaults';
 import { toolLabels } from '../dictionaries/texts';
+import { emotionLabels } from '../dictionaries/characterPresets';
 
 // ─── Defaults ───────────────────────────────────────────────────────
 const DEFAULT_INITIATIVE_WEIGHT = 1.2;
@@ -179,6 +180,7 @@ function CharacterEditorModalInner({
     const [dialoguePrompts, setDialoguePrompts] = useState<DialoguePrompt[]>(existingCharacter?.dialoguePrompts ?? []);
     const [knowledgePrompts, setKnowledgePrompts] = useState<KnowledgePrompt[]>(existingCharacter?.knowledgePrompts ?? []);
     const [starterPrompts, setStarterPrompts] = useState<Record<string, number>>(existingCharacter?.starterPrompts ?? {});
+    const [memoryPrompts, setMemoryPrompts] = useState<Record<string, string>>(existingCharacter?.memoryPrompts ?? {});
 
     // Aliases
     const [aliases, setAliases] = useState<string[]>(existingCharacter?.aliases ?? []);
@@ -186,6 +188,7 @@ function CharacterEditorModalInner({
 
     // Known character names
     const [knownCharacterNames, setKnownCharacterNames] = useState<Record<string, string[]>>(existingCharacter?.knownCharacterNames ?? {});
+    const initialKnownCharacterNamesRef = useRef<Record<string, string[]>>(existingCharacter?.knownCharacterNames ?? {});
     const [selectedCharForKnownName, setSelectedCharForKnownName] = useState('');
     const [selectedAliasForKnownName, setSelectedAliasForKnownName] = useState('');
 
@@ -237,7 +240,6 @@ function CharacterEditorModalInner({
     // ─── Quick Config Helpers ──────────────────────────────────────
     const effectiveCharacterIdForConfig = existingCharacter?.id || pendingCharacterId || '';
 
-    // Feedback state for inline indicator
     const [quickConfigFeedback, setQuickConfigFeedback] = useState<{
         label: string;
         addedNames: { charName: string; names: string[] }[];
@@ -310,6 +312,11 @@ function CharacterEditorModalInner({
         mergeKnownNames(allCharacters);
     }, [allCharacters, mergeKnownNames]);
 
+    const handleRevertKnownNames = useCallback(() => {
+        setKnownCharacterNames(initialKnownCharacterNamesRef.current);
+        setQuickConfigFeedback({ label: 'Reverted to Original', addedNames: [] });
+    }, []);
+
     const handleAutoDetectStats = useCallback(() => {
         const combinedText = `${name} ${description} ${systemPrompt}`;
         const newDetected = { ...autoDetected };
@@ -350,7 +357,6 @@ function CharacterEditorModalInner({
         setAutoDetected({ iw: null, cp: null, ms: null });
     }, []);
 
-    // Derived state for quick config button availability
     const hasSession = !!interactionData;
     const hasLocalProtagonist = !!localProtagonist;
     const hasProtagonists = (interactionData?.protagonists?.length ?? 0) > 0;
@@ -479,7 +485,6 @@ function CharacterEditorModalInner({
         setAppearancePrompt(fields.appearancePrompt);
         setFirstMessage(fields.firstMessage);
 
-        // Only set image preview for PNG files — CharX/JSON can't be used as portrait directly
         const fileNameLower = file.name.toLowerCase();
         if (fileNameLower.endsWith('.png') || file.type === 'image/png') {
             setImageFile(file); setImagePreview(URL.createObjectURL(file));
@@ -499,12 +504,14 @@ function CharacterEditorModalInner({
         setNumberOfMessagesToDisableStarterPromptStr('0');
         setTools({ ...defaultCharacterTools });
         setMemories({});
+        setMemoryPrompts({});
         setClothings([]);
         setTextCharacterInjections([]);
         setDialoguePrompts([]);
         setKnowledgePrompts([]);
         setAliases([]);
         setKnownCharacterNames({});
+        initialKnownCharacterNamesRef.current = {};
         if (fields.starterPrompt?.trim()) {
             setStarterPrompts({ [fields.starterPrompt.trim()]: 1 });
         } else {
@@ -518,7 +525,6 @@ function CharacterEditorModalInner({
         if (extended.emotionImages && Object.keys(extended.emotionImages).length > 0) {
             setEmotionImages(prev => ({ ...prev, ...extended.emotionImages }));
         }
-        // Import aliases from V3 nickname
         if (extended.nickname && extended.nickname !== fields.name) {
             setAliases([extended.nickname]);
         }
@@ -572,13 +578,11 @@ function CharacterEditorModalInner({
         });
     }, []);
 
-    // Reset alias dropdown when character selection changes
     const handleCharacterSelectForKnownName = useCallback((charId: string) => {
         setSelectedCharForKnownName(charId);
         setSelectedAliasForKnownName('');
     }, []);
 
-    // Handle alias dropdown selection — adds immediately and resets
     const handleAliasSelectForKnownName = useCallback((alias: string) => {
         if (alias && selectedCharForKnownName) {
             handleAddKnownName(selectedCharForKnownName, alias);
@@ -694,6 +698,7 @@ function CharacterEditorModalInner({
             dialoguePrompts: dialoguePrompts.length > 0 ? dialoguePrompts : undefined,
             knowledgePrompts: knowledgePrompts.length > 0 ? knowledgePrompts : undefined,
             starterPrompts: Object.keys(starterPrompts).length > 0 ? starterPrompts : undefined,
+            memoryPrompts: Object.keys(memoryPrompts).length > 0 ? memoryPrompts : undefined,
             aliases: aliases.length > 0 ? aliases : undefined,
             images: Object.keys(finalImages).length > 0 ? finalImages : undefined,
             useFrontCameraImage: useFrontCameraImage || undefined,
@@ -757,6 +762,34 @@ function CharacterEditorModalInner({
         setStarterPrompts(prev => ({ ...prev, [text]: finalWeight }));
     }, []);
 
+    // Memory prompts helper (Expression -> Template string)
+    const [newMemoryPromptExpression, setNewMemoryPromptExpression] = useState<string>(emotionLabels[0]);
+    const [newMemoryPromptTemplate, setNewMemoryPromptTemplate] = useState('');
+
+    const availableEmotionLabels = useMemo(() => {
+        const used = new Set(Object.keys(memoryPrompts));
+        return emotionLabels.filter(label => !used.has(label));
+    }, [memoryPrompts]);
+
+    const handleAddMemoryPrompt = useCallback(() => {
+        const expr = newMemoryPromptExpression.trim();
+        const tmpl = newMemoryPromptTemplate.trim();
+        if (!expr || !tmpl) return;
+        setMemoryPrompts(prev => ({ ...prev, [expr]: tmpl }));
+        setNewMemoryPromptTemplate('');
+        const usedAfter = new Set([...Object.keys(memoryPrompts), expr]);
+        const nextAvailable = emotionLabels.find(l => !usedAfter.has(l));
+        setNewMemoryPromptExpression(nextAvailable ?? emotionLabels[0]);
+    }, [newMemoryPromptExpression, newMemoryPromptTemplate, memoryPrompts]);
+
+    const handleRemoveMemoryPrompt = useCallback((expr: string) => {
+        setMemoryPrompts(prev => {
+            const next = { ...prev };
+            delete next[expr];
+            return next;
+        });
+    }, []);
+
     const getStopPatternById = (id: string) => {
         for (const s of allSamplers) {
             const found = s.stopPatterns.find(sp => sp.id === id);
@@ -765,10 +798,8 @@ function CharacterEditorModalInner({
         return null;
     };
 
-    // Filter out self from character dropdown for known names
     const otherCharacters = allCharacters.filter(c => c.id !== (existingCharacter?.id || pendingCharacterId));
 
-    // Get available aliases for selected character, excluding already-known names
     const selectedCharAliases = useMemo(() => {
         if (!selectedCharForKnownName) return [];
         const targetChar = allCharacters.find(c => c.id === selectedCharForKnownName);
@@ -784,7 +815,6 @@ function CharacterEditorModalInner({
         return allNames;
     }, [selectedCharForKnownName, allCharacters, knownCharacterNames]);
 
-    // Filtered tools based on search query
     const filteredToolNames = useMemo(() => {
         const allToolNames = Object.keys(tools) as tool[];
         const q = toolSearchQuery.toLowerCase().trim();
@@ -926,6 +956,44 @@ function CharacterEditorModalInner({
                                     </div>
                                 </div>
 
+                                {/* Memory Prompts (Expression -> Template) */}
+                                <div className="editor-section" style={{ margin: 0 }}>
+                                    <div className="editor-section-title">Memory Prompts ({Object.keys(memoryPrompts).length})</div>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Expression to memory template mapping. If the expression is not found, falls back to neutral, then system default.</div>
+                                    <div style={{ display: 'flex', gap: '4px', marginBottom: '6px', flexDirection: 'column' }}>
+                                        <div style={{ display: 'flex', gap: '4px' }}>
+                                            <select
+                                                className="editor-select"
+                                                value={newMemoryPromptExpression}
+                                                onChange={e => setNewMemoryPromptExpression(e.target.value)}
+                                                disabled={isUploading || availableEmotionLabels.length === 0}
+                                                style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }}
+                                            >
+                                                {availableEmotionLabels.length === 0 && <option value="" disabled>All emotions assigned</option>}
+                                                {availableEmotionLabels.map(label => (
+                                                    <option key={label} value={label}>{label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '4px' }}>
+                                            <input type="text" value={newMemoryPromptTemplate} onChange={e => setNewMemoryPromptTemplate(e.target.value)} className="editor-input" placeholder="Memory template string..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
+                                            <button type="button" onClick={handleAddMemoryPrompt} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading || availableEmotionLabels.length === 0}>+</button>
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '150px', overflowY: 'auto' }}>
+                                        {Object.entries(memoryPrompts).map(([expression, template]) => (
+                                            <div key={expression} style={{ display: 'flex', gap: '4px', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '4px 6px', borderRadius: '4px' }}>
+                                                <span style={{ fontWeight: 'bold', fontSize: '0.65rem', color: 'var(--accent)', minWidth: '80px', textTransform: 'capitalize' }}>{expression}</span>
+                                                <span style={{ flex: 1, fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, opacity: 0.8 }}>{template}</span>
+                                                <button type="button" onClick={() => handleRemoveMemoryPrompt(expression)} className="toolbar-button" title="Remove" style={{ width: '18px', height: '18px', fontSize: '0.6rem', color: '#ff4444', padding: 0 }} disabled={isUploading}>×</button>
+                                            </div>
+                                        ))}
+                                        {Object.keys(memoryPrompts).length === 0 && (
+                                            <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', padding: '4px 0' }}>No memory prompts. Add above.</div>
+                                        )}
+                                    </div>
+                                </div>
+
                                 {/* Aliases */}
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <div className="editor-section-title">Aliases ({aliases.length})</div>
@@ -952,7 +1020,6 @@ function CharacterEditorModalInner({
                                     <div className="editor-section-title">Known Character Names ({Object.keys(knownCharacterNames).length})</div>
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Which other characters' names/aliases this character knows. Select a character, then choose the name variant they know.</div>
 
-                                    {/* Existing mappings */}
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', marginBottom: '8px' }}>
                                         {Object.entries(knownCharacterNames).map(([charId, nameVariants]) => {
                                             const targetChar = allCharacters.find(c => c.id === charId);
@@ -979,7 +1046,6 @@ function CharacterEditorModalInner({
                                         )}
                                     </div>
 
-                                    {/* Add new mapping — two dropdowns side by side */}
                                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                                         <select
                                             className="editor-select"
@@ -1131,51 +1197,20 @@ function CharacterEditorModalInner({
                                 </div>
 
                                 <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-                                    <button
-                                        type="button"
-                                        className="toolbar-button"
-                                        onClick={handleSelectAllTools}
-                                        disabled={isUploading}
-                                        style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}
-                                    >
-                                        ✓ Select All
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="toolbar-button"
-                                        onClick={handleDeselectAllTools}
-                                        disabled={isUploading}
-                                        style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}
-                                    >
-                                        ✗ Deselect All
-                                    </button>
+                                    <button type="button" className="toolbar-button" onClick={handleSelectAllTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✓ Select All</button>
+                                    <button type="button" className="toolbar-button" onClick={handleDeselectAllTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✗ Deselect All</button>
                                 </div>
 
-                                <input
-                                    type="text"
-                                    value={toolSearchQuery}
-                                    onChange={e => setToolSearchQuery(e.target.value)}
-                                    className="editor-input"
-                                    placeholder="Search tools..."
-                                    style={{ marginBottom: '12px', fontSize: '0.75rem', padding: '6px 10px' }}
-                                />
+                                <input type="text" value={toolSearchQuery} onChange={e => setToolSearchQuery(e.target.value)} className="editor-input" placeholder="Search tools..." style={{ marginBottom: '12px', fontSize: '0.75rem', padding: '6px 10px' }} />
 
                                 {filteredToolNames.length === 0 && (
-                                    <div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic', padding: '8px 0' }}>
-                                        No tools match "{toolSearchQuery}".
-                                    </div>
+                                    <div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic', padding: '8px 0' }}>No tools match "{toolSearchQuery}".</div>
                                 )}
 
                                 {filteredToolNames.map(toolName => (
                                     <div key={toolName} style={{ marginBottom: '8px' }}>
                                         <label className="editor-checkbox-label">
-                                            <input
-                                                type="checkbox"
-                                                checked={tools[toolName]}
-                                                onChange={() => handleToolToggle(toolName)}
-                                                className="editor-checkbox-input"
-                                                disabled={isUploading}
-                                            />
+                                            <input type="checkbox" checked={tools[toolName]} onChange={() => handleToolToggle(toolName)} className="editor-checkbox-input" disabled={isUploading} />
                                             <span>{toolLabels[toolName] ?? toolName}</span>
                                         </label>
                                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
@@ -1200,9 +1235,7 @@ function CharacterEditorModalInner({
 
                                 <div className="editor-section">
                                     <span className="editor-section-title">Character Stop Patterns</span>
-                                    <div className="editor-stop-patterns-hint">
-                                        Specific stop sequences for this character, overrides or augments sampler defaults.
-                                    </div>
+                                    <div className="editor-stop-patterns-hint">Specific stop sequences for this character, overrides or augments sampler defaults.</div>
 
                                     <div className="sampler-stop-patterns-list">
                                         {selectedStopPatternIds.length === 0 && (
@@ -1212,46 +1245,25 @@ function CharacterEditorModalInner({
                                         {selectedStopPatternIds.map(id => {
                                             const sp = getStopPatternById(id);
                                             if (!sp) return null;
-
                                             return (
                                                 <div key={id} className="sampler-stop-item">
                                                     <div className="sampler-stop-info">
                                                         <span className="sampler-stop-name">{sp.name}</span>
                                                         <span className="sampler-stop-pattern">{sp.pattern}</span>
                                                     </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleStopPatternToggle(id)}
-                                                        className="sampler-stop-remove-button"
-                                                        title="Remove stop pattern"
-                                                    >
-                                                        ×
-                                                    </button>
+                                                    <button type="button" onClick={() => handleStopPatternToggle(id)} className="sampler-stop-remove-button" title="Remove stop pattern">×</button>
                                                 </div>
                                             );
                                         })}
                                     </div>
 
-                                    <select
-                                        onChange={(e) => {
-                                            const val = e.target.value;
-                                            if (val) handleStopPatternToggle(val);
-                                            e.target.value = '';
-                                        }}
-                                        className="editor-select"
-                                        defaultValue=""
-                                        disabled={isUploading}
-                                    >
+                                    <select onChange={(e) => { const val = e.target.value; if (val) handleStopPatternToggle(val); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
                                         <option value="" disabled>+ Add a stop pattern</option>
                                         {allSamplers
                                             .flatMap(s => s.stopPatterns)
                                             .filter((sp, index, self) => index === self.findIndex(t => t.id === sp.id))
                                             .filter(sp => !selectedStopPatternIds.includes(sp.id))
-                                            .map(sp => (
-                                                <option key={sp.id} value={sp.id}>
-                                                    {sp.name} — {sp.pattern}
-                                                </option>
-                                            ))}
+                                            .map(sp => (<option key={sp.id} value={sp.id}>{sp.name} — {sp.pattern}</option>))}
                                     </select>
                                 </div>
                             </div>
@@ -1271,20 +1283,26 @@ function CharacterEditorModalInner({
                                         <div
                                             style={{
                                                 padding: '8px 10px',
-                                                background: quickConfigFeedback.addedNames.length > 0
-                                                    ? 'rgba(34, 197, 94, 0.1)'
-                                                    : 'rgba(255, 255, 255, 0.05)',
-                                                border: `1px solid ${quickConfigFeedback.addedNames.length > 0
-                                                    ? 'rgba(34, 197, 94, 0.3)'
-                                                    : 'rgba(255, 255, 255, 0.1)'}`,
+                                                background: quickConfigFeedback.label === 'Reverted to Original'
+                                                    ? 'rgba(59, 130, 246, 0.1)'
+                                                    : quickConfigFeedback.addedNames.length > 0
+                                                        ? 'rgba(34, 197, 94, 0.1)'
+                                                        : 'rgba(255, 255, 255, 0.05)',
+                                                border: `1px solid ${quickConfigFeedback.label === 'Reverted to Original'
+                                                    ? 'rgba(59, 130, 246, 0.3)'
+                                                    : quickConfigFeedback.addedNames.length > 0
+                                                        ? 'rgba(34, 197, 94, 0.3)'
+                                                        : 'rgba(255, 255, 255, 0.1)'}`,
                                                 borderRadius: '6px',
                                                 marginBottom: '8px',
                                             }}
                                         >
-                                            <div style={{ fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '4px', color: quickConfigFeedback.addedNames.length > 0 ? '#22c55e' : 'var(--text-h)' }}>
-                                                {quickConfigFeedback.addedNames.length > 0
-                                                    ? `✓ ${quickConfigFeedback.label}`
-                                                    : `— ${quickConfigFeedback.label}: No new names to add`}
+                                            <div style={{ fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '4px', color: quickConfigFeedback.label === 'Reverted to Original' ? '#3b82f6' : (quickConfigFeedback.addedNames.length > 0 ? '#22c55e' : 'var(--text-h)') }}>
+                                                {quickConfigFeedback.label === 'Reverted to Original'
+                                                    ? `↩️ ${quickConfigFeedback.label}`
+                                                    : quickConfigFeedback.addedNames.length > 0
+                                                        ? `✓ ${quickConfigFeedback.label}`
+                                                        : `— ${quickConfigFeedback.label}`}
                                             </div>
                                             {quickConfigFeedback.addedNames.length > 0 && (
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '120px', overflowY: 'auto' }}>
@@ -1300,92 +1318,21 @@ function CharacterEditorModalInner({
                                     )}
 
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        <button
-                                            type="button"
-                                            className="editor-button editor-button-cancel"
-                                            onClick={handleKnowCurrentProtagonist}
-                                            disabled={isUploading || !hasLocalProtagonist}
-                                            title={!hasLocalProtagonist ? 'No active local protagonist' : 'Add current protagonist name + aliases'}
-                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
-                                        >
-                                            🎯 Know Current Protagonist's Names
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="editor-button editor-button-cancel"
-                                            onClick={handleKnowCoLocatedProtagonists}
-                                            disabled={isUploading || !hasSession || coLocatedProtagonistCount === 0}
-                                            title={!hasSession ? 'No active session' : coLocatedProtagonistCount === 0 ? 'No co-located protagonists' : `Add ${coLocatedProtagonistCount} co-located protagonist(s) names`}
-                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
-                                        >
-                                            📍 Know Co-Located Protagonists' Names {coLocatedProtagonistCount > 0 && `(${coLocatedProtagonistCount})`}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="editor-button editor-button-cancel"
-                                            onClick={handleKnowAllProtagonists}
-                                            disabled={isUploading || !hasSession || !hasProtagonists}
-                                            title={!hasSession ? 'No active session' : 'Add all protagonists names + aliases'}
-                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
-                                        >
-                                            👥 Know All The Protagonists' Names
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="editor-button editor-button-cancel"
-                                            onClick={handleKnowCoLocatedParticipants}
-                                            disabled={isUploading || !hasSession || coLocatedParticipantCount === 0}
-                                            title={!hasSession ? 'No active session' : coLocatedParticipantCount === 0 ? 'No co-located participants' : `Add ${coLocatedParticipantCount} co-located participant(s) names`}
-                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
-                                        >
-                                            📍 Know Co-Located Participants' Names {coLocatedParticipantCount > 0 && `(${coLocatedParticipantCount})`}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="editor-button editor-button-cancel"
-                                            onClick={handleKnowAllParticipants}
-                                            disabled={isUploading || !hasSession || !hasParticipants}
-                                            title={!hasSession ? 'No active session' : 'Add all session participants names + aliases'}
-                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
-                                        >
-                                            🎭 Know All Participants' Names
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="editor-button editor-button-cancel"
-                                            onClick={handleKnowAllCharacters}
-                                            disabled={isUploading || allCharacters.length === 0}
-                                            title="Add every character in the global registry"
-                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
-                                        >
-                                            🌐 Know All Characters' Names
-                                        </button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleRevertKnownNames} disabled={isUploading} title="Revert known names to their state before opening this editor" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>↩️ Revert Known Names to Original</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCurrentProtagonist} disabled={isUploading || !hasLocalProtagonist} title={!hasLocalProtagonist ? 'No active local protagonist' : 'Add current protagonist name + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🎯 Know Current Protagonist's Names</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedProtagonists} disabled={isUploading || !hasSession || coLocatedProtagonistCount === 0} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Protagonists' Names {coLocatedProtagonistCount > 0 && `(${coLocatedProtagonistCount})`}</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllProtagonists} disabled={isUploading || !hasSession || !hasProtagonists} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>👥 Know All The Protagonists' Names</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedParticipants} disabled={isUploading || !hasSession || coLocatedParticipantCount === 0} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Participants' Names {coLocatedParticipantCount > 0 && `(${coLocatedParticipantCount})`}</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllParticipants} disabled={isUploading || !hasSession || !hasParticipants} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🎭 Know All Participants' Names</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllCharacters} disabled={isUploading || allCharacters.length === 0} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🌐 Know All Characters' Names</button>
                                     </div>
                                 </div>
 
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <span className="editor-section-title">Stat Utilities</span>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        <button
-                                            type="button"
-                                            className="editor-button editor-button-cancel"
-                                            onClick={handleAutoDetectStats}
-                                            disabled={isUploading}
-                                            title="Re-run auto-detection on name + description + system prompt"
-                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
-                                        >
-                                            🔍 Auto-Detect Stats from Prompts
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="editor-button editor-button-cancel"
-                                            onClick={handleResetStatsToDefaults}
-                                            disabled={isUploading}
-                                            title="Reset all stats to their default values"
-                                            style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}
-                                        >
-                                            ↩️ Reset Stats to Defaults
-                                        </button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleAutoDetectStats} disabled={isUploading} title="Re-run auto-detection on name + description + system prompt" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🔍 Auto-Detect Stats from Prompts</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleResetStatsToDefaults} disabled={isUploading} title="Reset all stats to their default values" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>↩️ Reset Stats to Defaults</button>
                                     </div>
                                 </div>
                             </div>

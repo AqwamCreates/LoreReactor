@@ -1,5 +1,5 @@
 // src/services/ChatMessageSummarizationEngine.ts
-import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock, cacheEfficiencyConfigurationType } from '../types';
+import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock, cacheEfficiencyConfigurationType, Profile } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
@@ -22,6 +22,7 @@ export async function generateMessageSummary(
     message: HistoryMessage,
     maxTokens = 256,
     sampler?: Sampler,
+    profile?: Profile,
 ): Promise<string | null> {
     const text = message.messageType === 'chat' ? message.textContent : '';
     const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${text}\n\nSummary:`;
@@ -78,7 +79,7 @@ export async function generateMissingSummaries(
     const sampler = interactionData.Profile?.webSummarizationSampler;
 
     for (const msg of toSummarize) {
-        const summary = await generateMessageSummary(msg, maxTokens, sampler);
+        const summary = await generateMessageSummary(msg, maxTokens, sampler, interactionData.Profile);
         if (summary) {
             results.set(msg.id, summary);
         }
@@ -90,6 +91,7 @@ async function compressChunk(
     messages: HistoryMessage[],
     maxTokens = 512,
     sampler?: Sampler,
+    profile?: Profile,
 ): Promise<string | null> {
     const formattedMessages = messages.map(m =>
         `${m.character.name}: ${m.messageType === 'chat' ? m.textContent : ''}`
@@ -389,7 +391,10 @@ export async function generateRecursiveSummary(
     const existingContexts = interactionData.contexts || [];
     const now = Date.now();
 
-    const sampler = interactionData.Profile?.interactionDataSummarizationSampler;
+    const profile = interactionData.Profile
+
+    const sampler = profile?.interactionDataSummarizationSampler;
+    const summarizationInstruction = profile?.summarizationInstruction;
 
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
     const filterFlags = getUniversalMessageFilterFlags(

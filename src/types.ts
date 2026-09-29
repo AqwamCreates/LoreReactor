@@ -266,7 +266,7 @@ export interface Character extends ObjectData {
   dialoguePrompts?: DialoguePrompt[];
   knowledgePrompts?: KnowledgePrompt[];
   starterPrompts?: Record<string, number>; // Text -> Weight value for that text during the sampling.
-  memoryPrompts?: Record<string, number>; // Expression -> string. If the string for this expression is not found, then use neutral. If no neutral string, then use system default. Used for creation of memories.
+  memoryPrompts?: Record<string, string>; // Expression -> string. If the string for this expression is not found, then use neutral. If no neutral string, then use system default. Used for creation of memories.
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;
@@ -301,7 +301,7 @@ export interface RawCharacter extends RawData {
   dialoguePrompts?: DialoguePrompt[];
   knowledgePrompts?: KnowledgePrompt[];
   starterPrompts?: Record<string, number>; // Text -> Weight value for that text during the sampling.
-  memoryPrompts?: Record<string, number>; // Expression -> string. If the string for this expression is not found, then use neutral. If no neutral string, then use system default. Used for creation of memories.
+  memoryPrompts?: Record<string, string>; // Expression -> string. If the string for this expression is not found, then use neutral. If no neutral string, then use system default. Used for creation of memories.
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;

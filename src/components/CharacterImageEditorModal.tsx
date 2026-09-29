@@ -3,17 +3,9 @@ import type React from 'react';
 import { useState, useRef } from 'react';
 import { uploadCharacterImage, getCharacterImageUrl } from '../storages/serverStorage';
 import '../main.css';
+import type { emotions } from '../dictionaries/characterPresets';
 
-const EMOTION_LABELS = [
-    'neutral', 'admiration', 'amusement', 'anger', 'annoyance', 'approval',
-    'caring', 'confusion', 'curiosity', 'desire', 'disappointment',
-    'disapproval', 'disgust', 'embarrassment', 'excitement', 'fear',
-    'gratitude', 'grief', 'joy', 'love', 'nervousness',
-    'optimism', 'pride', 'realization', 'relief', 'remorse',
-    'sadness', 'surprise',
-] as const;
-
-type EmotionLabel = typeof EMOTION_LABELS[number];
+type EmotionLabel = typeof emotions[number];
 
 interface CharacterImageEditorModalProps {
     isOpen: boolean;
@@ -69,7 +61,7 @@ function CharacterImageEditorContent({
 
     const sortedEmotions: EmotionLabel[] = [
         'neutral',
-        ...EMOTION_LABELS.filter(e => e !== 'neutral').sort(),
+        ...emotions.filter(e => e !== 'neutral').sort(),
     ];
 
     return (
