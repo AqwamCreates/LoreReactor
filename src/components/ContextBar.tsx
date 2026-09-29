@@ -1,8 +1,9 @@
 // src/components/ContextBar.tsx
 import { useState } from 'react';
+import type { viewMode } from './views/types';
 
 interface ContextBarProps {
-    viewMode: 'ladder' | 'cinematic' | 'vn';
+    viewMode: viewMode;
     onOpenChatList: () => void;
     onOpenCharacters: () => void;
     onOpenContexts: () => void;

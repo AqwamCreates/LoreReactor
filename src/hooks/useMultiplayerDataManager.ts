@@ -5,7 +5,7 @@ import { loadAllRawMultiplayerData, saveRawMultiplayerData, deleteRawMultiplayer
 import { useSessionStore } from './useSessionStore';
 
 export function useMultiplayerDataManager() {
-    const [multiplayerDatas, setMultiplayerDatas] = useState<MultiplayerData[]>([]);
+    const [multiplayerData, setMultiplayerDatas] = useState<MultiplayerData[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
     const loadAll = useCallback(async () => {
@@ -49,8 +49,8 @@ export function useMultiplayerDataManager() {
 
     /** Find the MultiplayerData that contains a given chat ID */
     const findByChatId = useCallback((chatId: string): MultiplayerData | null => {
-        return multiplayerDatas.find(md => md.interactionDataIds.includes(chatId)) ?? null;
-    }, [multiplayerDatas]);
+        return multiplayerData.find(md => md.interactionDataIds.includes(chatId)) ?? null;
+    }, [multiplayerData]);
 
     /** Load multiplayer data for a specific chat into the store */
     const loadForChat = useCallback(async (chatId: string) => {
@@ -67,17 +67,17 @@ export function useMultiplayerDataManager() {
 
         // Full reload if not found in cached list
         await loadAll();
-        const reloaded = multiplayerDatas.find(md => md.interactionDataIds.includes(chatId)) ?? null;
+        const reloaded = multiplayerData.find(md => md.interactionDataIds.includes(chatId)) ?? null;
         if (reloaded) {
             useSessionStore.setState({ multiplayerData: reloaded });
         }
         return reloaded;
-    }, [findByChatId, loadAll, multiplayerDatas]);
+    }, [findByChatId, loadAll, multiplayerData]);
 
     useState(() => { loadAll(); });
 
     return {
-        multiplayerDatas,
+        multiplayerData,
         isLoading,
         saveMultiplayerData,
         deleteMultiplayerData,

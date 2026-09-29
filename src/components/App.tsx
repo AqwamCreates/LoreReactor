@@ -67,7 +67,7 @@ import { ChatMinimap } from './ChatMinimap';
 import { LadderView } from './views/LadderView';
 import { CinematicView } from './views/CinematicView';
 import { VisualNovelView } from './views/VisualNovelView';
-import type { ViewModeProps } from './views/types';
+import type { ViewModeProps, viewMode } from './views/types';
 import { defaultContextLength } from '../dictionaries/defaults';
 import '../main.css';
 
@@ -139,7 +139,7 @@ function App() {
     const selectedCharacterId = useSessionStore((s: any) => s.selectedCharacterId);
     const selectedBudgetStrategyId = useSessionStore((s: any) => s.selectedBudgetStrategyId);
     const storeSetCurrentAccountId = useSessionStore((s: any) => s.setCurrentAccountId);
-    const storesetSelectedCharacterId = useSessionStore((s: any) => s.setSelectedCharacterId);
+    const storeSetSelectedCharacterId = useSessionStore((s: any) => s.setSelectedCharacterId);
     const storeSetSelectedBudgetStrategyId = useSessionStore((s: any) => s.setSelectedBudgetStrategyId);
 
     // ─── Multiplayer Session ─────────────────────────────────────────
@@ -176,7 +176,7 @@ function App() {
         allMemories: memories.memories,
         allExtensions: extensions.extensions,
         allAccounts: accounts.accounts,
-        allMultiplayerData: multiplayerDataManager.multiplayerDatas,
+        allMultiplayerData: multiplayerDataManager.multiplayerData,
         allActions: actionManager.allActions,
         requestBorrowedModel: handleRequestBorrowedModel,
     });
@@ -230,10 +230,10 @@ function App() {
         if (!interactionData?.id || mp.joinSessionId) return;
         const mpData = useSessionStore.getState().multiplayerData;
         if (mpData?.interactionDataIds?.includes(interactionData.id)) return;
-        const match = multiplayerDataManager.multiplayerDatas.find((m: MultiplayerData) => m.interactionDataIds.includes(interactionData.id!));
+        const match = multiplayerDataManager.multiplayerData.find((m: MultiplayerData) => m.interactionDataIds.includes(interactionData.id!));
         if (match) useSessionStore.setState({ multiplayerData: match });
-        else if (!mpData && multiplayerDataManager.multiplayerDatas.length > 0) useSessionStore.setState({ multiplayerData: multiplayerDataManager.multiplayerDatas[0] });
-    }, [interactionData?.id, multiplayerDataManager.multiplayerDatas, mp.joinSessionId]);
+        else if (!mpData && multiplayerDataManager.multiplayerData.length > 0) useSessionStore.setState({ multiplayerData: multiplayerDataManager.multiplayerData[0] });
+    }, [interactionData?.id, multiplayerDataManager.multiplayerData, mp.joinSessionId]);
 
     useEffect(() => {
         const handleBeforeUnload = () => {
@@ -308,7 +308,7 @@ function App() {
         refreshChatList: chatList.refresh,
     });
 
-    // ─── Model Readiness ─────────────────────────────────────────────
+    // ─── Model Readiness ─────────────────────────────────────
     const isModelReady = useMemo(() => {
         if (mp.isMultiplayerClient) return true;
         if (activeStrategy) return true;
@@ -363,14 +363,15 @@ function App() {
         selectedBudgetStrategyId,
         setInteractionData, setSelectedCharacter, setActiveBudgetStrategy,
         setSelectedBudgetStrategyId: storeSetSelectedBudgetStrategyId,
-        setSelectedCharacterId: storesetSelectedCharacterId,
+        setSelectedCharacterId: storeSetSelectedCharacterId,
         loadFullCharacter: characters.loadFullCharacter, addToast,
     });
 
     const isMultiplayerChat = mp.isMultiplayerClient || !!(mp.multiplayerData && interactionData?.id && mp.multiplayerData.interactionDataIds.includes(interactionData.id));
 
-    // ─── Local UI State (Hoisted above useViewAssets to eliminate undefined as any) ──
-    const [viewMode, setViewMode] = useState<'ladder' | 'cinematic' | 'vn'>('ladder');
+    // ─── Local UI State ──────────────────────────────────────────────
+    // Hoisted and strictly typed to match `viewMode` from ./views/types
+    const [viewMode, setViewMode] = useState<viewMode>('ladder');
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
     const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
@@ -384,7 +385,7 @@ function App() {
     const suppressAutoScrollRef = useRef(false);
 
     const viewAssets = useViewAssets({
-        viewMode,
+        viewMode, // Correctly typed as viewMode without `undefined as any`
         interactionData, localProtagonist, currentCharacter,
         streamingCharacter, currentCharacterExpression, chatHistoryRef,
         isMultiplayerChat,
@@ -406,8 +407,19 @@ function App() {
         activeStrategy,
     });
 
-    useEffect(() => { if (!textareaRef.current) return; textareaRef.current.style.height = 'auto'; textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, window.innerHeight * 0.3)}px`; });
-    useEffect(() => { if (!editTextAreaRef.current || !messageActions.editingId) return; editTextAreaRef.current.style.height = 'auto'; editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`; }, [messageActions.editingId]);
+    // Auto-resize textarea only when text changes (avoids layout thrashing on every streaming chunk)
+    useEffect(() => { 
+        if (!textareaRef.current) return; 
+        textareaRef.current.style.height = 'auto'; 
+        textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, window.innerHeight * 0.3)}px`; 
+    }, [inputText]);
+
+    // Auto-resize edit textarea when opened and as user edits
+    useEffect(() => { 
+        if (!editTextAreaRef.current || !messageActions.editingId) return; 
+        editTextAreaRef.current.style.height = 'auto'; 
+        editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`; 
+    }, [messageActions.editingId, messageActions.editDraft]);
 
     // ─── Derived Display Values ──────────────────────────────────────
     const canDelete = (!isMultiplayerChat || mp.multiplayerSync.isHost || mp.multiplayerSync.isAdmin) && !isLoading;
@@ -504,8 +516,8 @@ function App() {
         { id: 'worlds', label: 'Worlds', icon: '🌍', done: !worlds.isLoading },
         { id: 'promptBlocks', label: 'Prompt Blocks', icon: '🧱', done: !promptBlocks.isLoading },
         { id: 'models', label: 'Language Models', icon: '🤖', done: !models.isLoading },
-        { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplers.isLoading },
-        { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopPatterns.isLoading },
+        { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplers.Samplers },
+        { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopPatterns.stopPatterns },
         { id: 'budget', label: 'Budget', icon: '💰', done: !budgetStrategies.isLoading },
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profiles.isLoading },
         { id: 'accounts', label: 'Accounts', icon: '🔑', done: !accounts.isLoading },
@@ -575,7 +587,7 @@ function App() {
     }, [inputText, pendingFiles, sendMessage, promptBlocks, captureFrontCameraImage, interactionData, currentCharacter]);
 
     const toggleViewMode = () => {
-        setViewMode(prev => prev === 'ladder' ? 'cinematic' : prev === 'cinematic' ? 'vn' : 'ladder');
+        setViewMode(prev => prev === 'ladder' ? 'cinematic' : prev === 'cinematic' ? 'visual novel' : 'ladder');
         const container = chatHistoryRef.current;
         let targetIdx = -1;
         if (container && interactionData) {
@@ -646,7 +658,7 @@ function App() {
     }, [interactionData, addToast, setInteractionData]);
 
     const onDeleteChatForModals = useCallback((id: string) => {
-        chatOps.handleDeleteChat({ stopPropagation: () => {} } as React.MouseEvent, id);
+        chatOps.handleDeleteChat(id);
     }, [chatOps]);
 
     const handleRenameChat = useCallback(async (id: string, name: string) => {
@@ -692,7 +704,8 @@ function App() {
     }, [interactionData, characters, contexts, locations, audioTracks, profiles, setInteractionData, addToast]);
 
     // ─── View Props ──────────────────────────────────────────────────
-    const viewProps: ViewModeProps & { canDelete: boolean } = {
+    // canDelete is already declared inside ViewModeProps
+    const viewProps: ViewModeProps = {
         interactionData: interactionData!,
         localProtagonist: localProtagonist!,
         displayMessages: displayMessages as ChatMessage[],
@@ -733,7 +746,7 @@ function App() {
     const containerClass = [
         'chat-container',
         viewMode === 'cinematic' ? 'mode-cinematic' : '',
-        viewMode === 'vn' ? 'mode-vn' : '',
+        viewMode === 'visual novel' ? 'mode-vn' : '',
         viewMode === 'ladder' ? 'mode-ladder' : '',
         viewAssets.locationBackgroundUrl ? 'has-location-bg' : '',
     ].filter(Boolean).join(' ');
@@ -745,7 +758,7 @@ function App() {
 
             <div
                 className={containerClass}
-                style={viewAssets.locationBackgroundUrl && viewMode !== 'vn' ? { '--location-bg': `url(${viewAssets.locationBackgroundUrl})` } as React.CSSProperties : undefined}
+                style={viewAssets.locationBackgroundUrl && viewMode !== 'visual novel' ? { '--location-bg': `url(${viewAssets.locationBackgroundUrl})` } as React.CSSProperties : undefined}
                 onClick={() => { actionMenu.closeActionMenu(); messageToolbar.deactivateToolbar(); }}
             >
                 {interactionData && (
@@ -790,7 +803,7 @@ function App() {
 
                         {viewMode === 'ladder' && <LadderView {...viewProps} />}
                         {viewMode === 'cinematic' && <CinematicView {...viewProps} />}
-                        {viewMode === 'vn' && <VisualNovelView {...viewProps} />}
+                        {viewMode === 'visual novel' && <VisualNovelView {...viewProps} />}
 
                         <ContextBar
                             viewMode={viewMode}
@@ -812,7 +825,7 @@ function App() {
                             allCharacters={characters.characters} allLocations={locations.locations} allContexts={contexts.contexts}
                             allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allPromptBlocks={promptBlocks.promptBlocks}
                             allSamplers={samplers.Samplers} allStopPatterns={stopPatterns.stopPatterns} allProfiles={profiles.profiles}
-                            allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDataManager.multiplayerDatas}
+                            allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDataManager.multiplayerData}
                             fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected}
                             onToggleMicrophone={handleToggleMic} onSend={handleSend}
                             onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open}
@@ -828,7 +841,7 @@ function App() {
                     allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allModels={allModels}
                     allSamplers={samplers.Samplers} allPromptBlocks={promptBlocks.promptBlocks} allStopPatterns={stopPatterns.stopPatterns}
                     allBudgetStrategies={budgetStrategies.strategies} allProfiles={profiles.profiles} allExtensions={extensions.extensions}
-                    allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDataManager.multiplayerDatas}
+                    allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDataManager.multiplayerData}
                     onSwitchChat={chatOps.handleSwitchChat} onDeleteChat={onDeleteChatForModals} onNewChat={chatOps.handleNewChat}
                     onRenameChat={handleRenameChat}
                     onDeleteCharacter={entityModals.getModalProperties('character').delete}

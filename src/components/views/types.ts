@@ -63,3 +63,5 @@ export interface ViewModeProps {
     onStopGeneration: () => void;
     canDelete: boolean;
 }
+
+export type viewMode = "ladder" | "cinematic" | "visual novel"

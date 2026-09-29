@@ -2,11 +2,12 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Character, InteractionData, ChatMessage } from '../types';
 import { getCharacterImageUrl, getLocationImageUrl, getMultiplayerCharacterImageUrl } from '../storages/serverStorage';
+import type { viewMode } from '../components/views/types';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 
 interface UseViewAssetsOptions {
-    viewMode: 'ladder' | 'cinematic' | 'vn';
+    viewMode: viewMode;
     interactionData: InteractionData | null;
     currentCharacter: Character | null;
     localProtagonist: Character | null;

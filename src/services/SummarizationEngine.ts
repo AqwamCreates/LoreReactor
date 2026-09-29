@@ -1,6 +1,5 @@
 // src/services/BackgroundSummarization.ts
 import type { InteractionData, ChatMessage } from '../types';
-import { saveRawInteractionData } from '../storages/serverStorage';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { checkTriggerThreshold, generateMissingSummaries, generatePeriodicCompression, generateRecursiveSummary } from './ChatMessageSummarizationEngine';
@@ -94,7 +93,6 @@ export async function runSummarization(context: SummarizationContext): Promise<v
         }
 
         if (updated !== data) {
-            await saveRawInteractionData(updated);
             setData(updated);
 
             const countModelSummaries = (history: typeof data.interactionHistory) =>
