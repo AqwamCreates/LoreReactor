@@ -5,21 +5,22 @@ import { initializeActionFormatEngine, getActionFormatEngine, type ActionWrap, t
 import type { useActionManager } from './useActionManager';
 
 function formatActionString(label: string, targetName: string, wrap: ActionWrap, casing: ActionCase, punctuation: ActionPunctuation): string {
-    let result = label;
+    let result = label.trim();
+    const cleanTargetName = targetName.trim();
 
     switch (casing) {
         case 'first':
             result = result.charAt(0).toUpperCase() + result.slice(1).toLowerCase();
             break;
         case 'pascal':
-            result = result.replace(/\b\w/g, c => c.toUpperCase());
+            result = result.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
             break;
         case 'lower':
             result = result.toLowerCase();
             break;
     }
 
-    result = `${result} ${targetName}`;
+    result = cleanTargetName ? `${result} ${cleanTargetName}` : result;
 
     switch (punctuation) {
         case '.': result += '.'; break;
@@ -50,7 +51,8 @@ interface UseActionMenuOptions {
 
 export function useActionMenu(options: UseActionMenuOptions) {
     const {
-        actionManager, interactionData, currentCharacter, isLoading, stopGeneration, sendActionAndGetResponse, addToast,
+        actionManager, interactionData, currentCharacter, isLoading, isModelReady,
+        stopGeneration, sendActionAndGetResponse, addToast,
     } = options;
 
     const { allActions, actionsLoading, incrementActionCount, handleAddAction, handleDeleteAction } = actionManager;
@@ -66,7 +68,7 @@ export function useActionMenu(options: UseActionMenuOptions) {
 
     const formatLoadedRef = useRef(false);
 
-    // Load preferences from the unified engine on mount
+    // Load preferences from the engine on mount
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -84,7 +86,7 @@ export function useActionMenu(options: UseActionMenuOptions) {
         return () => { cancelled = true; };
     }, []);
 
-    // Sync UI changes to the engine
+    // Sync UI changes back to the format engine
     useEffect(() => {
         if (!formatLoadedRef.current) return;
         getActionFormatEngine().setUIPreferences({
@@ -99,16 +101,22 @@ export function useActionMenu(options: UseActionMenuOptions) {
         setActionMenuTarget(null);
         setMenuSearchQuery('');
         setShowActionFormat(false);
+
         if (!interactionData || !currentCharacter) return;
-        
+
+        if (!isModelReady) {
+            addToast('Model is not ready.', 'error');
+            return;
+        }
+
         await incrementActionCount(label);
         
         if (isLoading) {
             stopGeneration();
-            await new Promise(r => setTimeout(r, 200));
+            await new Promise(r => setTimeout(r, 100));
         }
 
-        // Determine previous user wrap for context
+        // Determine user's previous action wrapping style
         let prevUserWrap: ActionWrap | 'unknown' = 'unknown';
         for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
             const msg = interactionData.interactionHistory[i];
@@ -136,8 +144,6 @@ export function useActionMenu(options: UseActionMenuOptions) {
         }
 
         const formattedAction = formatActionString(label, targetChar.name, wrap, casing, punct);
-        
-        // Record the usage to reinforce the learning matrix
         engine.record(label, prevUserWrap, { wrap, casing, punctuation: punct });
 
         try {
@@ -145,12 +151,21 @@ export function useActionMenu(options: UseActionMenuOptions) {
         } catch {
             addToast('Failed to interject action.', 'error');
         }
-    }, [interactionData, currentCharacter, isLoading, actionWrap, actionCase, actionPunctuation, isAutoFormat, incrementActionCount, stopGeneration, sendActionAndGetResponse, addToast]);
+    }, [
+        interactionData, currentCharacter, isLoading, isModelReady,
+        actionWrap, actionCase, actionPunctuation, isAutoFormat,
+        incrementActionCount, stopGeneration, sendActionAndGetResponse, addToast
+    ]);
 
-    const getFilteredActions = useCallback(() => allActions
-        .filter(a => a.label.toLowerCase().includes(menuSearchQuery.toLowerCase()))
-        .sort((a, b) => b.count !== a.count ? b.count - a.count : a.label.localeCompare(b.label)),
-    [allActions, menuSearchQuery]);
+    const getFilteredActions = useCallback(() => {
+        const query = menuSearchQuery.trim().toLowerCase();
+        if (!query) {
+            return allActions.slice().sort((a, b) => b.count !== a.count ? b.count - a.count : a.label.localeCompare(b.label));
+        }
+        return allActions
+            .filter(a => a.label.toLowerCase().includes(query))
+            .sort((a, b) => b.count !== a.count ? b.count - a.count : a.label.localeCompare(b.label));
+    }, [allActions, menuSearchQuery]);
 
     const handleAvatarClick = useCallback((e: React.MouseEvent, mid: string, char: Character) => {
         e.stopPropagation();
