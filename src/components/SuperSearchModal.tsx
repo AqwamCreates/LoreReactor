@@ -1,9 +1,9 @@
 // src/components/SuperSearchModal.tsx
-import { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { 
     Character, Context, Location, AudioTrack, World, PromptBlock, 
     LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, 
-    Memory, Account, MultiplayerData, RawInteractionData, InteractionData
+    Memory, Account, MultiplayerData, RawInteractionData, InteractionData, ChatMessage 
 } from '../types';
 import { localURL } from '../configurations';
 import '../main.css';
@@ -22,7 +22,7 @@ export type SearchTabId =
     | 'sampler' 
     | 'stopPattern' 
     | 'budgetStrategy' 
-    | 'profile'
+    | 'profile' 
     | 'memory' 
     | 'account' 
     | 'multiplayerData';
@@ -62,12 +62,17 @@ interface ServerMessageResult {
     timestamp: number;
 }
 
+interface FieldMatch {
+    field: string;
+    text: string;
+    snippet: string;
+}
+
 interface SearchMatchResult {
     tabId: SearchTabId;
     id: string;
     title: string;
-    subtitle?: string;
-    snippet?: string;
+    matches: FieldMatch[];
     chats?: Array<{ chatId: string; chatName: string }>;
     rawEntity?: any;
 }
@@ -105,15 +110,33 @@ function makeSnippet(text: string, query: string, radius = 45): string {
     return `${prefix}${text.slice(start, end).trim()}${suffix}`;
 }
 
-function extractDeepStrings(obj: any): string[] {
-    const list: string[] = [];
-    const visited = new Set();
+function cleanFieldPath(path: string): string {
+    return path
+        .replace(/\[\d+\]/g, '') // remove array indices like [0]
+        .replace(/^\./, '') || 'content';
+}
 
-    function walk(val: any) {
+/** Recursively walks an entity to find ALL fields containing the query string */
+function findMatchingFields(obj: any, query: string): FieldMatch[] {
+    const matches: FieldMatch[] = [];
+    const visited = new Set();
+    const lowerQuery = query.toLowerCase();
+
+    function walk(val: any, path: string) {
         if (val === null || val === undefined) return;
         if (typeof val === 'string') {
             if (val.length < 5000 && !val.startsWith('data:image')) {
-                list.push(val);
+                if (val.toLowerCase().includes(lowerQuery)) {
+                    const fieldName = cleanFieldPath(path);
+                    // Avoid duplicate identical matches for the exact same property path
+                    if (!matches.some(m => m.field === fieldName && m.text === val)) {
+                        matches.push({
+                            field: fieldName,
+                            text: val,
+                            snippet: makeSnippet(val, query)
+                        });
+                    }
+                }
             }
             return;
         }
@@ -123,17 +146,18 @@ function extractDeepStrings(obj: any): string[] {
         visited.add(val);
 
         if (Array.isArray(val)) {
-            for (const item of val) walk(item);
+            val.forEach((item, index) => walk(item, `${path}[${index}]`));
         } else {
             for (const [key, v] of Object.entries(val)) {
-                if (key === 'images' || key === 'base64' || key.includes('Cache') || key.includes('Path')) continue;
-                walk(v);
+                if (key === 'id' || key === 'firstCreatedTimestamp' || key === 'lastUpdatedTimestamp' || key === 'images' || key === 'base64' || key.includes('Cache') || key.includes('Path')) continue;
+                const currentPath = path ? `${path}.${key}` : key;
+                walk(v, currentPath);
             }
         }
     }
 
-    walk(obj);
-    return list;
+    walk(obj, '');
+    return matches;
 }
 
 function SuperSearchContent({
@@ -213,13 +237,15 @@ function SuperSearchContent({
         return map;
     }, [rawChatShells, currentInteractionData]);
 
-    // Asynchronous debounce effect with ZERO synchronous setState calls in the effect body
     useEffect(() => {
-        if (!lowerQuery) return;
+        if (!lowerQuery) {
+            setServerMessages([]);
+            setIsSearchingServer(false);
+            return;
+        }
 
-        let ignore = false;
+        setIsSearchingServer(true);
         const timer = setTimeout(async () => {
-            setIsSearchingServer(true);
             try {
                 const res = await fetch(`${localURL}/search?q=${encodeURIComponent(lowerQuery)}&limit=50`);
                 if (res.ok && !ignore) {
@@ -230,12 +256,11 @@ function SuperSearchContent({
             } catch (e) {
                 console.warn('[SuperSearch] Server query failed:', e);
             } finally {
-                if (!ignore) {
-                    setIsSearchingServer(false);
-                }
+                setIsSearchingServer(false);
             }
         }, 150);
 
+        let ignore = false;
         return () => {
             ignore = true;
             clearTimeout(timer);
@@ -252,34 +277,19 @@ function SuperSearchContent({
 
         if (!lowerQuery) return emptyMap;
 
-        // Defensive scanner guaranteeing title, subtitle, and snippet are ALWAYS primitive strings
-        const scanEntities = (items: any[], tabId: SearchTabId, getTitle: (item: any) => string, getSub?: (item: any) => string | undefined) => {
+        const scanEntities = (items: any[], tabId: SearchTabId, getTitle: (item: any) => string) => {
             const results: SearchMatchResult[] = [];
             if (!Array.isArray(items)) return results;
 
             for (const item of items) {
                 if (!item || typeof item !== 'object') continue;
-                const allStrings = extractDeepStrings(item);
-                const matchedStr = allStrings.find(s => s.toLowerCase().includes(lowerQuery));
-                if (matchedStr) {
-                    let subVal: any = getSub ? getSub(item) : item.description;
-                    let subStr = '';
-                    if (typeof subVal === 'string') {
-                        subStr = subVal;
-                    } else if (subVal && typeof subVal === 'object') {
-                        // Extract text from object if accidentally nested
-                        subStr = typeof subVal.text === 'string' ? subVal.text 
-                               : typeof subVal.content === 'string' ? subVal.content 
-                               : typeof subVal.name === 'string' ? subVal.name 
-                               : '';
-                    }
-
+                const matches = findMatchingFields(item, lowerQuery);
+                if (matches.length > 0) {
                     results.push({
                         tabId,
                         id: String(item.id || ''),
                         title: String(getTitle(item) || ''),
-                        subtitle: subStr || undefined,
-                        snippet: makeSnippet(matchedStr, lowerQuery),
+                        matches,
                         rawEntity: item,
                     });
                 }
@@ -287,19 +297,19 @@ function SuperSearchContent({
             return results;
         };
 
-        emptyMap.character = scanEntities(allCharacters, 'character', c => `🎭 ${c.name}`, c => typeof c.description === 'string' ? c.description : c.systemPrompt);
-        emptyMap.context = scanEntities(allContexts, 'context', c => `📜 ${c.name}`, c => typeof c.text === 'string' ? c.text : c.description);
-        emptyMap.location = scanEntities(allLocations, 'location', l => `📍 ${l.name}`, l => typeof l.text === 'string' ? l.text : l.description);
-        emptyMap.promptBlock = scanEntities(allPromptBlocks, 'promptBlock', p => `🧱 ${p.name}`, p => typeof p.textContent === 'string' ? p.textContent : p.description);
-        emptyMap.audioTrack = scanEntities(allAudioTracks, 'audioTrack', a => `🔊 ${a.filename || a.name}`, a => a.audioCategory);
+        emptyMap.character = scanEntities(allCharacters, 'character', c => `🎭 ${c.name}`);
+        emptyMap.context = scanEntities(allContexts, 'context', c => `📜 ${c.name}`);
+        emptyMap.location = scanEntities(allLocations, 'location', l => `📍 ${l.name}`);
+        emptyMap.promptBlock = scanEntities(allPromptBlocks, 'promptBlock', p => `🧱 ${p.name}`);
+        emptyMap.audioTrack = scanEntities(allAudioTracks, 'audioTrack', a => `🔊 ${a.filename || a.name}`);
         emptyMap.world = scanEntities(allWorlds, 'world', w => `🌍 ${w.name}`);
-        emptyMap.model = scanEntities(allModels, 'model', m => `🤖 ${m.name}`, m => m.model || m.backend);
+        emptyMap.model = scanEntities(allModels, 'model', m => `🤖 ${m.name}`);
         emptyMap.sampler = scanEntities(allSamplers, 'sampler', s => `🎚️ ${s.name}`);
-        emptyMap.stopPattern = scanEntities(allStopPatterns, 'stopPattern', sp => `🛑 ${sp.name}`, sp => sp.pattern);
+        emptyMap.stopPattern = scanEntities(allStopPatterns, 'stopPattern', sp => `🛑 ${sp.name}`);
         emptyMap.budgetStrategy = scanEntities(allBudgetStrategies, 'budgetStrategy', b => `💰 ${b.name}`);
         emptyMap.profile = scanEntities(allProfiles, 'profile', p => `👤 ${p.name}`);
-        emptyMap.memory = scanEntities(allMemories, 'memory', m => `🧠 ${typeof m.name === 'string' ? m.name : 'Untitled Memory'}`, m => typeof m.content === 'string' ? m.content : (typeof m.description === 'string' ? m.description : undefined));
-        emptyMap.account = scanEntities(allAccounts, 'account', a => `🔑 ${a.name || a.username}`, a => `User: ${a.username}`);
+        emptyMap.memory = scanEntities(allMemories, 'memory', m => `🧠 ${typeof m.name === 'string' ? m.name : 'Untitled Memory'}`);
+        emptyMap.account = scanEntities(allAccounts, 'account', a => `🔑 ${a.name || a.username}`);
         emptyMap.multiplayerData = scanEntities(allMultiplayerData, 'multiplayerData', m => `👥 ${m.name}`);
         emptyMap.chat = scanEntities(rawChatShells, 'chat', s => `📂 ${s.name || 'Untitled Chat'}`);
 
@@ -315,7 +325,7 @@ function SuperSearchContent({
                         tabId: 'message',
                         id: msg.id,
                         title: `🎭 ${msg.character.name}`,
-                        snippet: makeSnippet(msg.textContent, lowerQuery),
+                        matches: [{ field: 'textContent', text: msg.textContent, snippet: makeSnippet(msg.textContent, lowerQuery) }],
                         chats,
                         rawEntity: msg,
                     });
@@ -335,7 +345,7 @@ function SuperSearchContent({
                     tabId: 'message',
                     id: sMsg.id,
                     title: speaker ? `🎭 ${speaker.name}` : '🎭 Character',
-                    snippet: typeof sMsg.snippet === 'string' ? sMsg.snippet : '',
+                    matches: [{ field: 'textContent', text: sMsg.snippet, snippet: typeof sMsg.snippet === 'string' ? sMsg.snippet : '' }],
                     chats,
                 });
             }
@@ -477,15 +487,29 @@ function SuperSearchContent({
                                         </span>
                                     </div>
 
-                                    {item.subtitle && typeof item.subtitle === 'string' && (
-                                        <div style={{ fontSize: '0.75rem', opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
-                                            {item.subtitle}
-                                        </div>
-                                    )}
-
-                                    {item.snippet && typeof item.snippet === 'string' && (
-                                        <div style={{ fontSize: '0.8rem', opacity: 0.9, background: 'rgba(0,0,0,0.15)', padding: '6px 8px', borderRadius: '4px', width: '100%', boxSizing: 'border-box', borderLeft: '3px solid var(--accent)' }}>
-                                            "{item.snippet}"
+                                    {/* Render all matching fields for this entity cleanly */}
+                                    {item.matches && item.matches.length > 0 && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%', marginTop: '4px' }}>
+                                            {item.matches.map((m, idx) => (
+                                                <div 
+                                                    key={idx}
+                                                    style={{ 
+                                                        fontSize: '0.8rem', 
+                                                        opacity: 0.9, 
+                                                        background: 'rgba(0,0,0,0.15)', 
+                                                        padding: '6px 8px', 
+                                                        borderRadius: '4px', 
+                                                        width: '100%', 
+                                                        boxSizing: 'border-box', 
+                                                        borderLeft: '3px solid var(--accent)' 
+                                                    }}
+                                                >
+                                                    <span style={{ fontSize: '0.65rem', opacity: 0.7, fontWeight: 'bold', textTransform: 'uppercase', marginRight: '6px', color: 'var(--accent)' }}>
+                                                        [{m.field}]:
+                                                    </span>
+                                                    "{m.snippet}"
+                                                </div>
+                                            ))}
                                         </div>
                                     )}
 

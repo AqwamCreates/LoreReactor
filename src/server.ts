@@ -774,7 +774,7 @@ app.get('/search', async (req, response) => {
   const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   const limit = Math.min(Number.parseInt(String(req.query.limit || '40'), 10), 100);
 
-  if (!query || query.length < 2) {
+  if (!query || query.length <= 0) {
     return response.json({ query, results: [], count: 0, durationMs: 0 });
   }
 
