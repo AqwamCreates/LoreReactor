@@ -1,9 +1,16 @@
 // src/hooks/useMultiplayerSession.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Character, HistoryMessage, LanguageModel, MultiplayerData } from '../types';
-import { loadRawMultiplayerJoinData, saveRawMultiplayerJoinData, deleteMultiplayerJoinData } from '../storages/serverStorage';
+import { 
+    loadRawMultiplayerJoinData, 
+    saveRawMultiplayerJoinData, 
+    deleteMultiplayerJoinData,
+    saveRawInteractionData 
+} from '../storages/serverStorage';
 import { useMultiplayerSync } from './useMultiplayerSync';
 import { useSessionStore } from '../hooks/useSessionStore';
+import type { HostMigrationPayload } from './useMultiplayerConnection';
+import { v4 as uuidv4 } from 'uuid';
 
 interface UseMultiplayerSessionOptions {
     allCharacters: Character[];
@@ -115,11 +122,99 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         await saveMultiplayerData(data);
     }, [saveMultiplayerData]);
 
+    // ─── Host Migration Handler ──────────────────────────────────────
+    const handleHostMigration = useCallback(async (payload: HostMigrationPayload) => {
+        const myAcctId = currentAccountId;
+        if (!myAcctId) return;
+
+        const sanitizedMyAcctId = myAcctId.replace(/[^A-Za-z0-9]/g, '');
+        const sanitizedNewHostId = payload.newHostId.replace(/[^A-Za-z0-9]/g, '');
+        const isPromotedToHost = sanitizedMyAcctId === sanitizedNewHostId;
+
+        if (isPromotedToHost) {
+            addToast('The host has disconnected. You are now the host of this session!', 'success');
+
+            // 1. Commit and persist final interaction data locally
+            if (payload.finalState) {
+                setInteractionData(payload.finalState);
+                await saveRawInteractionData(payload.finalState);
+            }
+
+            // 2. Inherit existing room settings or build a new host MultiplayerData
+            const baseMpData = (payload as any).multiplayerData as MultiplayerData | undefined;
+            const newMpData: MultiplayerData = {
+                id: baseMpData?.id || uuidv4(),
+                name: baseMpData?.name || payload.finalState?.name || 'Migrated Session',
+                description: baseMpData?.description,
+                password: baseMpData?.password || '',
+                interactionDataIds: payload.finalState ? [payload.finalState.id] : [],
+                canUseJoinerCharacterId: baseMpData?.canUseJoinerCharacterId ?? true,
+                canUseHosterCharacterId: baseMpData?.canUseHosterCharacterId ?? true,
+                joinerCharacterIdRequiresHosterApproval: baseMpData?.joinerCharacterIdRequiresHosterApproval ?? false,
+                hosterCharacterIdRequiresHosterApproval: baseMpData?.hosterCharacterIdRequiresHosterApproval ?? false,
+                useJoinerLanguageModel: baseMpData?.useJoinerLanguageModel ?? 0,
+                multiplayerDataAccountConfigurations: {
+                    ...(baseMpData?.multiplayerDataAccountConfigurations || {}),
+                    [myAcctId]: {
+                        isWhitelisted: true,
+                        isBlacklisted: false,
+                        isAdministrator: true,
+                        canUseJoinerCharacterId: true,
+                        canUseHosterCharacterId: true,
+                        joinerCharacterIdRequiresHosterApproval: false,
+                        hosterCharacterIdRequiresHosterApproval: false,
+                        whitelistedCharacterIds: [],
+                        blacklistedCharacterIds: [],
+                        pendingCharacterIds: [],
+                        activeCharacterId: joinProtagonist?.id,
+                    },
+                },
+                pendingAccountIds: baseMpData?.pendingAccountIds || [],
+                firstCreatedTimestamp: baseMpData?.firstCreatedTimestamp || Date.now(),
+                lastUpdatedTimestamp: Date.now(),
+            };
+
+            await saveMultiplayerDataVoid(newMpData);
+            useSessionStore.setState({ multiplayerData: newMpData });
+
+            // 3. Clear client join state: Setting joinSessionId = null turns this peer into Host mode
+            clearJoinState();
+
+            if (joinProtagonist) {
+                setCurrentCharacter(joinProtagonist);
+            }
+        } else {
+            addToast(`Host migration in progress. Re-anchoring to new host...`, 'info');
+
+            if (payload.finalState) {
+                setInteractionData(payload.finalState);
+            }
+
+            // Other clients reconnect to the newly promoted host at lr_${chatId}_host
+            const currentSession = joinSessionId;
+            const currentPass = joinPassword;
+            const currentCharId = joinRequestedCharacterId;
+            const currentCharData = joinRequestedCharacterData;
+
+            setJoinSessionId(null);
+            setTimeout(() => {
+                setJoinSessionId(currentSession);
+                setJoinPassword(currentPass);
+                setJoinRequestedCharacterId(currentCharId);
+                setJoinRequestedCharacterData(currentCharData);
+            }, 1200);
+        }
+    }, [
+        currentAccountId, addToast, setInteractionData, saveMultiplayerDataVoid,
+        clearJoinState, joinProtagonist, setCurrentCharacter, joinSessionId,
+        joinPassword, joinRequestedCharacterId, joinRequestedCharacterData
+    ]);
+
     const multiplayerSync = useMultiplayerSync({
-        interactionData, // Reactive subscription: updates seamlessly whenever chat data changes
+        interactionData,
         multiplayerData,
         currentAccountId,
-        setInteractionData, // Functional setter: properly commits peer messages to store
+        setInteractionData,
         allCharacters,
         joinSessionId,
         joinPassword,
@@ -129,6 +224,7 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         onJoinRejected: handleJoinRejected,
         onSaveMultiplayerData: saveMultiplayerDataVoid,
         onConnectionFailed: handleConnectionFailed,
+        onHostMigration: handleHostMigration, // Active migration listener
         onCharacterSelectionRequired: handleCharacterSelectionRequired,
     });
 
