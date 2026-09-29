@@ -5,7 +5,6 @@ import { CharacterActor } from '../services/CharacterActor';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngine';
 import { getBudgetStrategyEngine, type RequestMetadata } from '../services/BudgetStrategyEngine';
-import { saveRawInteractionData } from '../storages/serverStorage';
 import { updatePartialMessageInInteractionData } from '../utilities/chatLogic';
 
 const characterActor = new CharacterActor();
@@ -141,7 +140,6 @@ export function useChatEngine(deps: EngineDependencies) {
         promptBlocks?: PromptBlock[],
         metadata?: RequestMetadata,
     ): Promise<{ interactionData: InteractionData; isCompleted: boolean; promptText?: string }> => {
-        // Capture promptText from the last executed turn in the sequence
         let lastPromptText: string | undefined = undefined;
 
         // Matches TurnExecutor: (data, character, signal, onToken)
@@ -149,7 +147,6 @@ export function useChatEngine(deps: EngineDependencies) {
             setStreamingState(c, '');
             const result = await handleServerResponse(d, c, s, onToken, undefined, '', promptBlocks, metadata);
             
-            // Store the prompt text from this turn
             if (result?.promptText) {
                 lastPromptText = result.promptText;
             }
@@ -161,18 +158,16 @@ export function useChatEngine(deps: EngineDependencies) {
             initialData,
             executor, 
             signal, 
-            (char) => setStreamingState(char ?? null, ''), 
-            () => {}, 
+            (char) => setStreamingState(char ?? null, '')
         );
 
         if (result) {
-            await saveRawInteractionData(result.interactionData);
             setInteractionData(result.interactionData);
             
             return {
                 interactionData: result.interactionData,
                 isCompleted: result.isCompleted,
-                promptText: lastPromptText, // Propagate the captured prompt text
+                promptText: lastPromptText,
             };
         }
         return { interactionData: initialData, isCompleted: true };
