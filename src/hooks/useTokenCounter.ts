@@ -24,8 +24,6 @@ export function useTokenCounter(options: UseTokenCounterOptions) {
 
     const abortRef = useRef<AbortController | null>(null);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    
-    // Persistent message token cache: messageId -> { tokenCount, timestamp, modelId }
     const tokenCacheRef = useRef<Map<string, CachedTokenEntry>>(new Map());
 
     useEffect(() => {
@@ -52,7 +50,12 @@ export function useTokenCounter(options: UseTokenCounterOptions) {
             if (!tokenizer && activeStrategy && activeStrategy.modelIds.length > 0) {
                 tokenizer = allModels.find(m => m.id === activeStrategy.modelIds[0]);
             }
-            if (!tokenizer) return;
+            
+            // Reset to 0 if no active model or strategy is present
+            if (!tokenizer) {
+                setMaxTokens(0);
+                return;
+            }
 
             const abort = new AbortController();
             abortRef.current = abort;
@@ -65,10 +68,20 @@ export function useTokenCounter(options: UseTokenCounterOptions) {
                 const cache = tokenCacheRef.current;
                 const currentModelId = tokenizer.id;
 
-                // 1. Identify which messages need fresh token counting (new, edited, or model switched)
+                // 1. Identify which messages need fresh token counting
                 const messagesToCount: ChatMessage[] = [];
                 for (const msg of messages) {
-                    if (msg.messageType !== 'chat' || !msg.textContent) continue;
+                    if (msg.messageType !== 'chat') continue;
+
+                    // If text was cleared, immediately zero out the cache entry
+                    if (!msg.textContent?.trim()) {
+                        cache.set(msg.id, {
+                            tokenCount: 0,
+                            timestamp: msg.lastUpdatedTimestamp,
+                            modelId: currentModelId,
+                        });
+                        continue;
+                    }
 
                     const cached = cache.get(msg.id);
                     if (
@@ -80,22 +93,29 @@ export function useTokenCounter(options: UseTokenCounterOptions) {
                     }
                 }
 
-                // 2. Tokenize only uncached / modified messages
-                for (const msg of messagesToCount) {
-                    if (abort.signal.aborted) return;
-                    const tokens = await engine.countTokens(msg.textContent);
+                // 2. Tokenize uncached / modified messages concurrently
+                if (messagesToCount.length > 0) {
+                    const counted = await Promise.all(
+                        messagesToCount.map(async msg => {
+                            const count = await engine.countTokens(msg.textContent);
+                            return { msg, count };
+                        })
+                    );
+
                     if (abort.signal.aborted) return;
 
-                    cache.set(msg.id, {
-                        tokenCount: tokens,
-                        timestamp: msg.lastUpdatedTimestamp,
-                        modelId: currentModelId,
-                    });
+                    for (const { msg, count } of counted) {
+                        cache.set(msg.id, {
+                            tokenCount: count,
+                            timestamp: msg.lastUpdatedTimestamp,
+                            modelId: currentModelId,
+                        });
+                    }
                 }
 
                 if (abort.signal.aborted) return;
 
-                // 3. Prune deleted messages from cache to prevent unbounded memory growth
+                // 3. Prune deleted messages from cache to prevent unbounded growth
                 if (cache.size > messages.length + 50) {
                     const activeIds = new Set(messages.map(m => m.id));
                     for (const id of cache.keys()) {
@@ -105,7 +125,7 @@ export function useTokenCounter(options: UseTokenCounterOptions) {
                     }
                 }
 
-                // 4. Sum up total tokens per participant accurately
+                // 4. Sum up total tokens per participant
                 const participantCounts: Record<string, number> = {};
                 for (const p of interactionData.participants) {
                     participantCounts[p.id] = 0;

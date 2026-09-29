@@ -429,14 +429,14 @@ function App() {
         if (!textareaRef.current) return; 
         textareaRef.current.style.height = 'auto'; 
         textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, window.innerHeight * 0.3)}px`; 
-    }, [inputText]);
+    }, []);
 
     // Auto-resize edit textarea when opened and as user types
     useEffect(() => { 
         if (!editTextAreaRef.current || !messageActions.editingId) return; 
         editTextAreaRef.current.style.height = 'auto'; 
         editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`; 
-    }, [messageActions.editingId, messageActions.editDraft]);
+    }, [messageActions.editingId]);
 
     // ─── Derived Display Values ──────────────────────────────────────
     const canDelete = (!isMultiplayerChat || mp.multiplayerSync.isHost || mp.multiplayerSync.isAdmin) && !isLoading;
