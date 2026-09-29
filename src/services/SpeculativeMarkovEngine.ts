@@ -22,10 +22,12 @@ export class SpeculativeMarkovEngine {
 
     private getOrCreateState(interactionDataId: string, characterId: string): CharacterSessionState {
         const key = `${interactionDataId}-${characterId}`;
-        if (!this.sessionCache.has(key)) {
-            this.sessionCache.set(key, { nGramMap: new Map(), lastProcessedTimestamp: 0 });
+        let state = this.sessionCache.get(key);
+        if (!state) {
+            state = { nGramMap: new Map(), lastProcessedTimestamp: 0 };
+            this.sessionCache.set(key, state);
         }
-        return this.sessionCache.get(key)!;
+        return state;
     }
 
     private tokenize(text: string): string[] {
@@ -44,12 +46,14 @@ export class SpeculativeMarkovEngine {
         const charMessages = new Map<string, { textContent: string; lastUpdatedTimestamp: number }[]>();
         
         for (const msg of messages) {
-            if (!charMessages.has(msg.characterId)) {
-                charMessages.set(msg.characterId, []);
+            let list = charMessages.get(msg.characterId);
+            if (!list) {
+                list = [];
+                charMessages.set(msg.characterId, list);
             }
-            charMessages.get(msg.characterId)!.push({
+            list.push({
                 textContent: msg.textContent,
-                lastUpdatedTimestamp: msg.lastUpdatedTimestamp
+                lastUpdatedTimestamp: msg.lastUpdatedTimestamp,
             });
         }
 

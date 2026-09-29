@@ -25,6 +25,7 @@ import { AccountEditorModal } from './AccountEditorModal';
 import { MultiplayerEditorModal } from './MultiplayerEditorModal';
 import { SettingsModal } from './SettingsModal';
 import { JoinSessionModal } from './JoinSessionModal';
+import { MultiplayerCharacterSelectionModal } from './MultiplayerCharacterSelectionModal';
 import { BudgetControlModal } from './BudgetControlModal';
 import { GpuMonitorModal } from './GpuMonitorModal';
 import { WorldEditorModal } from './WorldEditorModal';
@@ -127,6 +128,10 @@ interface ApplicationModalsProperties {
     pendingJoinRequests?: PendingJoinRequest[];
     onAcceptJoinRequest?: (accountId: string) => void;
     onRejectJoinRequest?: (accountId: string) => void;
+    pendingSessionInitialState?: any;
+    pendingSessionRules?: any;
+    onSelectJoinCharacter?: (character: Character) => void;
+    onCancelJoinCharacter?: () => void;
 }
 
 type ChatShellWithIdentifier = RawInteractionData & { id: string };
@@ -219,6 +224,10 @@ export function AppModals({
     pendingJoinRequests,
     onAcceptJoinRequest,
     onRejectJoinRequest,
+    pendingSessionInitialState,
+    pendingSessionRules,
+    onSelectJoinCharacter,
+    onCancelJoinCharacter,
 }: ApplicationModalsProperties) {
     const interactionData = useSessionStore(state => state.interactionData);
     const activeStrategy = useSessionStore(state => state.activeStrategy);
@@ -259,23 +268,53 @@ export function AppModals({
     const [aiProfileSaveRedirect, setAiProfileSaveRedirect] = useState<((profile: Profile) => void) | null>(null);
 
     const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
-    const [isInspectionOpen, setIsInspectionOpen] = useState(false);
 
     const chatShellsWithIdentifiers = useMemo(
         () => rawChatShells.filter((shell): shell is ChatShellWithIdentifier => !!shell.id),
         [rawChatShells],
     );
 
+    // Extracted primitives to preserve precise dependency resolution for React Compiler
+    const activeChatId = interactionData?.id;
+    const activeChatName = interactionData?.name;
+
     const chatNameMap = useMemo(() => {
         const map = new Map<string, string>();
         for (const shell of chatShellsWithIdentifiers) {
             map.set(shell.id, shell.name || 'Untitled Chat');
         }
-        if (interactionData?.id) {
-            map.set(interactionData.id, interactionData.name || 'Untitled Chat');
+        if (activeChatId) {
+            map.set(activeChatId, activeChatName || 'Untitled Chat');
         }
         return map;
-    }, [chatShellsWithIdentifiers, interactionData?.id, interactionData?.name]);
+    }, [chatShellsWithIdentifiers, activeChatId, activeChatName]);
+
+    const strategyModelIds = useMemo(() => {
+        const set = new Set<string>();
+        if (activeStrategy) {
+            for (const modelId of activeStrategy.modelIds) {
+                set.add(modelId);
+            }
+        }
+        return set;
+    }, [activeStrategy]);
+
+    const sessionCharacters = useMemo<Character[]>(() => {
+        if (!pendingSessionInitialState) return [];
+        const seen = new Set<string>();
+        const res: Character[] = [];
+        const combined = [
+            ...(pendingSessionInitialState.protagonists || []),
+            ...(pendingSessionInitialState.participants || [])
+        ];
+        for (const p of combined) {
+            if (p?.id && !seen.has(p.id)) {
+                seen.add(p.id);
+                res.push(p);
+            }
+        }
+        return res;
+    }, [pendingSessionInitialState]);
 
     useEffect(() => {
         if (modals.chatList.isOpen) {
@@ -286,7 +325,7 @@ export function AppModals({
     const handleOpenChatInspection = useCallback(async (chatId: string) => {
         if (interactionData && interactionData.id === chatId) {
             setInspectionStack([interactionData]);
-            setIsInspectionOpen(true);
+            modals.chatInspection?.open();
             return;
         }
 
@@ -296,8 +335,8 @@ export function AppModals({
             return; 
         }
         setInspectionStack([loaded]);
-        setIsInspectionOpen(true);
-    }, [interactionData, allCharacters, addToast]);
+        modals.chatInspection?.open();
+    }, [interactionData, allCharacters, addToast, modals.chatInspection]);
 
     const handleInspectParentInteractionData = useCallback(async (parentId: string): Promise<InteractionData> => {
         if (interactionData && interactionData.id === parentId) {
@@ -451,45 +490,38 @@ export function AppModals({
                 />
             )}
 
-            {useMemo(() => {
-                if (!modals.modelList.isOpen) return null;
-                const strategyModelIds = new Set<string>();
-                if (activeStrategy) {
-                    for (const modelId of activeStrategy.modelIds) strategyModelIds.add(modelId);
-                }
-                return (
-                    <ManagerModal 
-                        title="Language Models" 
-                        items={allModels} 
-                        isOpen={modals.modelList.isOpen} 
-                        onClose={modals.modelList.close}
-                        onSelect={(model: LanguageModel) => modelModalProperties.open(model)} 
-                        onDelete={onDeleteModel} 
-                        onCreateNew={() => modelModalProperties.open()}
-                        renderSubtext={(model: LanguageModel) => renderModelSubtext(model, runningModels, selectedModelId)}
-                        emptyMessage="No models available." 
-                        actionLabel="Delete" 
-                        orderedListMode={false}
-                        activeSpecialActionId={selectedModelId || undefined} 
-                        secondaryActiveIds={strategyModelIds}
-                        specialActionIcon="★" 
-                        onSpecialAction={(model: LanguageModel) => onToggleModelLoad(model.id)}
-                        specialActionTooltip={(model: LanguageModel) => {
-                            const modelStatus = runningModels[model.id];
-                            const isCloud = !!model.apiKey && !!model.backend && cloudBackends.includes(model.backend as cloudBackend);
-                            const inStrategy = strategyModelIds.has(model.id);
-                            if (inStrategy && activeStrategy && selectedModelId !== model.id) return `★ In strategy "${activeStrategy.name}" — Click to override & select`;
-                            if (isCloud && selectedModelId === model.id) return '☁️ Cloud Model — Click to Deselect';
-                            if (isCloud) return '☁️ Cloud Model — Click to Select';
-                            if (modelStatus?.isRunning && modelStatus?.isIdle && selectedModelId === model.id) return '⏹ Stop & Deselect';
-                            if (modelStatus?.isRunning && modelStatus?.isIdle) return '⏹ Stop Model';
-                            if (modelStatus?.isRunning && !modelStatus?.isIdle) return '⏳ Loading...';
-                            if (selectedModelId === model.id) return '✓ Already Selected — Click to Load';
-                            return '▶ Load & Select Model';
-                        }} 
-                    />
-                );
-            }, [modals.modelList.isOpen, modals.modelList.close, allModels, modelModalProperties, onDeleteModel, runningModels, selectedModelId, activeStrategy, onToggleModelLoad])}
+            {modals.modelList.isOpen && (
+                <ManagerModal 
+                    title="Language Models" 
+                    items={allModels} 
+                    isOpen={modals.modelList.isOpen} 
+                    onClose={modals.modelList.close}
+                    onSelect={(model: LanguageModel) => modelModalProperties.open(model)} 
+                    onDelete={onDeleteModel} 
+                    onCreateNew={() => modelModalProperties.open()}
+                    renderSubtext={(model: LanguageModel) => renderModelSubtext(model, runningModels, selectedModelId)}
+                    emptyMessage="No models available." 
+                    actionLabel="Delete" 
+                    orderedListMode={false}
+                    activeSpecialActionId={selectedModelId || undefined} 
+                    secondaryActiveIds={strategyModelIds}
+                    specialActionIcon="★" 
+                    onSpecialAction={(model: LanguageModel) => onToggleModelLoad(model.id)}
+                    specialActionTooltip={(model: LanguageModel) => {
+                        const modelStatus = runningModels[model.id];
+                        const isCloud = !!model.apiKey && !!model.backend && cloudBackends.includes(model.backend as cloudBackend);
+                        const inStrategy = strategyModelIds.has(model.id);
+                        if (inStrategy && activeStrategy && selectedModelId !== model.id) return `★ In strategy "${activeStrategy.name}" — Click to override & select`;
+                        if (isCloud && selectedModelId === model.id) return '☁️ Cloud Model — Click to Deselect';
+                        if (isCloud) return '☁️ Cloud Model — Click to Select';
+                        if (modelStatus?.isRunning && modelStatus?.isIdle && selectedModelId === model.id) return '⏹ Stop & Deselect';
+                        if (modelStatus?.isRunning && modelStatus?.isIdle) return '⏹ Stop Model';
+                        if (modelStatus?.isRunning && !modelStatus?.isIdle) return '⏳ Loading...';
+                        if (selectedModelId === model.id) return '✓ Already Selected — Click to Load';
+                        return '▶ Load & Select Model';
+                    }} 
+                />
+            )}
 
             {modals.samplerList.isOpen && (
                 <ManagerModal 
@@ -764,7 +796,6 @@ export function AppModals({
                 />
             )}
 
-            {/* ─── Super Search Modal (Managed directly by modals.superSearch) ─── */}
             {modals.superSearch?.isOpen && (
                 <SuperSearchModal
                     isOpen={modals.superSearch.isOpen}
@@ -1040,12 +1071,35 @@ export function AppModals({
             />
 
             {/* ─── Chat Inspection Modal ─── */}
-            <ChatInspectionModal
-                isOpen={isInspectionOpen}
-                onClose={() => { setIsInspectionOpen(false); setInspectionStack([]); }}
-                inspectionStack={inspectionStack}
-                onInspectingParentInteractionData={handleInspectParentInteractionData}
-            />
+            {modals.chatInspection?.isOpen && (
+                <ChatInspectionModal
+                    isOpen={modals.chatInspection.isOpen}
+                    onClose={() => { 
+                        modals.chatInspection.close(); 
+                        setInspectionStack([]); 
+                    }}
+                    inspectionStack={inspectionStack}
+                    onInspectingParentInteractionData={handleInspectParentInteractionData}
+                />
+            )}
+
+            {/* ─── Joiner Character Selection Modal ─── */}
+            {modals.multiplayerCharacterSelection?.isOpen && (
+                <MultiplayerCharacterSelectionModal
+                    isOpen={modals.multiplayerCharacterSelection.isOpen}
+                    onClose={() => {
+                        modals.multiplayerCharacterSelection.close();
+                        onCancelJoinCharacter?.();
+                    }}
+                    onSelectCharacter={(character: Character) => {
+                        onSelectJoinCharacter?.(character);
+                        modals.multiplayerCharacterSelection.close();
+                    }}
+                    sessionCharacters={sessionCharacters}
+                    localCharacters={allCharacters}
+                    sessionRules={pendingSessionRules}
+                />
+            )}
         </>
     );
 }
