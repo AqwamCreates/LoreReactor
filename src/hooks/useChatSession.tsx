@@ -45,7 +45,7 @@ function calculateLatencyFactor(
     // Sigmoid parameters
     const painPoint = timeSinceLastTokenMs * 2; // The "tipping point" where we start getting desperate
     const zValue = painPoint - averageTTFTMs // Still in ms.
-    const scaledZValue = zValue / msPerToken // ms / ms per token = token.
+    const scaledZValue = zValue / msPerToken // ms / (ms per token) = token.
 
     // Negative Z-value (z < 0): Output is < 0.5. The value is below average.
     // Zero Z-value (z = 0): Output is exactly 0.5. The current value is perfectly equal to the average.
