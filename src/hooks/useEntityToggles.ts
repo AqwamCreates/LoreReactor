@@ -1,7 +1,7 @@
 // src/hooks/useEntityToggles.ts
 import { useCallback } from 'react';
 import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy, InteractionData, MultiplayerData } from '../types';
-import { loadRawContext, loadRawLocation, loadRawAudioTrack } from '../storages/serverStorage';
+import { loadRawContext, loadRawLocation, loadRawAudioTrack, saveRawMultiplayerData } from '../storages/serverStorage';
 import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { useSessionStore } from './useSessionStore';
 import { createDefaultMultiplayerData } from '../dictionaries/defaults';
@@ -52,11 +52,9 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
                     return;
                 }
                 
-                // Remove from protagonists array as well
                 const updatedProtagonists = (interactionData.protagonists || []).filter(p => p.id !== charId);
                 const newActiveProtagonist = updatedProtagonists[0];
                 
-                // Clean up orphaned silent interaction messages
                 const hasChatMessages = interactionData.interactionHistory.some(
                     m => m.character.id === charId && m.messageType === 'chat'
                 );
@@ -76,22 +74,25 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
                 
                 setInteractionData(updatedData);
                 setSelectedCharacter(newActiveProtagonist);
+                setSelectedCharacterId(newActiveProtagonist.id);
                 addToast('Protagonist removed.', 'info');
             } else {
-                // Normal participant removal
                 const np = interactionData.participants.filter(p => p.id !== charId);
                 
                 const hasChatMessages = interactionData.interactionHistory.some(
                     m => m.character.id === charId && m.messageType === 'chat'
                 );
                 
-                let updatedData: InteractionData;
-                if (!hasChatMessages) {
-                    const cleanedHistory = interactionData.interactionHistory.filter(m => m.character.id !== charId);
-                    updatedData = { ...interactionData, participants: np, interactionHistory: cleanedHistory, lastUpdatedTimestamp: Date.now() };
-                } else {
-                    updatedData = { ...interactionData, participants: np, lastUpdatedTimestamp: Date.now() };
-                }
+                const cleanedHistory = hasChatMessages
+                    ? interactionData.interactionHistory
+                    : interactionData.interactionHistory.filter(m => m.character.id !== charId);
+
+                const updatedData: InteractionData = {
+                    ...interactionData,
+                    participants: np,
+                    interactionHistory: cleanedHistory,
+                    lastUpdatedTimestamp: Date.now(),
+                };
                 
                 setInteractionData(updatedData);
                 addToast('Participant removed.', 'info');
@@ -100,7 +101,13 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             // ─── ADDING ──────────────────────────────────────────────
             const sh = allCharacters.find(c => c.id === charId);
             if (!sh) return;
-            const ch = sh.sampler ? sh : await loadFullCharacter(charId);
+
+            let ch: Character | null = null;
+            try {
+                ch = sh.sampler ? sh : await loadFullCharacter(charId);
+            } catch (e) {
+                console.error('[useEntityToggles] Failed to load character:', e);
+            }
             if (!ch) return;
             
             const np = [...interactionData.participants, ch];
@@ -110,48 +117,87 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             setInteractionData(updatedData);
             addToast('Participant added.', 'info');
         }
-    }, [interactionData, allCharacters, setInteractionData, setSelectedCharacter, loadFullCharacter, addToast]);
+    }, [interactionData, allCharacters, setInteractionData, setSelectedCharacter, setSelectedCharacterId, loadFullCharacter, addToast]);
 
     const handleToggleContext = useCallback(async (contextId: string) => {
-        if (!interactionData?.contexts) return;
-        const ids = interactionData.contexts.map(c => c.id);
-        const nc = ids.includes(contextId)
-            ? interactionData.contexts.filter(c => c.id !== contextId)
-            : [...interactionData.contexts, await loadRawContext(contextId)].filter(Boolean) as Context[];
-        setInteractionData({ ...interactionData, contexts: nc, lastUpdatedTimestamp: Date.now() });
-        addToast('Contexts updated.', 'info');
+        if (!interactionData) return;
+        const currentContexts = interactionData.contexts || [];
+        const ids = currentContexts.map(c => c.id);
+
+        try {
+            let nc: Context[];
+            if (ids.includes(contextId)) {
+                nc = currentContexts.filter(c => c.id !== contextId);
+            } else {
+                const loaded = await loadRawContext(contextId);
+                nc = loaded ? [...currentContexts, loaded] : currentContexts;
+            }
+
+            setInteractionData({ ...interactionData, contexts: nc, lastUpdatedTimestamp: Date.now() });
+            addToast('Contexts updated.', 'info');
+        } catch (e) {
+            console.error('[useEntityToggles] Context toggle error:', e);
+            addToast('Failed to update context.', 'error');
+        }
     }, [interactionData, setInteractionData, addToast]);
 
     const handleToggleLocation = useCallback(async (locationId: string) => {
         if (!interactionData) return;
         const currentLocations = interactionData.locations || [];
         const ids = currentLocations.map(l => l.id);
-        const nl = ids.includes(locationId)
-            ? currentLocations.filter(l => l.id !== locationId)
-            : [...currentLocations, await loadRawLocation(locationId)].filter(Boolean) as Location[];
-        setInteractionData({ ...interactionData, locations: nl, lastUpdatedTimestamp: Date.now() });
-        addToast('Locations updated.', 'info');
+
+        try {
+            let nl: Location[];
+            if (ids.includes(locationId)) {
+                nl = currentLocations.filter(l => l.id !== locationId);
+            } else {
+                const loaded = await loadRawLocation(locationId);
+                nl = loaded ? [...currentLocations, loaded] : currentLocations;
+            }
+
+            setInteractionData({ ...interactionData, locations: nl, lastUpdatedTimestamp: Date.now() });
+            addToast('Locations updated.', 'info');
+        } catch (e) {
+            console.error('[useEntityToggles] Location toggle error:', e);
+            addToast('Failed to update location.', 'error');
+        }
     }, [interactionData, setInteractionData, addToast]);
 
     const handleToggleAudioTrack = useCallback(async (trackId: string) => {
         if (!interactionData) return;
         const currentTracks = interactionData.audioTracks || [];
         const ids = currentTracks.map(t => t.id);
-        const nt = ids.includes(trackId)
-            ? currentTracks.filter(t => t.id !== trackId)
-            : [...currentTracks, await loadRawAudioTrack(trackId)].filter(Boolean) as AudioTrack[];
-        setInteractionData({ ...interactionData, audioTracks: nt, lastUpdatedTimestamp: Date.now() });
-        addToast('Audio tracks updated.', 'info');
+
+        try {
+            let nt: AudioTrack[];
+            if (ids.includes(trackId)) {
+                nt = currentTracks.filter(t => t.id !== trackId);
+            } else {
+                const loaded = await loadRawAudioTrack(trackId);
+                nt = loaded ? [...currentTracks, loaded] : currentTracks;
+            }
+
+            setInteractionData({ ...interactionData, audioTracks: nt, lastUpdatedTimestamp: Date.now() });
+            addToast('Audio tracks updated.', 'info');
+        } catch (e) {
+            console.error('[useEntityToggles] Audio track toggle error:', e);
+            addToast('Failed to update audio track.', 'error');
+        }
     }, [interactionData, setInteractionData, addToast]);
 
     const handleSetChatProtagonist = useCallback(async (charId: string) => {
         if (!interactionData) return;
         const sh = allCharacters.find(c => c.id === charId);
         if (!sh) return;
-        const ch = sh.sampler ? sh : await loadFullCharacter(charId);
+
+        let ch: Character | null = null;
+        try {
+            ch = sh.sampler ? sh : await loadFullCharacter(charId);
+        } catch (e) {
+            console.error('[useEntityToggles] Failed to load character:', e);
+        }
         if (!ch) return;
 
-        // Update protagonists array: add if not present, then move to front
         const updatedProtagonists = interactionData.protagonists ? [...interactionData.protagonists] : [];
         const existingIdx = updatedProtagonists.findIndex(p => p.id === charId);
         if (existingIdx === -1) {
@@ -161,7 +207,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             updatedProtagonists.unshift(moved);
         }
 
-        // Update multiplayerDataAccountConfigurations mapping
+        // Update and persist room configuration for the active account
         let updatedMultiplayerData: MultiplayerData | undefined = multiplayerData ? { ...multiplayerData } : undefined;
         if (currentAccountId) {
             if (!updatedMultiplayerData) {
@@ -183,11 +229,13 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
                         activeCharacterId: charId,
                     }
                 },
+                lastUpdatedTimestamp: Date.now(),
             };
-        }
 
-        if (updatedMultiplayerData) {
             useSessionStore.setState({ multiplayerData: updatedMultiplayerData });
+            saveRawMultiplayerData(updatedMultiplayerData).catch((e: unknown) => {
+                console.error('[useEntityToggles] Failed to save multiplayer data:', e);
+            });
         }
 
         let uc: InteractionData = {
@@ -195,7 +243,11 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             protagonists: updatedProtagonists,
             lastUpdatedTimestamp: Date.now(),
         };
-        if (!uc.participants.find(p => p.id === charId)) uc.participants = [ch, ...uc.participants];
+
+        if (!uc.participants.find(p => p.id === charId)) {
+            uc.participants = [ch, ...uc.participants];
+        }
+
         uc = assignInitialLocationsIfNeeded(uc);
         setInteractionData(uc);
         setSelectedCharacter(ch);

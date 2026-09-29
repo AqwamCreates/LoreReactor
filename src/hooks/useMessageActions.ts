@@ -1,7 +1,9 @@
 // src/hooks/useMessageActions.ts
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import type { Character, InteractionData } from '../types';
 import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../utilities/messageLogic';
+import { saveRawInteractionData, saveRawSessionData } from '../storages/serverStorage';
+import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 
 interface UseMessageActionsOptions {
     interactionData: InteractionData | null;
@@ -25,25 +27,12 @@ export function useMessageActions(options: UseMessageActionsOptions) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editDraft, setEditDraft] = useState('');
     const [massDeleteId, setMassDeleteId] = useState<string | null>(null);
-    const pendingRegenRef = useRef<{ id: string; type: 'user' | 'ai' } | null>(null);
-
-    // Trigger regeneration AFTER edit state has committed
-    useEffect(() => {
-        if (pendingRegenRef.current && interactionData) {
-            const { id } = pendingRegenRef.current;
-            pendingRegenRef.current = null;
-
-            const msg = interactionData.interactionHistory.find(m => m.id === id);
-            if (msg) {
-                regenerateFromMessage(id, interactionData.protagonists ?? []);
-            }
-        }
-    }, [interactionData, regenerateFromMessage]);
 
     const handleSaveEdit = useCallback(async () => {
         if (!interactionData || !editingId) return;
         try {
-            setInteractionData(await editMessage(interactionData, editingId, editDraft));
+            const updated = await editMessage(interactionData, editingId, editDraft);
+            setInteractionData(updated);
             setEditingId(null);
             setEditDraft('');
             addToast('Message edited.', 'success');
@@ -56,26 +45,25 @@ export function useMessageActions(options: UseMessageActionsOptions) {
         if (!interactionData || !editingId) return;
         if (!isModelReady || isLoading) return;
         try {
-            const updatedData = await editMessage(interactionData, editingId, editDraft);
-
-            const editedMsg = updatedData.interactionHistory.find(m => m.id === editingId);
-            const protagonistIds = new Set(interactionData.protagonists?.map(p => p.id) ?? []);
-            const isUserMsg = editedMsg && 'character' in editedMsg && protagonistIds.has(editedMsg.character?.id);
-
-            pendingRegenRef.current = { id: editingId, type: isUserMsg ? 'user' : 'ai' };
+            const targetId = editingId;
+            const updatedData = await editMessage(interactionData, targetId, editDraft);
 
             setInteractionData(updatedData);
             setEditingId(null);
             setEditDraft('');
+
+            // Deterministic immediate regeneration without fragile detached effect
+            await regenerateFromMessage(targetId, updatedData.protagonists ?? []);
         } catch (e) {
             addToast((e as Error).message, 'error');
         }
-    }, [interactionData, editingId, editDraft, isModelReady, isLoading, setInteractionData, addToast]);
+    }, [interactionData, editingId, editDraft, isModelReady, isLoading, setInteractionData, regenerateFromMessage, addToast]);
 
     const handleDelete = useCallback(async (id: string) => {
         if (!interactionData) return;
         try {
-            setInteractionData(await deleteMessage(interactionData, id));
+            const updated = await deleteMessage(interactionData, id);
+            setInteractionData(updated);
             addToast('Message deleted.', 'info');
         } catch (e) {
             addToast((e as Error).message, 'error');
@@ -84,26 +72,44 @@ export function useMessageActions(options: UseMessageActionsOptions) {
 
     const handleMassDeleteConfirm = useCallback(async () => {
         if (!interactionData || !massDeleteId) return;
-        const idx = interactionData.interactionHistory.findIndex(m => m.id === massDeleteId);
-        if (idx === -1) return;
-        try {
-            setInteractionData(await massDeleteMessages(interactionData, idx));
+        const targetId = massDeleteId;
+        const idx = interactionData.interactionHistory.findIndex(m => m.id === targetId);
+        
+        if (idx === -1) {
             setMassDeleteId(null);
+            return;
+        }
+
+        try {
+            const updated = await massDeleteMessages(interactionData, idx);
+            setInteractionData(updated);
             addToast('Messages deleted.', 'info');
         } catch (e) {
             addToast((e as Error).message, 'error');
+        } finally {
+            setMassDeleteId(null);
         }
     }, [interactionData, massDeleteId, setInteractionData, addToast]);
 
     const handleBranch = useCallback(async (id: string) => {
         if (!interactionData) return;
         try {
-            const b = await branchMessage(interactionData, id);
-            setInteractionData(b);
-            if (localProtagonist) setSelectedCharacter(localProtagonist);
+            const branchedChat = await branchMessage(interactionData, id);
+            await saveRawInteractionData(branchedChat);
+            await saveRawSessionData({ activeChatId: branchedChat.id });
+
+            setInteractionData(branchedChat);
+            if (localProtagonist) {
+                setSelectedCharacter(localProtagonist);
+            }
+
+            // Prime Markov model for the newly created branch
+            speculativeMarkovEngine.clearSession(branchedChat.id);
+
             refreshChatList();
-            addToast(`Branched to "${b.name}"`, 'success');
-        } catch {
+            addToast(`Branched to "${branchedChat.name}"`, 'success');
+        } catch (e) {
+            console.error('[useMessageActions] Branch error:', e);
             addToast('Failed to branch chat.', 'error');
         }
     }, [interactionData, localProtagonist, setInteractionData, setSelectedCharacter, refreshChatList, addToast]);
@@ -111,12 +117,21 @@ export function useMessageActions(options: UseMessageActionsOptions) {
     const handleClone = useCallback(async (id: string) => {
         if (!interactionData) return;
         try {
-            const c = await cloneChatUpToMessage(interactionData, id);
-            setInteractionData(c);
-            if (localProtagonist) setSelectedCharacter(localProtagonist);
+            const clonedChat = await cloneChatUpToMessage(interactionData, id);
+            await saveRawInteractionData(clonedChat);
+            await saveRawSessionData({ activeChatId: clonedChat.id });
+
+            setInteractionData(clonedChat);
+            if (localProtagonist) {
+                setSelectedCharacter(localProtagonist);
+            }
+
+            speculativeMarkovEngine.clearSession(clonedChat.id);
+
             refreshChatList();
-            addToast(`Cloned to "${c.name}"`, 'success');
-        } catch {
+            addToast(`Cloned to "${clonedChat.name}"`, 'success');
+        } catch (e) {
+            console.error('[useMessageActions] Clone error:', e);
             addToast('Failed to clone chat.', 'error');
         }
     }, [interactionData, localProtagonist, setInteractionData, setSelectedCharacter, refreshChatList, addToast]);

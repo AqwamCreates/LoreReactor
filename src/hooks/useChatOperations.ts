@@ -1,5 +1,5 @@
 // src/hooks/useChatOperations.ts
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type { Character, InteractionData, RawInteractionData, ChatMessage, WhisperMessage } from '../types';
 import { saveRawInteractionData, loadRawInteractionData, saveRawSessionData } from '../storages/serverStorage';
 import { clearFetchCache } from '../utilities/linkFetcher';
@@ -35,18 +35,23 @@ export function useChatOperations(options: UseChatOperationsOptions) {
 
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [editTitleValue, setEditTitleValue] = useState('');
+    
+    // Request sequence tracker to prevent race conditions during rapid chat switching
+    const switchSeqRef = useRef(0);
 
     const safeAutoSave = useCallback(async (data: InteractionData | null) => {
         if (!data || !isChatSaveable(data)) return;
         try { 
             await saveRawInteractionData(data); 
         } catch (e) { 
-            console.error('Auto-save failed:', e); 
+            console.error('[useChatOperations] Auto-save failed:', e); 
         }
     }, []);
 
     const handleSwitchChat = useCallback(async (id: string) => {
         if (interactionData?.id === id) return;
+
+        const currentSeq = ++switchSeqRef.current;
         
         tokenEngine.clearTokenCache();
         await safeAutoSave(interactionData);
@@ -56,8 +61,11 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         try {
             chat = await loadRawInteractionData(id, allCharacters);
         } catch (e) {
-            console.warn('Failed to load chat:', e);
+            console.warn('[useChatOperations] Failed to load chat:', e);
         }
+
+        // If another switch request was initiated while loading, discard this stale result
+        if (currentSeq !== switchSeqRef.current) return;
 
         if (chat) {
             let fullChat = chat;
@@ -72,6 +80,8 @@ export function useChatOperations(options: UseChatOperationsOptions) {
                 );
                 fullChat = { ...fullChat, protagonists: hydratedProtagonists };
             }
+
+            if (currentSeq !== switchSeqRef.current) return;
 
             setInteractionData(fullChat);
             await saveRawSessionData({ activeChatId: id });
@@ -90,12 +100,16 @@ export function useChatOperations(options: UseChatOperationsOptions) {
 
                 speculativeMarkovEngine.fullTrain(trainingMessages, fullChat.id);
             } else if (fullChat.id) {
-                // If the chat has no messages, clear out any old cached state for this ID
                 speculativeMarkovEngine.clearSession(fullChat.id);
             }
 
-            const firstProtagonist = fullChat.protagonists?.[0] ?? null;
-            if (firstProtagonist) setSelectedCharacter(firstProtagonist);
+            const activeProtagonist = fullChat.protagonists?.[0] 
+                || fullChat.participants?.[0] 
+                || null;
+                
+            if (activeProtagonist) {
+                setSelectedCharacter(activeProtagonist);
+            }
         } else {
             addToast('Failed to load chat.', 'error');
         }
@@ -105,10 +119,9 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         await safeAutoSave(interactionData);
         clearFetchCache();
         
-        // Clear active chat in server session so restoration picks up the new chat
+        // Clear active chat in server session so restoration starts fresh
         await saveRawSessionData({ activeChatId: null });
 
-        // Resolve protagonist directly without reading whole chat files from disk
         const targetChar = currentCharacter
             || (selectedCharacterId ? allCharacters.find(x => x.id === selectedCharacterId) : null)
             || allCharacters[0]
@@ -126,12 +139,10 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         await safeAutoSave(interactionData);
 
         if (await deleteChatFromList(id)) {
-            // Clean up Markov cache for the deleted session
             speculativeMarkovEngine.clearSession(id);
-
             addToast('Chat session deleted.', 'info');
+
             if (interactionData?.id === id) {
-                // Deleted active chat — clear session and start fresh with fallback character
                 await saveRawSessionData({ activeChatId: null });
                 const nextChar = currentCharacter
                     || (selectedCharacterId ? allCharacters.find(x => x.id === selectedCharacterId) : null)
@@ -150,15 +161,26 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         setIsEditingTitle(true);
     }, [interactionData]);
 
-    const handleSaveTitle = useCallback(() => {
+    const handleSaveTitle = useCallback(async () => {
         if (!interactionData) return;
-        const t = editTitleValue.trim() || 'Untitled Chat';
-        setInteractionData({ ...interactionData, name: t } as InteractionData);
-        saveRawInteractionData({ ...interactionData, name: t });
-        
-        refreshChatList(); 
+        const newTitle = editTitleValue.trim() || 'Untitled Chat';
+        const updatedChat = { 
+            ...interactionData, 
+            name: newTitle, 
+            lastUpdatedTimestamp: Date.now() 
+        };
+
+        setInteractionData(updatedChat);
         setIsEditingTitle(false);
-        addToast('Chat title updated', 'success');
+
+        try {
+            await saveRawInteractionData(updatedChat);
+            refreshChatList();
+            addToast('Chat title updated', 'success');
+        } catch (e) {
+            console.error('[useChatOperations] Failed to save title:', e);
+            addToast('Failed to save title update.', 'error');
+        }
     }, [interactionData, editTitleValue, setInteractionData, refreshChatList, addToast]);
 
     const cancelEditTitle = useCallback(() => {
