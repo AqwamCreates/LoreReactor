@@ -176,7 +176,7 @@ function App() {
         allMultiplayerData: multiplayerDataManager.multiplayerData,
         allActions: actionManager.allActions,
         requestBorrowedModel: handleRequestBorrowedModel,
-        requestPeerInference: mp.multiplayerSync.requestPeerInference, // <--- Connected here
+        requestPeerInference: mp.multiplayerSync.requestPeerInference,
     });
 
     const {
@@ -416,6 +416,15 @@ function App() {
     const messageToolbar = useMessageToolbar({ chatHistoryRef });
     const displayNameCache = useDisplayNameCache(interactionData);
     const { modals } = useAppModals();
+
+    // ─── Sync Multiplayer Character Selection Modal ────────────────────
+    useEffect(() => {
+        if (mp.isCharacterSelectionModalOpen && !modals.multiplayerCharacterSelection.isOpen) {
+            modals.multiplayerCharacterSelection.open();
+        } else if (!mp.isCharacterSelectionModalOpen && modals.multiplayerCharacterSelection.isOpen) {
+            modals.multiplayerCharacterSelection.close();
+        }
+    }, [mp.isCharacterSelectionModalOpen, modals.multiplayerCharacterSelection]);
 
     // ─── Token Counter ───────────────────────────────────────────────
     const maxParticipantTokens = useTokenCounter({
@@ -885,6 +894,10 @@ function App() {
                     pendingJoinRequests={mp.multiplayerSync.pendingJoinRequests}
                     onAcceptJoinRequest={mp.multiplayerSync.acceptJoinRequest}
                     onRejectJoinRequest={mp.multiplayerSync.rejectJoinRequest}
+                    pendingSessionInitialState={mp.pendingSessionInitialState}
+                    pendingSessionRules={mp.pendingSessionRules}
+                    onSelectJoinCharacter={mp.handleSelectJoinCharacter}
+                    onCancelJoinCharacter={mp.handleCancelJoinCharacter}
                 />
             </div>
 
