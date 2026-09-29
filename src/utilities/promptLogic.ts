@@ -1952,7 +1952,8 @@ export async function buildPrompt(
                 fetchMode: context.linkFetchMode ?? 'full',
                 searchTerms: context.searchTerms,
                 searchEngine: context.searchEngine,
-                model: activeModel,
+                sampler: profile?.webSummarizationSampler,
+                stopPattern: profile?.webSummarizationStopPattern,
                 includeImages: context.includeLinkImages ?? false,
                 limitLinksToSubdirectory: context.limitLinksToSubdirectory ?? false,
             });
