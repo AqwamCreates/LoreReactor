@@ -1,10 +1,11 @@
 // src/hooks/useChatOperations.ts
 import { useState, useCallback } from 'react';
-import type { Character, InteractionData, RawInteractionData } from '../types';
+import type { Character, InteractionData, RawInteractionData, ChatMessage, WhisperMessage } from '../types';
 import { saveRawInteractionData, loadRawInteractionData, saveRawSessionData } from '../storages/serverStorage';
 import { clearFetchCache } from '../utilities/linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { isChatSaveable } from '../utilities/chatSaveHelper';
+import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 
 const tokenEngine = getLanguageModelEngine();
 
@@ -75,15 +76,29 @@ export function useChatOperations(options: UseChatOperationsOptions) {
             setInteractionData(fullChat);
             await saveRawSessionData({ activeChatId: id });
 
+            // Prime the Markov Engine for all characters in the switched chat
+            if (fullChat.id && fullChat.interactionHistory?.length > 0) {
+                const trainingMessages = fullChat.interactionHistory
+                    .filter((m): m is ChatMessage | WhisperMessage => 
+                        (m.messageType === 'chat' || m.messageType === 'whisper') && !!m.character?.id && !!m.textContent
+                    )
+                    .map(m => ({
+                        textContent: m.textContent,
+                        lastUpdatedTimestamp: m.lastUpdatedTimestamp || m.firstCreatedTimestamp || 0,
+                        characterId: m.character.id,
+                    }));
+
+                speculativeMarkovEngine.fullTrain(trainingMessages, fullChat.id);
+            } else if (fullChat.id) {
+                // If the chat has no messages, clear out any old cached state for this ID
+                speculativeMarkovEngine.clearSession(fullChat.id);
+            }
+
             const firstProtagonist = fullChat.protagonists?.[0] ?? null;
             if (firstProtagonist) setSelectedCharacter(firstProtagonist);
         } else {
             addToast('Failed to load chat.', 'error');
         }
-
-        // REMOVED: refreshChatList()
-        // Switching chats does not change the list of chat shells, only the active chat state.
-        // Calling refresh here was causing unnecessary loading state toggles and flickers.
     }, [allCharacters, interactionData, loadFullCharacter, setInteractionData, setSelectedCharacter, addToast, safeAutoSave]);
 
     const handleNewChat = useCallback(async () => {
@@ -111,6 +126,9 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         await safeAutoSave(interactionData);
 
         if (await deleteChatFromList(id)) {
+            // Clean up Markov cache for the deleted session
+            speculativeMarkovEngine.clearSession(id);
+
             addToast('Chat session deleted.', 'info');
             if (interactionData?.id === id) {
                 // Deleted active chat — clear session and start fresh with fallback character
@@ -138,9 +156,7 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         setInteractionData({ ...interactionData, name: t } as InteractionData);
         saveRawInteractionData({ ...interactionData, name: t });
         
-        // This refresh is kept because renaming a chat actually changes the shell data
         refreshChatList(); 
-        
         setIsEditingTitle(false);
         addToast('Chat title updated', 'success');
     }, [interactionData, editTitleValue, setInteractionData, refreshChatList, addToast]);

@@ -1,7 +1,8 @@
 // src/hooks/useChatRestoration.ts
 import { useState, useRef, useEffect } from 'react';
-import type { Character, InteractionData, RawInteractionData } from '../types';
+import type { Character, InteractionData, RawInteractionData, ChatMessage, WhisperMessage } from '../types';
 import { loadRawInteractionData, loadRawSessionData, saveRawSessionData } from '../storages/serverStorage';
+import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { v4 as uuidv4 } from 'uuid';
 
 interface UseChatRestorationOptions {
@@ -88,6 +89,21 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
             };
 
             setInteractionData(hydratedChat);
+
+            // Prime the Speculative Markov Engine with historical messages
+            if (hydratedChat.id && hydratedChat.interactionHistory?.length > 0) {
+                const trainingMessages = hydratedChat.interactionHistory
+                    .filter((m): m is ChatMessage | WhisperMessage => 
+                        (m.messageType === 'chat' || m.messageType === 'whisper') && !!m.character?.id && !!m.textContent
+                    )
+                    .map(m => ({
+                        textContent: m.textContent,
+                        lastUpdatedTimestamp: m.lastUpdatedTimestamp || m.firstCreatedTimestamp || 0,
+                        characterId: m.character.id,
+                    }));
+
+                speculativeMarkovEngine.fullTrain(trainingMessages, hydratedChat.id);
+            }
 
             if (hydratedProtagonists.length > 0) {
                 setSelectedCharacter(hydratedProtagonists[0]);
