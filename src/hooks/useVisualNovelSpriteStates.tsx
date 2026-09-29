@@ -1,5 +1,5 @@
 // src/hooks/useVisualNovelSpriteStates.ts
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { ChatMessage } from '../types';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
@@ -25,7 +25,6 @@ interface UseVisualNovelSpriteStatesOptions {
     chatMessages: ChatMessage[];
     visibleCharacterIds: string[];
     protagonistId: string | undefined;
-    /** Index of the message currently being viewed. null = latest (live). */
     viewedMessageIndex: number | null;
 }
 
@@ -46,27 +45,21 @@ function cloneState(state: VisualNovelSpriteState): VisualNovelSpriteState {
     return { ...state };
 }
 
-function getDefaultState(): VisualNovelSpriteState {
-    return { depth: 0.5, screenX: 50, facingTargetId: null, scale: 1.0, verticalOffset: 0 };
-}
-
 function getDistributedState(index: number, total: number): VisualNovelSpriteState {
     if (total <= 1) {
         return { depth: 0.5, screenX: 50, facingTargetId: null, scale: 1.0, verticalOffset: 0 };
     }
-    
     const min = 15;
     const max = 85;
     const step = (max - min) / (total - 1);
     const screenX = min + step * index;
     const depth = 0.5 + (index % 2 === 0 ? -0.02 : 0.02);
-    
-    return { 
-        depth, 
-        screenX, 
-        facingTargetId: null, 
-        scale: computeScaleFromDepth(depth), 
-        verticalOffset: 0 
+    return {
+        depth,
+        screenX,
+        facingTargetId: null,
+        scale: computeScaleFromDepth(depth),
+        verticalOffset: 0
     };
 }
 
@@ -112,7 +105,6 @@ function parseMovementsFromClause(clause: string, speakerId: string, participant
     if (/\blie\s+down|collaps|fall|slump|drop\s+to\s+the\s+(ground|floor)|crumple/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'lie' });
     }
-
     if (/\blean\s+(forward|in)|tilt\s+forward/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'lean_forward' });
     }
@@ -125,7 +117,6 @@ function parseMovementsFromClause(clause: string, speakerId: string, participant
     if (/\bshrink|cower|hunch|make\s+(herself|himself|themselves)\s+small|curl\s+up/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'shrink' });
     }
-
     if (/\bsidestep|shuffle|edge|slide\s+sideway/i.test(lowerClause)) {
         const dir = /\bleft/i.test(lowerClause) ? 'sidestep_left' : 'sidestep_right';
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: dir });
@@ -147,7 +138,6 @@ function parseMovementsFromClause(clause: string, speakerId: string, participant
         if (/\bhide\s+behind|duck\s+behind|take\s+cover\s+behind/i.test(lowerClause)) {
             movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'hide_behind', targetCharacterId: firstMentioned });
         }
-
         if (/\bpush|shove|nudge|bump\s+into/i.test(lowerClause)) {
             movements.push({ characterId: speakerId, type: 'interaction', interactionAction: 'push', targetCharacterId: firstMentioned });
         }
@@ -160,7 +150,6 @@ function parseMovementsFromClause(clause: string, speakerId: string, participant
         if (/\bgather|group\s+up|huddle|cluster\s+together/i.test(lowerClause)) {
             movements.push({ characterId: speakerId, type: 'interaction', interactionAction: 'gather', targetCharacterId: firstMentioned });
         }
-
         if (/\bface|look\s+at|turn\s+toward|turn\s+to|stare\s+at|glance\s+at|watch|eye/i.test(lowerClause)) {
             movements.push({ characterId: speakerId, type: 'face', targetCharacterId: firstMentioned });
         }
@@ -219,21 +208,14 @@ function applyMovement(
         const updatedState = cloneState(charState);
 
         switch (movement.verticalAction) {
-            case 'crouch':
-                updatedState.verticalOffset = clamp(updatedState.verticalOffset + 25, 0, 60);
-                break;
-            case 'stand':
-                updatedState.verticalOffset = clamp(updatedState.verticalOffset - 30, 0, 60);
-                break;
-            case 'jump':
-                break;
+            case 'crouch': updatedState.verticalOffset = clamp(updatedState.verticalOffset + 25, 0, 60); break;
+            case 'stand': updatedState.verticalOffset = clamp(updatedState.verticalOffset - 30, 0, 60); break;
+            case 'jump': break;
             case 'stretch':
                 updatedState.verticalOffset = clamp(updatedState.verticalOffset - 8, -15, 60);
                 updatedState.scale = clamp(updatedState.scale + 0.05, 0.4, 2.5);
                 break;
-            case 'sit':
-                updatedState.verticalOffset = clamp(updatedState.verticalOffset + 40, 0, 60);
-                break;
+            case 'sit': updatedState.verticalOffset = clamp(updatedState.verticalOffset + 40, 0, 60); break;
             case 'lie':
                 updatedState.verticalOffset = 55;
                 updatedState.scale = clamp(updatedState.scale * 0.7, 0.3, 2.5);
@@ -252,21 +234,12 @@ function applyMovement(
                 break;
             case 'shrink':
                 updatedState.depth = clamp(updatedState.depth + 0.15, 0, 1);
-                updatedState.scale = computeScaleFromDepth(updatedState.depth) - 0.1;
-                updatedState.scale = clamp(updatedState.scale, 0.3, 2.5);
+                updatedState.scale = clamp(computeScaleFromDepth(updatedState.depth) - 0.1, 0.3, 2.5);
                 break;
-            case 'sidestep_left':
-                updatedState.screenX = clamp(updatedState.screenX - 8, 5, 95);
-                break;
-            case 'sidestep_right':
-                updatedState.screenX = clamp(updatedState.screenX + 8, 5, 95);
-                break;
-            case 'center':
-                updatedState.screenX = 50;
-                break;
-            case 'turn_away':
-                updatedState.facingTargetId = null;
-                break;
+            case 'sidestep_left': updatedState.screenX = clamp(updatedState.screenX - 8, 5, 95); break;
+            case 'sidestep_right': updatedState.screenX = clamp(updatedState.screenX + 8, 5, 95); break;
+            case 'center': updatedState.screenX = 50; break;
+            case 'turn_away': updatedState.facingTargetId = null; break;
             case 'hide_behind':
                 if (movement.targetCharacterId) {
                     const targetState = newState.get(movement.targetCharacterId);
@@ -348,11 +321,7 @@ function applyMovement(
                 const targetState = newState.get(updatedState.facingTargetId);
                 if (targetState && targetState.screenX < updatedState.screenX) effectiveDirection = 'closer';
             }
-            if (effectiveDirection === 'closer') {
-                updatedState.depth = clamp(updatedState.depth - 0.15, 0, 1);
-            } else {
-                updatedState.depth = clamp(updatedState.depth + 0.15, 0, 1);
-            }
+            updatedState.depth = clamp(updatedState.depth + (effectiveDirection === 'closer' ? -0.15 : 0.15), 0, 1);
             updatedState.screenX = clamp(updatedState.screenX - 15, 5, 95);
         } else if (movement.direction === 'right') {
             let effectiveDirection: 'closer' | 'away' = 'away';
@@ -360,11 +329,7 @@ function applyMovement(
                 const targetState = newState.get(updatedState.facingTargetId);
                 if (targetState && targetState.screenX > updatedState.screenX) effectiveDirection = 'closer';
             }
-            if (effectiveDirection === 'closer') {
-                updatedState.depth = clamp(updatedState.depth - 0.15, 0, 1);
-            } else {
-                updatedState.depth = clamp(updatedState.depth + 0.15, 0, 1);
-            }
+            updatedState.depth = clamp(updatedState.depth + (effectiveDirection === 'closer' ? -0.15 : 0.15), 0, 1);
             updatedState.screenX = clamp(updatedState.screenX + 15, 5, 95);
         } else if (movement.direction === 'forward') {
             updatedState.depth = clamp(updatedState.depth - 0.15, 0, 1);
@@ -386,19 +351,14 @@ function applyMovement(
                     if (otherState.depth > minDepth && otherState.depth < maxDepth) {
                         const previousOtherState = cloneState(otherState);
                         const swappedOther = cloneState(otherState);
-                        if (moverDepth < targetDepth) {
-                            swappedOther.depth = clamp(targetDepth + 0.2, 0, 1);
-                        } else {
-                            swappedOther.depth = clamp(targetDepth - 0.2, 0, 1);
-                        }
+                        swappedOther.depth = clamp(moverDepth < targetDepth ? targetDepth + 0.2 : targetDepth - 0.2, 0, 1);
                         swappedOther.scale = computeScaleFromDepth(swappedOther.depth);
                         newState.set(otherId, swappedOther);
                         entries.push({ characterId: otherId, previousState: previousOtherState, newState: cloneState(swappedOther), type: 'swap' });
                     }
                 }
 
-                const stepSize = (targetDepth - moverDepth) * 0.4;
-                updatedState.depth = moverDepth + stepSize;
+                updatedState.depth = moverDepth + (targetDepth - moverDepth) * 0.4;
                 updatedState.screenX = updatedState.screenX + (targetState.screenX - updatedState.screenX) * 0.4;
             }
         } else if (movement.direction === 'away' && movement.targetCharacterId) {
@@ -431,7 +391,6 @@ function computeStatesAtHistoryIndex(
     for (let i = 0; i < visibleCharacterIds.length; i++) {
         states.set(visibleCharacterIds[i], getDistributedState(i, total));
     }
-
     for (const entry of history) {
         if (entry.messageIndex > upToIndex) break;
         states.set(entry.characterId, cloneState(entry.newState));
@@ -440,156 +399,95 @@ function computeStatesAtHistoryIndex(
 }
 
 // =============================================================================
-// HOOK
+// HOOK (React Compiler compliant: no refs during render, no sync setState in effects)
 // =============================================================================
 export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOptions) {
     const { chatMessages, visibleCharacterIds, viewedMessageIndex } = options;
 
-    const movementHistoryRef = useRef<VisualNovelMovementEntry[]>([]);
-    const lastParsedIndexRef = useRef<number>(-1);
-    const statesRef = useRef<Map<string, VisualNovelSpriteState>>(new Map());
-    
-    const [isInitialLoad, setIsInitialLoad] = useState(true);
-    const [jumpingCharacterIds, setJumpingCharacterIds] = useState<Set<string>>(new Set());
-    
-    const scheduledJumpIdsRef = useRef<Set<string>>(new Set());
+    // ─── Pure computation via useMemo (no refs, no effects) ───
+    const { movementHistory, finalStates, jumpSignature } = useMemo(() => {
+        const history: VisualNovelMovementEntry[] = [];
+        const states = new Map<string, VisualNovelSpriteState>();
+        const total = visibleCharacterIds.length;
 
-    // ─── Synchronous Parsing & Computation (Runs during render) ───
-    // This avoids the React Compiler warning about deriving state in useEffect.
-    const currentStates = statesRef.current;
-    const existingIds = new Set(currentStates.keys());
-    const newIds = new Set(visibleCharacterIds);
-    const total = visibleCharacterIds.length;
-
-    let syncChanged = false;
-    for (let i = 0; i < visibleCharacterIds.length; i++) {
-        const characterId = visibleCharacterIds[i];
-        if (!currentStates.has(characterId)) {
-            currentStates.set(characterId, getDistributedState(i, total));
-            syncChanged = true;
-        }
-    }
-    for (const characterId of existingIds) {
-        if (!newIds.has(characterId)) {
-            currentStates.delete(characterId);
-            syncChanged = true;
-        }
-    }
-    if (syncChanged && movementHistoryRef.current.length === 0) {
-        visibleCharacterIds.forEach((id, index) => {
-            currentStates.set(id, getDistributedState(index, total));
-        });
-    }
-
-    let isFullReload = lastParsedIndexRef.current >= chatMessages.length || lastParsedIndexRef.current === -1;
-    let newJumpingIds = new Set<string>();
-
-    if (isFullReload) {
-        statesRef.current = new Map();
-        movementHistoryRef.current = [];
         for (let i = 0; i < visibleCharacterIds.length; i++) {
-            statesRef.current.set(visibleCharacterIds[i], getDistributedState(i, total));
-        }
-        lastParsedIndexRef.current = 0;
-    }
-
-    let workingStates = statesRef.current;
-
-    for (let i = lastParsedIndexRef.current; i < chatMessages.length; i++) {
-        const message = chatMessages[i];
-        if (message.messageType !== 'chat') continue;
-
-        const speakerId = message.character.id;
-        if (speakerId === AMBIENT_NARRATOR_ID) continue;
-        if (!workingStates.has(speakerId)) continue;
-
-        const movements = parseMovementFromText(message.textContent, speakerId, visibleCharacterIds);
-
-        for (const movement of movements) {
-            const result = applyMovement(workingStates, movement, visibleCharacterIds);
-            workingStates = result.newState;
-            for (const partial of result.entries) {
-                const entry: VisualNovelMovementEntry = {
-                    ...partial,
-                    messageId: message.id,
-                    messageIndex: i,
-                };
-                movementHistoryRef.current.push(entry);
-                if (entry.type === 'jump') newJumpingIds.add(entry.characterId);
-            }
-            if (movement.type === 'vertical' && movement.verticalAction === 'jump') {
-                newJumpingIds.add(movement.characterId);
-            }
-        }
-    }
-
-    lastParsedIndexRef.current = chatMessages.length;
-    statesRef.current = workingStates;
-
-    const isLatest = viewedMessageIndex === null || viewedMessageIndex >= chatMessages.length - 1;
-    const spriteStates = isLatest 
-        ? new Map(statesRef.current) 
-        : computeStatesAtHistoryIndex(movementHistoryRef.current, viewedMessageIndex, visibleCharacterIds);
-
-    // Store latest jumping IDs in a ref so the effect doesn't need it as a dependency
-    const newJumpingIdsRef = useRef(newJumpingIds);
-    newJumpingIdsRef.current = newJumpingIds;
-
-    // ─── Asynchronous Side Effects (Timeouts & Animations) ───
-    
-    // Handle Initial Load Animation
-    useEffect(() => {
-        if (isFullReload) {
-            setIsInitialLoad(true);
-            const raf = requestAnimationFrame(() => setIsInitialLoad(false));
-            return () => cancelAnimationFrame(raf);
-        } else {
-            setIsInitialLoad(false);
-        }
-    }, [isFullReload]);
-
-    // Handle Jumping Animations
-    useEffect(() => {
-        const unscheduledJumps = new Set<string>();
-        for (const id of newJumpingIdsRef.current) {
-            if (!scheduledJumpIdsRef.current.has(id)) {
-                unscheduledJumps.add(id);
-            }
+            states.set(visibleCharacterIds[i], getDistributedState(i, total));
         }
 
-        if (unscheduledJumps.size > 0) {
-            for (const id of unscheduledJumps) {
-                scheduledJumpIdsRef.current.add(id);
-            }
-            
-            setJumpingCharacterIds(prev => {
-                const next = new Set(prev);
-                for (const id of unscheduledJumps) next.add(id);
-                return next;
-            });
+        let lastJumpMessageId = '';
 
-            const timer = setTimeout(() => {
-                setJumpingCharacterIds(prev => {
-                    const next = new Set(prev);
-                    for (const id of unscheduledJumps) next.delete(id);
-                    return next;
-                });
-                for (const id of unscheduledJumps) {
-                    scheduledJumpIdsRef.current.delete(id);
+        for (let i = 0; i < chatMessages.length; i++) {
+            const message = chatMessages[i];
+            if (message.messageType !== 'chat') continue;
+
+            const speakerId = message.character.id;
+            if (speakerId === AMBIENT_NARRATOR_ID) continue;
+            if (!states.has(speakerId)) continue;
+
+            const movements = parseMovementFromText(message.textContent, speakerId, visibleCharacterIds);
+
+            for (const movement of movements) {
+                const result = applyMovement(states, movement, visibleCharacterIds);
+                for (const [key, val] of result.newState) states.set(key, val);
+                for (const partial of result.entries) {
+                    history.push({ ...partial, messageId: message.id, messageIndex: i });
                 }
-            }, 600);
-
-            return () => clearTimeout(timer);
+                if (movement.type === 'vertical' && movement.verticalAction === 'jump') {
+                    lastJumpMessageId = message.id;
+                }
+            }
         }
+
+        return { movementHistory: history, finalStates: states, jumpSignature: lastJumpMessageId };
     }, [chatMessages, visibleCharacterIds]);
 
+    // ─── Rollback override (set via event handler, invalidated by reference check) ───
+    const [rollbackOverride, setRollbackOverride] = useState<{ index: number; chatRef: ChatMessage[] } | null>(null);
+
     const rollbackToMessage = useCallback((messageIndex: number) => {
-        movementHistoryRef.current = movementHistoryRef.current.filter(e => e.messageIndex < messageIndex);
-        statesRef.current = computeStatesAtHistoryIndex(movementHistoryRef.current, messageIndex - 1, visibleCharacterIds);
-        lastParsedIndexRef.current = messageIndex;
-        setJumpingCharacterIds(new Set());
-        scheduledJumpIdsRef.current.clear();
-    }, [visibleCharacterIds]);
+        setRollbackOverride({ index: messageIndex, chatRef: chatMessages });
+    }, [chatMessages]);
+
+    // ─── Displayed sprite states (pure derivation) ───
+    const spriteStates = useMemo(() => {
+        let effectiveIndex: number | null = viewedMessageIndex;
+        if (rollbackOverride && rollbackOverride.chatRef === chatMessages) {
+            effectiveIndex = rollbackOverride.index;
+        }
+        const isLatest = effectiveIndex === null || effectiveIndex >= chatMessages.length - 1;
+        if (isLatest) return new Map(finalStates);
+        return computeStatesAtHistoryIndex(movementHistory, effectiveIndex, visibleCharacterIds);
+    }, [movementHistory, finalStates, viewedMessageIndex, rollbackOverride, chatMessages, visibleCharacterIds]);
+
+    // ─── Initial load flag (one-time mount effect with rAF callback) ───
+    const [isInitialLoad, setIsInitialLoad] = useState(true);
+    useEffect(() => {
+        const id = requestAnimationFrame(() => setIsInitialLoad(false));
+        return () => cancelAnimationFrame(id);
+    }, []);
+
+    // ─── Jump animation (async setState via setTimeout subscription) ───
+    const [jumpingCharacterIds, setJumpingCharacterIds] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+        if (!jumpSignature) return;
+
+        const jumpers = new Set<string>();
+        for (const entry of movementHistory) {
+            if (entry.messageId === jumpSignature) {
+                jumpers.add(entry.characterId);
+            }
+        }
+        if (jumpers.size === 0) return;
+
+        const showTimer = setTimeout(() => setJumpingCharacterIds(jumpers), 16);
+        const hideTimer = setTimeout(() => setJumpingCharacterIds(new Set()), 600);
+
+        return () => {
+            clearTimeout(showTimer);
+            clearTimeout(hideTimer);
+        };
+    }, [jumpSignature, movementHistory]);
 
     return {
         spriteStates,

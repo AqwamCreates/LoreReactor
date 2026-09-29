@@ -17,17 +17,31 @@ interface ChatStatisticsBarProps {
 
 function formatSessionDuration(ms: number): string {
     if (!ms || ms <= 0) return '—';
+    
     const totalSeconds = Math.round(ms / 1000);
-    if (totalSeconds < 60) return `${totalSeconds}s`;
-    const totalMinutes = Math.floor(totalSeconds / 60);
+    if (totalSeconds === 0) return '0 seconds';
+
     const seconds = totalSeconds % 60;
-    if (totalMinutes < 60) return seconds > 0 ? `${totalMinutes}m ${seconds}s` : `${totalMinutes}m`;
-    const totalHours = Math.floor(totalMinutes / 60);
+    const totalMinutes = Math.floor(totalSeconds / 60);
     const minutes = totalMinutes % 60;
-    if (totalHours < 24) return minutes > 0 ? `${totalHours}h ${minutes}m` : `${totalHours}h`;
-    const days = Math.floor(totalHours / 24);
+    const totalHours = Math.floor(totalMinutes / 60);
     const hours = totalHours % 24;
-    return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+    const totalDays = Math.floor(totalHours / 24);
+    
+    // Approximations: 1 year = 365 days, 1 month = 30 days
+    const years = Math.floor(totalDays / 365);
+    const months = Math.floor((totalDays % 365) / 30);
+    const days = (totalDays % 365) % 30;
+
+    const parts: string[] = [];
+    if (years > 0) parts.push(`${years} year${years === 1 ? '' : 's'}`);
+    if (months > 0) parts.push(`${months} month${months === 1 ? '' : 's'}`);
+    if (days > 0) parts.push(`${days} day${days === 1 ? '' : 's'}`);
+    if (hours > 0) parts.push(`${hours} hour${hours === 1 ? '' : 's'}`);
+    if (minutes > 0) parts.push(`${minutes} minute${minutes === 1 ? '' : 's'}`);
+    if (seconds > 0) parts.push(`${seconds} second${seconds === 1 ? '' : 's'}`);
+
+    return parts.length > 0 ? parts.join(' ') : '0 second';
 }
 
 export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
