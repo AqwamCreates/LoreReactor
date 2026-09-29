@@ -44,9 +44,13 @@ function calculateLatencyFactor(
     // Sigmoid parameters
     const painPoint = averageTTFTMs * 2; // The "tipping point" where we start getting desperate
     const zValue = painPoint - timeSinceLastTokenMs
+
+    // Negative Z-value (z < 0): Output is < 0.5. The value is below average.
+    // Zero Z-value (z = 0): Output is exactly 0.5. The current value is perfectly equal to the average.
+    // Positive Z-value (z > 0): Output is > 0.5. The value is above average.
     
-    // Sigmoid function
-    return 1 / (1 + Math.exp(-zValue));
+    // Sigmoid function without the negative sign to invert it.
+    return 1 / (1 + Math.exp(zValue));
 }
 
 function finalizeMessageById(
@@ -255,8 +259,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                         const TTFT_seconds = TTFT_ms / 1000;
                         const TPS = 1000 / msPerToken;
                         
-                        // Base threshold adjusted by how "desperate" we are for tokens
-                        // As latencyFactor approaches 1, the required token haul drops significantly
                         const baseThreshold = (TTFT_seconds * TPS) / (1 - costRatio);
                         minTokensThreshold = Math.ceil(baseThreshold * latencyFactor);
                     }
