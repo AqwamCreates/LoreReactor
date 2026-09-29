@@ -507,7 +507,6 @@ function sanitizeManifestDir(dirName: string): number {
   const dirPath = path.join(ROOT_DIR, 'user_data', dirName);
   const manifestPath = path.join(dirPath, 'manifest.json');
 
-  // Ensure directory exists
   if (!fs.existsSync(dirPath)) {
     try {
       fs.mkdirSync(dirPath, { recursive: true });
@@ -515,7 +514,6 @@ function sanitizeManifestDir(dirName: string): number {
     } catch { /* ignore */ }
   }
 
-  // Create empty manifest if missing
   if (!fs.existsSync(manifestPath)) {
     try {
       fs.writeFileSync(manifestPath, '[]', 'utf-8');
@@ -564,7 +562,6 @@ function sanitizeOrphanedMessages(): number {
 
   if (!fs.existsSync(messagesDir)) return 0;
 
-  // Build set of all message IDs referenced by any chat
   const referencedMessageIds = new Set<string>();
 
   if (fs.existsSync(chatsDir)) {
@@ -582,7 +579,6 @@ function sanitizeOrphanedMessages(): number {
     }
   }
 
-  // Also collect IDs from nested interactionHistory arrays (hydrated format)
   if (fs.existsSync(chatsDir)) {
     const chatFiles = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
     for (const file of chatFiles) {
@@ -598,7 +594,6 @@ function sanitizeOrphanedMessages(): number {
     }
   }
 
-  // Find and delete orphaned message files
   const messageFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
   let orphanedCount = 0;
 
@@ -612,7 +607,6 @@ function sanitizeOrphanedMessages(): number {
     }
   }
 
-  // Rewrite messages manifest to match surviving files
   const messagesManifestPath = path.join(messagesDir, 'manifest.json');
   if (fs.existsSync(messagesManifestPath)) {
     try {
@@ -650,7 +644,6 @@ function sanitizeHollowMessages(): number {
       const raw = fs.readFileSync(path.join(messagesDir, file), 'utf-8');
       const msg = JSON.parse(raw);
 
-      // Only target chat messages with empty content
       if (msg.messageType === 'chat' && (!msg.textContent || !String(msg.textContent).trim())) {
         fs.unlinkSync(path.join(messagesDir, file));
         hollowCount++;
@@ -675,7 +668,6 @@ function sanitizeChatHistories(): number {
 
   if (!fs.existsSync(chatsDir)) return 0;
 
-  // Build set of existing message IDs
   const existingMessageIds = new Set<string>();
   if (fs.existsSync(messagesDir)) {
     const msgFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
@@ -718,7 +710,6 @@ function sanitizeChatHistories(): number {
 function runStartupSanitization(): void {
   log.info('Running startup data sanitization...');
 
-  // Must match ENTITY_REGISTRY keys from serverStorage.tsx (data dirs only, not media dirs)
   const manifestDirs = [
     'character_data',
     'multiplayer_character_data',
@@ -749,7 +740,6 @@ function runStartupSanitization(): void {
   const orphanedMessages = sanitizeOrphanedMessages();
   const prunedReferences = sanitizeChatHistories();
 
-  // Re-run manifest sanitization after deleting files
   sanitizeManifestDir('interaction_messages');
 
   const totalCleaned = totalManifestOrphans + hollowMessages + orphanedMessages + prunedReferences;
@@ -763,6 +753,123 @@ function runStartupSanitization(): void {
     log.info('Startup sanitization: data is clean.');
   }
 }
+
+// ─── Fast Snippet Extractor for Search ────────────────────────────────
+function createSnippet(text: string, query: string, radius = 50): string {
+  const lowerText = text.toLowerCase();
+  const idx = lowerText.indexOf(query.toLowerCase());
+  if (idx === -1) return text.slice(0, radius * 2);
+
+  const start = Math.max(0, idx - radius);
+  const end = Math.min(text.length, idx + query.length + radius);
+  
+  const prefix = start > 0 ? '...' : '';
+  const suffix = end < text.length ? '...' : '';
+  
+  return `${prefix}${text.slice(start, end).trim()}${suffix}`;
+}
+
+// --- /search Route (Strategy B: Multi-Chat Branch-Aware Filesystem Search) ---
+app.get('/search', async (req, response) => {
+  const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const limit = Math.min(Number.parseInt(String(req.query.limit || '40'), 10), 100);
+
+  if (!query || query.length < 2) {
+    return response.json({ query, results: [], count: 0, durationMs: 0 });
+  }
+
+  const startTime = Date.now();
+  const lowerQuery = query.toLowerCase();
+
+  const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
+  const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
+
+  // 1. Build 1-to-Many map: messageId -> Array<{ chatId, chatName }>
+  const messageToChatsMap = new Map<string, Array<{ chatId: string; chatName: string }>>();
+  const chatResults: Array<{ type: 'chat'; id: string; name: string }> = [];
+
+  if (fs.existsSync(chatsDir)) {
+    const chatFiles = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
+    for (const file of chatFiles) {
+      try {
+        const raw = fs.readFileSync(path.join(chatsDir, file), 'utf-8');
+        const chat = JSON.parse(raw);
+        const chatId = file.replace(/\.json$/, '');
+        const chatName = chat.name || 'Untitled Chat';
+
+        // Check if chat title itself matches query
+        if (chatName.toLowerCase().includes(lowerQuery)) {
+          chatResults.push({ type: 'chat', id: chatId, name: chatName });
+        }
+
+        // Map every message in history to this chat
+        if (Array.isArray(chat.interactionIdHistory)) {
+          for (const msgId of chat.interactionIdHistory) {
+            if (typeof msgId === 'string') {
+              let list = messageToChatsMap.get(msgId);
+              if (!list) {
+                list = [];
+                messageToChatsMap.set(msgId, list);
+              }
+              if (!list.some(c => c.chatId === chatId)) {
+                list.push({ chatId, chatName });
+              }
+            }
+          }
+        }
+      } catch { /* skip corrupt chat files */ }
+    }
+  }
+
+  // 2. Scan interaction_messages directly from disk
+  const messageResults: Array<{
+    type: 'message';
+    id: string;
+    chats: Array<{ chatId: string; chatName: string }>;
+    characterId?: string;
+    snippet: string;
+    timestamp: number;
+  }> = [];
+
+  if (fs.existsSync(messagesDir)) {
+    const msgFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
+
+    for (const file of msgFiles) {
+      if (messageResults.length >= limit) break;
+
+      try {
+        const filePath = path.join(messagesDir, file);
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        
+        // Fast raw substring search before parsing JSON
+        if (raw.toLowerCase().includes(lowerQuery)) {
+          const msg = JSON.parse(raw);
+          const msgId = file.replace(/\.json$/, '');
+          const textContent = msg.textContent || '';
+
+          if (textContent.toLowerCase().includes(lowerQuery)) {
+            const containingChats = messageToChatsMap.get(msgId) || [];
+
+            messageResults.push({
+              type: 'message',
+              id: msgId,
+              chats: containingChats,
+              characterId: msg.characterId,
+              snippet: createSnippet(textContent, query),
+              timestamp: msg.lastUpdatedTimestamp || msg.firstCreatedTimestamp || 0,
+            });
+          }
+        }
+      } catch { /* skip corrupt messages */ }
+    }
+  }
+
+  const durationMs = Date.now() - startTime;
+  const allResults = [...chatResults, ...messageResults].slice(0, limit);
+
+  log.info(`Search for "${query}" completed in ${durationMs}ms with ${allResults.length} result(s)`);
+  response.json({ query, results: allResults, count: allResults.length, durationMs });
+});
 
 // --- /user_data routes ---
 app.use('/user_data', (req, response) => {
@@ -784,7 +891,6 @@ app.use('/user_data', (req, response) => {
   // ─── HEAD Request Handler (for existence checks) ─────────────────
   if (req.method === 'HEAD') {
     if (!fs.existsSync(filePath)) {
-        // Try common media extensions for extensionless requests
         for (const ext of ALL_MEDIA_EXTENSIONS) {
             if (fs.existsSync(filePath + ext)) {
                 response.setHeader('Content-Type', getMimeType(ext));
@@ -809,7 +915,6 @@ app.use('/user_data', (req, response) => {
 
   if (req.method === 'GET') {
     if (!fs.existsSync(filePath)) {
-      // Try common media extensions for extensionless requests
       for (const ext of ALL_MEDIA_EXTENSIONS) {
         const withExt = filePath + ext;
         if (fs.existsSync(withExt)) {
@@ -827,7 +932,6 @@ app.use('/user_data', (req, response) => {
     fs.stat(filePath, (error, stats) => {
       if (error) { log.reqError('GET', req.url || '/', 500); return response.status(500).json({ error: 'FS Error' }); }
       if (stats.isDirectory()) {
-        // Auto-create manifest.json if missing
         const manifestPath = path.join(filePath, 'manifest.json');
         if (!fs.existsSync(manifestPath)) {
           try {
@@ -942,7 +1046,6 @@ app.post('/models/load', async (req, response) => {
     });
   }
 
-  // Validate binary exists at load time rather than blocking config registration
   if (!fs.existsSync(config.binaryPath)) {
     return response.status(500).json({
       error: `${backendName} binary not found at ${config.binaryPath}. Run the backend installer from start.bat / start.sh first.`,
@@ -1085,17 +1188,14 @@ app.all('/proxy/:modelId/{*path}', async (req, response) => {
       body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined,
     });
 
-    // Forward status and headers
     response.status(proxyRes.status);
     proxyRes.headers.forEach((value, key) => {
-      // Skip hop-by-hop headers that shouldn't be forwarded
       const skipHeaders = ['transfer-encoding', 'connection', 'keep-alive'];
       if (!skipHeaders.includes(key.toLowerCase())) {
         response.setHeader(key, value);
       }
     });
 
-    // Stream the response body instead of buffering
     if (proxyRes.body) {
       const reader = proxyRes.body.getReader();
       const pump = async (): Promise<void> => {
@@ -1190,7 +1290,6 @@ app.post('/fetch', async (req, response) => {
 const startServer = () => {
   detectedGpuVendor = detectGpuVendor();
 
-  // Clean orphaned data before serving
   runStartupSanitization();
 
   const border = '────────────────────────────────────────';
@@ -1222,6 +1321,7 @@ const startServer = () => {
 
   console.log(border);
   console.log(`  📡 API Port  : ${Colors.FgGreen}http://127.0.0.1:${PORT}${Colors.Reset}`);
+  console.log(`  🔍 Search    : ${Colors.FgGreen}GET /search?q=...${Colors.Reset}`);
   console.log(`  💾 Data Path : ${Colors.Dim}/user_data/${Colors.Reset}`);
   console.log(`  🎮 GPU Monitor: ${Colors.FgGreen}${detectedGpuVendor}${Colors.Reset} ${Colors.Dim}(GET /gpu/status)${Colors.Reset}`);
   console.log(border);
@@ -1232,4 +1332,4 @@ const startServer = () => {
   app.listen(PORT, '0.0.0.0', () => {});
 };
 
-startServer();
+startServer()

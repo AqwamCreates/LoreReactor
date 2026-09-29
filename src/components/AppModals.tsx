@@ -37,6 +37,7 @@ import { DataExportModal } from './DataExportModal';
 import { DataManagerModal } from './DataManagerModal';
 import { AlternateTimelinesModal } from './AlternateTimelinesModal';
 import { ChatInspectionModal } from './ChatInspectionModal';
+import { SuperSearchModal } from './SuperSearchModal';
 import { 
     renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, 
     renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext 
@@ -283,7 +284,6 @@ export function AppModals({
     }, [modals.chatList.isOpen, ensureChatsLoaded]);
 
     const handleOpenChatInspection = useCallback(async (chatId: string) => {
-        // If inspecting the currently active chat, use the in-memory object directly
         if (interactionData && interactionData.id === chatId) {
             setInspectionStack([interactionData]);
             setIsInspectionOpen(true);
@@ -300,7 +300,6 @@ export function AppModals({
     }, [interactionData, allCharacters, addToast]);
 
     const handleInspectParentInteractionData = useCallback(async (parentId: string): Promise<InteractionData> => {
-        // If parent is the active chat, return directly from memory
         if (interactionData && interactionData.id === parentId) {
             return interactionData;
         }
@@ -590,7 +589,6 @@ export function AppModals({
                     isOpen={modals.settings.isOpen}
                     onClose={modals.settings.close}
                     onOpenBudgetControl={modals.budgetControl.open}
-                    onOpenGpuMonitor={modals.gpuMonitor.open}
                     onOpenParticipantControl={modals.participantControl.open}
                     onOpenAccountData={modals.accountList.open}
                     onOpenMultiplayerData={modals.multiplayerDataList.open}
@@ -602,14 +600,14 @@ export function AppModals({
                     onOpenExportData={modals.exportData.open}
                     onOpenImportData={modals.importData.open}
                     onOpenDataManager={modals.dataManager.open}
+                    onOpenSuperSearch={modals.superSearch.open}
+                    onOpenGpuMonitor={modals.gpuMonitor.open}
                 />
             )}
 
             {modals.budgetControl.isOpen && (
                 <BudgetControlModal isOpen={modals.budgetControl.isOpen} onClose={modals.budgetControl.close} allModels={allModels} activeStrategy={activeStrategy} />
             )}
-
-            <GpuMonitorModal isOpen={modals.gpuMonitor.isOpen} onClose={modals.gpuMonitor.close} />
 
             {modals.participantControl.isOpen && (
                 <ParticipantControlModal 
@@ -765,6 +763,49 @@ export function AppModals({
                     onDeleteChat={onDeleteChat} 
                 />
             )}
+
+            {/* ─── Super Search Modal (Managed directly by modals.superSearch) ─── */}
+            {modals.superSearch?.isOpen && (
+                <SuperSearchModal
+                    isOpen={modals.superSearch.isOpen}
+                    onClose={modals.superSearch.close}
+                    allCharacters={allCharacters}
+                    allContexts={allContexts}
+                    allLocations={allLocations}
+                    allAudioTracks={allAudioTracks}
+                    allWorlds={allWorlds}
+                    allPromptBlocks={allPromptBlocks}
+                    allModels={allModels}
+                    allSamplers={allSamplers}
+                    allStopPatterns={allStopPatterns}
+                    allBudgetStrategies={allBudgetStrategies}
+                    allProfiles={allProfiles}
+                    allMemories={allMemories}
+                    allAccounts={allAccounts}
+                    allMultiplayerData={allMultiplayerData}
+                    rawChatShells={chatShellsWithIdentifiers}
+                    currentInteractionData={interactionData}
+                    onSelectEntity={(tabId, id, entity) => {
+                        entityModals.getModalProperties(tabId as any)?.open(entity);
+                    }}
+                    onJumpToMessage={(msgId) => {
+                        const el = document.querySelector(`[data-message-id="${msgId}"]`);
+                        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }}
+                    onSwitchChat={(chatId) => onSwitchChat(chatId)}
+                    onSwitchToChatAndJump={async (chatId, msgId) => {
+                        onSwitchChat(chatId);
+                        if (msgId) {
+                            setTimeout(() => {
+                                const el = document.querySelector(`[data-message-id="${msgId}"]`);
+                                el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }, 350);
+                        }
+                    }}
+                />
+            )}
+
+            <GpuMonitorModal isOpen={modals.gpuMonitor.isOpen} onClose={modals.gpuMonitor.close} />
 
             {/* ─── Editor Modals ─── */}
 

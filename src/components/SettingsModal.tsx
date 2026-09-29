@@ -105,6 +105,12 @@ const MULTIPLAYER_ITEMS: SettingsItem[] = [
 
 const MISCELLANEOUS_ITEMS: SettingsItem[] = [
     {
+        id: 'super-search',
+        icon: '🔎',
+        label: 'Super Search',
+        description: 'Perform a mass search across multiple entities.',
+    },
+    {
         id: 'gpu-monitor',
         icon: '🖥️',
         label: 'GPU Monitor',
@@ -140,6 +146,7 @@ interface SettingsModalProps {
     onOpenJoinSession: () => void;
     onOpenAccountData: () => void;
     // Miscellaneous tab
+    onOpenSuperSearch: () => void;
     onOpenGpuMonitor: () => void;
 }
 
@@ -163,6 +170,7 @@ export function SettingsModal({
     onOpenJoinSession,
     onOpenAccountData,
     // Miscellaneous tab
+    onOpenSuperSearch,
     onOpenGpuMonitor,
 }: SettingsModalProps) {
     const [activeTab, setActiveTab] = useState<SettingsTabId>('session');
@@ -188,6 +196,7 @@ export function SettingsModal({
             case 'join-session': onOpenJoinSession(); break;
             case 'account-data': onOpenAccountData(); break;
             // Miscellaneous tab
+            case 'super-search': onOpenSuperSearch(); break;
             case 'gpu-monitor': onOpenGpuMonitor(); break;
         }
     };

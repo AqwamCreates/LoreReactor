@@ -28,7 +28,8 @@ export type ModalName =
     | 'exportData'
     | 'dataManager'
     | 'joinSession'
-    | 'gpuMonitor';
+    | 'gpuMonitor'
+    | 'superSearch';
 
 export interface ModalController {
     isOpen: boolean;
@@ -66,7 +67,7 @@ export function useAppModals() {
             'budgetStrategyList', 'profileList', 'extList', 'accountList', 'multiplayerDataList',
             'settings', 'budgetControl', 'participantControl', 'alternateTimelines',
             'aiRecommendation', 'restrictionReduction', 'cardImport', 'importData',
-            'exportData', 'dataManager', 'joinSession', 'gpuMonitor'
+            'exportData', 'dataManager', 'joinSession', 'gpuMonitor', 'superSearch'
         ];
 
         const acc = {} as Record<ModalName, ModalController>;
