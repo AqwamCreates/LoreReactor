@@ -1,11 +1,9 @@
 // src/components/CharacterImageEditorModal.tsx
 import type React from 'react';
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { uploadCharacterImage, getCharacterImageUrl } from '../storages/serverStorage';
 import '../main.css';
 import { emotions } from '../dictionaries/characterPresets';
-
-type EmotionLabel = typeof emotions[number];
 
 interface CharacterImageEditorModalProps {
     isOpen: boolean;
@@ -28,12 +26,14 @@ function CharacterImageEditorContent({
 }) {
     const [localImages, setLocalImages] = useState<Record<string, string>>({ ...images });
     const [uploadingEmotion, setUploadingEmotion] = useState<string | null>(null);
+    const [uploadError, setUploadError] = useState<string | null>(null);
     const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
     const handleFileChange = async (emotion: string, e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
         e.target.value = '';
+        setUploadError(null);
 
         setUploadingEmotion(emotion);
         try {
@@ -41,6 +41,7 @@ function CharacterImageEditorContent({
             setLocalImages(prev => ({ ...prev, [emotion]: filename }));
         } catch (error) {
             console.error(`Failed to upload ${emotion} image:`, error);
+            setUploadError(`Failed to upload "${emotion}" image.`);
         } finally {
             setUploadingEmotion(null);
         }
@@ -59,10 +60,18 @@ function CharacterImageEditorContent({
         onClose();
     };
 
-    const sortedEmotions: EmotionLabel[] = [
-        'neutral',
-        ...emotions.filter(e => e !== 'neutral').sort(),
-    ];
+    // Combine predefined dictionary emotions with any custom imported emotions
+    const sortedEmotions = useMemo(() => {
+        const extraEmotions = Object.keys(localImages).filter(
+            k => !emotions.includes(k as any) && k !== 'neutral'
+        );
+
+        return [
+            'neutral',
+            ...emotions.filter(e => e !== 'neutral').sort(),
+            ...extraEmotions.sort(),
+        ];
+    }, [localImages]);
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -76,6 +85,12 @@ function CharacterImageEditorContent({
                 </div>
 
                 <div className="modal-body editor-modal-body">
+                    {uploadError && (
+                        <div className="editor-error-message" style={{ marginBottom: '10px', textAlign: 'center' }}>
+                            {uploadError}
+                        </div>
+                    )}
+
                     <div className="context-binding-hint" style={{ marginBottom: '12px' }}>
                         Upload character expressions for sentiment-driven image swapping. The main character image maps to "neutral". Missing emotions fall back to neutral automatically. Recommended aspect ratio: 9:16.
                     </div>
@@ -143,8 +158,6 @@ export function CharacterImageEditorModal({
 }: CharacterImageEditorModalProps) {
     if (!isOpen) return null;
 
-    // Key forces remount when modal opens or character/images change,
-    // so useState initializer runs fresh without needing useEffect
     return (
         <CharacterImageEditorContent
             key={`${characterId}-${JSON.stringify(images)}`}
