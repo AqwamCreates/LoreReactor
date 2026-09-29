@@ -24,6 +24,7 @@ import '../main.css';
 
 interface CharacterClothingEditorModalProps {
     isOpen: boolean;
+    isReadOnly?: boolean;
     onClose: () => void;
     clothings: Clothing[];
     onSaveClothings: (clothings: Clothing[]) => void;
@@ -153,6 +154,7 @@ const nodeTypes = { clothingNode: ClothingNode };
 
 export function CharacterClothingEditorModal({
     isOpen,
+    isReadOnly = false,
     onClose,
     clothings,
     onSaveClothings,
@@ -213,6 +215,7 @@ export function CharacterClothingEditorModal({
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
     const onConnect = useCallback((connection: Connection) => {
+        if (isReadOnly) return;
         if (!connection.source || !connection.target) return;
         setItems(prev => prev.map(item => {
             if (item.id !== connection.source) return item;
@@ -226,13 +229,14 @@ export function CharacterClothingEditorModal({
             markerEnd: { type: MarkerType.ArrowClosed, color: '#f59e0b' },
             style: { stroke: '#f59e0b', strokeWidth: 2, opacity: 0.7 },
         }, prev));
-    }, [setItems, setEdges]);
+    }, [setItems, setEdges, isReadOnly]);
 
     const onReconnectStart = useCallback((_event: unknown, _edge: Edge, _handleType: string) => {
         // No-op: just tracking that a reconnect drag started
     }, []);
 
     const onReconnectEnd = useCallback((_event: unknown, edge: Edge) => {
+        if (isReadOnly) return;
         setItems(prev => prev.map(item => {
             if (item.id !== edge.source) return item;
             return {
@@ -242,9 +246,10 @@ export function CharacterClothingEditorModal({
             };
         }));
         setEdges(prev => prev.filter(e => e.id !== edge.id));
-    }, [setEdges]);
+    }, [setEdges, isReadOnly]);
 
     const removeBinding = useCallback((sourceItemId: string, boundId: string) => {
+        if (isReadOnly) return;
         setItems(prev => prev.map(item => {
             if (item.id !== sourceItemId) return item;
             return {
@@ -254,9 +259,10 @@ export function CharacterClothingEditorModal({
             };
         }));
         setEdges(prev => prev.filter(e => !(e.source === sourceItemId && e.target === boundId)));
-    }, [setEdges]);
+    }, [setEdges, isReadOnly]);
 
     const handleAdd = useCallback(() => {
+        if (isReadOnly) return;
         const now = Date.now();
         const newItem: Clothing = {
             id: uuidv4(),
@@ -278,20 +284,22 @@ export function CharacterClothingEditorModal({
             position: { x: (idx % cols) * 220 + 50, y: Math.floor(idx / cols) * 180 + 50 },
             data: buildNodeData(newItem),
         }]);
-    }, [items.length, setNodes]);
+    }, [items.length, setNodes, isReadOnly]);
 
     const handleRemove = useCallback((id: string) => {
+        if (isReadOnly) return;
         setItems(prev => prev.filter(item => item.id !== id));
         setNodes(prev => prev.filter(n => n.id !== id));
         setEdges(prev => prev.filter(e => e.source !== id && e.target !== id));
         if (selectedId === id) setSelectedId(null);
-    }, [selectedId, setNodes, setEdges]);
+    }, [selectedId, setNodes, setEdges, isReadOnly]);
 
     const updateField = useCallback(<K extends keyof Clothing>(id: string, field: K, value: Clothing[K]) => {
+        if (isReadOnly) return;
         setItems(prev => prev.map(item =>
             item.id === id ? { ...item, [field]: value, lastUpdatedTimestamp: Date.now() } : item
         ));
-    }, []);
+    }, [isReadOnly]);
 
     const handleSave = useCallback(() => {
         const validItems = items.filter(item => item.name.trim().length > 0);
@@ -302,15 +310,16 @@ export function CharacterClothingEditorModal({
     if (!isOpen) return null;
 
     const selectedItem = items.find(i => i.id === selectedId) ?? null;
+    const hasExistingItems = clothings.length > 0;
 
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px', maxHeight: '90vh' }}>
                 <div className="modal-header">
-                    <h2>Clothing</h2>
+                    <h2>{(hasExistingItems ? `${(isReadOnly) ? 'View' : 'Edit'} Clothing` : 'Create New Clothing')}</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Cancel</button>
-                        <button type="button" className="editor-button editor-button-save" onClick={handleSave}>Save</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>{isReadOnly ? 'Close' : 'Cancel'}</button>
+                        {!isReadOnly && <button type="button" className="editor-button editor-button-save" onClick={handleSave}>Save</button>}
                     </div>
                 </div>
 
@@ -318,27 +327,29 @@ export function CharacterClothingEditorModal({
                     {/* Graph */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div style={{ fontSize: '0.6rem', opacity: 0.6 }}>
-                            Drag between nodes to create "covers" connections. Tap a cover chip below to disconnect. Click a node to edit. Green = always worn. Blue = can be put on. Purple = start chance only. Grey = wardrobe only. Orange arrows = covers.
+                            {isReadOnly
+                                ? 'View "covers" connections. Green = always worn. Blue = can be put on. Purple = start chance only. Grey = wardrobe only. Orange arrows = covers.'
+                                : 'Drag between nodes to create "covers" connections. Tap a cover chip below to disconnect. Click a node to edit. Green = always worn. Blue = can be put on. Purple = start chance only. Grey = wardrobe only. Orange arrows = covers.'}
                         </div>
                         <div ref={reactFlowWrapper} style={{ height: '300px', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
                             <ReactFlow
                                 nodes={nodes}
                                 edges={edges}
-                                onNodesChange={onNodesChange}
-                                onEdgesChange={onEdgesChange}
-                                onConnect={onConnect}
-                                onReconnectStart={onReconnectStart}
-                                onReconnectEnd={onReconnectEnd}
+                                onNodesChange={isReadOnly ? undefined : onNodesChange}
+                                onEdgesChange={isReadOnly ? undefined : onEdgesChange}
+                                onConnect={isReadOnly ? undefined : onConnect}
+                                onReconnectStart={isReadOnly ? undefined : onReconnectStart}
+                                onReconnectEnd={isReadOnly ? undefined : onReconnectEnd}
                                 onNodeClick={(_, node) => setSelectedId(node.id)}
                                 nodeTypes={nodeTypes}
                                 connectionMode={ConnectionMode.Loose}
-                                edgesReconnectable={true}
+                                edgesReconnectable={!isReadOnly}
                                 fitView
                                 fitViewOptions={{ padding: 0.2 }}
                                 colorMode="dark"
-                                nodesDraggable={true}
-                                nodesConnectable={true}
-                                elementsSelectable={true}
+                                nodesDraggable={!isReadOnly}
+                                nodesConnectable={!isReadOnly}
+                                elementsSelectable={!isReadOnly}
                                 panOnScroll={true}
                                 minZoom={0.3}
                                 maxZoom={3}
@@ -349,9 +360,11 @@ export function CharacterClothingEditorModal({
                                 <Controls showInteractive={false} />
                             </ReactFlow>
                         </div>
-                        <button type="button" className="editor-button editor-button-import" onClick={handleAdd} style={{ width: '100%' }}>
-                            + Add Clothing
-                        </button>
+                        {!isReadOnly && (
+                            <button type="button" className="editor-button editor-button-import" onClick={handleAdd} style={{ width: '100%' }}>
+                                + Add Clothing
+                            </button>
+                        )}
                     </div>
 
                     {/* Node List */}
@@ -409,7 +422,7 @@ export function CharacterClothingEditorModal({
                             ))}
                             {items.length === 0 && (
                                 <div style={{ fontSize: '0.65rem', opacity: 0.4, fontStyle: 'italic', padding: '8px 0', textAlign: 'center' }}>
-                                    No clothing yet. Click "+ Add Clothing" above.
+                                    No clothing yet.{!isReadOnly && ' Click "+ Add Clothing" above.'}
                                 </div>
                             )}
                         </div>
@@ -418,19 +431,21 @@ export function CharacterClothingEditorModal({
                     {/* Editor Panel */}
                     {!selectedItem ? (
                         <div style={{ textAlign: 'center', padding: '20px 0', opacity: 0.5, fontStyle: 'italic', fontSize: '0.75rem' }}>
-                            Select a clothing node to edit, or add a new one.
+                            Select a clothing node to {isReadOnly ? 'view' : 'edit'}{!isReadOnly && ', or add a new one'}.
                         </div>
                     ) : (
                         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Edit Clothing</span>
-                                <button
-                                    type="button"
-                                    onClick={() => handleRemove(selectedItem.id)}
-                                    className="toolbar-button"
-                                    title="Remove"
-                                    style={{ width: '24px', height: '24px', fontSize: '0.8rem', color: '#ff4444' }}
-                                >×</button>
+                                <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>{isReadOnly ? 'View' : 'Edit'} Clothing</span>
+                                {!isReadOnly && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleRemove(selectedItem.id)}
+                                        className="toolbar-button"
+                                        title="Remove"
+                                        style={{ width: '24px', height: '24px', fontSize: '0.8rem', color: '#ff4444' }}
+                                    >×</button>
+                                )}
                             </div>
 
                             <div>
@@ -441,6 +456,7 @@ export function CharacterClothingEditorModal({
                                     onChange={(e) => updateField(selectedItem.id, 'name', e.target.value)}
                                     className="editor-input"
                                     placeholder="e.g., Black Trench Coat"
+                                    readOnly={isReadOnly}
                                 />
                             </div>
 
@@ -452,6 +468,7 @@ export function CharacterClothingEditorModal({
                                     className="editor-textarea"
                                     placeholder="Visual description shown in appearance prompt when worn"
                                     rows={3}
+                                    readOnly={isReadOnly}
                                 />
                             </div>
 
@@ -466,6 +483,7 @@ export function CharacterClothingEditorModal({
                                         value={selectedItem.initialWearingProbability ?? 1}
                                         onChange={(e) => updateField(selectedItem.id, 'initialWearingProbability', Number(e.target.value))}
                                         style={{ flex: 1 }}
+                                        disabled={isReadOnly}
                                     />
                                     <span style={{ fontSize: '0.7rem', minWidth: '40px', textAlign: 'right' }}>
                                         {Math.round((selectedItem.initialWearingProbability ?? 1) * 100)}%
@@ -482,6 +500,7 @@ export function CharacterClothingEditorModal({
                                     description="Character puts this on during conversation when any trigger matches. Without triggers, initial wearing probability is the only way this gets worn."
                                     triggers={selectedItem.regularExpressionActivationTriggers ?? []}
                                     onChange={(triggers) => updateField(selectedItem.id, 'regularExpressionActivationTriggers', triggers.length > 0 ? triggers : undefined)}
+                                    isReadOnly={isReadOnly}
                                 />
                             </div>
 
@@ -491,6 +510,7 @@ export function CharacterClothingEditorModal({
                                     description="Character takes this off during conversation when any trigger matches. Without triggers, initial wearing probability is the only way this gets off."
                                     triggers={selectedItem.regularExpressionDeactivationTriggers ?? []}
                                     onChange={(triggers) => updateField(selectedItem.id, 'regularExpressionDeactivationTriggers', triggers.length > 0 ? triggers : undefined)}
+                                    isReadOnly={isReadOnly}
                                 />
                             </div>
 
@@ -503,12 +523,13 @@ export function CharacterClothingEditorModal({
                                             return (
                                                 <span
                                                     key={boundId}
-                                                    onClick={() => removeBinding(selectedItem.id, boundId)}
+                                                    onClick={() => !isReadOnly && removeBinding(selectedItem.id, boundId)}
                                                     style={{
                                                         fontSize: '0.6rem', padding: '2px 6px',
                                                         background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)',
                                                         borderRadius: '4px', color: '#fbbf24',
-                                                        cursor: 'pointer', transition: 'all 0.15s',
+                                                        cursor: isReadOnly ? 'default' : 'pointer', transition: 'all 0.15s',
+                                                        opacity: isReadOnly ? 0.8 : 1,
                                                     }}
                                                 >
                                                     {boundItem?.name || '(Unknown)'}
@@ -517,7 +538,7 @@ export function CharacterClothingEditorModal({
                                         })}
                                     </div>
                                     <div style={{ fontSize: '0.5rem', opacity: 0.4, marginTop: '4px' }}>
-                                        Tap a chip to disconnect.
+                                        {isReadOnly ? 'Connected covers.' : 'Tap a chip to disconnect.'}
                                     </div>
                                 </div>
                             )}

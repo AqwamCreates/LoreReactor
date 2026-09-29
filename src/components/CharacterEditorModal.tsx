@@ -221,24 +221,27 @@ function CharacterEditorModalInner({
 
     // ─── Tool Helpers ──────────────────────────────────────────────
     const handleToolToggle = useCallback((toolName: tool) => {
+        if (isReadOnly) return;
         setTools(prev => ({ ...prev, [toolName]: !prev[toolName] }));
-    }, []);
+    }, [isReadOnly]);
 
     const handleSelectAllTools = useCallback(() => {
+        if (isReadOnly) return;
         setTools(prev => {
             const next = { ...prev };
             for (const key of Object.keys(next) as tool[]) next[key] = true;
             return next;
         });
-    }, []);
+    }, [isReadOnly]);
 
     const handleDeselectAllTools = useCallback(() => {
+        if (isReadOnly) return;
         setTools(prev => {
             const next = { ...prev };
             for (const key of Object.keys(next) as tool[]) next[key] = false;
             return next;
         });
-    }, []);
+    }, [isReadOnly]);
 
     // ─── Quick Config Helpers ──────────────────────────────────────
     const effectiveCharacterIdForConfig = existingCharacter?.id || pendingCharacterId || '';
@@ -249,6 +252,7 @@ function CharacterEditorModalInner({
     } | null>(null);
 
     const mergeKnownNames = useCallback((targets: Character[]) => {
+        if (isReadOnly) return;
         setKnownCharacterNames(prev => {
             const next = { ...prev };
             let changed = false;
@@ -281,7 +285,7 @@ function CharacterEditorModalInner({
 
             return changed ? next : prev;
         });
-    }, [effectiveCharacterIdForConfig]);
+    }, [effectiveCharacterIdForConfig, isReadOnly]);
 
     const handleKnowCurrentProtagonist = useCallback(() => {
         if (!localProtagonist) return;
@@ -316,11 +320,13 @@ function CharacterEditorModalInner({
     }, [allCharacters, mergeKnownNames]);
 
     const handleRevertKnownNames = useCallback(() => {
+        if (isReadOnly) return;
         setKnownCharacterNames(initialKnownCharacterNamesRef.current);
         setQuickConfigFeedback({ label: 'Reverted to Original', addedNames: [] });
-    }, []);
+    }, [isReadOnly]);
 
     const handleAutoDetectStats = useCallback(() => {
+        if (isReadOnly) return;
         const combinedText = `${name} ${description} ${systemPrompt}`;
         const newDetected = { ...autoDetected };
 
@@ -345,9 +351,10 @@ function CharacterEditorModalInner({
         setMaximumActionStaminaStr(String(mas));
 
         setAutoDetected(newDetected);
-    }, [name, description, systemPrompt, autoDetected]);
+    }, [name, description, systemPrompt, autoDetected, isReadOnly]);
 
     const handleResetStatsToDefaults = useCallback(() => {
+        if (isReadOnly) return;
         setInitiativeWeightStr(String(DEFAULT_INITIATIVE_WEIGHT));
         setChatProbabilityStr(String(DEFAULT_CHAT_PROBABILITY));
         setMaximumChatStaminaStr(String(DEFAULT_MAXIMUM_CHAT_STAMINA));
@@ -358,7 +365,7 @@ function CharacterEditorModalInner({
         setContextSensitivityStr(String(DEFAULT_CONTEXT_SENSITIVITY));
         setMaximumActionStaminaStr(String(DEFAULT_MAXIMUM_ACTION_STAMINA));
         setAutoDetected({ iw: null, cp: null, ms: null });
-    }, []);
+    }, [isReadOnly]);
 
     const hasSession = !!interactionData;
     const hasLocalProtagonist = !!localProtagonist;
@@ -422,6 +429,7 @@ function CharacterEditorModalInner({
     }, [selectedModel, runningModels, existingCharacter]);
 
     const handleSystemPromptBlur = () => {
+        if (isReadOnly) return;
         const currentIW = Number.parseFloat(initiativeWeightStr);
         const currentCP = Number.parseFloat(chatProbabilityStr);
         const currentMS = Number.parseFloat(maximumChatStaminaStr);
@@ -558,32 +566,37 @@ function CharacterEditorModalInner({
     };
 
     const handleStopPatternToggle = (id: string) => {
+        if (isReadOnly) return;
         setSelectedStopPatternIds(prev => prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]);
     };
 
     // ─── Alias helpers ──────────────────────────────────────────────
     const handleAddAlias = useCallback(() => {
+        if (isReadOnly) return;
         const val = newAliasInput.trim();
         if (!val || aliases.includes(val)) return;
         setAliases(prev => [...prev, val]);
         setNewAliasInput('');
-    }, [newAliasInput, aliases]);
+    }, [newAliasInput, aliases, isReadOnly]);
 
     const handleRemoveAlias = useCallback((alias: string) => {
+        if (isReadOnly) return;
         setAliases(prev => prev.filter(a => a !== alias));
-    }, []);
+    }, [isReadOnly]);
 
     // ─── Known character names helpers ──────────────────────────────
     const handleAddKnownName = useCallback((targetCharId: string, nameVariant: string) => {
+        if (isReadOnly) return;
         if (!nameVariant.trim()) return;
         setKnownCharacterNames(prev => {
             const existing = prev[targetCharId] || [];
             if (existing.includes(nameVariant.trim())) return prev;
             return { ...prev, [targetCharId]: [...existing, nameVariant.trim()] };
         });
-    }, []);
+    }, [isReadOnly]);
 
     const handleRemoveKnownName = useCallback((targetCharId: string, nameVariant: string) => {
+        if (isReadOnly) return;
         setKnownCharacterNames(prev => {
             const existing = prev[targetCharId];
             if (!existing) return prev;
@@ -595,27 +608,30 @@ function CharacterEditorModalInner({
             }
             return { ...prev, [targetCharId]: filtered };
         });
-    }, []);
+    }, [isReadOnly]);
 
     const handleRemoveAllKnownNames = useCallback((targetCharId: string) => {
+        if (isReadOnly) return;
         setKnownCharacterNames(prev => {
             const next = { ...prev };
             delete next[targetCharId];
             return next;
         });
-    }, []);
+    }, [isReadOnly]);
 
     const handleCharacterSelectForKnownName = useCallback((charId: string) => {
+        if (isReadOnly) return;
         setSelectedCharForKnownName(charId);
         setSelectedAliasForKnownName('');
-    }, []);
+    }, [isReadOnly]);
 
     const handleAliasSelectForKnownName = useCallback((alias: string) => {
+        if (isReadOnly) return;
         if (alias && selectedCharForKnownName) {
             handleAddKnownName(selectedCharForKnownName, alias);
         }
         setSelectedAliasForKnownName('');
-    }, [selectedCharForKnownName, handleAddKnownName]);
+    }, [selectedCharForKnownName, handleAddKnownName, isReadOnly]);
 
     const buildCharacterFromForm = async (isNewClone: boolean): Promise<Character | null> => {
         setSubmitError(null);
@@ -779,6 +795,7 @@ function CharacterEditorModalInner({
     const [newStarterPromptWeight, setNewStarterPromptWeight] = useState<string>('1');
 
     const handleAddStarterPrompt = useCallback(() => {
+        if (isReadOnly) return;
         const text = newStarterPromptText.trim();
         if (!text) return;
         const weight = Number.parseFloat(newStarterPromptWeight);
@@ -786,21 +803,23 @@ function CharacterEditorModalInner({
         setStarterPrompts(prev => ({ ...prev, [text]: finalWeight }));
         setNewStarterPromptText('');
         setNewStarterPromptWeight('1');
-    }, [newStarterPromptText, newStarterPromptWeight]);
+    }, [newStarterPromptText, newStarterPromptWeight, isReadOnly]);
 
     const handleRemoveStarterPrompt = useCallback((text: string) => {
+        if (isReadOnly) return;
         setStarterPrompts(prev => {
             const next = { ...prev };
             delete next[text];
             return next;
         });
-    }, []);
+    }, [isReadOnly]);
 
     const handleStarterPromptWeightChange = useCallback((text: string, value: string) => {
+        if (isReadOnly) return;
         const weight = Number.parseFloat(value);
         const finalWeight = Number.isNaN(weight) || weight <= 0 ? 1 : weight;
         setStarterPrompts(prev => ({ ...prev, [text]: finalWeight }));
-    }, []);
+    }, [isReadOnly]);
 
     // Memory prompts helper (Expression -> Template string)
     const [newMemoryPromptExpression, setNewMemoryPromptExpression] = useState<string>(emotions[0]);
@@ -812,6 +831,7 @@ function CharacterEditorModalInner({
     }, [memoryPrompts]);
 
     const handleAddMemoryPrompt = useCallback(() => {
+        if (isReadOnly) return;
         const expr = newMemoryPromptExpression.trim();
         const tmpl = newMemoryPromptTemplate.trim();
         if (!expr || !tmpl) return;
@@ -820,15 +840,16 @@ function CharacterEditorModalInner({
         const usedAfter = new Set([...Object.keys(memoryPrompts), expr]);
         const nextAvailable = emotions.find(l => !usedAfter.has(l));
         setNewMemoryPromptExpression(nextAvailable ?? emotions[0]);
-    }, [newMemoryPromptExpression, newMemoryPromptTemplate, memoryPrompts]);
+    }, [newMemoryPromptExpression, newMemoryPromptTemplate, memoryPrompts, isReadOnly]);
 
     const handleRemoveMemoryPrompt = useCallback((expr: string) => {
+        if (isReadOnly) return;
         setMemoryPrompts(prev => {
             const next = { ...prev };
             delete next[expr];
             return next;
         });
-    }, []);
+    }, [isReadOnly]);
 
     const getStopPatternById = (id: string) => {
         for (const s of allSamplers) {
@@ -880,7 +901,7 @@ function CharacterEditorModalInner({
             <div className="modal-overlay" onClick={onClose}>
                 <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
                     <div className="modal-header">
-                        <h2>{isReadOnly ? 'View Character' : (existingCharacter ? 'Edit Character' : 'Create New Character')}</h2>
+                        <h2>{(existingCharacter ? `${(isReadOnly) ? 'View' : 'Edit'} Character` : 'Create New Character')}</h2>
                         <div className="editor-modal-actions">
                             <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>
                                 {isReadOnly ? 'Close' : 'Cancel'}
@@ -949,25 +970,25 @@ function CharacterEditorModalInner({
                                         <span className="editor-section-title">Voice</span>
                                         <div className="editor-voice-hint">Used for reading character's text. Maximum 5MB.</div>
                                         {hasVoice ? (
-                                            <div className="editor-voice-chip"><span className="editor-voice-chip-name">🎙️ {voiceFile ? voiceFile.name : existingVoiceName}</span><button type="button" onClick={handleRemoveVoice} disabled={isUploading || isReadOnly} className="editor-voice-remove-button" title="Remove voice">×</button></div>
+                                            <div className="editor-voice-chip"><span className="editor-voice-chip-name">🎙️ {voiceFile ? voiceFile.name : existingVoiceName}</span>{!isReadOnly && <button type="button" onClick={handleRemoveVoice} disabled={isUploading} className="editor-voice-remove-button" title="Remove voice">×</button>}</div>
                                         ) : (
-                                            <button type="button" onClick={() => !(isUploading || isReadOnly) && voiceInputRef.current?.click()} disabled={isUploading || isReadOnly} className={`toolbar-button editor-voice-upload-button ${isUploading ? 'uploading' : ''}`}>{isUploading ? 'Uploading...' : '🎙️ Upload Voice Sample'}</button>
+                                            !isReadOnly && <button type="button" onClick={() => !isUploading && voiceInputRef.current?.click()} disabled={isUploading} className={`toolbar-button editor-voice-upload-button ${isUploading ? 'uploading' : ''}`}>{isUploading ? 'Uploading...' : '🎙️ Upload Voice Sample'}</button>
                                         )}
                                         <input ref={voiceInputRef} type="file" accept="audio/*,.wav,.mp3,.flac,.ogg" hidden onChange={handleVoiceChange} disabled={isUploading || isReadOnly} />
                                     </div>
                                 </div>
 
                                 <div className="editor-right-column">
-                                    <textarea value={name} isReadOnly={isReadOnly} onChange={(e) => setName(e.target.value)} className="editor-textarea editor-textarea-name" placeholder="Name *" disabled={isUploading} />
-                                    <textarea value={description} isReadOnly={isReadOnly} onChange={(e) => setDescription(e.target.value)} className="editor-textarea editor-textarea-description" placeholder="Description" disabled={isUploading} />
-                                    <textarea value={firstMessage} isReadOnly={isReadOnly} onChange={(e) => setFirstMessage(e.target.value)} className="editor-textarea editor-textarea-first-message" placeholder="First message" disabled={isUploading} />
+                                    <textarea value={name} readOnly={isReadOnly} onChange={(e) => setName(e.target.value)} className="editor-textarea editor-textarea-name" placeholder="Name *" disabled={isUploading || isReadOnly} />
+                                    <textarea value={description} readOnly={isReadOnly} onChange={(e) => setDescription(e.target.value)} className="editor-textarea editor-textarea-description" placeholder="Description" disabled={isUploading || isReadOnly} />
+                                    <textarea value={firstMessage} readOnly={isReadOnly} onChange={(e) => setFirstMessage(e.target.value)} className="editor-textarea editor-textarea-first-message" placeholder="First message" disabled={isUploading || isReadOnly} />
 
                                     <div className="editor-field-wrapper-full">
-                                        <textarea value={systemPrompt} isReadOnly={isReadOnly} onChange={(e) => { setSystemPrompt(e.target.value); countFieldTokens('systemPrompt', e.target.value); }} onBlur={handleSystemPromptBlur} className="editor-textarea editor-textarea-system" placeholder="System prompt" disabled={isUploading} />
+                                        <textarea value={systemPrompt} readOnly={isReadOnly} onChange={(e) => { setSystemPrompt(e.target.value); countFieldTokens('systemPrompt', e.target.value); }} onBlur={handleSystemPromptBlur} className="editor-textarea editor-textarea-system" placeholder="System prompt" disabled={isUploading || isReadOnly} />
                                         {renderTokenCount('systemPrompt')}
                                     </div>
-                                    <div className="editor-field-wrapper"><textarea value={thinkPrompt} isReadOnly={isReadOnly} onChange={(e) => { setThinkPrompt(e.target.value); countFieldTokens('thinkPrompt', e.target.value); }} className="editor-textarea editor-textarea-think" placeholder="Think Prompt" disabled={isUploading} />{renderTokenCount('thinkPrompt')}</div>
-                                    <div className="editor-field-wrapper"><textarea value={appearancePrompt} isReadOnly={isReadOnly} onChange={(e) => { setAppearancePrompt(e.target.value); countFieldTokens('appearancePrompt', e.target.value); }} className="editor-textarea editor-textarea-appearance" placeholder="Appearance Prompt" disabled={isUploading} />{renderTokenCount('appearancePrompt')}</div>
+                                    <div className="editor-field-wrapper"><textarea value={thinkPrompt} readOnly={isReadOnly} onChange={(e) => { setThinkPrompt(e.target.value); countFieldTokens('thinkPrompt', e.target.value); }} className="editor-textarea editor-textarea-think" placeholder="Think Prompt" disabled={isUploading || isReadOnly} />{renderTokenCount('thinkPrompt')}</div>
+                                    <div className="editor-field-wrapper"><textarea value={appearancePrompt} readOnly={isReadOnly} onChange={(e) => { setAppearancePrompt(e.target.value); countFieldTokens('appearancePrompt', e.target.value); }} className="editor-textarea editor-textarea-appearance" placeholder="Appearance Prompt" disabled={isUploading || isReadOnly} />{renderTokenCount('appearancePrompt')}</div>
                                 </div>
                             </div>
                         )}
@@ -979,21 +1000,23 @@ function CharacterEditorModalInner({
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <div className="editor-section-title">Starter Prompts ({Object.keys(starterPrompts).length})</div>
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Weighted starter messages. Higher weight = more likely to be selected.</div>
-                                    <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
-                                        <input type="text" value={newStarterPromptText} isReadOnly={isReadOnly} onChange={e => setNewStarterPromptText(e.target.value)} className="editor-input" placeholder="Starter prompt text..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
-                                        <input type="number" value={newStarterPromptWeight} onChange={e => setNewStarterPromptWeight(e.target.value)} className="editor-input" placeholder="Wt" min="0.1" step="0.5" style={{ width: '50px', fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading || isReadOnly} />
-                                        <button type="button" onClick={handleAddStarterPrompt} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading || isReadOnly}>+</button>
-                                    </div>
+                                    {!isReadOnly && (
+                                        <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                                            <input type="text" value={newStarterPromptText} onChange={e => setNewStarterPromptText(e.target.value)} className="editor-input" placeholder="Starter prompt text..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
+                                            <input type="number" value={newStarterPromptWeight} onChange={e => setNewStarterPromptWeight(e.target.value)} className="editor-input" placeholder="Wt" min="0.1" step="0.5" style={{ width: '50px', fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
+                                            <button type="button" onClick={handleAddStarterPrompt} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading}>+</button>
+                                        </div>
+                                    )}
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '120px', overflowY: 'auto' }}>
                                         {Object.entries(starterPrompts).map(([text, weight]) => (
                                             <div key={text} style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                                                 <span style={{ flex: 1, fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{text}</span>
                                                 <input type="number" value={weight} onChange={e => handleStarterPromptWeightChange(text, e.target.value)} className="editor-input" min="0.1" step="0.5" style={{ width: '45px', fontSize: '0.6rem', padding: '2px 4px' }} disabled={isUploading || isReadOnly} />
-                                                <button type="button" onClick={() => handleRemoveStarterPrompt(text)} className="toolbar-button" title="Remove" style={{ width: '18px', height: '18px', fontSize: '0.6rem', color: '#ff4444', padding: 0 }} disabled={isUploading || isReadOnly}>×</button>
+                                                {!isReadOnly && <button type="button" onClick={() => handleRemoveStarterPrompt(text)} className="toolbar-button" title="Remove" style={{ width: '18px', height: '18px', fontSize: '0.6rem', color: '#ff4444', padding: 0 }}>×</button>}
                                             </div>
                                         ))}
                                         {Object.keys(starterPrompts).length === 0 && (
-                                            <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', padding: '4px 0' }}>No starter prompts. Add above.</div>
+                                            <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', padding: '4px 0' }}>No starter prompts.{!isReadOnly && ' Add above.'}</div>
                                         )}
                                     </div>
                                 </div>
@@ -1002,36 +1025,38 @@ function CharacterEditorModalInner({
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <div className="editor-section-title">Memory Prompts ({Object.keys(memoryPrompts).length})</div>
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Expression to memory template mapping. If the expression is not found, falls back to neutral, then system default.</div>
-                                    <div style={{ display: 'flex', gap: '4px', marginBottom: '6px', flexDirection: 'column' }}>
-                                        <div style={{ display: 'flex', gap: '4px' }}>
-                                            <select
-                                                className="editor-select"
-                                                value={newMemoryPromptExpression}
-                                                onChange={e => setNewMemoryPromptExpression(e.target.value)}
-                                                disabled={isUploading || isReadOnly || availableEmotions.length === 0}
-                                                style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }}
-                                            >
-                                                {availableEmotions.length === 0 && <option value="" disabled>All emotions assigned</option>}
-                                                {availableEmotions.map(label => (
-                                                    <option key={label} value={label}>{label}</option>
-                                                ))}
-                                            </select>
+                                    {!isReadOnly && (
+                                        <div style={{ display: 'flex', gap: '4px', marginBottom: '6px', flexDirection: 'column' }}>
+                                            <div style={{ display: 'flex', gap: '4px' }}>
+                                                <select
+                                                    className="editor-select"
+                                                    value={newMemoryPromptExpression}
+                                                    onChange={e => setNewMemoryPromptExpression(e.target.value)}
+                                                    disabled={isUploading || availableEmotions.length === 0}
+                                                    style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }}
+                                                >
+                                                    {availableEmotions.length === 0 && <option value="" disabled>All emotions assigned</option>}
+                                                    {availableEmotions.map(label => (
+                                                        <option key={label} value={label}>{label}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '4px' }}>
+                                                <input type="text" value={newMemoryPromptTemplate} onChange={e => setNewMemoryPromptTemplate(e.target.value)} className="editor-input" placeholder="Memory template string..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
+                                                <button type="button" onClick={handleAddMemoryPrompt} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading || availableEmotions.length === 0}>+</button>
+                                            </div>
                                         </div>
-                                        <div style={{ display: 'flex', gap: '4px' }}>
-                                            <input type="text" value={newMemoryPromptTemplate} isReadOnly={isReadOnly} onChange={e => setNewMemoryPromptTemplate(e.target.value)} className="editor-input" placeholder="Memory template string..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
-                                            <button type="button" onClick={handleAddMemoryPrompt} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading || isReadOnly || availableEmotions.length === 0}>+</button>
-                                        </div>
-                                    </div>
+                                    )}
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '150px', overflowY: 'auto' }}>
                                         {Object.entries(memoryPrompts).map(([expression, template]) => (
                                             <div key={expression} style={{ display: 'flex', gap: '4px', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '4px 6px', borderRadius: '4px' }}>
                                                 <span style={{ fontWeight: 'bold', fontSize: '0.65rem', color: 'var(--accent)', minWidth: '80px', textTransform: 'capitalize' }}>{expression}</span>
                                                 <span style={{ flex: 1, fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, opacity: 0.8 }}>{template}</span>
-                                                <button type="button" onClick={() => handleRemoveMemoryPrompt(expression)} className="toolbar-button" title="Remove" style={{ width: '18px', height: '18px', fontSize: '0.6rem', color: '#ff4444', padding: 0 }} disabled={isUploading || isReadOnly}>×</button>
+                                                {!isReadOnly && <button type="button" onClick={() => handleRemoveMemoryPrompt(expression)} className="toolbar-button" title="Remove" style={{ width: '18px', height: '18px', fontSize: '0.6rem', color: '#ff4444', padding: 0 }}>×</button>}
                                             </div>
                                         ))}
                                         {Object.keys(memoryPrompts).length === 0 && (
-                                            <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', padding: '4px 0' }}>No memory prompts. Add above.</div>
+                                            <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', padding: '4px 0' }}>No memory prompts.{!isReadOnly && ' Add above.'}</div>
                                         )}
                                     </div>
                                 </div>
@@ -1040,15 +1065,17 @@ function CharacterEditorModalInner({
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <div className="editor-section-title">Aliases ({aliases.length})</div>
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Alternative names this character is also known by.</div>
-                                    <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
-                                        <input type="text" value={newAliasInput} isReadOnly={isReadOnly} onChange={e => setNewAliasInput(e.target.value)} className="editor-input" placeholder="Add alias..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} onKeyDown={e => { if (e.key === 'Enter') handleAddAlias(); }} />
-                                        <button type="button" onClick={handleAddAlias} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading || isReadOnly}>+</button>
-                                    </div>
+                                    {!isReadOnly && (
+                                        <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                                            <input type="text" value={newAliasInput} onChange={e => setNewAliasInput(e.target.value)} className="editor-input" placeholder="Add alias..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} onKeyDown={e => { if (e.key === 'Enter') handleAddAlias(); }} />
+                                            <button type="button" onClick={handleAddAlias} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading}>+</button>
+                                        </div>
+                                    )}
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                                         {aliases.map(alias => (
                                             <span key={alias} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '12px', background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid var(--accent)', fontSize: '0.65rem', fontWeight: 'bold' }}>
                                                 {alias}
-                                                <button type="button" onClick={() => handleRemoveAlias(alias)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '0.7rem', padding: 0, lineHeight: 1, opacity: 0.6 }} onMouseEnter={e => (e.currentTarget.style.opacity = '1')} onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')} disabled={isReadOnly}>×</button>
+                                                {!isReadOnly && <button type="button" onClick={() => handleRemoveAlias(alias)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '0.7rem', padding: 0, lineHeight: 1, opacity: 0.6 }} onMouseEnter={e => (e.currentTarget.style.opacity = '1')} onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}>×</button>}
                                             </span>
                                         ))}
                                         {aliases.length === 0 && (
@@ -1060,7 +1087,7 @@ function CharacterEditorModalInner({
                                 {/* Known Character Names */}
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <div className="editor-section-title">Known Character Names ({Object.keys(knownCharacterNames).length})</div>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Which other characters' names/aliases this character knows. Select a character, then choose the name variant they know.</div>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Which other characters' names/aliases this character knows.{!isReadOnly && ' Select a character, then choose the name variant they know.'}</div>
 
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', marginBottom: '8px' }}>
                                         {Object.entries(knownCharacterNames).map(([charId, nameVariants]) => {
@@ -1070,13 +1097,13 @@ function CharacterEditorModalInner({
                                                 <div key={charId} style={{ padding: '6px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                                         <span style={{ fontSize: '0.7rem', fontWeight: 'bold' }}>{displayName}</span>
-                                                        <button type="button" onClick={() => handleRemoveAllKnownNames(charId)} className="toolbar-button" style={{ fontSize: '0.55rem', padding: '1px 5px', color: '#ff4444' }} title="Remove all" disabled={isReadOnly}>×</button>
+                                                        {!isReadOnly && <button type="button" onClick={() => handleRemoveAllKnownNames(charId)} className="toolbar-button" style={{ fontSize: '0.55rem', padding: '1px 5px', color: '#ff4444' }} title="Remove all">×</button>}
                                                     </div>
                                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
                                                         {nameVariants.map(variant => (
                                                             <span key={variant} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '1px 6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', fontSize: '0.6rem' }}>
                                                                 {variant}
-                                                                <button type="button" onClick={() => handleRemoveKnownName(charId, variant)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4444', fontSize: '0.6rem', padding: 0, lineHeight: 1 }} disabled={isReadOnly}>×</button>
+                                                                {!isReadOnly && <button type="button" onClick={() => handleRemoveKnownName(charId, variant)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4444', fontSize: '0.6rem', padding: 0, lineHeight: 1 }}>×</button>}
                                                             </span>
                                                         ))}
                                                     </div>
@@ -1088,32 +1115,34 @@ function CharacterEditorModalInner({
                                         )}
                                     </div>
 
-                                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                        <select
-                                            className="editor-select"
-                                            value={selectedCharForKnownName}
-                                            onChange={e => handleCharacterSelectForKnownName(e.target.value)}
-                                            disabled={isUploading || isReadOnly || otherCharacters.length === 0}
-                                            style={{ flex: 1, fontSize: '0.7rem' }}
-                                        >
-                                            <option value="">Select character...</option>
-                                            {otherCharacters.map(c => (
-                                                <option key={c.id} value={c.id}>{c.name}</option>
-                                            ))}
-                                        </select>
-                                        <select
-                                            className="editor-select"
-                                            value={selectedAliasForKnownName}
-                                            onChange={e => handleAliasSelectForKnownName(e.target.value)}
-                                            disabled={isUploading || isReadOnly || !selectedCharForKnownName || selectedCharAliases.length === 0}
-                                            style={{ flex: 1, fontSize: '0.7rem' }}
-                                        >
-                                            <option value="">Select name/alias...</option>
-                                            {selectedCharAliases.map(alias => (
-                                                <option key={alias} value={alias}>{alias}</option>
-                                            ))}
-                                        </select>
-                                    </div>
+                                    {!isReadOnly && (
+                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                            <select
+                                                className="editor-select"
+                                                value={selectedCharForKnownName}
+                                                onChange={e => handleCharacterSelectForKnownName(e.target.value)}
+                                                disabled={isUploading || otherCharacters.length === 0}
+                                                style={{ flex: 1, fontSize: '0.7rem' }}
+                                            >
+                                                <option value="">Select character...</option>
+                                                {otherCharacters.map(c => (
+                                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                                ))}
+                                            </select>
+                                            <select
+                                                className="editor-select"
+                                                value={selectedAliasForKnownName}
+                                                onChange={e => handleAliasSelectForKnownName(e.target.value)}
+                                                disabled={isUploading || !selectedCharForKnownName || selectedCharAliases.length === 0}
+                                                style={{ flex: 1, fontSize: '0.7rem' }}
+                                            >
+                                                <option value="">Select name/alias...</option>
+                                                {selectedCharAliases.map(alias => (
+                                                    <option key={alias} value={alias}>{alias}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
 
                                     {otherCharacters.length === 0 && (
                                         <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', marginTop: '4px' }}>No other characters available.</div>
@@ -1138,7 +1167,7 @@ function CharacterEditorModalInner({
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <span className="editor-section-title">Prompt Decay</span>
                                     <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '12px' }}>
-                                        Prompts are automatically removed from context after the character has sent this many messages. Set to 0 to disable immediately, or leave high to keep them active longer.
+                                        Prompts are automatically removed from context after the character has sent this many messages.{!isReadOnly && ' Set to 0 to disable immediately, or leave high to keep them active longer.'}
                                     </div>
                                     <div className="editor-stats-grid">
                                         <div>
@@ -1238,12 +1267,14 @@ function CharacterEditorModalInner({
                                     Enable runtime tool use during generation for this character. Can be overridden by profile settings.
                                 </div>
 
-                                <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-                                    <button type="button" className="toolbar-button" onClick={handleSelectAllTools} disabled={isUploading || isReadOnly} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✓ Select All</button>
-                                    <button type="button" className="toolbar-button" onClick={handleDeselectAllTools} disabled={isUploading || isReadOnly} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✗ Deselect All</button>
-                                </div>
+                                {!isReadOnly && (
+                                    <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                                        <button type="button" className="toolbar-button" onClick={handleSelectAllTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✓ Select All</button>
+                                        <button type="button" className="toolbar-button" onClick={handleDeselectAllTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✗ Deselect All</button>
+                                    </div>
+                                )}
 
-                                <input type="text" value={toolSearchQuery} isReadOnly={isReadOnly} onChange={e => setToolSearchQuery(e.target.value)} className="editor-input" placeholder="Search tools..." style={{ marginBottom: '12px', fontSize: '0.75rem', padding: '6px 10px' }} disabled={isUploading} />
+                                <input type="text" value={toolSearchQuery} readOnly={isReadOnly} onChange={e => setToolSearchQuery(e.target.value)} className="editor-input" placeholder="Search tools..." style={{ marginBottom: '12px', fontSize: '0.75rem', padding: '6px 10px' }} disabled={isUploading || isReadOnly} />
 
                                 {filteredToolNames.length === 0 && (
                                     <div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic', padding: '8px 0' }}>No tools match "{toolSearchQuery}".</div>
@@ -1293,20 +1324,22 @@ function CharacterEditorModalInner({
                                                         <span className="sampler-stop-name">{sp.name}</span>
                                                         <span className="sampler-stop-pattern">{sp.pattern}</span>
                                                     </div>
-                                                    <button type="button" onClick={() => handleStopPatternToggle(id)} className="sampler-stop-remove-button" title="Remove stop pattern" disabled={isReadOnly}>×</button>
+                                                    {!isReadOnly && <button type="button" onClick={() => handleStopPatternToggle(id)} className="sampler-stop-remove-button" title="Remove stop pattern">×</button>}
                                                 </div>
                                             );
                                         })}
                                     </div>
 
-                                    <select onChange={(e) => { const val = e.target.value; if (val) handleStopPatternToggle(val); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading || isReadOnly}>
-                                        <option value="" disabled>+ Add a stop pattern</option>
-                                        {allSamplers
-                                            .flatMap(s => s.stopPatterns)
-                                            .filter((sp, index, self) => index === self.findIndex(t => t.id === sp.id))
-                                            .filter(sp => !selectedStopPatternIds.includes(sp.id))
-                                            .map(sp => (<option key={sp.id} value={sp.id}>{sp.name} — {sp.pattern}</option>))}
-                                    </select>
+                                    {!isReadOnly && (
+                                        <select onChange={(e) => { const val = e.target.value; if (val) handleStopPatternToggle(val); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
+                                            <option value="" disabled>+ Add a stop pattern</option>
+                                            {allSamplers
+                                                .flatMap(s => s.stopPatterns)
+                                                .filter((sp, index, self) => index === self.findIndex(t => t.id === sp.id))
+                                                .filter(sp => !selectedStopPatternIds.includes(sp.id))
+                                                .map(sp => (<option key={sp.id} value={sp.id}>{sp.name} — {sp.pattern}</option>))}
+                                        </select>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -1315,9 +1348,9 @@ function CharacterEditorModalInner({
                         {activeTab === 'quick-config' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                 <div className="editor-section" style={{ margin: 0 }}>
-                                    <span className="editor-section-title">Knowledge Shortcuts</span>
+                                    <span className="editor-section-title">{isReadOnly ? 'Known Names' : 'Knowledge Shortcuts'}</span>
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
-                                        Batch-add known names/aliases to this character's knowledge. Merges with existing entries; never overwrites.
+                                        {isReadOnly ? 'Known names/aliases' : 'Batch-add known names/aliases'} for this character's knowledge.{!isReadOnly && ' Merges with existing entries; never overwrites.'}
                                     </div>
 
                                     {!hasSession && (
@@ -1327,7 +1360,7 @@ function CharacterEditorModalInner({
                                     )}
                                     {hasSession && !hasParticipants && (
                                         <div style={{ fontSize: '0.65rem', opacity: 0.8, fontStyle: 'italic', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
-                                            ℹ️ No other characters in the current session. Add participants to the chat to enable those shortcuts.
+                                            ℹ️ No other characters in the current session.{!isReadOnly && ' Add participants to the chat to enable those shortcuts.'}
                                         </div>
                                     )}
                                     {allCharacters.length === 0 && (
@@ -1356,7 +1389,7 @@ function CharacterEditorModalInner({
                                     )}
 
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleRevertKnownNames} disabled={isUploading || isReadOnly} title="Revert known names to their state before opening this editor" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>↩️ Revert Known Names to Original</button>
+                                        {!isReadOnly && <button type="button" className="editor-button editor-button-cancel" onClick={handleRevertKnownNames} disabled={isUploading} title="Revert known names to their state before opening this editor" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>↩️ Revert Known Names to Original</button>}
                                         <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCurrentProtagonist} disabled={isUploading || isReadOnly || !hasLocalProtagonist} title={!hasLocalProtagonist ? 'No active local protagonist' : 'Add current protagonist name + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🎯 Know Current Protagonist's Names</button>
                                         <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedProtagonists} disabled={isUploading || isReadOnly || !hasSession || coLocatedProtagonistCount === 0} title={!hasSession ? 'No active session' : coLocatedProtagonistCount === 0 ? 'No co-located protagonists' : `Add ${coLocatedProtagonistCount} co-located protagonist(s) names`} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Protagonists' Names {coLocatedProtagonistCount > 0 && `(${coLocatedProtagonistCount})`}</button>
                                         <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllProtagonists} disabled={isUploading || isReadOnly || !hasSession || !hasProtagonists} title={!hasSession ? 'No active session' : 'Add all protagonists names + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>👥 Know All The Protagonists' Names</button>

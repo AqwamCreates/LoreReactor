@@ -66,7 +66,6 @@ function ContextEditorModalInner({
     const [description, setDescription] = useState(existingContext?.description || '');
     const [text, setText] = useState(existingContext?.text || '');
     
-    // Unified image management
     const [images, setImages] = useState<ImageEntry[]>(() => {
         if (existingContext?.images && existingContext.images.length > 0) {
             return existingContext.images.map(filename => ({
@@ -367,7 +366,7 @@ function ContextEditorModalInner({
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h2>{isReadOnly ? 'View Context' : (existingContext ? 'Edit Context' : 'Create New Context')}</h2>
+                    <h2>{(existingContext ? `${(isReadOnly) ? 'View' : 'Edit'} Context` : 'Create New Context')}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>
                             {isReadOnly ? 'Close' : 'Cancel'}
@@ -401,18 +400,18 @@ function ContextEditorModalInner({
                         <>
                             <div className="context-field-group">
                                 <label className="editor-label">Name <span className="context-required-asterisk">*</span></label>
-                                <input type="text" value={name} isReadOnly={isReadOnly} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Eldoria City Lore" disabled={isUploading || isReadOnly} />
+                                <input type="text" value={name} readOnly={isReadOnly} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Eldoria City Lore" disabled={isUploading || isReadOnly} />
                                 {errors.name && <div className="editor-error-message">{errors.name}</div>}
                             </div>
 
                             <div className="context-field-group">
                                 <label className="editor-label">Description</label>
-                                <textarea value={description} isReadOnly={isReadOnly} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Brief description" rows={2} disabled={isUploading || isReadOnly} />
+                                <textarea value={description} readOnly={isReadOnly} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Brief description" rows={2} disabled={isUploading || isReadOnly} />
                             </div>
 
                             <div className="context-field-group">
                                 <label className="editor-label">Text {textRequiresAsterisk && <span className="context-required-asterisk">*</span>}</label>
-                                <textarea value={text} isReadOnly={isReadOnly} onChange={(e) => { setText(e.target.value); if (errors.text) setErrors({ ...errors, text: undefined }); }} className={`editor-textarea ${errors.text ? 'error' : ''}`} placeholder="Context text content (optional if using images, URLs or search terms)" rows={6} disabled={isUploading || isReadOnly} />
+                                <textarea value={text} readOnly={isReadOnly} onChange={(e) => { setText(e.target.value); if (errors.text) setErrors({ ...errors, text: undefined }); }} className={`editor-textarea ${errors.text ? 'error' : ''}`} placeholder="Context text content (optional if using images, URLs or search terms)" rows={6} disabled={isUploading || isReadOnly} />
                                 <div className="context-token-count">~{textnumberOfTokens} token(s)</div>
                                 {errors.text && <div className="editor-error-message">{errors.text}</div>}
                             </div>
@@ -423,7 +422,7 @@ function ContextEditorModalInner({
                                     {images.map((entry, index) => (
                                         <div key={`${entry.previewUrl}-${index}`} className="editor-image-square active">
                                             <img src={entry.previewUrl} alt={`Context image ${index + 1}`} />
-                                            <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-button" disabled={isReadOnly}>×</button>
+                                            {!isReadOnly && <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-button">×</button>}
                                         </div>
                                     ))}
                                     <div className={`editor-image-square editor-upload-square ${(isUploading || isReadOnly) ? 'disabled' : ''}`} onClick={() => !(isUploading || isReadOnly) && fileInputRef.current?.click()}>
@@ -456,15 +455,19 @@ function ContextEditorModalInner({
                                     {searchTerms.map((term, index) => (
                                         <div key={`${term}-${index}`} className="context-tag-chip">
                                             <span className="context-tag-chip-text">{term}</span>
-                                            <button type="button" onClick={() => handleRemoveSearchTerm(index)} className="context-tag-remove-button" title="Remove term" disabled={isReadOnly}>×</button>
+                                            {!isReadOnly && <button type="button" onClick={() => handleRemoveSearchTerm(index)} className="context-tag-remove-button" title="Remove term">×</button>}
                                         </div>
                                     ))}
                                 </div>
-                                <div className="context-add-row">
-                                    <input type="text" value={newSearchTermInput} isReadOnly={isReadOnly} onChange={(e) => setNewSearchTermInput(e.target.value)} onKeyDown={handleSearchTermInputKeyDown} className="editor-input context-add-input" placeholder="magic system eldoria" disabled={isUploading || isReadOnly} />
-                                    <button type="button" onClick={handleAddSearchTerm} className="editor-button editor-button-save context-add-button" disabled={isReadOnly || !newSearchTermInput.trim()}>Add</button>
-                                </div>
-                                <div className="context-add-hint">Press Enter or click Add to add a term.</div>
+                                {!isReadOnly && (
+                                    <>
+                                        <div className="context-add-row">
+                                            <input type="text" value={newSearchTermInput} onChange={(e) => setNewSearchTermInput(e.target.value)} onKeyDown={handleSearchTermInputKeyDown} className="editor-input context-add-input" placeholder="magic system eldoria" disabled={isUploading} />
+                                            <button type="button" onClick={handleAddSearchTerm} className="editor-button editor-button-save context-add-button" disabled={!newSearchTermInput.trim()}>Add</button>
+                                        </div>
+                                        <div className="context-add-hint">Press Enter or click Add to add a term.</div>
+                                    </>
+                                )}
                             </div>
 
                             {hasWebContent && (
@@ -493,15 +496,19 @@ function ContextEditorModalInner({
                                     {urls.map((url, index) => (
                                         <div key={`${url}-${index}`} className="context-url-chip">
                                             <span className="context-url-chip-text">{url}</span>
-                                            <button type="button" onClick={() => handleRemoveUrl(index)} className="context-url-remove-button" title="Remove URL" disabled={isReadOnly}>×</button>
+                                            {!isReadOnly && <button type="button" onClick={() => handleRemoveUrl(index)} className="context-url-remove-button" title="Remove URL">×</button>}
                                         </div>
                                     ))}
                                 </div>
-                                <div className="context-add-row">
-                                    <input type="text" value={newUrlInput} isReadOnly={isReadOnly} onChange={(e) => { setNewUrlInput(e.target.value); if (errors.urls) setErrors(prev => ({ ...prev, urls: undefined })); }} onKeyDown={handleUrlInputKeyDown} className={`editor-input context-add-input-mono ${errors.urls && newUrlInput.trim().length > 0 ? 'error' : ''}`} placeholder="https://example.com/lore-page" disabled={isUploading || isReadOnly} />
-                                    <button type="button" onClick={handleAddUrl} className="editor-button editor-button-save context-add-button" disabled={isReadOnly || !newUrlInput.trim()}>Add</button>
-                                </div>
-                                {errors.urls && <div className="editor-error-message">{errors.urls}</div>}
+                                {!isReadOnly && (
+                                    <>
+                                        <div className="context-add-row">
+                                            <input type="text" value={newUrlInput} onChange={(e) => { setNewUrlInput(e.target.value); if (errors.urls) setErrors(prev => ({ ...prev, urls: undefined })); }} onKeyDown={handleUrlInputKeyDown} className={`editor-input context-add-input-mono ${errors.urls && newUrlInput.trim().length > 0 ? 'error' : ''}`} placeholder="https://example.com/lore-page" disabled={isUploading} />
+                                            <button type="button" onClick={handleAddUrl} className="editor-button editor-button-save context-add-button" disabled={!newUrlInput.trim()}>Add</button>
+                                        </div>
+                                        {errors.urls && <div className="editor-error-message">{errors.urls}</div>}
+                                    </>
+                                )}
                             </div>
 
                             {hasWebContent && (
@@ -656,15 +663,17 @@ function ContextEditorModalInner({
                                         return (
                                             <div key={id} className="context-character-binding-chip">
                                                 <span className="context-character-binding-name">{char.name}</span>
-                                                <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isReadOnly}>×</button>
+                                                {!isReadOnly && <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>}
                                             </div>
                                         );
                                     })}
                                 </div>
-                                <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading || isReadOnly}>
-                                    <option value="" disabled>+ Bind to a character</option>
-                                    {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                </select>
+                                {!isReadOnly && (
+                                    <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading}>
+                                        <option value="" disabled>+ Bind to a character</option>
+                                        {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                    </select>
+                                )}
                             </div>
                         </>
                     )}

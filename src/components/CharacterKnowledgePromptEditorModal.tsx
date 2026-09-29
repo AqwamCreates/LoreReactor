@@ -24,6 +24,7 @@ import '../main.css';
 
 interface CharacterKnowledgePromptEditorModalProps {
     isOpen: boolean;
+    isReadOnly?: boolean;
     onClose: () => void;
     knowledgePrompts: KnowledgePrompt[];
     onSaveKnowledgePrompts: (knowledgePrompts: KnowledgePrompt[]) => void;
@@ -127,6 +128,7 @@ const nodeTypes = { knowledgeNode: KnowledgeNode };
 
 export function CharacterKnowledgePromptEditorModal({
     isOpen,
+    isReadOnly = false,
     onClose,
     knowledgePrompts,
     onSaveKnowledgePrompts,
@@ -194,6 +196,7 @@ export function CharacterKnowledgePromptEditorModal({
     }, [items, setNodes]);
 
     const onConnect = useCallback((connection: Connection) => {
+        if (isReadOnly) return;
         if (!connection.source || !connection.target) return;
         setItems(prev => prev.map(item => {
             if (item.id !== connection.source) return item;
@@ -207,11 +210,12 @@ export function CharacterKnowledgePromptEditorModal({
             markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' },
             style: { stroke: '#8b5cf6', strokeWidth: 2, opacity: 0.7 },
         }, prev));
-    }, [setEdges]);
+    }, [setEdges, isReadOnly]);
 
     const onReconnectStart = useCallback((_event: unknown, _edge: Edge, _handleType: string) => {}, []);
 
     const onReconnectEnd = useCallback((_event: unknown, edge: Edge) => {
+        if (isReadOnly) return;
         setItems(prev => prev.map(item => {
             if (item.id !== edge.source) return item;
             return {
@@ -221,9 +225,10 @@ export function CharacterKnowledgePromptEditorModal({
             };
         }));
         setEdges(prev => prev.filter(e => e.id !== edge.id));
-    }, [setEdges]);
+    }, [setEdges, isReadOnly]);
 
     const removeBinding = useCallback((sourceItemId: string, boundId: string) => {
+        if (isReadOnly) return;
         setItems(prev => prev.map(item => {
             if (item.id !== sourceItemId) return item;
             return {
@@ -233,9 +238,10 @@ export function CharacterKnowledgePromptEditorModal({
             };
         }));
         setEdges(prev => prev.filter(e => !(e.source === sourceItemId && e.target === boundId)));
-    }, [setEdges]);
+    }, [setEdges, isReadOnly]);
 
     const handleAdd = useCallback(() => {
+        if (isReadOnly) return;
         const now = Date.now();
         const newItem: KnowledgePrompt = {
             id: uuidv4(),
@@ -257,9 +263,10 @@ export function CharacterKnowledgePromptEditorModal({
             position: { x: (idx % cols) * 220 + 50, y: Math.floor(idx / cols) * 180 + 50 },
             data: buildNodeData(newItem),
         }]);
-    }, [items.length, setNodes]);
+    }, [items.length, setNodes, isReadOnly]);
 
     const handleRemove = useCallback((id: string) => {
+        if (isReadOnly) return;
         setItems(prev => prev
             .filter(item => item.id !== id)
             .map(item => ({
@@ -270,13 +277,14 @@ export function CharacterKnowledgePromptEditorModal({
         setNodes(prev => prev.filter(n => n.id !== id));
         setEdges(prev => prev.filter(e => e.source !== id && e.target !== id));
         if (selectedId === id) setSelectedId(null);
-    }, [selectedId, setNodes, setEdges]);
+    }, [selectedId, setNodes, setEdges, isReadOnly]);
 
     const updateField = useCallback(<K extends keyof KnowledgePrompt>(id: string, field: K, value: KnowledgePrompt[K]) => {
+        if (isReadOnly) return;
         setItems(prev => prev.map(item =>
             item.id === id ? { ...item, [field]: value, lastUpdatedTimestamp: Date.now() } : item
         ));
-    }, []);
+    }, [isReadOnly]);
 
     const handleSave = useCallback(() => {
         const validItems = items.filter(item => item.name.trim().length > 0);
@@ -287,15 +295,16 @@ export function CharacterKnowledgePromptEditorModal({
     if (!isOpen) return null;
 
     const selectedItem = items.find(i => i.id === selectedId) ?? null;
+    const hasExistingItems = knowledgePrompts.length > 0;
 
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px', maxHeight: '90vh' }}>
                 <div className="modal-header">
-                    <h2>Knowledge Prompts</h2>
+                    <h2>{(hasExistingItems ? `${(isReadOnly) ? 'View' : 'Edit'} Knowledge Prompts` : 'Create New Knowledge Prompts')}</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Cancel</button>
-                        <button type="button" className="editor-button editor-button-save" onClick={handleSave}>Save</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>{isReadOnly ? 'Close' : 'Cancel'}</button>
+                        {!isReadOnly && <button type="button" className="editor-button editor-button-save" onClick={handleSave}>Save</button>}
                     </div>
                 </div>
 
@@ -303,27 +312,29 @@ export function CharacterKnowledgePromptEditorModal({
                     {/* Graph */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div style={{ fontSize: '0.6rem', opacity: 0.6 }}>
-                            Drag between nodes to create knowledge links. Tap a link chip below to disconnect. Click a node to edit. Purple = has content. Orange = conditional access. Violet arrows = links.
+                            {isReadOnly 
+                                ? 'View knowledge links. Purple = has content. Orange = conditional access. Violet arrows = links.'
+                                : 'Drag between nodes to create knowledge links. Tap a link chip below to disconnect. Click a node to edit. Purple = has content. Orange = conditional access. Violet arrows = links.'}
                         </div>
                         <div ref={reactFlowWrapper} style={{ height: '300px', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
                             <ReactFlow
                                 nodes={nodes}
                                 edges={edges}
-                                onNodesChange={onNodesChange}
-                                onEdgesChange={onEdgesChange}
-                                onConnect={onConnect}
-                                onReconnectStart={onReconnectStart}
-                                onReconnectEnd={onReconnectEnd}
+                                onNodesChange={isReadOnly ? undefined : onNodesChange}
+                                onEdgesChange={isReadOnly ? undefined : onEdgesChange}
+                                onConnect={isReadOnly ? undefined : onConnect}
+                                onReconnectStart={isReadOnly ? undefined : onReconnectStart}
+                                onReconnectEnd={isReadOnly ? undefined : onReconnectEnd}
                                 onNodeClick={(_, node) => setSelectedId(node.id)}
                                 nodeTypes={nodeTypes}
                                 connectionMode={ConnectionMode.Loose}
-                                edgesReconnectable={true}
+                                edgesReconnectable={!isReadOnly}
                                 fitView
                                 fitViewOptions={{ padding: 0.2 }}
                                 colorMode="dark"
-                                nodesDraggable={true}
-                                nodesConnectable={true}
-                                elementsSelectable={true}
+                                nodesDraggable={!isReadOnly}
+                                nodesConnectable={!isReadOnly}
+                                elementsSelectable={!isReadOnly}
                                 panOnScroll={true}
                                 minZoom={0.3}
                                 maxZoom={3}
@@ -334,9 +345,11 @@ export function CharacterKnowledgePromptEditorModal({
                                 <Controls showInteractive={false} />
                             </ReactFlow>
                         </div>
-                        <button type="button" className="editor-button editor-button-import" onClick={handleAdd} style={{ width: '100%' }}>
-                            + Add Knowledge Prompt
-                        </button>
+                        {!isReadOnly && (
+                            <button type="button" className="editor-button editor-button-import" onClick={handleAdd} style={{ width: '100%' }}>
+                                + Add Knowledge Prompt
+                            </button>
+                        )}
                     </div>
 
                     {/* Node List */}
@@ -394,7 +407,7 @@ export function CharacterKnowledgePromptEditorModal({
                             ))}
                             {items.length === 0 && (
                                 <div style={{ fontSize: '0.65rem', opacity: 0.4, fontStyle: 'italic', padding: '8px 0', textAlign: 'center' }}>
-                                    No knowledge prompts yet. Click "+ Add Knowledge Prompt" above.
+                                    No knowledge prompts yet.{!isReadOnly && ' Click "+ Add Knowledge Prompt" above.'}
                                 </div>
                             )}
                         </div>
@@ -403,19 +416,21 @@ export function CharacterKnowledgePromptEditorModal({
                     {/* Editor Panel */}
                     {!selectedItem ? (
                         <div style={{ textAlign: 'center', padding: '20px 0', opacity: 0.5, fontStyle: 'italic', fontSize: '0.75rem' }}>
-                            Select a knowledge prompt node to edit, or add a new one.
+                            Select a knowledge prompt node to {isReadOnly ? 'view' : 'edit'}{!isReadOnly && ', or add a new one'}.
                         </div>
                     ) : (
                         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Edit Knowledge Prompt</span>
-                                <button
-                                    type="button"
-                                    onClick={() => handleRemove(selectedItem.id)}
-                                    className="toolbar-button"
-                                    title="Remove"
-                                    style={{ width: '24px', height: '24px', fontSize: '0.8rem', color: '#ff4444' }}
-                                >×</button>
+                                <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>{isReadOnly ? 'View' : 'Edit'} Knowledge Prompt</span>
+                                {!isReadOnly && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleRemove(selectedItem.id)}
+                                        className="toolbar-button"
+                                        title="Remove"
+                                        style={{ width: '24px', height: '24px', fontSize: '0.8rem', color: '#ff4444' }}
+                                    >×</button>
+                                )}
                             </div>
 
                             <div>
@@ -426,6 +441,7 @@ export function CharacterKnowledgePromptEditorModal({
                                     onChange={(e) => updateField(selectedItem.id, 'name', e.target.value)}
                                     className="editor-input"
                                     placeholder="e.g., Backstory, Combat Training, Relationship History"
+                                    readOnly={isReadOnly}
                                 />
                             </div>
 
@@ -437,6 +453,7 @@ export function CharacterKnowledgePromptEditorModal({
                                     className="editor-textarea"
                                     placeholder="What this knowledge contains (display only)"
                                     rows={2}
+                                    readOnly={isReadOnly}
                                 />
                             </div>
 
@@ -448,6 +465,7 @@ export function CharacterKnowledgePromptEditorModal({
                                     className="editor-textarea"
                                     placeholder="The knowledge content returned when the model uses the knowledge tool to access this entry."
                                     rows={6}
+                                    readOnly={isReadOnly}
                                 />
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
                                     This content is NOT injected into context automatically. The model must explicitly recall it via the knowledge tool.
@@ -460,6 +478,7 @@ export function CharacterKnowledgePromptEditorModal({
                                     description="This knowledge becomes available to the knowledge tool when any trigger matches. Without triggers, this knowledge is always accessible."
                                     triggers={selectedItem.regularExpressionActivationTriggers ?? []}
                                     onChange={(triggers) => updateField(selectedItem.id, 'regularExpressionActivationTriggers', triggers.length > 0 ? triggers : undefined)}
+                                    isReadOnly={isReadOnly}
                                 />
                             </div>
 
@@ -469,6 +488,7 @@ export function CharacterKnowledgePromptEditorModal({
                                     description="This knowledge becomes unavailable to the knowledge tool when any trigger matches."
                                     triggers={selectedItem.regularExpressionDeactivationTriggers ?? []}
                                     onChange={(triggers) => updateField(selectedItem.id, 'regularExpressionDeactivationTriggers', triggers.length > 0 ? triggers : undefined)}
+                                    isReadOnly={isReadOnly}
                                 />
                             </div>
 
@@ -482,14 +502,16 @@ export function CharacterKnowledgePromptEditorModal({
                                             return (
                                                 <span
                                                     key={boundId}
-                                                    onClick={() => removeBinding(selectedItem.id, boundId)}
+                                                    onClick={() => !isReadOnly && removeBinding(selectedItem.id, boundId)}
                                                     style={{
                                                         fontSize: '0.6rem', padding: '2px 6px',
                                                         background: isSelf ? 'rgba(139, 92, 246, 0.15)' : 'rgba(245, 158, 11, 0.15)',
                                                         border: `1px solid ${isSelf ? 'rgba(139, 92, 246, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
                                                         borderRadius: '4px',
                                                         color: isSelf ? '#a78bfa' : '#fbbf24',
-                                                        cursor: 'pointer', transition: 'all 0.15s',
+                                                        cursor: isReadOnly ? 'default' : 'pointer', 
+                                                        transition: 'all 0.15s',
+                                                        opacity: isReadOnly ? 0.7 : 1,
                                                     }}
                                                 >
                                                     {isSelf ? '↻ Self' : (boundItem?.name || '(Unknown)')}
@@ -498,7 +520,9 @@ export function CharacterKnowledgePromptEditorModal({
                                         })}
                                     </div>
                                     <div style={{ fontSize: '0.5rem', opacity: 0.4, marginTop: '4px' }}>
-                                        Tap a chip to disconnect. Linked prompts are discoverable by the model when this entry is accessed.
+                                        {isReadOnly 
+                                            ? 'Linked prompts are discoverable by the model when this entry is accessed.' 
+                                            : 'Tap a chip to disconnect. Linked prompts are discoverable by the model when this entry is accessed.'}
                                     </div>
                                 </div>
                             )}

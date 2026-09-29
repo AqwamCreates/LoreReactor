@@ -39,21 +39,24 @@ export function RegularExpressionTriggerEditor({
     const [testResults, setTestResults] = useState<Record<number, boolean | null>>({});
 
     const handleAdd = useCallback(() => {
+        if (isReadOnly) return;
         onChange([...triggers, { trigger: '', context: 'global', target: 'everyone' }]);
-    }, [triggers, onChange]);
+    }, [triggers, onChange, isReadOnly]);
 
     const handleRemove = useCallback((index: number) => {
+        if (isReadOnly) return;
         onChange(triggers.filter((_, i) => i !== index));
         setTestTexts(prev => { const next = { ...prev }; delete next[index]; return next; });
         setTestResults(prev => { const next = { ...prev }; delete next[index]; return next; });
-    }, [triggers, onChange]);
+    }, [triggers, onChange, isReadOnly]);
 
     const updateField = useCallback((index: number, field: keyof RegularExpressionTrigger, value: string) => {
+        if (isReadOnly) return;
         const updated = [...triggers];
         updated[index] = { ...updated[index], [field]: value };
         onChange(updated);
         setTestResults(prev => ({ ...prev, [index]: null }));
-    }, [triggers, onChange]);
+    }, [triggers, onChange, isReadOnly]);
 
     const handleTest = useCallback((index: number) => {
         const t = testTexts[index];
@@ -94,7 +97,7 @@ export function RegularExpressionTriggerEditor({
                                 onChange={(e) => updateField(i, 'trigger', e.target.value)}
                                 className="regex-trigger-input"
                                 placeholder={placeholder}
-                                isReadOnly={isReadOnly}
+                                readOnly={isReadOnly}
                             />
                             <select
                                 value={t.context}

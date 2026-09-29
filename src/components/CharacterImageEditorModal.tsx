@@ -7,6 +7,7 @@ import { emotions } from '../dictionaries/characterPresets';
 
 interface CharacterImageEditorModalProps {
     isOpen: boolean;
+    isReadOnly?: boolean;
     onClose: () => void;
     characterId: string;
     images: Record<string, string>;
@@ -18,11 +19,13 @@ function CharacterImageEditorContent({
     images,
     onClose,
     onSave,
+    isReadOnly = false,
 }: {
     characterId: string;
     images: Record<string, string>;
     onClose: () => void;
     onSave: (images: Record<string, string>) => void;
+    isReadOnly?: boolean;
 }) {
     const [localImages, setLocalImages] = useState<Record<string, string>>({ ...images });
     const [uploadingEmotion, setUploadingEmotion] = useState<string | null>(null);
@@ -77,10 +80,14 @@ function CharacterImageEditorContent({
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h2>Character Emotion Images</h2>
+                    <h2>{isReadOnly ? 'View Emotion Images' : 'Character Emotion Images'}</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={!!uploadingEmotion}>Cancel</button>
-                        <button type="button" className="editor-button editor-button-save" onClick={handleSave} disabled={!!uploadingEmotion}>Save</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={!!uploadingEmotion}>
+                            {isReadOnly ? 'Close' : 'Cancel'}
+                        </button>
+                        {!isReadOnly && (
+                            <button type="button" className="editor-button editor-button-save" onClick={handleSave} disabled={!!uploadingEmotion}>Save</button>
+                        )}
                     </div>
                 </div>
 
@@ -92,7 +99,7 @@ function CharacterImageEditorContent({
                     )}
 
                     <div className="context-binding-hint" style={{ marginBottom: '12px' }}>
-                        Upload character expressions for sentiment-driven image swapping. The main character image maps to "neutral". Missing emotions fall back to neutral automatically. Recommended aspect ratio: 9:16.
+                        {isReadOnly ? 'Character expressions used' : 'Upload character expressions'} for sentiment-driven image swapping. The main character image maps to "neutral". Missing emotions fall back to neutral automatically.{!isReadOnly && ' Recommended aspect ratio: 9:16.'}
                     </div>
 
                     <div className="editor-image-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: '8px' }}>
@@ -110,7 +117,7 @@ function CharacterImageEditorContent({
                                     {previewUrl ? (
                                         <div className="editor-image-square active" style={{ position: 'relative', aspectRatio: '9 / 16' }}>
                                             <img src={previewUrl} alt={emotion} style={{ objectFit: 'cover' }} />
-                                            {!isUploading && (
+                                            {!isUploading && !isReadOnly && (
                                                 <button
                                                     type="button"
                                                     onClick={() => handleRemove(emotion)}
@@ -121,8 +128,8 @@ function CharacterImageEditorContent({
                                         </div>
                                     ) : (
                                         <div
-                                            className={`editor-image-square editor-upload-square ${isUploading ? 'disabled' : ''}`}
-                                            onClick={() => !isUploading && fileInputRefs.current[emotion]?.click()}
+                                            className={`editor-image-square editor-upload-square ${(isUploading || isReadOnly) ? 'disabled' : ''}`}
+                                            onClick={() => !(isUploading || isReadOnly) && fileInputRefs.current[emotion]?.click()}
                                             style={{ aspectRatio: '9 / 16' }}
                                         >
                                             <div className="context-image-placeholder">
@@ -137,7 +144,7 @@ function CharacterImageEditorContent({
                                         accept="image/*"
                                         hidden
                                         onChange={e => handleFileChange(emotion, e)}
-                                        disabled={isUploading}
+                                        disabled={isUploading || isReadOnly}
                                     />
                                 </div>
                             );
@@ -151,6 +158,7 @@ function CharacterImageEditorContent({
 
 export function CharacterImageEditorModal({
     isOpen,
+    isReadOnly = false,
     onClose,
     characterId,
     images,
@@ -165,6 +173,7 @@ export function CharacterImageEditorModal({
             images={images}
             onClose={onClose}
             onSave={onSave}
+            isReadOnly={isReadOnly}
         />
     );
 }

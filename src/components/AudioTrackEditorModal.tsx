@@ -238,7 +238,7 @@ function AudioTrackEditorModalInner({
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h2>{isReadOnly ? 'View Audio Track' : (existingTrack ? 'Edit Audio Track' : 'Create New Audio Track')}</h2>
+                    <h2>{(existingTrack ? `${(isReadOnly) ? 'View' : 'Edit'} Audio Track` : 'Create New Audio Track')}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>
                             {isReadOnly ? 'Close' : 'Cancel'}
@@ -268,22 +268,24 @@ function AudioTrackEditorModalInner({
                         <>
                             <div className="context-field-group">
                                 <label className="editor-label">Name <span className="context-required-asterisk">*</span></label>
-                                <input type="text" value={name} isReadOnly={isReadOnly || isUploading} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Forest Ambience" />
+                                <input type="text" value={name} readOnly={isReadOnly} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Forest Ambience" disabled={isUploading || isReadOnly} />
                                 {errors.name && <div className="editor-error-message">{errors.name}</div>}
                             </div>
 
                             <div className="context-field-group">
                                 <label className="editor-label">Description</label>
-                                <textarea value={description} isReadOnly={isReadOnly || isUploading} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Brief description of this audio track" rows={2} />
+                                <textarea value={description} readOnly={isReadOnly} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Brief description of this audio track" rows={2} disabled={isUploading || isReadOnly} />
                             </div>
 
                             <div className="context-field-group">
                                 <label className="editor-label">Audio File <span className="context-required-asterisk">*</span></label>
                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                    <input type="text" value={filename} isReadOnly={isReadOnly || isUploading} onChange={(e) => { setFilename(e.target.value); if (errors.filename) setErrors({ ...errors, filename: undefined }); }} className={`editor-input context-mono-input ${errors.filename ? 'error' : ''}`} placeholder="forest_birds.ogg" style={{ flex: 1 }} />
-                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => audioInputRef.current?.click()} disabled={isUploading || isReadOnly} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px', whiteSpace: 'nowrap' }}>
-                                        {isUploading ? '⏳' : '📁 Upload'}
-                                    </button>
+                                    <input type="text" value={filename} readOnly={isReadOnly} onChange={(e) => { setFilename(e.target.value); if (errors.filename) setErrors({ ...errors, filename: undefined }); }} className={`editor-input context-mono-input ${errors.filename ? 'error' : ''}`} placeholder="forest_birds.ogg" style={{ flex: 1 }} disabled={isUploading || isReadOnly} />
+                                    {!isReadOnly && (
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => audioInputRef.current?.click()} disabled={isUploading} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px', whiteSpace: 'nowrap' }}>
+                                            {isUploading ? '⏳' : '📁 Upload'}
+                                        </button>
+                                    )}
                                 </div>
                                 <input ref={audioInputRef} type="file" accept=".ogg,.mp3,.wav,.flac,audio/*" hidden onChange={(e) => {
                                     if (e.target.files?.[0]) {
@@ -305,7 +307,7 @@ function AudioTrackEditorModalInner({
                                 <div className="context-field-group">
                                     <label className="editor-label editor-label-small">Preview</label>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <button type="button" onClick={handleTogglePreview} className={`editor-button ${isPreviewPlaying ? 'editor-button-save' : 'editor-button-cancel'}`} style={{ fontSize: '0.75rem', padding: '4px 14px', minHeight: '28px' }} disabled={isReadOnly}>
+                                        <button type="button" onClick={handleTogglePreview} className={`editor-button ${isPreviewPlaying ? 'editor-button-save' : 'editor-button-cancel'}`} style={{ fontSize: '0.75rem', padding: '4px 14px', minHeight: '28px' }}>
                                             {isPreviewPlaying ? '⏹' : '▶'}
                                         </button>
                                         <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>
@@ -378,44 +380,46 @@ function AudioTrackEditorModalInner({
 
                     {/* ─── DETECTION TAB ─── */}
                     {activeTab === 'detection' && (
-                        <div className="editor-section" style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
-                            <RegularExpressionTriggerEditor
-                                label="Activation"
-                                description="Track activates when a message matches any trigger. Leave empty to rely on bindings only."
-                                triggers={regexActivationTriggers}
-                                onChange={setRegexActivationTriggers}
-                                error={errors.regex}
-                                placeholder="/enters? (the )?forest/i"
-                                isReadOnly={isReadOnly}
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Deactivation"
-                                description="Track deactivates when a message matches any trigger."
-                                triggers={regexDeactivationTriggers}
-                                onChange={setRegexDeactivationTriggers}
-                                error={errors.deactivationRegex}
-                                placeholder="/leaves? (the )?forest/i"
-                                isReadOnly={isReadOnly}
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Exclusion Activation"
-                                description="Overrides activation when matched (e.g., 'forest' activates but 'dream forest' excludes)."
-                                triggers={regexExclusionActivationTriggers}
-                                onChange={setRegexExclusionActivationTriggers}
-                                error={errors.exclusionActivationRegex}
-                                placeholder="/dream forest|memory of forest/i"
-                                isReadOnly={isReadOnly}
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Exclusion Deactivation"
-                                description="When the exclusion stops being active."
-                                triggers={regexExclusionDeactivationTriggers}
-                                onChange={setRegexExclusionDeactivationTriggers}
-                                error={errors.exclusionDeactivationRegex}
-                                placeholder="/wake up|snap out of dream/i"
-                                isReadOnly={isReadOnly}
-                            />
-                        </div>
+                        <fieldset disabled={isReadOnly} style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
+                            <div className="editor-section" style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
+                                <RegularExpressionTriggerEditor
+                                    label="Activation"
+                                    description="Track activates when a message matches any trigger. Leave empty to rely on bindings only."
+                                    triggers={regexActivationTriggers}
+                                    onChange={setRegexActivationTriggers}
+                                    error={errors.regex}
+                                    placeholder="/enters? (the )?forest/i"
+                                    isReadOnly={isReadOnly}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Deactivation"
+                                    description="Track deactivates when a message matches any trigger."
+                                    triggers={regexDeactivationTriggers}
+                                    onChange={setRegexDeactivationTriggers}
+                                    error={errors.deactivationRegex}
+                                    placeholder="/leaves? (the )?forest/i"
+                                    isReadOnly={isReadOnly}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Exclusion Activation"
+                                    description="Overrides activation when matched (e.g., 'forest' activates but 'dream forest' excludes)."
+                                    triggers={regexExclusionActivationTriggers}
+                                    onChange={setRegexExclusionActivationTriggers}
+                                    error={errors.exclusionActivationRegex}
+                                    placeholder="/dream forest|memory of forest/i"
+                                    isReadOnly={isReadOnly}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Exclusion Deactivation"
+                                    description="When the exclusion stops being active."
+                                    triggers={regexExclusionDeactivationTriggers}
+                                    onChange={setRegexExclusionDeactivationTriggers}
+                                    error={errors.exclusionDeactivationRegex}
+                                    placeholder="/wake up|snap out of dream/i"
+                                    isReadOnly={isReadOnly}
+                                />
+                            </div>
+                        </fieldset>
                     )}
 
                     {/* ─── BINDINGS TAB ─── */}
@@ -433,15 +437,17 @@ function AudioTrackEditorModalInner({
                                             return (
                                                 <div key={id} className="context-character-binding-chip">
                                                     <span className="context-character-binding-name">📍 {loc.name}</span>
-                                                    <button type="button" onClick={() => setLocationBindings(prev => prev.filter(lid => lid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isReadOnly}>×</button>
+                                                    {!isReadOnly && <button type="button" onClick={() => setLocationBindings(prev => prev.filter(lid => lid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>}
                                                 </div>
                                             );
                                         })}
                                     </div>
-                                    <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading || isReadOnly}>
-                                        <option value="" disabled>+ Bind to a location</option>
-                                        {allLocations.filter(l => !locationBindings.includes(l.id)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
-                                    </select>
+                                    {!isReadOnly && (
+                                        <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading}>
+                                            <option value="" disabled>+ Bind to a location</option>
+                                            {allLocations.filter(l => !locationBindings.includes(l.id)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
+                                        </select>
+                                    )}
                                 </div>
                             </div>
 
@@ -457,15 +463,17 @@ function AudioTrackEditorModalInner({
                                             return (
                                                 <div key={id} className="context-character-binding-chip">
                                                     <span className="context-character-binding-name">📜 {context.name}</span>
-                                                    <button type="button" onClick={() => setContextBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isReadOnly}>×</button>
+                                                    {!isReadOnly && <button type="button" onClick={() => setContextBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>}
                                                 </div>
                                             );
                                         })}
                                     </div>
-                                    <select onChange={(e) => { const val = e.target.value; if (val && !contextBindings.includes(val)) setContextBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading || isReadOnly}>
-                                        <option value="" disabled>+ Bind to a context</option>
-                                        {allContexts.filter(c => !contextBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                    </select>
+                                    {!isReadOnly && (
+                                        <select onChange={(e) => { const val = e.target.value; if (val && !contextBindings.includes(val)) setContextBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading}>
+                                            <option value="" disabled>+ Bind to a context</option>
+                                            {allContexts.filter(c => !contextBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                        </select>
+                                    )}
                                 </div>
                             </div>
 
@@ -481,15 +489,17 @@ function AudioTrackEditorModalInner({
                                             return (
                                                 <div key={id} className="context-character-binding-chip">
                                                     <span className="context-character-binding-name">🎭 {char.name}</span>
-                                                    <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isReadOnly}>×</button>
+                                                    {!isReadOnly && <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>}
                                                 </div>
                                             );
                                         })}
                                     </div>
-                                    <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading || isReadOnly}>
-                                        <option value="" disabled>+ Bind to a character</option>
-                                        {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                    </select>
+                                    {!isReadOnly && (
+                                        <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading}>
+                                            <option value="" disabled>+ Bind to a character</option>
+                                            {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                        </select>
+                                    )}
                                 </div>
                             </div>
                         </>
