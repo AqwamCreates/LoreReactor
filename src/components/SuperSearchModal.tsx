@@ -72,7 +72,9 @@ interface SearchMatchResult {
     tabId: SearchTabId;
     id: string;
     title: string;
-    matches: FieldMatch[];
+    subtitle?: string;
+    snippet?: string;
+    matches?: FieldMatch[];
     chats?: Array<{ chatId: string; chatName: string }>;
     rawEntity?: any;
 }
@@ -116,6 +118,14 @@ function cleanFieldPath(path: string): string {
         .replace(/^\./, '') || 'content';
 }
 
+function formatFieldName(field: string): string {
+    return field
+        .replace(/([A-Z])/g, ' $1') // camelCase to spaces (systemPrompt -> system Prompt)
+        .replace(/[._]/g, ' ')       // dots/underscores to spaces
+        .replace(/^./, str => str.toUpperCase())
+        .trim();
+}
+
 /** Recursively walks an entity to find ALL fields containing the query string */
 function findMatchingFields(obj: any, query: string): FieldMatch[] {
     const matches: FieldMatch[] = [];
@@ -128,7 +138,6 @@ function findMatchingFields(obj: any, query: string): FieldMatch[] {
             if (val.length < 5000 && !val.startsWith('data:image')) {
                 if (val.toLowerCase().includes(lowerQuery)) {
                     const fieldName = cleanFieldPath(path);
-                    // Avoid duplicate identical matches for the exact same property path
                     if (!matches.some(m => m.field === fieldName && m.text === val)) {
                         matches.push({
                             field: fieldName,
@@ -238,14 +247,11 @@ function SuperSearchContent({
     }, [rawChatShells, currentInteractionData]);
 
     useEffect(() => {
-        if (!lowerQuery) {
-            setServerMessages([]);
-            setIsSearchingServer(false);
-            return;
-        }
+        if (!lowerQuery) return;
 
-        setIsSearchingServer(true);
+        let ignore = false;
         const timer = setTimeout(async () => {
+            setIsSearchingServer(true);
             try {
                 const res = await fetch(`${localURL}/search?q=${encodeURIComponent(lowerQuery)}&limit=50`);
                 if (res.ok && !ignore) {
@@ -256,11 +262,12 @@ function SuperSearchContent({
             } catch (e) {
                 console.warn('[SuperSearch] Server query failed:', e);
             } finally {
-                setIsSearchingServer(false);
+                if (!ignore) {
+                    setIsSearchingServer(false);
+                }
             }
         }, 150);
 
-        let ignore = false;
         return () => {
             ignore = true;
             clearTimeout(timer);
@@ -487,9 +494,9 @@ function SuperSearchContent({
                                         </span>
                                     </div>
 
-                                    {/* Render all matching fields for this entity cleanly */}
+                                    {/* Render all matching fields with clean spacing */}
                                     {item.matches && item.matches.length > 0 && (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%', marginTop: '4px' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', marginTop: '4px' }}>
                                             {item.matches.map((m, idx) => (
                                                 <div 
                                                     key={idx}
@@ -497,17 +504,17 @@ function SuperSearchContent({
                                                         fontSize: '0.8rem', 
                                                         opacity: 0.9, 
                                                         background: 'rgba(0,0,0,0.15)', 
-                                                        padding: '6px 8px', 
-                                                        borderRadius: '4px', 
+                                                        padding: '8px 10px', 
+                                                        borderRadius: '6px', 
                                                         width: '100%', 
                                                         boxSizing: 'border-box', 
                                                         borderLeft: '3px solid var(--accent)' 
                                                     }}
                                                 >
-                                                    <span style={{ fontSize: '0.65rem', opacity: 0.7, fontWeight: 'bold', textTransform: 'uppercase', marginRight: '6px', color: 'var(--accent)' }}>
-                                                        [{m.field}]:
-                                                    </span>
-                                                    "{m.snippet}"
+                                                    <div style={{ fontSize: '0.65rem', opacity: 0.8, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '3px', color: 'var(--accent)' }}>
+                                                        {formatFieldName(m.field)}
+                                                    </div>
+                                                    <div>"{m.snippet}"</div>
                                                 </div>
                                             ))}
                                         </div>
