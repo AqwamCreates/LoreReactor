@@ -291,13 +291,13 @@ export function AppModals({
         return set;
     }, [activeStrategy]);
 
-    // ─── Multiplayer Session Entities & Permissions ──────────────────
+    // ─── Multiplayer Hoster-Owned Entities & Permissions ─────────────
     const isAdministrator = useMemo(() => {
         if (!multiplayerData || !currentAccountId) return false;
         return multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.isAdministrator === true;
     }, [multiplayerData, currentAccountId]);
 
-    const sessionCharacters = useMemo(() => {
+    const hosterOwnedCharacters = useMemo(() => {
         if (!isMultiplayerClient || !interactionData) return undefined;
         const seen = new Set<string>();
         const res: Character[] = [];
@@ -314,9 +314,9 @@ export function AppModals({
         return res;
     }, [isMultiplayerClient, interactionData]);
 
-    const sessionContexts = useMemo(() => isMultiplayerClient ? interactionData?.contexts : undefined, [isMultiplayerClient, interactionData]);
-    const sessionLocations = useMemo(() => isMultiplayerClient ? interactionData?.locations : undefined, [isMultiplayerClient, interactionData]);
-    const sessionAudioTracks = useMemo(() => isMultiplayerClient ? interactionData?.audioTracks : undefined, [isMultiplayerClient, interactionData]);
+    const hosterOwnedContexts = useMemo(() => isMultiplayerClient ? interactionData?.contexts : undefined, [isMultiplayerClient, interactionData]);
+    const hosterOwnedLocations = useMemo(() => isMultiplayerClient ? interactionData?.locations : undefined, [isMultiplayerClient, interactionData]);
+    const hosterOwnedAudioTracks = useMemo(() => isMultiplayerClient ? interactionData?.audioTracks : undefined, [isMultiplayerClient, interactionData]);
 
     useEffect(() => {
         if (modals.chatList.isOpen) {
@@ -357,7 +357,7 @@ export function AppModals({
             {modals.chatList.isOpen && (
                 <ManagerModal
                     title="Chat Sessions"
-                    items={chatShellsWithIdentifiers}
+                    localLibraryItems={chatShellsWithIdentifiers}
                     isOpen={modals.chatList.isOpen}
                     onClose={modals.chatList.close}
                     onSelect={(item) => { handleOpenChatInspection(item.id); modals.chatList.close(); }}
@@ -375,9 +375,10 @@ export function AppModals({
             {modals.charList.isOpen && (
                 <ManagerModal
                     title="Characters"
-                    items={allCharacters}
-                    sessionItems={sessionCharacters}
+                    localLibraryItems={allCharacters}
+                    hosterOwnedItems={hosterOwnedCharacters}
                     isAdministrator={isAdministrator}
+                    isMultiplayerClient={isMultiplayerClient}
                     isOpen={modals.charList.isOpen}
                     onClose={modals.charList.close}
                     onSelect={async (character: Character) => { 
@@ -403,9 +404,10 @@ export function AppModals({
             {modals.contextList.isOpen && (
                 <ManagerModal 
                     title="Contexts" 
-                    items={allContexts}
-                    sessionItems={sessionContexts}
+                    localLibraryItems={allContexts}
+                    hosterOwnedItems={hosterOwnedContexts}
                     isAdministrator={isAdministrator}
+                    isMultiplayerClient={isMultiplayerClient}
                     isOpen={modals.contextList.isOpen} 
                     onClose={modals.contextList.close}
                     onSelect={(context: Context) => contextModalProperties.open(context)} 
@@ -423,9 +425,10 @@ export function AppModals({
             {modals.locationList.isOpen && (
                 <ManagerModal 
                     title="Locations" 
-                    items={allLocations}
-                    sessionItems={sessionLocations}
+                    localLibraryItems={allLocations}
+                    hosterOwnedItems={hosterOwnedLocations}
                     isAdministrator={isAdministrator}
+                    isMultiplayerClient={isMultiplayerClient}
                     isOpen={modals.locationList.isOpen} 
                     onClose={modals.locationList.close}
                     onSelect={(location: Location) => locationModalProperties.open(location)} 
@@ -443,9 +446,10 @@ export function AppModals({
             {modals.audioTrackList.isOpen && (
                 <ManagerModal 
                     title="Audio Tracks" 
-                    items={allAudioTracks}
-                    sessionItems={sessionAudioTracks}
+                    localLibraryItems={allAudioTracks}
+                    hosterOwnedItems={hosterOwnedAudioTracks}
                     isAdministrator={isAdministrator}
+                    isMultiplayerClient={isMultiplayerClient}
                     isOpen={modals.audioTrackList.isOpen} 
                     onClose={modals.audioTrackList.close}
                     onSelect={(audioTrack: AudioTrack) => audioTrackModalProperties.open(audioTrack)} 
@@ -463,7 +467,7 @@ export function AppModals({
             {modals.worldManager.isOpen && (
                 <ManagerModal 
                     title="Worlds" 
-                    items={allWorlds} 
+                    localLibraryItems={allWorlds} 
                     isOpen={modals.worldManager.isOpen} 
                     onClose={modals.worldManager.close}
                     onSelect={(world: World) => worldModalProperties.open(world)} 
@@ -489,7 +493,7 @@ export function AppModals({
             {modals.promptBlockList.isOpen && (
                 <ManagerModal 
                     title="Prompt Blocks" 
-                    items={allPromptBlocks} 
+                    localLibraryItems={allPromptBlocks} 
                     isOpen={modals.promptBlockList.isOpen} 
                     onClose={modals.promptBlockList.close}
                     onSelect={(promptBlock: PromptBlock) => promptBlockModalProperties.open(promptBlock)} 
@@ -504,7 +508,7 @@ export function AppModals({
             {modals.modelList.isOpen && (
                 <ManagerModal 
                     title="Language Models" 
-                    items={allModels} 
+                    localLibraryItems={allModels} 
                     isOpen={modals.modelList.isOpen} 
                     onClose={modals.modelList.close}
                     onSelect={(model: LanguageModel) => modelModalProperties.open(model)} 
@@ -537,7 +541,7 @@ export function AppModals({
             {modals.samplerList.isOpen && (
                 <ManagerModal 
                     title="Samplers" 
-                    items={allSamplers} 
+                    localLibraryItems={allSamplers} 
                     isOpen={modals.samplerList.isOpen} 
                     onClose={modals.samplerList.close}
                     onSelect={(sampler: Sampler) => samplerModalProperties.open(sampler)} 
@@ -552,7 +556,7 @@ export function AppModals({
             {modals.stopList.isOpen && (
                 <ManagerModal 
                     title="Stop Patterns" 
-                    items={allStopPatterns} 
+                    localLibraryItems={allStopPatterns} 
                     isOpen={modals.stopList.isOpen} 
                     onClose={modals.stopList.close}
                     onSelect={(stopPattern: StopPattern) => stopPatternModalProperties.open(stopPattern)} 
@@ -571,7 +575,7 @@ export function AppModals({
             {modals.budgetStrategyList.isOpen && (
                 <ManagerModal 
                     title="Budget Strategies" 
-                    items={allBudgetStrategies} 
+                    localLibraryItems={allBudgetStrategies} 
                     isOpen={modals.budgetStrategyList.isOpen} 
                     onClose={modals.budgetStrategyList.close}
                     onSelect={(budgetStrategy: BudgetStrategy) => budgetStrategyModalProperties.open(budgetStrategy)} 
@@ -591,7 +595,7 @@ export function AppModals({
             {modals.profileList.isOpen && (
                 <ManagerModal 
                     title="Profiles" 
-                    items={allProfiles} 
+                    localLibraryItems={allProfiles} 
                     isOpen={modals.profileList.isOpen} 
                     onClose={modals.profileList.close}
                     onSelect={(profile: Profile) => profileModalProperties.open(profile)} 
@@ -611,7 +615,7 @@ export function AppModals({
             {modals.extList.isOpen && (
                 <ManagerModal 
                     title="Extensions" 
-                    items={allExtensions} 
+                    localLibraryItems={allExtensions} 
                     isOpen={modals.extList.isOpen} 
                     onClose={modals.extList.close}
                     onSelect={undefined} 
@@ -668,7 +672,7 @@ export function AppModals({
             {modals.accountList.isOpen && (
                 <ManagerModal 
                     title="Accounts" 
-                    items={allAccounts} 
+                    localLibraryItems={allAccounts} 
                     isOpen={modals.accountList.isOpen} 
                     onClose={modals.accountList.close}
                     onSelect={(account: Account) => accountModalProperties.open(account)} 
@@ -687,7 +691,7 @@ export function AppModals({
             {modals.multiplayerDataList.isOpen && (
                 <ManagerModal 
                     title="Multiplayer Data" 
-                    items={allMultiplayerData} 
+                    localLibraryItems={allMultiplayerData} 
                     isOpen={modals.multiplayerDataList.isOpen} 
                     onClose={modals.multiplayerDataList.close}
                     onSelect={(multiplayerDataEntry: MultiplayerData) => multiplayerDataModalProperties.open(multiplayerDataEntry)} 

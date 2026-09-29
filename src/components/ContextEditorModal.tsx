@@ -14,6 +14,7 @@ const tokenEngine = getLanguageModelEngine();
 
 interface ContextEditorModalProps {
     isOpen: boolean;
+    isReadOnly?: boolean;
     onClose: () => void;
     onSave: (context: Context) => void;
     existingContext?: Context | null;
@@ -30,6 +31,7 @@ type ImageEntry =
 
 export function ContextEditorModal({
     isOpen,
+    isReadOnly = false,
     onClose,
     onSave,
     existingContext,
@@ -46,6 +48,7 @@ export function ContextEditorModal({
             onSave={onSave}
             existingContext={existingContext}
             allCharacters={allCharacters}
+            isReadOnly={isReadOnly}
         />
     );
 }
@@ -55,6 +58,7 @@ function ContextEditorModalInner({
     onSave,
     existingContext,
     allCharacters = [],
+    isReadOnly = false,
 }: Omit<ContextEditorModalProps, 'isOpen'>) {
     const [activeTab, setActiveTab] = useState<ContextTabId>('general');
 
@@ -363,15 +367,17 @@ function ContextEditorModalInner({
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h2>{existingContext ? 'Edit Context' : 'Create New Context'}</h2>
+                    <h2>{isReadOnly ? 'View Context' : (existingContext ? 'Edit Context' : 'Create New Context')}</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
-                        {existingContext && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
-                        {!existingContext && (
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>
+                            {isReadOnly ? 'Close' : 'Cancel'}
+                        </button>
+                        {!isReadOnly && existingContext && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
+                        {!isReadOnly && !existingContext && (
                             <button type="button" className="editor-button editor-button-import" onClick={() => cardImportRef.current?.click()} disabled={isUploading}>Import Card</button>
                         )}
-                        <input ref={cardImportRef} type="file" accept="image/png" hidden onChange={handleCardImport} disabled={isUploading} />
-                        <button type="button" className="editor-button editor-button-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Saving...' : 'Save'}</button>
+                        {!isReadOnly && <input ref={cardImportRef} type="file" accept="image/png" hidden onChange={handleCardImport} disabled={isUploading} />}
+                        {!isReadOnly && <button type="button" className="editor-button editor-button-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Saving...' : 'Save'}</button>}
                     </div>
                 </div>
 
@@ -395,18 +401,18 @@ function ContextEditorModalInner({
                         <>
                             <div className="context-field-group">
                                 <label className="editor-label">Name <span className="context-required-asterisk">*</span></label>
-                                <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Eldoria City Lore" />
+                                <input type="text" value={name} isReadOnly={isReadOnly} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Eldoria City Lore" disabled={isUploading || isReadOnly} />
                                 {errors.name && <div className="editor-error-message">{errors.name}</div>}
                             </div>
 
                             <div className="context-field-group">
                                 <label className="editor-label">Description</label>
-                                <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Brief description" rows={2} />
+                                <textarea value={description} isReadOnly={isReadOnly} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Brief description" rows={2} disabled={isUploading || isReadOnly} />
                             </div>
 
                             <div className="context-field-group">
                                 <label className="editor-label">Text {textRequiresAsterisk && <span className="context-required-asterisk">*</span>}</label>
-                                <textarea value={text} onChange={(e) => { setText(e.target.value); if (errors.text) setErrors({ ...errors, text: undefined }); }} className={`editor-textarea ${errors.text ? 'error' : ''}`} placeholder="Context text content (optional if using images, URLs or search terms)" rows={6} />
+                                <textarea value={text} isReadOnly={isReadOnly} onChange={(e) => { setText(e.target.value); if (errors.text) setErrors({ ...errors, text: undefined }); }} className={`editor-textarea ${errors.text ? 'error' : ''}`} placeholder="Context text content (optional if using images, URLs or search terms)" rows={6} disabled={isUploading || isReadOnly} />
                                 <div className="context-token-count">~{textnumberOfTokens} token(s)</div>
                                 {errors.text && <div className="editor-error-message">{errors.text}</div>}
                             </div>
@@ -417,23 +423,23 @@ function ContextEditorModalInner({
                                     {images.map((entry, index) => (
                                         <div key={`${entry.previewUrl}-${index}`} className="editor-image-square active">
                                             <img src={entry.previewUrl} alt={`Context image ${index + 1}`} />
-                                            <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-button">×</button>
+                                            <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-button" disabled={isReadOnly}>×</button>
                                         </div>
                                     ))}
-                                    <div className={`editor-image-square editor-upload-square ${isUploading ? 'disabled' : ''}`} onClick={() => !isUploading && fileInputRef.current?.click()}>
+                                    <div className={`editor-image-square editor-upload-square ${(isUploading || isReadOnly) ? 'disabled' : ''}`} onClick={() => !(isUploading || isReadOnly) && fileInputRef.current?.click()}>
                                         <div className="context-image-placeholder">
                                             <div className="context-image-placeholder-icon">{isUploading ? '⏳' : '📷'}</div>
                                             <div className="context-image-placeholder-text">{isUploading ? 'Uploading...' : 'Upload'}</div>
                                         </div>
                                     </div>
                                 </div>
-                                <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={handleImageChange} disabled={isUploading} />
+                                <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={handleImageChange} disabled={isUploading || isReadOnly} />
                                 {errors.images && <div className="editor-error-message">{errors.images}</div>}
                             </div>
 
                             <div className="context-field-group">
                                 <label className="editor-checkbox-label">
-                                    <input type="checkbox" checked={useBase64Encoding} onChange={(e) => setUseBase64Encoding(e.target.checked)} className="editor-checkbox-input" />
+                                    <input type="checkbox" checked={useBase64Encoding} onChange={(e) => setUseBase64Encoding(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
                                     <span>Encode text as Base64</span>
                                 </label>
                             </div>
@@ -450,13 +456,13 @@ function ContextEditorModalInner({
                                     {searchTerms.map((term, index) => (
                                         <div key={`${term}-${index}`} className="context-tag-chip">
                                             <span className="context-tag-chip-text">{term}</span>
-                                            <button type="button" onClick={() => handleRemoveSearchTerm(index)} className="context-tag-remove-button" title="Remove term">×</button>
+                                            <button type="button" onClick={() => handleRemoveSearchTerm(index)} className="context-tag-remove-button" title="Remove term" disabled={isReadOnly}>×</button>
                                         </div>
                                     ))}
                                 </div>
                                 <div className="context-add-row">
-                                    <input type="text" value={newSearchTermInput} onChange={(e) => setNewSearchTermInput(e.target.value)} onKeyDown={handleSearchTermInputKeyDown} className="editor-input context-add-input" placeholder="magic system eldoria" />
-                                    <button type="button" onClick={handleAddSearchTerm} className="editor-button editor-button-save context-add-button" disabled={!newSearchTermInput.trim()}>Add</button>
+                                    <input type="text" value={newSearchTermInput} isReadOnly={isReadOnly} onChange={(e) => setNewSearchTermInput(e.target.value)} onKeyDown={handleSearchTermInputKeyDown} className="editor-input context-add-input" placeholder="magic system eldoria" disabled={isUploading || isReadOnly} />
+                                    <button type="button" onClick={handleAddSearchTerm} className="editor-button editor-button-save context-add-button" disabled={isReadOnly || !newSearchTermInput.trim()}>Add</button>
                                 </div>
                                 <div className="context-add-hint">Press Enter or click Add to add a term.</div>
                             </div>
@@ -464,7 +470,7 @@ function ContextEditorModalInner({
                             {hasWebContent && (
                                 <div className="context-field-group">
                                     <label className="editor-checkbox-label">
-                                        <input type="checkbox" checked={includeLinkImages} onChange={(e) => setIncludeLinkImages(e.target.checked)} className="editor-checkbox-input" />
+                                        <input type="checkbox" checked={includeLinkImages} onChange={(e) => setIncludeLinkImages(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
                                         <span>Include Link Images</span>
                                     </label>
                                     <div className="context-checkbox-hint">Extract images from fetched pages and include them in summaries.</div>
@@ -474,7 +480,7 @@ function ContextEditorModalInner({
                             {hasSearchTerms && (
                                 <div className="context-field-group">
                                     <label className="editor-label editor-label-small">Search Engine</label>
-                                    <select value={searchEngine} onChange={(e) => setSearchEngine(e.target.value as searchEngine)} className="editor-select">
+                                    <select value={searchEngine} onChange={(e) => setSearchEngine(e.target.value as searchEngine)} className="editor-select" disabled={isUploading || isReadOnly}>
                                         {SEARCH_ENGINE_OPTIONS.map(engine => (<option key={engine} value={engine}>{engine}</option>))}
                                     </select>
                                 </div>
@@ -487,13 +493,13 @@ function ContextEditorModalInner({
                                     {urls.map((url, index) => (
                                         <div key={`${url}-${index}`} className="context-url-chip">
                                             <span className="context-url-chip-text">{url}</span>
-                                            <button type="button" onClick={() => handleRemoveUrl(index)} className="context-url-remove-button" title="Remove URL">×</button>
+                                            <button type="button" onClick={() => handleRemoveUrl(index)} className="context-url-remove-button" title="Remove URL" disabled={isReadOnly}>×</button>
                                         </div>
                                     ))}
                                 </div>
                                 <div className="context-add-row">
-                                    <input type="text" value={newUrlInput} onChange={(e) => { setNewUrlInput(e.target.value); if (errors.urls) setErrors(prev => ({ ...prev, urls: undefined })); }} onKeyDown={handleUrlInputKeyDown} className={`editor-input context-add-input-mono ${errors.urls && newUrlInput.trim().length > 0 ? 'error' : ''}`} placeholder="https://example.com/lore-page" />
-                                    <button type="button" onClick={handleAddUrl} className="editor-button editor-button-save context-add-button" disabled={!newUrlInput.trim()}>Add</button>
+                                    <input type="text" value={newUrlInput} isReadOnly={isReadOnly} onChange={(e) => { setNewUrlInput(e.target.value); if (errors.urls) setErrors(prev => ({ ...prev, urls: undefined })); }} onKeyDown={handleUrlInputKeyDown} className={`editor-input context-add-input-mono ${errors.urls && newUrlInput.trim().length > 0 ? 'error' : ''}`} placeholder="https://example.com/lore-page" disabled={isUploading || isReadOnly} />
+                                    <button type="button" onClick={handleAddUrl} className="editor-button editor-button-save context-add-button" disabled={isReadOnly || !newUrlInput.trim()}>Add</button>
                                 </div>
                                 {errors.urls && <div className="editor-error-message">{errors.urls}</div>}
                             </div>
@@ -502,7 +508,7 @@ function ContextEditorModalInner({
                                 <>
                                     <div className="context-field-group">
                                         <label className="editor-label">Fetch Mode</label>
-                                        <select value={linkFetchMode} onChange={(e) => setLinkFetchMode(e.target.value as linkFetchMode)} className="editor-select">
+                                        <select value={linkFetchMode} onChange={(e) => setLinkFetchMode(e.target.value as linkFetchMode)} className="editor-select" disabled={isUploading || isReadOnly}>
                                             <option value="full">Full — Use entire page content as-is</option>
                                             <option value="extract">Extract — Keep only structured data (headings, lists, definitions)</option>
                                             <option value="summary">Summary — Condense via LLM before injecting</option>
@@ -510,19 +516,19 @@ function ContextEditorModalInner({
                                     </div>
                                     <div className="context-field-group">
                                         <label className="editor-label">Maximum Link Depth</label>
-                                        <input type="number" min="0" max="5" value={linkMaxDepth} onChange={(e) => setLinkMaxDepth(Math.max(0, Math.min(5, Number(e.target.value) || 0)))} className="editor-input context-input-right" />
+                                        <input type="number" min="0" max="5" value={linkMaxDepth} onChange={(e) => setLinkMaxDepth(Math.max(0, Math.min(5, Number(e.target.value) || 0)))} className="editor-input context-input-right" disabled={isUploading || isReadOnly} />
                                         <div className="context-field-hint">How many levels of links to follow. 0 = no recursion.</div>
                                     </div>
                                     <div className="context-field-group">
                                         <label className="editor-checkbox-label">
-                                            <input type="checkbox" checked={limitLinksToSubdirectory} onChange={(e) => setLimitLinksToSubdirectory(e.target.checked)} className="editor-checkbox-input" />
+                                            <input type="checkbox" checked={limitLinksToSubdirectory} onChange={(e) => setLimitLinksToSubdirectory(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
                                             <span>Limit Links to Subdirectory</span>
                                         </label>
                                         <div className="context-checkbox-hint">Only follow links within the same directory path as the root URL.</div>
                                     </div>
                                     <div className="context-field-group">
                                         <label className="editor-label">Cache Time-To-Live (seconds)</label>
-                                        <input type="number" min="0" max="86400" step="60" value={Math.round(fetchCacheTimeToLiveMs / 1000)} onChange={(e) => setFetchCacheTimeToLiveMs(Math.max(0, Number(e.target.value) || 300) * 1000)} className="editor-input context-input-right" />
+                                        <input type="number" min="0" max="86400" step="60" value={Math.round(fetchCacheTimeToLiveMs / 1000)} onChange={(e) => setFetchCacheTimeToLiveMs(Math.max(0, Number(e.target.value) || 300) * 1000)} className="editor-input context-input-right" disabled={isUploading || isReadOnly} />
                                         <div className="context-field-hint">How long to cache fetched content. 0 = always refetch.</div>
                                     </div>
                                 </>
@@ -532,74 +538,86 @@ function ContextEditorModalInner({
 
                     {/* ─── DETECTION TAB ─── */}
                     {activeTab === 'detection' && (
-                        <div className="editor-section" style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
-                            <RegularExpressionTriggerEditor
-                                label="Activation"
-                                description="Context activates when any trigger matches."
-                                triggers={regexActivationTriggers}
-                                onChange={setRegexActivationTriggers}
-                                error={errors.regex}
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Deactivation"
-                                description="Deactivates context when any trigger matches."
-                                triggers={regexDeactivationTriggers}
-                                onChange={setRegexDeactivationTriggers}
-                                error={errors.deactivationRegex}
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Exclusion Activation"
-                                description="Overrides activation when matched."
-                                triggers={regexExclusionActivationTriggers}
-                                onChange={setRegexExclusionActivationTriggers}
-                                error={errors.exclusionActivationRegex}
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Exclusion Deactivation"
-                                description="When exclusion stops being active."
-                                triggers={regexExclusionDeactivationTriggers}
-                                onChange={setRegexExclusionDeactivationTriggers}
-                                error={errors.exclusionDeactivationRegex}
-                            />
-                        </div>
+                        <fieldset disabled={isReadOnly} style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
+                            <div className="editor-section" style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
+                                <RegularExpressionTriggerEditor
+                                    label="Activation"
+                                    description="Context activates when any trigger matches."
+                                    triggers={regexActivationTriggers}
+                                    onChange={setRegexActivationTriggers}
+                                    error={errors.regex}
+                                    isReadOnly={isReadOnly}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Deactivation"
+                                    description="Deactivates context when any trigger matches."
+                                    triggers={regexDeactivationTriggers}
+                                    onChange={setRegexDeactivationTriggers}
+                                    error={errors.deactivationRegex}
+                                    isReadOnly={isReadOnly}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Exclusion Activation"
+                                    description="Overrides activation when matched."
+                                    triggers={regexExclusionActivationTriggers}
+                                    onChange={setRegexExclusionActivationTriggers}
+                                    error={errors.exclusionActivationRegex}
+                                    isReadOnly={isReadOnly}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Exclusion Deactivation"
+                                    description="When exclusion stops being active."
+                                    triggers={regexExclusionDeactivationTriggers}
+                                    onChange={setRegexExclusionDeactivationTriggers}
+                                    error={errors.exclusionDeactivationRegex}
+                                    isReadOnly={isReadOnly}
+                                />
+                            </div>
+                        </fieldset>
                     )}
 
                     {/* ─── FILTER TAB ─── */}
                     {activeTab === 'filter' && (
-                        <div className="editor-section" style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
-                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '12px', textAlign: 'center' }}>
-                                Chat history messages matching activation triggers are excluded from the AI prompt.
+                        <fieldset disabled={isReadOnly} style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
+                            <div className="editor-section" style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
+                                <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '12px', textAlign: 'center' }}>
+                                    Chat history messages matching activation triggers are excluded from the AI prompt.
+                                </div>
+                                <RegularExpressionTriggerEditor
+                                    label="Filter Activation"
+                                    description="Messages matching any trigger are hidden from AI."
+                                    triggers={messageFilterActivationTriggers}
+                                    onChange={setMessageFilterActivationTriggers}
+                                    error={errors.messageFilterRegex}
+                                    placeholder="^\/ooc\s+|^\[.*\]$"
+                                    isReadOnly={isReadOnly}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Filter Deactivation"
+                                    description="Stops filtering when any trigger matches."
+                                    triggers={messageFilterDeactivationTriggers}
+                                    onChange={setMessageFilterDeactivationTriggers}
+                                    error={errors.messageFilterDeactivationRegex}
+                                    isReadOnly={isReadOnly}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Filter Exclusion Activation"
+                                    description="Overrides filter — keeps message visible."
+                                    triggers={messageFilterExclusionActivationTriggers}
+                                    onChange={setMessageFilterExclusionActivationTriggers}
+                                    error={errors.messageFilterExclusionActivationRegex}
+                                    isReadOnly={isReadOnly}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Filter Exclusion Deactivation"
+                                    description="When filter exclusion stops being active."
+                                    triggers={messageFilterExclusionDeactivationTriggers}
+                                    onChange={setMessageFilterExclusionDeactivationTriggers}
+                                    error={errors.messageFilterExclusionDeactivationRegex}
+                                    isReadOnly={isReadOnly}
+                                />
                             </div>
-                            <RegularExpressionTriggerEditor
-                                label="Filter Activation"
-                                description="Messages matching any trigger are hidden from AI."
-                                triggers={messageFilterActivationTriggers}
-                                onChange={setMessageFilterActivationTriggers}
-                                error={errors.messageFilterRegex}
-                                placeholder="^\/ooc\s+|^\[.*\]$"
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Filter Deactivation"
-                                description="Stops filtering when any trigger matches."
-                                triggers={messageFilterDeactivationTriggers}
-                                onChange={setMessageFilterDeactivationTriggers}
-                                error={errors.messageFilterDeactivationRegex}
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Filter Exclusion Activation"
-                                description="Overrides filter — keeps message visible."
-                                triggers={messageFilterExclusionActivationTriggers}
-                                onChange={setMessageFilterExclusionActivationTriggers}
-                                error={errors.messageFilterExclusionActivationRegex}
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Filter Exclusion Deactivation"
-                                description="When filter exclusion stops being active."
-                                triggers={messageFilterExclusionDeactivationTriggers}
-                                onChange={setMessageFilterExclusionDeactivationTriggers}
-                                error={errors.messageFilterExclusionDeactivationRegex}
-                            />
-                        </div>
+                        </fieldset>
                     )}
 
                     {/* ─── LOREBOOK TAB ─── */}
@@ -610,19 +628,19 @@ function ContextEditorModalInner({
                                 <div className="editor-row">
                                     <div>
                                         <label className="editor-label editor-label-small">Token Budget</label>
-                                        <input type="number" step="1" min="0" value={tokenBudget} onChange={(e) => setTokenBudget(Math.max(0, Number.parseInt(e.target.value) || 0))} className="editor-input context-input-small" title="Maximum tokens this entry can consume. 0 = auto-estimate." />
+                                        <input type="number" step="1" min="0" value={tokenBudget} onChange={(e) => setTokenBudget(Math.max(0, Number.parseInt(e.target.value) || 0))} className="editor-input context-input-small" title="Maximum tokens this entry can consume. 0 = auto-estimate." disabled={isUploading || isReadOnly} />
                                         <div className="context-field-hint">0 = auto · bottom dropped first</div>
                                     </div>
                                     <div>
                                         <label className="editor-label editor-label-small">Insertion Depth</label>
-                                        <input type="number" step="1" min="0" value={insertionDepth} onChange={(e) => setInsertionDepth(Math.max(0, Number.parseInt(e.target.value) || 0))} className="editor-input context-input-small" title="Where in the prompt to place this entry." />
+                                        <input type="number" step="1" min="0" value={insertionDepth} onChange={(e) => setInsertionDepth(Math.max(0, Number.parseInt(e.target.value) || 0))} className="editor-input context-input-small" title="Where in the prompt to place this entry." disabled={isUploading || isReadOnly} />
                                         <div className="context-field-hint">0 = top · higher = closer to chat</div>
                                     </div>
                                 </div>
                                 <div className="editor-row" style={{ marginTop: '10px' }}>
                                     <div>
                                         <label className="editor-label editor-label-small">Maximum Recursion Depth</label>
-                                        <input type="number" step="1" min="0" max="10" value={maximumRecursionDepth} onChange={(e) => setMaximumRecursionDepth(Math.max(0, Math.min(10, Number.parseInt(e.target.value) || 0)))} className="editor-input context-input-small" title="Maximum recursion depth for lorebook scanning." />
+                                        <input type="number" step="1" min="0" max="10" value={maximumRecursionDepth} onChange={(e) => setMaximumRecursionDepth(Math.max(0, Math.min(10, Number.parseInt(e.target.value) || 0)))} className="editor-input context-input-small" title="Maximum recursion depth for lorebook scanning." disabled={isUploading || isReadOnly} />
                                         <div className="context-field-hint">0 = no recursion · default: 5</div>
                                     </div>
                                 </div>
@@ -638,12 +656,12 @@ function ContextEditorModalInner({
                                         return (
                                             <div key={id} className="context-character-binding-chip">
                                                 <span className="context-character-binding-name">{char.name}</span>
-                                                <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
+                                                <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isReadOnly}>×</button>
                                             </div>
                                         );
                                     })}
                                 </div>
-                                <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
+                                <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading || isReadOnly}>
                                     <option value="" disabled>+ Bind to a character</option>
                                     {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                                 </select>

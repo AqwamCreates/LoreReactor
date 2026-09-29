@@ -80,6 +80,7 @@ type EditorTabId = 'general' | 'behaviour' | 'stats' | 'tools' | 'model' | 'quic
 
 interface CharacterEditorModalProps {
     isOpen: boolean;
+    isReadOnly?: boolean;
     onClose: () => void;
     onSave: (character: Character) => void;
     existingCharacter?: Character | null;
@@ -94,7 +95,7 @@ interface CharacterEditorModalProps {
 }
 
 export function CharacterEditorModal({
-    isOpen, onClose, onSave, existingCharacter,
+    isOpen, isReadOnly = false, onClose, onSave, existingCharacter,
     allSamplers, allCharacters, isLoadingSamplers = false,
     selectedModel, runningModels,
     chatNameMap, interactionData, localProtagonist,
@@ -117,6 +118,7 @@ export function CharacterEditorModal({
             chatNameMap={chatNameMap}
             interactionData={interactionData}
             localProtagonist={localProtagonist}
+            isReadOnly={isReadOnly}
         />
     );
 }
@@ -126,6 +128,7 @@ function CharacterEditorModalInner({
     allSamplers, allCharacters, isLoadingSamplers = false,
     selectedModel, runningModels,
     chatNameMap, interactionData, localProtagonist,
+    isReadOnly = false,
 }: Omit<CharacterEditorModalProps, 'isOpen'>) {
     const [activeTab, setActiveTab] = useState<EditorTabId>('general');
 
@@ -877,15 +880,17 @@ function CharacterEditorModalInner({
             <div className="modal-overlay" onClick={onClose}>
                 <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
                     <div className="modal-header">
-                        <h2>{existingCharacter ? 'Edit Character' : 'Create New Character'}</h2>
+                        <h2>{isReadOnly ? 'View Character' : (existingCharacter ? 'Edit Character' : 'Create New Character')}</h2>
                         <div className="editor-modal-actions">
-                            <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
-                            {existingCharacter && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
-                            {!existingCharacter && (<>
+                            <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>
+                                {isReadOnly ? 'Close' : 'Cancel'}
+                            </button>
+                            {!isReadOnly && existingCharacter && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
+                            {!isReadOnly && !existingCharacter && (<>
                                 <button type="button" className="editor-button editor-button-import" onClick={() => cardImportRef.current?.click()} disabled={isUploading}>Import</button>
                                 <input ref={cardImportRef} type="file" accept=".png,.charx,.json,image/png,application/zip,application/json" hidden onChange={handleCardImport} disabled={isUploading} />
                             </>)}
-                            <button type="button" className="editor-button editor-button-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Uploading...' : 'Save'}</button>
+                            {!isReadOnly && <button type="button" className="editor-button editor-button-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Uploading...' : 'Save'}</button>}
                         </div>
                     </div>
 
@@ -912,27 +917,27 @@ function CharacterEditorModalInner({
                                 <div className="editor-left-column">
                                     <div className="editor-image-upload-container">
                                         <div className={`editor-image-square editor-image-portrait ${imagePreview ? 'active solid' : 'dashed'}`}
-                                            style={{ cursor: isUploading ? 'wait' : 'pointer', opacity: isUploading ? 0.7 : 1 }}
-                                            onClick={() => !isUploading && fileInputRef.current?.click()}>
-                                            {imagePreview ? (<><img src={imagePreview} alt="Character" />{!isUploading && <div className="editor-image-hover-overlay"><button type="button" onClick={handleRemoveImage} className="editor-image-remove-button-large" title="Remove Picture">🗑️</button></div>}</>) : (<div className="editor-image-placeholder">{isUploading ? '⏳' : '📷'}</div>)}
+                                            style={{ cursor: (isUploading || isReadOnly) ? 'default' : 'pointer', opacity: isUploading ? 0.7 : 1 }}
+                                            onClick={() => !(isUploading || isReadOnly) && fileInputRef.current?.click()}>
+                                            {imagePreview ? (<><img src={imagePreview} alt="Character" />{!(isUploading || isReadOnly) && <div className="editor-image-hover-overlay"><button type="button" onClick={handleRemoveImage} className="editor-image-remove-button-large" title="Remove Picture">🗑️</button></div>}</>) : (<div className="editor-image-placeholder">{isUploading ? '⏳' : '📷'}</div>)}
                                         </div>
-                                        <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleImageChange} disabled={isUploading} />
+                                        <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleImageChange} disabled={isUploading || isReadOnly} />
                                     </div>
 
-                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowImageEditor(true)} disabled={isUploading} style={{ width: '100%', marginTop: '6px', fontSize: '0.75rem' }}>
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowImageEditor(true)} disabled={isUploading || isReadOnly} style={{ width: '100%', marginTop: '6px', fontSize: '0.75rem' }}>
                                         More Images ({Object.keys(emotionImages).length})
                                     </button>
 
                                     <div className="editor-section" style={{ marginTop: '8px' }}>
                                         <label className="editor-checkbox-label">
-                                            <input type="checkbox" checked={useFrontCameraImage} onChange={(e) => setUseFrontCameraImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
+                                            <input type="checkbox" checked={useFrontCameraImage} onChange={(e) => setUseFrontCameraImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
                                             <span>Use Front Camera Image</span>
                                         </label>
                                         <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', marginLeft: '26px' }}>
                                             Replace stored image with live front camera snapshot when profile allows per-character control.
                                         </div>
                                         <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                                            <input type="checkbox" checked={doNotInjectCharacterImage} onChange={(e) => setDoNotInjectCharacterImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading} />
+                                            <input type="checkbox" checked={doNotInjectCharacterImage} onChange={(e) => setDoNotInjectCharacterImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
                                             <span>Do Not Inject Character Image</span>
                                         </label>
                                         <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', marginLeft: '26px' }}>
@@ -944,25 +949,25 @@ function CharacterEditorModalInner({
                                         <span className="editor-section-title">Voice</span>
                                         <div className="editor-voice-hint">Used for reading character's text. Maximum 5MB.</div>
                                         {hasVoice ? (
-                                            <div className="editor-voice-chip"><span className="editor-voice-chip-name">🎙️ {voiceFile ? voiceFile.name : existingVoiceName}</span><button type="button" onClick={handleRemoveVoice} disabled={isUploading} className="editor-voice-remove-button" title="Remove voice">×</button></div>
+                                            <div className="editor-voice-chip"><span className="editor-voice-chip-name">🎙️ {voiceFile ? voiceFile.name : existingVoiceName}</span><button type="button" onClick={handleRemoveVoice} disabled={isUploading || isReadOnly} className="editor-voice-remove-button" title="Remove voice">×</button></div>
                                         ) : (
-                                            <button type="button" onClick={() => !isUploading && voiceInputRef.current?.click()} disabled={isUploading} className={`toolbar-button editor-voice-upload-button ${isUploading ? 'uploading' : ''}`}>{isUploading ? 'Uploading...' : '🎙️ Upload Voice Sample'}</button>
+                                            <button type="button" onClick={() => !(isUploading || isReadOnly) && voiceInputRef.current?.click()} disabled={isUploading || isReadOnly} className={`toolbar-button editor-voice-upload-button ${isUploading ? 'uploading' : ''}`}>{isUploading ? 'Uploading...' : '🎙️ Upload Voice Sample'}</button>
                                         )}
-                                        <input ref={voiceInputRef} type="file" accept="audio/*,.wav,.mp3,.flac,.ogg" hidden onChange={handleVoiceChange} disabled={isUploading} />
+                                        <input ref={voiceInputRef} type="file" accept="audio/*,.wav,.mp3,.flac,.ogg" hidden onChange={handleVoiceChange} disabled={isUploading || isReadOnly} />
                                     </div>
                                 </div>
 
                                 <div className="editor-right-column">
-                                    <textarea value={name} onChange={(e) => setName(e.target.value)} className="editor-textarea editor-textarea-name" placeholder="Name *" disabled={isUploading} />
-                                    <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea editor-textarea-description" placeholder="Description" disabled={isUploading} />
-                                    <textarea value={firstMessage} onChange={(e) => setFirstMessage(e.target.value)} className="editor-textarea editor-textarea-first-message" placeholder="First message" disabled={isUploading} />
+                                    <textarea value={name} isReadOnly={isReadOnly} onChange={(e) => setName(e.target.value)} className="editor-textarea editor-textarea-name" placeholder="Name *" disabled={isUploading} />
+                                    <textarea value={description} isReadOnly={isReadOnly} onChange={(e) => setDescription(e.target.value)} className="editor-textarea editor-textarea-description" placeholder="Description" disabled={isUploading} />
+                                    <textarea value={firstMessage} isReadOnly={isReadOnly} onChange={(e) => setFirstMessage(e.target.value)} className="editor-textarea editor-textarea-first-message" placeholder="First message" disabled={isUploading} />
 
                                     <div className="editor-field-wrapper-full">
-                                        <textarea value={systemPrompt} onChange={(e) => { setSystemPrompt(e.target.value); countFieldTokens('systemPrompt', e.target.value); }} onBlur={handleSystemPromptBlur} className="editor-textarea editor-textarea-system" placeholder="System prompt" disabled={isUploading} />
+                                        <textarea value={systemPrompt} isReadOnly={isReadOnly} onChange={(e) => { setSystemPrompt(e.target.value); countFieldTokens('systemPrompt', e.target.value); }} onBlur={handleSystemPromptBlur} className="editor-textarea editor-textarea-system" placeholder="System prompt" disabled={isUploading} />
                                         {renderTokenCount('systemPrompt')}
                                     </div>
-                                    <div className="editor-field-wrapper"><textarea value={thinkPrompt} onChange={(e) => { setThinkPrompt(e.target.value); countFieldTokens('thinkPrompt', e.target.value); }} className="editor-textarea editor-textarea-think" placeholder="Think Prompt" disabled={isUploading} />{renderTokenCount('thinkPrompt')}</div>
-                                    <div className="editor-field-wrapper"><textarea value={appearancePrompt} onChange={(e) => { setAppearancePrompt(e.target.value); countFieldTokens('appearancePrompt', e.target.value); }} className="editor-textarea editor-textarea-appearance" placeholder="Appearance Prompt" disabled={isUploading} />{renderTokenCount('appearancePrompt')}</div>
+                                    <div className="editor-field-wrapper"><textarea value={thinkPrompt} isReadOnly={isReadOnly} onChange={(e) => { setThinkPrompt(e.target.value); countFieldTokens('thinkPrompt', e.target.value); }} className="editor-textarea editor-textarea-think" placeholder="Think Prompt" disabled={isUploading} />{renderTokenCount('thinkPrompt')}</div>
+                                    <div className="editor-field-wrapper"><textarea value={appearancePrompt} isReadOnly={isReadOnly} onChange={(e) => { setAppearancePrompt(e.target.value); countFieldTokens('appearancePrompt', e.target.value); }} className="editor-textarea editor-textarea-appearance" placeholder="Appearance Prompt" disabled={isUploading} />{renderTokenCount('appearancePrompt')}</div>
                                 </div>
                             </div>
                         )}
@@ -975,16 +980,16 @@ function CharacterEditorModalInner({
                                     <div className="editor-section-title">Starter Prompts ({Object.keys(starterPrompts).length})</div>
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Weighted starter messages. Higher weight = more likely to be selected.</div>
                                     <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
-                                        <input type="text" value={newStarterPromptText} onChange={e => setNewStarterPromptText(e.target.value)} className="editor-input" placeholder="Starter prompt text..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
-                                        <input type="number" value={newStarterPromptWeight} onChange={e => setNewStarterPromptWeight(e.target.value)} className="editor-input" placeholder="Wt" min="0.1" step="0.5" style={{ width: '50px', fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
-                                        <button type="button" onClick={handleAddStarterPrompt} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading}>+</button>
+                                        <input type="text" value={newStarterPromptText} isReadOnly={isReadOnly} onChange={e => setNewStarterPromptText(e.target.value)} className="editor-input" placeholder="Starter prompt text..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
+                                        <input type="number" value={newStarterPromptWeight} onChange={e => setNewStarterPromptWeight(e.target.value)} className="editor-input" placeholder="Wt" min="0.1" step="0.5" style={{ width: '50px', fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading || isReadOnly} />
+                                        <button type="button" onClick={handleAddStarterPrompt} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading || isReadOnly}>+</button>
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '120px', overflowY: 'auto' }}>
                                         {Object.entries(starterPrompts).map(([text, weight]) => (
                                             <div key={text} style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                                                 <span style={{ flex: 1, fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{text}</span>
-                                                <input type="number" value={weight} onChange={e => handleStarterPromptWeightChange(text, e.target.value)} className="editor-input" min="0.1" step="0.5" style={{ width: '45px', fontSize: '0.6rem', padding: '2px 4px' }} disabled={isUploading} />
-                                                <button type="button" onClick={() => handleRemoveStarterPrompt(text)} className="toolbar-button" title="Remove" style={{ width: '18px', height: '18px', fontSize: '0.6rem', color: '#ff4444', padding: 0 }} disabled={isUploading}>×</button>
+                                                <input type="number" value={weight} onChange={e => handleStarterPromptWeightChange(text, e.target.value)} className="editor-input" min="0.1" step="0.5" style={{ width: '45px', fontSize: '0.6rem', padding: '2px 4px' }} disabled={isUploading || isReadOnly} />
+                                                <button type="button" onClick={() => handleRemoveStarterPrompt(text)} className="toolbar-button" title="Remove" style={{ width: '18px', height: '18px', fontSize: '0.6rem', color: '#ff4444', padding: 0 }} disabled={isUploading || isReadOnly}>×</button>
                                             </div>
                                         ))}
                                         {Object.keys(starterPrompts).length === 0 && (
@@ -1003,7 +1008,7 @@ function CharacterEditorModalInner({
                                                 className="editor-select"
                                                 value={newMemoryPromptExpression}
                                                 onChange={e => setNewMemoryPromptExpression(e.target.value)}
-                                                disabled={isUploading || availableEmotions.length === 0}
+                                                disabled={isUploading || isReadOnly || availableEmotions.length === 0}
                                                 style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }}
                                             >
                                                 {availableEmotions.length === 0 && <option value="" disabled>All emotions assigned</option>}
@@ -1013,8 +1018,8 @@ function CharacterEditorModalInner({
                                             </select>
                                         </div>
                                         <div style={{ display: 'flex', gap: '4px' }}>
-                                            <input type="text" value={newMemoryPromptTemplate} onChange={e => setNewMemoryPromptTemplate(e.target.value)} className="editor-input" placeholder="Memory template string..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
-                                            <button type="button" onClick={handleAddMemoryPrompt} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading || availableEmotions.length === 0}>+</button>
+                                            <input type="text" value={newMemoryPromptTemplate} isReadOnly={isReadOnly} onChange={e => setNewMemoryPromptTemplate(e.target.value)} className="editor-input" placeholder="Memory template string..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
+                                            <button type="button" onClick={handleAddMemoryPrompt} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading || isReadOnly || availableEmotions.length === 0}>+</button>
                                         </div>
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '150px', overflowY: 'auto' }}>
@@ -1022,7 +1027,7 @@ function CharacterEditorModalInner({
                                             <div key={expression} style={{ display: 'flex', gap: '4px', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '4px 6px', borderRadius: '4px' }}>
                                                 <span style={{ fontWeight: 'bold', fontSize: '0.65rem', color: 'var(--accent)', minWidth: '80px', textTransform: 'capitalize' }}>{expression}</span>
                                                 <span style={{ flex: 1, fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, opacity: 0.8 }}>{template}</span>
-                                                <button type="button" onClick={() => handleRemoveMemoryPrompt(expression)} className="toolbar-button" title="Remove" style={{ width: '18px', height: '18px', fontSize: '0.6rem', color: '#ff4444', padding: 0 }} disabled={isUploading}>×</button>
+                                                <button type="button" onClick={() => handleRemoveMemoryPrompt(expression)} className="toolbar-button" title="Remove" style={{ width: '18px', height: '18px', fontSize: '0.6rem', color: '#ff4444', padding: 0 }} disabled={isUploading || isReadOnly}>×</button>
                                             </div>
                                         ))}
                                         {Object.keys(memoryPrompts).length === 0 && (
@@ -1036,14 +1041,14 @@ function CharacterEditorModalInner({
                                     <div className="editor-section-title">Aliases ({aliases.length})</div>
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Alternative names this character is also known by.</div>
                                     <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
-                                        <input type="text" value={newAliasInput} onChange={e => setNewAliasInput(e.target.value)} className="editor-input" placeholder="Add alias..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} onKeyDown={e => { if (e.key === 'Enter') handleAddAlias(); }} />
-                                        <button type="button" onClick={handleAddAlias} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading}>+</button>
+                                        <input type="text" value={newAliasInput} isReadOnly={isReadOnly} onChange={e => setNewAliasInput(e.target.value)} className="editor-input" placeholder="Add alias..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} onKeyDown={e => { if (e.key === 'Enter') handleAddAlias(); }} />
+                                        <button type="button" onClick={handleAddAlias} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading || isReadOnly}>+</button>
                                     </div>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                                         {aliases.map(alias => (
                                             <span key={alias} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '12px', background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid var(--accent)', fontSize: '0.65rem', fontWeight: 'bold' }}>
                                                 {alias}
-                                                <button type="button" onClick={() => handleRemoveAlias(alias)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '0.7rem', padding: 0, lineHeight: 1, opacity: 0.6 }} onMouseEnter={e => (e.currentTarget.style.opacity = '1')} onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}>×</button>
+                                                <button type="button" onClick={() => handleRemoveAlias(alias)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '0.7rem', padding: 0, lineHeight: 1, opacity: 0.6 }} onMouseEnter={e => (e.currentTarget.style.opacity = '1')} onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')} disabled={isReadOnly}>×</button>
                                             </span>
                                         ))}
                                         {aliases.length === 0 && (
@@ -1065,13 +1070,13 @@ function CharacterEditorModalInner({
                                                 <div key={charId} style={{ padding: '6px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                                         <span style={{ fontSize: '0.7rem', fontWeight: 'bold' }}>{displayName}</span>
-                                                        <button type="button" onClick={() => handleRemoveAllKnownNames(charId)} className="toolbar-button" style={{ fontSize: '0.55rem', padding: '1px 5px', color: '#ff4444' }} title="Remove all">×</button>
+                                                        <button type="button" onClick={() => handleRemoveAllKnownNames(charId)} className="toolbar-button" style={{ fontSize: '0.55rem', padding: '1px 5px', color: '#ff4444' }} title="Remove all" disabled={isReadOnly}>×</button>
                                                     </div>
                                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
                                                         {nameVariants.map(variant => (
                                                             <span key={variant} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '1px 6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', fontSize: '0.6rem' }}>
                                                                 {variant}
-                                                                <button type="button" onClick={() => handleRemoveKnownName(charId, variant)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4444', fontSize: '0.6rem', padding: 0, lineHeight: 1 }}>×</button>
+                                                                <button type="button" onClick={() => handleRemoveKnownName(charId, variant)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4444', fontSize: '0.6rem', padding: 0, lineHeight: 1 }} disabled={isReadOnly}>×</button>
                                                             </span>
                                                         ))}
                                                     </div>
@@ -1088,7 +1093,7 @@ function CharacterEditorModalInner({
                                             className="editor-select"
                                             value={selectedCharForKnownName}
                                             onChange={e => handleCharacterSelectForKnownName(e.target.value)}
-                                            disabled={isUploading || otherCharacters.length === 0}
+                                            disabled={isUploading || isReadOnly || otherCharacters.length === 0}
                                             style={{ flex: 1, fontSize: '0.7rem' }}
                                         >
                                             <option value="">Select character...</option>
@@ -1100,7 +1105,7 @@ function CharacterEditorModalInner({
                                             className="editor-select"
                                             value={selectedAliasForKnownName}
                                             onChange={e => handleAliasSelectForKnownName(e.target.value)}
-                                            disabled={isUploading || !selectedCharForKnownName || selectedCharAliases.length === 0}
+                                            disabled={isUploading || isReadOnly || !selectedCharForKnownName || selectedCharAliases.length === 0}
                                             style={{ flex: 1, fontSize: '0.7rem' }}
                                         >
                                             <option value="">Select name/alias...</option>
@@ -1117,16 +1122,16 @@ function CharacterEditorModalInner({
 
                                 {/* Behaviour buttons */}
                                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowDialoguePromptEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Dialogue ({dialoguePrompts.length})</button>
-                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowKnowledgePromptEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Knowledge ({knowledgePrompts.length})</button>
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowDialoguePromptEditor(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Dialogue ({dialoguePrompts.length})</button>
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowKnowledgePromptEditor(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Knowledge ({knowledgePrompts.length})</button>
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowClothingEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Clothing ({clothings.length})</button>
-                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowTextInjectionEditor(true)} disabled={isUploading} style={{ flex: 1 }}>Text Injection ({textCharacterInjections.length})</button>
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowClothingEditor(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Clothing ({clothings.length})</button>
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowTextInjectionEditor(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Text Injection ({textCharacterInjections.length})</button>
                                 </div>
 
                                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading} style={{ flex: 1 }}>Memory ({memoryCount})</button>
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Memory ({memoryCount})</button>
                                 </div>
 
                                 {/* Prompt Decay */}
@@ -1138,19 +1143,19 @@ function CharacterEditorModalInner({
                                     <div className="editor-stats-grid">
                                         <div>
                                             <label className="editor-label editor-label-small">Think Prompt</label>
-                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableThinkPromptStr} onChange={(e) => setNumberOfMessagesToDisableThinkPromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableThinkPromptStr} onChange={(e) => setNumberOfMessagesToDisableThinkPromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                         </div>
                                         <div>
                                             <label className="editor-label editor-label-small">Meta-Think Instructions</label>
-                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableMetaThinkInstructionsStr} onChange={(e) => setNumberOfMessagesToDisableMetaThinkInstructionsStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableMetaThinkInstructionsStr} onChange={(e) => setNumberOfMessagesToDisableMetaThinkInstructionsStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                         </div>
                                         <div>
                                             <label className="editor-label editor-label-small">Dialogue Prompt</label>
-                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableDialoguePromptStr} onChange={(e) => setNumberOfMessagesToDisableDialoguePromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableDialoguePromptStr} onChange={(e) => setNumberOfMessagesToDisableDialoguePromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                         </div>
                                         <div>
                                             <label className="editor-label editor-label-small">Starter Prompt</label>
-                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableStarterPromptStr} onChange={(e) => setNumberOfMessagesToDisableStarterPromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableStarterPromptStr} onChange={(e) => setNumberOfMessagesToDisableStarterPromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                         </div>
                                     </div>
                                 </div>
@@ -1165,17 +1170,17 @@ function CharacterEditorModalInner({
                                     <div className="editor-stats-grid">
                                         <div>
                                             <label className="editor-label editor-label-small">Initiative Weight</label>
-                                            <input type="number" step="0.1" value={initiativeWeightStr} onChange={(e) => setInitiativeWeightStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <input type="number" step="0.1" value={initiativeWeightStr} onChange={(e) => setInitiativeWeightStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the character's initiative when determining turn order. Range: 0 - ∞.</div>
                                         </div>
                                         <div>
                                             <label className="editor-label editor-label-small">Chat Probability</label>
-                                            <input type="number" step="0.05" value={chatProbabilityStr} onChange={(e) => setChatProbabilityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <input type="number" step="0.05" value={chatProbabilityStr} onChange={(e) => setChatProbabilityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the probability of the character initiating a chat message when selected. Range: 0 - 1.</div>
                                         </div>
                                         <div>
                                             <label className="editor-label editor-label-small">Maximum Chat Stamina</label>
-                                            <input type="number" step="1" min="0" value={maximumChatStaminaStr} onChange={(e) => setMaximumChatStaminaStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <input type="number" step="1" min="0" value={maximumChatStaminaStr} onChange={(e) => setMaximumChatStaminaStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the number of maximum paragraphs that the character could produce. Range: 0 - ∞.</div>
                                         </div>
                                     </div>
@@ -1186,17 +1191,17 @@ function CharacterEditorModalInner({
                                     <div className="editor-stats-grid">
                                         <div>
                                             <label className="editor-label editor-label-small">Name Sensitivity</label>
-                                            <input type="number" step="0.5" min="0" value={nameSensitivityStr} onChange={(e) => setNameSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <input type="number" step="0.5" min="0" value={nameSensitivityStr} onChange={(e) => setNameSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how likely the character is to be the first one to respond to the latest message. Multiplied by mention count. 0 = off.</div>
                                         </div>
                                         <div>
                                             <label className="editor-label editor-label-small">Chat Impatience</label>
-                                            <input type="number" step="0.1" min="0" value={chatImpatienceSensitivityStr} onChange={(e) => setChatImpatienceSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <input type="number" step="0.1" min="0" value={chatImpatienceSensitivityStr} onChange={(e) => setChatImpatienceSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how impatient the character is after waiting to speak for too long. Higher = speaks sooner after being quiet. 0 = off.</div>
                                         </div>
                                         <div>
                                             <label className="editor-label editor-label-small">Skip Probability</label>
-                                            <input type="number" step="0.05" min="0" max="1" value={skipProbabilityStr} onChange={(e) => setSkipProbabilityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <input type="number" step="0.05" min="0" max="1" value={skipProbabilityStr} onChange={(e) => setSkipProbabilityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Probability of skipping an action. Range: 0 - 1.</div>
                                         </div>
                                     </div>
@@ -1207,17 +1212,17 @@ function CharacterEditorModalInner({
                                     <div className="editor-stats-grid">
                                         <div>
                                             <label className="editor-label editor-label-small">Memory Retention</label>
-                                            <input type="number" step="0.1" min="0" value={memoryRetentionWeightStr} onChange={(e) => setMemoryRetentionWeightStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <input type="number" step="0.1" min="0" value={memoryRetentionWeightStr} onChange={(e) => setMemoryRetentionWeightStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how much of the character's memory is retained. Range: 0 - 1.</div>
                                         </div>
                                         <div>
                                             <label className="editor-label editor-label-small">Context Sensitivity</label>
-                                            <input type="number" step="0.1" min="0" value={contextSensitivityStr} onChange={(e) => setContextSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <input type="number" step="0.1" min="0" value={contextSensitivityStr} onChange={(e) => setContextSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how sensitive the character is to contextual cues. Range: 0 - 1.</div>
                                         </div>
                                         <div>
                                             <label className="editor-label editor-label-small">Maximum Action Stamina</label>
-                                            <input type="number" step="1" min="0" value={maximumActionStaminaStr} onChange={(e) => setMaximumActionStaminaStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading} />
+                                            <input type="number" step="1" min="0" value={maximumActionStaminaStr} onChange={(e) => setMaximumActionStaminaStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how many silent actions, movement, or non-chat interactions the character can perform before needing to rest. Range: 0 - ∞.</div>
                                         </div>
                                     </div>
@@ -1234,11 +1239,11 @@ function CharacterEditorModalInner({
                                 </div>
 
                                 <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-                                    <button type="button" className="toolbar-button" onClick={handleSelectAllTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✓ Select All</button>
-                                    <button type="button" className="toolbar-button" onClick={handleDeselectAllTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✗ Deselect All</button>
+                                    <button type="button" className="toolbar-button" onClick={handleSelectAllTools} disabled={isUploading || isReadOnly} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✓ Select All</button>
+                                    <button type="button" className="toolbar-button" onClick={handleDeselectAllTools} disabled={isUploading || isReadOnly} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✗ Deselect All</button>
                                 </div>
 
-                                <input type="text" value={toolSearchQuery} onChange={e => setToolSearchQuery(e.target.value)} className="editor-input" placeholder="Search tools..." style={{ marginBottom: '12px', fontSize: '0.75rem', padding: '6px 10px' }} />
+                                <input type="text" value={toolSearchQuery} isReadOnly={isReadOnly} onChange={e => setToolSearchQuery(e.target.value)} className="editor-input" placeholder="Search tools..." style={{ marginBottom: '12px', fontSize: '0.75rem', padding: '6px 10px' }} disabled={isUploading} />
 
                                 {filteredToolNames.length === 0 && (
                                     <div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic', padding: '8px 0' }}>No tools match "{toolSearchQuery}".</div>
@@ -1247,7 +1252,7 @@ function CharacterEditorModalInner({
                                 {filteredToolNames.map(toolName => (
                                     <div key={toolName} style={{ marginBottom: '8px' }}>
                                         <label className="editor-checkbox-label">
-                                            <input type="checkbox" checked={tools[toolName]} onChange={() => handleToolToggle(toolName)} className="editor-checkbox-input" disabled={isUploading} />
+                                            <input type="checkbox" checked={tools[toolName]} onChange={() => handleToolToggle(toolName)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
                                             <span>{toolLabels[toolName] ?? toolName}</span>
                                         </label>
                                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
@@ -1263,7 +1268,7 @@ function CharacterEditorModalInner({
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                 <div className="editor-section">
                                     <span className="editor-section-title">Sampler</span>
-                                    <select value={selectedSamplerId} onChange={(e) => setSelectedSamplerId(e.target.value)} className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingSamplers || isUploading}>
+                                    <select value={selectedSamplerId} onChange={(e) => setSelectedSamplerId(e.target.value)} className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingSamplers || isUploading || isReadOnly}>
                                         {isLoadingSamplers && <option>Loading samplers...</option>}
                                         {!isLoadingSamplers && allSamplers.length === 0 && <option>No samplers available</option>}
                                         {!isLoadingSamplers && allSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
@@ -1288,13 +1293,13 @@ function CharacterEditorModalInner({
                                                         <span className="sampler-stop-name">{sp.name}</span>
                                                         <span className="sampler-stop-pattern">{sp.pattern}</span>
                                                     </div>
-                                                    <button type="button" onClick={() => handleStopPatternToggle(id)} className="sampler-stop-remove-button" title="Remove stop pattern">×</button>
+                                                    <button type="button" onClick={() => handleStopPatternToggle(id)} className="sampler-stop-remove-button" title="Remove stop pattern" disabled={isReadOnly}>×</button>
                                                 </div>
                                             );
                                         })}
                                     </div>
 
-                                    <select onChange={(e) => { const val = e.target.value; if (val) handleStopPatternToggle(val); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
+                                    <select onChange={(e) => { const val = e.target.value; if (val) handleStopPatternToggle(val); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading || isReadOnly}>
                                         <option value="" disabled>+ Add a stop pattern</option>
                                         {allSamplers
                                             .flatMap(s => s.stopPatterns)
@@ -1351,21 +1356,21 @@ function CharacterEditorModalInner({
                                     )}
 
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleRevertKnownNames} disabled={isUploading} title="Revert known names to their state before opening this editor" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>↩️ Revert Known Names to Original</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCurrentProtagonist} disabled={isUploading || !hasLocalProtagonist} title={!hasLocalProtagonist ? 'No active local protagonist' : 'Add current protagonist name + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🎯 Know Current Protagonist's Names</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedProtagonists} disabled={isUploading || !hasSession || coLocatedProtagonistCount === 0} title={!hasSession ? 'No active session' : coLocatedProtagonistCount === 0 ? 'No co-located protagonists' : `Add ${coLocatedProtagonistCount} co-located protagonist(s) names`} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Protagonists' Names {coLocatedProtagonistCount > 0 && `(${coLocatedProtagonistCount})`}</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllProtagonists} disabled={isUploading || !hasSession || !hasProtagonists} title={!hasSession ? 'No active session' : 'Add all protagonists names + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>👥 Know All The Protagonists' Names</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedParticipants} disabled={isUploading || !hasSession || coLocatedParticipantCount === 0} title={!hasSession ? 'No active session' : coLocatedParticipantCount === 0 ? 'No co-located participants' : `Add ${coLocatedParticipantCount} co-located participant(s) names`} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Participants' Names {coLocatedParticipantCount > 0 && `(${coLocatedParticipantCount})`}</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllParticipants} disabled={isUploading || !hasSession || !hasParticipants} title={!hasSession ? 'No active session' : 'Add all session participants names + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🎭 Know All Participants' Names</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllCharacters} disabled={isUploading || allCharacters.length === 0} title="Add every character in the global registry" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🌐 Know All Characters' Names</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleRevertKnownNames} disabled={isUploading || isReadOnly} title="Revert known names to their state before opening this editor" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>↩️ Revert Known Names to Original</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCurrentProtagonist} disabled={isUploading || isReadOnly || !hasLocalProtagonist} title={!hasLocalProtagonist ? 'No active local protagonist' : 'Add current protagonist name + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🎯 Know Current Protagonist's Names</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedProtagonists} disabled={isUploading || isReadOnly || !hasSession || coLocatedProtagonistCount === 0} title={!hasSession ? 'No active session' : coLocatedProtagonistCount === 0 ? 'No co-located protagonists' : `Add ${coLocatedProtagonistCount} co-located protagonist(s) names`} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Protagonists' Names {coLocatedProtagonistCount > 0 && `(${coLocatedProtagonistCount})`}</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllProtagonists} disabled={isUploading || isReadOnly || !hasSession || !hasProtagonists} title={!hasSession ? 'No active session' : 'Add all protagonists names + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>👥 Know All The Protagonists' Names</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedParticipants} disabled={isUploading || isReadOnly || !hasSession || coLocatedParticipantCount === 0} title={!hasSession ? 'No active session' : coLocatedParticipantCount === 0 ? 'No co-located participants' : `Add ${coLocatedParticipantCount} co-located participant(s) names`} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Participants' Names {coLocatedParticipantCount > 0 && `(${coLocatedParticipantCount})`}</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllParticipants} disabled={isUploading || isReadOnly || !hasSession || !hasParticipants} title={!hasSession ? 'No active session' : 'Add all session participants names + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🎭 Know All Participants' Names</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllCharacters} disabled={isUploading || isReadOnly || allCharacters.length === 0} title="Add every character in the global registry" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🌐 Know All Characters' Names</button>
                                     </div>
                                 </div>
 
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <span className="editor-section-title">Stat Utilities</span>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleAutoDetectStats} disabled={isUploading} title="Re-run auto-detection on name + description + system prompt" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🔍 Auto-Detect Stats from Prompts</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleResetStatsToDefaults} disabled={isUploading} title="Reset all stats to their default values" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>↩️ Reset Stats to Defaults</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleAutoDetectStats} disabled={isUploading || isReadOnly} title="Re-run auto-detection on name + description + system prompt" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🔍 Auto-Detect Stats from Prompts</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleResetStatsToDefaults} disabled={isUploading || isReadOnly} title="Reset all stats to their default values" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>↩️ Reset Stats to Defaults</button>
                                     </div>
                                 </div>
                             </div>
@@ -1389,6 +1394,7 @@ function CharacterEditorModalInner({
                         setImagePreview(null); 
                     }
                 }}
+                isReadOnly={isReadOnly}
             />
 
             <CharacterClothingEditorModal
@@ -1396,6 +1402,7 @@ function CharacterEditorModalInner({
                 onClose={() => setShowClothingEditor(false)}
                 clothings={clothings}
                 onSaveClothings={setClothings}
+                isReadOnly={isReadOnly}
             />
 
             <CharacterDialoguePromptEditorModal
@@ -1403,6 +1410,7 @@ function CharacterEditorModalInner({
                 onClose={() => setShowDialoguePromptEditor(false)}
                 dialoguePrompts={dialoguePrompts}
                 onSaveDialoguePrompts={setDialoguePrompts}
+                isReadOnly={isReadOnly}
             />
 
             <CharacterKnowledgePromptEditorModal
@@ -1410,6 +1418,7 @@ function CharacterEditorModalInner({
                 onClose={() => setShowKnowledgePromptEditor(false)}
                 knowledgePrompts={knowledgePrompts}
                 onSaveKnowledgePrompts={setKnowledgePrompts}
+                isReadOnly={isReadOnly}
             />
 
             <CharacterTextCharacterInjectionEditorModal
@@ -1417,6 +1426,7 @@ function CharacterEditorModalInner({
                 onClose={() => setShowTextInjectionEditor(false)}
                 injections={textCharacterInjections}
                 onSaveInjections={setTextCharacterInjections}
+                isReadOnly={isReadOnly}
             />
 
             <CharacterMemoryEditorModal
@@ -1425,6 +1435,7 @@ function CharacterEditorModalInner({
                 character={existingCharacter || null}
                 onSaveMemories={setMemories}
                 chatNameMap={chatNameMap}
+                isReadOnly={isReadOnly}
             />
         </>
     );

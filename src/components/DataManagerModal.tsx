@@ -909,7 +909,7 @@ export function DataManagerModal({
                                 <div style={{ overflowX: 'auto', maxHeight: '450px', border: '1px solid var(--border)', borderRadius: '8px' }}>
                                     <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
                                         <thead><tr>
-                                            <th style={{ ...thStyle, width: '36px', textAlign: 'center', cursor: 'default' }}><input type="checkbox" readOnly checked={filteredAndSorted.length > 0 && filteredAndSorted.every(o => selectedIds.has(o.id))} style={{ accentColor: 'var(--accent)' }} /></th>
+                                            <th style={{ ...thStyle, width: '36px', textAlign: 'center', cursor: 'default' }}><input type="checkbox" isReadOnly checked={filteredAndSorted.length > 0 && filteredAndSorted.every(o => selectedIds.has(o.id))} style={{ accentColor: 'var(--accent)' }} /></th>
                                             <th style={thStyle} onClick={() => handleSort('name')}>Name {sortIndicator('name')}</th>
                                             <th style={thStyle} onClick={() => handleSort('type')}>Type {sortIndicator('type')}</th>
                                             <th style={thStyle} onClick={() => handleSort('lastUpdated')}>Last Updated {sortIndicator('lastUpdated')}</th>
@@ -917,7 +917,7 @@ export function DataManagerModal({
                                         </tr></thead>
                                         <tbody>{filteredAndSorted.map(item => (
                                             <tr key={`${item.type}-${item.id}`} onClick={() => toggleSelection(item.id)} style={{ cursor: 'pointer', background: selectedIds.has(item.id) ? 'var(--accent-bg)' : 'transparent', transition: 'background 0.15s' }}>
-                                                <td style={{ ...tdStyle, textAlign: 'center' }}><input type="checkbox" checked={selectedIds.has(item.id)} readOnly style={{ accentColor: 'var(--accent)', width: '14px', height: '14px' }} /></td>
+                                                <td style={{ ...tdStyle, textAlign: 'center' }}><input type="checkbox" checked={selectedIds.has(item.id)} isReadOnly style={{ accentColor: 'var(--accent)', width: '14px', height: '14px' }} /></td>
                                                 <td style={{ ...tdStyle, fontWeight: 'bold', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</td>
                                                 <td style={tdStyle}><span style={{ fontSize: '0.7rem', opacity: 0.7 }}>{ENTITY_TYPE_META[item.type].icon} {ENTITY_TYPE_META[item.type].label.slice(0, -1)}</span></td>
                                                 <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{formatDate(item.lastUpdatedTimestamp)}<span style={{ opacity: 0.4, marginLeft: '4px' }}>({daysAgo(item.lastUpdatedTimestamp)}d)</span></td>

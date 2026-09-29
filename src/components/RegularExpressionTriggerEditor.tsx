@@ -23,6 +23,7 @@ interface RegularExpressionTriggerEditorProps {
     onChange: (triggers: RegularExpressionTrigger[]) => void;
     error?: string;
     placeholder?: string;
+    isReadOnly?: boolean;
 }
 
 export function RegularExpressionTriggerEditor({
@@ -32,6 +33,7 @@ export function RegularExpressionTriggerEditor({
     onChange,
     error,
     placeholder = '/pattern/i',
+    isReadOnly = false,
 }: RegularExpressionTriggerEditorProps) {
     const [testTexts, setTestTexts] = useState<Record<number, string>>({});
     const [testResults, setTestResults] = useState<Record<number, boolean | null>>({});
@@ -92,12 +94,14 @@ export function RegularExpressionTriggerEditor({
                                 onChange={(e) => updateField(i, 'trigger', e.target.value)}
                                 className="regex-trigger-input"
                                 placeholder={placeholder}
+                                isReadOnly={isReadOnly}
                             />
                             <select
                                 value={t.context}
                                 onChange={(e) => updateField(i, 'context', e.target.value)}
                                 className="regex-trigger-select"
                                 title="Context scope"
+                                disabled={isReadOnly}
                             >
                                 {CONTEXT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </select>
@@ -106,6 +110,7 @@ export function RegularExpressionTriggerEditor({
                                 onChange={(e) => updateField(i, 'target', e.target.value)}
                                 className="regex-trigger-select"
                                 title="Target"
+                                disabled={isReadOnly}
                             >
                                 {TARGET_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </select>
@@ -120,14 +125,16 @@ export function RegularExpressionTriggerEditor({
                                     🧪
                                 </button>
                             )}
-                            <button
-                                type="button"
-                                className="regex-trigger-remove-btn"
-                                onClick={() => handleRemove(i)}
-                                title="Remove trigger"
-                            >
-                                ×
-                            </button>
+                            {!isReadOnly && (
+                                <button
+                                    type="button"
+                                    className="regex-trigger-remove-btn"
+                                    onClick={() => handleRemove(i)}
+                                    title="Remove trigger"
+                                >
+                                    ×
+                                </button>
+                            )}
                         </div>
                         {t.trigger.trim() && (
                             <div className="regex-trigger-test-row">
@@ -150,7 +157,9 @@ export function RegularExpressionTriggerEditor({
                 ))}
             </div>
 
-            <button type="button" className="regex-trigger-add-btn" onClick={handleAdd}>+ Add Trigger</button>
+            {!isReadOnly && (
+                <button type="button" className="regex-trigger-add-btn" onClick={handleAdd}>+ Add Trigger</button>
+            )}
             {error && <div className="regex-trigger-error">{error}</div>}
         </div>
     );

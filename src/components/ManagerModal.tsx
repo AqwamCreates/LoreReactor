@@ -4,9 +4,10 @@ import '../main.css';
 
 interface ManagerModalProps<T> {
     title: string;
-    items: T[];
-    sessionItems?: T[]; // If provided, enables the "Session" tab
-    isAdministrator?: boolean; // Required to toggle order (add/remove/reorder) session items in InteractionData
+    localLibraryItems: T[];
+    hosterOwnedItems?: T[];
+    isAdministrator?: boolean;
+    isMultiplayerClient?: boolean;
     isOpen: boolean;
     onClose: () => void;
     onSelect?: (item: T) => void;
@@ -42,7 +43,7 @@ function extractTextContent(node: React.ReactNode): string {
 }
 
 function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedTimestamp?: number; firstCreatedTimestamp?: number }>({
-    title, items, sessionItems, isAdministrator, onClose, onSelect, onDelete, onCreateNew,
+    title, localLibraryItems, hosterOwnedItems, isAdministrator, isMultiplayerClient, onClose, onSelect, onDelete, onCreateNew,
     renderSubtext, emptyMessage = "No items found.", actionLabel = "Delete",
     orderedListMode = false, currentOrderIds = [], onToggleOrder,
     specialActionIcon, onSpecialAction, specialActionTooltip, activeSpecialActionId,
@@ -52,43 +53,42 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
-    const hasSessionTab = sessionItems !== undefined;
-    const [activeTab, setActiveTab] = useState<'local' | 'session'>('local');
+    const hasHosterOwnedTab = hosterOwnedItems !== undefined;
+    const [activeTab, setActiveTab] = useState<'localLibrary' | 'hosterOwned'>('localLibrary');
 
-    // Focus search input on mount (DOM interaction is allowed in useEffect)
     useEffect(() => {
         searchInputRef.current?.focus();
     }, []);
 
-    // ─── Adjusting state during render (React 19 recommended pattern) ───
-    // Resets search and delete confirmations when switching tabs without triggering cascading renders.
     const [prevActiveTab, setPrevActiveTab] = useState(activeTab);
     if (activeTab !== prevActiveTab) {
         setSearchQuery('');
         setConfirmDeleteId(null);
         setPrevActiveTab(activeTab);
     }
-    // ─────────────────────────────────────────────────────────────────────
 
-    // FIX: Wrapped in useMemo to prevent dependency array from changing on every render
     const currentItems = useMemo(
-        () => (activeTab === 'session' ? (sessionItems || []) : items),
-        [activeTab, sessionItems, items]
+        () => (activeTab === 'hosterOwned' ? (hosterOwnedItems || []) : localLibraryItems),
+        [activeTab, hosterOwnedItems, localLibraryItems]
     );
-    const isSessionTab = activeTab === 'session';
+    const isHosterOwnedTab = activeTab === 'hosterOwned';
 
-    // Session tab: NEVER allow deletion. Items belong to the host's permanent library.
-    // Local tab: Allow deletion if onDelete is provided.
-    const canDelete = isSessionTab ? false : !!onDelete;
+    // Hoster-Owned tab: NEVER allow deletion. Items belong to the host's permanent library.
+    // Local Library tab: Allow deletion if onDelete is provided.
+    const canDelete = isHosterOwnedTab ? false : !!onDelete;
 
-    // Session tab: Toggle order (add/remove/reorder in InteractionData) ONLY for administrators.
-    // Local tab: Always allow toggle order if the props are provided.
-    const canToggleOrder = isSessionTab
-        ? (isAdministrator === true && orderedListMode && !!onToggleOrder)
-        : (orderedListMode && !!onToggleOrder);
+    // Toggle Order Logic:
+    // 1. Hoster-Owned tab: Only administrators can toggle hoster items in/out of the active session.
+    // 2. Local Library tab (Joiner): Joiners CANNOT toggle local items because they aren't synced to the host.
+    // 3. Local Library tab (Host/Solo): Can toggle local items.
+    const canToggleOrder = (() => {
+        if (!orderedListMode || !onToggleOrder) return false;
+        if (isHosterOwnedTab) return isAdministrator === true;
+        if (isMultiplayerClient) return false;
+        return true;
+    })();
 
-    // Hide "+ New" if onCreateNew isn't passed, OR if we are in the session tab
-    const showCreateNew = !!onCreateNew && !isSessionTab;
+    const showCreateNew = !!onCreateNew && !isHosterOwnedTab;
 
     const activeConfirmDeleteId = confirmDeleteId && currentItems.some(item => item.id === confirmDeleteId)
         ? confirmDeleteId
@@ -174,21 +174,21 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
                     </div>
                 </div>
 
-                {hasSessionTab && (
+                {hasHosterOwnedTab && (
                     <div className="entity-tab-bar" style={{ padding: '0 20px', marginBottom: 0, borderBottom: '1px solid var(--border)', background: 'var(--social-bg)' }}>
                         <button
                             type="button"
-                            className={`entity-tab-button ${activeTab === 'local' ? 'entity-tab-button-active' : ''}`}
-                            onClick={() => setActiveTab('local')}
+                            className={`entity-tab-button ${activeTab === 'localLibrary' ? 'entity-tab-button-active' : ''}`}
+                            onClick={() => setActiveTab('localLibrary')}
                         >
-                            💾 Local ({items.length})
+                            💾 Local Library ({localLibraryItems.length})
                         </button>
                         <button
                             type="button"
-                            className={`entity-tab-button ${activeTab === 'session' ? 'entity-tab-button-active' : ''}`}
-                            onClick={() => setActiveTab('session')}
+                            className={`entity-tab-button ${activeTab === 'hosterOwned' ? 'entity-tab-button-active' : ''}`}
+                            onClick={() => setActiveTab('hosterOwned')}
                         >
-                            🌐 Session ({sessionItems?.length || 0})
+                            🌐 Hoster-Owned ({hosterOwnedItems?.length || 0})
                         </button>
                     </div>
                 )}

@@ -13,6 +13,7 @@ const tokenEngine = getLanguageModelEngine();
 
 interface LocationEditorModalProps {
     isOpen: boolean;
+    isReadOnly?: boolean;
     onClose: () => void;
     onSave: (location: Location) => void;
     existingLocation?: Location | null;
@@ -29,6 +30,7 @@ type ImageEntry =
 
 export function LocationEditorModal({
     isOpen,
+    isReadOnly = false,
     onClose,
     onSave,
     existingLocation,
@@ -49,6 +51,7 @@ export function LocationEditorModal({
             allCharacters={allCharacters}
             allLocations={allLocations}
             allAudioTracks={allAudioTracks}
+            isReadOnly={isReadOnly}
         />
     );
 }
@@ -60,6 +63,7 @@ function LocationEditorModalInner({
     allCharacters = [],
     allLocations = [],
     allAudioTracks = [],
+    isReadOnly = false,
 }: Omit<LocationEditorModalProps, 'isOpen'>) {
     const [activeTab, setActiveTab] = useState<LocationTabId>('general');
 
@@ -377,11 +381,13 @@ function LocationEditorModalInner({
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h2>{existingLocation ? 'Edit Location' : 'Create New Location'}</h2>
+                    <h2>{isReadOnly ? 'View Location' : (existingLocation ? 'Edit Location' : 'Create New Location')}</h2>
                     <div className="editor-modal-actions">
-                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
-                        {existingLocation && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
-                        <button type="button" className="editor-button editor-button-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Saving...' : 'Save'}</button>
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>
+                            {isReadOnly ? 'Close' : 'Cancel'}
+                        </button>
+                        {!isReadOnly && existingLocation && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
+                        {!isReadOnly && <button type="button" className="editor-button editor-button-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Saving...' : 'Save'}</button>}
                     </div>
                 </div>
 
@@ -405,18 +411,18 @@ function LocationEditorModalInner({
                         <>
                             <div className="context-field-group">
                                 <label className="editor-label">Name <span className="context-required-asterisk">*</span></label>
-                                <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Dark Forest" />
+                                <input type="text" value={name} isReadOnly={isReadOnly} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Dark Forest" disabled={isUploading || isReadOnly} />
                                 {errors.name && <div className="editor-error-message">{errors.name}</div>}
                             </div>
 
                             <div className="context-field-group">
                                 <label className="editor-label">Description</label>
-                                <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Brief description" rows={2} />
+                                <textarea value={description} isReadOnly={isReadOnly} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Brief description" rows={2} disabled={isUploading || isReadOnly} />
                             </div>
 
                             <div className="context-field-group">
                                 <label className="editor-label">Text {textRequiresAsterisk && <span className="context-required-asterisk">*</span>}</label>
-                                <textarea value={text} onChange={(e) => { setText(e.target.value); if (errors.text) setErrors({ ...errors, text: undefined }); }} className={`editor-textarea ${errors.text ? 'error' : ''}`} placeholder="Location description and atmosphere (optional if using images)" rows={6} />
+                                <textarea value={text} isReadOnly={isReadOnly} onChange={(e) => { setText(e.target.value); if (errors.text) setErrors({ ...errors, text: undefined }); }} className={`editor-textarea ${errors.text ? 'error' : ''}`} placeholder="Location description and atmosphere (optional if using images)" rows={6} disabled={isUploading || isReadOnly} />
                                 <div className="context-token-count">~{textNumberOfTokens} token(s)</div>
                                 {errors.text && <div className="editor-error-message">{errors.text}</div>}
                             </div>
@@ -427,17 +433,17 @@ function LocationEditorModalInner({
                                     {images.map((entry, index) => (
                                         <div key={`${entry.previewUrl}-${index}`} className="editor-image-square active">
                                             <img src={entry.previewUrl} alt={`Location image ${index + 1}`} />
-                                            <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-button">×</button>
+                                            <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-button" disabled={isReadOnly}>×</button>
                                         </div>
                                     ))}
-                                    <div className={`editor-image-square editor-upload-square ${isUploading ? 'disabled' : ''}`} onClick={() => !isUploading && fileInputRef.current?.click()}>
+                                    <div className={`editor-image-square editor-upload-square ${(isUploading || isReadOnly) ? 'disabled' : ''}`} onClick={() => !(isUploading || isReadOnly) && fileInputRef.current?.click()}>
                                         <div className="context-image-placeholder">
                                             <div className="context-image-placeholder-icon">{isUploading ? '⏳' : '📷'}</div>
                                             <div className="context-image-placeholder-text">{isUploading ? 'Uploading...' : 'Upload'}</div>
                                         </div>
                                     </div>
                                 </div>
-                                <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={handleImageChange} disabled={isUploading} />
+                                <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={handleImageChange} disabled={isUploading || isReadOnly} />
                                 {errors.images && <div className="editor-error-message">{errors.images}</div>}
                             </div>
 
@@ -462,24 +468,24 @@ function LocationEditorModalInner({
                                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                                                     <div style={{ flex: '0 0 auto' }}>
                                                         <label className="editor-label editor-label-small">Weight</label>
-                                                        <input type="number" step="0.1" min="0" value={currentWeight} onChange={(e) => setBgImageWeights(prev => ({ ...prev, [index]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input context-input-small" style={{ width: '70px' }} />
+                                                        <input type="number" step="0.1" min="0" value={currentWeight} onChange={(e) => setBgImageWeights(prev => ({ ...prev, [index]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input context-input-small" style={{ width: '70px' }} disabled={isUploading || isReadOnly} />
                                                     </div>
                                                     <div style={{ flex: 1, minWidth: '150px' }}>
                                                         <label className="editor-label editor-label-small">Regex Trigger (optional)</label>
-                                                        <input type="text" value={currentRegex} onChange={(e) => {
+                                                        <input type="text" value={currentRegex} isReadOnly={isReadOnly} onChange={(e) => {
                                                             const val = e.target.value;
                                                             setBgImageRegexTriggers(prev => { const next = { ...prev }; if (val.trim()) next[index] = val; else delete next[index]; return next; });
                                                             setBgImageTestResults(prev => ({ ...prev, [index]: null }));
                                                             if (errors.bgImageRegex) setErrors(prev => { const next = { ...prev, bgImageRegex: { ...(prev.bgImageRegex || {}) } }; if (next.bgImageRegex) { delete next.bgImageRegex[index]; if (Object.keys(next.bgImageRegex).length === 0) next.bgImageRegex = {}; } return next; });
-                                                        }} className={`editor-input context-mono-input ${hasRegexError ? 'error' : ''}`} placeholder="No trigger (sampled by weight)" style={{ fontSize: '0.7rem' }} />
+                                                        }} className={`editor-input context-mono-input ${hasRegexError ? 'error' : ''}`} placeholder="No trigger (sampled by weight)" style={{ fontSize: '0.7rem' }} disabled={isUploading || isReadOnly} />
                                                         {hasRegexError && <div className="editor-error-message" style={{ fontSize: '0.6rem' }}>{hasRegexError}</div>}
                                                     </div>
                                                 </div>
                                                 {currentRegex.trim() && (
                                                     <div style={{ marginTop: '6px' }}>
                                                         <div className="context-test-row">
-                                                            <input type="text" value={testText} onChange={(e) => { setBgImageTestTexts(prev => ({ ...prev, [index]: e.target.value })); setBgImageTestResults(prev => ({ ...prev, [index]: null })); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestBgImageRegex(index); } }} className="editor-input context-test-input" placeholder="Test user message..." style={{ fontSize: '0.7rem' }} />
-                                                            <button type="button" onClick={() => handleTestBgImageRegex(index)} className="editor-button editor-button-save context-test-button" disabled={!testText.trim()}>Test</button>
+                                                            <input type="text" value={testText} isReadOnly={isReadOnly} onChange={(e) => { setBgImageTestTexts(prev => ({ ...prev, [index]: e.target.value })); setBgImageTestResults(prev => ({ ...prev, [index]: null })); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestBgImageRegex(index); } }} className="editor-input context-test-input" placeholder="Test user message..." style={{ fontSize: '0.7rem' }} disabled={isUploading || isReadOnly} />
+                                                            <button type="button" onClick={() => handleTestBgImageRegex(index)} className="editor-button editor-button-save context-test-button" disabled={isReadOnly || !testText.trim()}>Test</button>
                                                         </div>
                                                         {testResult !== null && (<div className={`context-test-result ${testResult ? 'editor-success-message' : 'editor-error-message'}`} style={{ fontSize: '0.6rem' }}>{testResult ? '✅ Matches!' : '❌ No match'}</div>)}
                                                     </div>
@@ -501,13 +507,13 @@ function LocationEditorModalInner({
                                         return (
                                             <div key={trackId} className="context-character-binding-chip" style={{ gap: '6px' }}>
                                                 <span className="context-character-binding-name">🔊 {track.filename || track.name}</span>
-                                                <input type="number" step="0.1" min="0" value={weight} onChange={(e) => setPlayAudioTrackOnEnterWeights(prev => ({ ...prev, [trackId]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input" style={{ width: '60px', padding: '2px 4px', fontSize: '0.75rem' }} />
-                                                <button type="button" onClick={() => setPlayAudioTrackOnEnterWeights(prev => { const next = { ...prev }; delete next[trackId]; return next; })} className="context-character-binding-remove" title="Remove audio track">×</button>
+                                                <input type="number" step="0.1" min="0" value={weight} onChange={(e) => setPlayAudioTrackOnEnterWeights(prev => ({ ...prev, [trackId]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input" style={{ width: '60px', padding: '2px 4px', fontSize: '0.75rem' }} disabled={isUploading || isReadOnly} />
+                                                <button type="button" onClick={() => setPlayAudioTrackOnEnterWeights(prev => { const next = { ...prev }; delete next[trackId]; return next; })} className="context-character-binding-remove" title="Remove audio track" disabled={isReadOnly}>×</button>
                                             </div>
                                         );
                                     })}
                                 </div>
-                                <select onChange={(e) => { const val = e.target.value; if (val && !(val in playAudioTrackOnEnterWeights)) setPlayAudioTrackOnEnterWeights(prev => ({ ...prev, [val]: 1 })); e.target.value = ''; }} className="editor-select" defaultValue="">
+                                <select onChange={(e) => { const val = e.target.value; if (val && !(val in playAudioTrackOnEnterWeights)) setPlayAudioTrackOnEnterWeights(prev => ({ ...prev, [val]: 1 })); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading || isReadOnly}>
                                     <option value="" disabled>+ Add audio track on enter</option>
                                     {allAudioTracks.filter(t => !(t.id in playAudioTrackOnEnterWeights)).map(t => (<option key={t.id} value={t.id}>{t.filename || t.name}</option>))}
                                 </select>
@@ -520,12 +526,12 @@ function LocationEditorModalInner({
                                 <div className="editor-row" style={{ gap: '12px' }}>
                                     <div style={{ flex: 1 }}>
                                         <label className="editor-label editor-label-small">Latitude</label>
-                                        <input type="number" step="any" min="-90" max="90" value={latitude} onChange={(e) => { setLatitude(e.target.value); if (errors.latitude) setErrors(prev => ({ ...prev, latitude: undefined })); }} className={`editor-input context-input-small ${errors.latitude ? 'error' : ''}`} placeholder="-90 to 90" />
+                                        <input type="number" step="any" min="-90" max="90" value={latitude} isReadOnly={isReadOnly} onChange={(e) => { setLatitude(e.target.value); if (errors.latitude) setErrors(prev => ({ ...prev, latitude: undefined })); }} className={`editor-input context-input-small ${errors.latitude ? 'error' : ''}`} placeholder="-90 to 90" disabled={isUploading || isReadOnly} />
                                         {errors.latitude && <div className="editor-error-message" style={{ fontSize: '0.6rem' }}>{errors.latitude}</div>}
                                     </div>
                                     <div style={{ flex: 1 }}>
                                         <label className="editor-label editor-label-small">Longitude</label>
-                                        <input type="number" step="any" min="-180" max="180" value={longitude} onChange={(e) => { setLongitude(e.target.value); if (errors.longitude) setErrors(prev => ({ ...prev, longitude: undefined })); }} className={`editor-input context-input-small ${errors.longitude ? 'error' : ''}`} placeholder="-180 to 180" />
+                                        <input type="number" step="any" min="-180" max="180" value={longitude} isReadOnly={isReadOnly} onChange={(e) => { setLongitude(e.target.value); if (errors.longitude) setErrors(prev => ({ ...prev, longitude: undefined })); }} className={`editor-input context-input-small ${errors.longitude ? 'error' : ''}`} placeholder="-180 to 180" disabled={isUploading || isReadOnly} />
                                         {errors.longitude && <div className="editor-error-message" style={{ fontSize: '0.6rem' }}>{errors.longitude}</div>}
                                     </div>
                                 </div>
@@ -534,7 +540,7 @@ function LocationEditorModalInner({
                             {/* Encoding */}
                             <div className="context-field-group">
                                 <label className="editor-checkbox-label">
-                                    <input type="checkbox" checked={useBase64Encoding} onChange={(e) => setUseBase64Encoding(e.target.checked)} className="editor-checkbox-input" />
+                                    <input type="checkbox" checked={useBase64Encoding} onChange={(e) => setUseBase64Encoding(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
                                     <span>Encode text as Base64</span>
                                 </label>
                                 <div className="context-checkbox-hint">Encode location text as base64 in the prompt. Prevents the model from treating descriptions as instructions.</div>
@@ -544,7 +550,7 @@ function LocationEditorModalInner({
 
                     {/* ─── MOVEMENT TAB ─── */}
                     {activeTab === 'movement' && (
-                        <>
+                        <fieldset disabled={isReadOnly} style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
                             {/* Movement Triggers */}
                             <div className="editor-section">
                                 <span className="editor-section-title">Movement Triggers</span>
@@ -555,6 +561,7 @@ function LocationEditorModalInner({
                                     onChange={setRegexActivationTriggers}
                                     error={errors.regex}
                                     placeholder="/enters? (the )?forest/i"
+                                    isReadOnly={isReadOnly}
                                 />
                                 <RegularExpressionTriggerEditor
                                     label="Exclusion Activation"
@@ -563,6 +570,7 @@ function LocationEditorModalInner({
                                     onChange={setRegexExclusionActivationTriggers}
                                     error={errors.exclusionActivationRegex}
                                     placeholder="/dream forest|memory of forest/i"
+                                    isReadOnly={isReadOnly}
                                 />
                                 <RegularExpressionTriggerEditor
                                     label="Exclusion Deactivation"
@@ -571,6 +579,7 @@ function LocationEditorModalInner({
                                     onChange={setRegexExclusionDeactivationTriggers}
                                     error={errors.exclusionDeactivationRegex}
                                     placeholder="/wake up|leave dream/i"
+                                    isReadOnly={isReadOnly}
                                 />
                             </div>
 
@@ -579,16 +588,16 @@ function LocationEditorModalInner({
                                 <span className="editor-section-title">Movement Weights</span>
                                 <div className="context-field-group">
                                     <label className="editor-label editor-label-small">Global Weight</label>
-                                    <input type="number" step="0.1" min="0" value={globalWeight} onChange={(e) => setGlobalWeight(Math.max(0, Number(e.target.value) || 0))} className="editor-input context-input-small" />
+                                    <input type="number" step="0.1" min="0" value={globalWeight} onChange={(e) => setGlobalWeight(Math.max(0, Number(e.target.value) || 0))} className="editor-input context-input-small" disabled={isUploading || isReadOnly} />
                                     <div className="context-field-hint">Base likelihood for any character to enter. Higher = more likely.</div>
                                 </div>
                                 <div className="context-field-group">
                                     <span className="editor-label editor-label-small">Character-Specific Weights</span>
                                     <div className="context-binding-hint">Override global weight per character. Characters not listed use the global weight.</div>
                                     <div className="context-character-binding-list">
-                                        {Object.entries(characterWeights).map(([charId, weight]) => { const char = getCharacterById(charId); if (!char) return null; return (<div key={charId} className="context-character-binding-chip" style={{ gap: '6px' }}><span className="context-character-binding-name">{char.name}</span><input type="number" step="0.1" min="0" value={weight} onChange={(e) => setCharacterWeights(prev => ({ ...prev, [charId]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input" style={{ width: '60px', padding: '2px 4px', fontSize: '0.75rem' }} /><button type="button" onClick={() => setCharacterWeights(prev => { const next = { ...prev }; delete next[charId]; return next; })} className="context-character-binding-remove" title="Remove weight override">×</button></div>); })}
+                                        {Object.entries(characterWeights).map(([charId, weight]) => { const char = getCharacterById(charId); if (!char) return null; return (<div key={charId} className="context-character-binding-chip" style={{ gap: '6px' }}><span className="context-character-binding-name">{char.name}</span><input type="number" step="0.1" min="0" value={weight} onChange={(e) => setCharacterWeights(prev => ({ ...prev, [charId]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input" style={{ width: '60px', padding: '2px 4px', fontSize: '0.75rem' }} disabled={isUploading || isReadOnly} /><button type="button" onClick={() => setCharacterWeights(prev => { const next = { ...prev }; delete next[charId]; return next; })} className="context-character-binding-remove" title="Remove weight override" disabled={isReadOnly}>×</button></div>); })}
                                     </div>
-                                    <select onChange={(e) => { const val = e.target.value; if (val && !(val in characterWeights)) setCharacterWeights(prev => ({ ...prev, [val]: globalWeight })); e.target.value = ""; }} className="editor-select" defaultValue="">
+                                    <select onChange={(e) => { const val = e.target.value; if (val && !(val in characterWeights)) setCharacterWeights(prev => ({ ...prev, [val]: globalWeight })); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading || isReadOnly}>
                                         <option value="" disabled>+ Add character weight override</option>
                                         {allCharacters.filter(c => !(c.id in characterWeights)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                                     </select>
@@ -606,66 +615,72 @@ function LocationEditorModalInner({
                                         return (
                                             <div key={locId} className="context-character-binding-chip" style={{ gap: '6px' }}>
                                                 <span className="context-character-binding-name">{loc.name}</span>
-                                                <input type="number" step="0.1" min="0" value={distance} onChange={(e) => setLocationDistances(prev => ({ ...prev, [locId]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input" style={{ width: '70px', padding: '2px 4px', fontSize: '0.75rem' }} />
+                                                <input type="number" step="0.1" min="0" value={distance} onChange={(e) => setLocationDistances(prev => ({ ...prev, [locId]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input" style={{ width: '70px', padding: '2px 4px', fontSize: '0.75rem' }} disabled={isUploading || isReadOnly} />
                                                 <span style={{ fontSize: '0.65rem', opacity: 0.5 }}>km</span>
-                                                <button type="button" onClick={() => setLocationDistances(prev => { const next = { ...prev }; delete next[locId]; return next; })} className="context-character-binding-remove" title="Remove distance override">×</button>
+                                                <button type="button" onClick={() => setLocationDistances(prev => { const next = { ...prev }; delete next[locId]; return next; })} className="context-character-binding-remove" title="Remove distance override" disabled={isReadOnly}>×</button>
                                             </div>
                                         );
                                     })}
                                 </div>
-                                <select onChange={(e) => { const val = e.target.value; if (val && !(val in locationDistances)) setLocationDistances(prev => ({ ...prev, [val]: 0 })); e.target.value = ''; }} className="editor-select" defaultValue="">
+                                <select onChange={(e) => { const val = e.target.value; if (val && !(val in locationDistances)) setLocationDistances(prev => ({ ...prev, [val]: 0 })); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading || isReadOnly}>
                                     <option value="" disabled>+ Add distance to a location</option>
                                     {availableLocationsForDistance.filter(l => !(l.id in locationDistances)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
                                 </select>
                             </div>
-                        </>
+                        </fieldset>
                     )}
 
                     {/* ─── FILTER TAB ─── */}
                     {activeTab === 'filter' && (
-                        <div className="editor-section" style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
-                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '12px', textAlign: 'center' }}>
-                                Control which chat history messages are visible to the AI when this location is active.
-                            </div>
+                        <fieldset disabled={isReadOnly} style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
+                            <div className="editor-section" style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
+                                <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '12px', textAlign: 'center' }}>
+                                    Control which chat history messages are visible to the AI when this location is active.
+                                </div>
 
-                            <div className="context-field-group" style={{ marginBottom: '16px' }}>
-                                <label className="editor-checkbox-label">
-                                    <input type="checkbox" checked={messageFilterNonCoLocatedParticipants} onChange={(e) => setMessageFilterNonCoLocatedParticipants(e.target.checked)} className="editor-checkbox-input" />
-                                    <span>Filter Non-Co-Located Participants</span>
-                                </label>
-                                <div className="context-checkbox-hint">Hide messages from characters not currently at this location.</div>
-                            </div>
+                                <div className="context-field-group" style={{ marginBottom: '16px' }}>
+                                    <label className="editor-checkbox-label">
+                                        <input type="checkbox" checked={messageFilterNonCoLocatedParticipants} onChange={(e) => setMessageFilterNonCoLocatedParticipants(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
+                                        <span>Filter Non-Co-Located Participants</span>
+                                    </label>
+                                    <div className="context-checkbox-hint">Hide messages from characters not currently at this location.</div>
+                                </div>
 
-                            <RegularExpressionTriggerEditor
-                                label="Filter Activation"
-                                description="Messages matching any trigger are hidden from AI at this location."
-                                triggers={messageFilterActivationTriggers}
-                                onChange={setMessageFilterActivationTriggers}
-                                error={errors.messageFilterRegex}
-                                placeholder="^\/ooc\s+|^\[.*\]$"
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Filter Deactivation"
-                                description="Stops filtering when any trigger matches."
-                                triggers={messageFilterDeactivationTriggers}
-                                onChange={setMessageFilterDeactivationTriggers}
-                                error={errors.messageFilterDeactivationRegex}
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Filter Exclusion Activation"
-                                description="Overrides filter — keeps message visible."
-                                triggers={messageFilterExclusionActivationTriggers}
-                                onChange={setMessageFilterExclusionActivationTriggers}
-                                error={errors.messageFilterExclusionActivationRegex}
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Filter Exclusion Deactivation"
-                                description="When filter exclusion stops being active."
-                                triggers={messageFilterExclusionDeactivationTriggers}
-                                onChange={setMessageFilterExclusionDeactivationTriggers}
-                                error={errors.messageFilterExclusionDeactivationRegex}
-                            />
-                        </div>
+                                <RegularExpressionTriggerEditor
+                                    label="Filter Activation"
+                                    description="Messages matching any trigger are hidden from AI at this location."
+                                    triggers={messageFilterActivationTriggers}
+                                    onChange={setMessageFilterActivationTriggers}
+                                    error={errors.messageFilterRegex}
+                                    placeholder="^\/ooc\s+|^\[.*\]$"
+                                    isReadOnly={isReadOnly}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Filter Deactivation"
+                                    description="Stops filtering when any trigger matches."
+                                    triggers={messageFilterDeactivationTriggers}
+                                    onChange={setMessageFilterDeactivationTriggers}
+                                    error={errors.messageFilterDeactivationRegex}
+                                    isReadOnly={isReadOnly}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Filter Exclusion Activation"
+                                    description="Overrides filter — keeps message visible."
+                                    triggers={messageFilterExclusionActivationTriggers}
+                                    onChange={setMessageFilterExclusionActivationTriggers}
+                                    error={errors.messageFilterExclusionActivationRegex}
+                                    isReadOnly={isReadOnly}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Filter Exclusion Deactivation"
+                                    description="When filter exclusion stops being active."
+                                    triggers={messageFilterExclusionDeactivationTriggers}
+                                    onChange={setMessageFilterExclusionDeactivationTriggers}
+                                    error={errors.messageFilterExclusionDeactivationRegex}
+                                    isReadOnly={isReadOnly}
+                                />
+                            </div>
+                        </fieldset>
                     )}
 
                     {/* ─── BINDINGS TAB ─── */}
@@ -687,12 +702,12 @@ function LocationEditorModalInner({
                                             return (
                                                 <div key={id} className="context-character-binding-chip">
                                                     <span className="context-character-binding-name">← {loc.name}</span>
-                                                    <button type="button" onClick={() => { setLocationBindings(prev => prev.filter(lid => lid !== id)); setLocationBindingRegexTriggers(prev => { const next = { ...prev }; delete next[id]; return next; }); }} className="context-character-binding-remove" title="Remove binding">×</button>
+                                                    <button type="button" onClick={() => { setLocationBindings(prev => prev.filter(lid => lid !== id)); setLocationBindingRegexTriggers(prev => { const next = { ...prev }; delete next[id]; return next; }); }} className="context-character-binding-remove" title="Remove binding" disabled={isReadOnly}>×</button>
                                                 </div>
                                             );
                                         })}
                                     </div>
-                                    <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
+                                    <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading || isReadOnly}>
                                         <option value="" disabled>+ Accessible from a location</option>
                                         {availableLocationsForBinding.filter(l => !locationBindings.includes(l.id)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
                                     </select>
@@ -714,11 +729,11 @@ function LocationEditorModalInner({
                                             return (
                                                 <div key={id} style={{ marginBottom: '6px' }}>
                                                     <label className="editor-label editor-label-small" style={{ display: 'block', marginBottom: '2px' }}>From {loc.name}</label>
-                                                    <input type="text" value={currentRegex} onChange={(e) => {
+                                                    <input type="text" value={currentRegex} isReadOnly={isReadOnly} onChange={(e) => {
                                                         const val = e.target.value;
                                                         setLocationBindingRegexTriggers(prev => { const next = { ...prev }; if (val.trim()) next[id] = val; else delete next[id]; return next; });
                                                         if (errors.bindingRegex) setErrors(prev => { const next = { ...prev, bindingRegex: { ...(prev.bindingRegex || {}) } }; if (next.bindingRegex) { delete next.bindingRegex[id]; if (Object.keys(next.bindingRegex).length === 0) next.bindingRegex = {}; } return next; });
-                                                    }} className={`editor-input context-mono-input ${hasError ? 'error' : ''}`} placeholder="Unconditional (no regex)" style={{ fontSize: '0.75rem' }} />
+                                                    }} className={`editor-input context-mono-input ${hasError ? 'error' : ''}`} placeholder="Unconditional (no regex)" style={{ fontSize: '0.75rem' }} disabled={isUploading || isReadOnly} />
                                                     {hasError && <div className="editor-error-message" style={{ fontSize: '0.6rem' }}>{hasError}</div>}
                                                 </div>
                                             );
@@ -733,9 +748,9 @@ function LocationEditorModalInner({
                                 <div className="context-field-group">
                                     <div className="context-binding-hint">Only these characters can enter this location. Empty = all characters can enter.</div>
                                     <div className="context-character-binding-list">
-                                        {characterBindings.map(id => { const char = getCharacterById(id); if (!char) return null; return (<div key={id} className="context-character-binding-chip"><span className="context-character-binding-name">{char.name}</span><button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button></div>); })}
+                                        {characterBindings.map(id => { const char = getCharacterById(id); if (!char) return null; return (<div key={id} className="context-character-binding-chip"><span className="context-character-binding-name">{char.name}</span><button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isReadOnly}>×</button></div>); })}
                                     </div>
-                                    <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
+                                    <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading || isReadOnly}>
                                         <option value="" disabled>+ Restrict to a character</option>
                                         {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                                     </select>
@@ -748,9 +763,9 @@ function LocationEditorModalInner({
                                 <div className="context-field-group">
                                     <div className="context-binding-hint">Characters that own this location. Owners receive exclusivity bonuses during turn selection, faster stamina regen, reduced speech cost, and always feel at home. Empty = no owners.</div>
                                     <div className="context-character-binding-list">
-                                        {ownerBindings.map(id => { const char = getCharacterById(id); if (!char) return null; return (<div key={id} className="context-character-binding-chip"><span className="context-character-binding-name">👑 {char.name}</span><button type="button" onClick={() => setOwnerBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove owner">×</button></div>); })}
+                                        {ownerBindings.map(id => { const char = getCharacterById(id); if (!char) return null; return (<div key={id} className="context-character-binding-chip"><span className="context-character-binding-name">👑 {char.name}</span><button type="button" onClick={() => setOwnerBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove owner" disabled={isReadOnly}>×</button></div>); })}
                                     </div>
-                                    <select onChange={(e) => { const val = e.target.value; if (val && !ownerBindings.includes(val)) setOwnerBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="">
+                                    <select onChange={(e) => { const val = e.target.value; if (val && !ownerBindings.includes(val)) setOwnerBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading || isReadOnly}>
                                         <option value="" disabled>+ Add an owner</option>
                                         {allCharacters.filter(c => !ownerBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                                     </select>
