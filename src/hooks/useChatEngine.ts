@@ -158,7 +158,7 @@ export function useChatEngine(deps: EngineDependencies) {
             initialData,
             executor,
             signal, 
-            (token) => setStreamingState(token ?? null, ''),
+            (character) => setStreamingState(character ?? null, ''),
             (data) => setInteractionData(data)
         );
 
