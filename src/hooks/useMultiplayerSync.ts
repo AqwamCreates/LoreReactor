@@ -330,6 +330,22 @@ export function useMultiplayerSync({
 
                 if (msg.senderAccountId === currentAccountId) return;
 
+                // ─── Security Validation Guard ─────────────────────────
+                if (isHost) {
+                    const md = multiplayerDataRef.current;
+                    const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, msg.senderAccountId);
+                    const isSenderAdmin = foundAcct?.config?.isAdministrator === true;
+                    const boundCharId = peerCharacterMapRef.current.get(msg.senderAccountId) 
+                        || foundAcct?.config?.activeCharacterId;
+
+                    if (!isSenderAdmin && (!boundCharId || boundCharId !== payload.characterId)) {
+                        console.warn(
+                            `[MP Security] Blocked unauthorized message from account "${msg.senderAccountId}" attempting to speak as "${payload.characterId}". Expected: "${boundCharId}"`
+                        );
+                        return;
+                    }
+                }
+
                 const character = resolveCharacter(payload.characterId, currentData, characterMapRef.current);
                 if (!character) {
                     console.warn(`[MP] Character ${payload.characterId} could not be resolved for message.`);
@@ -514,6 +530,21 @@ export function useMultiplayerSync({
                 const payload = msg.payload as MessageEditPayload;
                 const currentData = interactionDataRef.current;
                 if (!currentData) break;
+
+                // Validate that sender is editing their own character's message or is an admin
+                if (isHost && msg.senderAccountId !== currentAccountId) {
+                    const md = multiplayerDataRef.current;
+                    const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, msg.senderAccountId);
+                    const isSenderAdmin = foundAcct?.config?.isAdministrator === true;
+                    const senderCharId = peerCharacterMapRef.current.get(msg.senderAccountId) || foundAcct?.config?.activeCharacterId;
+                    const targetMessage = currentData.interactionHistory.find((m) => m.id === payload.messageId);
+
+                    if (!isSenderAdmin && (!targetMessage || targetMessage.character.id !== senderCharId)) {
+                        console.warn(`[MP Security] Blocked unauthorized edit from ${msg.senderAccountId} on message ${payload.messageId}`);
+                        break;
+                    }
+                }
+
                 const updatedHistory = currentData.interactionHistory.map((m) => {
                     if (m.id === payload.messageId && m.messageType === 'chat') {
                         return { ...m, textContent: payload.newText, lastUpdatedTimestamp: Date.now() } as ChatMessage;
@@ -532,6 +563,21 @@ export function useMultiplayerSync({
                 const payload = msg.payload as MessageDeletePayload;
                 const currentData = interactionDataRef.current;
                 if (!currentData) break;
+
+                // Validate that sender is deleting their own character's message or is an admin
+                if (isHost && msg.senderAccountId !== currentAccountId) {
+                    const md = multiplayerDataRef.current;
+                    const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, msg.senderAccountId);
+                    const isSenderAdmin = foundAcct?.config?.isAdministrator === true;
+                    const senderCharId = peerCharacterMapRef.current.get(msg.senderAccountId) || foundAcct?.config?.activeCharacterId;
+                    const targetMessage = currentData.interactionHistory.find((m) => m.id === payload.messageId);
+
+                    if (!isSenderAdmin && (!targetMessage || targetMessage.character.id !== senderCharId)) {
+                        console.warn(`[MP Security] Blocked unauthorized delete from ${msg.senderAccountId} on message ${payload.messageId}`);
+                        break;
+                    }
+                }
+
                 const updatedHistory = currentData.interactionHistory.filter((m) => m.id !== payload.messageId);
                 setInteractionData({ ...currentData, interactionHistory: updatedHistory, lastUpdatedTimestamp: Date.now() });
 
@@ -622,6 +668,10 @@ export function useMultiplayerSync({
                         sendToRef.current(requestingAccountId, { type: 'join_response', payload: { accepted: false, reason: 'Character not allowed' } });
                         return;
                     }
+                }
+
+                if (assignedCharacter) {
+                    peerCharacterMapRef.current.set(requestingAccountId, assignedCharacter.id);
                 }
 
                 const updatedMd = {
@@ -890,6 +940,11 @@ export function useMultiplayerSync({
                     assignedCharacter = currentData.participants.find((p) => p.id === req.requestedCharacterId) || null;
                 }
 
+                if (assignedCharacter) {
+                    peerCharacterMapRef.current.set(accountId, assignedCharacter.id);
+                    peerCharacterMapRef.current.set(accountId.replace(/[^A-Za-z0-9]/g, ''), assignedCharacter.id);
+                }
+
                 const foundAcct = findAccountConfig(multiplayerData.multiplayerDataAccountConfigurations, accountId);
                 const existingConfig = foundAcct?.config || {
                     isWhitelisted: true,
@@ -1027,7 +1082,8 @@ export function useMultiplayerSync({
             const currentData = interactionDataRef.current;
             if (!currentData) return;
 
-            const chatId = currentData.id.replace(/[^A-Za-z0-9]/g, '');
+            // Clamped to 18 characters to match buildHostPeerId in useMultiplayerConnection
+            const chatId = currentData.id.replace(/[^A-Za-z0-9]/g, '').slice(0, 18);
             const newHostPeerId = `lr_${chatId}_host`;
 
             broadcast({

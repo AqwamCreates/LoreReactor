@@ -1,26 +1,41 @@
 // src/hooks/useMultiplayerDataManager.ts
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { MultiplayerData } from '../types';
 import { loadAllRawMultiplayerData, saveRawMultiplayerData, deleteRawMultiplayerData } from '../storages/serverStorage';
 import { useSessionStore } from './useSessionStore';
 
 export function useMultiplayerDataManager() {
-    const [multiplayerData, setMultiplayerDatas] = useState<MultiplayerData[]>([]);
+    const [multiplayerData, setMultiplayerData] = useState<MultiplayerData[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const isMountedRef = useRef(true);
 
-    const loadAll = useCallback(async () => {
+    const loadAll = useCallback(async (): Promise<MultiplayerData[]> => {
         setIsLoading(true);
         try {
             const data = await loadAllRawMultiplayerData();
-            setMultiplayerDatas(data);
+            if (isMountedRef.current) {
+                setMultiplayerData(data);
+            }
+            return data;
         } catch (error) {
             console.error('Failed to load multiplayer data', error);
+            return [];
         } finally {
-            setIsLoading(false);
+            if (isMountedRef.current) {
+                setIsLoading(false);
+            }
         }
     }, []);
 
-    const saveMultiplayerData = useCallback(async (data: MultiplayerData) => {
+    useEffect(() => {
+        isMountedRef.current = true;
+        loadAll();
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, [loadAll]);
+
+    const saveMultiplayerData = useCallback(async (data: MultiplayerData): Promise<boolean> => {
         try {
             await saveRawMultiplayerData(data);
             useSessionStore.setState({ multiplayerData: data });
@@ -32,7 +47,7 @@ export function useMultiplayerDataManager() {
         }
     }, [loadAll]);
 
-    const deleteMultiplayerData = useCallback(async (id: string) => {
+    const deleteMultiplayerData = useCallback(async (id: string): Promise<boolean> => {
         try {
             await deleteRawMultiplayerData(id);
             const current = useSessionStore.getState().multiplayerData;
@@ -53,7 +68,7 @@ export function useMultiplayerDataManager() {
     }, [multiplayerData]);
 
     /** Load multiplayer data for a specific chat into the store */
-    const loadForChat = useCallback(async (chatId: string) => {
+    const loadForChat = useCallback(async (chatId: string): Promise<MultiplayerData | null> => {
         // Check if already loaded in store
         const current = useSessionStore.getState().multiplayerData;
         if (current?.interactionDataIds?.includes(chatId)) return current;
@@ -65,16 +80,14 @@ export function useMultiplayerDataManager() {
             return found;
         }
 
-        // Full reload if not found in cached list
-        await loadAll();
-        const reloaded = multiplayerData.find(md => md.interactionDataIds.includes(chatId)) ?? null;
+        // Reload fresh data from storage and inspect the result directly (avoids stale state closure)
+        const freshData = await loadAll();
+        const reloaded = freshData.find(md => md.interactionDataIds.includes(chatId)) ?? null;
         if (reloaded) {
             useSessionStore.setState({ multiplayerData: reloaded });
         }
         return reloaded;
-    }, [findByChatId, loadAll, multiplayerData]);
-
-    useState(() => { loadAll(); });
+    }, [findByChatId, loadAll]);
 
     return {
         multiplayerData,

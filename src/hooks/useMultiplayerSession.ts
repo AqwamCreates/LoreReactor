@@ -1,6 +1,6 @@
 // src/hooks/useMultiplayerSession.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Character, ChatMessage, HistoryMessage, InteractionData, LanguageModel, MultiplayerData } from '../types';
+import type { Character, HistoryMessage, InteractionData, LanguageModel, MultiplayerData } from '../types';
 import { loadRawMultiplayerJoinData, saveRawMultiplayerJoinData, deleteMultiplayerJoinData } from '../storages/serverStorage';
 import { useMultiplayerSync } from './useMultiplayerSync';
 import { useSessionStore } from '../hooks/useSessionStore';
