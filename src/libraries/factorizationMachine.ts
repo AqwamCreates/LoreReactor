@@ -1,4 +1,4 @@
-// src/lib/fm.ts
+// src/libraries/factorizationMachine.ts
 // Factorization Machines based on Rendle, S. (2010).
 // "Factorization Machines". ICDM 2010.
 // https://www.ismll.uni-hildesheim.de/pub/pdfs/Rendle2010FM.pdf
