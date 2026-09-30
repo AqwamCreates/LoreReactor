@@ -15,17 +15,17 @@ import { v4 as uuidv4 } from 'uuid';
 interface UseMultiplayerSessionOptions {
     allCharacters: Character[];
     saveMultiplayerData: (data: MultiplayerData) => Promise<boolean>;
-    addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
+    addToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
 export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
     const { allCharacters, saveMultiplayerData, addToast } = options;
 
-    const interactionData = useSessionStore((s) => s.interactionData);
-    const setInteractionData = useSessionStore((s) => s.setInteractionData);
-    const setCurrentCharacter = useSessionStore((s) => s.setCurrentCharacter);
-    const currentAccountId = useSessionStore((s) => s.currentAccountId);
-    const multiplayerData = useSessionStore((s) => s.multiplayerData);
+    const interactionData = useSessionStore((state) => state.interactionData);
+    const setInteractionData = useSessionStore((state) => state.setInteractionData);
+    const setCurrentCharacter = useSessionStore((state) => state.setCurrentCharacter);
+    const currentAccountId = useSessionStore((state) => state.currentAccountId);
+    const multiplayerData = useSessionStore((state) => state.multiplayerData);
 
     const [joinSessionId, setJoinSessionId] = useState<string | null>(null);
     const [joinPassword, setJoinPassword] = useState('');
@@ -51,8 +51,8 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
                 setJoinProtagonist(data.joinProtagonist ?? null);
                 setJoinRequestedCharacterId(data.joinRequestedCharacterId ?? null);
                 setJoinRequestedCharacterData(data.joinRequestedCharacterData ?? null);
-            } catch (e) {
-                console.warn('Failed to load multiplayer join data:', e);
+            } catch (error) {
+                console.warn('Failed to load multiplayer join data:', error);
             }
         })();
         return () => { cancelled = true; };
@@ -65,7 +65,7 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         setJoinRequestedCharacterId(null);
         setJoinRequestedCharacterData(null);
         setNeedsCharacterSelection(false);
-        deleteMultiplayerJoinData().catch((e: unknown) => console.warn('Failed to clear join data:', e));
+        deleteMultiplayerJoinData().catch((error: unknown) => console.warn('Failed to clear join data:', error));
     }, []);
 
     const handleJoinAccepted = useCallback((assignedCharacter: Character) => {
@@ -74,7 +74,7 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
             joinSessionId,
             joinPassword,
             joinProtagonist: assignedCharacter,
-        }).catch((e: unknown) => console.warn('Failed to save join data:', e));
+        }).catch((error: unknown) => console.warn('Failed to save join data:', error));
         setJoinProtagonist(assignedCharacter);
         setCurrentCharacter(assignedCharacter);
         setNeedsCharacterSelection(false);
@@ -107,7 +107,7 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
             joinPassword: password,
             joinRequestedCharacterId: requestedCharacterIdentifier,
             joinRequestedCharacterData: requestedCharacterData,
-        }).catch((e: unknown) => console.warn('Failed to save join data:', e));
+        }).catch((error: unknown) => console.warn('Failed to save join data:', error));
     }, [currentAccountId, addToast]);
 
     const handleConnectionFailed = useCallback(() => {
@@ -120,12 +120,12 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
     }, [saveMultiplayerData]);
 
     const handleHostMigration = useCallback(async (payload: HostMigrationPayload) => {
-        const myAcctId = currentAccountId;
-        if (!myAcctId) return;
+        const myAccountId = currentAccountId;
+        if (!myAccountId) return;
 
-        const sanitizedMyAcctId = myAcctId.replace(/[^A-Za-z0-9]/g, '');
+        const sanitizedMyAccountId = myAccountId.replace(/[^A-Za-z0-9]/g, '');
         const sanitizedNewHostId = payload.newHostId.replace(/[^A-Za-z0-9]/g, '');
-        const isPromotedToHost = sanitizedMyAcctId === sanitizedNewHostId;
+        const isPromotedToHost = sanitizedMyAccountId === sanitizedNewHostId;
 
         if (isPromotedToHost) {
             addToast('The host has disconnected. You are now the host of this session!', 'success');
@@ -135,46 +135,42 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
                 await saveRawInteractionData(payload.finalState);
             }
 
-            const baseMpData = (payload as any).multiplayerData as MultiplayerData | undefined;
+            const baseMultiplayerData = (payload as any).multiplayerData as MultiplayerData | undefined;
 
-            const newMpData: MultiplayerData = {
-                id: baseMpData?.id || uuidv4(),
-                name: baseMpData?.name || payload.finalState?.name || 'Migrated Session',
-                description: baseMpData?.description,
-                password: baseMpData?.password || '',
+            const newMultiplayerData: MultiplayerData = {
+                id: baseMultiplayerData?.id || uuidv4(),
+                name: baseMultiplayerData?.name || payload.finalState?.name || 'Migrated Session',
+                description: baseMultiplayerData?.description,
+                password: baseMultiplayerData?.password || '',
                 interactionDataIds: payload.finalState ? [payload.finalState.id] : [],
-                canUseJoinerCharacterIds: baseMpData?.canUseJoinerCharacterIds ?? true,
-                canUseHosterParticipantingCharacterId: baseMpData?.canUseHosterParticipantingCharacterId ?? true,
-                canUseHosterNonParticipantingCharacterId: baseMpData?.canUseHosterNonParticipantingCharacterId ?? true,
-                joinerCharacterIdsRequiresHosterApproval: baseMpData?.joinerCharacterIdsRequiresHosterApproval ?? false,
-                hosterParticipantingCharacterIdRequiresHosterApproval: baseMpData?.hosterParticipantingCharacterIdRequiresHosterApproval ?? false,
-                hosterNonParticipantingCharacterIdRequiresHosterApproval: baseMpData?.hosterNonParticipantingCharacterIdRequiresHosterApproval ?? false,
-                useJoinerLanguageModel: baseMpData?.useJoinerLanguageModel ?? 0,
+                canUseJoinerCharacterIds: baseMultiplayerData?.canUseJoinerCharacterIds ?? true,
+                joinerCharacterIdsRequiresHosterApproval: baseMultiplayerData?.joinerCharacterIdsRequiresHosterApproval ?? false,
+                sharedHosterCharacterIds: baseMultiplayerData?.sharedHosterCharacterIds ?? [],
+                hosterCharacterIdsRequiresHosterApproval: baseMultiplayerData?.hosterCharacterIdsRequiresHosterApproval ?? false,
+                useJoinerLanguageModel: baseMultiplayerData?.useJoinerLanguageModel ?? 0,
                 multiplayerDataAccountConfigurations: {
-                    ...(baseMpData?.multiplayerDataAccountConfigurations || {}),
-                    [myAcctId]: {
+                    ...(baseMultiplayerData?.multiplayerDataAccountConfigurations || {}),
+                    [myAccountId]: {
                         isWhitelisted: true,
                         isBlacklisted: false,
                         isAdministrator: true,
                         canUseJoinerCharacterIds: true,
-                        canUseHosterParticipantingCharacterId: true,
-                        canUseHosterNonParticipantingCharacterId: true,
                         joinerCharacterIdsRequiresHosterApproval: false,
-                        hosterParticipantingCharacterIdRequiresHosterApproval: false,
-                        hosterNonParticipantingCharacterIdRequiresHosterApproval: false,
+                        sharedHosterCharacterIds: baseMultiplayerData?.sharedHosterCharacterIds ?? [],
+                        hosterCharacterIdsRequiresHosterApproval: false,
                         whitelistedCharacterIds: [],
                         blacklistedCharacterIds: [],
                         pendingCharacterIds: [],
                         protagonistCharacterId: joinProtagonist?.id,
                     },
                 },
-                pendingAccountIds: baseMpData?.pendingAccountIds || [],
-                firstCreatedTimestamp: baseMpData?.firstCreatedTimestamp || Date.now(),
+                pendingAccountIds: baseMultiplayerData?.pendingAccountIds || [],
+                firstCreatedTimestamp: baseMultiplayerData?.firstCreatedTimestamp || Date.now(),
                 lastUpdatedTimestamp: Date.now(),
             };
 
-            await saveMultiplayerDataVoid(newMpData);
-            useSessionStore.setState({ multiplayerData: newMpData });
+            await saveMultiplayerDataVoid(newMultiplayerData);
+            useSessionStore.setState({ multiplayerData: newMultiplayerData });
 
             clearJoinState();
             if (joinProtagonist) {
@@ -187,15 +183,15 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
             }
 
             const currentSession = joinSessionId;
-            const currentPass = joinPassword;
-            const currentCharId = joinRequestedCharacterId;
-            const currentCharData = joinRequestedCharacterData;
+            const currentPassword = joinPassword;
+            const currentRequestedCharacterId = joinRequestedCharacterId;
+            const currentRequestedCharacterData = joinRequestedCharacterData;
             setJoinSessionId(null);
             setTimeout(() => {
                 setJoinSessionId(currentSession);
-                setJoinPassword(currentPass);
-                setJoinRequestedCharacterId(currentCharId);
-                setJoinRequestedCharacterData(currentCharData);
+                setJoinPassword(currentPassword);
+                setJoinRequestedCharacterId(currentRequestedCharacterId);
+                setJoinRequestedCharacterData(currentRequestedCharacterData);
             }, 1200);
         }
     }, [

@@ -1858,7 +1858,9 @@ function executeAdministrator(args: string, nextMessage: BaseMessage, interactio
         case 'list_accounts': {
             const accounts = context?.allAccounts || [];
             if (accounts.length === 0) return { toolType: 'administrator', args, content: 'No accounts configured.', displayReplacement: '[🔑 No accounts]' };
-            const list = accounts.map(a => `${a.id} | ${a.username} ${a.shareLanguageModels ? '(Shares LM)' : ''}`).join('\n');
+            const accountList = accounts.map(a => `${a.id} | ${a.username} ${a.sharedCharacterIds ? '(Shares Characters)' : ''}`).join('\n');
+            const languageModelList = accounts.map(a => `${a.id} | ${a.username} ${a.sharedLanguageModelIds ? '(Shares LM)' : ''}`).join('\n');
+            const list = `${accountList}${(accountList !== '') ? ' ' : ''}${languageModelList}`
             return { toolType: 'administrator', args, content: list, displayReplacement: `[🔑 ${accounts.length} account(s)]` };
         }
         case 'list_multiplayer': {

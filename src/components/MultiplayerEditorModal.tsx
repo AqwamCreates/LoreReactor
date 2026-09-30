@@ -1,6 +1,6 @@
 // src/components/MultiplayerEditorModal.tsx
 import { useState, useCallback, useMemo } from 'react';
-import type { MultiplayerData, Character, RawInteractionData, MultiplayerDataAccountConfiguration, tristateInteger, InteractionData } from '../types';
+import type { MultiplayerData, Character, RawInteractionData, MultiplayerDataAccountConfiguration, tristateInteger } from '../types';
 import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';
 import { v4 as uuidv4 } from 'uuid';
 import { EntitySelectList } from './EntitySelectList';

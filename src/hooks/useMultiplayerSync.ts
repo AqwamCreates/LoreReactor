@@ -104,7 +104,7 @@ export interface PendingJoinRequest {
 
 // ─── Pure Payload Extractor (Hoisted to Module Scope) ────────────────
 function extractSyncPayload(message: HistoryMessage): SyncMessagePayload {
-    const base = {
+    const basePayload = {
         messageId: message.id,
         characterId: message.character.id,
         remainingChatStamina: message.remainingChatStamina,
@@ -120,7 +120,7 @@ function extractSyncPayload(message: HistoryMessage): SyncMessagePayload {
 
     if (message.messageType === 'whisper') {
         return {
-            ...base,
+            ...basePayload,
             messageType: 'whisper',
             textContent: message.textContent,
             targetCharacterIds: message.targetCharacterIds,
@@ -129,7 +129,7 @@ function extractSyncPayload(message: HistoryMessage): SyncMessagePayload {
 
     if (message.messageType === 'chat') {
         return {
-            ...base,
+            ...basePayload,
             messageType: 'chat',
             textContent: message.textContent,
             files: message.files,
@@ -138,34 +138,35 @@ function extractSyncPayload(message: HistoryMessage): SyncMessagePayload {
     }
 
     return {
-        ...base,
+        ...basePayload,
         messageType: 'interaction',
     } satisfies SyncInteractionMessagePayload;
 }
 
 // ─── Character & Account Lookup Helpers ──────────────────────────────
 function resolveCharacter(
-    charId: string,
+    characterId: string,
     currentData: InteractionData | null,
-    charMap: Map<string, Character>
+    characterMap: Map<string, Character>
 ): Character | undefined {
     return (
-        charMap.get(charId) ||
-        currentData?.participants.find((p) => p.id === charId) ||
-        currentData?.protagonists.find((p) => p.id === charId)
+        characterMap.get(characterId) ||
+        currentData?.participants.find((participant) => participant.id === characterId) ||
+        currentData?.protagonists.find((protagonist) => protagonist.id === characterId)
     );
 }
 
-function findAccountConfig(
-    configs: Record<string, any> | undefined,
+function findAccountConfiguration(
+    configurations: Record<string, any> | undefined,
     accountId: string
-): { config: any; key: string } | undefined {
-    if (!configs) return undefined;
-    if (configs[accountId]) return { config: configs[accountId], key: accountId };
-    const sanitized = accountId.replace(/[^A-Za-z0-9]/g, '');
-    for (const [key, cfg] of Object.entries(configs)) {
-        if (key.replace(/[^A-Za-z0-9]/g, '') === sanitized) {
-            return { config: cfg, key };
+): { configuration: any; key: string } | undefined {
+    if (!configurations) return undefined;
+    if (configurations[accountId]) return { configuration: configurations[accountId], key: accountId };
+    
+    const sanitizedAccountId = accountId.replace(/[^A-Za-z0-9]/g, '');
+    for (const [key, configuration] of Object.entries(configurations)) {
+        if (key.replace(/[^A-Za-z0-9]/g, '') === sanitizedAccountId) {
+            return { configuration, key };
         }
     }
     return undefined;
@@ -175,10 +176,10 @@ class SharedModelTracker {
     private usageMap: Map<string, { count: number; lastUsed: number }> = new Map();
 
     recordUsage(accountId: string) {
-        const existing = this.usageMap.get(accountId);
-        if (existing) {
-            existing.count++;
-            existing.lastUsed = Date.now();
+        const existingUsage = this.usageMap.get(accountId);
+        if (existingUsage) {
+            existingUsage.count++;
+            existingUsage.lastUsed = Date.now();
         } else {
             this.usageMap.set(accountId, { count: 1, lastUsed: Date.now() });
         }
@@ -188,16 +189,16 @@ class SharedModelTracker {
         if (availableUsers.length === 0) return null;
         if (availableUsers.length === 1) return availableUsers[0];
 
-        const counts = availableUsers.map((id) => ({ id, count: this.usageMap.get(id)?.count ?? 0 }));
-        const maxCount = Math.max(...counts.map((c) => c.count));
-        const weights = counts.map((c) => ({ id: c.id, weight: maxCount - c.count + 1 }));
+        const usageCounts = availableUsers.map((id) => ({ id, count: this.usageMap.get(id)?.count ?? 0 }));
+        const maximumCount = Math.max(...usageCounts.map((usage) => usage.count));
+        const weights = usageCounts.map((usage) => ({ id: usage.id, weight: maximumCount - usage.count + 1 }));
 
-        const totalWeight = weights.reduce((sum, w) => sum + w.weight, 0);
-        let random = Math.random() * totalWeight;
+        const totalWeight = weights.reduce((sum, weightItem) => sum + weightItem.weight, 0);
+        let randomValue = Math.random() * totalWeight;
 
-        for (const w of weights) {
-            random -= w.weight;
-            if (random <= 0) return w.id;
+        for (const weightItem of weights) {
+            randomValue -= weightItem.weight;
+            if (randomValue <= 0) return weightItem.id;
         }
         return availableUsers[0];
     }
@@ -289,7 +290,7 @@ export function useMultiplayerSync({
     const [pendingJoinRequests, setPendingJoinRequests] = useState<PendingJoinRequest[]>([]);
 
     const isHost = !!multiplayerData && !joinSessionId;
-    const isAdmin = isHost || !!(multiplayerData && currentAccountId && multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.isAdministrator);
+    const isAdministrator = isHost || !!(multiplayerData && currentAccountId && multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.isAdministrator);
 
     const effectiveMultiplayerData = useMemo<MultiplayerData | null>(() => {
         if (joinSessionId) {
@@ -299,11 +300,9 @@ export function useMultiplayerSync({
                 password: '',
                 interactionDataIds: [],
                 canUseJoinerCharacterIds: false,
-                canUseHosterParticipantingCharacterId: false,
-                canUseHosterNonParticipantingCharacterId: false,
                 joinerCharacterIdsRequiresHosterApproval: false,
-                hosterParticipantingCharacterIdRequiresHosterApproval: false,
-                hosterNonParticipantingCharacterIdRequiresHosterApproval: false,
+                sharedHosterCharacterIds: [],
+                hosterCharacterIdsRequiresHosterApproval: false,
                 useJoinerLanguageModel: 0,
                 multiplayerDataAccountConfigurations: {},
                 pendingAccountIds: [],
@@ -329,7 +328,7 @@ export function useMultiplayerSync({
 
     useEffect(() => {
         const map = new Map<string, Character>();
-        for (const c of allCharacters) map.set(c.id, c);
+        for (const character of allCharacters) map.set(character.id, character);
         characterMapRef.current = map;
     }, [allCharacters]);
 
@@ -346,15 +345,15 @@ export function useMultiplayerSync({
                 if (msg.senderAccountId === currentAccountId) return;
 
                 if (isHost) {
-                    const md = multiplayerDataRef.current;
-                    const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, msg.senderAccountId);
-                    const isSenderAdmin = foundAcct?.config?.isAdministrator;
-                    const boundCharId = peerCharacterMapRef.current.get(msg.senderAccountId) 
-                        || foundAcct?.config?.protagonistCharacterId;
+                    const currentMultiplayerData = multiplayerDataRef.current;
+                    const foundAccount = findAccountConfiguration(currentMultiplayerData?.multiplayerDataAccountConfigurations, msg.senderAccountId);
+                    const isSenderAdministrator = foundAccount?.configuration?.isAdministrator;
+                    const boundCharacterId = peerCharacterMapRef.current.get(msg.senderAccountId) 
+                        || foundAccount?.configuration?.protagonistCharacterId;
 
-                    if (!isSenderAdmin && (!boundCharId || boundCharId !== payload.characterId)) {
+                    if (!isSenderAdministrator && (!boundCharacterId || boundCharacterId !== payload.characterId)) {
                         console.warn(
-                            `[MP Security] Blocked unauthorized message from account "${msg.senderAccountId}" attempting to speak as "${payload.characterId}". Expected: "${boundCharId}"`
+                            `[MP Security] Blocked unauthorized message from account "${msg.senderAccountId}" attempting to speak as "${payload.characterId}". Expected: "${boundCharacterId}"`
                         );
                         return;
                     }
@@ -440,12 +439,12 @@ export function useMultiplayerSync({
                     } satisfies InteractionMessage;
                 }
 
-                const existingIdx = currentData.interactionHistory.findIndex((m) => m.id === payload.messageId);
-                const isNewMessage = existingIdx === -1;
+                const existingIndex = currentData.interactionHistory.findIndex((message) => message.id === payload.messageId);
+                const isNewMessage = existingIndex === -1;
                 let updatedHistory: HistoryMessage[];
                 if (!isNewMessage) {
                     updatedHistory = [...currentData.interactionHistory];
-                    updatedHistory[existingIdx] = newMessage;
+                    updatedHistory[existingIndex] = newMessage;
                 } else {
                     updatedHistory = [...currentData.interactionHistory, newMessage];
                 }
@@ -539,8 +538,8 @@ export function useMultiplayerSync({
 
                     (async () => {
                         try {
-                            const statusRes = await fetch(`${localURL}/models/status`);
-                            const statusData = await statusRes.json();
+                            const statusResponse = await fetch(`${localURL}/models/status`);
+                            const statusData = await statusResponse.json();
                             const activeModel = statusData.activeModels?.[0];
 
                             if (!activeModel || !activeModel.port) {
@@ -577,10 +576,10 @@ export function useMultiplayerSync({
                                 type: 'borrow_inference_chunk',
                                 payload: { requestId: payload.requestId, done: true } satisfies BorrowInferenceChunkPayload
                             });
-                        } catch (err) {
+                        } catch (error) {
                             sendToRef.current(hostAccountId, {
                                 type: 'borrow_inference_chunk',
-                                payload: { requestId: payload.requestId, done: true, error: (err as Error).message } satisfies BorrowInferenceChunkPayload
+                                payload: { requestId: payload.requestId, done: true, error: (error as Error).message } satisfies BorrowInferenceChunkPayload
                             });
                         }
                     })();
@@ -617,23 +616,23 @@ export function useMultiplayerSync({
                 if (!currentData) break;
 
                 if (isHost && msg.senderAccountId !== currentAccountId) {
-                    const md = multiplayerDataRef.current;
-                    const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, msg.senderAccountId);
-                    const isSenderAdmin = foundAcct?.config?.isAdministrator;
-                    const senderCharId = peerCharacterMapRef.current.get(msg.senderAccountId) || foundAcct?.config?.protagonistCharacterId;
-                    const targetMessage = currentData.interactionHistory.find((m) => m.id === payload.messageId);
+                    const currentMultiplayerData = multiplayerDataRef.current;
+                    const foundAccount = findAccountConfiguration(currentMultiplayerData?.multiplayerDataAccountConfigurations, msg.senderAccountId);
+                    const isSenderAdministrator = foundAccount?.configuration?.isAdministrator;
+                    const senderCharacterId = peerCharacterMapRef.current.get(msg.senderAccountId) || foundAccount?.configuration?.protagonistCharacterId;
+                    const targetMessage = currentData.interactionHistory.find((message) => message.id === payload.messageId);
 
-                    if (!isSenderAdmin && (!targetMessage || targetMessage.character.id !== senderCharId)) {
+                    if (!isSenderAdministrator && (!targetMessage || targetMessage.character.id !== senderCharacterId)) {
                         console.warn(`[MP Security] Blocked unauthorized edit from ${msg.senderAccountId} on message ${payload.messageId}`);
                         break;
                     }
                 }
 
-                const updatedHistory = currentData.interactionHistory.map((m) => {
-                    if (m.id === payload.messageId && m.messageType === 'chat') {
-                        return { ...m, textContent: payload.newText, lastUpdatedTimestamp: Date.now() } as ChatMessage;
+                const updatedHistory = currentData.interactionHistory.map((message) => {
+                    if (message.id === payload.messageId && message.messageType === 'chat') {
+                        return { ...message, textContent: payload.newText, lastUpdatedTimestamp: Date.now() } as ChatMessage;
                     }
-                    return m;
+                    return message;
                 });
                 setInteractionData({ ...currentData, interactionHistory: updatedHistory, lastUpdatedTimestamp: Date.now() });
 
@@ -649,19 +648,19 @@ export function useMultiplayerSync({
                 if (!currentData) break;
 
                 if (isHost && msg.senderAccountId !== currentAccountId) {
-                    const md = multiplayerDataRef.current;
-                    const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, msg.senderAccountId);
-                    const isSenderAdmin = foundAcct?.config?.isAdministrator;
-                    const senderCharId = peerCharacterMapRef.current.get(msg.senderAccountId) || foundAcct?.config?.protagonistCharacterId;
-                    const targetMessage = currentData.interactionHistory.find((m) => m.id === payload.messageId);
+                    const currentMultiplayerData = multiplayerDataRef.current;
+                    const foundAccount = findAccountConfiguration(currentMultiplayerData?.multiplayerDataAccountConfigurations, msg.senderAccountId);
+                    const isSenderAdministrator = foundAccount?.configuration?.isAdministrator;
+                    const senderCharacterId = peerCharacterMapRef.current.get(msg.senderAccountId) || foundAccount?.configuration?.protagonistCharacterId;
+                    const targetMessage = currentData.interactionHistory.find((message) => message.id === payload.messageId);
 
-                    if (!isSenderAdmin && (!targetMessage || targetMessage.character.id !== senderCharId)) {
+                    if (!isSenderAdministrator && (!targetMessage || targetMessage.character.id !== senderCharacterId)) {
                         console.warn(`[MP Security] Blocked unauthorized delete from ${msg.senderAccountId} on message ${payload.messageId}`);
                         break;
                     }
                 }
 
-                const updatedHistory = currentData.interactionHistory.filter((m) => m.id !== payload.messageId);
+                const updatedHistory = currentData.interactionHistory.filter((message) => message.id !== payload.messageId);
                 setInteractionData({ ...currentData, interactionHistory: updatedHistory, lastUpdatedTimestamp: Date.now() });
 
                 if (isHost) {
@@ -679,47 +678,47 @@ export function useMultiplayerSync({
 
             case 'join_request': {
                 if (!isHost) return;
-                const md = multiplayerDataRef.current;
-                if (!md) return;
+                const currentMultiplayerData = multiplayerDataRef.current;
+                if (!currentMultiplayerData) return;
                 const payload = msg.payload as JoinRequestPayload;
                 const requestingAccountId = payload.accountId;
 
-                if (md.password && payload.password !== md.password) {
+                if (currentMultiplayerData.password && payload.password !== currentMultiplayerData.password) {
                     sendToRef.current(requestingAccountId, { type: 'join_response', payload: { accepted: false, reason: 'Invalid password' } });
                     return;
                 }
 
-                const foundAcct = findAccountConfig(md.multiplayerDataAccountConfigurations, requestingAccountId);
-                const acctConfig = foundAcct?.config;
-                const matchedConfigKey = foundAcct?.key || requestingAccountId;
+                const foundAccount = findAccountConfiguration(currentMultiplayerData.multiplayerDataAccountConfigurations, requestingAccountId);
+                const accountConfiguration = foundAccount?.configuration;
+                const matchedConfigurationKey = foundAccount?.key || requestingAccountId;
 
-                if (!acctConfig) {
-                    if (!md.pendingAccountIds.includes(requestingAccountId)) {
-                        const updatedMd = { ...md, pendingAccountIds: [...md.pendingAccountIds, requestingAccountId] };
-                        multiplayerDataRef.current = updatedMd;
-                        useSessionStore.setState({ multiplayerData: updatedMd });
-                        onSaveMultiplayerDataRef.current?.(updatedMd);
+                if (!accountConfiguration) {
+                    if (!currentMultiplayerData.pendingAccountIds.includes(requestingAccountId)) {
+                        const updatedMultiplayerData = { ...currentMultiplayerData, pendingAccountIds: [...currentMultiplayerData.pendingAccountIds, requestingAccountId] };
+                        multiplayerDataRef.current = updatedMultiplayerData;
+                        useSessionStore.setState({ multiplayerData: updatedMultiplayerData });
+                        onSaveMultiplayerDataRef.current?.(updatedMultiplayerData);
                     }
                     sendToRef.current(requestingAccountId, { type: 'join_pending', payload: { message: 'Waiting for host approval' } });
-                    setPendingJoinRequests((prev) =>
-                        prev.some((r) => r.accountId === requestingAccountId)
-                            ? prev
-                            : [...prev, { accountId: requestingAccountId, password: payload.password, timestamp: msg.timestamp, requestedCharacterId: payload.requestedCharacterId, requestedCharacterData: payload.requestedCharacterData }]
+                    setPendingJoinRequests((previousRequests) =>
+                        previousRequests.some((request) => request.accountId === requestingAccountId)
+                            ? previousRequests
+                            : [...previousRequests, { accountId: requestingAccountId, password: payload.password, timestamp: msg.timestamp, requestedCharacterId: payload.requestedCharacterId, requestedCharacterData: payload.requestedCharacterData }]
                     );
                     return;
                 }
 
-                if (acctConfig.isBlacklisted) {
+                if (accountConfiguration.isBlacklisted) {
                     sendToRef.current(requestingAccountId, { type: 'join_response', payload: { accepted: false, reason: 'Blacklisted' } });
                     return;
                 }
 
-                if (!acctConfig.isWhitelisted && !acctConfig.isAdministrator) {
+                if (!accountConfiguration.isWhitelisted && !accountConfiguration.isAdministrator) {
                     sendToRef.current(requestingAccountId, { type: 'join_pending', payload: { message: 'Waiting for host approval' } });
-                    setPendingJoinRequests((prev) =>
-                        prev.some((r) => r.accountId === requestingAccountId)
-                            ? prev
-                            : [...prev, { accountId: requestingAccountId, timestamp: msg.timestamp, requestedCharacterId: payload.requestedCharacterId, requestedCharacterData: payload.requestedCharacterData }]
+                    setPendingJoinRequests((previousRequests) =>
+                        previousRequests.some((request) => request.accountId === requestingAccountId)
+                            ? previousRequests
+                            : [...previousRequests, { accountId: requestingAccountId, timestamp: msg.timestamp, requestedCharacterId: payload.requestedCharacterId, requestedCharacterData: payload.requestedCharacterData }]
                     );
                     return;
                 }
@@ -728,29 +727,26 @@ export function useMultiplayerSync({
                 const currentData = interactionDataRef.current;
 
                 if (payload.requestedCharacterData) {
-                    if (md.canUseJoinerCharacterIds || acctConfig.isAdministrator) {
+                    if (currentMultiplayerData.canUseJoinerCharacterIds || accountConfiguration.isAdministrator) {
                         assignedCharacter = payload.requestedCharacterData;
                     } else {
                         sendToRef.current(requestingAccountId, { type: 'join_response', payload: { accepted: false, reason: 'Custom characters not allowed' } });
                         return;
                     }
                 } else if (payload.requestedCharacterId) {
-                    const isCharBlacklisted = acctConfig.blacklistedCharacterIds?.includes(payload.requestedCharacterId);
-                    if (isCharBlacklisted) {
+                    const isCharacterBlacklisted = accountConfiguration.blacklistedCharacterIds?.includes(payload.requestedCharacterId);
+                    if (isCharacterBlacklisted) {
                         sendToRef.current(requestingAccountId, { type: 'join_response', payload: { accepted: false, reason: 'Character is blacklisted' } });
                         return;
                     }
 
-                    const isParticipant = currentData?.participants.some(p => p.id === payload.requestedCharacterId);
-                    const canUse = isParticipant 
-                        ? (md.canUseHosterParticipantingCharacterId || acctConfig.isAdministrator)
-                        : (md.canUseHosterNonParticipantingCharacterId || acctConfig.isAdministrator);
-                        
-                    const isWhitelisted = acctConfig.whitelistedCharacterIds?.includes(payload.requestedCharacterId);
+                    const isCharacterShared = currentMultiplayerData.sharedHosterCharacterIds?.includes(payload.requestedCharacterId);
+                    const requiresApproval = currentMultiplayerData.hosterCharacterIdsRequiresHosterApproval;
+                    const isCharacterWhitelisted = accountConfiguration.whitelistedCharacterIds?.includes(payload.requestedCharacterId);
 
-                    if (canUse && (acctConfig.isAdministrator || isWhitelisted || !acctConfig.whitelistedCharacterIds || acctConfig.whitelistedCharacterIds.length === 0)) {
-                        assignedCharacter = currentData?.participants.find((p) => p.id === payload.requestedCharacterId) 
-                                         || currentData?.protagonists.find((p) => p.id === payload.requestedCharacterId) 
+                    if (isCharacterShared && (accountConfiguration.isAdministrator || isCharacterWhitelisted || !requiresApproval)) {
+                        assignedCharacter = currentData?.participants.find((participant) => participant.id === payload.requestedCharacterId) 
+                                         || currentData?.protagonists.find((protagonist) => protagonist.id === payload.requestedCharacterId) 
                                          || null;
                     } else {
                         sendToRef.current(requestingAccountId, { type: 'join_response', payload: { accepted: false, reason: 'Character not allowed' } });
@@ -762,20 +758,20 @@ export function useMultiplayerSync({
                     peerCharacterMapRef.current.set(requestingAccountId, assignedCharacter.id);
                 }
 
-                const updatedMd = {
-                    ...md,
+                const updatedMultiplayerData = {
+                    ...currentMultiplayerData,
                     multiplayerDataAccountConfigurations: {
-                        ...md.multiplayerDataAccountConfigurations,
-                        [matchedConfigKey]: {
-                            ...acctConfig,
-                            protagonistCharacterId: assignedCharacter?.id ?? acctConfig.protagonistCharacterId,
+                        ...currentMultiplayerData.multiplayerDataAccountConfigurations,
+                        [matchedConfigurationKey]: {
+                            ...accountConfiguration,
+                            protagonistCharacterId: assignedCharacter?.id ?? accountConfiguration.protagonistCharacterId,
                         },
                     },
                     lastUpdatedTimestamp: Date.now(),
                 };
-                multiplayerDataRef.current = updatedMd;
-                useSessionStore.setState({ multiplayerData: updatedMd });
-                onSaveMultiplayerDataRef.current?.(updatedMd);
+                multiplayerDataRef.current = updatedMultiplayerData;
+                useSessionStore.setState({ multiplayerData: updatedMultiplayerData });
+                onSaveMultiplayerDataRef.current?.(updatedMultiplayerData);
 
                 const initialState = currentData ? {
                     protagonists: currentData.protagonists,
@@ -793,24 +789,22 @@ export function useMultiplayerSync({
                         initialState,
                         assignedCharacter,
                         sessionRules: {
-                            canUseJoinerCharacterIds: md.canUseJoinerCharacterIds,
-                            canUseHosterParticipantingCharacterId: md.canUseHosterParticipantingCharacterId,
-                            canUseHosterNonParticipantingCharacterId: md.canUseHosterNonParticipantingCharacterId,
-                            joinerCharacterIdsRequiresHosterApproval: md.joinerCharacterIdsRequiresHosterApproval,
-                            hosterParticipantingCharacterIdRequiresHosterApproval: md.hosterParticipantingCharacterIdRequiresHosterApproval,
-                            hosterNonParticipantingCharacterIdRequiresHosterApproval: md.hosterNonParticipantingCharacterIdRequiresHosterApproval,
+                            canUseJoinerCharacterIds: currentMultiplayerData.canUseJoinerCharacterIds,
+                            joinerCharacterIdsRequiresHosterApproval: currentMultiplayerData.joinerCharacterIdsRequiresHosterApproval,
+                            sharedHosterCharacterIds: currentMultiplayerData.sharedHosterCharacterIds,
+                            hosterCharacterIdsRequiresHosterApproval: currentMultiplayerData.hosterCharacterIdsRequiresHosterApproval,
                         },
                     },
                 });
 
                 if (payload.requestedCharacterData && currentData && assignedCharacter) {
-                    const charToSave = assignedCharacter;
-                    const isAlreadyParticipant = currentData.participants.some((p) => p.id === charToSave.id);
-                    if (!isAlreadyParticipant) {
-                        saveRawMultiplayerCharacter(charToSave).catch((e) => console.error('Failed to save uploaded multiplayer character:', e));
+                    const characterToSave = assignedCharacter;
+                    const isAlreadyParticipantInSession = currentData.participants.some((participant) => participant.id === characterToSave.id);
+                    if (!isAlreadyParticipantInSession) {
+                        saveRawMultiplayerCharacter(characterToSave).catch((error) => console.error('Failed to save uploaded multiplayer character:', error));
                         setInteractionData({
                             ...currentData,
-                            participants: [...currentData.participants, charToSave],
+                            participants: [...currentData.participants, characterToSave],
                             lastUpdatedTimestamp: Date.now(),
                         });
                     }
@@ -876,81 +870,87 @@ export function useMultiplayerSync({
                 if (!currentData) return;
 
                 const payload = msg.payload as SetProtagonistPayload;
-                const char = payload.character;
+                const character = payload.character;
                 const senderAccountId = msg.senderAccountId;
 
                 if (isHost) {
-                    const md = multiplayerDataRef.current;
-                    const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, senderAccountId);
-                    const cfg = foundAcct?.config;
+                    const currentMultiplayerData = multiplayerDataRef.current;
+                    const foundAccount = findAccountConfiguration(currentMultiplayerData?.multiplayerDataAccountConfigurations, senderAccountId);
+                    const accountConfiguration = foundAccount?.configuration;
                     
-                    if (!cfg) {
+                    if (!accountConfiguration) {
                         console.warn(`[MP Security] Blocked set_protagonist from unknown account ${senderAccountId}`);
                         return;
                     }
 
-                    const isParticipant = currentData.participants.some(p => p.id === char.id);
-                    const isProtagonist = currentData.protagonists.some(p => p.id === char.id);
-                    const isSessionChar = isParticipant || isProtagonist;
+                    const isParticipant = currentData.participants.some(participant => participant.id === character.id);
+                    const isProtagonist = currentData.protagonists.some(protagonist => protagonist.id === character.id);
+                    const isSessionCharacter = isParticipant || isProtagonist;
                     
-                    if (cfg.blacklistedCharacterIds?.includes(char.id)) {
-                        console.warn(`[MP Security] Blocked set_protagonist: Character ${char.id} is blacklisted for ${senderAccountId}`);
+                    if (accountConfiguration.blacklistedCharacterIds?.includes(character.id)) {
+                        console.warn(`[MP Security] Blocked set_protagonist: Character ${character.id} is blacklisted for ${senderAccountId}`);
                         return;
                     }
 
-                    const isWhitelisted = cfg.whitelistedCharacterIds?.includes(char.id);
-                    const isAdmin = cfg.isAdministrator;
+                    const isCharacterWhitelisted = accountConfiguration.whitelistedCharacterIds?.includes(character.id);
+                    const isUserAdministrator = accountConfiguration.isAdministrator;
 
-                    if (isSessionChar) {
-                        const canUseParticipant = cfg.canUseHosterParticipantingCharacterId;
-                        const canUseNonParticipant = cfg.canUseHosterNonParticipantingCharacterId;
+                    if (isSessionCharacter) {
+
+                        if (!currentMultiplayerData){
+                            console.warn("[MP Security] Missing multiplayer data.");
+                            return
+                        } 
+
+                        const isCharacterShared = currentMultiplayerData.sharedHosterCharacterIds?.includes(character.id);
+                        const requiresApproval = currentMultiplayerData.hosterCharacterIdsRequiresHosterApproval;
                         
-                        if (!isAdmin && !isWhitelisted && !canUseParticipant && !canUseNonParticipant) {
-                             console.warn(`[MP Security] Blocked set_protagonist: ${senderAccountId} not allowed to use host characters.`);
-                             return;
+                        if (!isUserAdministrator && !isCharacterWhitelisted && (!isCharacterShared || requiresApproval)) {
+                            console.warn(`[MP Security] Blocked set_protagonist: ${senderAccountId} not allowed to use host characters.`);
+                            return;
                         }
                     } else {
-                        if (!cfg.canUseJoinerCharacterIds && !isAdmin) {
-                             console.warn(`[MP Security] Blocked set_protagonist: ${senderAccountId} not allowed to use custom characters.`);
-                             return;
+                        if (!accountConfiguration.canUseJoinerCharacterIds && !isUserAdministrator) {
+                            console.warn(`[MP Security] Blocked set_protagonist: ${senderAccountId} not allowed to use custom characters.`);
+                            return;
                         }
                     }
 
-                    peerCharacterMapRef.current.set(senderAccountId, char.id);
+                    peerCharacterMapRef.current.set(senderAccountId, character.id);
                     
-                    if (md && foundAcct && foundAcct.config.protagonistCharacterId !== char.id) {
-                        const updatedMd = {
-                            ...md,
+                    if (currentMultiplayerData && foundAccount && foundAccount.configuration.protagonistCharacterId !== character.id) {
+                        const updatedMultiplayerData = {
+                            ...currentMultiplayerData,
                             multiplayerDataAccountConfigurations: {
-                                ...md.multiplayerDataAccountConfigurations,
-                                [foundAcct.key]: {
-                                    ...foundAcct.config,
-                                    protagonistCharacterId: char.id,
+                                ...currentMultiplayerData.multiplayerDataAccountConfigurations,
+                                [foundAccount.key]: {
+                                    ...foundAccount.configuration,
+                                    protagonistCharacterId: character.id,
                                 }
                             },
                             lastUpdatedTimestamp: Date.now(),
                         };
-                        multiplayerDataRef.current = updatedMd;
+                        multiplayerDataRef.current = updatedMultiplayerData;
                         
                         setTimeout(() => {
-                            useSessionStore.setState({ multiplayerData: updatedMd });
-                            onSaveMultiplayerDataRef.current?.(updatedMd);
+                            useSessionStore.setState({ multiplayerData: updatedMultiplayerData });
+                            onSaveMultiplayerDataRef.current?.(updatedMultiplayerData);
                         }, 0);
                     }
                 }
 
-                const hasParticipant = currentData.participants.some((p) => p.id === char.id);
-                const hasProtagonist = currentData.protagonists.some((p) => p.id === char.id);
+                const hasParticipant = currentData.participants.some((participant) => participant.id === character.id);
+                const hasProtagonist = currentData.protagonists.some((protagonist) => protagonist.id === character.id);
 
                 const updatedParticipants = hasParticipant
-                    ? currentData.participants.map((p) => (p.id === char.id ? char : p))
-                    : [...currentData.participants, char];
+                    ? currentData.participants.map((participant) => (participant.id === character.id ? character : participant))
+                    : [...currentData.participants, character];
 
                 const updatedProtagonists = hasProtagonist
-                    ? currentData.protagonists.map((p) => (p.id === char.id ? char : p))
-                    : [...currentData.protagonists, char];
+                    ? currentData.protagonists.map((protagonist) => (protagonist.id === character.id ? character : protagonist))
+                    : [...currentData.protagonists, character];
 
-                characterMapRef.current.set(char.id, char);
+                characterMapRef.current.set(character.id, character);
 
                 setInteractionData({
                     ...currentData,
@@ -962,7 +962,7 @@ export function useMultiplayerSync({
                 if (isHost) {
                     broadcastRef.current({
                         type: 'set_protagonist',
-                        payload: { character: char } satisfies SetProtagonistPayload,
+                        payload: { character } satisfies SetProtagonistPayload,
                     });
                 }
                 break;
@@ -984,17 +984,17 @@ export function useMultiplayerSync({
 
     const handlePeerDisconnected = useCallback((accountId: string) => {
         if (!isHost) return;
-        const charId = peerCharacterMapRef.current.get(accountId);
-        if (charId) {
+        const characterId = peerCharacterMapRef.current.get(accountId);
+        if (characterId) {
             peerCharacterMapRef.current.delete(accountId);
             peerJoinTimesRef.current.delete(accountId);
 
             const currentData = interactionDataRef.current;
             if (currentData) {
-                const hasSpoken = currentData.interactionHistory.some((m) => m.character.id === charId);
+                const hasSpoken = currentData.interactionHistory.some((message) => message.character.id === characterId);
                 if (!hasSpoken) {
-                    const updatedParticipants = currentData.participants.filter((p) => p.id !== charId);
-                    const updatedProtagonists = currentData.protagonists.filter((p) => p.id !== charId);
+                    const updatedParticipants = currentData.participants.filter((participant) => participant.id !== characterId);
+                    const updatedProtagonists = currentData.protagonists.filter((protagonist) => protagonist.id !== characterId);
 
                     setInteractionData({
                         ...currentData,
@@ -1050,15 +1050,15 @@ export function useMultiplayerSync({
 
     const requestAndAwaitBorrowedModel = useCallback(async (): Promise<LanguageModel | null> => {
         if (!isHost) return null;
-        const md = multiplayerDataRef.current;
-        if (!md) return null;
+        const currentMultiplayerData = multiplayerDataRef.current;
+        if (!currentMultiplayerData) return null;
 
-        if (md.useJoinerLanguageModel === -1) return null;
+        if (currentMultiplayerData.useJoinerLanguageModel === -1) return null;
 
         const eligiblePeers: string[] = [];
-        for (const acctId of Object.keys(md.multiplayerDataAccountConfigurations)) {
-            if (connectedPeers.includes(acctId)) {
-                eligiblePeers.push(acctId);
+        for (const accountId of Object.keys(currentMultiplayerData.multiplayerDataAccountConfigurations)) {
+            if (connectedPeers.includes(accountId)) {
+                eligiblePeers.push(accountId);
             }
         }
 
@@ -1114,18 +1114,18 @@ export function useMultiplayerSync({
     }, []);
 
     const acceptJoinRequest = useCallback((accountId: string) => {
-        setPendingJoinRequests((prev) => {
-            const req = prev.find((r) => r.accountId === accountId || r.accountId.replace(/[^A-Za-z0-9]/g, '') === accountId.replace(/[^A-Za-z0-9]/g, ''));
-            if (req && multiplayerData) {
+        setPendingJoinRequests((previousRequests) => {
+            const pendingJoinRequest = previousRequests.find((request) => request.accountId === accountId || request.accountId.replace(/[^A-Za-z0-9]/g, '') === accountId.replace(/[^A-Za-z0-9]/g, ''));
+            if (pendingJoinRequest && multiplayerData) {
                 const currentData = interactionDataRef.current;
                 let assignedCharacter: Character | null = null;
 
-                if (req.requestedCharacterData) {
-                    assignedCharacter = req.requestedCharacterData;
-                    saveRawMultiplayerCharacter(assignedCharacter).catch((e) => console.error('Failed to save uploaded multiplayer character:', e));
-                } else if (req.requestedCharacterId && currentData) {
-                    assignedCharacter = currentData.participants.find((p) => p.id === req.requestedCharacterId) 
-                                     || currentData.protagonists.find((p) => p.id === req.requestedCharacterId) 
+                if (pendingJoinRequest.requestedCharacterData) {
+                    assignedCharacter = pendingJoinRequest.requestedCharacterData;
+                    saveRawMultiplayerCharacter(assignedCharacter).catch((error) => console.error('Failed to save uploaded multiplayer character:', error));
+                } else if (pendingJoinRequest.requestedCharacterId && currentData) {
+                    assignedCharacter = currentData.participants.find((participant) => participant.id === pendingJoinRequest.requestedCharacterId) 
+                                     || currentData.protagonists.find((protagonist) => protagonist.id === pendingJoinRequest.requestedCharacterId) 
                                      || null;
                 }
 
@@ -1134,40 +1134,38 @@ export function useMultiplayerSync({
                     peerCharacterMapRef.current.set(accountId.replace(/[^A-Za-z0-9]/g, ''), assignedCharacter.id);
                 }
 
-                const foundAcct = findAccountConfig(multiplayerData.multiplayerDataAccountConfigurations, accountId);
-                const existingConfig = foundAcct?.config || {
+                const foundAccount = findAccountConfiguration(multiplayerData.multiplayerDataAccountConfigurations, accountId);
+                const existingConfiguration = foundAccount?.configuration || {
                     isWhitelisted: true,
                     isBlacklisted: false,
                     isAdministrator: false,
                     canUseJoinerCharacterIds: multiplayerData.canUseJoinerCharacterIds,
-                    canUseHosterParticipantingCharacterId: multiplayerData.canUseHosterParticipantingCharacterId,
-                    canUseHosterNonParticipantingCharacterId: multiplayerData.canUseHosterNonParticipantingCharacterId,
                     joinerCharacterIdsRequiresHosterApproval: multiplayerData.joinerCharacterIdsRequiresHosterApproval,
-                    hosterParticipantingCharacterIdRequiresHosterApproval: multiplayerData.hosterParticipantingCharacterIdRequiresHosterApproval,
-                    hosterNonParticipantingCharacterIdRequiresHosterApproval: multiplayerData.hosterNonParticipantingCharacterIdRequiresHosterApproval,
+                    sharedHosterCharacterIds: [...multiplayerData.sharedHosterCharacterIds],
+                    hosterCharacterIdsRequiresHosterApproval: multiplayerData.hosterCharacterIdsRequiresHosterApproval,
                     whitelistedCharacterIds: [],
                     blacklistedCharacterIds: [],
                     pendingCharacterIds: [],
                 };
-                const matchedConfigKey = foundAcct?.key || accountId;
+                const matchedConfigurationKey = foundAccount?.key || accountId;
 
-                const updatedMd: MultiplayerData = {
+                const updatedMultiplayerData: MultiplayerData = {
                     ...multiplayerData,
                     multiplayerDataAccountConfigurations: {
                         ...multiplayerData.multiplayerDataAccountConfigurations,
-                        [matchedConfigKey]: {
-                            ...existingConfig,
+                        [matchedConfigurationKey]: {
+                            ...existingConfiguration,
                             isWhitelisted: true,
                             isBlacklisted: false,
-                            protagonistCharacterId: assignedCharacter?.id ?? existingConfig.protagonistCharacterId,
+                            protagonistCharacterId: assignedCharacter?.id ?? existingConfiguration.protagonistCharacterId,
                         },
                     },
-                    pendingAccountIds: multiplayerData.pendingAccountIds.filter((id) => id !== accountId && id !== matchedConfigKey),
+                    pendingAccountIds: multiplayerData.pendingAccountIds.filter((id) => id !== accountId && id !== matchedConfigurationKey),
                     lastUpdatedTimestamp: Date.now(),
                 };
-                multiplayerDataRef.current = updatedMd;
-                useSessionStore.setState({ multiplayerData: updatedMd });
-                onSaveMultiplayerDataRef.current?.(updatedMd);
+                multiplayerDataRef.current = updatedMultiplayerData;
+                useSessionStore.setState({ multiplayerData: updatedMultiplayerData });
+                onSaveMultiplayerDataRef.current?.(updatedMultiplayerData);
 
                 const initialState = currentData ? {
                     protagonists: currentData.protagonists,
@@ -1186,36 +1184,34 @@ export function useMultiplayerSync({
                         assignedCharacter,
                         sessionRules: {
                             canUseJoinerCharacterIds: multiplayerData.canUseJoinerCharacterIds,
-                            canUseHosterParticipantingCharacterId: multiplayerData.canUseHosterParticipantingCharacterId,
-                            canUseHosterNonParticipantingCharacterId: multiplayerData.canUseHosterNonParticipantingCharacterId,
                             joinerCharacterIdsRequiresHosterApproval: multiplayerData.joinerCharacterIdsRequiresHosterApproval,
-                            hosterParticipantingCharacterIdRequiresHosterApproval: multiplayerData.hosterParticipantingCharacterIdRequiresHosterApproval,
-                            hosterNonParticipantingCharacterIdRequiresHosterApproval: multiplayerData.hosterNonParticipantingCharacterIdRequiresHosterApproval,
+                            sharedHosterCharacterIds: multiplayerData.sharedHosterCharacterIds,
+                            hosterCharacterIdsRequiresHosterApproval: multiplayerData.hosterCharacterIdsRequiresHosterApproval,
                         },
                     },
                 });
             }
-            return prev.filter((r) => r.accountId !== accountId);
+            return previousRequests.filter((request) => request.accountId !== accountId);
         });
     }, [multiplayerData]);
 
     const rejectJoinRequest = useCallback((accountId: string) => {
-        setPendingJoinRequests((prev) => {
+        setPendingJoinRequests((previousRequests) => {
             if (multiplayerData) {
-                const updatedMd: MultiplayerData = {
+                const updatedMultiplayerData: MultiplayerData = {
                     ...multiplayerData,
                     pendingAccountIds: multiplayerData.pendingAccountIds.filter((id) => id !== accountId),
                     lastUpdatedTimestamp: Date.now(),
                 };
-                multiplayerDataRef.current = updatedMd;
-                useSessionStore.setState({ multiplayerData: updatedMd });
-                onSaveMultiplayerDataRef.current?.(updatedMd);
+                multiplayerDataRef.current = updatedMultiplayerData;
+                useSessionStore.setState({ multiplayerData: updatedMultiplayerData });
+                onSaveMultiplayerDataRef.current?.(updatedMultiplayerData);
             }
             sendToRef.current(accountId, {
                 type: 'join_response',
                 payload: { accepted: false, reason: 'Request rejected by host' } satisfies JoinResponsePayload,
             });
-            return prev.filter((r) => r.accountId !== accountId);
+            return previousRequests.filter((request) => request.accountId !== accountId);
         });
     }, [multiplayerData]);
 
@@ -1234,11 +1230,11 @@ export function useMultiplayerSync({
         });
         const currentData = interactionDataRef.current;
         if (currentData) {
-            const updatedHistory = currentData.interactionHistory.map((m) => {
-                if (m.id === messageId && m.messageType === 'chat') {
-                    return { ...m, textContent: newText, lastUpdatedTimestamp: Date.now() } as ChatMessage;
+            const updatedHistory = currentData.interactionHistory.map((message) => {
+                if (message.id === messageId && message.messageType === 'chat') {
+                    return { ...message, textContent: newText, lastUpdatedTimestamp: Date.now() } as ChatMessage;
                 }
-                return m;
+                return message;
             });
             setInteractionData({ ...currentData, interactionHistory: updatedHistory, lastUpdatedTimestamp: Date.now() });
         }
@@ -1251,7 +1247,7 @@ export function useMultiplayerSync({
         });
         const currentData = interactionDataRef.current;
         if (currentData) {
-            const updatedHistory = currentData.interactionHistory.filter((m) => m.id !== messageId);
+            const updatedHistory = currentData.interactionHistory.filter((message) => message.id !== messageId);
             setInteractionData({ ...currentData, interactionHistory: updatedHistory, lastUpdatedTimestamp: Date.now() });
         }
     }, [broadcast, setInteractionData]);
@@ -1301,7 +1297,7 @@ export function useMultiplayerSync({
         connectedPeers,
         connectionError,
         isHost,
-        isAdmin,
+        isAdministrator,
         joinCompleted,
         pendingJoinRequests,
         acceptJoinRequest,

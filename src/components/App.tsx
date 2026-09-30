@@ -451,7 +451,7 @@ function App() {
     }, [messageActions.editingId]);
 
     // ─── Derived Display Values ──────────────────────────────────────
-    const canDelete = (!isMultiplayerChat || mp.multiplayerSync.isHost || mp.multiplayerSync.isAdmin) && !isLoading;
+    const canDelete = (!isMultiplayerChat || mp.multiplayerSync.isHost || mp.multiplayerSync.isAdministrator) && !isLoading;
     const safeMessages = useMemo(() => viewAssets.chatMessages || [], [viewAssets.chatMessages]);
 
     const maxContextTokens = useMemo(() => {

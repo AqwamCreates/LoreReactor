@@ -172,7 +172,7 @@ function AccountEditorModalInner({
                             Characters that can be shared with multiplayer joiners when this account is active.
                         </div>
                         <EntitySelectList
-                            label=" "
+                            label="Characters"
                             items={allCharacters}
                             selectedIds={sharedCharacterIds}
                             onToggle={toggleSharedCharacter}
@@ -187,7 +187,7 @@ function AccountEditorModalInner({
                             Language models that can be shared with multiplayer joiners when this account is active.
                         </div>
                         <EntitySelectList
-                            label=" "
+                            label="Models"
                             items={allLanguageModels}
                             selectedIds={sharedLanguageModelIds}
                             onToggle={toggleSharedLanguageModel}
