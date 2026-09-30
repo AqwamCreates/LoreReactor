@@ -14,7 +14,7 @@ import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useFrontCamera } from '../hooks/useFrontCamera';
-import type { Character, Context, InteractionData, ChatMessage, MultiplayerData, WhisperMessage, LanguageModel, HistoryMessage, RawInteractionData, Account, cloudBackend, AudioTrack, World } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, Account, MultiplayerData, InteractionData, ChatMessage, WhisperMessage, HistoryMessage, RawInteractionData, cloudBackend } from '../types';
 import { useSessionStore } from '../hooks/useSessionStore';
 
 // ─── Manager Hooks ──────────────────────────────────────────────────
