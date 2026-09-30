@@ -2,6 +2,8 @@
 import type { AudioTrack, InteractionData, ChatMessage, PromptBlock, Location, RegularExpressionTrigger } from '../types';
 import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
 import { getAudioTrackUrl } from '../storages/serverStorage';
+import { mediaCache } from './MediaCache';
+import { MultiplayerEvents } from './MultiplayerEvents';
 
 interface ActiveTrackState {
     track: AudioTrack;
@@ -37,6 +39,21 @@ export class AudioEngine {
     private globalVolumeOverride = -1;
     private animationFrameId: number | null = null;
     private previousLocationIds: Map<string, number | undefined> = new Map();
+    private mediaUnsubscribe: (() => void) | null = null;
+
+    constructor() {
+        // Automatically play pending tracks as soon as their audio data arrives over WebRTC
+        this.mediaUnsubscribe = MultiplayerEvents.on('mediaCacheUpdated', () => {
+            for (const [trackId, state] of this.activeTracks.entries()) {
+                if (!state.isPlaying) {
+                    void this.loadBuffer(state.track.id, state.track.filename).then(buffer => {
+                        if (!buffer || !this.activeTracks.has(trackId)) return;
+                        this.playTrackBuffer(state, buffer);
+                    });
+                }
+            }
+        });
+    }
 
     private ensureContext(): AudioContext {
         if (!this.context) {
@@ -69,17 +86,41 @@ export class AudioEngine {
     }
 
     private async loadBuffer(audioTrackId: string, filename: string): Promise<AudioBuffer | null> {
-        // Use composite key for cache to avoid collisions between tracks with same filename
         const cacheKey = `${audioTrackId}:${filename}`;
         const cached = this.bufferCache.get(cacheKey);
         if (cached) return cached;
 
         try {
-            const url = getAudioTrackUrl(audioTrackId, filename);
-            if (!url) return null;
+            // 1. Direct Web URL or Data URL
+            let targetUrl: string | null = null;
+            if (filename.startsWith('data:') || filename.startsWith('http://') || filename.startsWith('https://')) {
+                targetUrl = filename;
+            }
 
-            const response = await fetch(url);
-            if (!response.ok) return null;
+            // 2. Check P2P WebRTC Media Cache
+            if (!targetUrl) {
+                const fromMediaCache = mediaCache.get(cacheKey) || mediaCache.get(filename);
+                if (fromMediaCache) {
+                    targetUrl = fromMediaCache;
+                }
+            }
+
+            // 3. Fallback to server URL
+            if (!targetUrl) {
+                targetUrl = getAudioTrackUrl(audioTrackId, filename);
+            }
+
+            if (!targetUrl) return null;
+
+            const response = await fetch(targetUrl);
+            if (!response.ok) {
+                // If local server fetch fails, request asset from host over WebRTC
+                MultiplayerEvents.emit('requestMediaAsset', {
+                    assetType: 'audio',
+                    pathOrFilename: targetUrl || filename,
+                });
+                return null;
+            }
 
             const arrayBuffer = await response.arrayBuffer();
             const context = this.ensureContext();
@@ -88,9 +129,38 @@ export class AudioEngine {
             this.bufferCache.set(cacheKey, buffer);
             return buffer;
         } catch (e) {
+            // If decoding fails or network error occurs, request from host
+            MultiplayerEvents.emit('requestMediaAsset', {
+                assetType: 'audio',
+                pathOrFilename: filename,
+            });
             console.warn(`Failed to load audio buffer for ${filename}:`, e);
             return null;
         }
+    }
+
+    private playTrackBuffer(state: ActiveTrackState, buffer: AudioBuffer): void {
+        if (state.isPlaying) return;
+
+        const context = this.ensureContext();
+        const source = context.createBufferSource();
+        source.buffer = buffer;
+        source.loop = state.track.loop;
+        source.connect(state.gainNode);
+        source.start(0);
+
+        state.source = source;
+        state.isPlaying = true;
+
+        const fadeDuration = Math.max(0.01, state.track.startFadeDurationMs / 1000);
+        state.gainNode.gain.setValueAtTime(0, context.currentTime);
+        state.gainNode.gain.linearRampToValueAtTime(state.targetVolume, context.currentTime + fadeDuration);
+
+        source.onended = () => {
+            if (!state.track.loop && this.activeTracks.has(state.track.id)) {
+                this.stopTrack(state.track.id);
+            }
+        };
     }
 
     startTrack(track: AudioTrack): void {
@@ -113,25 +183,7 @@ export class AudioEngine {
 
         void this.loadBuffer(track.id, track.filename).then(buffer => {
             if (!buffer || !this.activeTracks.has(track.id)) return;
-
-            const source = context.createBufferSource();
-            source.buffer = buffer;
-            source.loop = track.loop;
-            source.connect(gainNode);
-            source.start(0);
-
-            state.source = source;
-            state.isPlaying = true;
-
-            const fadeDuration = Math.max(0.01, track.startFadeDurationMs / 1000);
-            gainNode.gain.setValueAtTime(0, context.currentTime);
-            gainNode.gain.linearRampToValueAtTime(state.targetVolume, context.currentTime + fadeDuration);
-
-            source.onended = () => {
-                if (!track.loop && this.activeTracks.has(track.id)) {
-                    this.stopTrack(track.id);
-                }
-            };
+            this.playTrackBuffer(state, buffer);
         });
     }
 
@@ -193,9 +245,8 @@ export class AudioEngine {
 
             // Exclusion activation: overrides normal activation logic
             if (!active && latestMessageText && doesAnyTriggerMatch(track.regularExpressionExclusionActivationTriggers, latestMessageText)) {
-                // Exclusion is active — check if exclusion deactivation overrides it
                 if (!doesAnyTriggerMatch(track.regularExpressionExclusionDeactivationTriggers, latestMessageText)) {
-                    active = false; // Exclusion forces inactive
+                    active = false;
                 }
             }
 
@@ -367,6 +418,10 @@ export class AudioEngine {
 
     destroy(): void {
         this.stopAll();
+        if (this.mediaUnsubscribe) {
+            this.mediaUnsubscribe();
+            this.mediaUnsubscribe = null;
+        }
         this.bufferCache.clear();
         this.previousLocationIds.clear();
         if (this.context) {

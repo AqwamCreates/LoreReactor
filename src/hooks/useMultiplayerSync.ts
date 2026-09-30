@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { 
     InteractionData, MultiplayerData, HistoryMessage, Character, 
     ChatMessage, InteractionMessage, WhisperMessage, LanguageModel, 
-    backend, Context, Location, AudioTrack, Profile 
+    backend
 } from '../types';
 import { 
     useMultiplayerConnection, 
@@ -732,7 +732,7 @@ export function useMultiplayerSync({
 
                 const updatedHistory = currentData.interactionHistory.map((message) => {
                     if (message.id === payload.messageId && message.messageType === 'chat') {
-                        return { ...message, textContent: newText, lastUpdatedTimestamp: Date.now() } as ChatMessage;
+                        return { ...message, textContent: payload.newText, lastUpdatedTimestamp: Date.now() } as ChatMessage;
                     }
                     return message;
                 });
@@ -1316,7 +1316,7 @@ export function useMultiplayerSync({
                     },
                 });
 
-                if (payload.requestedCharacterData && currentData && assignedCharacter) {
+                if (pendingJoinRequest.requestedCharacterData && currentData && assignedCharacter) {
                     const characterToSave = assignedCharacter;
                     const isAlreadyParticipantInSession = currentData.participants.some((participant) => participant.id === characterToSave.id);
                     if (!isAlreadyParticipantInSession) {
