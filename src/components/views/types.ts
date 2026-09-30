@@ -24,7 +24,7 @@ export interface ViewModeProps {
     chatHistoryRef: React.RefObject<HTMLDivElement | null>;
     messageEndRef: React.RefObject<HTMLDivElement | null>;
     editTextAreaRef: React.RefObject<HTMLTextAreaElement | null>;
-    parentInteractionMessageId: string | null;
+    parentMessageId: string | null;
     locationBackgroundUrl: string | null;
     parentInteractionDataName?: string | null;
 

@@ -36,7 +36,7 @@ function createEmptyChat(): InteractionData {
         firstCreatedTimestamp: Date.now(),
         lastUpdatedTimestamp: Date.now(),
         parentInteractionDataId: null,
-        parentInteractionMessageId: null,
+        parentMessageId: null,
     };
 }
 

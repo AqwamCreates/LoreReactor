@@ -74,7 +74,7 @@ export function ChatViewArea({
                     lastUpdatedTimestamp: 0,
                     locationIndex: undefined,
                     characterLockedLocations: {},
-                    parentInteractionMessageId: null,
+                    parentMessageId: null,
                 } as any);
             }
         }

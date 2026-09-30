@@ -394,7 +394,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 kvCacheInteractionTextContentSummaries: {},
                 characterClothingWearingStatuses: {},
                 characterLockedLocations: {},
-                parentInteractionMessageId: null,
+                parentMessageId: null,
                 firstCreatedTimestamp: Date.now(),
                 lastUpdatedTimestamp: Date.now(),
             };

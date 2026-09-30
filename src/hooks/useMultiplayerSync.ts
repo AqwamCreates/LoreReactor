@@ -40,7 +40,7 @@ interface SyncChatMessagePayload {
     inventory?: Record<string, string | number>;
     characterClothingWearingStatuses: Record<string, boolean>;
     characterLockedLocations: Record<string, string[]>;
-    parentInteractionMessageId?: string | null;
+    parentMessageId?: string | null;
     triggerResponse?: boolean;
 }
 
@@ -56,7 +56,7 @@ interface SyncInteractionMessagePayload {
     inventory?: Record<string, string | number>;
     characterClothingWearingStatuses: Record<string, boolean>;
     characterLockedLocations: Record<string, string[]>;
-    parentInteractionMessageId?: string | null;
+    parentMessageId?: string | null;
 }
 
 interface SyncWhisperMessagePayload {
@@ -74,7 +74,7 @@ interface SyncWhisperMessagePayload {
     inventory?: Record<string, string | number>;
     characterClothingWearingStatuses: Record<string, boolean>;
     characterLockedLocations: Record<string, string[]>;
-    parentInteractionMessageId?: string | null;
+    parentMessageId?: string | null;
 }
 
 interface BorrowModelResponsePayload {
@@ -123,7 +123,7 @@ function extractSyncPayload(message: HistoryMessage): SyncMessagePayload {
         inventory: message.inventory,
         characterClothingWearingStatuses: message.characterClothingWearingStatuses,
         characterLockedLocations: message.characterLockedLocations,
-        parentInteractionMessageId: message.parentInteractionMessageId ?? null,
+        parentMessageId: message.parentMessageId ?? null,
     };
 
     if (message.messageType === 'whisper') {
@@ -398,7 +398,7 @@ export function useMultiplayerSync({
                         inventory: whisperPayload.inventory,
                         characterClothingWearingStatuses: whisperPayload.characterClothingWearingStatuses,
                         characterLockedLocations: whisperPayload.characterLockedLocations,
-                        parentInteractionMessageId: whisperPayload.parentInteractionMessageId ?? null,
+                        parentMessageId: whisperPayload.parentMessageId ?? null,
                         firstCreatedTimestamp: msg.timestamp,
                         lastUpdatedTimestamp: msg.timestamp,
                     } satisfies WhisperMessage;
@@ -424,7 +424,7 @@ export function useMultiplayerSync({
                         inventory: chatPayload.inventory,
                         characterClothingWearingStatuses: chatPayload.characterClothingWearingStatuses,
                         characterLockedLocations: chatPayload.characterLockedLocations,
-                        parentInteractionMessageId: chatPayload.parentInteractionMessageId ?? null,
+                        parentMessageId: chatPayload.parentMessageId ?? null,
                         firstCreatedTimestamp: msg.timestamp,
                         lastUpdatedTimestamp: msg.timestamp,
                     } satisfies ChatMessage;
@@ -442,7 +442,7 @@ export function useMultiplayerSync({
                         inventory: interactionPayload.inventory,
                         characterClothingWearingStatuses: interactionPayload.characterClothingWearingStatuses,
                         characterLockedLocations: interactionPayload.characterLockedLocations,
-                        parentInteractionMessageId: interactionPayload.parentInteractionMessageId ?? null,
+                        parentMessageId: interactionPayload.parentMessageId ?? null,
                         firstCreatedTimestamp: msg.timestamp,
                         lastUpdatedTimestamp: msg.timestamp,
                     } satisfies InteractionMessage;
@@ -936,7 +936,7 @@ export function useMultiplayerSync({
                             firstCreatedTimestamp: Date.now(),
                             lastUpdatedTimestamp: Date.now(),
                             parentInteractionDataId: null,
-                            parentInteractionMessageId: null,
+                            parentMessageId: null,
                         };
 
                         const baseData = freshData ?? fallbackData;

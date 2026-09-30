@@ -443,7 +443,7 @@ export function createNewInteractionData(character: Character): InteractionData 
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
         parentInteractionDataId: null,
-        parentInteractionMessageId: null,
+        parentMessageId: null,
     };
 }
 
@@ -502,7 +502,7 @@ export function createChatMessage(
         kvCacheInteractionTextContentSummaries: {},
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
-        parentInteractionMessageId: lastMessageId,
+        parentMessageId: lastMessageId,
     } as ChatMessage;
 }
 
@@ -584,6 +584,6 @@ export function branchInteractionMessage(interactionData: InteractionData, branc
         lastUpdatedTimestamp: currentTimestamp,
         Profile: interactionData.Profile,
         parentInteractionDataId: interactionData.id,
-        parentInteractionMessageId: branchPointMessageId,
+        parentMessageId: branchPointMessageId,
     };
 }

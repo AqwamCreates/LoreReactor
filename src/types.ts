@@ -340,7 +340,7 @@ export interface BaseMessage {
   inventory?: Inventory,
   characterClothingWearingStatuses: Record<string, boolean>
   characterLockedLocations: Record<string, string[]> // Location Ids -> An array of character Ids.
-  parentInteractionMessageId?: string | null;
+  parentMessageId?: string | null;
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;
 }
@@ -384,7 +384,7 @@ export interface RawBaseMessage {
   locationIndex?: number;
   characterExpression?: string;
   inventory?: Inventory,
-  parentInteractionMessageId?: string | null;
+  parentMessageId?: string | null;
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;
 }
@@ -493,10 +493,10 @@ export interface InteractionData extends ObjectData {
   contexts: Context[];
   locations: Location[];
   audioTracks: AudioTrack[];
-  interactionHistory: HistoryMessage[];
+  interactionHistories: Record<string, HistoryMessage[]>; // location Id -> InteractionHistory at that location.
   numberOfMessages?: number;
   parentInteractionDataId?: string | null;
-  parentInteractionMessageId?: string | null;
+  parentMessageId?: string | null;
   Profile?: Profile;
 }
 
@@ -508,7 +508,7 @@ export interface RawInteractionData extends RawData {
   audioTrackIds: string[];
   interactionIdHistory: string[];
   parentInteractionDataId?: string | null;
-  parentInteractionMessageId?: string | null;
+  parentMessageId?: string | null;
   ProfileId?: string;
 }
 

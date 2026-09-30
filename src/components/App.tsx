@@ -884,7 +884,7 @@ function App() {
         formattedStreamingText: null, // Managed inside ChatViewArea
         locationBackgroundUrl: viewAssets.locationBackgroundUrl, isLoading,
         isEditingTitle: chatOps.isEditingTitle, editTitleValue: chatOps.editTitleValue,
-        parentInteractionMessageId: interactionData?.parentInteractionMessageId ?? null,
+        parentMessageId: interactionData?.parentMessageId ?? null,
         parentInteractionDataName: parentChatName,
         streamingCharacter: null, // Managed inside ChatViewArea
         chatHistoryRef, messageEndRef,

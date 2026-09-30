@@ -283,7 +283,7 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
                         locationIndex,
                         characterClothingWearingStatuses: initializeClothingWearingStatuses(fallback),
                         characterLockedLocations: {},
-                        parentInteractionMessageId: null,
+                        parentMessageId: null,
                         firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
                     });
                     changed = true;
@@ -301,7 +301,7 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
                     locationIndex,
                     characterClothingWearingStatuses: initializeClothingWearingStatuses(picked),
                     characterLockedLocations: {},
-                    parentInteractionMessageId: null,
+                    parentMessageId: null,
                     firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
                 });
                 changed = true;

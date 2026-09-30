@@ -1071,7 +1071,7 @@ async function buildInteractionDataShell(
     firstCreatedTimestamp: rawInteractionData.firstCreatedTimestamp || Date.now(), 
     lastUpdatedTimestamp: rawInteractionData.lastUpdatedTimestamp || Date.now(),
     parentInteractionDataId: rawInteractionData.parentInteractionDataId || null, 
-    parentInteractionMessageId: rawInteractionData.parentInteractionMessageId || null,
+    parentMessageId: rawInteractionData.parentMessageId || null,
     Profile: profile,
   };
 }
@@ -1231,7 +1231,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     await Promise.all(saveMessagePromises.slice(i, i + BATCH_SIZE));
   }
 
-  const { id, protagonists, participants, contexts, locations, audioTracks, interactionHistory, parentInteractionDataId, parentInteractionMessageId, Profile, ...rawInteractionData } = interactionData;
+  const { id, protagonists, participants, contexts, locations, audioTracks, interactionHistory, parentInteractionDataId, parentMessageId, Profile, ...rawInteractionData } = interactionData;
   const payload: RawInteractionData = {
     ...rawInteractionData, 
     protagonistIds: protagonists.map(p => p.id),
@@ -1241,7 +1241,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     audioTrackIds: audioTracks?.map(t => t.id) || [],
     interactionIdHistory: interactionHistory.map(m => m.id),
     parentInteractionDataId: parentInteractionDataId || null, 
-    parentInteractionMessageId: parentInteractionMessageId || null,
+    parentMessageId: parentMessageId || null,
     ProfileId: Profile?.id,
     lastUpdatedTimestamp: Date.now(),
   };
@@ -1249,10 +1249,10 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
   await updateManifest('interactionData', id, 'add');
 }
 
-export async function branchRawInteractionData(parentInteractionDataId: string, parentInteractionMessageId: string): Promise<string> {
+export async function branchRawInteractionData(parentInteractionDataId: string, parentMessageId: string): Promise<string> {
   const sourceChat = await loadRawInteractionData(parentInteractionDataId);
   if (!sourceChat) throw new Error("Source chat not found");
-  const branchIndex = sourceChat.interactionHistory.findIndex(m => m.id === parentInteractionMessageId);
+  const branchIndex = sourceChat.interactionHistory.findIndex(m => m.id === parentMessageId);
   if (branchIndex === -1) throw new Error("Branch point message not found");
   const newChatId = uuidv4();
   const newPayload: RawInteractionData = {
@@ -1266,7 +1266,7 @@ export async function branchRawInteractionData(parentInteractionDataId: string, 
     firstCreatedTimestamp: Date.now(), 
     lastUpdatedTimestamp: Date.now(), 
     parentInteractionDataId, 
-    parentInteractionMessageId,
+    parentMessageId,
     ProfileId: sourceChat.Profile?.id,
   };
   await putJson(`${PATHS.interactionData}/${newChatId}.json`, newPayload);

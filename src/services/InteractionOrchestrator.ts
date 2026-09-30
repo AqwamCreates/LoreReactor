@@ -42,7 +42,7 @@ function createSilentInteraction(
         locationIndex,
         characterClothingWearingStatuses: clothingWearingStatuses,
         characterLockedLocations: { ...lockedLocations },
-        parentInteractionMessageId: parentId ?? null,
+        parentMessageId: parentId ?? null,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
     };

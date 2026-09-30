@@ -105,7 +105,7 @@ export function ParticipantControlModal({
                     locationIndex: locationOverrides[charId] === '' || locationOverrides[charId] === undefined ? undefined : Number(locationOverrides[charId]),
                     characterClothingWearingStatuses: {},
                     characterLockedLocations: {},
-                    parentInteractionMessageId: null,
+                    parentMessageId: null,
                     firstCreatedTimestamp: now,
                     lastUpdatedTimestamp: now,
                 };

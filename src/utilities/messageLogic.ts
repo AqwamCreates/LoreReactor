@@ -10,8 +10,8 @@ async function getParentInteractionMessageIds(chatId: string): Promise<Set<strin
     const points = new Set<string>();
     
     for (const c of allChats) {
-        if (c && c.parentInteractionDataId === chatId && c.parentInteractionMessageId) {
-            points.add(c.parentInteractionMessageId);
+        if (c && c.parentInteractionDataId === chatId && c.parentMessageId) {
+            points.add(c.parentMessageId);
         }
     }
     return points;
@@ -106,7 +106,7 @@ export async function branchMessage(currentChat: InteractionData, messageId: str
         protagonists: [...currentChat.protagonists],
         interactionHistory: currentChat.interactionHistory.slice(0, branchIndex + 1),
         parentInteractionDataId: currentChat.id,
-        parentInteractionMessageId: messageId,
+        parentMessageId: messageId,
         Profile: currentChat.Profile,
         firstCreatedTimestamp: Date.now(),
         lastUpdatedTimestamp: Date.now(),
@@ -134,7 +134,7 @@ export async function cloneChatUpToMessage(currentChat: InteractionData, message
         character: { ...msg.character },
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
-        parentInteractionMessageId: null,
+        parentMessageId: null,
     }));
 
     const clonedChat: InteractionData = {
@@ -150,7 +150,7 @@ export async function cloneChatUpToMessage(currentChat: InteractionData, message
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
         parentInteractionDataId: null,
-        parentInteractionMessageId: null,
+        parentMessageId: null,
     };
 
     await saveRawInteractionData(clonedChat);

@@ -13,7 +13,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
         activeToolbarId, portraitUrlCache, displayNameCache,
         formattedStreamingText, isLoading, streamingPortraitUrl, streamingCharacter,
         chatHistoryRef, messageEndRef, editTextAreaRef,
-        parentInteractionMessageId, parentInteractionDataName,
+        parentMessageId, parentInteractionDataName,
         focusedMessageId, setFocusedMessageId,
         onAvatarClick, onStartEditing, onCancelEditing, onSaveEdit,
         onRegenerateFromEdit, onResumeGeneration, onCopyText,
@@ -111,17 +111,17 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
                     : message.character.name;
                 
                 const stem = (() => {
-                    if (!parentInteractionMessageId) return false;
-                    const bi = displayMessages.findIndex(m => m.id === parentInteractionMessageId);
+                    if (!parentMessageId) return false;
+                    const bi = displayMessages.findIndex(m => m.id === parentMessageId);
                     if (bi === -1) return false;
                     const ci = displayMessages.findIndex(m => m.id === message.id);
                     return ci !== -1 && ci <= bi;
                 })();
                 
-                const branchOffIndex = parentInteractionMessageId
-                    ? displayMessages.findIndex(m => m.id === parentInteractionMessageId)
+                const branchOffIndex = parentMessageId
+                    ? displayMessages.findIndex(m => m.id === parentMessageId)
                     : -1;
-                const beforeBranch = !!(parentInteractionMessageId && index === branchOffIndex);
+                const beforeBranch = !!(parentMessageId && index === branchOffIndex);
                 
                 const messagePortraitUrl = portraitUrlCache.get(message.id)
                     ?? portraitUrlCache.get(`character:${message.character.id}`)

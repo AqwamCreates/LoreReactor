@@ -2102,7 +2102,7 @@ export function processPendingToolActions(
                         locationIndex: destLocIdx,
                         characterClothingWearingStatuses: (prevKickedMsg as ChatMessage)?.characterClothingWearingStatuses ?? {},
                         characterLockedLocations: { ...prevLockedLocations },
-                        parentInteractionMessageId: updatedData.interactionHistory[updatedData.interactionHistory.length - 1]?.id ?? null,
+                        parentMessageId: updatedData.interactionHistory[updatedData.interactionHistory.length - 1]?.id ?? null,
                         firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
                     };
                     updatedData = { 
@@ -2136,7 +2136,7 @@ export function processPendingToolActions(
                         locationIndex: currentLocIdx,
                         characterClothingWearingStatuses: (prevInvitedMsg as ChatMessage)?.characterClothingWearingStatuses ?? {},
                         characterLockedLocations: { ...prevLockedLocations },
-                        parentInteractionMessageId: updatedData.interactionHistory[updatedData.interactionHistory.length - 1]?.id ?? null,
+                        parentMessageId: updatedData.interactionHistory[updatedData.interactionHistory.length - 1]?.id ?? null,
                         firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
                     };
 
@@ -2171,7 +2171,7 @@ export function processPendingToolActions(
                     kvCacheInteractionTextContentSummaries: {},
                     characterClothingWearingStatuses: (charLastMsg as ChatMessage)?.characterClothingWearingStatuses ?? {},
                     characterLockedLocations: charLastMsg.characterLockedLocations ?? {},
-                    parentInteractionMessageId: charLastMsg.id,
+                    parentMessageId: charLastMsg.id,
                     firstCreatedTimestamp: Date.now(),
                     lastUpdatedTimestamp: Date.now(),
                 };
