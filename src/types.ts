@@ -424,8 +424,8 @@ export interface Account extends ObjectData {
   username: string
   password: string
   url?: string
-  shareCharacters: boolean
-  shareLanguageModels: boolean;
+  sharedCharacterIds: string[];
+  sharedLanguageModelIds: string[];
 
 }
 
