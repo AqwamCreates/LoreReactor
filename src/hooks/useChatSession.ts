@@ -84,8 +84,44 @@ function findLastAIMessageId(
     return null;
 }
 
+function broadcastToolStateChanges(
+    before: InteractionData,
+    after: InteractionData,
+    broadcastFn?: (state: Partial<InteractionData>) => void
+) {
+    if (!broadcastFn) return;
+    const diff: Partial<InteractionData> = {};
+    let hasChanges = false;
+
+    if (before.locations !== after.locations) {
+        diff.locations = after.locations;
+        hasChanges = true;
+    }
+    if (before.participants !== after.participants) {
+        diff.participants = after.participants;
+        hasChanges = true;
+    }
+    if (before.audioTracks !== after.audioTracks) {
+        diff.audioTracks = after.audioTracks;
+        hasChanges = true;
+    }
+    if (before.contexts !== after.contexts) {
+        diff.contexts = after.contexts;
+        hasChanges = true;
+    }
+    if (before.Profile !== after.Profile) {
+        diff.Profile = after.Profile;
+        hasChanges = true;
+    }
+
+    if (hasChanges) {
+        broadcastFn(diff);
+    }
+}
+
 interface UseChatSessionOptions {
     onMessageBroadcast?: (message: HistoryMessage) => void;
+    onStateBroadcast?: (state: Partial<InteractionData>) => void;
     isMultiplayerClient?: boolean;
     joinProtagonist?: Character | null;
     allCharacters?: Character[];
@@ -120,6 +156,7 @@ interface GenerationTurnOptions {
 export function useChatSession(options: UseChatSessionOptions) {
     const { addToast } = useToast();
     const onMessageBroadcastRef = useRef(options?.onMessageBroadcast);
+    const onStateBroadcastRef = useRef(options?.onStateBroadcast);
     const isMultiplayerClient = options?.isMultiplayerClient ?? false;
     const requestBorrowedModel = options?.requestBorrowedModel;
     
@@ -150,6 +187,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, []);
 
     useEffect(() => { onMessageBroadcastRef.current = options?.onMessageBroadcast; }, [options?.onMessageBroadcast]);
+    useEffect(() => { onStateBroadcastRef.current = options?.onStateBroadcast; }, [options?.onStateBroadcast]);
 
     const joinProtagonistRef = useRef(options?.joinProtagonist ?? null);
     useEffect(() => { joinProtagonistRef.current = options?.joinProtagonist ?? null; }, [options?.joinProtagonist]);
@@ -494,7 +532,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         allStopPatterns: allStopPatternsRef.current,
         allBudgetStrategies: allBudgetStrategiesRef.current,
         allProfiles: allProfilesRef.current,
-        allWorlds: allWorldsRef.current,
+        allWorlds: worlds.worlds,
         allMemories: allMemoriesRef.current,
         allAccounts: allAccountsRef.current,
         allMultiplayerData: allMultiplayerDataRef.current,
@@ -594,7 +632,10 @@ export function useChatSession(options: UseChatSessionOptions) {
                 return;
             }
 
+            // Execute tools and broadcast any environment mutations to peers
+            const preToolData = ud;
             ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
+            broadcastToolStateChanges(preToolData, ud, onStateBroadcastRef.current);
 
             if (ud.interactionHistory.length > preTurnCount) {
                 setInteractionData(ud);
@@ -711,9 +752,12 @@ export function useChatSession(options: UseChatSessionOptions) {
 
                 slashMessage.textContent = toolResult.displayReplacement || toolResult.content || `[${slashInvocation.toolType}]`;
 
+                const preSlashData = currentState.interactionData;
                 let updatedData = addMessageToInteractionData(currentState.interactionData, slashMessage);
                 updatedData = processPendingToolActions(updatedData, allCharactersRef.current, { onToast: addToast });
                 
+                // Broadcast slash tool state mutations (locations, participants, audio) to joiners
+                broadcastToolStateChanges(preSlashData, updatedData, onStateBroadcastRef.current);
                 setInteractionData(updatedData);
 
                 if (isMultiplayerClient) {

@@ -158,6 +158,9 @@ function App() {
     // ─── Chat Session ────────────────────────────────────────────────
     const session = useChatSession({
         onMessageBroadcast: handleBroadcastMessage,
+        onStateBroadcast: (state) => {
+            if (canBroadcastState) mp.multiplayerSync.broadcastStateSync?.(state as any)
+        },
         isMultiplayerClient: mp.isMultiplayerClient,
         joinProtagonist: mp.joinProtagonist,
         allCharacters: characters.characters,
