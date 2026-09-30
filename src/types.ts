@@ -895,3 +895,11 @@ export interface ActionFormatData {
     isAutoFormat?: boolean;
     matrix?: Record<string, Record<string, number>>;
 }
+
+export type Entity = Character | Context | Location | PromptBlock | LanguageModel | Sampler | StopPattern | Profile | BudgetStrategy | Account | MultiplayerData
+
+export type entityType = 
+    | 'character' | 'context' | 'location' | 'audioTrack' 
+    | 'world' | 'model' | 'sampler' | 'promptBlock' 
+    | 'stopPattern' | 'budgetStrategy' | 'profile' 
+    | 'account' | 'multiplayerData';

@@ -9,7 +9,7 @@ import type {
 } from '../types';
 import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';
 import type { ModalController } from '../hooks/useAppModals';
-import type { EntityType } from '../hooks/useEntityModals';
+import type { entityType } from '../types'
 import { loadRawInteractionData } from '../storages/serverStorage';
 import { ManagerModal } from './ManagerModal';
 import {
@@ -60,7 +60,7 @@ interface ApplicationModalsProperties {
     isMultiplayerClient?: boolean;
     modals: Record<string, ModalController>;
     entityModals: {
-        getModalProperties: (entityType: EntityType) => EntityModalController;
+        getModalProperties: (entityType: entityType) => EntityModalController;
     };
     runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     rawChatShells: RawInteractionData[];
