@@ -180,7 +180,7 @@ function findMatchingFields(obj: any, query: string): FieldMatch[] {
     return matches;
 }
 
-function SuperSearchContent({
+export function SuperSearchModal({
     onClose,
     allCharacters,
     allContexts,
@@ -602,8 +602,4 @@ function SuperSearchContent({
             </div>
         </div>
     );
-}
-
-export function SuperSearchModal(props: SuperSearchModalProps) {
-    return <SuperSearchContent {...props} />;
 }

@@ -38,6 +38,7 @@ interface SyncChatMessagePayload {
     characterClothingWearingStatuses: Record<string, boolean>;
     characterLockedLocations: Record<string, string[]>;
     parentInteractionMessageId?: string | null;
+    triggerResponse?: boolean;
 }
 
 interface SyncInteractionMessagePayload {
@@ -147,6 +148,7 @@ function extractSyncPayload(message: HistoryMessage): SyncMessagePayload {
             textContent: message.textContent,
             files: message.files,
             frontCameraImage: message.frontCameraImage,
+            triggerResponse: (message as any).triggerResponse,
         } satisfies SyncChatMessagePayload;
     }
 
@@ -474,8 +476,23 @@ export function useMultiplayerSync({
                         payload: extractSyncPayload(newMessage),
                     });
 
-                    if (isNewMessage && payload.messageType === 'chat') {
-                        MultiplayerEvents.emit('peerMessageReceived', newMessage as ChatMessage);
+                    if (isNewMessage) {
+                        const allProtagonistIds = new Set(currentData.protagonists?.map(p => p.id) ?? []);
+
+                        if (payload.messageType === 'chat') {
+                            const chatPayload = payload as SyncChatMessagePayload;
+                            // Only emit peer message if response generation was not explicitly disabled
+                            if (chatPayload.triggerResponse !== false) {
+                                MultiplayerEvents.emit('peerMessageReceived', newMessage as ChatMessage);
+                            }
+                        } else if (payload.messageType === 'whisper') {
+                            const whisperPayload = payload as SyncWhisperMessagePayload;
+                            // If whisper targets an NPC (not another human player), trigger host response
+                            const targetsNPC = whisperPayload.targetCharacterIds.some(id => !allProtagonistIds.has(id));
+                            if (targetsNPC) {
+                                MultiplayerEvents.emit('peerMessageReceived', newMessage as any);
+                            }
+                        }
                     }
                 }
                 break;
@@ -840,10 +857,10 @@ export function useMultiplayerSync({
                         initialState,
                         assignedCharacter,
                         sessionRules: {
-                            canUseJoinerCharacterIds: currentMultiplayerData.canUseJoinerCharacterIds,
-                            joinerCharacterIdsRequiresHosterApproval: currentMultiplayerData.joinerCharacterIdsRequiresHosterApproval,
-                            sharedHosterCharacterIds: currentMultiplayerData.sharedHosterCharacterIds,
-                            hosterCharacterIdsRequiresHosterApproval: currentMultiplayerData.hosterCharacterIdsRequiresHosterApproval,
+                            canUseJoinerCharacterIds: updatedMultiplayerData.canUseJoinerCharacterIds,
+                            joinerCharacterIdsRequiresHosterApproval: updatedMultiplayerData.joinerCharacterIdsRequiresHosterApproval,
+                            sharedHosterCharacterIds: updatedMultiplayerData.sharedHosterCharacterIds,
+                            hosterCharacterIdsRequiresHosterApproval: updatedMultiplayerData.hosterCharacterIdsRequiresHosterApproval,
                         },
                     },
                 });
