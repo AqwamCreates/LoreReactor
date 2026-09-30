@@ -183,7 +183,7 @@ export function sampleLocationByWeight(locations: Location[], character: Charact
     for (let i = 0; i < locations.length; i++) {
         const loc = locations[i];
         const charWeight = loc.characterWeights?.[character.id];
-        const weight = charWeight !== undefined ? charWeight : loc.globalWeight;
+        const weight = charWeight !== undefined ? charWeight : loc.globalWeight || 0;
         if (weight > 0) { pool.push({ index: i, weight }); totalWeight += weight; }
     }
     if (pool.length === 0 || totalWeight <= 0) return undefined;
@@ -201,7 +201,7 @@ export function sampleReachableLocationByWeight(
     let totalWeight = 0;
     for (const { location, locationIndex } of reachable) {
         const charWeight = location.characterWeights?.[character.id];
-        const weight = charWeight !== undefined ? charWeight : location.globalWeight;
+        const weight = charWeight !== undefined ? charWeight : location.globalWeight || 0;
         if (weight > 0) { pool.push({ locationIndex, weight }); totalWeight += weight; }
     }
     if (pool.length === 0 || totalWeight <= 0) return undefined;
@@ -218,7 +218,7 @@ export function sampleInitialLocationForCharacter(locations: Location[], charact
         const loc = locations[i];
         if (loc.characterBindings && loc.characterBindings.length > 0 && !loc.characterBindings.includes(character.id)) continue;
         const charWeight = loc.characterWeights?.[character.id];
-        const weight = charWeight !== undefined ? charWeight : loc.globalWeight;
+        const weight = charWeight !== undefined ? charWeight : loc.globalWeight || 0;
         if (weight > 0) { pool.push({ index: i, weight }); totalWeight += weight; }
     }
     if (pool.length === 0 || totalWeight <= 0) return undefined;
@@ -317,5 +317,5 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
 
 export function isLocationOwner(character: Character, location: Location | undefined): boolean {
     if (!location) return false;
-    return location.ownerBindings.includes(character.id);
+    return location.ownerBindings?.includes(character.id) || false;
 }

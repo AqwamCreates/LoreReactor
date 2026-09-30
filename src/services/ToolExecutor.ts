@@ -526,7 +526,7 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
 
     if (targetLocation.id === currentLocation.id) return { toolType: 'move', args, content: `Already at "${targetLocation.name}" (${targetLocation.id}).`, displayReplacement: `[🚶 Already at "${targetLocation.name}"]` };
 
-    const isAdjacent = currentLocation.locationBindings.includes(targetLocation.id) || targetLocation.locationBindings.includes(currentLocation.id);
+    const isAdjacent = currentLocation.locationBindings?.includes(targetLocation.id) || targetLocation.locationBindings?.includes(currentLocation.id);
     if (!isAdjacent) return { toolType: 'move', args, content: `[Error: "${targetLocation.name}" is not adjacent. Use teleport for non-adjacent movement.]`, displayReplacement: `[Error: Not adjacent]` };
 
     if (isCharacterLockedFromLocation(interactionData, nextMessage.character.id, targetLocation.id)) {

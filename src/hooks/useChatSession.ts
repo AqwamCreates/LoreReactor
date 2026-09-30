@@ -494,7 +494,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         allStopPatterns: allStopPatternsRef.current,
         allBudgetStrategies: allBudgetStrategiesRef.current,
         allProfiles: allProfilesRef.current,
-        allWorlds: worlds.worlds,
+        allWorlds: allWorldsRef.current,
         allMemories: allMemoriesRef.current,
         allAccounts: allAccountsRef.current,
         allMultiplayerData: allMultiplayerDataRef.current,
