@@ -150,7 +150,7 @@ function deriveLocalProtagonist(
 }
 
 export function AppModals({
-    isMultiplayerClient,
+    isMultiplayerClient = false,
     modals,
     entityModals,
     runningModels,
@@ -668,7 +668,6 @@ export function AppModals({
                 <ManagerModal 
                     title="Multiplayer Data" 
                     localLibraryItems={allMultiplayerData} 
- 
                     onClose={modals.multiplayerDataList.close}
                     onSelect={(multiplayerDataEntry: MultiplayerData) => multiplayerDataModalProperties.open(multiplayerDataEntry)} 
                     onDelete={onDeleteMultiplayerData} 
@@ -681,7 +680,6 @@ export function AppModals({
 
             {modals.aiRecommendation.isOpen && (
                 <AIRecommendationModal 
- 
                     onClose={modals.aiRecommendation.close}
                     onSaveCharacter={async (character: Character) => { onSaveCharacter(character); return true; }}
                     onSaveContext={async (context: Context) => { onSaveContext(context); return true; }}
@@ -703,7 +701,6 @@ export function AppModals({
 
             {modals.restrictionReduction.isOpen && (
                 <RestrictionReductionModal 
- 
                     onClose={modals.restrictionReduction.close}
                     onSaveCharacter={async (character: Character) => { onSaveCharacter(character); return true; }}
                     allCharacters={allCharacters} allProfiles={allProfiles} allLanguageModels={allLanguageModels} allSamplers={allSamplers}
@@ -713,7 +710,6 @@ export function AppModals({
 
             {modals.alternateTimelines.isOpen && (
                 <AlternateTimelinesModal 
- 
                     onClose={modals.alternateTimelines.close}
                     currentInteractionId={interactionData?.id ?? ''} 
                     rawChatShells={chatShellsWithIdentifiers}
@@ -726,7 +722,6 @@ export function AppModals({
 
             {modals.cardImport.isOpen && (
                 <CharacterCardImportModal 
- 
                     onClose={modals.cardImport.close}
                     onSaveCharacter={async (character: Character) => { onSaveCharacter(character); return true; }}
                     onSaveContext={async (context: Context) => { onSaveContext(context); return true; }} 
@@ -740,7 +735,6 @@ export function AppModals({
 
             {modals.exportData.isOpen && (
                 <DataExportModal 
- 
                     onClose={modals.exportData.close}
                     allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} allAudioTracks={allAudioTracks}
                     allWorlds={allWorlds} allLanguageModels={allLanguageModels} allSamplers={allSamplers} allPromptBlocks={allPromptBlocks}
@@ -752,7 +746,6 @@ export function AppModals({
 
             {modals.dataManager.isOpen && (
                 <DataManagerModal 
- 
                     onClose={modals.dataManager.close}
                     allCharacters={allCharacters} 
                     allContexts={allContexts} 
@@ -789,8 +782,8 @@ export function AppModals({
 
             {modals.superSearch?.isOpen && (
                 <SuperSearchModal
-
                     onClose={modals.superSearch.close}
+                    isMultiplayerClient={isMultiplayerClient}
                     allCharacters={allCharacters}
                     allContexts={allContexts}
                     allLocations={allLocations}
@@ -807,29 +800,29 @@ export function AppModals({
                     allMultiplayerData={allMultiplayerData}
                     rawChatShells={chatShellsWithIdentifiers}
                     currentInteractionData={interactionData}
-                    onSelectEntity={(tabId, entity, parentEntity) => {
+                    onSelectEntity={(tabId, entity, parentEntity, isReadOnly = false) => {
                         switch (tabId) {
-                            case 'character': characterModalProperties.open(entity); break;
-                            case 'context': contextModalProperties.open(entity); break;
-                            case 'location': locationModalProperties.open(entity); break;
-                            case 'audioTrack': audioTrackModalProperties.open(entity); break;
-                            case 'world': worldModalProperties.open(entity); break;
-                            case 'promptBlock': promptBlockModalProperties.open(entity); break;
-                            case 'model': modelModalProperties.open(entity); break;
-                            case 'sampler': samplerModalProperties.open(entity); break;
-                            case 'stopPattern': stopPatternModalProperties.open(entity); break;
-                            case 'budgetStrategy': budgetStrategyModalProperties.open(entity); break;
-                            case 'profile': profileModalProperties.open(entity); break;
-                            case 'account': accountModalProperties.open(entity); break;
-                            case 'multiplayerData': multiplayerDataModalProperties.open(entity); break;
+                            case 'character': characterModalProperties.open(entity, isReadOnly); break;
+                            case 'context': contextModalProperties.open(entity, isReadOnly); break;
+                            case 'location': locationModalProperties.open(entity, isReadOnly); break;
+                            case 'audioTrack': audioTrackModalProperties.open(entity, isReadOnly); break;
+                            case 'world': worldModalProperties.open(entity, isReadOnly); break;
+                            case 'promptBlock': promptBlockModalProperties.open(entity, isReadOnly); break;
+                            case 'model': modelModalProperties.open(entity, isReadOnly); break;
+                            case 'sampler': samplerModalProperties.open(entity, isReadOnly); break;
+                            case 'stopPattern': stopPatternModalProperties.open(entity, isReadOnly); break;
+                            case 'budgetStrategy': budgetStrategyModalProperties.open(entity, isReadOnly); break;
+                            case 'profile': profileModalProperties.open(entity, isReadOnly); break;
+                            case 'account': accountModalProperties.open(entity, isReadOnly); break;
+                            case 'multiplayerData': multiplayerDataModalProperties.open(entity, isReadOnly); break;
                             case 'chat': onSwitchChat(entity.id); break;
                             case 'memory':
                                 addToast('Memories are managed inside Character settings.', 'info');
-                                characterModalProperties.open(parentEntity);
+                                characterModalProperties.open(parentEntity, isReadOnly);
                                 break;
                             case 'message':
-                                if (interactionData?.id !== parentEntity?.id) {
-                                    if (parentEntity) onSwitchChat(parentEntity.id);
+                                if (interactionData?.id !== parentEntity?.id && parentEntity) {
+                                    onSwitchChat(parentEntity.id);
                                 }
                                 if (entity.id) {
                                     const targetId = entity.id;
@@ -845,7 +838,7 @@ export function AppModals({
                                 }
                                 break;
                             default:
-                                entityModals.getModalProperties(tabId as any)?.open(entity);
+                                entityModals.getModalProperties(tabId as any)?.open(entity, isReadOnly);
                                 break;
                         }
                     }}
@@ -1052,7 +1045,6 @@ export function AppModals({
             {/* ─── Join Session Modal ─── */}
             {modals.joinSession.isOpen && (
                 <JoinSessionModal
-
                     onClose={modals.joinSession.close}
                     onJoin={onJoinSession}
                 />
@@ -1061,7 +1053,6 @@ export function AppModals({
             {/* ─── Chat Inspection Modal ─── */}
             {modals.chatInspection?.isOpen && (
                 <ChatInspectionModal
-
                     onClose={() => { 
                         modals.chatInspection.close(); 
                         setInspectionStack([]); 
@@ -1074,4 +1065,4 @@ export function AppModals({
     );
 }
 
-export default AppModals;
+export default AppModals

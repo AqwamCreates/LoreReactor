@@ -30,6 +30,7 @@ export type SearchTabId =
 
 export interface SuperSearchModalProps {
     onClose: () => void;
+    isMultiplayerClient?: boolean;
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
@@ -47,7 +48,7 @@ export interface SuperSearchModalProps {
     rawChatShells: RawInteractionData[];
     currentInteractionData: InteractionData | null;
 
-    onSelectEntity?: (tabId: SearchTabId, entity: ObjectData, parentEntity?: ObjectData) => void;
+    onSelectEntity?: (tabId: SearchTabId, entity: ObjectData, parentEntity?: ObjectData, isReadOnly?: boolean) => void;
 }
 
 interface ServerMessageResult {
@@ -75,6 +76,8 @@ interface SearchMatchResult {
     chats?: Array<{ chatId: string; chatName: string }>;
     rawEntity?: any;
     parentEntity?: any;
+    isHosterOwned?: boolean;
+    isReadOnly?: boolean;
 }
 
 const TAB_CONFIG: { id: SearchTabId; label: string; icon: string }[] = [
@@ -97,7 +100,6 @@ const TAB_CONFIG: { id: SearchTabId; label: string; icon: string }[] = [
     { id: 'multiplayerData', label: 'Multiplayer', icon: '👥' },
 ];
 
-// O(1) lookup for fields we never want to expose in search results
 const IGNORED_FIELD_KEYS = new Set([
     'id',
     'firstCreatedTimestamp',
@@ -123,19 +125,18 @@ function makeSnippet(text: string, query: string, radius = 45): string {
 
 function cleanFieldPath(path: string): string {
     return path
-        .replace(/\[\d+\]/g, '') // remove array indices like [0]
+        .replace(/\[\d+\]/g, '')
         .replace(/^\./, '') || 'content';
 }
 
 function formatFieldName(field: string): string {
     return field
-        .replace(/([A-Z])/g, ' $1') // camelCase to spaces (systemPrompt -> system Prompt)
-        .replace(/[._]/g, ' ')       // dots/underscores to spaces
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/[._]/g, ' ')
         .replace(/^./, str => str.toUpperCase())
         .trim();
 }
 
-/** Recursively walks an entity to find ALL fields containing the query string */
 function findMatchingFields(obj: any, query: string): FieldMatch[] {
     const matches: FieldMatch[] = [];
     const visited = new Set();
@@ -167,9 +168,7 @@ function findMatchingFields(obj: any, query: string): FieldMatch[] {
             val.forEach((item, index) => walk(item, `${path}[${index}]`));
         } else {
             for (const [key, v] of Object.entries(val)) {
-                // O(1) check for ignored keys, plus substring checks for dynamic cache/path keys
                 if (IGNORED_FIELD_KEYS.has(key) || key.includes('Cache') || key.includes('Path')) continue;
-                
                 const currentPath = path ? `${path}.${key}` : key;
                 walk(v, currentPath);
             }
@@ -182,6 +181,7 @@ function findMatchingFields(obj: any, query: string): FieldMatch[] {
 
 export function SuperSearchModal({
     onClose,
+    isMultiplayerClient = false,
     allCharacters,
     allContexts,
     allLocations,
@@ -215,8 +215,13 @@ export function SuperSearchModal({
     const characterMap = useMemo(() => {
         const map = new Map<string, Character>();
         for (const c of allCharacters) map.set(c.id, c);
+        if (currentInteractionData?.participants) {
+            for (const c of currentInteractionData.participants) {
+                if (!map.has(c.id)) map.set(c.id, c);
+            }
+        }
         return map;
-    }, [allCharacters]);
+    }, [allCharacters, currentInteractionData]);
 
     const messageToChatsMap = useMemo(() => {
         const map = new Map<string, Array<{ chatId: string; chatName: string }>>();
@@ -282,6 +287,51 @@ export function SuperSearchModal({
         };
     }, [lowerQuery]);
 
+    // ─── Merged Pools (Local Library + Hoster-Owned from active chat) ───
+    const searchableCharacters = useMemo(() => {
+        const localIds = new Set(allCharacters.map(c => c.id));
+        const hosterOwned = isMultiplayerClient && currentInteractionData?.participants
+            ? currentInteractionData.participants.filter(c => !localIds.has(c.id))
+            : [];
+        return {
+            items: [...allCharacters, ...hosterOwned],
+            hosterOwnedIds: new Set(hosterOwned.map(c => c.id)),
+        };
+    }, [allCharacters, currentInteractionData, isMultiplayerClient]);
+
+    const searchableContexts = useMemo(() => {
+        const localIds = new Set(allContexts.map(c => c.id));
+        const hosterOwned = isMultiplayerClient && currentInteractionData?.contexts
+            ? currentInteractionData.contexts.filter(c => !localIds.has(c.id))
+            : [];
+        return {
+            items: [...allContexts, ...hosterOwned],
+            hosterOwnedIds: new Set(hosterOwned.map(c => c.id)),
+        };
+    }, [allContexts, currentInteractionData, isMultiplayerClient]);
+
+    const searchableLocations = useMemo(() => {
+        const localIds = new Set(allLocations.map(l => l.id));
+        const hosterOwned = isMultiplayerClient && currentInteractionData?.locations
+            ? currentInteractionData.locations.filter(l => !localIds.has(l.id))
+            : [];
+        return {
+            items: [...allLocations, ...hosterOwned],
+            hosterOwnedIds: new Set(hosterOwned.map(l => l.id)),
+        };
+    }, [allLocations, currentInteractionData, isMultiplayerClient]);
+
+    const searchableAudioTracks = useMemo(() => {
+        const localIds = new Set(allAudioTracks.map(a => a.id));
+        const hosterOwned = isMultiplayerClient && currentInteractionData?.audioTracks
+            ? currentInteractionData.audioTracks.filter(a => !localIds.has(a.id))
+            : [];
+        return {
+            items: [...allAudioTracks, ...hosterOwned],
+            hosterOwnedIds: new Set(hosterOwned.map(a => a.id)),
+        };
+    }, [allAudioTracks, currentInteractionData, isMultiplayerClient]);
+
     const categorizedResults = useMemo<Record<SearchTabId, SearchMatchResult[]>>(() => {
         const emptyMap: Record<SearchTabId, SearchMatchResult[]> = {
             all: [], message: [], chat: [], character: [], context: [],
@@ -292,7 +342,12 @@ export function SuperSearchModal({
 
         if (!lowerQuery) return emptyMap;
 
-        const scanEntities = (items: any[], tabId: SearchTabId, getTitle: (item: any) => string) => {
+        const scanEntities = (
+            items: any[], 
+            tabId: SearchTabId, 
+            getTitle: (item: any) => string,
+            metadataHelper?: { hosterOwnedIds: Set<string> }
+        ) => {
             const results: SearchMatchResult[] = [];
             if (!Array.isArray(items)) return results;
 
@@ -300,23 +355,29 @@ export function SuperSearchModal({
                 if (!item || typeof item !== 'object') continue;
                 const matches = findMatchingFields(item, lowerQuery);
                 if (matches.length > 0) {
+                    const isHosterOwned = metadataHelper ? metadataHelper.hosterOwnedIds.has(item.id) : false;
+                    const isReadOnly = isHosterOwned;
+
                     results.push({
                         tabId,
                         id: String(item.id || ''),
                         title: String(getTitle(item) || ''),
                         matches,
                         rawEntity: item,
+                        isHosterOwned,
+                        isReadOnly,
                     });
                 }
             }
             return results;
         };
 
-        emptyMap.character = scanEntities(allCharacters, 'character', c => `🎭 ${c.name}`);
-        emptyMap.context = scanEntities(allContexts, 'context', c => `📜 ${c.name}`);
-        emptyMap.location = scanEntities(allLocations, 'location', l => `📍 ${l.name}`);
+        emptyMap.character = scanEntities(searchableCharacters.items, 'character', c => `🎭 ${c.name}`, searchableCharacters);
+        emptyMap.context = scanEntities(searchableContexts.items, 'context', c => `📜 ${c.name}`, searchableContexts);
+        emptyMap.location = scanEntities(searchableLocations.items, 'location', l => `📍 ${l.name}`, searchableLocations);
+        emptyMap.audioTrack = scanEntities(searchableAudioTracks.items, 'audioTrack', a => `🔊 ${a.filename || a.name}`, searchableAudioTracks);
+
         emptyMap.promptBlock = scanEntities(allPromptBlocks, 'promptBlock', p => `🧱 ${p.name}`);
-        emptyMap.audioTrack = scanEntities(allAudioTracks, 'audioTrack', a => `🔊 ${a.filename || a.name}`);
         emptyMap.world = scanEntities(allWorlds, 'world', w => `🌍 ${w.name}`);
         emptyMap.model = scanEntities(allLanguageModels, 'model', m => `🤖 ${m.name}`);
         emptyMap.sampler = scanEntities(allSamplers, 'sampler', s => `🎚️ ${s.name}`);
@@ -325,7 +386,6 @@ export function SuperSearchModal({
         emptyMap.profile = scanEntities(allProfiles, 'profile', p => `👤 ${p.name}`);
         emptyMap.memory = scanEntities(allMemories, 'memory', m => `🧠 ${typeof m.name === 'string' ? m.name : 'Untitled Memory'}`);
         
-        // Attach parent character to memory results
         for (const res of emptyMap.memory) {
             const parentChar = allCharacters.find(c => 
                 Array.isArray(c.memories) && c.memories.some((m: any) => m.id === res.id)
@@ -409,10 +469,11 @@ export function SuperSearchModal({
 
         return emptyMap;
     }, [
-        lowerQuery, allCharacters, allContexts, allLocations, allPromptBlocks, allAudioTracks,
-        allWorlds, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles,
-        allMemories, allAccounts, allMultiplayerData, rawChatShells, currentInteractionData,
-        messageToChatsMap, serverMessages, characterMap
+        lowerQuery, searchableCharacters, searchableContexts, searchableLocations, 
+        searchableAudioTracks, allPromptBlocks, allWorlds, allLanguageModels, 
+        allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, 
+        allMemories, allAccounts, allMultiplayerData, rawChatShells, 
+        currentInteractionData, messageToChatsMap, serverMessages, characterMap
     ]);
 
     const displayedResults = useMemo(() => {
@@ -451,7 +512,7 @@ export function SuperSearchModal({
                     />
                 </div>
 
-                {/* ─── Entity Tab Bar (5 tabs per row, expanded across remaining space) ─── */}
+                {/* Entity Tab Bar */}
                 <div 
                     className="entity-tab-bar" 
                     style={{ 
@@ -514,15 +575,28 @@ export function SuperSearchModal({
                                     }}
                                 >
                                     <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'baseline' }}>
-                                        <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-h)' }}>
-                                            {String(item.title || '')}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                            <span style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-h)' }}>
+                                                {String(item.title || '')}
+                                            </span>
+                                            {isMultiplayerClient && (
+                                                item.isHosterOwned ? (
+                                                    <span style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 'bold' }}>
+                                                        🌐 Hoster-Owned
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(156, 163, 175, 0.15)', color: 'var(--text-muted, #888)', border: '1px solid var(--border)', fontWeight: 'bold' }}>
+                                                        💾 Local Library
+                                                    </span>
+                                                )
+                                            )}
                                         </div>
                                         <span style={{ fontSize: '0.65rem', opacity: 0.5, textTransform: 'uppercase' }}>
                                             {item.tabId}
                                         </span>
                                     </div>
 
-                                    {/* Render all matching fields with clean spacing */}
+                                    {/* Matches */}
                                     {item.matches && item.matches.length > 0 && (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', marginTop: '4px' }}>
                                             {item.matches.map((m, idx) => (
@@ -547,7 +621,8 @@ export function SuperSearchModal({
                                             ))}
                                         </div>
                                     )}
-                                    {/* Action Row: Interactive badges / Open buttons */}
+
+                                    {/* Action Row */}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: '4px', flexWrap: 'wrap', gap: '6px' }}>
                                         {item.tabId === 'message' && item.chats && (
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
@@ -559,7 +634,7 @@ export function SuperSearchModal({
                                                             key={c.chatId}
                                                             type="button"
                                                             onClick={() => {
-                                                                onSelectEntity?.('message', item.rawEntity, { id: c.chatId, name: c.chatName } as ObjectData);
+                                                                onSelectEntity?.('message', item.rawEntity, { id: c.chatId, name: c.chatName } as ObjectData, item.isReadOnly);
                                                                 onClose();
                                                             }}
                                                             style={{
@@ -585,11 +660,15 @@ export function SuperSearchModal({
                                                     type="button"
                                                     className="editor-button editor-button-save"
                                                     onClick={() => {
-                                                        onSelectEntity?.(item.tabId, item.rawEntity, item.parentEntity);
+                                                        onSelectEntity?.(item.tabId, item.rawEntity, item.parentEntity, item.isReadOnly);
                                                     }}
                                                     style={{ minHeight: '26px', fontSize: '0.7rem', padding: '2px 10px' }}
                                                 >
-                                                    {item.tabId === 'chat' ? 'Open Chat' : 'Edit Entity'}
+                                                    {item.tabId === 'chat' 
+                                                        ? 'Open Chat' 
+                                                        : item.isReadOnly 
+                                                            ? 'View Entity' 
+                                                            : 'Edit Entity'}
                                                 </button>
                                             </div>
                                         )}
