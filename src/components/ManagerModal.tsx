@@ -83,7 +83,7 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
     // 3. Local Library tab (Host/Solo): Can toggle local items.
     const canToggleOrder = (() => {
         if (!orderedListMode || !onToggleOrder) return false;
-        if (isHosterOwnedTab) return isAdministrator === true;
+        if (isHosterOwnedTab) return isAdministrator;
         if (isMultiplayerClient) return false;
         return true;
     })();

@@ -78,7 +78,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         if (!m) return false;
         if (m.apiKey && m.backend) return true;
         const status = s.runningModels[m.id];
-        return status?.isRunning === true && status?.isIdle === true;
+        return status?.isRunning && status?.isIdle;
     });
 
     const isLoading = useSessionStore(s => s.isLoading);

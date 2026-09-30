@@ -673,7 +673,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 const mpData = useSessionStore.getState().multiplayerData;
                 const accountId = useSessionStore.getState().currentAccountId;
                 const accountConfig = accountId ? mpData?.multiplayerDataAccountConfigurations[accountId] : undefined;
-                const isAdmin = accountConfig?.isAdministrator === true;
+                const isAdmin = accountConfig?.isAdministrator;
                 
                 if (!isAdmin) {
                     addToast(`/${slashInvocation.toolType} requires administrator privileges.`, 'error');

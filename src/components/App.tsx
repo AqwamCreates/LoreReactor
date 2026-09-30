@@ -335,8 +335,8 @@ function App() {
         if (models.selectedModelId.startsWith('borrowed-')) return true; // Borrowed models ready via PeerJS
         const sel = allModels.find((m: LanguageModel) => m.id === models.selectedModelId);
         if (sel?.apiKey && sel.backend && cloudBackends.includes(sel.backend as cloudBackend)) return true;
-        return models.runningModels[models.selectedModelId]?.isRunning === true
-            && models.runningModels[models.selectedModelId]?.isIdle === true;
+        return models.runningModels[models.selectedModelId]?.isRunning
+            && models.runningModels[models.selectedModelId]?.isIdle;
     }, [allModels, activeStrategy, mp.isMultiplayerClient, models]);
 
     const isModelLoading = useMemo(() => {
@@ -344,7 +344,7 @@ function App() {
         if (models.selectedModelId.startsWith('borrowed-')) return false;
         const sel = allModels.find((m: LanguageModel) => m.id === models.selectedModelId);
         if (sel?.apiKey && sel.backend && cloudBackends.includes(sel.backend as cloudBackend)) return false;
-        return models.runningModels[models.selectedModelId]?.isRunning === true
+        return models.runningModels[models.selectedModelId]?.isRunning
             && models.runningModels[models.selectedModelId]?.isIdle !== true;
     }, [allModels, mp.isMultiplayerClient, models]);
 

@@ -413,7 +413,7 @@ export function convertIdsToDisplayNames(text: string, interactionData: Interact
             if (msg.knownCharacterNames) {
                 const candidates = [p.name, ...(p.aliases ?? [])];
                 for (const candidate of candidates) {
-                    if (msg.knownCharacterNames[p.id]?.[candidate] === true) {
+                    if (msg.knownCharacterNames[p.id]?.[candidate]) {
                         knownName = candidate;
                         break;
                     }

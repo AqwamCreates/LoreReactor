@@ -142,7 +142,7 @@ function computeInitialActiveParamKeys(existingSampler: Sampler | null | undefin
         const safeOrder = storedOrder.filter((k): k is string => typeof k === 'string' && validKeys.includes(k));
         const missingEnabled = validKeys.filter(k => {
             const wasEnabled = existingSampler.parameters?.[`_enabled_${k}`];
-            return wasEnabled === true && !safeOrder.includes(k);
+            return wasEnabled && !safeOrder.includes(k);
         });
         return [...safeOrder, ...missingEnabled];
     }
@@ -150,7 +150,7 @@ function computeInitialActiveParamKeys(existingSampler: Sampler | null | undefin
     const enabledKeys: string[] = [];
     for (const key of Object.keys(PARAMETER_CONFIGS)) {
         const wasEnabled = existingSampler.parameters?.[`_enabled_${key}`];
-        if (wasEnabled === true) enabledKeys.push(key);
+        if (wasEnabled) enabledKeys.push(key);
     }
     if (enabledKeys.length === 0) {
         return Object.keys(PARAMETER_CONFIGS).filter(k => PARAMETER_CONFIGS[k].defaultEnabled);

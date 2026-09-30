@@ -126,7 +126,7 @@ function isChunkPacket(data: unknown): data is ChunkPacket {
     return (
         typeof data === 'object' &&
         data !== null &&
-        (data as any).__isChunk === true &&
+        (data as any).__isChunk &&
         typeof (data as any).transferId === 'string' &&
         typeof (data as any).index === 'number' &&
         typeof (data as any).total === 'number' &&

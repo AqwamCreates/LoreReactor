@@ -178,7 +178,7 @@ export function getKnownDisplayName(
     const knownMap = knownNames[targetChar.id];
     if (!knownMap) return null;
     for (const candidate of candidates) {
-        if (knownMap[candidate] === true) return candidate;
+        if (knownMap[candidate]) return candidate;
     }
     return null;
 }

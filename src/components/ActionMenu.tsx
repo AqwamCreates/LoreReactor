@@ -17,7 +17,7 @@ interface ActionMenuProps {
     isAutoFormat: boolean;
     setIsAutoFormat: (auto: boolean) => void;
     filteredActions: InterjectableAction[];
-    isModelReady: boolean;
+    isModelReady: boolean | undefined;
     allCharacters: Character[];
     localProtagonist: Character | null;
     onAddAction: (label: string) => void;

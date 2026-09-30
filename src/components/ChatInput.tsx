@@ -10,7 +10,7 @@ interface ChatInputProps {
     setPendingFiles: React.Dispatch<React.SetStateAction<File[]>>;
     isRecording: boolean;
     isLoading: boolean;
-    isModelReady: boolean;
+    isModelReady: boolean | undefined;
     isModelLoading: boolean;
     modelStatusMessage: string;
     localProtagonist: Character | null;

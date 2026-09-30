@@ -83,7 +83,7 @@ export function resolveDelayedDisplayNameFromCache(
         if (msg.knownCharacterNames?.[characterId]) {
             const knownMap = msg.knownCharacterNames[characterId];
             for (const candidate of candidates) {
-                if (knownMap[candidate] === true) {
+                if (knownMap[candidate]) {
                     return candidate; // Replaces "Character 2" with the known name
                 }
             }

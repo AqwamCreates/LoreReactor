@@ -1770,7 +1770,7 @@ function executeClothing(args: string, nextMessage: BaseMessage, interactionData
     const wearingStatuses = nextMessage.characterClothingWearingStatuses ? { ...nextMessage.characterClothingWearingStatuses } : {};
 
     if (action === 'wear') {
-        if (wearingStatuses[clothingItem.id] === true) return { toolType: 'clothing', args, content: `Already wearing "${clothingItem.name}".`, displayReplacement: `[👕 Already wearing]` };
+        if (wearingStatuses[clothingItem.id]) return { toolType: 'clothing', args, content: `Already wearing "${clothingItem.name}".`, displayReplacement: `[👕 Already wearing]` };
         wearingStatuses[clothingItem.id] = true;
         for (const boundId of clothingItem.clothingBindings) wearingStatuses[boundId] = false;
         nextMessage.characterClothingWearingStatuses = wearingStatuses;
@@ -1835,7 +1835,7 @@ function executeInspect(args: string, _nextMessage: BaseMessage, interactionData
     for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
         const msg = interactionData.interactionHistory[i];
         if (msg.character.id === targetChar.id && msg.characterClothingWearingStatuses) {
-            for (const clothing of targetChar.clothings || []) { if (msg.characterClothingWearingStatuses[clothing.id] === true) wornClothing.push({ name: clothing.name, id: clothing.id }); }
+            for (const clothing of targetChar.clothings || []) { if (msg.characterClothingWearingStatuses[clothing.id]) wornClothing.push({ name: clothing.name, id: clothing.id }); }
             break;
         }
     }

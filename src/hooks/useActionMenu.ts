@@ -42,7 +42,7 @@ interface UseActionMenuOptions {
     interactionData: InteractionData | null;
     currentCharacter: Character | null;
     isLoading: boolean;
-    isModelReady: boolean;
+    isModelReady: boolean | undefined;
     allCharacters: Character[];
     stopGeneration: () => void;
     sendActionAndGetResponse: (actionText: string, targetChar: Character, protagonist: Character) => Promise<void>;

@@ -138,17 +138,16 @@ function deriveLocalProtagonist(
     multiplayerData: MultiplayerData | null,
     currentAccountId: string | null,
 ): Character | null {
-    if (!interactionData?.protagonists?.length) return null;
+    if (!interactionData?.participants?.length) return null;
     if (!multiplayerData || !currentAccountId) {
-        return interactionData.protagonists[0] ?? null;
+        return interactionData.participants[0] ?? null;
     }
     const activeCharacterIdentifier = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.activeCharacterId;
     if (activeCharacterIdentifier) {
-        const foundCharacter = interactionData.protagonists.find(participant => participant.id === activeCharacterIdentifier) ||
-                               interactionData.participants.find(participant => participant.id === activeCharacterIdentifier);
+        const foundCharacter = interactionData.participants.find(participant => participant.id === activeCharacterIdentifier);
         if (foundCharacter) return foundCharacter;
     }
-    return interactionData.protagonists[0] ?? null;
+    return interactionData.participants[0] ?? null;
 }
 
 export function AppModals({
@@ -294,18 +293,14 @@ export function AppModals({
     // ─── Multiplayer Hoster-Owned Entities & Permissions ─────────────
     const isAdministrator = useMemo(() => {
         if (!multiplayerData || !currentAccountId) return false;
-        return multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.isAdministrator === true;
+        return multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.isAdministrator;
     }, [multiplayerData, currentAccountId]);
 
     const hosterOwnedCharacters = useMemo(() => {
         if (!isMultiplayerClient || !interactionData) return undefined;
         const seen = new Set<string>();
         const res: Character[] = [];
-        const combined = [
-            ...(interactionData.protagonists || []),
-            ...(interactionData.participants || [])
-        ];
-        for (const p of combined) {
+        for (const p of (interactionData.participants || [])) {
             if (p?.id && !seen.has(p.id)) {
                 seen.add(p.id);
                 res.push(p);
@@ -384,7 +379,7 @@ export function AppModals({
                     onSelect={async (character: Character) => { 
                         const isLocal = allCharacters.some(c => c.id === character.id);
                         const fullCharacter = (isLocal && character.sampler) ? character : (isLocal ? await onLoadFullCharacter(character.id) : character);
-                        characterModalProperties.open(fullCharacter || character); 
+                        characterModalProperties.open(fullCharacter || character, !isLocal && isMultiplayerClient); 
                     }}
                     onDelete={onDeleteCharacter}
                     onCreateNew={() => characterModalProperties.open()}
@@ -410,7 +405,7 @@ export function AppModals({
                     isMultiplayerClient={isMultiplayerClient}
                     isOpen={modals.contextList.isOpen} 
                     onClose={modals.contextList.close}
-                    onSelect={(context: Context) => contextModalProperties.open(context)} 
+                    onSelect={(context: Context) => contextModalProperties.open(context, isMultiplayerClient)} 
                     onDelete={onDeleteContext} 
                     onCreateNew={() => contextModalProperties.open()}
                     renderSubtext={renderContextSubtext} 
@@ -431,7 +426,7 @@ export function AppModals({
                     isMultiplayerClient={isMultiplayerClient}
                     isOpen={modals.locationList.isOpen} 
                     onClose={modals.locationList.close}
-                    onSelect={(location: Location) => locationModalProperties.open(location)} 
+                    onSelect={(location: Location) => locationModalProperties.open(location, isMultiplayerClient)} 
                     onDelete={onDeleteLocation} 
                     onCreateNew={() => locationModalProperties.open()}
                     renderSubtext={renderLocationSubtext} 
@@ -452,7 +447,7 @@ export function AppModals({
                     isMultiplayerClient={isMultiplayerClient}
                     isOpen={modals.audioTrackList.isOpen} 
                     onClose={modals.audioTrackList.close}
-                    onSelect={(audioTrack: AudioTrack) => audioTrackModalProperties.open(audioTrack)} 
+                    onSelect={(audioTrack: AudioTrack) => audioTrackModalProperties.open(audioTrack, isMultiplayerClient)} 
                     onDelete={onDeleteAudioTrack} 
                     onCreateNew={() => audioTrackModalProperties.open()}
                     renderSubtext={(audioTrack: AudioTrack) => `${audioTrack.audioCategory === 'ambient' ? '🌿' : audioTrack.audioCategory === 'music' ? '🎵' : '💥'} ${audioTrack.loop ? '🔁' : '▶️'} Vol: ${Math.round(audioTrack.volume * 100)}%${audioTrack.priority > 0 ? ` • ⬆${audioTrack.priority}` : ''}${audioTrack.locationBindings.length > 0 ? ` • 📍${audioTrack.locationBindings.length}` : ''}${audioTrack.contextBindings.length > 0 ? ` • 📜${audioTrack.contextBindings.length}` : ''}${audioTrack.characterBindings.length > 0 ? ` • 🎭${audioTrack.characterBindings.length}` : ''}`}
@@ -883,6 +878,7 @@ export function AppModals({
             {characterModalProperties.isOpen && (
                 <CharacterEditorModal 
                     isOpen={characterModalProperties.isOpen} 
+                    isReadOnly={characterModalProperties.isReadOnly}
                     onClose={() => { setAiCharacterSaveRedirect(null); characterModalProperties.close(); }}
                     onSave={(character: Character) => { 
                         if (aiCharacterSaveRedirect) { 
@@ -906,6 +902,7 @@ export function AppModals({
             {contextModalProperties.isOpen && (
                 <ContextEditorModal 
                     isOpen={contextModalProperties.isOpen} 
+                    isReadOnly={contextModalProperties.isReadOnly}
                     onClose={() => { setAiContextSaveRedirect(null); contextModalProperties.close(); }}
                     onSave={(context: Context) => { 
                         if (aiContextSaveRedirect) { 
@@ -923,6 +920,7 @@ export function AppModals({
             {locationModalProperties.isOpen && (
                 <LocationEditorModal 
                     isOpen={locationModalProperties.isOpen} 
+                    isReadOnly={locationModalProperties.isReadOnly}
                     onClose={() => { setAiLocationSaveRedirect(null); locationModalProperties.close(); }}
                     onSave={(location: Location) => { 
                         if (aiLocationSaveRedirect) { 
@@ -942,6 +940,7 @@ export function AppModals({
             {audioTrackModalProperties.isOpen && (
                 <AudioTrackEditorModal 
                     isOpen={audioTrackModalProperties.isOpen} 
+                    isReadOnly={audioTrackModalProperties.isReadOnly}
                     onClose={() => { setAiAudioTrackSaveRedirect(null); audioTrackModalProperties.close(); }}
                     onSave={(audioTrack: AudioTrack) => { 
                         if (aiAudioTrackSaveRedirect) { 

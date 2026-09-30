@@ -8,7 +8,7 @@ import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 interface UseMessageActionsOptions {
     interactionData: InteractionData | null;
     localProtagonist: Character | null;
-    isModelReady: boolean;
+    isModelReady: boolean | undefined;
     isLoading: boolean;
     setInteractionData: (data: InteractionData) => void;
     setSelectedCharacter: (char: Character | null) => void;

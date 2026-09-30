@@ -483,7 +483,7 @@ function extractLorebookContexts(book: CharacterBook): Partial<Context>[] {
     for (const entry of sorted) {
         const keys = entry.keys || [];
         const secondaryKeys = entry.selective ? (entry.secondary_keys || []) : [];
-        const useRegex = entry.use_regex === true;
+        const useRegex = entry.use_regex;
 
         // Build regex trigger from keys
         let activationTriggers: RegularExpressionTrigger[] | undefined;
@@ -512,7 +512,7 @@ function extractLorebookContexts(book: CharacterBook): Partial<Context>[] {
         }
 
         // Constant entries have no trigger — always active
-        const isConstant = entry.constant === true;
+        const isConstant = entry.constant;
 
         const context: Partial<Context> = {
             name: entry.name || entry.comment || "Lorebook Entry",

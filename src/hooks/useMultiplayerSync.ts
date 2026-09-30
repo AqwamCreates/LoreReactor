@@ -348,7 +348,7 @@ export function useMultiplayerSync({
                 if (isHost) {
                     const md = multiplayerDataRef.current;
                     const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, msg.senderAccountId);
-                    const isSenderAdmin = foundAcct?.config?.isAdministrator === true;
+                    const isSenderAdmin = foundAcct?.config?.isAdministrator;
                     const boundCharId = peerCharacterMapRef.current.get(msg.senderAccountId) 
                         || foundAcct?.config?.activeCharacterId;
 
@@ -619,7 +619,7 @@ export function useMultiplayerSync({
                 if (isHost && msg.senderAccountId !== currentAccountId) {
                     const md = multiplayerDataRef.current;
                     const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, msg.senderAccountId);
-                    const isSenderAdmin = foundAcct?.config?.isAdministrator === true;
+                    const isSenderAdmin = foundAcct?.config?.isAdministrator;
                     const senderCharId = peerCharacterMapRef.current.get(msg.senderAccountId) || foundAcct?.config?.activeCharacterId;
                     const targetMessage = currentData.interactionHistory.find((m) => m.id === payload.messageId);
 
@@ -651,7 +651,7 @@ export function useMultiplayerSync({
                 if (isHost && msg.senderAccountId !== currentAccountId) {
                     const md = multiplayerDataRef.current;
                     const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, msg.senderAccountId);
-                    const isSenderAdmin = foundAcct?.config?.isAdministrator === true;
+                    const isSenderAdmin = foundAcct?.config?.isAdministrator;
                     const senderCharId = peerCharacterMapRef.current.get(msg.senderAccountId) || foundAcct?.config?.activeCharacterId;
                     const targetMessage = currentData.interactionHistory.find((m) => m.id === payload.messageId);
 
@@ -899,7 +899,7 @@ export function useMultiplayerSync({
                     }
 
                     const isWhitelisted = cfg.whitelistedCharacterIds?.includes(char.id);
-                    const isAdmin = cfg.isAdministrator === true;
+                    const isAdmin = cfg.isAdministrator;
 
                     if (isSessionChar) {
                         const canUseParticipant = cfg.canUseHosterParticipantingCharacterId;

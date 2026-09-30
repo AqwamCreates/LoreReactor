@@ -28,7 +28,7 @@ export function buildModelLoadArguments(model: LanguageModel): string[] {
     if (splitMode && splitMode !== 'layer') args.push('-sm', splitMode);
 
     // IK (in-context key caching)
-    if (params.ik === true) args.push('-ik');
+    if (params.ik) args.push('-ik');
 
     // Speculative decoding
     const specType = params.spec_type ? String(params.spec_type) : '';
