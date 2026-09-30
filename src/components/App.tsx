@@ -80,7 +80,7 @@ function deriveCurrentProtagonist(
 ): Character | null {
     if (!interactionData?.protagonists?.length) return null;
     if (!multiplayerData || !currentAccountId) return interactionData.protagonists[0] ?? null;
-    const activeCharId = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.activeCharacterId;
+    const activeCharId = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.protagonistCharacterId;
     if (activeCharId) {
         const found = interactionData.protagonists.find((p: Character) => p.id === activeCharId)
             || interactionData.participants.find((p: Character) => p.id === activeCharId);

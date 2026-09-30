@@ -298,10 +298,10 @@ export function useMultiplayerSync({
                 name: '',
                 password: '',
                 interactionDataIds: [],
-                canUseJoinerCharacterId: false,
+                canUseJoinerCharacterIds: false,
                 canUseHosterParticipantingCharacterId: false,
                 canUseHosterNonParticipantingCharacterId: false,
-                joinerCharacterIdRequiresHosterApproval: false,
+                joinerCharacterIdsRequiresHosterApproval: false,
                 hosterParticipantingCharacterIdRequiresHosterApproval: false,
                 hosterNonParticipantingCharacterIdRequiresHosterApproval: false,
                 useJoinerLanguageModel: 0,
@@ -350,7 +350,7 @@ export function useMultiplayerSync({
                     const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, msg.senderAccountId);
                     const isSenderAdmin = foundAcct?.config?.isAdministrator;
                     const boundCharId = peerCharacterMapRef.current.get(msg.senderAccountId) 
-                        || foundAcct?.config?.activeCharacterId;
+                        || foundAcct?.config?.protagonistCharacterId;
 
                     if (!isSenderAdmin && (!boundCharId || boundCharId !== payload.characterId)) {
                         console.warn(
@@ -620,7 +620,7 @@ export function useMultiplayerSync({
                     const md = multiplayerDataRef.current;
                     const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, msg.senderAccountId);
                     const isSenderAdmin = foundAcct?.config?.isAdministrator;
-                    const senderCharId = peerCharacterMapRef.current.get(msg.senderAccountId) || foundAcct?.config?.activeCharacterId;
+                    const senderCharId = peerCharacterMapRef.current.get(msg.senderAccountId) || foundAcct?.config?.protagonistCharacterId;
                     const targetMessage = currentData.interactionHistory.find((m) => m.id === payload.messageId);
 
                     if (!isSenderAdmin && (!targetMessage || targetMessage.character.id !== senderCharId)) {
@@ -652,7 +652,7 @@ export function useMultiplayerSync({
                     const md = multiplayerDataRef.current;
                     const foundAcct = findAccountConfig(md?.multiplayerDataAccountConfigurations, msg.senderAccountId);
                     const isSenderAdmin = foundAcct?.config?.isAdministrator;
-                    const senderCharId = peerCharacterMapRef.current.get(msg.senderAccountId) || foundAcct?.config?.activeCharacterId;
+                    const senderCharId = peerCharacterMapRef.current.get(msg.senderAccountId) || foundAcct?.config?.protagonistCharacterId;
                     const targetMessage = currentData.interactionHistory.find((m) => m.id === payload.messageId);
 
                     if (!isSenderAdmin && (!targetMessage || targetMessage.character.id !== senderCharId)) {
@@ -728,7 +728,7 @@ export function useMultiplayerSync({
                 const currentData = interactionDataRef.current;
 
                 if (payload.requestedCharacterData) {
-                    if (md.canUseJoinerCharacterId || acctConfig.isAdministrator) {
+                    if (md.canUseJoinerCharacterIds || acctConfig.isAdministrator) {
                         assignedCharacter = payload.requestedCharacterData;
                     } else {
                         sendToRef.current(requestingAccountId, { type: 'join_response', payload: { accepted: false, reason: 'Custom characters not allowed' } });
@@ -768,7 +768,7 @@ export function useMultiplayerSync({
                         ...md.multiplayerDataAccountConfigurations,
                         [matchedConfigKey]: {
                             ...acctConfig,
-                            activeCharacterId: assignedCharacter?.id ?? acctConfig.activeCharacterId,
+                            protagonistCharacterId: assignedCharacter?.id ?? acctConfig.protagonistCharacterId,
                         },
                     },
                     lastUpdatedTimestamp: Date.now(),
@@ -793,10 +793,10 @@ export function useMultiplayerSync({
                         initialState,
                         assignedCharacter,
                         sessionRules: {
-                            canUseJoinerCharacterId: md.canUseJoinerCharacterId,
+                            canUseJoinerCharacterIds: md.canUseJoinerCharacterIds,
                             canUseHosterParticipantingCharacterId: md.canUseHosterParticipantingCharacterId,
                             canUseHosterNonParticipantingCharacterId: md.canUseHosterNonParticipantingCharacterId,
-                            joinerCharacterIdRequiresHosterApproval: md.joinerCharacterIdRequiresHosterApproval,
+                            joinerCharacterIdsRequiresHosterApproval: md.joinerCharacterIdsRequiresHosterApproval,
                             hosterParticipantingCharacterIdRequiresHosterApproval: md.hosterParticipantingCharacterIdRequiresHosterApproval,
                             hosterNonParticipantingCharacterIdRequiresHosterApproval: md.hosterNonParticipantingCharacterIdRequiresHosterApproval,
                         },
@@ -910,7 +910,7 @@ export function useMultiplayerSync({
                              return;
                         }
                     } else {
-                        if (!cfg.canUseJoinerCharacterId && !isAdmin) {
+                        if (!cfg.canUseJoinerCharacterIds && !isAdmin) {
                              console.warn(`[MP Security] Blocked set_protagonist: ${senderAccountId} not allowed to use custom characters.`);
                              return;
                         }
@@ -918,14 +918,14 @@ export function useMultiplayerSync({
 
                     peerCharacterMapRef.current.set(senderAccountId, char.id);
                     
-                    if (md && foundAcct && foundAcct.config.activeCharacterId !== char.id) {
+                    if (md && foundAcct && foundAcct.config.protagonistCharacterId !== char.id) {
                         const updatedMd = {
                             ...md,
                             multiplayerDataAccountConfigurations: {
                                 ...md.multiplayerDataAccountConfigurations,
                                 [foundAcct.key]: {
                                     ...foundAcct.config,
-                                    activeCharacterId: char.id,
+                                    protagonistCharacterId: char.id,
                                 }
                             },
                             lastUpdatedTimestamp: Date.now(),
@@ -1139,10 +1139,10 @@ export function useMultiplayerSync({
                     isWhitelisted: true,
                     isBlacklisted: false,
                     isAdministrator: false,
-                    canUseJoinerCharacterId: multiplayerData.canUseJoinerCharacterId,
+                    canUseJoinerCharacterIds: multiplayerData.canUseJoinerCharacterIds,
                     canUseHosterParticipantingCharacterId: multiplayerData.canUseHosterParticipantingCharacterId,
                     canUseHosterNonParticipantingCharacterId: multiplayerData.canUseHosterNonParticipantingCharacterId,
-                    joinerCharacterIdRequiresHosterApproval: multiplayerData.joinerCharacterIdRequiresHosterApproval,
+                    joinerCharacterIdsRequiresHosterApproval: multiplayerData.joinerCharacterIdsRequiresHosterApproval,
                     hosterParticipantingCharacterIdRequiresHosterApproval: multiplayerData.hosterParticipantingCharacterIdRequiresHosterApproval,
                     hosterNonParticipantingCharacterIdRequiresHosterApproval: multiplayerData.hosterNonParticipantingCharacterIdRequiresHosterApproval,
                     whitelistedCharacterIds: [],
@@ -1159,7 +1159,7 @@ export function useMultiplayerSync({
                             ...existingConfig,
                             isWhitelisted: true,
                             isBlacklisted: false,
-                            activeCharacterId: assignedCharacter?.id ?? existingConfig.activeCharacterId,
+                            protagonistCharacterId: assignedCharacter?.id ?? existingConfig.protagonistCharacterId,
                         },
                     },
                     pendingAccountIds: multiplayerData.pendingAccountIds.filter((id) => id !== accountId && id !== matchedConfigKey),
@@ -1185,10 +1185,10 @@ export function useMultiplayerSync({
                         initialState,
                         assignedCharacter,
                         sessionRules: {
-                            canUseJoinerCharacterId: multiplayerData.canUseJoinerCharacterId,
+                            canUseJoinerCharacterIds: multiplayerData.canUseJoinerCharacterIds,
                             canUseHosterParticipantingCharacterId: multiplayerData.canUseHosterParticipantingCharacterId,
                             canUseHosterNonParticipantingCharacterId: multiplayerData.canUseHosterNonParticipantingCharacterId,
-                            joinerCharacterIdRequiresHosterApproval: multiplayerData.joinerCharacterIdRequiresHosterApproval,
+                            joinerCharacterIdsRequiresHosterApproval: multiplayerData.joinerCharacterIdsRequiresHosterApproval,
                             hosterParticipantingCharacterIdRequiresHosterApproval: multiplayerData.hosterParticipantingCharacterIdRequiresHosterApproval,
                             hosterNonParticipantingCharacterIdRequiresHosterApproval: multiplayerData.hosterNonParticipantingCharacterIdRequiresHosterApproval,
                         },

@@ -40,7 +40,7 @@ function AccountEditorModalInner({
     const [username, setUsername] = useState(existingAccount?.username || '');
     const [password, setPassword] = useState(existingAccount?.password || '');
     const [url, setUrl] = useState(existingAccount?.url || '');
-    const [shareLanguageModel, setShareLanguageModel] = useState(existingAccount?.shareLanguageModel ?? false);
+    const [shareLanguageModels, setshareLanguageModels] = useState(existingAccount?.shareLanguageModels ?? false);
     const [errors, setErrors] = useState<{ name?: string; username?: string }>({});
 
     const validate = (): boolean => {
@@ -60,7 +60,7 @@ function AccountEditorModalInner({
             username: username.trim(),
             password: password,
             url: url.trim() || undefined,
-            shareLanguageModel,
+            shareLanguageModels,
             firstCreatedTimestamp: isNewClone ? now : (existingAccount?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
@@ -147,8 +147,8 @@ function AccountEditorModalInner({
                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                             <input
                                 type="checkbox"
-                                checked={shareLanguageModel}
-                                onChange={e => setShareLanguageModel(e.target.checked)}
+                                checked={shareLanguageModels}
+                                onChange={e => setshareLanguageModels(e.target.checked)}
                                 className="editor-checkbox-input"
                             />
                             <span className="editor-label" style={{ margin: 0 }}>Share Language Model</span>

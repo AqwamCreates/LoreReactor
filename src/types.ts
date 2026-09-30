@@ -424,7 +424,8 @@ export interface Account extends ObjectData {
   username: string
   password: string
   url?: string
-  shareLanguageModel: boolean;
+  shareCharacters: boolean
+  shareLanguageModels: boolean;
 
 }
 
@@ -433,7 +434,8 @@ export interface RawAccount extends RawData {
   username: string
   password: string
   url?: string
-  shareLanguageModel: boolean;
+  sharedCharacterIds: string[];
+  sharedLanguageModelIds: string[];
 
 }
 
@@ -443,30 +445,27 @@ export interface MultiplayerDataAccountConfiguration {
   isBlacklisted: boolean;
   isAdministrator: boolean;
 
-  canUseJoinerCharacterId: boolean;
-  canUseHosterParticipantingCharacterId: boolean;
-  canUseHosterNonParticipantingCharacterId: boolean;
-  joinerCharacterIdRequiresHosterApproval: boolean;
-  hosterParticipantingCharacterIdRequiresHosterApproval: boolean;
-  hosterNonParticipantingCharacterIdRequiresHosterApproval: boolean;
+  canUseJoinerCharacterIds: boolean;
+  joinerCharacterIdsRequiresHosterApproval: boolean;
+
+  sharedHosterCharacterIds: string[];
+  hosterCharacterIdsRequiresHosterApproval: boolean;
 
   whitelistedCharacterIds: string[];
   blacklistedCharacterIds: string[];
   pendingCharacterIds: string[];
 
-  activeCharacterId?: string; // Currently active Id that is chosen by the joiner.
+  protagonistCharacterId?: string; // Current protagonist id that is chosen by the joiner.
 
 }
 
 export interface MultiplayerData extends ObjectData {
 
   password: string // Password - invite only. No password - accessible for all.
-  canUseJoinerCharacterId: boolean;
-  canUseHosterParticipantingCharacterId: boolean;
-  canUseHosterNonParticipantingCharacterId: boolean;
-  joinerCharacterIdRequiresHosterApproval: boolean;
-  hosterParticipantingCharacterIdRequiresHosterApproval: boolean;
-  hosterNonParticipantingCharacterIdRequiresHosterApproval: boolean;
+  canUseJoinerCharacterIds: boolean;
+  joinerCharacterIdsRequiresHosterApproval: boolean;
+  sharedHosterCharacterIds: string[];
+  hosterCharacterIdsRequiresHosterApproval: boolean;
   useJoinerLanguageModel: tristateInteger; // -1 - Disabled, use hoster's language model only. 0 - Use joiner's when given. 1 - Mandatory for the joiner to give access for the language model or they cannot join.
   interactionDataIds: string[]
   multiplayerDataAccountConfigurations: Record<string, MultiplayerDataAccountConfiguration> // Account Id -> MultiplayerDataAccountConfiguration
@@ -477,12 +476,10 @@ export interface MultiplayerData extends ObjectData {
 export interface RawMultiplayerData extends RawData {
 
   password: string // Password - invite only. No password - accessible for all.
-  canUseJoinerCharacterId: boolean;
-  canUseHosterParticipantingCharacterId: boolean;
-  canUseHosterNonParticipantingCharacterId: boolean;
-  joinerCharacterIdRequiresHosterApproval: boolean;
-  hosterParticipantingCharacterIdRequiresHosterApproval: boolean;
-  hosterNonParticipantingCharacterIdRequiresHosterApproval: boolean;
+  canUseJoinerCharacterIds: boolean;
+  joinerCharacterIdsRequiresHosterApproval: boolean;
+  sharedHosterCharacterIds: string[];
+  hosterCharacterIdsRequiresHosterApproval: boolean;
   useJoinerLanguageModel: tristateInteger; // -1 - Disabled, use hoster's language model only. 0 - Use joiner's when given. 1 - Mandatory for the joiner to give access for the language model or they cannot join.
   interactionDataIds: string[]
   multiplayerDataAccountConfigurations: Record<string, MultiplayerDataAccountConfiguration> // Account Id -> MultiplayerDataAccountConfiguration

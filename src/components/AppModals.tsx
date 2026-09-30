@@ -142,9 +142,9 @@ function deriveLocalProtagonist(
     if (!multiplayerData || !currentAccountId) {
         return interactionData.participants[0] ?? null;
     }
-    const activeCharacterIdentifier = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.activeCharacterId;
-    if (activeCharacterIdentifier) {
-        const foundCharacter = interactionData.participants.find(participant => participant.id === activeCharacterIdentifier);
+    const protagonistCharacterIdentifier = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.protagonistCharacterId;
+    if (protagonistCharacterIdentifier) {
+        const foundCharacter = interactionData.participants.find(participant => participant.id === protagonistCharacterIdentifier);
         if (foundCharacter) return foundCharacter;
     }
     return interactionData.participants[0] ?? null;

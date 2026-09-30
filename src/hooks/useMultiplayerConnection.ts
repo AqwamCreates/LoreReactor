@@ -58,10 +58,10 @@ export interface JoinResponsePayload {
     };
     assignedCharacter?: Character | null;
     sessionRules?: {
-        canUseJoinerCharacterId: boolean;
+        canUseJoinerCharacterIds: boolean;
         canUseHosterParticipantingCharacterId: boolean;
         canUseHosterNonParticipantingCharacterId: boolean;
-        joinerCharacterIdRequiresHosterApproval: boolean;
+        joinerCharacterIdsRequiresHosterApproval: boolean;
         hosterParticipantingCharacterIdRequiresHosterApproval: boolean;
         hosterNonParticipantingCharacterIdRequiresHosterApproval: boolean;
     };

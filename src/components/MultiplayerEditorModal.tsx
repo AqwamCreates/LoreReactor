@@ -1,6 +1,6 @@
 // src/components/MultiplayerEditorModal.tsx
 import { useState, useCallback, useMemo } from 'react';
-import type { MultiplayerData, Character, RawInteractionData, MultiplayerDataAccountConfiguration, tristateInteger } from '../types';
+import type { MultiplayerData, Character, RawInteractionData, MultiplayerDataAccountConfiguration, tristateInteger, InteractionData } from '../types';
 import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';
 import { v4 as uuidv4 } from 'uuid';
 import { EntitySelectList } from './EntitySelectList';
@@ -28,23 +28,19 @@ const USE_JOINER_LM_OPTIONS: { value: tristateInteger; label: string; descriptio
 ];
 
 function createDefaultAccountConfig(sessionDefaults: {
-    canUseJoinerCharacterId: boolean;
-    canUseHosterParticipantingCharacterId: boolean;
-    canUseHosterNonParticipantingCharacterId: boolean;
-    joinerCharacterIdRequiresHosterApproval: boolean;
-    hosterParticipantingCharacterIdRequiresHosterApproval: boolean;
-    hosterNonParticipantingCharacterIdRequiresHosterApproval: boolean;
+    canUseJoinerCharacterIds: boolean;
+    joinerCharacterIdsRequiresHosterApproval: boolean;
+    sharedHosterCharacterIds: string[];
+    hosterCharacterIdsRequiresHosterApproval: boolean;
 }): MultiplayerDataAccountConfiguration {
     return {
         isWhitelisted: true,
         isBlacklisted: false,
         isAdministrator: false,
-        canUseJoinerCharacterId: sessionDefaults.canUseJoinerCharacterId,
-        canUseHosterParticipantingCharacterId: sessionDefaults.canUseHosterParticipantingCharacterId,
-        canUseHosterNonParticipantingCharacterId: sessionDefaults.canUseHosterNonParticipantingCharacterId,
-        joinerCharacterIdRequiresHosterApproval: sessionDefaults.joinerCharacterIdRequiresHosterApproval,
-        hosterParticipantingCharacterIdRequiresHosterApproval: sessionDefaults.hosterParticipantingCharacterIdRequiresHosterApproval,
-        hosterNonParticipantingCharacterIdRequiresHosterApproval: sessionDefaults.hosterNonParticipantingCharacterIdRequiresHosterApproval,
+        canUseJoinerCharacterIds: sessionDefaults.canUseJoinerCharacterIds,
+        joinerCharacterIdsRequiresHosterApproval: sessionDefaults.joinerCharacterIdsRequiresHosterApproval,
+        sharedHosterCharacterIds: [...sessionDefaults.sharedHosterCharacterIds],
+        hosterCharacterIdsRequiresHosterApproval: sessionDefaults.hosterCharacterIdsRequiresHosterApproval,
         whitelistedCharacterIds: [],
         blacklistedCharacterIds: [],
         pendingCharacterIds: [],
@@ -91,6 +87,7 @@ function MultiplayerEditorModalInner({
     onAcceptJoinRequest,
     onRejectJoinRequest,
 }: Omit<MultiplayerEditorModalProps, 'isOpen'>) {
+    const interactionData = useSessionStore(state => state.interactionData);
     const [activeTab, setActiveTab] = useState<MultiplayerTabId>('general');
 
     const [name, setName] = useState(existingMultiplayerData?.name || '');
@@ -100,12 +97,10 @@ function MultiplayerEditorModalInner({
     const [interactionDataIds, setInteractionDataIds] = useState<string[]>(existingMultiplayerData?.interactionDataIds || []);
     
     // Session-level defaults
-    const [canUseJoinerCharacterId, setCanUseJoinerCharacterId] = useState(existingMultiplayerData?.canUseJoinerCharacterId ?? true);
-    const [canUseHosterParticipantingCharacterId, setCanUseHosterParticipantingCharacterId] = useState(existingMultiplayerData?.canUseHosterParticipantingCharacterId ?? true);
-    const [canUseHosterNonParticipantingCharacterId, setCanUseHosterNonParticipantingCharacterId] = useState(existingMultiplayerData?.canUseHosterNonParticipantingCharacterId ?? true);
-    const [joinerCharacterIdRequiresHosterApproval, setJoinerCharacterIdRequiresHosterApproval] = useState(existingMultiplayerData?.joinerCharacterIdRequiresHosterApproval ?? false);
-    const [hosterParticipantingCharacterIdRequiresHosterApproval, setHosterParticipantingCharacterIdRequiresHosterApproval] = useState(existingMultiplayerData?.hosterParticipantingCharacterIdRequiresHosterApproval ?? false);
-    const [hosterNonParticipantingCharacterIdRequiresHosterApproval, setHosterNonParticipantingCharacterIdRequiresHosterApproval] = useState(existingMultiplayerData?.hosterNonParticipantingCharacterIdRequiresHosterApproval ?? false);
+    const [canUseJoinerCharacterIds, setCanUseJoinerCharacterIds] = useState(existingMultiplayerData?.canUseJoinerCharacterIds ?? true);
+    const [joinerCharacterIdsRequiresHosterApproval, setJoinerCharacterIdsRequiresHosterApproval] = useState(existingMultiplayerData?.joinerCharacterIdsRequiresHosterApproval ?? false);
+    const [sharedHosterCharacterIds, setSharedHosterCharacterIds] = useState<string[]>(existingMultiplayerData?.sharedHosterCharacterIds ?? []);
+    const [hosterCharacterIdsRequiresHosterApproval, setHosterCharacterIdsRequiresHosterApproval] = useState(existingMultiplayerData?.hosterCharacterIdsRequiresHosterApproval ?? false);
     const [useJoinerLanguageModel, setUseJoinerLanguageModel] = useState<tristateInteger>(existingMultiplayerData?.useJoinerLanguageModel ?? 0);
     
     const [accountConfigs, setAccountConfigs] = useState<Record<string, MultiplayerDataAccountConfiguration>>(
@@ -114,7 +109,7 @@ function MultiplayerEditorModalInner({
     const [errors, setErrors] = useState<{ name?: string }>({});
 
     const [sessionSearchQuery, setSessionSearchQuery] = useState('');
-    const [mappingCharSearchQuery, setMappingCharSearchQuery] = useState('');
+    const [sharedCharSearchQuery, setSharedCharSearchQuery] = useState('');
     const [accountSearchQuery, setAccountSearchQuery] = useState('');
 
     const [newAccountIdInput, setNewAccountIdInput] = useState('');
@@ -131,15 +126,11 @@ function MultiplayerEditorModalInner({
         if (!validate()) return null;
         const now = Date.now();
 
-        // Pull the live pending IDs directly from the store to avoid overwriting background updates
         const liveMultiplayerData = useSessionStore.getState().multiplayerData;
-        
-        // Narrow liveMultiplayerData explicitly so TypeScript knows it is not null
         const currentPendingList = (liveMultiplayerData && liveMultiplayerData.id === existingMultiplayerData?.id)
             ? liveMultiplayerData.pendingAccountIds
             : (existingMultiplayerData?.pendingAccountIds || []);
 
-        // Filter out any accounts that were explicitly configured in the UI
         const configuredAccountIds = new Set(Object.keys(accountConfigs));
         const resolvedPendingAccountIds = currentPendingList.filter(id => !configuredAccountIds.has(id));
 
@@ -148,12 +139,10 @@ function MultiplayerEditorModalInner({
             name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
             description: description.trim() || undefined,
             password,
-            canUseJoinerCharacterId,
-            canUseHosterParticipantingCharacterId,
-            canUseHosterNonParticipantingCharacterId,
-            joinerCharacterIdRequiresHosterApproval,
-            hosterParticipantingCharacterIdRequiresHosterApproval,
-            hosterNonParticipantingCharacterIdRequiresHosterApproval,
+            canUseJoinerCharacterIds,
+            joinerCharacterIdsRequiresHosterApproval,
+            sharedHosterCharacterIds,
+            hosterCharacterIdsRequiresHosterApproval,
             useJoinerLanguageModel,
             interactionDataIds,
             multiplayerDataAccountConfigurations: accountConfigs,
@@ -190,16 +179,14 @@ function MultiplayerEditorModalInner({
             return {
                 ...prev,
                 [trimmed]: createDefaultAccountConfig({
-                    canUseJoinerCharacterId,
-                    canUseHosterParticipantingCharacterId,
-                    canUseHosterNonParticipantingCharacterId,
-                    joinerCharacterIdRequiresHosterApproval,
-                    hosterParticipantingCharacterIdRequiresHosterApproval,
-                    hosterNonParticipantingCharacterIdRequiresHosterApproval,
+                    canUseJoinerCharacterIds,
+                    joinerCharacterIdsRequiresHosterApproval,
+                    sharedHosterCharacterIds,
+                    hosterCharacterIdsRequiresHosterApproval,
                 }),
             };
         });
-    }, [canUseJoinerCharacterId, canUseHosterParticipantingCharacterId, canUseHosterNonParticipantingCharacterId, joinerCharacterIdRequiresHosterApproval, hosterParticipantingCharacterIdRequiresHosterApproval, hosterNonParticipantingCharacterIdRequiresHosterApproval]);
+    }, [canUseJoinerCharacterIds, joinerCharacterIdsRequiresHosterApproval, sharedHosterCharacterIds, hosterCharacterIdsRequiresHosterApproval]);
 
     const removeAccount = useCallback((id: string) => {
         setAccountConfigs(prev => {
@@ -237,22 +224,50 @@ function MultiplayerEditorModalInner({
         });
     }, []);
 
-    const toggleCharForAccount = useCallback((accountId: string, charId: string) => {
+    // STRICT WORKFLOW: Only manage characters via the pending queue
+    const updateCharStatus = useCallback((accountId: string, charId: string, newStatus: 'pending' | 'whitelisted' | 'blacklisted' | 'none') => {
         setAccountConfigs(prev => {
             const cfg = prev[accountId];
             if (!cfg) return prev;
-            const has = cfg.whitelistedCharacterIds.includes(charId);
-            return {
-                ...prev,
-                [accountId]: {
-                    ...cfg,
-                    whitelistedCharacterIds: has 
-                        ? cfg.whitelistedCharacterIds.filter(c => c !== charId) 
-                        : [...cfg.whitelistedCharacterIds, charId]
-                }
-            };
+            
+            const next = { ...cfg };
+            // Remove from all lists first
+            next.pendingCharacterIds = next.pendingCharacterIds.filter(id => id !== charId);
+            next.whitelistedCharacterIds = next.whitelistedCharacterIds.filter(id => id !== charId);
+            next.blacklistedCharacterIds = next.blacklistedCharacterIds.filter(id => id !== charId);
+
+            // Add to the target list
+            if (newStatus === 'pending') next.pendingCharacterIds.push(charId);
+            if (newStatus === 'whitelisted') next.whitelistedCharacterIds.push(charId);
+            if (newStatus === 'blacklisted') next.blacklistedCharacterIds.push(charId);
+            // if 'none', it is removed from all lists
+
+            return { ...prev, [accountId]: next };
         });
     }, []);
+
+    const toggleSharedHosterCharacter = useCallback((charId: string) => {
+        setSharedHosterCharacterIds(prev => 
+            prev.includes(charId) ? prev.filter(id => id !== charId) : [...prev, charId]
+        );
+    }, []);
+
+    const handleAddFromParticipants = useCallback(() => {
+        if (!interactionData?.participants) return;
+        const participantIds = interactionData.participants.map(p => p.id);
+        setSharedHosterCharacterIds(prev => {
+            const set = new Set([...prev, ...participantIds]);
+            return Array.from(set);
+        });
+    }, [interactionData]);
+
+    const handleAddFromLocalLibrary = useCallback(() => {
+        const localIds = allCharacters.map(c => c.id);
+        setSharedHosterCharacterIds(prev => {
+            const set = new Set([...prev, ...localIds]);
+            return Array.from(set);
+        });
+    }, [allCharacters]);
 
     const handleAcceptLiveRequest = useCallback((accountId: string) => {
         onAcceptJoinRequest?.(accountId);
@@ -261,16 +276,14 @@ function MultiplayerEditorModalInner({
             return {
                 ...prev,
                 [accountId]: createDefaultAccountConfig({
-                    canUseJoinerCharacterId,
-                    canUseHosterParticipantingCharacterId,
-                    canUseHosterNonParticipantingCharacterId,
-                    joinerCharacterIdRequiresHosterApproval,
-                    hosterParticipantingCharacterIdRequiresHosterApproval,
-                    hosterNonParticipantingCharacterIdRequiresHosterApproval,
+                    canUseJoinerCharacterIds,
+                    joinerCharacterIdsRequiresHosterApproval,
+                    sharedHosterCharacterIds,
+                    hosterCharacterIdsRequiresHosterApproval,
                 }),
             };
         });
-    }, [onAcceptJoinRequest, canUseJoinerCharacterId, canUseHosterParticipantingCharacterId, canUseHosterNonParticipantingCharacterId, joinerCharacterIdRequiresHosterApproval, hosterParticipantingCharacterIdRequiresHosterApproval, hosterNonParticipantingCharacterIdRequiresHosterApproval]);
+    }, [onAcceptJoinRequest, canUseJoinerCharacterIds, joinerCharacterIdsRequiresHosterApproval, sharedHosterCharacterIds, hosterCharacterIdsRequiresHosterApproval]);
 
     const handleRejectLiveRequest = useCallback((accountId: string) => {
         onRejectJoinRequest?.(accountId);
@@ -291,8 +304,8 @@ function MultiplayerEditorModalInner({
         const q = accountSearchQuery.toLowerCase();
         return entries.filter(([acctId, cfg]) => {
             if (acctId.toLowerCase().includes(q)) return true;
-            if (cfg.activeCharacterId) {
-                const char = allCharacters.find(c => c.id === cfg.activeCharacterId);
+            if (cfg.protagonistCharacterId) {
+                const char = allCharacters.find(c => c.id === cfg.protagonistCharacterId);
                 if (char && char.name.toLowerCase().includes(q)) return true;
             }
             return false;
@@ -407,12 +420,12 @@ function MultiplayerEditorModalInner({
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     <div>
                                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
-                                            <input type="checkbox" checked={canUseJoinerCharacterId} onChange={e => setCanUseJoinerCharacterId(e.target.checked)} /> 
+                                            <input type="checkbox" checked={canUseJoinerCharacterIds} onChange={e => setCanUseJoinerCharacterIds(e.target.checked)} /> 
                                             Allow Custom Characters (Joiner's Upload)
                                         </label>
-                                        {canUseJoinerCharacterId && (
+                                        {canUseJoinerCharacterIds && (
                                             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', marginLeft: '24px', marginTop: '6px', opacity: 0.8 }}>
-                                                <input type="checkbox" checked={joinerCharacterIdRequiresHosterApproval} onChange={e => setJoinerCharacterIdRequiresHosterApproval(e.target.checked)} /> 
+                                                <input type="checkbox" checked={joinerCharacterIdsRequiresHosterApproval} onChange={e => setJoinerCharacterIdsRequiresHosterApproval(e.target.checked)} /> 
                                                 Requires Host Approval
                                             </label>
                                         )}
@@ -420,30 +433,39 @@ function MultiplayerEditorModalInner({
                                     
                                     <div>
                                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
-                                            <input type="checkbox" checked={canUseHosterParticipantingCharacterId} onChange={e => setCanUseHosterParticipantingCharacterId(e.target.checked)} /> 
-                                            Allow Host Characters (Active Participants)
+                                            <input type="checkbox" checked={hosterCharacterIdsRequiresHosterApproval} onChange={e => setHosterCharacterIdsRequiresHosterApproval(e.target.checked)} /> 
+                                            Hoster Characters Require Host Approval
                                         </label>
-                                        {canUseHosterParticipantingCharacterId && (
-                                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', marginLeft: '24px', marginTop: '6px', opacity: 0.8 }}>
-                                                <input type="checkbox" checked={hosterParticipantingCharacterIdRequiresHosterApproval} onChange={e => setHosterParticipantingCharacterIdRequiresHosterApproval(e.target.checked)} /> 
-                                                Requires Host Approval
-                                            </label>
-                                        )}
-                                    </div>
-
-                                    <div>
-                                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
-                                            <input type="checkbox" checked={canUseHosterNonParticipantingCharacterId} onChange={e => setCanUseHosterNonParticipantingCharacterId(e.target.checked)} /> 
-                                            Allow Host Characters (Background / Non-Participants)
-                                        </label>
-                                        {canUseHosterNonParticipantingCharacterId && (
-                                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', marginLeft: '24px', marginTop: '6px', opacity: 0.8 }}>
-                                                <input type="checkbox" checked={hosterNonParticipantingCharacterIdRequiresHosterApproval} onChange={e => setHosterNonParticipantingCharacterIdRequiresHosterApproval(e.target.checked)} /> 
-                                                Requires Host Approval
-                                            </label>
-                                        )}
+                                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginLeft: '24px', marginTop: '4px' }}>
+                                            If unchecked, joiners can freely use any shared hoster character.
+                                        </div>
                                     </div>
                                 </div>
+                            </div>
+
+                            <div className="editor-section" style={{ marginBottom: '16px' }}>
+                                <div className="editor-section-title">Shared Hoster Characters ({sharedHosterCharacterIds.length})</div>
+                                <div style={{ fontSize: '0.6rem', opacity: 0.6, marginBottom: '8px' }}>
+                                    Characters from your library that joiners are allowed to request.
+                                </div>
+                                
+                                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={handleAddFromParticipants} style={{ flex: 1, fontSize: '0.75rem' }} disabled={!interactionData?.participants?.length}>
+                                        + Add Active Participants
+                                    </button>
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={handleAddFromLocalLibrary} style={{ flex: 1, fontSize: '0.75rem' }} disabled={!allCharacters.length}>
+                                        + Add All Local Library
+                                    </button>
+                                </div>
+
+                                <EntitySelectList
+                                    label=" "
+                                    items={allCharacters}
+                                    selectedIds={sharedHosterCharacterIds}
+                                    onToggle={toggleSharedHosterCharacter}
+                                    searchQuery={sharedCharSearchQuery}
+                                    onSearchChange={setSharedCharSearchQuery}
+                                />
                             </div>
 
                             <div style={{ marginBottom: '16px' }}>
@@ -562,14 +584,19 @@ function MultiplayerEditorModalInner({
 
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
                                     {filteredAccountConfigs.map(([acctId, cfg]) => {
+                                        // Resolve character objects for display
+                                        const pendingChars = cfg.pendingCharacterIds.map(id => allCharacters.find(c => c.id === id)).filter(Boolean) as Character[];
+                                        const whitelistedChars = cfg.whitelistedCharacterIds.map(id => allCharacters.find(c => c.id === id)).filter(Boolean) as Character[];
+                                        const blacklistedChars = cfg.blacklistedCharacterIds.map(id => allCharacters.find(c => c.id === id)).filter(Boolean) as Character[];
+
                                         return (
                                             <div key={acctId} style={{ border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', background: 'rgba(255,255,255,0.02)' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                     <span style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                         {acctId}
-                                                        {cfg.activeCharacterId && (
+                                                        {cfg.protagonistCharacterId && (
                                                             <span style={{ color: '#22c55e', marginLeft: '8px', fontSize: '0.65rem', fontWeight: 'bold' }}>
-                                                                ▶ Playing: {allCharacters.find(c => c.id === cfg.activeCharacterId)?.name || cfg.activeCharacterId.substring(0, 8)}
+                                                                ▶ Playing: {allCharacters.find(c => c.id === cfg.protagonistCharacterId)?.name || cfg.protagonistCharacterId.substring(0, 8)}
                                                             </span>
                                                         )}
                                                     </span>
@@ -589,12 +616,12 @@ function MultiplayerEditorModalInner({
                                                     <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px', padding: '8px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
                                                         <div>
                                                             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-                                                                <input type="checkbox" checked={cfg.canUseJoinerCharacterId} onChange={e => updateCfg(acctId, 'canUseJoinerCharacterId', e.target.checked)} /> 
+                                                                <input type="checkbox" checked={cfg.canUseJoinerCharacterIds} onChange={e => updateCfg(acctId, 'canUseJoinerCharacterIds', e.target.checked)} /> 
                                                                 Allow Custom Characters (Joiner's Upload)
                                                             </label>
-                                                            {cfg.canUseJoinerCharacterId && (
+                                                            {cfg.canUseJoinerCharacterIds && (
                                                                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', marginLeft: '16px', marginTop: '4px', opacity: 0.8 }}>
-                                                                    <input type="checkbox" checked={cfg.joinerCharacterIdRequiresHosterApproval} onChange={e => updateCfg(acctId, 'joinerCharacterIdRequiresHosterApproval', e.target.checked)} /> 
+                                                                    <input type="checkbox" checked={cfg.joinerCharacterIdsRequiresHosterApproval} onChange={e => updateCfg(acctId, 'joinerCharacterIdsRequiresHosterApproval', e.target.checked)} /> 
                                                                     Requires Host Approval
                                                                 </label>
                                                             )}
@@ -602,48 +629,63 @@ function MultiplayerEditorModalInner({
                                                         
                                                         <div>
                                                             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-                                                                <input type="checkbox" checked={cfg.canUseHosterParticipantingCharacterId} onChange={e => updateCfg(acctId, 'canUseHosterParticipantingCharacterId', e.target.checked)} /> 
-                                                                Allow Host Characters (Active Participants)
+                                                                <input type="checkbox" checked={cfg.hosterCharacterIdsRequiresHosterApproval} onChange={e => updateCfg(acctId, 'hosterCharacterIdsRequiresHosterApproval', e.target.checked)} /> 
+                                                                Hoster Characters Require Host Approval
                                                             </label>
-                                                            {cfg.canUseHosterParticipantingCharacterId && (
-                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', marginLeft: '16px', marginTop: '4px', opacity: 0.8 }}>
-                                                                    <input type="checkbox" checked={cfg.hosterParticipantingCharacterIdRequiresHosterApproval} onChange={e => updateCfg(acctId, 'hosterParticipantingCharacterIdRequiresHosterApproval', e.target.checked)} /> 
-                                                                    Requires Host Approval
-                                                                </label>
-                                                            )}
                                                         </div>
 
-                                                        <div>
-                                                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-                                                                <input type="checkbox" checked={cfg.canUseHosterNonParticipantingCharacterId} onChange={e => updateCfg(acctId, 'canUseHosterNonParticipantingCharacterId', e.target.checked)} /> 
-                                                                Allow Host Characters (Background / Non-Participants)
-                                                            </label>
-                                                            {cfg.canUseHosterNonParticipantingCharacterId && (
-                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', marginLeft: '16px', marginTop: '4px', opacity: 0.8 }}>
-                                                                    <input type="checkbox" checked={cfg.hosterNonParticipantingCharacterIdRequiresHosterApproval} onChange={e => updateCfg(acctId, 'hosterNonParticipantingCharacterIdRequiresHosterApproval', e.target.checked)} /> 
-                                                                    Requires Host Approval
-                                                                </label>
-                                                            )}
+                                                        {/* STRICT WORKFLOW UI: Manage via Pending Queue */}
+                                                        <div style={{ marginTop: '8px', borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+                                                            <div style={{ fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '6px', color: '#fbbf24' }}>
+                                                                Pending Requests ({pendingChars.length})
+                                                            </div>
+                                                            {pendingChars.length === 0 && <div style={{ fontSize: '0.65rem', opacity: 0.5, marginBottom: '8px' }}>No pending character requests.</div>}
+                                                            {pendingChars.map(char => (
+                                                                <div key={char.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', background: 'rgba(251, 191, 36, 0.1)', borderRadius: '4px', marginBottom: '4px' }}>
+                                                                    <span style={{ fontSize: '0.7rem' }}>{char.name}</span>
+                                                                    <div style={{ display: 'flex', gap: '4px' }}>
+                                                                        <button type="button" onClick={() => updateCharStatus(acctId, char.id, 'whitelisted')} className="editor-button editor-button-save" style={{ fontSize: '0.6rem', padding: '2px 6px' }}>Whitelist</button>
+                                                                        <button type="button" onClick={() => updateCharStatus(acctId, char.id, 'blacklisted')} className="editor-button editor-button-cancel" style={{ fontSize: '0.6rem', padding: '2px 6px', color: '#ff4444' }}>Blacklist</button>
+                                                                        <button type="button" onClick={() => updateCharStatus(acctId, char.id, 'none')} className="toolbar-button" style={{ fontSize: '0.6rem', padding: '2px 6px' }}>Dismiss</button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+
+                                                        <div style={{ marginTop: '8px', borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+                                                            <div style={{ fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '6px', color: '#22c55e' }}>
+                                                                Whitelisted ({whitelistedChars.length})
+                                                            </div>
+                                                            {whitelistedChars.map(char => (
+                                                                <div key={char.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', background: 'rgba(34, 197, 94, 0.1)', borderRadius: '4px', marginBottom: '4px' }}>
+                                                                    <span style={{ fontSize: '0.7rem' }}>{char.name}</span>
+                                                                    <div style={{ display: 'flex', gap: '4px' }}>
+                                                                        <button type="button" onClick={() => updateCharStatus(acctId, char.id, 'blacklisted')} className="editor-button editor-button-cancel" style={{ fontSize: '0.6rem', padding: '2px 6px', color: '#ff4444' }}>Blacklist</button>
+                                                                        <button type="button" onClick={() => updateCharStatus(acctId, char.id, 'none')} className="toolbar-button" style={{ fontSize: '0.6rem', padding: '2px 6px' }}>Remove</button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+
+                                                        <div style={{ marginTop: '8px', borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+                                                            <div style={{ fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '6px', color: '#ef4444' }}>
+                                                                Blacklisted ({blacklistedChars.length})
+                                                            </div>
+                                                            {blacklistedChars.map(char => (
+                                                                <div key={char.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '4px', marginBottom: '4px' }}>
+                                                                    <span style={{ fontSize: '0.7rem' }}>{char.name}</span>
+                                                                    <div style={{ display: 'flex', gap: '4px' }}>
+                                                                        <button type="button" onClick={() => updateCharStatus(acctId, char.id, 'whitelisted')} className="editor-button editor-button-save" style={{ fontSize: '0.6rem', padding: '2px 6px' }}>Whitelist</button>
+                                                                        <button type="button" onClick={() => updateCharStatus(acctId, char.id, 'none')} className="toolbar-button" style={{ fontSize: '0.6rem', padding: '2px 6px' }}>Remove</button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
                                                         </div>
                                                         
-                                                        {(cfg.canUseHosterParticipantingCharacterId || cfg.canUseHosterNonParticipantingCharacterId) && (
-                                                            <div style={{ marginTop: '4px' }}>
-                                                                <div style={{fontSize: '0.7rem', marginBottom: '4px', fontWeight: 'bold'}}>Whitelisted Host Characters:</div>
-                                                                <EntitySelectList
-                                                                    label=" "
-                                                                    items={allCharacters}
-                                                                    selectedIds={cfg.whitelistedCharacterIds}
-                                                                    onToggle={(charId) => toggleCharForAccount(acctId, charId)}
-                                                                    searchQuery={mappingCharSearchQuery}
-                                                                    onSearchChange={setMappingCharSearchQuery}
-                                                                />
-                                                            </div>
-                                                        )}
-                                                        
-                                                        <button type="button" onClick={() => setExpandedAccountId(null)} className="editor-button editor-button-cancel" style={{ fontSize: '0.7rem', padding: '4px' }}>Collapse ▲</button>
+                                                        <button type="button" onClick={() => setExpandedAccountId(null)} className="editor-button editor-button-cancel" style={{ fontSize: '0.7rem', padding: '4px', marginTop: '8px' }}>Collapse ▲</button>
                                                     </div>
                                                 ) : (
-                                                    <button type="button" onClick={() => setExpandedAccountId(acctId)} className="editor-button" style={{marginTop: '6px', fontSize: '0.7rem', padding: '4px 8px', width: '100%'}}>Configure Permissions & Characters ▼</button>
+                                                    <button type="button" onClick={() => setExpandedAccountId(acctId)} className="editor-button" style={{marginTop: '6px', fontSize: '0.7rem', padding: '4px 8px', width: '100%'}}>Manage Character Permissions ▼</button>
                                                 )}
                                             </div>
                                         );

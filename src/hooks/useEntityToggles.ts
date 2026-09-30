@@ -215,8 +215,8 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             }
             const existingCfg = updatedMultiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId] || {
                 isWhitelisted: true, isBlacklisted: false, isAdministrator: false,
-                canUseJoinerCharacterId: true, canUseHosterCharacterId: true,
-                joinerCharacterIdRequiresHosterApproval: false, hosterCharacterIdRequiresHosterApproval: false,
+                canUseJoinerCharacterIds: true, canUseHosterCharacterId: true,
+                joinerCharacterIdsRequiresHosterApproval: false, hosterCharacterIdsRequiresHosterApproval: false,
                 whitelistedCharacterIds: [], blacklistedCharacterIds: [], pendingCharacterIds: []
             };
             
@@ -226,7 +226,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
                     ...(updatedMultiplayerData.multiplayerDataAccountConfigurations ?? {}),
                     [currentAccountId]: {
                         ...existingCfg,
-                        activeCharacterId: charId,
+                        protagonistCharacterId: charId,
                     }
                 },
                 lastUpdatedTimestamp: Date.now(),

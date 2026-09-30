@@ -386,7 +386,7 @@ export function DataManagerModal({
             for (const id of md.pendingAccountIds || []) if (accountIdSet.has(id)) referencedAccountIds.add(id);
             for (const [acctId, cfg] of Object.entries(md.multiplayerDataAccountConfigurations || {})) {
                 if (accountIdSet.has(acctId)) referencedAccountIds.add(acctId);
-                if (cfg.activeCharacterId && charIdSet.has(cfg.activeCharacterId)) referencedCharIds.add(cfg.activeCharacterId);
+                if (cfg.protagonistCharacterId && charIdSet.has(cfg.protagonistCharacterId)) referencedCharIds.add(cfg.protagonistCharacterId);
                 for (const cId of cfg.whitelistedCharacterIds || []) if (charIdSet.has(cId)) referencedCharIds.add(cId);
                 for (const cId of cfg.blacklistedCharacterIds || []) if (charIdSet.has(cId)) referencedCharIds.add(cId);
                 for (const cId of cfg.pendingCharacterIds || []) if (charIdSet.has(cId)) referencedCharIds.add(cId);
@@ -576,7 +576,7 @@ export function DataManagerModal({
             for (const id of md.pendingAccountIds || []) { if (!accountIdSet.has(id)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: 'References missing pending account', refType: 'Account', refId: id }); }
             for (const [acctId, cfg] of Object.entries(md.multiplayerDataAccountConfigurations || {})) {
                 if (!accountIdSet.has(acctId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: 'References missing account configuration', refType: 'Account', refId: acctId });
-                if (cfg.activeCharacterId && !charIdSet.has(cfg.activeCharacterId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: `Active character for account ${acctId.slice(0, 8)}... is missing`, refType: 'Character', refId: cfg.activeCharacterId });
+                if (cfg.protagonistCharacterId && !charIdSet.has(cfg.protagonistCharacterId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: `Active character for account ${acctId.slice(0, 8)}... is missing`, refType: 'Character', refId: cfg.protagonistCharacterId });
                 for (const cId of cfg.whitelistedCharacterIds || []) { if (!charIdSet.has(cId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: `Whitelisted character for account ${acctId.slice(0, 8)}... is missing`, refType: 'Character', refId: cId }); }
                 for (const cId of cfg.blacklistedCharacterIds || []) { if (!charIdSet.has(cId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: `Blacklisted character for account ${acctId.slice(0, 8)}... is missing`, refType: 'Character', refId: cId }); }
                 for (const cId of cfg.pendingCharacterIds || []) { if (!charIdSet.has(cId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: `Pending character for account ${acctId.slice(0, 8)}... is missing`, refType: 'Character', refId: cId }); }
