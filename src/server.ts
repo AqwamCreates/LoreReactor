@@ -1321,7 +1321,6 @@ const startServer = () => {
 
   console.log(border);
   console.log(`  📡 API Port  : ${Colors.FgGreen}http://127.0.0.1:${PORT}${Colors.Reset}`);
-  console.log(`  🔍 Search    : ${Colors.FgGreen}GET /search?q=...${Colors.Reset}`);
   console.log(`  💾 Data Path : ${Colors.Dim}/user_data/${Colors.Reset}`);
   console.log(`  🎮 GPU Monitor: ${Colors.FgGreen}${detectedGpuVendor}${Colors.Reset} ${Colors.Dim}(GET /gpu/status)${Colors.Reset}`);
   console.log(border);
