@@ -49,7 +49,7 @@ import { SuperSearchModal } from './SuperSearchModal';
 
 interface EntityModalController {
     isOpen: boolean;
-    edit: any | null;
+    item: any | null;
     isReadOnly: boolean;
     open: (item?: any, isReadOnly?: boolean) => void;
     close: () => void;
@@ -373,13 +373,12 @@ export function AppModals({
                     localLibraryItems={allCharacters}
                     hosterOwnedItems={hosterOwnedCharacters}
                     isAdministrator={isAdministrator}
-                    isMultiplayerClient={isMultiplayerClient}
                     isOpen={modals.charList.isOpen}
                     onClose={modals.charList.close}
-                    onSelect={async (character: Character) => { 
+                    onSelect={async (character: Character, isHosterItem: boolean) => { 
                         const isLocal = allCharacters.some(c => c.id === character.id);
                         const fullCharacter = (isLocal && character.sampler) ? character : (isLocal ? await onLoadFullCharacter(character.id) : character);
-                        characterModalProperties.open(fullCharacter || character, !isLocal && isMultiplayerClient); 
+                        characterModalProperties.open(fullCharacter || character, isHosterItem); 
                     }}
                     onDelete={onDeleteCharacter}
                     onCreateNew={() => characterModalProperties.open()}
@@ -402,10 +401,9 @@ export function AppModals({
                     localLibraryItems={allContexts}
                     hosterOwnedItems={hosterOwnedContexts}
                     isAdministrator={isAdministrator}
-                    isMultiplayerClient={isMultiplayerClient}
                     isOpen={modals.contextList.isOpen} 
                     onClose={modals.contextList.close}
-                    onSelect={(context: Context) => contextModalProperties.open(context, isMultiplayerClient)} 
+                    onSelect={(context: Context, isHosterItem: boolean) => contextModalProperties.open(context, isHosterItem)} 
                     onDelete={onDeleteContext} 
                     onCreateNew={() => contextModalProperties.open()}
                     renderSubtext={renderContextSubtext} 
@@ -423,10 +421,9 @@ export function AppModals({
                     localLibraryItems={allLocations}
                     hosterOwnedItems={hosterOwnedLocations}
                     isAdministrator={isAdministrator}
-                    isMultiplayerClient={isMultiplayerClient}
                     isOpen={modals.locationList.isOpen} 
                     onClose={modals.locationList.close}
-                    onSelect={(location: Location) => locationModalProperties.open(location, isMultiplayerClient)} 
+                    onSelect={(location: Location, isHosterItem: boolean) => locationModalProperties.open(location, isHosterItem)} 
                     onDelete={onDeleteLocation} 
                     onCreateNew={() => locationModalProperties.open()}
                     renderSubtext={renderLocationSubtext} 
@@ -444,10 +441,9 @@ export function AppModals({
                     localLibraryItems={allAudioTracks}
                     hosterOwnedItems={hosterOwnedAudioTracks}
                     isAdministrator={isAdministrator}
-                    isMultiplayerClient={isMultiplayerClient}
                     isOpen={modals.audioTrackList.isOpen} 
                     onClose={modals.audioTrackList.close}
-                    onSelect={(audioTrack: AudioTrack) => audioTrackModalProperties.open(audioTrack, isMultiplayerClient)} 
+                    onSelect={(audioTrack: AudioTrack, isHosterItem: boolean) => audioTrackModalProperties.open(audioTrack, isHosterItem)} 
                     onDelete={onDeleteAudioTrack} 
                     onCreateNew={() => audioTrackModalProperties.open()}
                     renderSubtext={(audioTrack: AudioTrack) => `${audioTrack.audioCategory === 'ambient' ? '🌿' : audioTrack.audioCategory === 'music' ? '🎵' : '💥'} ${audioTrack.loop ? '🔁' : '▶️'} Vol: ${Math.round(audioTrack.volume * 100)}%${audioTrack.priority > 0 ? ` • ⬆${audioTrack.priority}` : ''}${audioTrack.locationBindings.length > 0 ? ` • 📍${audioTrack.locationBindings.length}` : ''}${audioTrack.contextBindings.length > 0 ? ` • 📜${audioTrack.contextBindings.length}` : ''}${audioTrack.characterBindings.length > 0 ? ` • 🎭${audioTrack.characterBindings.length}` : ''}`}
@@ -888,7 +884,7 @@ export function AppModals({
                             characterModalProperties.save(character); 
                         } 
                     }}
-                    existingCharacter={characterModalProperties.edit} 
+                    existingCharacter={characterModalProperties.item} 
                     allSamplers={allSamplers} 
                     allCharacters={allCharacters}
                     localProtagonist={localProtagonist}
@@ -912,7 +908,7 @@ export function AppModals({
                             contextModalProperties.save(context); 
                         } 
                     }}
-                    existingContext={contextModalProperties.edit} 
+                    existingContext={contextModalProperties.item} 
                     allCharacters={allCharacters} 
                 />
             )}
@@ -930,7 +926,7 @@ export function AppModals({
                             locationModalProperties.save(location); 
                         } 
                     }}
-                    existingLocation={locationModalProperties.edit} 
+                    existingLocation={locationModalProperties.item} 
                     allCharacters={allCharacters} 
                     allLocations={allLocations} 
                     allAudioTracks={allAudioTracks} 
@@ -950,7 +946,7 @@ export function AppModals({
                             audioTrackModalProperties.save(audioTrack); 
                         } 
                     }}
-                    existingTrack={audioTrackModalProperties.edit} 
+                    existingTrack={audioTrackModalProperties.item} 
                     allCharacters={allCharacters} 
                     allContexts={allContexts} 
                     allLocations={allLocations} 
@@ -963,7 +959,7 @@ export function AppModals({
                     onClose={worldModalProperties.close} 
                     onSave={worldModalProperties.save} 
                     onLoadWorld={onLoadWorld}
-                    existingWorld={worldModalProperties.edit} 
+                    existingWorld={worldModalProperties.item} 
                     allCharacters={allCharacters} 
                     allContexts={allContexts} 
                     allLocations={allLocations} 
@@ -983,7 +979,7 @@ export function AppModals({
                     isOpen={modelModalProperties.isOpen} 
                     onClose={modelModalProperties.close} 
                     onSave={modelModalProperties.save}
-                    existingModel={modelModalProperties.edit} 
+                    existingModel={modelModalProperties.item} 
                     allStopPatterns={allStopPatterns} 
                 />
             )}
@@ -993,7 +989,7 @@ export function AppModals({
                     isOpen={samplerModalProperties.isOpen} 
                     onClose={samplerModalProperties.close} 
                     onSave={samplerModalProperties.save}
-                    existingSampler={samplerModalProperties.edit} 
+                    existingSampler={samplerModalProperties.item} 
                     allStopPatterns={allStopPatterns} 
                 />
             )}
@@ -1010,7 +1006,7 @@ export function AppModals({
                             promptBlockModalProperties.save(promptBlock); 
                         } 
                     }}
-                    existingBlock={promptBlockModalProperties.edit} 
+                    existingBlock={promptBlockModalProperties.item} 
                     allCharacters={allCharacters} 
                     allContexts={allContexts} 
                     allLocations={allLocations} 
@@ -1022,7 +1018,7 @@ export function AppModals({
                     isOpen={stopPatternModalProperties.isOpen} 
                     onClose={stopPatternModalProperties.close} 
                     onSave={stopPatternModalProperties.save}
-                    existingStopPattern={stopPatternModalProperties.edit} 
+                    existingStopPattern={stopPatternModalProperties.item} 
                 />
             )}
 
@@ -1031,7 +1027,7 @@ export function AppModals({
                     isOpen={budgetStrategyModalProperties.isOpen} 
                     onClose={budgetStrategyModalProperties.close} 
                     onSave={budgetStrategyModalProperties.save}
-                    existingStrategy={budgetStrategyModalProperties.edit} 
+                    existingStrategy={budgetStrategyModalProperties.item} 
                     allLanguageModels={allLanguageModels} 
                 />
             )}
@@ -1048,7 +1044,7 @@ export function AppModals({
                             profileModalProperties.save(profile); 
                         } 
                     }}
-                    existingProfile={profileModalProperties.edit} 
+                    existingProfile={profileModalProperties.item} 
                     allPromptBlocks={allPromptBlocks} 
                     allSamplers={allSamplers} 
                 />
@@ -1059,7 +1055,7 @@ export function AppModals({
                     isOpen={accountModalProperties.isOpen} 
                     onClose={accountModalProperties.close} 
                     onSave={accountModalProperties.save}
-                    existingAccount={accountModalProperties.edit}
+                    existingAccount={accountModalProperties.item}
                     allCharacters={allCharacters}
                     allLanguageModels={allLanguageModels}
                 />
@@ -1070,7 +1066,7 @@ export function AppModals({
                     isOpen={multiplayerDataModalProperties.isOpen}
                     onClose={multiplayerDataModalProperties.close}
                     onSave={multiplayerDataModalProperties.save}
-                    existingMultiplayerData={multiplayerDataModalProperties.edit}
+                    existingMultiplayerData={multiplayerDataModalProperties.item}
                     allCharacters={allCharacters}
                     rawChatShells={chatShellsWithIdentifiers}
                     pendingJoinRequests={pendingJoinRequests}

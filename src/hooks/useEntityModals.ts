@@ -16,10 +16,15 @@ interface EntityConfiguration<T> {
 
 export function useEntityModals(entityConfigurations: Record<EntityType, EntityConfiguration<any>>) {
     const { addToast } = useToast();
-    const [activeModal, setActiveModal] = useState<{ entityType: EntityType; edit: any | null } | null>(null);
+    
+    const [activeModal, setActiveModal] = useState<{ 
+        entityType: EntityType; 
+        item: any | null; 
+        isReadOnly: boolean;
+    } | null>(null);
 
-    const openModal = useCallback((entityType: EntityType, edit?: any) => {
-        setActiveModal({ entityType, edit: edit || null });
+    const openModal = useCallback((entityType: EntityType, item?: any, isReadOnly: boolean = false) => {
+        setActiveModal({ entityType, item: item || null, isReadOnly });
     }, []);
 
     const closeModal = useCallback(() => {
@@ -39,7 +44,6 @@ export function useEntityModals(entityConfigurations: Record<EntityType, EntityC
         }
     }, [activeModal, entityConfigurations, addToast, closeModal]);
 
-    // Internal function name avoids reserved keyword syntax errors
     const deleteEntity = useCallback(async (identifier: string, entityTypeOverride?: EntityType) => {
         const targetEntityType = entityTypeOverride || activeModal?.entityType;
         if (!targetEntityType) return;
@@ -61,8 +65,8 @@ export function useEntityModals(entityConfigurations: Record<EntityType, EntityC
 
     const getModalProperties = (entityType: EntityType) => ({
         isOpen: activeModal?.entityType === entityType,
-        edit: activeModal?.entityType === entityType ? activeModal.edit : null,
-        open: (edit?: any) => openModal(entityType, edit),
+        item: activeModal?.entityType === entityType ? activeModal.item : null,
+        open: (item?: any, isReadOnly?: boolean) => openModal(entityType, item, isReadOnly ?? false),
         close: closeModal,
         save,
         delete: (identifier: string) => deleteEntity(identifier, entityType),

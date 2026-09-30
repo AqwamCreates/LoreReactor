@@ -7,10 +7,9 @@ interface ManagerModalProps<T> {
     localLibraryItems: T[];
     hosterOwnedItems?: T[];
     isAdministrator?: boolean;
-    isMultiplayerClient?: boolean;
     isOpen: boolean;
     onClose: () => void;
-    onSelect?: (item: T) => void;
+    onSelect?: (item: T, isHosterItem: boolean) => void;
     onDelete?: (id: string) => void;
     onCreateNew?: () => void;
     renderSubtext?: (item: T) => React.ReactNode;
@@ -43,7 +42,7 @@ function extractTextContent(node: React.ReactNode): string {
 }
 
 function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedTimestamp?: number; firstCreatedTimestamp?: number }>({
-    title, localLibraryItems, hosterOwnedItems, isAdministrator, isMultiplayerClient, onClose, onSelect, onDelete, onCreateNew,
+    title, localLibraryItems, hosterOwnedItems, isAdministrator, onClose, onSelect, onDelete, onCreateNew,
     renderSubtext, emptyMessage = "No items found.", actionLabel = "Delete",
     orderedListMode = false, currentOrderIds = [], onToggleOrder,
     specialActionIcon, onSpecialAction, specialActionTooltip, activeSpecialActionId,
@@ -84,7 +83,6 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
     const canToggleOrder = (() => {
         if (!orderedListMode || !onToggleOrder) return false;
         if (isHosterOwnedTab) return isAdministrator;
-        if (isMultiplayerClient) return false;
         return true;
     })();
 
@@ -223,7 +221,7 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
                                     <li key={item.id} className={`manager-item ${isActive ? 'selected-item' : ''} ${isSecondaryActive && !isActive ? 'strategy-item' : ''}`}>
                                         <div
                                             className={`manager-item-main ${onSelect ? 'manager-item-main-clickable' : ''}`}
-                                            onClick={() => onSelect?.(item)}
+                                            onClick={() => onSelect?.(item, isHosterOwnedTab)}
                                         >
                                             <div className="manager-item-info">
                                                 <div className="manager-item-title">{item.name || 'Untitled'}</div>
