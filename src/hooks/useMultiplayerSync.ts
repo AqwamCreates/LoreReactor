@@ -1372,4 +1372,4 @@ export function useMultiplayerSync({
         requestAndAwaitBorrowedModel,
         requestPeerInference,
     };
-}What's next?
+}
