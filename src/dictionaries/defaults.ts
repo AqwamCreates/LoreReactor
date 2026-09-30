@@ -161,17 +161,15 @@ export function createDefaultMultiplayerData(): MultiplayerData {
         name: '',
         password: '',
         canUseJoinerCharacterIds: true,
-        canUseHosterParticipantingCharacterId: false,
-        canUseHosterNonParticipantingCharacterId: false,
         joinerCharacterIdsRequiresHosterApproval: true,
-        hosterParticipantingCharacterIdRequiresHosterApproval: true,
-        hosterNonParticipantingCharacterIdRequiresHosterApproval: true,
+        sharedHosterCharacterIds: [],
+        hosterCharacterIdsRequiresHosterApproval: true,
         useJoinerLanguageModel: 0,
         interactionDataIds: [],
         multiplayerDataAccountConfigurations: {},
         pendingAccountIds: [],
-        lastUpdatedTimestamp: now,
         firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
     };
 }
 
