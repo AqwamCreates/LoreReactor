@@ -120,24 +120,24 @@ export interface Location extends ObjectData {
   regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
   regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
   regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
-  backgroundImageRegularExpressionActivationTriggers: Record<number, string>
-  backgroundImageWeights: Record<number, number>
+  backgroundImageRegularExpressionActivationTriggers?: Record<number, string>
+  backgroundImageWeights?: Record<number, number>
   playAudioTrackOnEnterWeights?: Record<string, number>;
-  locationBindings: string[]; // Accessible to target X from current location Y.
+  locationBindings?: string[]; // Accessible to target X from current location Y.
   locationBindingRegularExpressionTriggers?: Record<string, string>
-  characterBindings: string[];
-  globalWeight: number;
-  characterWeights: Record<string, number>;
-  ownerBindings: string[]
-  latitude: number | undefined;
-  longitude: number | undefined;
-  locationDistances: Record<string, number>;
+  characterBindings?: string[];
+  globalWeight?: number;
+  characterWeights?: Record<string, number>;
+  ownerBindings?: string[]
+  latitude?: number;
+  longitude?: number;
+  locationDistances?: Record<string, number>;
   messageFilterNonCoLocatedParticipants?: boolean;
   messageFilterRegularExpressionActivationTriggers?: RegularExpressionTrigger[];
   messageFilterRegularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
   messageFilterRegularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
   messageFilterRegularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
-  useBase64Encoding: boolean;
+  useBase64Encoding?: boolean;
 }
 
 export interface RawLocation extends RawData {
@@ -147,24 +147,24 @@ export interface RawLocation extends RawData {
   regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
   regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
   regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
-  backgroundImageRegularExpressionActivationTriggers: Record<number, string>
-  backgroundImageWeights: Record<number, number>
+  backgroundImageRegularExpressionActivationTriggers?: Record<number, string>
+  backgroundImageWeights?: Record<number, number>
   playAudioTrackOnEnterWeights?: Record<string, number>;
-  locationBindings: string[]; // Accessible to target X from current location Y.
+  locationBindings?: string[]; // Accessible to target X from current location Y.
   locationBindingRegularExpressionTriggers?: Record<string, string>
-  characterBindings: string[];
-  globalWeight: number;
-  characterWeights: Record<string, number>;
-  ownerBindings: string[]
-  latitude: number | undefined;
-  longitude: number | undefined;
+  characterBindings?: string[];
+  globalWeight?: number;
+  characterWeights?: Record<string, number>;
+  ownerBindings?: string[]
+  latitude?: number;
+  longitude?: number;
   locationDistances?: Record<string, number>;
   messageFilterNonCoLocatedParticipants?: boolean;
   messageFilterRegularExpressionActivationTriggers?: RegularExpressionTrigger[];
   messageFilterRegularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
   messageFilterRegularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
   messageFilterRegularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
-  useBase64Encoding: boolean;
+  useBase64Encoding?: boolean;
 }
 
 export type localBackend =

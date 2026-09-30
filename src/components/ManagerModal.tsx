@@ -40,7 +40,7 @@ function extractTextContent(node: React.ReactNode): string {
     return '';
 }
 
-function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedTimestamp?: number; firstCreatedTimestamp?: number }>({
+export function ManagerModal<T extends { id: string; name?: string; lastUpdatedTimestamp?: number; firstCreatedTimestamp?: number }>({
     title, localLibraryItems, hosterOwnedItems, isAdministrator, onClose, onSelect, onDelete, onCreateNew,
     renderSubtext, emptyMessage = "No items found.", actionLabel = "Delete",
     orderedListMode = false, currentOrderIds = [], onToggleOrder,
@@ -81,7 +81,9 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
     // 3. Local Library tab (Host/Solo): Can toggle local items.
     const canToggleOrder = (() => {
         if (!orderedListMode || !onToggleOrder) return false;
-        if (isHosterOwnedTab) return isAdministrator;
+        if (hasHosterOwnedTab) {
+            return isHosterOwnedTab && !!isAdministrator;
+        }
         return true;
     })();
 
@@ -267,9 +269,4 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
             </div>
         </div>
     );
-}
-
-export function ManagerModal<T extends { id: string; name?: string; lastUpdatedTimestamp?: number; firstCreatedTimestamp?: number }>(props: ManagerModalProps<T>) {
-
-    return <ManagerModalContent {...props} />;
 }

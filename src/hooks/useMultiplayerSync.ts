@@ -1,6 +1,10 @@
 // src/hooks/useMultiplayerSync.ts
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { InteractionData, MultiplayerData, HistoryMessage, Character, ChatMessage, InteractionMessage, WhisperMessage, LanguageModel, backend, Context, AudioTrack, Profile } from '../types';
+import type { 
+    InteractionData, MultiplayerData, HistoryMessage, Character, 
+    ChatMessage, InteractionMessage, WhisperMessage, LanguageModel, 
+    backend, Context, Location, AudioTrack, Profile 
+} from '../types';
 import { 
     useMultiplayerConnection, 
     type MultiplayerMessage, 
@@ -92,6 +96,15 @@ type SyncMessagePayload = SyncChatMessagePayload | SyncInteractionMessagePayload
 
 interface SetProtagonistPayload {
     character: Character;
+}
+
+export interface StateSyncPayload {
+    participants?: Character[];
+    protagonists?: Character[];
+    contexts?: Context[];
+    locations?: Location[];
+    audioTracks?: AudioTrack[];
+    Profile?: Profile;
 }
 
 export interface PendingJoinRequest {
@@ -464,6 +477,44 @@ export function useMultiplayerSync({
                     if (isNewMessage && payload.messageType === 'chat') {
                         MultiplayerEvents.emit('peerMessageReceived', newMessage as ChatMessage);
                     }
+                }
+                break;
+            }
+
+            case 'state_sync': {
+                const payload = msg.payload as StateSyncPayload;
+                const currentData = interactionDataRef.current;
+                if (!currentData) break;
+
+                // Security: if host receives state sync from peer, verify administrator status
+                if (isHost && msg.senderAccountId !== currentAccountId) {
+                    const currentMultiplayerData = multiplayerDataRef.current;
+                    const foundAccount = findAccountConfiguration(currentMultiplayerData?.multiplayerDataAccountConfigurations, msg.senderAccountId);
+                    if (!foundAccount?.configuration?.isAdministrator) {
+                        console.warn(`[MP Security] Blocked unauthorized state_sync from account ${msg.senderAccountId}`);
+                        break;
+                    }
+                }
+
+                const updatedData: InteractionData = {
+                    ...currentData,
+                    ...(payload.participants !== undefined ? { participants: payload.participants } : {}),
+                    ...(payload.protagonists !== undefined ? { protagonists: payload.protagonists } : {}),
+                    ...(payload.contexts !== undefined ? { contexts: payload.contexts } : {}),
+                    ...(payload.locations !== undefined ? { locations: payload.locations } : {}),
+                    ...(payload.audioTracks !== undefined ? { audioTracks: payload.audioTracks } : {}),
+                    ...(payload.Profile !== undefined ? { Profile: payload.Profile } : {}),
+                    lastUpdatedTimestamp: Date.now(),
+                };
+
+                setInteractionData(updatedData);
+
+                // If host received this from an administrator, re-broadcast to other peers
+                if (isHost) {
+                    broadcastRef.current({
+                        type: 'state_sync',
+                        payload,
+                    });
                 }
                 break;
             }
@@ -968,26 +1019,6 @@ export function useMultiplayerSync({
                 break;
             }
 
-            case 'state_sync': {
-                const payload = msg.payload as {
-                    contexts?: Context[];
-                    locations?: Location[];
-                    audioTracks?: AudioTrack[];
-                    Profile?: Profile;
-                };
-                const currentData = interactionDataRef.current;
-                if (!currentData) break;
-                setInteractionData({
-                    ...currentData,
-                    ...(payload.contexts ? { contexts: payload.contexts } : {}),
-                    ...(payload.locations ? { locations: payload.locations } : {}),
-                    ...(payload.audioTracks ? { audioTracks: payload.audioTracks } : {}),
-                    ...(payload.Profile ? { Profile: payload.Profile } : {}),
-                    lastUpdatedTimestamp: Date.now(),
-                });
-                break;
-            }
-
             case 'borrow_inference_cancel':
             case 'typing_indicator':
             case 'protagonist_change':
@@ -1067,6 +1098,13 @@ export function useMultiplayerSync({
         });
         return unsubscribe;
     }, [broadcastMessage]);
+
+    const broadcastStateSync = useCallback((partialState: StateSyncPayload) => {
+        broadcast({
+            type: 'state_sync',
+            payload: partialState,
+        });
+    }, [broadcast]);
 
     const requestAndAwaitBorrowedModel = useCallback(async (): Promise<LanguageModel | null> => {
         if (!isHost) return null;
@@ -1203,10 +1241,10 @@ export function useMultiplayerSync({
                         initialState,
                         assignedCharacter,
                         sessionRules: {
-                            canUseJoinerCharacterIds: multiplayerData.canUseJoinerCharacterIds,
-                            joinerCharacterIdsRequiresHosterApproval: multiplayerData.joinerCharacterIdsRequiresHosterApproval,
-                            sharedHosterCharacterIds: multiplayerData.sharedHosterCharacterIds,
-                            hosterCharacterIdsRequiresHosterApproval: multiplayerData.hosterCharacterIdsRequiresHosterApproval,
+                            canUseJoinerCharacterIds: currentMultiplayerData.canUseJoinerCharacterIds,
+                            joinerCharacterIdsRequiresHosterApproval: currentMultiplayerData.joinerCharacterIdsRequiresHosterApproval,
+                            sharedHosterCharacterIds: currentMultiplayerData.sharedHosterCharacterIds,
+                            hosterCharacterIdsRequiresHosterApproval: currentMultiplayerData.hosterCharacterIdsRequiresHosterApproval,
                         },
                     },
                 });
@@ -1325,6 +1363,7 @@ export function useMultiplayerSync({
         broadcastMessage,
         broadcastMessageEdit,
         broadcastMessageDelete,
+        broadcastStateSync,
         initiateBranch,
         sendProtagonist,
         disconnect,

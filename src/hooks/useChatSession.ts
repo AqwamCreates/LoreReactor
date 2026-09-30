@@ -69,12 +69,15 @@ function finalizeMessageById(
 
 function findLastAIMessageId(
     data: InteractionData,
-    protagonistId: string,
+    protagonistIds?: string[] | Set<string>,
 ): string | null {
+    const protagSet = protagonistIds instanceof Set 
+        ? protagonistIds 
+        : new Set(protagonistIds || (data.protagonists?.map(p => p.id) ?? []));
     const history = data.interactionHistory;
     for (let i = history.length - 1; i >= 0; i--) {
         const msg = history[i];
-        if (msg.messageType === 'chat' && msg.character.id !== protagonistId) {
+        if (msg.messageType === 'chat' && !protagSet.has(msg.character.id)) {
             return msg.id;
         }
     }
@@ -359,7 +362,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             };
             onMessageBroadcastRef.current(partialMsg);
         }
-    }, [throttledSetStreamingText, getState, setInteractionData,streamingTextRef]);
+    }, [throttledSetStreamingText, getState, setInteractionData, streamingTextRef]);
 
     useEffect(() => {
         let cancelled = false;
@@ -445,7 +448,10 @@ export function useChatSession(options: UseChatSessionOptions) {
         pendingPartialRef.current = null;
         const dt = convertIdsToDisplayNames(p.text, base);
         const h = base.interactionHistory;
-        if (h.length > 0 && h[h.length - 1].character.id !== protagonistId) {
+        
+        // Multi-protagonist check: verify the last message was NOT sent by any protagonist
+        const allProtagonistIds = new Set(base.protagonists?.map(pr => pr.id) ?? [protagonistId]);
+        if (h.length > 0 && !allProtagonistIds.has(h[h.length - 1].character.id)) {
             const lastMsg = h[h.length - 1];
             if (lastMsg.messageType === 'chat') {
                 const ph = [...h];
@@ -461,7 +467,8 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, []);
 
     const autoResumeOnCutoff = useCallback((data: InteractionData, protagonistId: string, allPromptBlocks?: PromptBlock[]) => {
-        const messageId = findLastAIMessageId(data, protagonistId);
+        const allProtagonistIds = new Set(data.protagonists?.map(p => p.id) ?? [protagonistId]);
+        const messageId = findLastAIMessageId(data, allProtagonistIds);
         if (!messageId) return;
 
         setTimeout(() => {
@@ -487,7 +494,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         allStopPatterns: allStopPatternsRef.current,
         allBudgetStrategies: allBudgetStrategiesRef.current,
         allProfiles: allProfilesRef.current,
-        allWorlds: allWorldsRef.current,
+        allWorlds: worlds.worlds,
         allMemories: allMemoriesRef.current,
         allAccounts: allAccountsRef.current,
         allMultiplayerData: allMultiplayerDataRef.current,
@@ -526,7 +533,11 @@ export function useChatSession(options: UseChatSessionOptions) {
         lastTokenTimestampRef.current = Date.now();
 
         const preTurnCount = data.interactionHistory.length;
-        const isProtagonist = isProtagonistCharId || ((id: string) => id === protagonistId);
+
+        // Multi-protagonist check: Skip all human protagonists (both Host & Joiners)
+        const allProtagonistIds = new Set(data.protagonists?.map(p => p.id) ?? [protagonistId]);
+        const isProtagonist = isProtagonistCharId || ((id: string) => allProtagonistIds.has(id));
+
         const responderChar = responderCharacter
             || data.participants.find(p => !isProtagonist(p.id))
             || data.participants[0]
@@ -808,9 +819,13 @@ export function useChatSession(options: UseChatSessionOptions) {
             return; 
         }
 
+        // Multi-protagonist check: Ensure the AI skips all human protagonists
+        const allProtagonistIds = new Set(currentState.interactionData.protagonists?.map(p => p.id) ?? [currentState.currentCharacter.id]);
+
         await executeTurnPipeline({
             data: currentState.interactionData,
             protagonistId: currentState.currentCharacter.id,
+            isProtagonistCharId: (id: string) => allProtagonistIds.has(id),
             errorPrefix: 'Host response failed',
             lockAlreadyAcquired: true,
         });
@@ -859,9 +874,12 @@ export function useChatSession(options: UseChatSessionOptions) {
             return;
         }
 
+        const allProtagonistIds = new Set(td.protagonists?.map(p => p.id) ?? [protagonist.id]);
+
         await executeTurnPipeline({
             data: td,
             protagonistId: protagonist.id,
+            isProtagonistCharId: (id: string) => allProtagonistIds.has(id),
             errorPrefix: 'Action failed',
             lockAlreadyAcquired: true,
         });
@@ -1003,7 +1021,8 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             if (!result.isCompleted && !wasStoppedRef.current) {
                 setTimeout(() => {
-                    const reMarkedId = findLastAIMessageId(finalized, char.id);
+                    const allProtagonistIds = new Set(finalized.protagonists?.map(p => p.id) ?? [char.id]);
+                    const reMarkedId = findLastAIMessageId(finalized, allProtagonistIds);
                     if (reMarkedId) {
                         resumeGenerationRef.current?.(reMarkedId, allPromptBlocks);
                     }

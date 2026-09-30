@@ -347,10 +347,11 @@ export function getCharacterStarterMessage(character: Character): string {
     if (!starterPrompts) return `*${character.name} enters the scene.*`;
 
     const entries = Object.entries(starterPrompts).filter(([text]) => text.trim().length > 0);
+    if (entries.length === 0) return `*${character.name} enters the scene.*`;
 
     const totalWeight = entries.reduce((sum, [, weight]) => sum + (weight > 0 ? weight : 1), 0);
     let random = Math.random() * totalWeight;
-    let chosen = entries[entries.length][0] 
+    let chosen = entries[0][0];
 
     for (const [text, weight] of entries) {
         const w = weight > 0 ? weight : 1;

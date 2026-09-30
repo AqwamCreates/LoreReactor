@@ -14,7 +14,7 @@ import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useFrontCamera } from '../hooks/useFrontCamera';
-import type { Character, Context, Location, AudioTrack, Profile, InteractionData, ChatMessage, MultiplayerData, WhisperMessage, LanguageModel, HistoryMessage, RawInteractionData, Account, cloudBackend } from '../types';
+import type { Character, Context, InteractionData, ChatMessage, MultiplayerData, WhisperMessage, LanguageModel, HistoryMessage, RawInteractionData, Account, cloudBackend, AudioTrack, World } from '../types';
 import { useSessionStore } from '../hooks/useSessionStore';
 
 // ─── Manager Hooks ──────────────────────────────────────────────────
@@ -229,7 +229,7 @@ function App() {
 
         const currentStoreMpData = useSessionStore.getState().multiplayerData;
         const match = multiplayerDataManager.multiplayerData.find(
-            (m: MultiplayerData) => m.interactionDataIds.includes(interactionData.id!)
+            (m: MultiplayerData) => m.interactionDataIds.includes(interactionData.id)
         ) ?? null;
 
         if (currentStoreMpData?.id !== match?.id) {
@@ -795,29 +795,66 @@ function App() {
         await chatOps.handleSwitchChat(parentInteractionDataId);
     }, [parentInteractionDataId, chatOps]);
 
-    const handleLoadWorld = useCallback((world: any) => {
+    const handleLoadWorld = useCallback((world: World) => {
         if (!interactionData) return;
-        const resolvedChars = world.characterIds.map((id: string) => characters.characters.find((c: Character) => c.id === id)).filter(Boolean);
-        const resolvedCtxs = world.contextIds.map((id: string) => contexts.contexts.find((c: Context) => c.id === id)).filter(Boolean);
-        const resolvedLocs = world.locationIds.map((id: string) => locations.locations.find((l: any) => l.id === id)).filter(Boolean);
-        const resolvedAudio = (world.audioTrackIds || []).map((id: string) => audioTracks.audioTracks.find((t: any) => t.id === id)).filter(Boolean);
-        const resolvedProfile = world.profileId ? profiles.profiles.find((p: any) => p.id === world.profileId) : undefined;
+
+        // 1. Resolve World entities from manager libraries
+        const resolvedChars = (world.characterIds || []).map(id => characters.characters.find(c => c.id === id)).filter((c): c is Character => !!c);
+        const resolvedCtxs = (world.contextIds || []).map(id => contexts.contexts.find(c => c.id === id)).filter((c): c is Context => !!c);
+        const resolvedLocs = (world.locationIds || []).map(id => locations.locations.find(l => l.id === id)).filter((l): l is Location => !!l);
+        const resolvedAudio = (world.audioTrackIds || []).map(id => audioTracks.audioTracks.find(t => t.id === id)).filter((t): t is AudioTrack => !!t);
+        const resolvedProfile = world.profileId ? profiles.profiles.find(p => p.id === world.profileId) : interactionData.Profile;
+
+        // 2. Merge alongside existing entities (deduplicated by ID)
+        const existingParticipantIds = new Set((interactionData.participants || []).map(p => p.id));
+        const mergedParticipants = [
+            ...(interactionData.participants || []),
+            ...resolvedChars.filter(c => !existingParticipantIds.has(c.id)),
+        ];
+
+        const existingContextIds = new Set((interactionData.contexts || []).map(c => c.id));
+        const mergedContexts = [
+            ...(interactionData.contexts || []),
+            ...resolvedCtxs.filter(c => !existingContextIds.has(c.id)),
+        ];
+
+        const existingLocationIds = new Set((interactionData.locations || []).map(l => l.id));
+        const mergedLocations = [
+            ...(interactionData.locations || []),
+            ...resolvedLocs.filter(l => !existingLocationIds.has(l.id)),
+        ];
+
+        const existingAudioTrackIds = new Set((interactionData.audioTracks || []).map(t => t.id));
+        const mergedAudioTracks = [
+            ...(interactionData.audioTracks || []),
+            ...resolvedAudio.filter(t => !existingAudioTrackIds.has(t.id)),
+        ];
+
+        // 3. Assemble updated interaction data
         let updated: InteractionData = {
             ...interactionData,
-            participants: resolvedChars.length > 0 ? resolvedChars : interactionData.participants,
-            contexts: resolvedCtxs, locations: resolvedLocs,
-            audioTracks: resolvedAudio.length > 0 ? resolvedAudio : [],
-            Profile: resolvedProfile, lastUpdatedTimestamp: Date.now(),
+            participants: mergedParticipants,
+            contexts: mergedContexts,
+            locations: mergedLocations,
+            audioTracks: mergedAudioTracks,
+            Profile: resolvedProfile,
+            lastUpdatedTimestamp: Date.now(),
         };
+
+        // 4. Ensure existing protagonists remain in participants
         if (updated.protagonists) {
             for (const p of updated.protagonists) {
-                if (!updated.participants.find((x: Character) => x.id === p.id)) updated.participants = [p, ...updated.participants];
+                if (!updated.participants.some(x => x.id === p.id)) {
+                    updated.participants = [p, ...updated.participants];
+                }
             }
         }
+
         updated = assignInitialLocationsIfNeeded(updated);
         setInteractionData(updated);
-        addToast(`Loaded world "${world.name}"`, 'success');
+        addToast(`Loaded world "${world.name}" alongside existing entities`, 'success');
 
+        // 5. Broadcast merged state to multiplayer peers
         if (canBroadcastState) {
             (mp.multiplayerSync as any).broadcastStateSync?.({
                 participants: updated.participants,
@@ -827,8 +864,7 @@ function App() {
                 Profile: updated.Profile,
             });
         }
-    }, [interactionData, characters, contexts, locations, audioTracks, profiles, setInteractionData, addToast, canBroadcastState, mp.multiplayerSync]);
-
+    }, [interactionData, characters.characters, contexts.contexts, locations.locations, audioTracks.audioTracks, profiles.profiles, setInteractionData, addToast, canBroadcastState, mp.multiplayerSync]);
     // ─── Base View Props (Stable, contains only committed messages) ───
     const baseViewProps: ViewModeProps = {
         interactionData: interactionData!,
