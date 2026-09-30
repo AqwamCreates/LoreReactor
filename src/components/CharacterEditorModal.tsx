@@ -1468,7 +1468,7 @@ function CharacterEditorModalInner({
                 character={existingCharacter || null}
                 onSaveMemories={setMemories}
                 chatNameMap={chatNameMap}
-                isReadOnly={isReadOnly}
+                localProtagonist={localProtagonist}
             />
         </>
     );
