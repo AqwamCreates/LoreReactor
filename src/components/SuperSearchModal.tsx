@@ -37,7 +37,7 @@ export interface SuperSearchModalProps {
     allAudioTracks: AudioTrack[];
     allWorlds: World[];
     allPromptBlocks: PromptBlock[];
-    allModels: LanguageModel[];
+    allLanguageModels: LanguageModel[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
     allBudgetStrategies: BudgetStrategy[];
@@ -189,7 +189,7 @@ function SuperSearchContent({
     allAudioTracks,
     allWorlds,
     allPromptBlocks,
-    allModels,
+    allLanguageModels,
     allSamplers,
     allStopPatterns,
     allBudgetStrategies,
@@ -319,7 +319,7 @@ function SuperSearchContent({
         emptyMap.promptBlock = scanEntities(allPromptBlocks, 'promptBlock', p => `🧱 ${p.name}`);
         emptyMap.audioTrack = scanEntities(allAudioTracks, 'audioTrack', a => `🔊 ${a.filename || a.name}`);
         emptyMap.world = scanEntities(allWorlds, 'world', w => `🌍 ${w.name}`);
-        emptyMap.model = scanEntities(allModels, 'model', m => `🤖 ${m.name}`);
+        emptyMap.model = scanEntities(allLanguageModels, 'model', m => `🤖 ${m.name}`);
         emptyMap.sampler = scanEntities(allSamplers, 'sampler', s => `🎚️ ${s.name}`);
         emptyMap.stopPattern = scanEntities(allStopPatterns, 'stopPattern', sp => `🛑 ${sp.name}`);
         emptyMap.budgetStrategy = scanEntities(allBudgetStrategies, 'budgetStrategy', b => `💰 ${b.name}`);
@@ -411,7 +411,7 @@ function SuperSearchContent({
         return emptyMap;
     }, [
         lowerQuery, allCharacters, allContexts, allLocations, allPromptBlocks, allAudioTracks,
-        allWorlds, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles,
+        allWorlds, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles,
         allMemories, allAccounts, allMultiplayerData, rawChatShells, currentInteractionData,
         messageToChatsMap, serverMessages, characterMap
     ]);

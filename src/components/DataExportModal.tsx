@@ -13,7 +13,7 @@ interface DataExportModalProps {
     allLocations: Location[];
     allAudioTracks: AudioTrack[];
     allWorlds: World[];
-    allModels: LanguageModel[];
+    allLanguageModels: LanguageModel[];
     allSamplers: Sampler[];
     allPromptBlocks: PromptBlock[];
     allStopPatterns: StopPattern[];
@@ -28,7 +28,7 @@ interface DataExportModalProps {
 export function DataExportModal({
     isOpen, onClose,
     allCharacters, allContexts, allLocations, allAudioTracks,
-    allWorlds, allModels, allSamplers, allPromptBlocks, allStopPatterns,
+    allWorlds, allLanguageModels, allSamplers, allPromptBlocks, allStopPatterns,
     allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData,
     rawChatShells,
 }: DataExportModalProps) {
@@ -178,7 +178,7 @@ export function DataExportModal({
                                     onToggle={(id) => toggle(selectedAudioTrackIds, setSelectedAudioTrackIds, id)} searchQuery={audioTrackSearch} onSearchChange={setAudioTrackSearch} />
                                 <EntitySelectList label="Worlds" items={allWorlds} selectedIds={selectedWorldIds}
                                     onToggle={(id) => toggle(selectedWorldIds, setSelectedWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
-                                <EntitySelectList label="Language Models" items={allModels} selectedIds={selectedModelIds}
+                                <EntitySelectList label="Language Models" items={allLanguageModels} selectedIds={selectedModelIds}
                                     onToggle={(id) => toggle(selectedModelIds, setSelectedModelIds, id)} searchQuery={modelSearch} onSearchChange={setModelSearch} />
                                 <EntitySelectList label="Samplers" items={allSamplers} selectedIds={selectedSamplerIds}
                                     onToggle={(id) => toggle(selectedSamplerIds, setSelectedSamplerIds, id)} searchQuery={samplerSearch} onSearchChange={setSamplerSearch} />

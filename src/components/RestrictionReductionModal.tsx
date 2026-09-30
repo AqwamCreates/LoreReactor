@@ -48,7 +48,7 @@ interface RestrictionReductionModalProps {
     onSaveCharacter: (character: Character) => Promise<boolean>;
     allCharacters: Character[];
     allProfiles: Profile[];
-    allModels: LanguageModel[];
+    allLanguageModels: LanguageModel[];
     allSamplers: Sampler[];
     runningModels: Record<string, { isRunning: boolean; port?: number }>;
     restrictionSampler?: Sampler;
@@ -290,7 +290,7 @@ function isBasicKeywordRefusal(text: string): boolean {
 }
 
 export function RestrictionReductionModal({
-    isOpen, onClose, onSaveCharacter, allCharacters, allProfiles, allModels,
+    isOpen, onClose, onSaveCharacter, allCharacters, allProfiles, allLanguageModels,
     allSamplers, runningModels, restrictionSampler
 }: RestrictionReductionModalProps) {
     const [step, setStep] = useState<RestrictionStep>('config');
@@ -334,10 +334,10 @@ export function RestrictionReductionModal({
     const abortControllerReference = useRef<AbortController | null>(null);
 
     const selectedCharacter = allCharacters.find(character => character.id === selectedCharacterId) || null;
-    const selectedAnalysisModelObject = allModels.find(model => model.id === selectedAnalysisModelId) || null;
+    const selectedAnalysisModelObject = allLanguageModels.find(model => model.id === selectedAnalysisModelId) || null;
     const selectedGeneratingModels = useMemo(() => {
-        return allModels.filter(model => selectedGeneratingModelIds.includes(model.id));
-    }, [allModels, selectedGeneratingModelIds]);
+        return allLanguageModels.filter(model => selectedGeneratingModelIds.includes(model.id));
+    }, [allLanguageModels, selectedGeneratingModelIds]);
     const selectedProfile = allProfiles.find(profile => profile.id === selectedProfileId) || null;
 
     const availableReferenceCharacters = useMemo(() => {
@@ -982,7 +982,7 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
                         <EntitySelect 
                             label="Analysis Model" 
                             description="The more permissive model used to analyze prompt sections, classify refusals, and generate rewrites."
-                            items={allModels} 
+                            items={allLanguageModels} 
                             selectedId={selectedAnalysisModelId} 
                             onSelect={identifier => setSelectedAnalysisModelId(identifier)} 
                             searchQuery={analysisModelSearchQuery} 
@@ -995,7 +995,7 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
                         <EntitySelectList 
                             label="Generating Models" 
                             description="The more restrictive model(s) tested against to verify that character prompts do not trigger refusals."
-                            items={allModels} 
+                            items={allLanguageModels} 
                             selectedIds={selectedGeneratingModelIds}
                             onToggle={modelIdentifier => toggleGeneratingModel(modelIdentifier)}
                             searchQuery={generatingModelSearchQuery} 

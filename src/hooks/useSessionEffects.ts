@@ -12,7 +12,7 @@ interface UseSessionEffectsOptions {
     selectedBudgetStrategyId: string | null;
     allBudgetStrategies: BudgetStrategy[];
     setActiveBudgetStrategy: (strategy: BudgetStrategy | null) => void;
-    allModels: LanguageModel[];
+    allLanguageModels: LanguageModel[];
     runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     setSelectedGlobalModel: (model: LanguageModel | null) => void;
     selectedCharacterId: string | null;
@@ -28,7 +28,7 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
     const {
         interactionDataId, isMultiplayerClient, selectedModelId, setSelectedModelId,
         selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy,
-        allModels, runningModels, setSelectedGlobalModel,
+        allLanguageModels, runningModels, setSelectedGlobalModel,
         selectedCharacterId, selectedProfileId, allCharacters, setSelectedCharacter,
         activeStrategy, budgetData, loadLocalModelForBudgetStrategyEngine,
     } = options;
@@ -76,8 +76,8 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
 
     // Clear selected model if it's no longer running (local models only)
     useEffect(() => {
-        if (!selectedModelId || allModels.length === 0) return;
-        const selectedModel = allModels.find(m => m.id === selectedModelId);
+        if (!selectedModelId || allLanguageModels.length === 0) return;
+        const selectedModel = allLanguageModels.find(m => m.id === selectedModelId);
         if (!selectedModel) { 
             setSelectedModelId(null); 
             return; 
@@ -88,7 +88,7 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
         if (!runningModels[selectedModelId]?.isRunning) {
             setSelectedModelId(null);
         }
-    }, [selectedModelId, allModels, runningModels, setSelectedModelId]);
+    }, [selectedModelId, allLanguageModels, runningModels, setSelectedModelId]);
 
     // Apply default character when selectedCharacterId changes
     useEffect(() => {
@@ -104,17 +104,17 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
     // Sync selected model to global model with runtime port
     useEffect(() => {
         if (selectedModelId && runningModels[selectedModelId]?.isRunning) {
-            const foundModel = allModels.find(m => m.id === selectedModelId);
+            const foundModel = allLanguageModels.find(m => m.id === selectedModelId);
             const portNumber = runningModels[selectedModelId].port;
             if (foundModel && portNumber) {
                 setSelectedGlobalModel({ ...foundModel, parameters: { ...foundModel.parameters, _runtimePort: portNumber } });
             }
         } else if (selectedModelId) {
-            setSelectedGlobalModel(allModels.find(m => m.id === selectedModelId) || null);
+            setSelectedGlobalModel(allLanguageModels.find(m => m.id === selectedModelId) || null);
         } else {
             setSelectedGlobalModel(null);
         }
-    }, [selectedModelId, runningModels, allModels, setSelectedGlobalModel]);
+    }, [selectedModelId, runningModels, allLanguageModels, setSelectedGlobalModel]);
 
     // Initialize/update budget strategy engine
     useEffect(() => {
@@ -125,10 +125,10 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
             engine.setStrategy(activeStrategy);
             engine.setBudgetData(budgetData);
             engine.setRunningModels(runningModels);
-            engine.setAllModels(allModels);
+            engine.setallLanguageModels(allLanguageModels);
             engine.setLoadLocalModel(loadLocalModelForBudgetStrategyEngine);
         } catch {
-            initializeBudgetStrategyEngine(activeStrategy, budgetData, runningModels, allModels, loadLocalModelForBudgetStrategyEngine);
+            initializeBudgetStrategyEngine(activeStrategy, budgetData, runningModels, allLanguageModels, loadLocalModelForBudgetStrategyEngine);
         }
-    }, [activeStrategy, budgetData, allModels, runningModels, loadLocalModelForBudgetStrategyEngine]);
+    }, [activeStrategy, budgetData, allLanguageModels, runningModels, loadLocalModelForBudgetStrategyEngine]);
 }

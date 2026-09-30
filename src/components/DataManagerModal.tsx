@@ -14,7 +14,7 @@ interface DataManagerModalProps {
     allAudioTracks: AudioTrack[];
     allWorlds: World[];
     allPromptBlocks: PromptBlock[];
-    allModels: LanguageModel[];
+    allLanguageModels: LanguageModel[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
     allBudgetStrategies: BudgetStrategy[];
@@ -211,7 +211,7 @@ export function DataManagerModal({
     allAudioTracks,
     allWorlds,
     allPromptBlocks,
-    allModels,
+    allLanguageModels,
     allSamplers,
     allStopPatterns,
     allBudgetStrategies,
@@ -277,7 +277,7 @@ export function DataManagerModal({
             { label: 'Audio Tracks', icon: '🔊', count: allAudioTracks.length, estimatedSizeKb: estimateKb(allAudioTracks, 512) },
             { label: 'Worlds', icon: '🌍', count: allWorlds.length, estimatedSizeKb: estimateKb(allWorlds, 1024) },
             { label: 'Prompt Blocks', icon: '🧱', count: allPromptBlocks.length, estimatedSizeKb: estimateKb(allPromptBlocks, 1536) },
-            { label: 'Language Models', icon: '🤖', count: allModels.length, estimatedSizeKb: estimateKb(allModels, 1024) },
+            { label: 'Language Models', icon: '🤖', count: allLanguageModels.length, estimatedSizeKb: estimateKb(allLanguageModels, 1024) },
             { label: 'Samplers', icon: '🎚️', count: allSamplers.length, estimatedSizeKb: estimateKb(allSamplers, 512) },
             { label: 'Stop Patterns', icon: '🛑', count: allStopPatterns.length, estimatedSizeKb: estimateKb(allStopPatterns, 256) },
             { label: 'Budget Strategies', icon: '💰', count: allBudgetStrategies.length, estimatedSizeKb: estimateKb(allBudgetStrategies, 1024) },
@@ -287,7 +287,7 @@ export function DataManagerModal({
             { label: 'Multiplayer Data', icon: '👥', count: allMultiplayerData.length, estimatedSizeKb: estimateKb(allMultiplayerData, 1024) },
             { label: 'Chat Sessions', icon: '💬', count: rawChatShells.length, estimatedSizeKb: estimateKb(rawChatShells, 8192) },
         ];
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, rawChatShells]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, rawChatShells]);
 
     // ─── Cleanup Scan ───────────────────────────────────────────────
     const scanCleanup = useCallback(() => {
@@ -298,7 +298,7 @@ export function DataManagerModal({
         const locIdSet = new Set(allLocations.map(l => l.id));
         const audioIdSet = new Set(allAudioTracks.map(a => a.id));
         const pbIdSet = new Set(allPromptBlocks.map(b => b.id));
-        const modelIdSet = new Set(allModels.map(m => m.id));
+        const modelIdSet = new Set(allLanguageModels.map(m => m.id));
         const samplerIdSet = new Set(allSamplers.map(s => s.id));
         const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));
         const profileIdSet = new Set(allProfiles.map(p => p.id));
@@ -417,7 +417,7 @@ export function DataManagerModal({
         for (const a of allAudioTracks) check('audioTrack', a.id, a.filename || a.name, a.lastUpdatedTimestamp, referencedAudioIds.has(a.id), a);
         for (const w of allWorlds) check('world', w.id, w.name, w.lastUpdatedTimestamp, true, w);
         for (const b of allPromptBlocks) check('promptBlock', b.id, b.name, b.lastUpdatedTimestamp, referencedPbIds.has(b.id), b);
-        for (const m of allModels) check('model', m.id, m.name, m.lastUpdatedTimestamp, referencedModelIds.has(m.id), m);
+        for (const m of allLanguageModels) check('model', m.id, m.name, m.lastUpdatedTimestamp, referencedModelIds.has(m.id), m);
         for (const s of allSamplers) check('sampler', s.id, s.name, s.lastUpdatedTimestamp, referencedSamplerIds.has(s.id), s);
         for (const sp of allStopPatterns) check('stopPattern', sp.id, sp.name, sp.lastUpdatedTimestamp, referencedStopPatternIds.has(sp.id), sp);
         for (const bs of allBudgetStrategies) check('budgetStrategy', bs.id, bs.name, bs.lastUpdatedTimestamp, true, bs);
@@ -430,7 +430,7 @@ export function DataManagerModal({
         setSelectedIds(new Set());
         setSearchQuery('');
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, rawChatShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, rawChatShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
 
     // ─── Integrity Check ────────────────────────────────────────────
     const scanIntegrity = useCallback(() => {
@@ -441,7 +441,7 @@ export function DataManagerModal({
         const locIdSet = new Set(allLocations.map(l => l.id));
         const audioIdSet = new Set(allAudioTracks.map(a => a.id));
         const pbIdSet = new Set(allPromptBlocks.map(b => b.id));
-        const modelIdSet = new Set(allModels.map(m => m.id));
+        const modelIdSet = new Set(allLanguageModels.map(m => m.id));
         const samplerIdSet = new Set(allSamplers.map(s => s.id));
         const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));
         const profileIdSet = new Set(allProfiles.map(p => p.id));
@@ -586,7 +586,7 @@ export function DataManagerModal({
 
         setIntegrityIssues(issues);
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, rawChatShells]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, rawChatShells]);
 
     // ─── Filtered + sorted cleanup items ────────────────────────────
     const filteredAndSorted = useMemo(() => {
@@ -802,7 +802,7 @@ export function DataManagerModal({
             case 'audioTracks': for (const a of allAudioTracks) { onDeleteAudioTrack(a.id); count++; } break;
             case 'worlds': for (const w of allWorlds) { onDeleteWorld(w.id); count++; } break;
             case 'promptBlocks': for (const b of allPromptBlocks) { onDeletePromptBlock(b.id); count++; } break;
-            case 'models': for (const m of allModels) { onDeleteModel(m.id); count++; } break;
+            case 'models': for (const m of allLanguageModels) { onDeleteModel(m.id); count++; } break;
             case 'samplers': for (const s of allSamplers) { onDeleteSampler(s.id); count++; } break;
             case 'stopPatterns': for (const sp of allStopPatterns) { onDeleteStopPattern(sp.id); count++; } break;
             case 'budgetStrategies': for (const bs of allBudgetStrategies) { onDeleteBudgetStrategy(bs.id); count++; } break;
@@ -1064,7 +1064,7 @@ export function DataManagerModal({
                                         { key: 'audioTracks', label: 'All Audio Tracks', count: allAudioTracks.length },
                                         { key: 'worlds', label: 'All Worlds', count: allWorlds.length },
                                         { key: 'promptBlocks', label: 'All Prompt Blocks', count: allPromptBlocks.length },
-                                        { key: 'models', label: 'All Language Models', count: allModels.length },
+                                        { key: 'models', label: 'All Language Models', count: allLanguageModels.length },
                                         { key: 'samplers', label: 'All Samplers', count: allSamplers.length },
                                         { key: 'stopPatterns', label: 'All Stop Patterns', count: allStopPatterns.length },
                                         { key: 'budgetStrategies', label: 'All Budget Strategies', count: allBudgetStrategies.length },

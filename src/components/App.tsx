@@ -115,7 +115,7 @@ function App() {
     const multiplayerDataManager = useMultiplayerDataManager();
 
     const activeExtensions = useActiveExtensions(extensions.extensions);
-    const allModels = models.models;
+    const allLanguageModels = models.models;
 
     const entityModals = useEntityModals({
         character: { saveFunction: characters.saveCharacter, deleteFunction: characters.deleteCharacter, entityLabel: 'Character' },
@@ -282,7 +282,7 @@ function App() {
     const loadLocalModelForBudgetEngine = useCallback(async (modelId: string): Promise<number | null> => {
         const existing = models.runningModels[modelId];
         if (existing?.port) return existing.port;
-        const target = allModels.find((m: LanguageModel) => m.id === modelId);
+        const target = allLanguageModels.find((m: LanguageModel) => m.id === modelId);
         if (!target || (target.apiKey && target.backend)) return null;
         try {
             const args = buildModelLoadArguments(target);
@@ -293,7 +293,7 @@ function App() {
             if (!res.ok) return null;
             return (await res.json()).port ?? null;
         } catch (e) { console.warn(`Auto-load of model ${target.name} failed:`, e); return null; }
-    }, [allModels, models]);
+    }, [allLanguageModels, models]);
 
     useSessionEffects({
         interactionDataId: interactionData?.id,
@@ -303,7 +303,7 @@ function App() {
         selectedBudgetStrategyId,
         allBudgetStrategies: budgetStrategies.strategies,
         setActiveBudgetStrategy,
-        allModels,
+        allLanguageModels,
         runningModels: models.runningModels,
         setSelectedGlobalModel,
         selectedCharacterId,
@@ -333,20 +333,20 @@ function App() {
         if (activeStrategy) return true;
         if (!models.selectedModelId) return false;
         if (models.selectedModelId.startsWith('borrowed-')) return true; // Borrowed models ready via PeerJS
-        const sel = allModels.find((m: LanguageModel) => m.id === models.selectedModelId);
+        const sel = allLanguageModels.find((m: LanguageModel) => m.id === models.selectedModelId);
         if (sel?.apiKey && sel.backend && cloudBackends.includes(sel.backend as cloudBackend)) return true;
         return models.runningModels[models.selectedModelId]?.isRunning
             && models.runningModels[models.selectedModelId]?.isIdle;
-    }, [allModels, activeStrategy, mp.isMultiplayerClient, models]);
+    }, [allLanguageModels, activeStrategy, mp.isMultiplayerClient, models]);
 
     const isModelLoading = useMemo(() => {
         if (mp.isMultiplayerClient || !models.selectedModelId) return false;
         if (models.selectedModelId.startsWith('borrowed-')) return false;
-        const sel = allModels.find((m: LanguageModel) => m.id === models.selectedModelId);
+        const sel = allLanguageModels.find((m: LanguageModel) => m.id === models.selectedModelId);
         if (sel?.apiKey && sel.backend && cloudBackends.includes(sel.backend as cloudBackend)) return false;
         return models.runningModels[models.selectedModelId]?.isRunning
             && models.runningModels[models.selectedModelId]?.isIdle !== true;
-    }, [allModels, mp.isMultiplayerClient, models]);
+    }, [allLanguageModels, mp.isMultiplayerClient, models]);
 
     const modelStatusMessage = mp.isMultiplayerClient ? ''
         : (!models.selectedModelId ? 'No model selected — open Language Models to load one.'
@@ -431,7 +431,7 @@ function App() {
         messages: viewAssets.chatMessages || [],
         interactionData,
         selectedModelId: models.selectedModelId,
-        allModels,
+        allLanguageModels,
         runningModels: models.runningModels,
         activeStrategy,
     });
@@ -465,17 +465,17 @@ function App() {
         if (activeStrategy) {
             let max = 0;
             for (const mid of activeStrategy.modelIds) {
-                const m = allModels.find((x: LanguageModel) => x.id === mid);
+                const m = allLanguageModels.find((x: LanguageModel) => x.id === mid);
                 if (m && m.contextLength > max) max = m.contextLength;
             }
             return max || defaultContextLength;
         }
         if (models.selectedModelId) {
-            const m = allModels.find((x: LanguageModel) => x.id === models.selectedModelId);
+            const m = allLanguageModels.find((x: LanguageModel) => x.id === models.selectedModelId);
             return m?.contextLength || defaultContextLength;
         }
         return defaultContextLength;
-    }, [activeStrategy, allModels, models]);
+    }, [activeStrategy, allLanguageModels, models]);
 
     const parentInteractionDataId = interactionData?.parentInteractionDataId;
 
@@ -876,7 +876,7 @@ function App() {
                     modals={modals} entityModals={entityModals}
                     runningModels={models.runningModels} rawChatShells={chatList.rawChatShells}
                     allCharacters={characters.characters} allContexts={contexts.contexts} allLocations={locations.locations}
-                    allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allModels={allModels}
+                    allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allLanguageModels={allLanguageModels}
                     allSamplers={samplers.Samplers} allPromptBlocks={promptBlocks.promptBlocks} allStopPatterns={stopPatterns.stopPatterns}
                     allBudgetStrategies={budgetStrategies.strategies} allProfiles={profiles.profiles} allExtensions={extensions.extensions}
                     allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDataManager.multiplayerData}

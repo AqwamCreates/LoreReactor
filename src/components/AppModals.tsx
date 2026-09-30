@@ -70,7 +70,7 @@ interface ApplicationModalsProperties {
     allLocations: Location[];
     allAudioTracks: AudioTrack[];
     allPromptBlocks: PromptBlock[];
-    allModels: LanguageModel[];
+    allLanguageModels: LanguageModel[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
     allBudgetStrategies: BudgetStrategy[];
@@ -162,7 +162,7 @@ export function AppModals({
     allAudioTracks,
     allSamplers,
     allStopPatterns,
-    allModels,
+    allLanguageModels,
     allBudgetStrategies,
     allProfiles,
     allExtensions,
@@ -248,9 +248,9 @@ export function AppModals({
     );
 
     const effectiveTokenizerModel = useMemo(() => {
-        if (selectedModelId) return allModels.find(model => model.id === selectedModelId) ?? null;
+        if (selectedModelId) return allLanguageModels.find(model => model.id === selectedModelId) ?? null;
         return null;
-    }, [selectedModelId, allModels]);
+    }, [selectedModelId, allLanguageModels]);
 
     const [aiCharacterSaveRedirect, setAiCharacterSaveRedirect] = useState<((character: Character) => void) | null>(null);
     const [aiContextSaveRedirect, setAiContextSaveRedirect] = useState<((context: Context) => void) | null>(null);
@@ -503,7 +503,7 @@ export function AppModals({
             {modals.modelList.isOpen && (
                 <ManagerModal 
                     title="Language Models" 
-                    localLibraryItems={allModels} 
+                    localLibraryItems={allLanguageModels} 
                     isOpen={modals.modelList.isOpen} 
                     onClose={modals.modelList.close}
                     onSelect={(model: LanguageModel) => modelModalProperties.open(model)} 
@@ -648,7 +648,7 @@ export function AppModals({
             )}
 
             {modals.budgetControl.isOpen && (
-                <BudgetControlModal isOpen={modals.budgetControl.isOpen} onClose={modals.budgetControl.close} allModels={allModels} activeStrategy={activeStrategy} />
+                <BudgetControlModal isOpen={modals.budgetControl.isOpen} onClose={modals.budgetControl.close} allLanguageModels={allLanguageModels} activeStrategy={activeStrategy} />
             )}
 
             {modals.participantControl.isOpen && (
@@ -725,7 +725,7 @@ export function AppModals({
                     isOpen={modals.restrictionReduction.isOpen} 
                     onClose={modals.restrictionReduction.close}
                     onSaveCharacter={async (character: Character) => { onSaveCharacter(character); return true; }}
-                    allCharacters={allCharacters} allProfiles={allProfiles} allModels={allModels} allSamplers={allSamplers}
+                    allCharacters={allCharacters} allProfiles={allProfiles} allLanguageModels={allLanguageModels} allSamplers={allSamplers}
                     runningModels={runningModels} 
                 />
             )}
@@ -762,7 +762,7 @@ export function AppModals({
                     isOpen={modals.exportData.isOpen} 
                     onClose={modals.exportData.close}
                     allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} allAudioTracks={allAudioTracks}
-                    allWorlds={allWorlds} allModels={allModels} allSamplers={allSamplers} allPromptBlocks={allPromptBlocks}
+                    allWorlds={allWorlds} allLanguageModels={allLanguageModels} allSamplers={allSamplers} allPromptBlocks={allPromptBlocks}
                     allStopPatterns={allStopPatterns} allBudgetStrategies={allBudgetStrategies} allProfiles={allProfiles}
                     allMemories={allMemories} allAccounts={allAccounts} allMultiplayerData={allMultiplayerData}
                     rawChatShells={chatShellsWithIdentifiers} 
@@ -778,7 +778,7 @@ export function AppModals({
                     allLocations={allLocations} 
                     allAudioTracks={allAudioTracks}
                     allWorlds={allWorlds} 
-                    allModels={allModels} 
+                    allLanguageModels={allLanguageModels} 
                     allSamplers={allSamplers} 
                     allPromptBlocks={allPromptBlocks}
                     allStopPatterns={allStopPatterns} 
@@ -816,7 +816,7 @@ export function AppModals({
                     allAudioTracks={allAudioTracks}
                     allWorlds={allWorlds}
                     allPromptBlocks={allPromptBlocks}
-                    allModels={allModels}
+                    allLanguageModels={allLanguageModels}
                     allSamplers={allSamplers}
                     allStopPatterns={allStopPatterns}
                     allBudgetStrategies={allBudgetStrategies}
@@ -1032,7 +1032,7 @@ export function AppModals({
                     onClose={budgetStrategyModalProperties.close} 
                     onSave={budgetStrategyModalProperties.save}
                     existingStrategy={budgetStrategyModalProperties.edit} 
-                    allModels={allModels} 
+                    allLanguageModels={allLanguageModels} 
                 />
             )}
 
@@ -1059,7 +1059,9 @@ export function AppModals({
                     isOpen={accountModalProperties.isOpen} 
                     onClose={accountModalProperties.close} 
                     onSave={accountModalProperties.save}
-                    existingAccount={accountModalProperties.edit} 
+                    existingAccount={accountModalProperties.edit}
+                    allCharacters={allCharacters}
+                    allLanguageModels={allLanguageModels}
                 />
             )}
 

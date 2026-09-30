@@ -11,7 +11,7 @@ interface BudgetStrategyEditorModalProps {
     onSave: (strategy: BudgetStrategy) => void;
     onDelete?: (id: string) => void;
     existingStrategy?: BudgetStrategy | null;
-    allModels: LanguageModel[];
+    allLanguageModels: LanguageModel[];
 }
 
 type BudgetTabId = 'general' | 'tiers' | 'activation';
@@ -37,12 +37,12 @@ const TIER_AXIS_LABELS: Record<string, { label: string; description: string }> =
 
 function BudgetStrategyEditorContent({
     existingStrategy,
-    allModels,
+    allLanguageModels,
     onClose,
     onSave,
 }: {
     existingStrategy: BudgetStrategy | null;
-    allModels: LanguageModel[];
+    allLanguageModels: LanguageModel[];
     onClose: () => void;
     onSave: (strategy: BudgetStrategy) => void;
 }) {
@@ -169,7 +169,7 @@ function BudgetStrategyEditorContent({
         placeholder: string,
     ) => {
         const config = TIER_AXIS_LABELS[axisKey];
-        const models = allModels.filter(m => selectedModelIds.includes(m.id));
+        const models = allLanguageModels.filter(m => selectedModelIds.includes(m.id));
         if (models.length === 0) return null;
 
         return (
@@ -210,7 +210,7 @@ function BudgetStrategyEditorContent({
     };
 
     const renderActivationSection = () => {
-        const models = allModels.filter(m => selectedModelIds.includes(m.id));
+        const models = allLanguageModels.filter(m => selectedModelIds.includes(m.id));
         if (models.length === 0) return null;
 
         return (
@@ -360,7 +360,7 @@ function BudgetStrategyEditorContent({
                                 <EntitySelectList
                                     label="Language Models"
                                     description="Select all models to include in this strategy. Both online and local models share a single unified pool. Selection priority is controlled by tiers and activation windows."
-                                    items={allModels}
+                                    items={allLanguageModels}
                                     selectedIds={selectedModelIds}
                                     onToggle={toggleModel}
                                     searchQuery={modelSearch}
@@ -444,7 +444,7 @@ export function BudgetStrategyEditorModal({
     onClose,
     onSave,
     existingStrategy,
-    allModels,
+    allLanguageModels,
 }: BudgetStrategyEditorModalProps) {
     if (!isOpen) return null;
 
@@ -452,7 +452,7 @@ export function BudgetStrategyEditorModal({
         <BudgetStrategyEditorContent
             key={existingStrategy?.id ?? 'new'}
             existingStrategy={existingStrategy ?? null}
-            allModels={allModels}
+            allLanguageModels={allLanguageModels}
             onClose={onClose}
             onSave={onSave}
         />

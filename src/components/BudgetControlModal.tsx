@@ -8,7 +8,7 @@ interface BudgetControlModalProps {
     isOpen: boolean;
     onClose: () => void;
     activeStrategy?: BudgetStrategy | null;
-    allModels: LanguageModel[];
+    allLanguageModels: LanguageModel[];
 }
 
 const RESET_PRESETS = [
@@ -119,7 +119,7 @@ export function BudgetControlModal({
     isOpen,
     onClose,
     activeStrategy,
-    allModels,
+    allLanguageModels,
 }: BudgetControlModalProps) {
     const {
         budgetData,
@@ -159,14 +159,14 @@ export function BudgetControlModal({
         const map = new Map<string, string>();
         if (currentStrategy) {
             for (const modelId of currentStrategy.modelIds) {
-                const model = allModels.find(m => m.id === modelId);
+                const model = allLanguageModels.find(m => m.id === modelId);
                 if (model) {
                     map.set(modelId, model.name);
                 }
             }
         }
         return map;
-    }, [currentStrategy, allModels]);
+    }, [currentStrategy, allLanguageModels]);
 
     const maximumBudget = budgetData?.budgetStrategy?.maximumBudget ?? currentStrategy?.maximumBudget ?? 0;
     const usagePercent = budgetData ? getBudgetUsagePercent() : 0;

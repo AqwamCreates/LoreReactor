@@ -1,7 +1,8 @@
 // src/components/AccountEditorModal.tsx
-import { useState } from 'react';
-import type { Account } from '../types';
+import { useState, useCallback } from 'react';
+import type { Account, Character, LanguageModel } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
 
 interface AccountEditorModalProps {
@@ -9,6 +10,8 @@ interface AccountEditorModalProps {
     onClose: () => void;
     onSave: (account: Account) => void;
     existingAccount?: Account | null;
+    allCharacters: Character[];
+    allLanguageModels: LanguageModel[];
 }
 
 export function AccountEditorModal({
@@ -16,6 +19,8 @@ export function AccountEditorModal({
     onClose,
     onSave,
     existingAccount,
+    allCharacters,
+    allLanguageModels,
 }: AccountEditorModalProps) {
     if (!isOpen) return null;
 
@@ -27,6 +32,8 @@ export function AccountEditorModal({
             onClose={onClose}
             onSave={onSave}
             existingAccount={existingAccount}
+            allCharacters={allCharacters}
+            allLanguageModels={allLanguageModels}
         />
     );
 }
@@ -35,13 +42,20 @@ function AccountEditorModalInner({
     onClose,
     onSave,
     existingAccount,
+    allCharacters,
+    allLanguageModels,
 }: Omit<AccountEditorModalProps, 'isOpen'>) {
     const [name, setName] = useState(existingAccount?.name || '');
     const [username, setUsername] = useState(existingAccount?.username || '');
     const [password, setPassword] = useState(existingAccount?.password || '');
     const [url, setUrl] = useState(existingAccount?.url || '');
-    const [shareLanguageModels, setshareLanguageModels] = useState(existingAccount?.shareLanguageModels ?? false);
+    const [sharedCharacterIds, setSharedCharacterIds] = useState<string[]>(existingAccount?.sharedCharacterIds || []);
+    const [sharedLanguageModelIds, setSharedLanguageModelIds] = useState<string[]>(existingAccount?.sharedLanguageModelIds || []);
+    
     const [errors, setErrors] = useState<{ name?: string; username?: string }>({});
+    
+    const [charSearchQuery, setCharSearchQuery] = useState('');
+    const [modelSearchQuery, setModelSearchQuery] = useState('');
 
     const validate = (): boolean => {
         const newErrors: { name?: string; username?: string } = {};
@@ -60,7 +74,8 @@ function AccountEditorModalInner({
             username: username.trim(),
             password: password,
             url: url.trim() || undefined,
-            shareLanguageModels,
+            sharedCharacterIds,
+            sharedLanguageModelIds,
             firstCreatedTimestamp: isNewClone ? now : (existingAccount?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
@@ -80,6 +95,14 @@ function AccountEditorModalInner({
         onClose();
     };
 
+    const toggleSharedCharacter = useCallback((id: string) => {
+        setSharedCharacterIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    }, []);
+
+    const toggleSharedLanguageModel = useCallback((id: string) => {
+        setSharedLanguageModelIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    }, []);
+
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
@@ -93,8 +116,8 @@ function AccountEditorModalInner({
                         <button type="button" className="editor-button editor-button-save" onClick={handleSubmit}>Save</button>
                     </div>
                 </div>
-                <div className="modal-body editor-modal-body">
-                    <div style={{ marginBottom: '16px' }}>
+                <div className="modal-body editor-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div>
                         <label className="editor-label">Name <span style={{ color: '#ff4444' }}>*</span></label>
                         <input
                             type="text"
@@ -106,7 +129,7 @@ function AccountEditorModalInner({
                         {errors.name && <div className="editor-error-message">{errors.name}</div>}
                     </div>
 
-                    <div style={{ marginBottom: '16px' }}>
+                    <div>
                         <label className="editor-label">Username <span style={{ color: '#ff4444' }}>*</span></label>
                         <input
                             type="text"
@@ -118,7 +141,7 @@ function AccountEditorModalInner({
                         {errors.username && <div className="editor-error-message">{errors.username}</div>}
                     </div>
 
-                    <div style={{ marginBottom: '16px' }}>
+                    <div>
                         <label className="editor-label">Password</label>
                         <input
                             type="password"
@@ -129,7 +152,7 @@ function AccountEditorModalInner({
                         />
                     </div>
 
-                    <div style={{ marginBottom: '16px' }}>
+                    <div>
                         <label className="editor-label">URL</label>
                         <input
                             type="text"
@@ -143,19 +166,34 @@ function AccountEditorModalInner({
                         </div>
                     </div>
 
-                    <div style={{ marginBottom: '16px' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                            <input
-                                type="checkbox"
-                                checked={shareLanguageModels}
-                                onChange={e => setshareLanguageModels(e.target.checked)}
-                                className="editor-checkbox-input"
-                            />
-                            <span className="editor-label" style={{ margin: 0 }}>Share Language Model</span>
-                        </label>
-                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '4px', marginLeft: '26px' }}>
-                            When enabled, this account's language model access is shared with multiplayer joiners based on session configuration.
+                    <div className="editor-section" style={{ margin: 0 }}>
+                        <div className="editor-section-title">Shared Characters ({sharedCharacterIds.length})</div>
+                        <div style={{ fontSize: '0.6rem', opacity: 0.6, marginBottom: '8px' }}>
+                            Characters that can be shared with multiplayer joiners when this account is active.
                         </div>
+                        <EntitySelectList
+                            label=" "
+                            items={allCharacters}
+                            selectedIds={sharedCharacterIds}
+                            onToggle={toggleSharedCharacter}
+                            searchQuery={charSearchQuery}
+                            onSearchChange={setCharSearchQuery}
+                        />
+                    </div>
+
+                    <div className="editor-section" style={{ margin: 0 }}>
+                        <div className="editor-section-title">Shared Language Models ({sharedLanguageModelIds.length})</div>
+                        <div style={{ fontSize: '0.6rem', opacity: 0.6, marginBottom: '8px' }}>
+                            Language models that can be shared with multiplayer joiners when this account is active.
+                        </div>
+                        <EntitySelectList
+                            label=" "
+                            items={allLanguageModels}
+                            selectedIds={sharedLanguageModelIds}
+                            onToggle={toggleSharedLanguageModel}
+                            searchQuery={modelSearchQuery}
+                            onSearchChange={setModelSearchQuery}
+                        />
                     </div>
                 </div>
             </div>

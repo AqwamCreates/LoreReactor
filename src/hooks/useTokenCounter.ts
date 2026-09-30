@@ -7,7 +7,7 @@ interface UseTokenCounterOptions {
     messages: ChatMessage[];
     interactionData: InteractionData | null;
     selectedModelId: string | null;
-    allModels: LanguageModel[];
+    allLanguageModels: LanguageModel[];
     runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     activeStrategy: BudgetStrategy | null;
 }
@@ -19,7 +19,7 @@ interface CachedTokenEntry {
 }
 
 export function useTokenCounter(options: UseTokenCounterOptions) {
-    const { messages, interactionData, selectedModelId, allModels, runningModels, activeStrategy } = options;
+    const { messages, interactionData, selectedModelId, allLanguageModels, runningModels, activeStrategy } = options;
     const [maxTokens, setMaxTokens] = useState(0);
 
     const abortRef = useRef<AbortController | null>(null);
@@ -45,10 +45,10 @@ export function useTokenCounter(options: UseTokenCounterOptions) {
             // Determine active tokenizer model
             let tokenizer: LanguageModel | undefined;
             if (selectedModelId) {
-                tokenizer = allModels.find(m => m.id === selectedModelId);
+                tokenizer = allLanguageModels.find(m => m.id === selectedModelId);
             }
             if (!tokenizer && activeStrategy && activeStrategy.modelIds.length > 0) {
-                tokenizer = allModels.find(m => m.id === activeStrategy.modelIds[0]);
+                tokenizer = allLanguageModels.find(m => m.id === activeStrategy.modelIds[0]);
             }
             
             // Reset to 0 if no active model or strategy is present
@@ -163,7 +163,7 @@ export function useTokenCounter(options: UseTokenCounterOptions) {
                 abortRef.current = null; 
             }
         };
-    }, [messages, selectedModelId, allModels, runningModels, activeStrategy, interactionData]);
+    }, [messages, selectedModelId, allLanguageModels, runningModels, activeStrategy, interactionData]);
 
     return maxTokens;
 }

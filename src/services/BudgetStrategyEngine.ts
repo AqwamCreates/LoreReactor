@@ -177,7 +177,7 @@ export class BudgetStrategyEngine {
     private budgetData: BudgetData;
     private runningModels: Record<string, RunningModelState>;
     private loadLocalModel: ((id: string) => Promise<number | null>) | null;
-    private allModelsById: Map<string, LanguageModel>;
+    private allLanguageModelsById: Map<string, LanguageModel>;
     private engine = getLanguageModelEngine();
     private _selectedModelId: string | null = null;
 
@@ -201,13 +201,13 @@ export class BudgetStrategyEngine {
         strategy: BudgetStrategy,
         budgetData: BudgetData,
         runningModels: Record<string, RunningModelState>,
-        allModels: LanguageModel[],
+        allLanguageModels: LanguageModel[],
         loadLocalModel?: (id: string) => Promise<number | null>,
     ) {
         this.strategy = strategy;
         this.budgetData = budgetData;
         this.runningModels = runningModels;
-        this.allModelsById = new Map(allModels.map(m => [m.id, m]));
+        this.allLanguageModelsById = new Map(allLanguageModels.map(m => [m.id, m]));
         this.loadLocalModel = loadLocalModel ?? null;
 
         if (!this.budgetData.modelCensorshipHitCount) this.budgetData.modelCensorshipHitCount = {};
@@ -259,8 +259,8 @@ export class BudgetStrategyEngine {
         this.engine.setRunningModels(runningModels);
     }
 
-    setAllModels(allModels: LanguageModel[]): void {
-        this.allModelsById = new Map(allModels.map(m => [m.id, m]));
+    setallLanguageModels(allLanguageModels: LanguageModel[]): void {
+        this.allLanguageModelsById = new Map(allLanguageModels.map(m => [m.id, m]));
     }
 
     setLoadLocalModel(loadLocalModel: (id: string) => Promise<number | null>): void {
@@ -369,7 +369,7 @@ export class BudgetStrategyEngine {
     private getSelectedModels(): LanguageModel[] {
         const models: LanguageModel[] = [];
         for (const id of this.strategy.modelIds) {
-            const model = this.allModelsById.get(id);
+            const model = this.allLanguageModelsById.get(id);
             if (model) models.push(model);
         }
         return models;
@@ -420,7 +420,7 @@ export class BudgetStrategyEngine {
     // ── Online learning ───────────────────────────────────────────────
 
     recordOutcome(outcome: RequestOutcome): void {
-        const model = this.allModelsById.get(outcome.modelId);
+        const model = this.allLanguageModelsById.get(outcome.modelId);
         if (!model) return;
 
         const x = this.buildFeaturesForModel(model, outcome.prompt, outcome.metadata);
@@ -525,7 +525,7 @@ export class BudgetStrategyEngine {
             (this.budgetData.modelRegenerationCount[modelId] ?? 0) + 1;
         this.budgetData.lastUpdatedTimestamp = Date.now();
 
-        const model = this.allModelsById.get(modelId);
+        const model = this.allLanguageModelsById.get(modelId);
         if (model) {
             const x = this.buildFeaturesForModel(model, prompt, metadata);
             this.acceptanceFM.trainOne(x, 0);
@@ -1025,10 +1025,10 @@ export function initializeBudgetStrategyEngine(
     strategy: BudgetStrategy,
     budgetData: BudgetData,
     runningModels: Record<string, RunningModelState>,
-    allModels: LanguageModel[],
+    allLanguageModels: LanguageModel[],
     loadLocalModel?: (id: string) => Promise<number | null>,
 ): BudgetStrategyEngine {
-    instance = new BudgetStrategyEngine(strategy, budgetData, runningModels, allModels, loadLocalModel);
+    instance = new BudgetStrategyEngine(strategy, budgetData, runningModels, allLanguageModels, loadLocalModel);
     return instance;
 }
 
