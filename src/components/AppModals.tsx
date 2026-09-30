@@ -19,7 +19,6 @@ import {
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useSessionStore } from '../hooks/useSessionStore';
 
-// ─── Direct Imports ──────────────────────────────────────────────────
 import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';
 import { SamplerEditorModal } from './SamplerEditorModal';
@@ -51,7 +50,8 @@ import { SuperSearchModal } from './SuperSearchModal';
 interface EntityModalController {
     isOpen: boolean;
     edit: any | null;
-    open: (item?: any) => void;
+    isReadOnly: boolean;
+    open: (item?: any, isReadOnly?: boolean) => void;
     close: () => void;
     save: (item: any) => Promise<void>;
     delete: (identifier: string) => Promise<void>;
