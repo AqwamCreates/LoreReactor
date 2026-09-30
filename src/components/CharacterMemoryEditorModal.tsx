@@ -1,5 +1,5 @@
 // src/components/CharacterMemoryEditorModal.tsx
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Character, Memory } from '../types';
 import '../main.css';
 
@@ -9,6 +9,7 @@ interface CharacterMemoryEditorModalProps {
     character: Character | null;
     onSaveMemories: (memories: Record<string, Memory[]>) => void;
     chatNameMap?: Map<string, string>;
+    localProtagonist?: Character | null;
 }
 
 function CharacterMemoryEditorContent({
@@ -16,15 +17,18 @@ function CharacterMemoryEditorContent({
     onClose,
     onSaveMemories,
     chatNameMap,
+    localProtagonist,
 }: {
     character: Character;
     onClose: () => void;
     onSaveMemories: (memories: Record<string, Memory[]>) => void;
     chatNameMap?: Map<string, string>;
+    localProtagonist?: Character | null;
 }) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editContent, setEditContent] = useState('');
-    const [localMemories, setLocalMemories] = useState<Record<string, Memory[]>>(() => {
+    
+    const [memories, setMemories] = useState<Record<string, Memory[]>>(() => {
         try {
             return structuredClone(character.memories ?? {});
         } catch (e) {
@@ -32,6 +36,7 @@ function CharacterMemoryEditorContent({
             return character.memories ?? {};
         }
     });
+    
     const [hasChanges, setHasChanges] = useState(false);
     const [showMassDeleteConfirm, setShowMassDeleteConfirm] = useState(false);
     const editTextAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -41,6 +46,25 @@ function CharacterMemoryEditorContent({
             editTextAreaRef.current.focus();
         }
     }, [editingId]);
+
+    const filteredMemories = useMemo(() => {
+        const result: Record<string, Memory[]> = {};
+        const localProtagonistId = localProtagonist?.id ?? null;
+        
+        for (const [chatId, mems] of Object.entries(memories)) {
+            const filteredMems = mems.filter(mem => {
+                if (!localProtagonistId) return true; 
+                const protags = mem.interactionData?.protagonists;
+                if (!protags || protags.length === 0) return false; 
+                return protags.some(p => p.id === localProtagonistId);
+            });
+            
+            if (filteredMems.length > 0) {
+                result[chatId] = filteredMems;
+            }
+        }
+        return result;
+    }, [memories, localProtagonist]);
 
     const resolveChatInfo = (mem: Memory): { name: string; id: string } => {
         const id = mem.interactionData?.id
@@ -62,27 +86,38 @@ function CharacterMemoryEditorContent({
 
     const handleSaveEdit = () => {
         if (!editingId) return;
-        const updated: Record<string, Memory[]> = {};
-        for (const [key, mems] of Object.entries(localMemories)) {
-            updated[key] = mems.map(m =>
+        
+        let targetChatId = '';
+        for (const [chatId, mems] of Object.entries(memories)) {
+            if (mems.some(m => m.id === editingId)) {
+                targetChatId = chatId;
+                break;
+            }
+        }
+
+        if (!targetChatId) return;
+
+        setMemories(prev => {
+            const next = { ...prev };
+            next[targetChatId] = next[targetChatId].map(m =>
                 m.id === editingId ? { ...m, content: editContent, lastUpdatedTimestamp: Date.now() } : m
             );
-        }
-        setLocalMemories(updated);
+            return next;
+        });
         setHasChanges(true);
         setEditingId(null);
         setEditContent('');
     };
 
     const handleDelete = (memId: string) => {
-        const updated: Record<string, Memory[]> = {};
-        for (const [key, mems] of Object.entries(localMemories)) {
-            updated[key] = mems.filter(m => m.id !== memId);
-        }
-        for (const key of Object.keys(updated)) {
-            if (updated[key].length === 0) delete updated[key];
-        }
-        setLocalMemories(updated);
+        setMemories(prev => {
+            const next = { ...prev };
+            for (const chatId of Object.keys(next)) {
+                next[chatId] = next[chatId].filter(m => m.id !== memId);
+                if (next[chatId].length === 0) delete next[chatId];
+            }
+            return next;
+        });
         setHasChanges(true);
         if (editingId === memId) {
             setEditingId(null);
@@ -91,7 +126,13 @@ function CharacterMemoryEditorContent({
     };
 
     const handleMassDelete = () => {
-        setLocalMemories({});
+        setMemories(prev => {
+            const next = { ...prev };
+            for (const chatId of Object.keys(next)) {
+                delete next[chatId];
+            }
+            return next;
+        });
         setHasChanges(true);
         setEditingId(null);
         setEditContent('');
@@ -99,16 +140,15 @@ function CharacterMemoryEditorContent({
     };
 
     const handleSaveAndClose = () => {
-        onSaveMemories(localMemories);
+        onSaveMemories(memories);
         onClose();
     };
 
-    // Discard simply closes without executing onSaveMemories
     const handleDiscardAndClose = () => {
         onClose();
     };
 
-    const entries = Object.entries(localMemories);
+    const entries = Object.entries(filteredMemories);
     const totalMemories = entries.reduce((sum, [, mems]) => sum + mems.length, 0);
 
     return (
@@ -168,7 +208,7 @@ function CharacterMemoryEditorContent({
                             {entries.map(([key, mems]) => (
                                 <div key={key} className="editor-section">
                                     <span className="editor-section-title">
-                                        {key === 'global' ? '🌐 Global' : `💬 ${chatNameMap?.get(key) || key}`}
+                                        {`💬 ${chatNameMap?.get(key) || key}`}
                                     </span>
 
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -263,6 +303,7 @@ export function CharacterMemoryEditorModal({
     character,
     onSaveMemories,
     chatNameMap,
+    localProtagonist,
 }: CharacterMemoryEditorModalProps) {
     if (!isOpen || !character) return null;
 
@@ -273,6 +314,7 @@ export function CharacterMemoryEditorModal({
             onClose={onClose}
             onSaveMemories={onSaveMemories}
             chatNameMap={chatNameMap}
+            localProtagonist={localProtagonist}
         />
     );
 }
