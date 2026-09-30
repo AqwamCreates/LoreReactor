@@ -632,10 +632,12 @@ export function AppModals({
                 <BudgetControlModal onClose={modals.budgetControl.close} allLanguageModels={allLanguageModels} activeStrategy={activeStrategy} />
             )}
 
-            {modals.participantControl.isOpen && interactionData && (
+            {modals.participantControl.isOpen && interactionData && (!isMultiplayerClient || isAdministrator) && (
                 <ParticipantControlModal 
                     onClose={modals.participantControl.close}
                     interactionData={interactionData}
+                    isMultiplayerClient={isMultiplayerClient}
+                    isAdministrator={isAdministrator}
                     onUpdateInteractionData={onUpdateInteractionData}
                     onForceFirstMessage={onForceFirstMessage} 
                     onSendCustomMessage={onSendCustomMessage} 

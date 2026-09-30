@@ -159,7 +159,7 @@ function App() {
     const session = useChatSession({
         onMessageBroadcast: handleBroadcastMessage,
         onStateBroadcast: (state) => {
-            if (canBroadcastState) mp.multiplayerSync.broadcastStateSync?.(state as any)
+            if (canBroadcastState) mp.multiplayerSync.broadcastStateSync?.(state as any);
         },
         isMultiplayerClient: mp.isMultiplayerClient,
         joinProtagonist: mp.joinProtagonist,
@@ -232,7 +232,7 @@ function App() {
 
         const currentStoreMpData = useSessionStore.getState().multiplayerData;
         const match = multiplayerDataManager.multiplayerData.find(
-            (m: MultiplayerData) => m.interactionDataIds.includes(interactionData.id)
+            (m: MultiplayerData) => m.interactionDataIds.includes(interactionData.id!)
         ) ?? null;
 
         if (currentStoreMpData?.id !== match?.id) {
@@ -727,7 +727,7 @@ function App() {
     const handleImportComplete = useCallback(() => { getLanguageModelEngine().clearTokenCache(); chatList.refresh(); }, [chatList]);
 
     const handleForceFirstMessage = useCallback((char: Character) => {
-        if (!interactionData) return;
+        if (!interactionData || mp.isMultiplayerClient) return;
         const text = getCharacterStarterMessage(char);
         const msg = createChatMessage(interactionData, char, text);
         const updated = addMessageToInteractionData(interactionData, msg);
@@ -735,12 +735,12 @@ function App() {
         addToast(`Sent first message as ${char.name}`, 'success');
 
         if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
-            handleBroadcastMessage(msg);
+            handleBroadcastMessage({ ...msg, triggerResponse: false } as any);
         }
-    }, [interactionData, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
+    }, [interactionData, mp.isMultiplayerClient, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
 
     const handleSendCustom = useCallback((char: Character, text: string) => {
-        if (!interactionData) return;
+        if (!interactionData || mp.isMultiplayerClient) return;
         const msg = createChatMessage(interactionData, char, text);
         const updated = addMessageToInteractionData(interactionData, msg);
         setInteractionData(updated);
@@ -749,22 +749,22 @@ function App() {
         if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
             handleBroadcastMessage(msg);
         }
-    }, [interactionData, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
+    }, [interactionData, mp.isMultiplayerClient, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
 
     const handleInjectCustom = useCallback((char: Character, text: string) => {
-        if (!interactionData) return;
+        if (!interactionData || mp.isMultiplayerClient) return;
         const msg = createChatMessage(interactionData, char, text);
         const updated = addMessageToInteractionData(interactionData, msg);
         setInteractionData(updated);
         addToast(`Injected message as ${char.name}`, 'success');
 
         if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
-            handleBroadcastMessage(msg);
+            handleBroadcastMessage({ ...msg, triggerResponse: false } as any);
         }
-    }, [interactionData, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
+    }, [interactionData, mp.isMultiplayerClient, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
 
     const handleInjectFirst = useCallback((char: Character) => {
-        if (!interactionData) return;
+        if (!interactionData || mp.isMultiplayerClient) return;
         const text = getCharacterStarterMessage(char);
         const msg = createChatMessage(interactionData, char, text);
         const updated = addMessageToInteractionData(interactionData, msg);
@@ -772,9 +772,9 @@ function App() {
         addToast(`Injected first message as ${char.name}`, 'success');
 
         if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
-            handleBroadcastMessage(msg);
+            handleBroadcastMessage({ ...msg, triggerResponse: false } as any);
         }
-    }, [interactionData, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
+    }, [interactionData, mp.isMultiplayerClient, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
 
     const onDeleteChatForModals = useCallback((id: string) => {
         chatOps.handleDeleteChat({ stopPropagation: () => {} } as React.MouseEvent, id);
@@ -868,6 +868,7 @@ function App() {
             });
         }
     }, [interactionData, characters.characters, contexts.contexts, locations.locations, audioTracks.audioTracks, profiles.profiles, setInteractionData, addToast, canBroadcastState, mp.multiplayerSync]);
+
     // ─── Base View Props (Stable, contains only committed messages) ───
     const baseViewProps: ViewModeProps = {
         interactionData: interactionData!,

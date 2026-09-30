@@ -1,12 +1,14 @@
 // src/components/ParticipantControlModal.tsx
 import { useState, useMemo } from 'react';
-import type { Character, InteractionData } from '../types';
+import type { Character, InteractionData, HistoryMessage } from '../types';
 import { getCurrentLocationIndex } from '../utilities/locationLogic';
 import '../main.css';
 
 interface ParticipantControlModalProps {
     onClose: () => void;
     interactionData: InteractionData | null;
+    isMultiplayerClient?: boolean;
+    isAdministrator?: boolean;
     onUpdateInteractionData: (data: InteractionData) => void;
     onForceFirstMessage: (character: Character) => void;
     onSendCustomMessage: (character: Character, text: string) => void;
@@ -36,6 +38,8 @@ function deriveInitialOverrides(interactionData: InteractionData): {
 
 export function ParticipantControlModal({
     interactionData,
+    isMultiplayerClient = false,
+    isAdministrator = false,
     onClose,
     onUpdateInteractionData,
     onForceFirstMessage,
@@ -43,6 +47,7 @@ export function ParticipantControlModal({
     onInjectCustomMessage,
     onInjectFirstMessage,
 }: Omit<ParticipantControlModalProps, 'isOpen' | 'interactionData'> & { interactionData: InteractionData }) {
+    const isReadOnly = isMultiplayerClient && !isAdministrator;
     const initials = useMemo(() => deriveInitialOverrides(interactionData), [interactionData]);
 
     const [chatStaminaOverrides, setChatStaminaOverrides] = useState<Record<string, number>>(initials.chatStamina);
@@ -64,38 +69,47 @@ export function ParticipantControlModal({
     };
 
     const applyOverrides = () => {
+        if (isReadOnly) return;
         const updatedHistory = [...interactionData.interactionHistory];
 
-        // Build map of last message index per character
+        // Map of last message index per character
         const lastMsgIndices: Record<string, number> = {};
         for (let i = 0; i < updatedHistory.length; i++) {
             lastMsgIndices[updatedHistory[i].character.id] = i;
         }
 
-        // Apply chat stamina overrides to latest message per character
-        for (const [charId, stamina] of Object.entries(chatStaminaOverrides)) {
-            const idx = lastMsgIndices[charId];
-            if (idx !== undefined) {
-                updatedHistory[idx] = { ...updatedHistory[idx], remainingChatStamina: stamina };
-            }
-        }
+        // Apply overrides to existing latest message, or create baseline for characters who haven't spoken yet
+        for (const p of interactionData.participants) {
+            const charId = p.id;
+            const hasChatChanged = chatStaminaOverrides[charId] !== undefined && chatStaminaOverrides[charId] !== initials.chatStamina[charId];
+            const hasActionChanged = actionStaminaOverrides[charId] !== undefined && actionStaminaOverrides[charId] !== initials.actionStamina[charId];
+            const hasLocChanged = locationOverrides[charId] !== undefined && locationOverrides[charId] !== initials.location[charId];
 
-        // Apply action stamina overrides to latest message per character
-        for (const [charId, actionStamina] of Object.entries(actionStaminaOverrides)) {
-            const idx = lastMsgIndices[charId];
-            if (idx !== undefined) {
-                updatedHistory[idx] = { ...updatedHistory[idx], remainingActionStamina: actionStamina };
-            }
-        }
-
-        // Apply location overrides to latest message per character
-        for (const [charId, locIdx] of Object.entries(locationOverrides)) {
             const idx = lastMsgIndices[charId];
             if (idx !== undefined) {
                 updatedHistory[idx] = {
                     ...updatedHistory[idx],
-                    locationIndex: locIdx === '' ? undefined : locIdx,
+                    remainingChatStamina: chatStaminaOverrides[charId] ?? updatedHistory[idx].remainingChatStamina,
+                    remainingActionStamina: actionStaminaOverrides[charId] ?? updatedHistory[idx].remainingActionStamina,
+                    locationIndex: locationOverrides[charId] === '' ? undefined : (locationOverrides[charId] !== undefined ? Number(locationOverrides[charId]) : updatedHistory[idx].locationIndex),
                 };
+            } else if (hasChatChanged || hasActionChanged || hasLocChanged) {
+                // Character has not spoken yet: create baseline interaction record so their settings stick
+                const now = Date.now();
+                const baselineMsg: HistoryMessage = {
+                    id: `init-${charId}-${now}`,
+                    messageType: 'interaction',
+                    character: p,
+                    remainingChatStamina: chatStaminaOverrides[charId] ?? p.maximumChatStamina ?? 4,
+                    remainingActionStamina: actionStaminaOverrides[charId] ?? p.maximumActionStamina ?? 5,
+                    locationIndex: locationOverrides[charId] === '' || locationOverrides[charId] === undefined ? undefined : Number(locationOverrides[charId]),
+                    characterClothingWearingStatuses: {},
+                    characterLockedLocations: {},
+                    parentInteractionMessageId: null,
+                    firstCreatedTimestamp: now,
+                    lastUpdatedTimestamp: now,
+                };
+                updatedHistory.push(baselineMsg);
             }
         }
 
@@ -115,6 +129,7 @@ export function ParticipantControlModal({
     };
 
     const handleSendCustomMessage = () => {
+        if (isReadOnly) return;
         const char = getSelectedCharacter();
         if (!char || !customMessageText.trim()) return;
         onSendCustomMessage(char, customMessageText.trim());
@@ -123,6 +138,7 @@ export function ParticipantControlModal({
     };
 
     const handleInjectCustomMessage = () => {
+        if (isReadOnly) return;
         const char = getSelectedCharacter();
         if (!char || !customMessageText.trim()) return;
         onInjectCustomMessage(char, customMessageText.trim());
@@ -131,6 +147,7 @@ export function ParticipantControlModal({
     };
 
     const handleForceFirstMessage = () => {
+        if (isReadOnly) return;
         const char = getSelectedCharacter();
         if (!char) return;
         onForceFirstMessage(char);
@@ -138,6 +155,7 @@ export function ParticipantControlModal({
     };
 
     const handleInjectFirstMessage = () => {
+        if (isReadOnly) return;
         const char = getSelectedCharacter();
         if (!char) return;
         onInjectFirstMessage(char);
@@ -157,11 +175,18 @@ export function ParticipantControlModal({
                 </div>
 
                 <div className="modal-body editor-modal-body">
+                    {/* Read-only banner for multiplayer clients */}
+                    {isReadOnly && (
+                        <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#ef4444', padding: '8px 12px', borderRadius: '6px', fontSize: '0.75rem', marginBottom: '12px' }}>
+                            🔒 Participant overrides and forced messages can only be applied by the host or an administrator.
+                        </div>
+                    )}
+
                     {/* Message Injection */}
                     <div className="editor-section">
                         <span className="editor-section-title">Message</span>
                         <div className="entity-ref-hint">
-                            Select a participant to send or inject messages. "Send" adds a complete message to chat history. "Inject" feeds text directly into the LLM prompt without storing it.
+                            Select a participant to send or inject messages. "Send" broadcasts the message and allows the story to continue. "Inject" silently inserts the message into chat history without triggering an AI response turn.
                         </div>
 
                         <select
@@ -169,11 +194,17 @@ export function ParticipantControlModal({
                             onChange={e => setSelectedCharId(e.target.value)}
                             className="editor-select"
                             style={{ marginTop: '8px' }}
+                            disabled={isReadOnly}
                         >
                             <option value="">Select character...</option>
-                            {interactionData.participants.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
+                            {interactionData.participants.map(p => {
+                                const isProtag = interactionData.protagonists?.some(pr => pr.id === p.id);
+                                return (
+                                    <option key={p.id} value={p.id}>
+                                        {p.name} {isProtag ? '★ (Protagonist)' : '(NPC)'}
+                                    </option>
+                                );
+                            })}
                         </select>
 
                         {/* Current Message Subsection */}
@@ -185,12 +216,13 @@ export function ParticipantControlModal({
                                 className="editor-textarea"
                                 placeholder="Type the message content..."
                                 rows={3}
+                                disabled={isReadOnly}
                             />
                             <div className="participant-control-button-row">
                                 <button
                                     type="button"
                                     className="editor-button editor-button-save"
-                                    disabled={!selectedCharId || !customMessageText.trim()}
+                                    disabled={isReadOnly || !selectedCharId || !customMessageText.trim()}
                                     onClick={handleSendCustomMessage}
                                 >
                                     Send Current Message
@@ -198,10 +230,10 @@ export function ParticipantControlModal({
                                 <button
                                     type="button"
                                     className="editor-button editor-button-cancel"
-                                    disabled={!selectedCharId || !customMessageText.trim()}
+                                    disabled={isReadOnly || !selectedCharId || !customMessageText.trim()}
                                     onClick={handleInjectCustomMessage}
                                 >
-                                    Inject Current Message
+                                    Inject Current Message (Silent)
                                 </button>
                             </div>
                         </div>
@@ -213,7 +245,7 @@ export function ParticipantControlModal({
                                 <button
                                     type="button"
                                     className="editor-button editor-button-save"
-                                    disabled={!selectedCharId}
+                                    disabled={isReadOnly || !selectedCharId}
                                     onClick={handleForceFirstMessage}
                                 >
                                     Send First Message
@@ -221,10 +253,10 @@ export function ParticipantControlModal({
                                 <button
                                     type="button"
                                     className="editor-button editor-button-cancel"
-                                    disabled={!selectedCharId}
+                                    disabled={isReadOnly || !selectedCharId}
                                     onClick={handleInjectFirstMessage}
                                 >
-                                    Inject First Message
+                                    Inject First Message (Silent)
                                 </button>
                             </div>
                         </div>
@@ -241,10 +273,13 @@ export function ParticipantControlModal({
                             {interactionData.participants.map(p => {
                                 const maxStamina = p.maximumChatStamina ?? 4;
                                 const current = chatStaminaOverrides[p.id] ?? maxStamina;
+                                const hasSpoken = interactionData.interactionHistory.some(m => m.character.id === p.id);
 
                                 return (
                                     <div key={p.id} className="participant-control-stamina-row">
-                                        <span className="participant-control-stamina-name">{p.name}</span>
+                                        <span className="participant-control-stamina-name">
+                                            {p.name} {!hasSpoken && <span style={{ fontSize: '0.65rem', opacity: 0.5 }}>(New)</span>}
+                                        </span>
                                         <div className="participant-control-stamina-input-group">
                                             <label className="participant-control-stamina-label">Stamina:</label>
                                             <input
@@ -255,6 +290,7 @@ export function ParticipantControlModal({
                                                 min="0"
                                                 max={maxStamina * 2}
                                                 step="1"
+                                                disabled={isReadOnly}
                                             />
                                             <span className="participant-control-stamina-max">/ {maxStamina}</span>
                                         </div>
@@ -275,10 +311,13 @@ export function ParticipantControlModal({
                             {interactionData.participants.map(p => {
                                 const maxActionStamina = p.maximumActionStamina ?? 5;
                                 const current = actionStaminaOverrides[p.id] ?? maxActionStamina;
+                                const hasSpoken = interactionData.interactionHistory.some(m => m.character.id === p.id);
 
                                 return (
                                     <div key={p.id} className="participant-control-stamina-row">
-                                        <span className="participant-control-stamina-name">{p.name}</span>
+                                        <span className="participant-control-stamina-name">
+                                            {p.name} {!hasSpoken && <span style={{ fontSize: '0.65rem', opacity: 0.5 }}>(New)</span>}
+                                        </span>
                                         <div className="participant-control-stamina-input-group">
                                             <label className="participant-control-stamina-label">Stamina:</label>
                                             <input
@@ -289,6 +328,7 @@ export function ParticipantControlModal({
                                                 min="0"
                                                 max={maxActionStamina * 2}
                                                 step="1"
+                                                disabled={isReadOnly}
                                             />
                                             <span className="participant-control-stamina-max">/ {maxActionStamina}</span>
                                         </div>
@@ -319,6 +359,7 @@ export function ParticipantControlModal({
                                                 onChange={e => handleLocationChange(p.id, e.target.value)}
                                                 className="editor-select participant-control-stamina-input"
                                                 style={{ minWidth: '140px' }}
+                                                disabled={isReadOnly}
                                             >
                                                 <option value="">None</option>
                                                 {locations.map((loc, idx) => (
@@ -336,6 +377,7 @@ export function ParticipantControlModal({
                     <button
                         type="button"
                         className="editor-button editor-button-save participant-control-apply-button"
+                        disabled={isReadOnly}
                         onClick={applyOverrides}
                     >
                         Apply Overrides
