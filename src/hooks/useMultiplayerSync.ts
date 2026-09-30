@@ -1241,10 +1241,10 @@ export function useMultiplayerSync({
                         initialState,
                         assignedCharacter,
                         sessionRules: {
-                            canUseJoinerCharacterIds: currentMultiplayerData.canUseJoinerCharacterIds,
-                            joinerCharacterIdsRequiresHosterApproval: currentMultiplayerData.joinerCharacterIdsRequiresHosterApproval,
-                            sharedHosterCharacterIds: currentMultiplayerData.sharedHosterCharacterIds,
-                            hosterCharacterIdsRequiresHosterApproval: currentMultiplayerData.hosterCharacterIdsRequiresHosterApproval,
+                            canUseJoinerCharacterIds: updatedMultiplayerData.canUseJoinerCharacterIds,
+                            joinerCharacterIdsRequiresHosterApproval: updatedMultiplayerData.joinerCharacterIdsRequiresHosterApproval,
+                            sharedHosterCharacterIds: updatedMultiplayerData.sharedHosterCharacterIds,
+                            hosterCharacterIdsRequiresHosterApproval: updatedMultiplayerData.hosterCharacterIdsRequiresHosterApproval,
                         },
                     },
                 });
@@ -1372,4 +1372,4 @@ export function useMultiplayerSync({
         requestAndAwaitBorrowedModel,
         requestPeerInference,
     };
-}
+}What's next?
