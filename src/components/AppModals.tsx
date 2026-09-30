@@ -50,7 +50,6 @@ import { SuperSearchModal } from './SuperSearchModal';
 interface EntityModalController {
     isOpen: boolean;
     item: any | null;
-    isReadOnly: boolean;
     open: (item?: any, isReadOnly?: boolean) => void;
     close: () => void;
     save: (item: any) => Promise<void>;
@@ -874,7 +873,6 @@ export function AppModals({
             {characterModalProperties.isOpen && (
                 <CharacterEditorModal 
                     isOpen={characterModalProperties.isOpen} 
-                    isReadOnly={characterModalProperties.isReadOnly}
                     onClose={() => { setAiCharacterSaveRedirect(null); characterModalProperties.close(); }}
                     onSave={(character: Character) => { 
                         if (aiCharacterSaveRedirect) { 
@@ -898,7 +896,6 @@ export function AppModals({
             {contextModalProperties.isOpen && (
                 <ContextEditorModal 
                     isOpen={contextModalProperties.isOpen} 
-                    isReadOnly={contextModalProperties.isReadOnly}
                     onClose={() => { setAiContextSaveRedirect(null); contextModalProperties.close(); }}
                     onSave={(context: Context) => { 
                         if (aiContextSaveRedirect) { 
@@ -916,7 +913,6 @@ export function AppModals({
             {locationModalProperties.isOpen && (
                 <LocationEditorModal 
                     isOpen={locationModalProperties.isOpen} 
-                    isReadOnly={locationModalProperties.isReadOnly}
                     onClose={() => { setAiLocationSaveRedirect(null); locationModalProperties.close(); }}
                     onSave={(location: Location) => { 
                         if (aiLocationSaveRedirect) { 
@@ -936,7 +932,6 @@ export function AppModals({
             {audioTrackModalProperties.isOpen && (
                 <AudioTrackEditorModal 
                     isOpen={audioTrackModalProperties.isOpen} 
-                    isReadOnly={audioTrackModalProperties.isReadOnly}
                     onClose={() => { setAiAudioTrackSaveRedirect(null); audioTrackModalProperties.close(); }}
                     onSave={(audioTrack: AudioTrack) => { 
                         if (aiAudioTrackSaveRedirect) { 
