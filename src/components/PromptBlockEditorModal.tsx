@@ -12,7 +12,6 @@ import '../main.css';
 const tokenEngine = getLanguageModelEngine();
 
 interface PromptBlockEditorModalProps {
-    isOpen: boolean;
     onClose: () => void;
     onSave: (block: PromptBlock) => void;
     existingBlock?: PromptBlock | null;
@@ -28,7 +27,7 @@ type ImageEntry =
     | { type: 'staged'; file: File; previewUrl: string };
 
 export function PromptBlockEditorModal({
-    isOpen,
+    
     onClose,
     onSave,
     existingBlock,
@@ -36,7 +35,6 @@ export function PromptBlockEditorModal({
     allContexts = [],
     allLocations = [],
 }: PromptBlockEditorModalProps) {
-    if (!isOpen) return null;
 
     const modalKey = `pb-${existingBlock?.id ?? 'new'}`;
 

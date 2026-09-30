@@ -3,16 +3,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Character, Memory } from '../types';
 import '../main.css';
 
-interface CharacterMemoryEditorModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    character: Character | null;
-    onSaveMemories: (memories: Record<string, Memory[]>) => void;
-    chatNameMap?: Map<string, string>;
-    localProtagonist?: Character | null;
-}
-
-function CharacterMemoryEditorContent({
+export function CharacterMemoryEditorModal({
     character,
     onClose,
     onSaveMemories,
@@ -294,27 +285,5 @@ function CharacterMemoryEditorContent({
                 </div>
             </div>
         </div>
-    );
-}
-
-export function CharacterMemoryEditorModal({
-    isOpen,
-    onClose,
-    character,
-    onSaveMemories,
-    chatNameMap,
-    localProtagonist,
-}: CharacterMemoryEditorModalProps) {
-    if (!isOpen || !character) return null;
-
-    return (
-        <CharacterMemoryEditorContent
-            key={character.id}
-            character={character}
-            onClose={onClose}
-            onSaveMemories={onSaveMemories}
-            chatNameMap={chatNameMap}
-            localProtagonist={localProtagonist}
-        />
     );
 }

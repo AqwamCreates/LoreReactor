@@ -79,7 +79,6 @@ interface TokenCounts {
 type EditorTabId = 'general' | 'behaviour' | 'stats' | 'tools' | 'model' | 'quick-config';
 
 interface CharacterEditorModalProps {
-    isOpen: boolean;
     isReadOnly?: boolean;
     onClose: () => void;
     onSave: (character: Character) => void;
@@ -94,13 +93,11 @@ interface CharacterEditorModalProps {
     localProtagonist?: Character | null;
 }
 
-export function CharacterEditorModal({
-    isOpen, isReadOnly = false, onClose, onSave, existingCharacter,
+export function CharacterEditorModal({ isReadOnly = false, onClose, onSave, existingCharacter,
     allSamplers, allCharacters, isLoadingSamplers = false,
     selectedModel, runningModels,
     chatNameMap, interactionData, localProtagonist,
 }: CharacterEditorModalProps) {
-    if (!isOpen) return null;
 
     const modalKey = `char-${existingCharacter?.id ?? 'new'}`;
 
@@ -1412,64 +1409,71 @@ function CharacterEditorModalInner({
                 </div>
             </div>
 
-            <CharacterImageEditorModal
-                isOpen={showImageEditor}
-                onClose={() => setShowImageEditor(false)}
-                characterId={effectiveCharacterId}
-                images={emotionImages}
-                onSave={(updatedImages) => {
-                    setEmotionImages(updatedImages);
-                    const neutral = updatedImages.neutral;
-                    if (neutral) { 
-                        setImagePreview(getCharacterImageUrl(effectiveCharacterId, neutral)); 
-                        setImageFile(null); 
-                    } else if (!imageFile) { 
-                        setImagePreview(null); 
-                    }
-                }}
-                isReadOnly={isReadOnly}
-            />
+            {/* ─── Sub-Editors (Conditionally Rendered) ─── */}
+            {showImageEditor && (
+                <CharacterImageEditorModal
+                    onClose={() => setShowImageEditor(false)}
+                    characterId={effectiveCharacterId}
+                    images={emotionImages}
+                    onSave={(updatedImages) => {
+                        setEmotionImages(updatedImages);
+                        const neutral = updatedImages.neutral;
+                        if (neutral) { 
+                            setImagePreview(getCharacterImageUrl(effectiveCharacterId, neutral)); 
+                            setImageFile(null); 
+                        } else if (!imageFile) { 
+                            setImagePreview(null); 
+                        }
+                    }}
+                    isReadOnly={isReadOnly}
+                />
+            )}
 
-            <CharacterClothingEditorModal
-                isOpen={showClothingEditor}
-                onClose={() => setShowClothingEditor(false)}
-                clothings={clothings}
-                onSaveClothings={setClothings}
-                isReadOnly={isReadOnly}
-            />
+            {showClothingEditor && (
+                <CharacterClothingEditorModal
+                    onClose={() => setShowClothingEditor(false)}
+                    clothings={clothings}
+                    onSaveClothings={setClothings}
+                    isReadOnly={isReadOnly}
+                />
+            )}
 
-            <CharacterDialoguePromptEditorModal
-                isOpen={showDialoguePromptEditor}
-                onClose={() => setShowDialoguePromptEditor(false)}
-                dialoguePrompts={dialoguePrompts}
-                onSaveDialoguePrompts={setDialoguePrompts}
-                isReadOnly={isReadOnly}
-            />
+            {showDialoguePromptEditor && (
+                <CharacterDialoguePromptEditorModal
+                    onClose={() => setShowDialoguePromptEditor(false)}
+                    dialoguePrompts={dialoguePrompts}
+                    onSaveDialoguePrompts={setDialoguePrompts}
+                    isReadOnly={isReadOnly}
+                />
+            )}
 
-            <CharacterKnowledgePromptEditorModal
-                isOpen={showKnowledgePromptEditor}
-                onClose={() => setShowKnowledgePromptEditor(false)}
-                knowledgePrompts={knowledgePrompts}
-                onSaveKnowledgePrompts={setKnowledgePrompts}
-                isReadOnly={isReadOnly}
-            />
+            {showKnowledgePromptEditor && (
+                <CharacterKnowledgePromptEditorModal
+                    onClose={() => setShowKnowledgePromptEditor(false)}
+                    knowledgePrompts={knowledgePrompts}
+                    onSaveKnowledgePrompts={setKnowledgePrompts}
+                    isReadOnly={isReadOnly}
+                />
+            )}
 
-            <CharacterTextCharacterInjectionEditorModal
-                isOpen={showTextInjectionEditor}
-                onClose={() => setShowTextInjectionEditor(false)}
-                injections={textCharacterInjections}
-                onSaveInjections={setTextCharacterInjections}
-                isReadOnly={isReadOnly}
-            />
+            {showTextInjectionEditor && (
+                <CharacterTextCharacterInjectionEditorModal
+                    onClose={() => setShowTextInjectionEditor(false)}
+                    injections={textCharacterInjections}
+                    onSaveInjections={setTextCharacterInjections}
+                    isReadOnly={isReadOnly}
+                />
+            )}
 
-            <CharacterMemoryEditorModal
-                isOpen={showMemoryManager}
-                onClose={() => setShowMemoryManager(false)}
-                character={existingCharacter || null}
-                onSaveMemories={setMemories}
-                chatNameMap={chatNameMap}
-                localProtagonist={localProtagonist}
-            />
+            {showMemoryManager && existingCharacter && (
+                <CharacterMemoryEditorModal
+                    onClose={() => setShowMemoryManager(false)}
+                    character={existingCharacter || null}
+                    onSaveMemories={setMemories}
+                    chatNameMap={chatNameMap}
+                    localProtagonist={localProtagonist}
+                />
+            )}
         </>
     );
 }

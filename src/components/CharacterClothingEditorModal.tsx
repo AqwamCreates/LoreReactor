@@ -23,7 +23,6 @@ import '@xyflow/react/dist/style.css';
 import '../main.css';
 
 interface CharacterClothingEditorModalProps {
-    isOpen: boolean;
     isReadOnly?: boolean;
     onClose: () => void;
     clothings: Clothing[];
@@ -153,7 +152,7 @@ const nodeTypes = { clothingNode: ClothingNode };
 // ─── Component ───────────────────────────────────────────────────────
 
 export function CharacterClothingEditorModal({
-    isOpen,
+    
     isReadOnly = false,
     onClose,
     clothings,
@@ -306,8 +305,6 @@ export function CharacterClothingEditorModal({
         onSaveClothings(validItems);
         onClose();
     }, [items, onSaveClothings, onClose]);
-
-    if (!isOpen) return null;
 
     const selectedItem = items.find(i => i.id === selectedId) ?? null;
     const hasExistingItems = clothings.length > 0;

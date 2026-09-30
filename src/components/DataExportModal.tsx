@@ -6,7 +6,6 @@ import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
 
 interface DataExportModalProps {
-    isOpen: boolean;
     onClose: () => void;
     allCharacters: Character[];
     allContexts: Context[];
@@ -26,7 +25,7 @@ interface DataExportModalProps {
 }
 
 export function DataExportModal({
-    isOpen, onClose,
+     onClose,
     allCharacters, allContexts, allLocations, allAudioTracks,
     allWorlds, allLanguageModels, allSamplers, allPromptBlocks, allStopPatterns,
     allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData,
@@ -140,8 +139,6 @@ export function DataExportModal({
             setError(`Export failed: ${(error as Error).message}`);
         } finally { setIsExporting(false); }
     };
-
-    if (!isOpen) return null;
 
     const validChatShells = rawChatShells.filter((s): s is RawInteractionData & { id: string } => !!s.id);
 

@@ -8,7 +8,6 @@ import { toolLabels } from '../dictionaries/texts';
 import { v4 as uuidv4 } from 'uuid';
 
 interface ProfileEditorModalProps {
-    isOpen: boolean;
     onClose: () => void;
     onSave: (profile: Profile) => void;
     existingProfile?: Profile | null;
@@ -160,7 +159,7 @@ function StopPatternSelect({
     );
 }
 
-function ProfileEditorContent({
+export function ProfileEditorModal({
     existingProfile, onClose, onSave, allPromptBlocks = [], allSamplers = [], allStopPatterns = [],
 }: Omit<ProfileEditorModalProps, 'isOpen'>) {
     const [activeTab, setActiveTab] = useState<ProfileTabId>('general');
@@ -685,9 +684,4 @@ function ProfileEditorContent({
             </div>
         </div>
     );
-}
-
-export function ProfileEditorModal(props: ProfileEditorModalProps) {
-    if (!props.isOpen) return null;
-    return <ProfileEditorContent key={props.existingProfile?.id ?? 'new'} {...props} />;
 }

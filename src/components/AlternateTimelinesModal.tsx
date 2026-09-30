@@ -16,7 +16,6 @@ import '@xyflow/react/dist/style.css';
 import '../main.css';
 
 interface AlternateTimelinesModalProps {
-    isOpen: boolean;
     onClose: () => void;
     currentInteractionId: string;
     rawChatShells: RawInteractionData[];
@@ -377,7 +376,7 @@ function getDescendantIds(childMap: Map<string, string[]>, startId: string): Set
 // ─── Component ───────────────────────────────────────────────────────
 
 export function AlternateTimelinesModal({
-    isOpen,
+    
     onClose,
     currentInteractionId,
     rawChatShells,
@@ -565,8 +564,6 @@ export function AlternateTimelinesModal({
         onDeleteChat,
         onRenameChat,
     ]);
-
-    if (!isOpen) return null;
 
     return (
         <div className="modal-overlay" onClick={onClose}>

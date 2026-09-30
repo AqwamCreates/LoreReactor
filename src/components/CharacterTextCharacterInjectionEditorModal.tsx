@@ -23,7 +23,6 @@ import '../main.css';
 import { TEXT_CHARACTER_INJECTION_PRESETS, createInjectionFromPreset } from '../dictionaries/textCharacterInjectionPresets';
 
 interface CharacterTextCharacterInjectionEditorModalProps {
-    isOpen: boolean;
     isReadOnly?: boolean;
     onClose: () => void;
     injections: TextCharacterInjection[];
@@ -124,7 +123,7 @@ function InjectionNode({ data }: NodeProps<Node<InjectionNodeData>>) {
 const nodeTypes = { injectionNode: InjectionNode };
 
 export function CharacterTextCharacterInjectionEditorModal({
-    isOpen,
+    
     isReadOnly = false,
     onClose,
     injections,
@@ -358,8 +357,6 @@ export function CharacterTextCharacterInjectionEditorModal({
             return { ...item, textCharacterWeights: weights, lastUpdatedTimestamp: Date.now() };
         }));
     }, [selectedId, isReadOnly]);
-
-    if (!isOpen) return null;
 
     const selectedItem = items.find(i => i.id === selectedId) ?? null;
     const hasExistingItems = injections.length > 0;

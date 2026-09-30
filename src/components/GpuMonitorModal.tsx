@@ -1,10 +1,8 @@
 // src/components/GpuMonitorModal.tsx
-
 import { useGpuMonitor } from '../hooks/useGpuMonitor';
 import '../main.css';
 
 interface GpuMonitorModalProps {
-    isOpen: boolean;
     onClose: () => void;
 }
 
@@ -34,10 +32,9 @@ function StatRow({ label, value, unit }: { label: string; value: string | number
     );
 }
 
-export function GpuMonitorModal({ isOpen, onClose }: GpuMonitorModalProps) {
-    const { status, isPolling, error } = useGpuMonitor(isOpen);
-
-    if (!isOpen) return null;
+export function GpuMonitorModal({ onClose }: GpuMonitorModalProps) {
+    // Since the component is only mounted when open, we can safely pass `true` to enable polling
+    const { status, error } = useGpuMonitor();
 
     const utilizationColor = !status ? 'var(--border)' :
         status.utilizationPercent > 90 ? '#ef4444' :
@@ -59,7 +56,7 @@ export function GpuMonitorModal({ isOpen, onClose }: GpuMonitorModalProps) {
                 </div>
 
                 <div className="modal-body editor-modal-body">
-                    {!status && !error && isPolling && (
+                    {!status && !error && (
                         <div style={{ textAlign: 'center', padding: '40px 20px', opacity: 0.6 }}>
                             <div style={{ fontSize: '2rem', marginBottom: '12px' }}>⏳</div>
                             <div>Detecting GPU...</div>
@@ -79,7 +76,6 @@ export function GpuMonitorModal({ isOpen, onClose }: GpuMonitorModalProps) {
 
                     {status && (
                         <div>
-                            {/* GPU Name & Vendor */}
                             <div style={{
                                 padding: '12px 16px',
                                 background: 'var(--social-bg)',
@@ -98,15 +94,14 @@ export function GpuMonitorModal({ isOpen, onClose }: GpuMonitorModalProps) {
                                     fontSize: '0.65rem',
                                     padding: '2px 8px',
                                     borderRadius: '10px',
-                                    background: isPolling ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-                                    color: isPolling ? '#22c55e' : '#ef4444',
+                                    background: 'rgba(34,197,94,0.15)',
+                                    color: '#22c55e',
                                     fontWeight: 'bold',
                                 }}>
-                                    {isPolling ? '● LIVE' : '○ STALE'}
+                                    '● LIVE'
                                 </div>
                             </div>
 
-                            {/* Utilization Bar */}
                             <ProgressBar
                                 value={status.utilizationPercent}
                                 max={100}
@@ -114,7 +109,6 @@ export function GpuMonitorModal({ isOpen, onClose }: GpuMonitorModalProps) {
                                 label="GPU Utilization"
                             />
 
-                            {/* Memory Bar */}
                             <ProgressBar
                                 value={status.memoryUsedMB}
                                 max={status.memoryTotalMB}
@@ -122,7 +116,6 @@ export function GpuMonitorModal({ isOpen, onClose }: GpuMonitorModalProps) {
                                 label={`VRAM (${status.memoryUsedMB} / ${status.memoryTotalMB} MB)`}
                             />
 
-                            {/* Stats Grid */}
                             <div style={{
                                 padding: '12px 16px',
                                 background: 'var(--social-bg)',
@@ -140,7 +133,6 @@ export function GpuMonitorModal({ isOpen, onClose }: GpuMonitorModalProps) {
                                 />
                             </div>
 
-                            {/* Apple Silicon Note */}
                             {status.vendor === 'apple' && status.memoryUsedMB === 0 && (
                                 <div style={{
                                     fontSize: '0.65rem',

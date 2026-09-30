@@ -6,7 +6,6 @@ import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
 
 interface AccountEditorModalProps {
-    isOpen: boolean;
     onClose: () => void;
     onSave: (account: Account) => void;
     existingAccount?: Account | null;
@@ -15,14 +14,13 @@ interface AccountEditorModalProps {
 }
 
 export function AccountEditorModal({
-    isOpen,
+    
     onClose,
     onSave,
     existingAccount,
     allCharacters,
     allLanguageModels,
 }: AccountEditorModalProps) {
-    if (!isOpen) return null;
 
     const modalKey = `acct-${existingAccount?.id ?? 'new'}`;
 

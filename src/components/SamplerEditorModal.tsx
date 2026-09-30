@@ -7,7 +7,6 @@ import { v4 as uuidv4 } from 'uuid';
 import '../main.css';
 
 interface SamplerEditorModalProps {
-    isOpen: boolean;
     onClose: () => void;
     onSave: (sampler: Sampler) => void;
     existingSampler?: Sampler | null;
@@ -174,13 +173,12 @@ function computeInitialParameters(existingSampler: Sampler | null | undefined): 
 }
 
 export function SamplerEditorModal({
-    isOpen,
+    
     onClose,
     onSave,
     existingSampler,
     allStopPatterns,
 }: SamplerEditorModalProps) {
-    if (!isOpen) return null;
 
     const modalKey = `samp-${existingSampler?.id ?? 'new'}`;
 

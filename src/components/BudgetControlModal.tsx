@@ -5,7 +5,6 @@ import { useBudgetDataManager } from '../hooks/useBudgetDataManager';
 import '../main.css';
 
 interface BudgetControlModalProps {
-    isOpen: boolean;
     onClose: () => void;
     activeStrategy?: BudgetStrategy | null;
     allLanguageModels: LanguageModel[];
@@ -116,7 +115,7 @@ interface ModelRow {
 }
 
 export function BudgetControlModal({
-    isOpen,
+    
     onClose,
     activeStrategy,
     allLanguageModels,
@@ -272,8 +271,6 @@ export function BudgetControlModal({
         if (sortField !== field) return '';
         return sortDirection === 'asc' ? ' ↑' : ' ↓';
     };
-
-    if (!isOpen) return null;
 
     const runAction = async (action: () => Promise<boolean>) => {
         setIsSaving(true);

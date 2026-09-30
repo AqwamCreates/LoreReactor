@@ -15,7 +15,6 @@ import '../main.css';
 const recommendationEngine = getLanguageModelEngine();
 
 interface AIRecommendationModalProps {
-    isOpen: boolean;
     onClose: () => void;
     onSaveCharacter: (char: Character) => Promise<boolean>;
     onSaveContext: (context: Context) => Promise<boolean>;
@@ -42,7 +41,7 @@ interface AIRecommendationModalProps {
 }
 
 export function AIRecommendationModal({
-    isOpen, onClose, onSaveCharacter, onSaveContext, onSaveLocation, onSaveAudioTrack, onSaveProfile, onSaveWorld, onSavePromptBlock,
+     onClose, onSaveCharacter, onSaveContext, onSaveLocation, onSaveAudioTrack, onSaveProfile, onSaveWorld, onSavePromptBlock,
     onOpenCharacterEditor, onOpenContextEditor, onOpenLocationEditor, onOpenAudioTrackEditor, onOpenProfileEditor, onOpenPromptBlockEditor,
     allSamplers, aiRecommendationSampler, allCharacters, allContexts, allLocations, allAudioTracks, allPromptBlocks, selectedModel, runningModels,
 }: AIRecommendationModalProps) {
@@ -366,8 +365,6 @@ export function AIRecommendationModal({
             resetResult(); setIsResultOpen(false);
         } catch (err) { setResultError((err as Error).message); } finally { setIsSaving(false); }
     };
-
-    if (!isOpen) return null;
 
     const hasChars = (parsedOutput?.characters?.length ?? 0) > 0;
     const hasCtxs = (parsedOutput?.contexts?.length ?? 0) > 0;

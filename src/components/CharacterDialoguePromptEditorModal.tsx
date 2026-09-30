@@ -22,7 +22,6 @@ import '@xyflow/react/dist/style.css';
 import '../main.css';
 
 interface CharacterDialoguePromptEditorModalProps {
-    isOpen: boolean;
     isReadOnly?: boolean;
     onClose: () => void;
     dialoguePrompts: DialoguePrompt[];
@@ -127,7 +126,7 @@ const nodeTypes = { dialogueNode: DialogueNode };
 // ─── Component ───────────────────────────────────────────────────────
 
 export function CharacterDialoguePromptEditorModal({
-    isOpen,
+    
     isReadOnly = false,
     onClose,
     dialoguePrompts,
@@ -317,8 +316,6 @@ export function CharacterDialoguePromptEditorModal({
             return { ...item, [field]: existing, lastUpdatedTimestamp: Date.now() };
         }));
     }, [selectedId, isReadOnly]);
-
-    if (!isOpen) return null;
 
     const selectedItem = items.find(i => i.id === selectedId) ?? null;
     const hasExistingItems = dialoguePrompts.length > 0;

@@ -43,7 +43,6 @@ interface TestResult {
 }
 
 interface RestrictionReductionModalProps {
-    isOpen: boolean;
     onClose: () => void;
     onSaveCharacter: (character: Character) => Promise<boolean>;
     allCharacters: Character[];
@@ -290,7 +289,7 @@ function isBasicKeywordRefusal(text: string): boolean {
 }
 
 export function RestrictionReductionModal({
-    isOpen, onClose, onSaveCharacter, allCharacters, allProfiles, allLanguageModels,
+     onClose, onSaveCharacter, allCharacters, allProfiles, allLanguageModels,
     allSamplers, runningModels, restrictionSampler
 }: RestrictionReductionModalProps) {
     const [step, setStep] = useState<RestrictionStep>('config');
@@ -387,7 +386,6 @@ export function RestrictionReductionModal({
     }, [flags, selectedSections]);
 
     useEffect(() => {
-        if (isOpen) {
             setStep('config');
             setActiveConfigurationTab('characters');
             setFlags([]);
@@ -415,8 +413,7 @@ export function RestrictionReductionModal({
             setCompositeStrategySearchQuery('');
             setUseAdversarialPromptGeneration(true);
             setUseIntelligentRefusalClassifier(true);
-        }
-    }, [isOpen]);
+    }, []);
 
     const toggleUnrestrictedCharacter = (characterIdentifier: string) => {
         setKnownUnrestrictedCharacterIds(previousIdentifiers =>
@@ -1370,8 +1367,6 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
             </>
         );
     };
-
-    if (!isOpen) return null;
 
     return (
         <div className="modal-overlay" onClick={onClose}>

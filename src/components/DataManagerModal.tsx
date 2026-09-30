@@ -6,7 +6,6 @@ import { saveRawSessionData, deleteSessionData, deleteMultiplayerJoinData, delet
 import '../main.css';
 
 interface DataManagerModalProps {
-    isOpen: boolean;
     onClose: () => void;
     allCharacters: Character[];
     allContexts: Context[];
@@ -203,7 +202,7 @@ function daysAgo(ts: number): number {
 }
 
 export function DataManagerModal({
-    isOpen,
+    
     onClose,
     allCharacters,
     allContexts,
@@ -815,8 +814,6 @@ export function DataManagerModal({
         addToast(`Wiped ${count} ${entityType}.`, 'success');
         setConfirmDangerAction(null);
     };
-
-    if (!isOpen) return null;
 
     const tabs: { id: TabId; icon: string; label: string }[] = [
         { id: 'storage', icon: '📊', label: 'Storage' },

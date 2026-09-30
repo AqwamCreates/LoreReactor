@@ -12,7 +12,6 @@ import '../main.css';
 const tokenEngine = getLanguageModelEngine();
 
 interface LocationEditorModalProps {
-    isOpen: boolean;
     isReadOnly?: boolean;
     onClose: () => void;
     onSave: (location: Location) => void;
@@ -29,7 +28,7 @@ type ImageEntry =
     | { type: 'staged'; file: File; previewUrl: string };
 
 export function LocationEditorModal({
-    isOpen,
+    
     isReadOnly = false,
     onClose,
     onSave,
@@ -38,7 +37,6 @@ export function LocationEditorModal({
     allLocations = [],
     allAudioTracks = [],
 }: LocationEditorModalProps) {
-    if (!isOpen) return null;
 
     const modalKey = `loc-${existingLocation?.id ?? 'new'}`;
 

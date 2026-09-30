@@ -15,7 +15,7 @@ export interface GpuStatus {
 
 const POLL_INTERVAL_MS = 1000;
 
-export function useGpuMonitor(enabled: boolean) {
+export function useGpuMonitor() {
     const [status, setStatus] = useState<GpuStatus | null>(null);
     const [error, setError] = useState<string | null>(null);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -36,14 +36,10 @@ export function useGpuMonitor(enabled: boolean) {
     }, []);
 
     useEffect(() => {
-        if (!enabled) {
-            if (timerRef.current) {
-                clearInterval(timerRef.current);
-                timerRef.current = null;
-            }
-            return;
+        if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
         }
-
         // Use an async IIFE so setState calls happen in a callback, not synchronously in the effect body
         let cancelled = false;
         (async () => {
@@ -62,7 +58,7 @@ export function useGpuMonitor(enabled: boolean) {
                 timerRef.current = null;
             }
         };
-    }, [enabled, fetchStatus]);
+    }, [fetchStatus]);
 
-    return { status, isPolling: enabled, error, refetch: fetchStatus };
+    return { status, error, refetch: fetchStatus };
 }

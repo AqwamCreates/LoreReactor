@@ -5,7 +5,6 @@ import { getCurrentLocationIndex } from '../utilities/locationLogic';
 import '../main.css';
 
 interface ParticipantControlModalProps {
-    isOpen: boolean;
     onClose: () => void;
     interactionData: InteractionData | null;
     onUpdateInteractionData: (data: InteractionData) => void;
@@ -36,37 +35,6 @@ function deriveInitialOverrides(interactionData: InteractionData): {
 }
 
 export function ParticipantControlModal({
-    isOpen,
-    onClose,
-    interactionData,
-    onUpdateInteractionData,
-    onForceFirstMessage,
-    onSendCustomMessage,
-    onInjectCustomMessage,
-    onInjectFirstMessage,
-}: ParticipantControlModalProps) {
-    // Original null guard restored — inner component only renders when data is guaranteed non-null
-    if (!isOpen || !interactionData) return null;
-
-    // Key-based reset: when interactionData identity changes, React remounts
-    // the inner component with fresh initial state. No synchronous setState in effects.
-    const resetKey = `${interactionData.id}-${interactionData.lastUpdatedTimestamp}`;
-
-    return (
-        <ParticipantControlModalInner
-            key={resetKey}
-            interactionData={interactionData}
-            onClose={onClose}
-            onUpdateInteractionData={onUpdateInteractionData}
-            onForceFirstMessage={onForceFirstMessage}
-            onSendCustomMessage={onSendCustomMessage}
-            onInjectCustomMessage={onInjectCustomMessage}
-            onInjectFirstMessage={onInjectFirstMessage}
-        />
-    );
-}
-
-function ParticipantControlModalInner({
     interactionData,
     onClose,
     onUpdateInteractionData,

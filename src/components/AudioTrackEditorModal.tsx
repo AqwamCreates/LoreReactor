@@ -7,7 +7,6 @@ import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor
 import '../main.css';
 
 interface AudioTrackEditorModalProps {
-    isOpen: boolean;
     isReadOnly?: boolean;
     onClose: () => void;
     onSave: (track: AudioTrack) => void;
@@ -26,7 +25,7 @@ const AUDIO_CATEGORIES: { value: audioCategory; label: string; icon: string }[] 
 type AudioTabId = 'general' | 'detection' | 'bindings';
 
 export function AudioTrackEditorModal({
-    isOpen,
+    
     isReadOnly = false,
     onClose,
     onSave,
@@ -35,7 +34,6 @@ export function AudioTrackEditorModal({
     allContexts = [],
     allLocations = [],
 }: AudioTrackEditorModalProps) {
-    if (!isOpen) return null;
 
     const modalKey = `at-${existingTrack?.id ?? 'new'}`;
 

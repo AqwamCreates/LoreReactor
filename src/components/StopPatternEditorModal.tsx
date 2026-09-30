@@ -6,7 +6,6 @@ import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor
 import '../main.css';
 
 interface StopPatternEditorModalProps {
-    isOpen: boolean;
     onClose: () => void;
     onSave: (stopPattern: StopPattern) => void;
     onDelete?: (id: string) => void;
@@ -14,12 +13,11 @@ interface StopPatternEditorModalProps {
 }
 
 export function StopPatternEditorModal({
-    isOpen,
+    
     onClose,
     onSave,
     existingStopPattern,
 }: StopPatternEditorModalProps) {
-    if (!isOpen) return null;
 
     const modalKey = `sp-${existingStopPattern?.id ?? 'new'}`;
 

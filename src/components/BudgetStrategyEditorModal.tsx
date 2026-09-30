@@ -6,7 +6,6 @@ import { v4 as uuidv4 } from 'uuid';
 import '../main.css';
 
 interface BudgetStrategyEditorModalProps {
-    isOpen: boolean;
     onClose: () => void;
     onSave: (strategy: BudgetStrategy) => void;
     onDelete?: (id: string) => void;
@@ -440,13 +439,12 @@ function BudgetStrategyEditorContent({
 }
 
 export function BudgetStrategyEditorModal({
-    isOpen,
+    
     onClose,
     onSave,
     existingStrategy,
     allLanguageModels,
 }: BudgetStrategyEditorModalProps) {
-    if (!isOpen) return null;
 
     return (
         <BudgetStrategyEditorContent

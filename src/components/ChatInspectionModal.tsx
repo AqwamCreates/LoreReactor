@@ -17,7 +17,6 @@ import '@xyflow/react/dist/style.css';
 import '../main.css';
 
 interface ChatInspectionModalProps {
-    isOpen: boolean;
     onClose: () => void;
     inspectionStack: InteractionData[];
     onInspectingParentInteractionData: (parentId: string) => Promise<InteractionData>;
@@ -190,7 +189,7 @@ function useCharacterPortraits(characters: Character[]): Map<string, string | nu
 // ─── Component ───────────────────────────────────────────────────────
 
 export function ChatInspectionModal({
-    isOpen,
+    
     onClose,
     inspectionStack,
     onInspectingParentInteractionData,
@@ -200,7 +199,6 @@ export function ChatInspectionModal({
     const [sessionIdCopied, setSessionIdCopied] = useState(false);
 
     const internalStack = useMemo(() => {
-        if (!isOpen) return [];
 
         if (initializedFromStack !== inspectionStack) {
             return inspectionStack.length > 0 ? [...inspectionStack] : [];
@@ -208,9 +206,9 @@ export function ChatInspectionModal({
 
         if (userNavStack.length > 0) return userNavStack;
         return inspectionStack.length > 0 ? [...inspectionStack] : [];
-    }, [isOpen, inspectionStack, initializedFromStack, userNavStack]);
+    }, [ inspectionStack, initializedFromStack, userNavStack]);
 
-    if (isOpen && initializedFromStack !== inspectionStack) {
+    if (initializedFromStack !== inspectionStack) {
         setInitializedFromStack(inspectionStack);
         setUserNavStack([]);
     }
@@ -436,8 +434,6 @@ export function ChatInspectionModal({
         }
         return Array.from(occupiedMap.values());
     }, [chat, hasLocations, participants, portraits]);
-
-    if (!isOpen || !chat) return null;
 
     return (
         <div className="modal-overlay" onClick={onClose}>

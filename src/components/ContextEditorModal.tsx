@@ -13,7 +13,6 @@ import '../main.css';
 const tokenEngine = getLanguageModelEngine();
 
 interface ContextEditorModalProps {
-    isOpen: boolean;
     isReadOnly?: boolean;
     onClose: () => void;
     onSave: (context: Context) => void;
@@ -30,14 +29,13 @@ type ImageEntry =
     | { type: 'staged'; file: File; previewUrl: string };
 
 export function ContextEditorModal({
-    isOpen,
+    
     isReadOnly = false,
     onClose,
     onSave,
     existingContext,
     allCharacters = [],
 }: ContextEditorModalProps) {
-    if (!isOpen) return null;
 
     const modalKey = `ctx-${existingContext?.id ?? 'new'}`;
 

@@ -7,7 +7,6 @@ interface ManagerModalProps<T> {
     localLibraryItems: T[];
     hosterOwnedItems?: T[];
     isAdministrator?: boolean;
-    isOpen: boolean;
     onClose: () => void;
     onSelect?: (item: T, isHosterItem: boolean) => void;
     onDelete?: (id: string) => void;
@@ -271,7 +270,6 @@ function ManagerModalContent<T extends { id: string; name?: string; lastUpdatedT
 }
 
 export function ManagerModal<T extends { id: string; name?: string; lastUpdatedTimestamp?: number; firstCreatedTimestamp?: number }>(props: ManagerModalProps<T>) {
-    if (!props.isOpen) return null;
 
     return <ManagerModalContent {...props} />;
 }

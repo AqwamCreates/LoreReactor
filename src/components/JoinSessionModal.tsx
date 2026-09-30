@@ -4,13 +4,12 @@ import { useToast } from '../context/ToastContext';
 import '../main.css';
 
 interface JoinSessionModalProps {
-    isOpen: boolean;
     onClose: () => void;
     onJoin: (sessionId: string, password: string, requestedCharacterId: string | null, requestedCharacterData: any | null) => void;
 }
 
 export function JoinSessionModal({
-    isOpen,
+    
     onClose,
     onJoin,
 }: JoinSessionModalProps) {
@@ -33,8 +32,6 @@ export function JoinSessionModal({
         setPassword('');
         onClose();
     }, [sessionId, password, onJoin, onClose, addToast]);
-
-    if (!isOpen) return null;
 
     return (
         <div className="modal-overlay" onClick={onClose}>

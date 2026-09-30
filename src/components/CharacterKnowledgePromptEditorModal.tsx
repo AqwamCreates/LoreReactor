@@ -23,7 +23,6 @@ import '@xyflow/react/dist/style.css';
 import '../main.css';
 
 interface CharacterKnowledgePromptEditorModalProps {
-    isOpen: boolean;
     isReadOnly?: boolean;
     onClose: () => void;
     knowledgePrompts: KnowledgePrompt[];
@@ -127,7 +126,7 @@ function KnowledgeNode({ data }: NodeProps<Node<KnowledgeNodeData>>) {
 const nodeTypes = { knowledgeNode: KnowledgeNode };
 
 export function CharacterKnowledgePromptEditorModal({
-    isOpen,
+    
     isReadOnly = false,
     onClose,
     knowledgePrompts,
@@ -291,8 +290,6 @@ export function CharacterKnowledgePromptEditorModal({
         onSaveKnowledgePrompts(validItems);
         onClose();
     }, [items, onSaveKnowledgePrompts, onClose]);
-
-    if (!isOpen) return null;
 
     const selectedItem = items.find(i => i.id === selectedId) ?? null;
     const hasExistingItems = knowledgePrompts.length > 0;

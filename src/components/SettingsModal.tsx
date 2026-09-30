@@ -127,7 +127,6 @@ const TAB_ITEMS: Record<SettingsTabId, SettingsItem[]> = {
 };
 
 interface SettingsModalProps {
-    isOpen: boolean;
     onClose: () => void;
     // Session tab
     onOpenBudgetControl: () => void;
@@ -151,7 +150,6 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({
-    isOpen,
     onClose,
     // Session tab
     onOpenBudgetControl,
@@ -174,8 +172,6 @@ export function SettingsModal({
     onOpenGpuMonitor,
 }: SettingsModalProps) {
     const [activeTab, setActiveTab] = useState<SettingsTabId>('session');
-
-    if (!isOpen) return null;
 
     const handleItemClick = (id: string) => {
         switch (id) {

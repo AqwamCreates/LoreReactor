@@ -7,14 +7,13 @@ import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
 
 interface DataImportModalProps {
-    isOpen: boolean;
     onClose: () => void;
     onImportComplete: () => void;
 }
 
 type ImportSource = 'file' | 'paste' | 'schema';
 
-export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImportModalProps) {
+export function DataImportModal({  onClose, onImportComplete }: DataImportModalProps) {
     const [parsedData, setParsedData] = useState<LoreReactorExport | null>(null);
     const [isImporting, setIsImporting] = useState(false);
     const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -238,8 +237,6 @@ export function DataImportModal({ isOpen, onClose, onImportComplete }: DataImpor
         selectedMemoryIds.length + selectedAccountIds.length + selectedMultiplayerDataIds.length +
         (includeActions ? 1 : 0) + (includeActionFormatData ? 1 : 0) + 
         (includeFormatPreferences ? 1 : 0) + (includeSessionData ? 1 : 0) + (includeBudgetData ? 1 : 0);
-
-    if (!isOpen) return null;
 
     const SCHEMA_ENTITY_OPTIONS = ['Character', 'Context', 'Location', 'AudioTrack', 'PromptBlock', 'Profile'] as const;
 

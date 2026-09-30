@@ -10,7 +10,6 @@ import { defaultCharacterTools } from '../dictionaries/defaults';
 import '../main.css';
 
 interface CharacterCardImportModalProps {
-    isOpen: boolean;
     onClose: () => void;
     onSaveCharacter: (char: Character) => Promise<boolean>;
     onSaveContext: (context: Context) => Promise<boolean>;
@@ -27,7 +26,7 @@ interface ImportPreview {
 }
 
 export function CharacterCardImportModal({
-    isOpen,
+    
     onClose,
     onSaveCharacter,
     onSaveContext,
@@ -251,8 +250,6 @@ export function CharacterCardImportModal({
             setIsSaving(false);
         }
     };
-
-    if (!isOpen) return null;
 
     return (
         <div className="modal-overlay" onClick={handleClose}>

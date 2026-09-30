@@ -6,7 +6,6 @@ import { v4 as uuidv4 } from 'uuid';
 import '../main.css';
 
 interface WorldEditorModalProps {
-    isOpen: boolean;
     onClose: () => void;
     onSave: (world: World) => void;
     onLoadWorld?: (world: World) => void;
@@ -25,7 +24,7 @@ interface WorldEditorModalProps {
     currentProfileId?: string;
 }
 
-function WorldEditorContent({
+export function WorldEditorModal({
     existingWorld, onClose, onSave, onLoadWorld,
     allCharacters, allContexts, allLocations, allProfiles, allAudioTracks, allPromptBlocks,
     selectedCharacterIds, currentContextIds, currentLocationIds, currentProfileId, currentAudioTrackIds, currentPromptBlockIds,
@@ -232,16 +231,5 @@ function WorldEditorContent({
                 </div>
             </div>
         </div>
-    );
-}
-
-export function WorldEditorModal(props: WorldEditorModalProps) {
-    if (!props.isOpen) return null;
-
-    return (
-        <WorldEditorContent
-            key={`${props.existingWorld?.id ?? 'new'}-${props.isOpen}`}
-            {...props}
-        />
     );
 }

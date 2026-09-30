@@ -10,7 +10,6 @@ import '../main.css';
 type MultiplayerTabId = 'general' | 'accounts';
 
 interface MultiplayerEditorModalProps {
-    isOpen: boolean;
     onClose: () => void;
     onSave: (data: MultiplayerData) => void;
     existingMultiplayerData?: MultiplayerData | null;
@@ -48,7 +47,7 @@ function createDefaultAccountConfig(sessionDefaults: {
 }
 
 export function MultiplayerEditorModal({
-    isOpen,
+    
     onClose,
     onSave,
     existingMultiplayerData,
@@ -58,7 +57,6 @@ export function MultiplayerEditorModal({
     onAcceptJoinRequest,
     onRejectJoinRequest,
 }: MultiplayerEditorModalProps) {
-    if (!isOpen) return null;
 
     const modalKey = `mp-${existingMultiplayerData?.id ?? 'new'}`;
 

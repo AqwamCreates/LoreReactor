@@ -8,7 +8,6 @@ import { getChatTemplateOptions, getInstructionTemplateOptions, autoDetectTempla
 import '../main.css';
 
 interface ModelEditorModalProps {
-    isOpen: boolean;
     onClose: () => void;
     onSave: (model: LanguageModel) => void;
     existingModel?: LanguageModel | null;
@@ -160,7 +159,7 @@ const syncKVFromCombined = (combinedValue: string): { k: string; v: string } => 
 type ModelTabId = 'general' | 'templates' | 'inference' | 'advanced' | 'cost';
 
 export function ModelEditorModal({
-    isOpen,
+    
     onClose,
     onSave,
     existingModel,
@@ -217,8 +216,7 @@ export function ModelEditorModal({
         : '';
 
     useEffect(() => {
-        if (isOpen) {
-            const timer = window.setTimeout(() => {
+        const timer = window.setTimeout(() => {
                 if (existingModel) {
                     isLoadingExistingRef.current = true;
 
@@ -298,8 +296,7 @@ export function ModelEditorModal({
             }, 0);
 
             return () => window.clearTimeout(timer);
-        }
-    }, [isOpen, existingModel]);
+    }, [ existingModel]);
 
     useEffect(() => {
         const cacheTypes = getCacheTypes(selectedBackend || "");
@@ -458,8 +455,6 @@ export function ModelEditorModal({
             setter((file as File & { path?: string }).path ?? file.name);
         }
     };
-
-    if (!isOpen) return null;
 
     const cacheTypes = getCacheTypes(selectedBackend || "");
     const displayVRAM = isEstimating ? '...' : (vramError ? 'Unknown' : estimatedVRAM);

@@ -6,7 +6,6 @@ import '../main.css';
 import { emotions } from '../dictionaries/characterPresets';
 
 interface CharacterImageEditorModalProps {
-    isOpen: boolean;
     isReadOnly?: boolean;
     onClose: () => void;
     characterId: string;
@@ -157,14 +156,13 @@ function CharacterImageEditorContent({
 }
 
 export function CharacterImageEditorModal({
-    isOpen,
+    
     isReadOnly = false,
     onClose,
     characterId,
     images,
     onSave,
 }: CharacterImageEditorModalProps) {
-    if (!isOpen) return null;
 
     return (
         <CharacterImageEditorContent

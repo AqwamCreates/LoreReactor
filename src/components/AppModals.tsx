@@ -5,11 +5,10 @@ import type {
     LanguageModel, BudgetStrategy, Profile, Extension,
     InteractionData, World, AudioTrack, PromptBlock,
     RawInteractionData, Memory, MultiplayerData, Account,
-    cloudBackend
+    cloudBackend, entityType
 } from '../types';
 import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';
 import type { ModalController } from '../hooks/useAppModals';
-import type { entityType } from '../types'
 import { loadRawInteractionData } from '../storages/serverStorage';
 import { ManagerModal } from './ManagerModal';
 import {
@@ -50,6 +49,7 @@ import { SuperSearchModal } from './SuperSearchModal';
 interface EntityModalController {
     isOpen: boolean;
     item: any | null;
+    isReadOnly: boolean;
     open: (item?: any, isReadOnly?: boolean) => void;
     close: () => void;
     save: (item: any) => Promise<void>;
@@ -352,7 +352,6 @@ export function AppModals({
                 <ManagerModal
                     title="Chat Sessions"
                     localLibraryItems={chatShellsWithIdentifiers}
-                    isOpen={modals.chatList.isOpen}
                     onClose={modals.chatList.close}
                     onSelect={(item) => { handleOpenChatInspection(item.id); modals.chatList.close(); }}
                     onDelete={(identifier: string) => onDeleteChat(identifier)}
@@ -372,7 +371,6 @@ export function AppModals({
                     localLibraryItems={allCharacters}
                     hosterOwnedItems={hosterOwnedCharacters}
                     isAdministrator={isAdministrator}
-                    isOpen={modals.charList.isOpen}
                     onClose={modals.charList.close}
                     onSelect={async (character: Character, isHosterItem: boolean) => { 
                         const isLocal = allCharacters.some(c => c.id === character.id);
@@ -400,7 +398,6 @@ export function AppModals({
                     localLibraryItems={allContexts}
                     hosterOwnedItems={hosterOwnedContexts}
                     isAdministrator={isAdministrator}
-                    isOpen={modals.contextList.isOpen} 
                     onClose={modals.contextList.close}
                     onSelect={(context: Context, isHosterItem: boolean) => contextModalProperties.open(context, isHosterItem)} 
                     onDelete={onDeleteContext} 
@@ -420,7 +417,6 @@ export function AppModals({
                     localLibraryItems={allLocations}
                     hosterOwnedItems={hosterOwnedLocations}
                     isAdministrator={isAdministrator}
-                    isOpen={modals.locationList.isOpen} 
                     onClose={modals.locationList.close}
                     onSelect={(location: Location, isHosterItem: boolean) => locationModalProperties.open(location, isHosterItem)} 
                     onDelete={onDeleteLocation} 
@@ -440,7 +436,6 @@ export function AppModals({
                     localLibraryItems={allAudioTracks}
                     hosterOwnedItems={hosterOwnedAudioTracks}
                     isAdministrator={isAdministrator}
-                    isOpen={modals.audioTrackList.isOpen} 
                     onClose={modals.audioTrackList.close}
                     onSelect={(audioTrack: AudioTrack, isHosterItem: boolean) => audioTrackModalProperties.open(audioTrack, isHosterItem)} 
                     onDelete={onDeleteAudioTrack} 
@@ -458,7 +453,6 @@ export function AppModals({
                 <ManagerModal 
                     title="Worlds" 
                     localLibraryItems={allWorlds} 
-                    isOpen={modals.worldManager.isOpen} 
                     onClose={modals.worldManager.close}
                     onSelect={(world: World) => worldModalProperties.open(world)} 
                     onDelete={onDeleteWorld} 
@@ -484,7 +478,6 @@ export function AppModals({
                 <ManagerModal 
                     title="Prompt Blocks" 
                     localLibraryItems={allPromptBlocks} 
-                    isOpen={modals.promptBlockList.isOpen} 
                     onClose={modals.promptBlockList.close}
                     onSelect={(promptBlock: PromptBlock) => promptBlockModalProperties.open(promptBlock)} 
                     onDelete={promptBlockModalProperties.delete} 
@@ -499,7 +492,6 @@ export function AppModals({
                 <ManagerModal 
                     title="Language Models" 
                     localLibraryItems={allLanguageModels} 
-                    isOpen={modals.modelList.isOpen} 
                     onClose={modals.modelList.close}
                     onSelect={(model: LanguageModel) => modelModalProperties.open(model)} 
                     onDelete={onDeleteModel} 
@@ -532,7 +524,6 @@ export function AppModals({
                 <ManagerModal 
                     title="Samplers" 
                     localLibraryItems={allSamplers} 
-                    isOpen={modals.samplerList.isOpen} 
                     onClose={modals.samplerList.close}
                     onSelect={(sampler: Sampler) => samplerModalProperties.open(sampler)} 
                     onDelete={onDeleteSampler} 
@@ -547,7 +538,6 @@ export function AppModals({
                 <ManagerModal 
                     title="Stop Patterns" 
                     localLibraryItems={allStopPatterns} 
-                    isOpen={modals.stopList.isOpen} 
                     onClose={modals.stopList.close}
                     onSelect={(stopPattern: StopPattern) => stopPatternModalProperties.open(stopPattern)} 
                     onDelete={onDeleteStopPattern} 
@@ -566,7 +556,6 @@ export function AppModals({
                 <ManagerModal 
                     title="Budget Strategies" 
                     localLibraryItems={allBudgetStrategies} 
-                    isOpen={modals.budgetStrategyList.isOpen} 
                     onClose={modals.budgetStrategyList.close}
                     onSelect={(budgetStrategy: BudgetStrategy) => budgetStrategyModalProperties.open(budgetStrategy)} 
                     onDelete={onDeleteBudgetStrategy} 
@@ -586,7 +575,6 @@ export function AppModals({
                 <ManagerModal 
                     title="Profiles" 
                     localLibraryItems={allProfiles} 
-                    isOpen={modals.profileList.isOpen} 
                     onClose={modals.profileList.close}
                     onSelect={(profile: Profile) => profileModalProperties.open(profile)} 
                     onDelete={onDeleteProfile} 
@@ -606,7 +594,6 @@ export function AppModals({
                 <ManagerModal 
                     title="Extensions" 
                     localLibraryItems={allExtensions} 
-                    isOpen={modals.extList.isOpen} 
                     onClose={modals.extList.close}
                     onSelect={undefined} 
                     onDelete={onDeleteExtension} 
@@ -623,7 +610,6 @@ export function AppModals({
 
             {modals.settings.isOpen && (
                 <SettingsModal
-                    isOpen={modals.settings.isOpen}
                     onClose={modals.settings.close}
                     onOpenBudgetControl={modals.budgetControl.open}
                     onOpenParticipantControl={modals.participantControl.open}
@@ -643,14 +629,13 @@ export function AppModals({
             )}
 
             {modals.budgetControl.isOpen && (
-                <BudgetControlModal isOpen={modals.budgetControl.isOpen} onClose={modals.budgetControl.close} allLanguageModels={allLanguageModels} activeStrategy={activeStrategy} />
+                <BudgetControlModal onClose={modals.budgetControl.close} allLanguageModels={allLanguageModels} activeStrategy={activeStrategy} />
             )}
 
-            {modals.participantControl.isOpen && (
+            {modals.participantControl.isOpen && interactionData && (
                 <ParticipantControlModal 
-                    isOpen={modals.participantControl.isOpen} 
                     onClose={modals.participantControl.close}
-                    interactionData={interactionData} 
+                    interactionData={interactionData}
                     onUpdateInteractionData={onUpdateInteractionData}
                     onForceFirstMessage={onForceFirstMessage} 
                     onSendCustomMessage={onSendCustomMessage} 
@@ -663,7 +648,6 @@ export function AppModals({
                 <ManagerModal 
                     title="Accounts" 
                     localLibraryItems={allAccounts} 
-                    isOpen={modals.accountList.isOpen} 
                     onClose={modals.accountList.close}
                     onSelect={(account: Account) => accountModalProperties.open(account)} 
                     onDelete={accountModalProperties.delete} 
@@ -682,7 +666,7 @@ export function AppModals({
                 <ManagerModal 
                     title="Multiplayer Data" 
                     localLibraryItems={allMultiplayerData} 
-                    isOpen={modals.multiplayerDataList.isOpen} 
+ 
                     onClose={modals.multiplayerDataList.close}
                     onSelect={(multiplayerDataEntry: MultiplayerData) => multiplayerDataModalProperties.open(multiplayerDataEntry)} 
                     onDelete={onDeleteMultiplayerData} 
@@ -695,7 +679,7 @@ export function AppModals({
 
             {modals.aiRecommendation.isOpen && (
                 <AIRecommendationModal 
-                    isOpen={modals.aiRecommendation.isOpen} 
+ 
                     onClose={modals.aiRecommendation.close}
                     onSaveCharacter={async (character: Character) => { onSaveCharacter(character); return true; }}
                     onSaveContext={async (context: Context) => { onSaveContext(context); return true; }}
@@ -717,7 +701,7 @@ export function AppModals({
 
             {modals.restrictionReduction.isOpen && (
                 <RestrictionReductionModal 
-                    isOpen={modals.restrictionReduction.isOpen} 
+ 
                     onClose={modals.restrictionReduction.close}
                     onSaveCharacter={async (character: Character) => { onSaveCharacter(character); return true; }}
                     allCharacters={allCharacters} allProfiles={allProfiles} allLanguageModels={allLanguageModels} allSamplers={allSamplers}
@@ -727,7 +711,7 @@ export function AppModals({
 
             {modals.alternateTimelines.isOpen && (
                 <AlternateTimelinesModal 
-                    isOpen={modals.alternateTimelines.isOpen} 
+ 
                     onClose={modals.alternateTimelines.close}
                     currentInteractionId={interactionData?.id ?? ''} 
                     rawChatShells={chatShellsWithIdentifiers}
@@ -740,7 +724,7 @@ export function AppModals({
 
             {modals.cardImport.isOpen && (
                 <CharacterCardImportModal 
-                    isOpen={modals.cardImport.isOpen} 
+ 
                     onClose={modals.cardImport.close}
                     onSaveCharacter={async (character: Character) => { onSaveCharacter(character); return true; }}
                     onSaveContext={async (context: Context) => { onSaveContext(context); return true; }} 
@@ -749,12 +733,12 @@ export function AppModals({
             )}
 
             {modals.importData.isOpen && (
-                <DataImportModal isOpen={modals.importData.isOpen} onClose={modals.importData.close} onImportComplete={onImportComplete} />
+                <DataImportModal onClose={modals.importData.close} onImportComplete={onImportComplete} />
             )}
 
             {modals.exportData.isOpen && (
                 <DataExportModal 
-                    isOpen={modals.exportData.isOpen} 
+ 
                     onClose={modals.exportData.close}
                     allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} allAudioTracks={allAudioTracks}
                     allWorlds={allWorlds} allLanguageModels={allLanguageModels} allSamplers={allSamplers} allPromptBlocks={allPromptBlocks}
@@ -766,7 +750,7 @@ export function AppModals({
 
             {modals.dataManager.isOpen && (
                 <DataManagerModal 
-                    isOpen={modals.dataManager.isOpen} 
+ 
                     onClose={modals.dataManager.close}
                     allCharacters={allCharacters} 
                     allContexts={allContexts} 
@@ -803,7 +787,7 @@ export function AppModals({
 
             {modals.superSearch?.isOpen && (
                 <SuperSearchModal
-                    isOpen={modals.superSearch.isOpen}
+
                     onClose={modals.superSearch.close}
                     allCharacters={allCharacters}
                     allContexts={allContexts}
@@ -866,13 +850,15 @@ export function AppModals({
                 />
             )}
 
-            <GpuMonitorModal isOpen={modals.gpuMonitor.isOpen} onClose={modals.gpuMonitor.close} />
+            {modals.gpuMonitor.isOpen && (
+                <GpuMonitorModal onClose={modals.gpuMonitor.close} />
+            )}
 
             {/* ─── Editor Modals ─── */}
 
             {characterModalProperties.isOpen && (
                 <CharacterEditorModal 
-                    isOpen={characterModalProperties.isOpen} 
+                    isReadOnly={characterModalProperties.isReadOnly}
                     onClose={() => { setAiCharacterSaveRedirect(null); characterModalProperties.close(); }}
                     onSave={(character: Character) => { 
                         if (aiCharacterSaveRedirect) { 
@@ -895,7 +881,7 @@ export function AppModals({
 
             {contextModalProperties.isOpen && (
                 <ContextEditorModal 
-                    isOpen={contextModalProperties.isOpen} 
+                    isReadOnly={contextModalProperties.isReadOnly}
                     onClose={() => { setAiContextSaveRedirect(null); contextModalProperties.close(); }}
                     onSave={(context: Context) => { 
                         if (aiContextSaveRedirect) { 
@@ -912,7 +898,7 @@ export function AppModals({
 
             {locationModalProperties.isOpen && (
                 <LocationEditorModal 
-                    isOpen={locationModalProperties.isOpen} 
+                    isReadOnly={locationModalProperties.isReadOnly}
                     onClose={() => { setAiLocationSaveRedirect(null); locationModalProperties.close(); }}
                     onSave={(location: Location) => { 
                         if (aiLocationSaveRedirect) { 
@@ -931,7 +917,7 @@ export function AppModals({
 
             {audioTrackModalProperties.isOpen && (
                 <AudioTrackEditorModal 
-                    isOpen={audioTrackModalProperties.isOpen} 
+                    isReadOnly={audioTrackModalProperties.isReadOnly}
                     onClose={() => { setAiAudioTrackSaveRedirect(null); audioTrackModalProperties.close(); }}
                     onSave={(audioTrack: AudioTrack) => { 
                         if (aiAudioTrackSaveRedirect) { 
@@ -950,7 +936,6 @@ export function AppModals({
 
             {worldModalProperties.isOpen && (
                 <WorldEditorModal 
-                    isOpen={worldModalProperties.isOpen} 
                     onClose={worldModalProperties.close} 
                     onSave={worldModalProperties.save} 
                     onLoadWorld={onLoadWorld}
@@ -971,7 +956,6 @@ export function AppModals({
 
             {modelModalProperties.isOpen && (
                 <ModelEditorModal 
-                    isOpen={modelModalProperties.isOpen} 
                     onClose={modelModalProperties.close} 
                     onSave={modelModalProperties.save}
                     existingModel={modelModalProperties.item} 
@@ -981,7 +965,6 @@ export function AppModals({
 
             {samplerModalProperties.isOpen && (
                 <SamplerEditorModal 
-                    isOpen={samplerModalProperties.isOpen} 
                     onClose={samplerModalProperties.close} 
                     onSave={samplerModalProperties.save}
                     existingSampler={samplerModalProperties.item} 
@@ -991,7 +974,6 @@ export function AppModals({
 
             {promptBlockModalProperties.isOpen && (
                 <PromptBlockEditorModal 
-                    isOpen={promptBlockModalProperties.isOpen} 
                     onClose={() => { setAiPromptBlockSaveRedirect(null); promptBlockModalProperties.close(); }}
                     onSave={(promptBlock: PromptBlock) => { 
                         if (aiPromptBlockSaveRedirect) { 
@@ -1010,7 +992,6 @@ export function AppModals({
 
             {stopPatternModalProperties.isOpen && (
                 <StopPatternEditorModal 
-                    isOpen={stopPatternModalProperties.isOpen} 
                     onClose={stopPatternModalProperties.close} 
                     onSave={stopPatternModalProperties.save}
                     existingStopPattern={stopPatternModalProperties.item} 
@@ -1019,7 +1000,6 @@ export function AppModals({
 
             {budgetStrategyModalProperties.isOpen && (
                 <BudgetStrategyEditorModal 
-                    isOpen={budgetStrategyModalProperties.isOpen} 
                     onClose={budgetStrategyModalProperties.close} 
                     onSave={budgetStrategyModalProperties.save}
                     existingStrategy={budgetStrategyModalProperties.item} 
@@ -1029,7 +1009,6 @@ export function AppModals({
 
             {profileModalProperties.isOpen && (
                 <ProfileEditorModal 
-                    isOpen={profileModalProperties.isOpen} 
                     onClose={() => { setAiProfileSaveRedirect(null); profileModalProperties.close(); }}
                     onSave={(profile: Profile) => { 
                         if (aiProfileSaveRedirect) { 
@@ -1047,7 +1026,6 @@ export function AppModals({
 
             {accountModalProperties.isOpen && (
                 <AccountEditorModal 
-                    isOpen={accountModalProperties.isOpen} 
                     onClose={accountModalProperties.close} 
                     onSave={accountModalProperties.save}
                     existingAccount={accountModalProperties.item}
@@ -1058,7 +1036,6 @@ export function AppModals({
 
             {multiplayerDataModalProperties.isOpen && (
                 <MultiplayerEditorModal
-                    isOpen={multiplayerDataModalProperties.isOpen}
                     onClose={multiplayerDataModalProperties.close}
                     onSave={multiplayerDataModalProperties.save}
                     existingMultiplayerData={multiplayerDataModalProperties.item}
@@ -1073,7 +1050,7 @@ export function AppModals({
             {/* ─── Join Session Modal ─── */}
             {modals.joinSession.isOpen && (
                 <JoinSessionModal
-                    isOpen={modals.joinSession.isOpen}
+
                     onClose={modals.joinSession.close}
                     onJoin={onJoinSession}
                 />
@@ -1082,7 +1059,7 @@ export function AppModals({
             {/* ─── Chat Inspection Modal ─── */}
             {modals.chatInspection?.isOpen && (
                 <ChatInspectionModal
-                    isOpen={modals.chatInspection.isOpen}
+
                     onClose={() => { 
                         modals.chatInspection.close(); 
                         setInspectionStack([]); 

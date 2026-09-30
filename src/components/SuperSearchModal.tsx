@@ -29,7 +29,6 @@ export type SearchTabId =
     | 'multiplayerData';
 
 export interface SuperSearchModalProps {
-    isOpen: boolean;
     onClose: () => void;
     allCharacters: Character[];
     allContexts: Context[];
@@ -606,6 +605,5 @@ function SuperSearchContent({
 }
 
 export function SuperSearchModal(props: SuperSearchModalProps) {
-    if (!props.isOpen) return null;
     return <SuperSearchContent {...props} />;
 }
