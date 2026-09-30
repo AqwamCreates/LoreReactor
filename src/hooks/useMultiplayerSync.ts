@@ -15,7 +15,10 @@ import {
     type HostMigrationPayload,
     type BorrowInferenceRequestPayload,
     type BorrowInferenceChunkPayload,
-    type BorrowInferenceCancelPayload
+    type BorrowInferenceCancelPayload,
+    type MediaRequestPayload,
+    type MediaResponsePayload,
+    type StateSyncPayload,
 } from './useMultiplayerConnection';
 import { useSessionStore } from './useSessionStore';
 import { saveRawMultiplayerCharacter } from '../storages/serverStorage';
@@ -97,15 +100,6 @@ type SyncMessagePayload = SyncChatMessagePayload | SyncInteractionMessagePayload
 
 interface SetProtagonistPayload {
     character: Character;
-}
-
-export interface StateSyncPayload {
-    participants?: Character[];
-    protagonists?: Character[];
-    contexts?: Context[];
-    locations?: Location[];
-    audioTracks?: AudioTrack[];
-    Profile?: Profile;
 }
 
 export interface PendingJoinRequest {
@@ -481,13 +475,11 @@ export function useMultiplayerSync({
 
                         if (payload.messageType === 'chat') {
                             const chatPayload = payload as SyncChatMessagePayload;
-                            // Only emit peer message if response generation was not explicitly disabled
                             if (chatPayload.triggerResponse !== false) {
                                 MultiplayerEvents.emit('peerMessageReceived', newMessage as ChatMessage);
                             }
                         } else if (payload.messageType === 'whisper') {
                             const whisperPayload = payload as SyncWhisperMessagePayload;
-                            // If whisper targets an NPC (not another human player), trigger host response
                             const targetsNPC = whisperPayload.targetCharacterIds.some(id => !allProtagonistIds.has(id));
                             if (targetsNPC) {
                                 MultiplayerEvents.emit('peerMessageReceived', newMessage as any);
@@ -526,13 +518,55 @@ export function useMultiplayerSync({
 
                 setInteractionData(updatedData);
 
-                // If host received this from an administrator, re-broadcast to other peers
                 if (isHost) {
                     broadcastRef.current({
                         type: 'state_sync',
                         payload,
                     });
                 }
+                break;
+            }
+
+            case 'media_request': {
+                if (!isHost) return;
+                const payload = msg.payload as MediaRequestPayload;
+                const requestingAccountId = msg.senderAccountId;
+
+                (async () => {
+                    try {
+                        const targetUrl = payload.pathOrFilename.startsWith('http') 
+                            ? payload.pathOrFilename 
+                            : `${localURL}${payload.pathOrFilename.startsWith('/') ? '' : '/'}${payload.pathOrFilename}`;
+                        
+                        const res = await fetch(targetUrl);
+                        if (!res.ok) return;
+
+                        const blob = await res.blob();
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            const base64Data = reader.result as string;
+                            sendToRef.current(requestingAccountId, {
+                                type: 'media_response',
+                                payload: {
+                                    assetType: payload.assetType,
+                                    pathOrFilename: payload.pathOrFilename,
+                                    mimeType: blob.type,
+                                    base64Data,
+                                } satisfies MediaResponsePayload,
+                            });
+                        };
+                        reader.readAsDataURL(blob);
+                    } catch (e) {
+                        console.warn('[MP Media] Failed to serve media request:', e);
+                    }
+                })();
+                break;
+            }
+
+            case 'media_response': {
+                if (isHost) return;
+                const payload = msg.payload as MediaResponsePayload;
+                MultiplayerEvents.emit('mediaResponseReceived', payload);
                 break;
             }
 
@@ -698,7 +732,7 @@ export function useMultiplayerSync({
 
                 const updatedHistory = currentData.interactionHistory.map((message) => {
                     if (message.id === payload.messageId && message.messageType === 'chat') {
-                        return { ...message, textContent: payload.newText, lastUpdatedTimestamp: Date.now() } as ChatMessage;
+                        return { ...message, textContent: newText, lastUpdatedTimestamp: Date.now() } as ChatMessage;
                     }
                     return message;
                 });
@@ -1123,6 +1157,22 @@ export function useMultiplayerSync({
         });
     }, [broadcast]);
 
+    const requestMediaAsset = useCallback((assetType: 'image' | 'audio', pathOrFilename: string) => {
+        if (isHost || !pathOrFilename) return;
+        broadcast({
+            type: 'media_request',
+            payload: { assetType, pathOrFilename } satisfies MediaRequestPayload,
+        });
+    }, [isHost, broadcast]);
+
+    // Listener for on-demand media requests from UI (useViewAssets, AudioEngine, etc.)
+    useEffect(() => {
+        const unsubscribe = MultiplayerEvents.on('requestMediaAsset', (data: { assetType: 'image' | 'audio'; pathOrFilename: string }) => {
+            requestMediaAsset(data.assetType, data.pathOrFilename);
+        });
+        return unsubscribe;
+    }, [requestMediaAsset]);
+
     const requestAndAwaitBorrowedModel = useCallback(async (): Promise<LanguageModel | null> => {
         if (!isHost) return null;
         const currentMultiplayerData = multiplayerDataRef.current;
@@ -1265,10 +1315,23 @@ export function useMultiplayerSync({
                         },
                     },
                 });
+
+                if (payload.requestedCharacterData && currentData && assignedCharacter) {
+                    const characterToSave = assignedCharacter;
+                    const isAlreadyParticipantInSession = currentData.participants.some((participant) => participant.id === characterToSave.id);
+                    if (!isAlreadyParticipantInSession) {
+                        saveRawMultiplayerCharacter(characterToSave).catch((error) => console.error('Failed to save uploaded multiplayer character:', error));
+                        setInteractionData({
+                            ...currentData,
+                            participants: [...currentData.participants, characterToSave],
+                            lastUpdatedTimestamp: Date.now(),
+                        });
+                    }
+                }
             }
             return previousRequests.filter((request) => request.accountId !== accountId);
         });
-    }, [multiplayerData]);
+    }, [multiplayerData, setInteractionData]);
 
     const rejectJoinRequest = useCallback((accountId: string) => {
         setPendingJoinRequests((previousRequests) => {
@@ -1381,6 +1444,7 @@ export function useMultiplayerSync({
         broadcastMessageEdit,
         broadcastMessageDelete,
         broadcastStateSync,
+        requestMediaAsset,
         initiateBranch,
         sendProtagonist,
         disconnect,

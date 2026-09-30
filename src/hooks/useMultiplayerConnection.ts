@@ -3,7 +3,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import Peer, { type DataConnection } from 'peerjs';
 import type { MultiplayerData, InteractionData, HistoryMessage, Character, Context, Location, AudioTrack, Profile } from '../types';
 
-// ─── Message Protocol ──────────────────────────────────────────────
+// ─── Unified Multiplayer Protocol & Payloads ──────────────────────────
 export type MessageType =
     | 'set_protagonist'
     | 'protagonist_change'
@@ -22,23 +22,25 @@ export type MessageType =
     | 'borrow_inference_request'
     | 'borrow_inference_chunk'
     | 'borrow_inference_cancel'
+    | 'media_request'
+    | 'media_response'
     | 'leave';
 
-interface MultiplayerMessage {
+export interface MultiplayerMessage {
     type: MessageType;
     senderAccountId: string;
     timestamp: number;
     payload: unknown;
 }
 
-interface ChatMessagePayload {
+export interface ChatMessagePayload {
     messageId: string;
     characterId: string;
     textContent: string;
     messageType: 'chat' | 'interaction';
 }
 
-interface JoinRequestPayload {
+export interface JoinRequestPayload {
     accountId: string;
     password?: string;
     requestedCharacterId?: string;
@@ -67,22 +69,26 @@ export interface JoinResponsePayload {
     };
 }
 
-interface JoinPendingPayload {
+export interface JoinPendingPayload {
     message?: string;
 }
 
-interface StateSyncPayload {
-    interactionHistory: HistoryMessage[];
-    protagonistIds: string[];
-    participantIds: string[];
+export interface StateSyncPayload {
+    participants?: Character[];
+    protagonists?: Character[];
+    contexts?: Context[];
+    locations?: Location[];
+    audioTracks?: AudioTrack[];
+    Profile?: Profile;
+    interactionHistory?: HistoryMessage[];
 }
 
-interface MessageEditPayload {
+export interface MessageEditPayload {
     messageId: string;
     newText: string;
 }
 
-interface MessageDeletePayload {
+export interface MessageDeletePayload {
     messageId: string;
 }
 
@@ -109,6 +115,18 @@ export interface BorrowInferenceChunkPayload {
 
 export interface BorrowInferenceCancelPayload {
     requestId: string;
+}
+
+export interface MediaRequestPayload {
+    assetType: 'image' | 'audio';
+    pathOrFilename: string;
+}
+
+export interface MediaResponsePayload {
+    assetType: 'image' | 'audio';
+    pathOrFilename: string;
+    mimeType: string;
+    base64Data: string;
 }
 
 // ─── WebRTC Chunking Protocol ───────────────────────────────────────
@@ -506,13 +524,3 @@ export function useMultiplayerConnection({
 
     return { isConnected, connectedPeers, connectionError, broadcast, sendTo, disconnect, peerId, hostPeerId };
 }
-
-export type {
-    MultiplayerMessage,
-    ChatMessagePayload,
-    JoinRequestPayload,
-    JoinPendingPayload,
-    StateSyncPayload,
-    MessageEditPayload,
-    MessageDeletePayload,
-};

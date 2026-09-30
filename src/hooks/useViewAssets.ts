@@ -2,6 +2,8 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Character, InteractionData, ChatMessage } from '../types';
 import { getCharacterImageUrl, getLocationImageUrl, getMultiplayerCharacterImageUrl } from '../storages/serverStorage';
+import { mediaCache } from '../services/MediaCache';
+import { MultiplayerEvents } from '../services/MultiplayerEvents';
 import type { viewMode } from '../components/views/types';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
@@ -19,15 +21,77 @@ interface UseViewAssetsOptions {
     suppressAutoScrollRef: React.RefObject<boolean>;
 }
 
-function resolvePortrait(characterId: string, images: Record<string, string> | undefined, expression?: string, isMultiplayerChat?: boolean): string | null {
+function resolvePortrait(
+    characterId: string, 
+    images: Record<string, string> | undefined, 
+    expression?: string, 
+    isMultiplayerChat?: boolean
+): string | null {
     const expr = expression || 'neutral';
     const filename = images?.[expr] || images?.neutral;
     if (!filename) return null;
-    
-    return getCharacterImageUrl(characterId, filename) || (isMultiplayerChat ? getMultiplayerCharacterImageUrl(characterId, filename) : null);
+
+    // 1. Direct Data URL or external Web URL
+    if (filename.startsWith('data:') || filename.startsWith('http://') || filename.startsWith('https://')) {
+        return filename;
+    }
+
+    // 2. Check P2P WebRTC Media Cache
+    const cacheKey = `char_${characterId}_${filename}`;
+    const cached = mediaCache.get(cacheKey) || mediaCache.get(filename);
+    if (cached) return cached;
+
+    // 3. Fallback to local server URLs
+    const localUrl = getCharacterImageUrl(characterId, filename);
+    const mpUrl = isMultiplayerChat ? getMultiplayerCharacterImageUrl(characterId, filename) : null;
+
+    // 4. If joiner in multiplayer, request asset from host
+    if (isMultiplayerChat && !cached) {
+        MultiplayerEvents.emit('requestMediaAsset', {
+            assetType: 'image',
+            pathOrFilename: mpUrl || localUrl || filename,
+        });
+    }
+
+    return localUrl || mpUrl;
 }
 
-function resolveLocationBackgroundUrl(interactionData: InteractionData, localProtagonist: Character): string | null {
+function resolveLocationImage(
+    locationId: string, 
+    filename: string, 
+    isMultiplayerChat?: boolean
+): string | null {
+    if (!filename) return null;
+
+    // 1. Direct Data URL or external Web URL
+    if (filename.startsWith('data:') || filename.startsWith('http://') || filename.startsWith('https://')) {
+        return filename;
+    }
+
+    // 2. Check P2P WebRTC Media Cache
+    const cacheKey = `loc_${locationId}_${filename}`;
+    const cached = mediaCache.get(cacheKey) || mediaCache.get(filename);
+    if (cached) return cached;
+
+    // 3. Fallback to local server URL
+    const localUrl = getLocationImageUrl(locationId, filename);
+
+    // 4. If joiner in multiplayer, request asset from host
+    if (isMultiplayerChat && !cached) {
+        MultiplayerEvents.emit('requestMediaAsset', {
+            assetType: 'image',
+            pathOrFilename: localUrl || filename,
+        });
+    }
+
+    return localUrl;
+}
+
+function resolveLocationBackgroundUrl(
+    interactionData: InteractionData, 
+    localProtagonist: Character,
+    isMultiplayerChat?: boolean
+): string | null {
     const locations = interactionData.locations;
     if (!locations || locations.length === 0) return null;
     let currentLocIndex: number | undefined;
@@ -62,7 +126,7 @@ function resolveLocationBackgroundUrl(interactionData: InteractionData, localPro
                 if (regex.test(lastUserText)) {
                     const idx = Number(idxStr);
                     if (idx >= 0 && idx < loc.images.length && loc.images[idx]) {
-                        return getLocationImageUrl(loc.id, loc.images[idx]);
+                        return resolveLocationImage(loc.id, loc.images[idx], isMultiplayerChat);
                     }
                 }
             } catch {}
@@ -83,12 +147,12 @@ function resolveLocationBackgroundUrl(interactionData: InteractionData, localPro
             let randomValue = Math.random() * totalWeight;
             for (const entry of pool) {
                 randomValue -= entry.weight;
-                if (randomValue <= 0) return getLocationImageUrl(loc.id, loc.images[entry.index]);
+                if (randomValue <= 0) return resolveLocationImage(loc.id, loc.images[entry.index], isMultiplayerChat);
             }
-            return getLocationImageUrl(loc.id, loc.images[pool[pool.length - 1].index]);
+            return resolveLocationImage(loc.id, loc.images[pool[pool.length - 1].index], isMultiplayerChat);
         }
     }
-    if (loc.images[0]) return getLocationImageUrl(loc.id, loc.images[0]);
+    if (loc.images[0]) return resolveLocationImage(loc.id, loc.images[0], isMultiplayerChat);
     return null;
 }
 
@@ -103,8 +167,17 @@ export function useViewAssets(options: UseViewAssetsOptions) {
 
     const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
     const centerAvatarRef = useRef<Character | null>(null);
+    const [, setMediaVersion] = useState(0);
 
     useEffect(() => { centerAvatarRef.current = centerAvatar; }, [centerAvatar]);
+
+    // Re-render when media finishes downloading over WebRTC
+    useEffect(() => {
+        const unsubscribe = MultiplayerEvents.on('mediaCacheUpdated', () => {
+            setMediaVersion(v => v + 1);
+        });
+        return unsubscribe;
+    }, []);
 
     const chatMessages = useMemo(() => {
         if (!interactionData) return [];
@@ -146,7 +219,7 @@ export function useViewAssets(options: UseViewAssetsOptions) {
     }, [streamingCharacter, portraitUrlCache]);
 
     const locationBackgroundUrl = interactionData && localProtagonist
-        ? resolveLocationBackgroundUrl(interactionData, localProtagonist)
+        ? resolveLocationBackgroundUrl(interactionData, localProtagonist, isMultiplayerChat)
         : null;
 
     useEffect(() => {

@@ -1,11 +1,15 @@
 // src/services/MultiplayerEvents.ts
 import type { HistoryMessage } from '../types';
+import type { MediaResponsePayload } from '../hooks/useMultiplayerConnection';
 
 type EventCallback<T = any> = (data: T) => void | Promise<void>;
 
 export interface MultiplayerEventMap {
     peerMessageReceived: HistoryMessage;
     broadcastMessage: HistoryMessage;
+    requestMediaAsset: { assetType: 'image' | 'audio'; pathOrFilename: string };
+    mediaResponseReceived: MediaResponsePayload;
+    mediaCacheUpdated: string;
 }
 
 class MultiplayerEventBus {
