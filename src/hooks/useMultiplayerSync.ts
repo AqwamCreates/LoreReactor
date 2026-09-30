@@ -1,6 +1,6 @@
 // src/hooks/useMultiplayerSync.ts
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { InteractionData, MultiplayerData, HistoryMessage, Character, ChatMessage, InteractionMessage, WhisperMessage, LanguageModel, backend } from '../types';
+import type { InteractionData, MultiplayerData, HistoryMessage, Character, ChatMessage, InteractionMessage, WhisperMessage, LanguageModel, backend, Context, AudioTrack, Profile } from '../types';
 import { 
     useMultiplayerConnection, 
     type MultiplayerMessage, 
@@ -965,6 +965,26 @@ export function useMultiplayerSync({
                         payload: { character } satisfies SetProtagonistPayload,
                     });
                 }
+                break;
+            }
+
+            case 'state_sync': {
+                const payload = msg.payload as {
+                    contexts?: Context[];
+                    locations?: Location[];
+                    audioTracks?: AudioTrack[];
+                    Profile?: Profile;
+                };
+                const currentData = interactionDataRef.current;
+                if (!currentData) break;
+                setInteractionData({
+                    ...currentData,
+                    ...(payload.contexts ? { contexts: payload.contexts } : {}),
+                    ...(payload.locations ? { locations: payload.locations } : {}),
+                    ...(payload.audioTracks ? { audioTracks: payload.audioTracks } : {}),
+                    ...(payload.Profile ? { Profile: payload.Profile } : {}),
+                    lastUpdatedTimestamp: Date.now(),
+                });
                 break;
             }
 

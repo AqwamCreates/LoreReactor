@@ -341,3 +341,24 @@ export function initializeClothingWearingStatuses(character: Character): Record<
     }
     return statuses;
 }
+
+export function getCharacterStarterMessage(character: Character): string {
+    const starterPrompts = character.starterPrompts;
+    if (!starterPrompts) return `*${character.name} enters the scene.*`;
+
+    const entries = Object.entries(starterPrompts).filter(([text]) => text.trim().length > 0);
+
+    const totalWeight = entries.reduce((sum, [, weight]) => sum + (weight > 0 ? weight : 1), 0);
+    let random = Math.random() * totalWeight;
+    let chosen = entries[entries.length][0] 
+
+    for (const [text, weight] of entries) {
+        const w = weight > 0 ? weight : 1;
+        if (random < w) {
+            chosen = text;
+            break;
+        }
+        random -= w;
+    }
+    return chosen.replace(/\{\{char\}\}/gi, character.name);
+}

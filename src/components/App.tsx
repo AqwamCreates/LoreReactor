@@ -6,6 +6,7 @@ import { saveRawInteractionData, loadRawInteractionData, flushSaveQueue } from '
 import { createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
 import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { useDisplayNameCache } from '../utilities/immersionLogic';
+import { getCharacterStarterMessage } from '../utilities/characterLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { buildModelLoadArguments } from '../utilities/modelLoadArguments';
@@ -13,7 +14,7 @@ import { localURL } from '../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useFrontCamera } from '../hooks/useFrontCamera';
-import type { Character, Context, InteractionData, ChatMessage, MultiplayerData, WhisperMessage, LanguageModel, HistoryMessage, RawInteractionData, Account, cloudBackend } from '../types';
+import type { Character, Context, Location, AudioTrack, Profile, InteractionData, ChatMessage, MultiplayerData, WhisperMessage, LanguageModel, HistoryMessage, RawInteractionData, Account, cloudBackend } from '../types';
 import { useSessionStore } from '../hooks/useSessionStore';
 
 // ─── Manager Hooks ──────────────────────────────────────────────────
@@ -66,7 +67,6 @@ import { ChatMinimap } from './ChatMinimap';
 import { ChatViewArea } from './views/ChatViewArea';
 import type { ViewModeProps, viewMode } from './views/types';
 import { defaultContextLength } from '../dictionaries/defaults';
-import { v4 as uuidv4 } from 'uuid';
 import '../main.css';
 
 // ─── Types & Helpers ─────────────────────────────────────────────────
@@ -390,6 +390,9 @@ function App() {
 
     const isMultiplayerChat = mp.isMultiplayerClient || !!(mp.multiplayerData && interactionData?.id && mp.multiplayerData.interactionDataIds.includes(interactionData.id));
 
+    // Can this client broadcast entity/world/context mutations to peers?
+    const canBroadcastState = isMultiplayerChat && mp.multiplayerSync.isConnected && (mp.multiplayerSync.isHost || mp.multiplayerSync.isAdministrator);
+
     // ─── Local UI State ──────────────────────────────────────────────
     const [viewMode, setViewMode] = useState<viewMode>('ladder');
     const [inputText, setInputText] = useState('');
@@ -560,11 +563,9 @@ function App() {
 
     // ─── Wrapped Multiplayer-Aware Handlers ──────────────────────────
     const handleSetProtagonistAndBroadcast = useCallback((charId: string) => {
-        // 1. Update local state
         entityToggles.handleSetChatProtagonist(charId);
         
-        // 2. If we are a connected joiner, broadcast the character change to the host
-        if (mp.isMultiplayerClient && mp.multiplayerSync.isConnected) {
+        if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
             const char = characters.characters.find(c => c.id === charId) 
                       || interactionData?.participants.find(p => p.id === charId)
                       || interactionData?.protagonists.find(p => p.id === charId);
@@ -573,7 +574,73 @@ function App() {
                 mp.multiplayerSync.sendProtagonist(char);
             }
         }
-    }, [entityToggles, mp, characters.characters, interactionData]);
+    }, [entityToggles, isMultiplayerChat, mp.multiplayerSync, characters.characters, interactionData]);
+
+    const handleToggleParticipantAndBroadcast = useCallback((charId: string) => {
+        entityToggles.handleToggleParticipant(charId);
+        if (canBroadcastState && interactionData) {
+            const exists = interactionData.participants?.some(p => p.id === charId);
+            const nextParticipants = exists
+                ? interactionData.participants.filter(p => p.id !== charId)
+                : (() => {
+                    const found = characters.characters.find(c => c.id === charId);
+                    return found ? [...interactionData.participants, found] : interactionData.participants;
+                })();
+            (mp.multiplayerSync as any).broadcastStateSync?.({ participants: nextParticipants });
+        }
+    }, [entityToggles, canBroadcastState, interactionData, characters.characters, mp.multiplayerSync]);
+
+    const handleToggleContextAndBroadcast = useCallback((contextId: string) => {
+        entityToggles.handleToggleContext(contextId);
+        if (canBroadcastState && interactionData) {
+            const exists = interactionData.contexts?.some(c => c.id === contextId);
+            const nextContexts = exists
+                ? (interactionData.contexts || []).filter(c => c.id !== contextId)
+                : (() => {
+                    const found = contexts.contexts.find(c => c.id === contextId);
+                    return found ? [...(interactionData.contexts || []), found] : (interactionData.contexts || []);
+                })();
+            (mp.multiplayerSync as any).broadcastStateSync?.({ contexts: nextContexts });
+        }
+    }, [entityToggles, canBroadcastState, interactionData, contexts.contexts, mp.multiplayerSync]);
+
+    const handleToggleLocationAndBroadcast = useCallback((locationId: string) => {
+        entityToggles.handleToggleLocation(locationId);
+        if (canBroadcastState && interactionData) {
+            const exists = interactionData.locations?.some(l => l.id === locationId);
+            const nextLocations = exists
+                ? (interactionData.locations || []).filter(l => l.id !== locationId)
+                : (() => {
+                    const found = locations.locations.find(l => l.id === locationId);
+                    return found ? [...(interactionData.locations || []), found] : (interactionData.locations || []);
+                })();
+            (mp.multiplayerSync as any).broadcastStateSync?.({ locations: nextLocations });
+        }
+    }, [entityToggles, canBroadcastState, interactionData, locations.locations, mp.multiplayerSync]);
+
+    const handleToggleAudioTrackAndBroadcast = useCallback((trackId: string) => {
+        entityToggles.handleToggleAudioTrack(trackId);
+        if (canBroadcastState && interactionData) {
+            const exists = interactionData.audioTracks?.some(t => t.id === trackId);
+            const nextTracks = exists
+                ? (interactionData.audioTracks || []).filter(t => t.id !== trackId)
+                : (() => {
+                    const found = audioTracks.audioTracks.find(t => t.id === trackId);
+                    return found ? [...(interactionData.audioTracks || []), found] : (interactionData.audioTracks || []);
+                })();
+            (mp.multiplayerSync as any).broadcastStateSync?.({ audioTracks: nextTracks });
+        }
+    }, [entityToggles, canBroadcastState, interactionData, audioTracks.audioTracks, mp.multiplayerSync]);
+
+    const handleActivateProfileAndBroadcast = useCallback((profileId: string) => {
+        entityToggles.handleActivateProfile(profileId);
+        if (canBroadcastState && interactionData) {
+            const targetProfile = interactionData.Profile?.id === profileId 
+                ? undefined 
+                : profiles.profiles.find(p => p.id === profileId);
+            (mp.multiplayerSync as any).broadcastStateSync?.({ Profile: targetProfile });
+        }
+    }, [entityToggles, canBroadcastState, interactionData, profiles.profiles, mp.multiplayerSync]);
 
     const wrappedSaveEdit = useCallback(async () => {
         await messageActions.handleSaveEdit();
@@ -658,11 +725,16 @@ function App() {
 
     const handleForceFirstMessage = useCallback((char: Character) => {
         if (!interactionData) return;
-        const msg = createChatMessage(interactionData, char, `*${char.name} enters the scene.*`);
+        const text = getCharacterStarterMessage(char);
+        const msg = createChatMessage(interactionData, char, text);
         const updated = addMessageToInteractionData(interactionData, msg);
         setInteractionData(updated);
         addToast(`Sent first message as ${char.name}`, 'success');
-    }, [interactionData, addToast, setInteractionData]);
+
+        if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
+            handleBroadcastMessage(msg);
+        }
+    }, [interactionData, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
 
     const handleSendCustom = useCallback((char: Character, text: string) => {
         if (!interactionData) return;
@@ -670,23 +742,36 @@ function App() {
         const updated = addMessageToInteractionData(interactionData, msg);
         setInteractionData(updated);
         addToast(`Sent message as ${char.name}`, 'success');
-    }, [interactionData, addToast, setInteractionData]);
+
+        if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
+            handleBroadcastMessage(msg);
+        }
+    }, [interactionData, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
 
     const handleInjectCustom = useCallback((char: Character, text: string) => {
         if (!interactionData) return;
-        const ctx: Context = { id: uuidv4(), name: `[Injected] ${char.name}`, description: 'User-injected message for LLM context', text: `${char.name}: ${text}`, isAutoGenerated: true, useBase64Encoding: false, insertionDepth: 0, tokenBudget: 512, limitLinksToSubdirectory: false, firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now() };
-        const updated: InteractionData = { ...interactionData, contexts: [...(interactionData.contexts || []), ctx], lastUpdatedTimestamp: Date.now() };
+        const msg = createChatMessage(interactionData, char, text);
+        const updated = addMessageToInteractionData(interactionData, msg);
         setInteractionData(updated);
-        addToast(`Injected custom message as ${char.name}`, 'success');
-    }, [interactionData, addToast, setInteractionData]);
+        addToast(`Injected message as ${char.name}`, 'success');
+
+        if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
+            handleBroadcastMessage(msg);
+        }
+    }, [interactionData, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
 
     const handleInjectFirst = useCallback((char: Character) => {
         if (!interactionData) return;
-        const ctx: Context = { id: uuidv4(), name: `[Injected First] ${char.name}`, description: 'User-injected first message', text: `${char.name}: *${char.name} enters the scene.*`, isAutoGenerated: true, useBase64Encoding: false, insertionDepth: 0, tokenBudget: 512, limitLinksToSubdirectory: false, firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now() };
-        const updated: InteractionData = { ...interactionData, contexts: [...(interactionData.contexts || []), ctx], lastUpdatedTimestamp: Date.now() };
+        const text = getCharacterStarterMessage(char);
+        const msg = createChatMessage(interactionData, char, text);
+        const updated = addMessageToInteractionData(interactionData, msg);
         setInteractionData(updated);
         addToast(`Injected first message as ${char.name}`, 'success');
-    }, [interactionData, addToast, setInteractionData]);
+
+        if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
+            handleBroadcastMessage(msg);
+        }
+    }, [interactionData, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
 
     const onDeleteChatForModals = useCallback((id: string) => {
         chatOps.handleDeleteChat({ stopPropagation: () => {} } as React.MouseEvent, id);
@@ -732,7 +817,17 @@ function App() {
         updated = assignInitialLocationsIfNeeded(updated);
         setInteractionData(updated);
         addToast(`Loaded world "${world.name}"`, 'success');
-    }, [interactionData, characters, contexts, locations, audioTracks, profiles, setInteractionData, addToast]);
+
+        if (canBroadcastState) {
+            (mp.multiplayerSync as any).broadcastStateSync?.({
+                participants: updated.participants,
+                contexts: updated.contexts,
+                locations: updated.locations,
+                audioTracks: updated.audioTracks,
+                Profile: updated.Profile,
+            });
+        }
+    }, [interactionData, characters, contexts, locations, audioTracks, profiles, setInteractionData, addToast, canBroadcastState, mp.multiplayerSync]);
 
     // ─── Base View Props (Stable, contains only committed messages) ───
     const baseViewProps: ViewModeProps = {
@@ -883,19 +978,36 @@ function App() {
                     onSwitchChat={chatOps.handleSwitchChat} onDeleteChat={onDeleteChatForModals} onNewChat={chatOps.handleNewChat}
                     onRenameChat={handleRenameChat}
                     onDeleteCharacter={entityModals.getModalProperties('character').delete}
-                    onLoadFullCharacter={characters.loadFullCharacter} onToggleParticipant={entityToggles.handleToggleParticipant}
-                    onSetProtagonist={handleSetProtagonistAndBroadcast} onSaveCharacter={characters.saveCharacter}
-                    onDeleteContext={entityModals.getModalProperties('context').delete} onToggleContext={entityToggles.handleToggleContext} onSaveContext={contexts.saveContext}
-                    onDeleteLocation={entityModals.getModalProperties('location').delete} onToggleLocation={entityToggles.handleToggleLocation} onSaveLocation={locations.saveLocation}
-                    onDeleteAudioTrack={entityModals.getModalProperties('audioTrack').delete} onToggleAudioTrack={entityToggles.handleToggleAudioTrack} onSaveAudioTrack={audioTracks.saveAudioTrack}
-                    onSaveWorld={worlds.saveWorld} onLoadWorld={handleLoadWorld} onDeleteWorld={entityModals.getModalProperties('world').delete}
-                    onDeleteModel={entityModals.getModalProperties('model').delete} onToggleModelLoad={models.toggleModelLoad}
-                    onDeleteSampler={entityModals.getModalProperties('sampler').delete} onDeletePromptBlock={entityModals.getModalProperties('promptBlock').delete}
-                    onDeleteStopPattern={entityModals.getModalProperties('stopPattern').delete} onDeleteBudgetStrategy={entityModals.getModalProperties('budgetStrategy').delete}
-                    onActivateBudgetStrategy={entityToggles.handleActivateBudgetStrategy} onDeleteProfile={entityModals.getModalProperties('profile').delete}
-                    onActivateProfile={entityToggles.handleActivateProfile} onSaveProfile={profiles.saveProfile}
-                    onDeleteExtension={extensions.deleteExtension} onToggleExtension={entityToggles.handleToggleExtension}
-                    onDeleteMemory={memories.deleteMemory} onDeleteAccount={entityModals.getModalProperties('account').delete}
+                    onLoadFullCharacter={characters.loadFullCharacter} 
+                    onToggleParticipant={handleToggleParticipantAndBroadcast}
+                    onSetProtagonist={handleSetProtagonistAndBroadcast} 
+                    onSaveCharacter={characters.saveCharacter}
+                    onDeleteContext={entityModals.getModalProperties('context').delete} 
+                    onToggleContext={handleToggleContextAndBroadcast} 
+                    onSaveContext={contexts.saveContext}
+                    onDeleteLocation={entityModals.getModalProperties('location').delete} 
+                    onToggleLocation={handleToggleLocationAndBroadcast} 
+                    onSaveLocation={locations.saveLocation}
+                    onDeleteAudioTrack={entityModals.getModalProperties('audioTrack').delete} 
+                    onToggleAudioTrack={handleToggleAudioTrackAndBroadcast} 
+                    onSaveAudioTrack={audioTracks.saveAudioTrack}
+                    onSaveWorld={worlds.saveWorld} 
+                    onLoadWorld={handleLoadWorld} 
+                    onDeleteWorld={entityModals.getModalProperties('world').delete}
+                    onDeleteModel={entityModals.getModalProperties('model').delete} 
+                    onToggleModelLoad={models.toggleModelLoad}
+                    onDeleteSampler={entityModals.getModalProperties('sampler').delete} 
+                    onDeletePromptBlock={entityModals.getModalProperties('promptBlock').delete}
+                    onDeleteStopPattern={entityModals.getModalProperties('stopPattern').delete} 
+                    onDeleteBudgetStrategy={entityModals.getModalProperties('budgetStrategy').delete}
+                    onActivateBudgetStrategy={entityToggles.handleActivateBudgetStrategy} 
+                    onDeleteProfile={entityModals.getModalProperties('profile').delete}
+                    onActivateProfile={handleActivateProfileAndBroadcast} 
+                    onSaveProfile={profiles.saveProfile}
+                    onDeleteExtension={extensions.deleteExtension} 
+                    onToggleExtension={entityToggles.handleToggleExtension}
+                    onDeleteMemory={memories.deleteMemory} 
+                    onDeleteAccount={entityModals.getModalProperties('account').delete}
                     onToggleAccount={(id: string) => {
                         const newId = mp.currentAccountId === id ? null : id;
                         storeSetCurrentAccountId(newId);
@@ -903,10 +1015,26 @@ function App() {
                     }}
                     onDeleteMultiplayerData={entityModals.getModalProperties('multiplayerData').delete}
                     onJoinSession={mp.handleJoinSession}
-                    onUpdateInteractionData={(data: InteractionData) => { setInteractionData(assignInitialLocationsIfNeeded(data)); }}
-                    onForceFirstMessage={handleForceFirstMessage} onSendCustomMessage={handleSendCustom}
-                    onInjectCustomMessage={handleInjectCustom} onInjectFirstMessage={handleInjectFirst}
-                    onImportComplete={handleImportComplete} addToast={addToast} ensureChatsLoaded={chatList.ensureLoaded}
+                    onUpdateInteractionData={(data: InteractionData) => { 
+                        const assigned = assignInitialLocationsIfNeeded(data);
+                        setInteractionData(assigned);
+                        if (canBroadcastState) {
+                            (mp.multiplayerSync as any).broadcastStateSync?.({
+                                participants: assigned.participants,
+                                contexts: assigned.contexts,
+                                locations: assigned.locations,
+                                audioTracks: assigned.audioTracks,
+                                Profile: assigned.Profile,
+                            });
+                        }
+                    }}
+                    onForceFirstMessage={handleForceFirstMessage} 
+                    onSendCustomMessage={handleSendCustom}
+                    onInjectCustomMessage={handleInjectCustom} 
+                    onInjectFirstMessage={handleInjectFirst}
+                    onImportComplete={handleImportComplete} 
+                    addToast={addToast} 
+                    ensureChatsLoaded={chatList.ensureLoaded}
                     pendingJoinRequests={mp.multiplayerSync.pendingJoinRequests}
                     onAcceptJoinRequest={mp.multiplayerSync.acceptJoinRequest}
                     onRejectJoinRequest={mp.multiplayerSync.rejectJoinRequest}

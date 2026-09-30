@@ -9,7 +9,6 @@ interface JoinSessionModalProps {
 }
 
 export function JoinSessionModal({
-    
     onClose,
     onJoin,
 }: JoinSessionModalProps) {
