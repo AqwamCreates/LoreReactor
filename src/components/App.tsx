@@ -134,6 +134,7 @@ function App() {
     });
 
     // ─── Session Store Selectors & Actions ───────────────────────────
+    const sessionLoaded = useSessionStore((s: any) => s.sessionLoaded);
     const selectedCharacterId = useSessionStore((s: any) => s.selectedCharacterId);
     const selectedBudgetStrategyId = useSessionStore((s: any) => s.selectedBudgetStrategyId);
     const storeSetCurrentAccountId = useSessionStore((s: any) => s.setCurrentAccountId);
@@ -193,6 +194,7 @@ function App() {
 
     // ─── Chat Restoration ────────────────────────────────────
     const { activeChatRestored } = useChatRestoration({
+        sessionLoaded, // Gated: waits for session_data.json before restoring
         charsLoading: characters.isLoading,
         chatsLoading: chatList.isLoading,
         contextsLoading: contexts.isLoading,
@@ -252,7 +254,6 @@ function App() {
 
             const sync = mpSyncRef.current;
             if (sync?.isConnected) {
-                // If Host with connected peers, hand over leadership immediately
                 if (sync.isHost && sync.connectedPeers.length > 0) {
                     sync.initiateBranch();
                 } else {
@@ -335,7 +336,7 @@ function App() {
         if (mp.isMultiplayerClient) return true;
         if (activeStrategy) return true;
         if (!models.selectedModelId) return false;
-        if (models.selectedModelId.startsWith('borrowed-')) return true; // Borrowed models ready via PeerJS
+        if (models.selectedModelId.startsWith('borrowed-')) return true;
         const sel = allLanguageModels.find((m: LanguageModel) => m.id === models.selectedModelId);
         if (sel?.apiKey && sel.backend && cloudBackends.includes(sel.backend as cloudBackend)) return true;
         return models.runningModels[models.selectedModelId]?.isRunning
@@ -392,8 +393,6 @@ function App() {
     });
 
     const isMultiplayerChat = mp.isMultiplayerClient || !!(mp.multiplayerData && interactionData?.id && mp.multiplayerData.interactionDataIds.includes(interactionData.id));
-
-    // Can this client broadcast entity/world/context mutations to peers?
     const canBroadcastState = isMultiplayerChat && mp.multiplayerSync.isConnected && (mp.multiplayerSync.isHost || mp.multiplayerSync.isAdministrator);
 
     // ─── Local UI State ──────────────────────────────────────────────
@@ -522,6 +521,7 @@ function App() {
 
     // ─── Loading Screen ──────────────────────────────────────────────
     const loadSteps = useMemo<LoadStep[]>(() => [
+        { id: 'session', label: 'Session Data', icon: '⚙️', done: sessionLoaded },
         { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatList.isLoading },
         { id: 'characters', label: 'Characters', icon: '🎭', done: !characters.isLoading },
         { id: 'actions', label: 'Actions', icon: '⚡', done: !actionManager.actionsLoading },
@@ -537,7 +537,7 @@ function App() {
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profiles.isLoading },
         { id: 'accounts', label: 'Accounts', icon: '🔑', done: !accounts.isLoading },
         { id: 'multiplayerData', label: 'Multiplayer Data', icon: '👥', done: !multiplayerDataManager.isLoading },
-    ], [chatList, characters, actionManager.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, budgetStrategies, profiles, accounts, multiplayerDataManager]);
+    ], [sessionLoaded, chatList, characters, actionManager.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, budgetStrategies, profiles, accounts, multiplayerDataManager]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
@@ -881,12 +881,12 @@ function App() {
         portraitUrlCache: viewAssets.portraitUrlCache, displayNameCache,
         characterScales: new Map(), centerAvatar: viewAssets.centerAvatar,
         streamingPortraitUrl: viewAssets.streamingPortraitUrl,
-        formattedStreamingText: null, // Managed inside ChatViewArea
+        formattedStreamingText: null,
         locationBackgroundUrl: viewAssets.locationBackgroundUrl, isLoading,
         isEditingTitle: chatOps.isEditingTitle, editTitleValue: chatOps.editTitleValue,
         parentMessageId: interactionData?.parentMessageId ?? null,
         parentInteractionDataName: parentChatName,
-        streamingCharacter: null, // Managed inside ChatViewArea
+        streamingCharacter: null,
         chatHistoryRef, messageEndRef,
         editTextAreaRef, focusedMessageId, setFocusedMessageId,
         onAvatarClick: actionMenu.handleAvatarClick,
