@@ -49,6 +49,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
 }: Omit<ManagerModalProps<T>, 'isOpen'>) {
     const [searchQuery, setSearchQuery] = useState('');
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+    const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
     const hasHosterOwnedTab = hosterOwnedItems !== undefined;
@@ -62,6 +63,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     if (activeTab !== prevActiveTab) {
         setSearchQuery('');
         setConfirmDeleteId(null);
+        setConfirmRemoveId(null);
         setPrevActiveTab(activeTab);
     }
 
@@ -91,6 +93,10 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
 
     const activeConfirmDeleteId = confirmDeleteId && currentItems.some(item => item.id === confirmDeleteId)
         ? confirmDeleteId
+        : null;
+
+    const activeConfirmRemoveId = confirmRemoveId && currentItems.some(item => item.id === confirmRemoveId)
+        ? confirmRemoveId
         : null;
 
     const singularTitle = useMemo(() => getSingularNoun(title), [title]);
@@ -158,6 +164,26 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         setConfirmDeleteId(null);
     }, []);
 
+    const handleToggleClick = useCallback((e: React.MouseEvent, id: string, isInOrder: boolean) => {
+        e.stopPropagation();
+        if (isInOrder) {
+            setConfirmRemoveId(id);
+        } else {
+            onToggleOrder?.(id);
+        }
+    }, [onToggleOrder]);
+
+    const handleConfirmRemove = useCallback((e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        onToggleOrder?.(id);
+        setConfirmRemoveId(null);
+    }, [onToggleOrder]);
+
+    const handleCancelRemove = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation();
+        setConfirmRemoveId(null);
+    }, []);
+
     return (
         <div className="modal-overlay" onKeyDown={handleKeyDown}>
             <div className="modal-content modal-content-manager" onClick={e => e.stopPropagation()}>
@@ -217,6 +243,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                 const isInCurrentOrder = currentOrderIds.includes(item.id);
                                 const orderNumber = currentOrderIds.indexOf(item.id) + 1;
                                 const isConfirmingDelete = activeConfirmDeleteId === item.id;
+                                const isConfirmingRemove = activeConfirmRemoveId === item.id;
 
                                 return (
                                     <li key={item.id} className={`manager-item ${isActive ? 'selected-item' : ''} ${isSecondaryActive && !isActive ? 'strategy-item' : ''}`}>
@@ -232,12 +259,19 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
 
                                         <div className="manager-item-actions">
                                             {canToggleOrder && (
-                                                <button
-                                                    type="button"
-                                                    onClick={e => { e.stopPropagation(); onToggleOrder!(item.id); }}
-                                                    className={`toolbar-button order-toggle-button ${isInCurrentOrder ? 'order-toggle-button-active' : ''}`}
-                                                    title={isInCurrentOrder ? "Remove from active list" : "Add to active list"}
-                                                >{isInCurrentOrder ? orderNumber : '+'}</button>
+                                                isConfirmingRemove ? (
+                                                    <div className="delete-confirm-group">
+                                                        <button type="button" onClick={e => handleConfirmRemove(e, item.id)} className="toolbar-button delete-confirm-button" title="Confirm remove">✓</button>
+                                                        <button type="button" onClick={handleCancelRemove} className="toolbar-button delete-cancel-button" title="Cancel">✕</button>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={e => handleToggleClick(e, item.id, isInCurrentOrder)}
+                                                        className={`toolbar-button order-toggle-button ${isInCurrentOrder ? 'order-toggle-button-active' : ''}`}
+                                                        title={isInCurrentOrder ? "Remove from active list" : "Add to active list"}
+                                                    >{isInCurrentOrder ? orderNumber : '+'}</button>
+                                                )
                                             )}
 
                                             {specialActionIcon && onSpecialAction && (
