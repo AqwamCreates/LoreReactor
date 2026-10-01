@@ -824,7 +824,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
 
         try {
-            let currentInteractionData = currentState.interactionData;
+            const currentInteractionData = currentState.interactionData;
 
             // 1. REGENERATE STAMINA FOR PROTAGONIST BEFORE THEY SPEAK
             const { chatRegen, actionRegen } = computeModulatedRegenAmounts(activeCharacter, currentInteractionData);
