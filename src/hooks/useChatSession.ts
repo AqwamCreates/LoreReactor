@@ -9,7 +9,7 @@ import { processPendingToolActions, executeTool, type ToolExecutionContext } fro
 import { parseSlashCommand } from '../services/ToolInvocationParser';
 import { runSummarization } from '../services/SummarizationEngine';
 import { consumeChatStaminaForMessage } from '../utilities/characterLogic';
-import { getCurrentLocationId, findLocationByRegularExpression, findReachableLocationByRegularExpression } from '../utilities/locationLogic';
+import { getCurrentLocationId, findReachableLocationByRegularExpression } from '../utilities/locationLogic';
 import { detectName } from '../utilities/nameDetection';
 import { getFilteredChatMessages } from '../utilities/promptLogic';
 import { loadRawBudgetData, deleteRawMessage } from '../storages/serverStorage';
