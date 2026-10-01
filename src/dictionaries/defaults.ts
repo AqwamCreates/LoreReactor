@@ -10,7 +10,7 @@ export const defaultCharacterTools: Record<tool, boolean> = {
     think: false,
     pick: true,
     clock: true,
-    date: false,
+    calendar: false,
     coin: true,
     dice: true,
     random: true,
