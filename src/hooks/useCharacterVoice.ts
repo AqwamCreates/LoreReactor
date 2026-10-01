@@ -74,7 +74,7 @@ export function useCharacterVoice() {
 
     const speakMessage = useCallback((text: string, character: Character) => {
         if (!character.voice) return;
-        const profile = useSessionStore.getState().interactionData?.Profile;
+        const profile = useSessionStore.getState().interactionData?.profile;
         if (profile) {
             const narrateTexts = profile.narrateTexts;
             const parts: string[] = [];

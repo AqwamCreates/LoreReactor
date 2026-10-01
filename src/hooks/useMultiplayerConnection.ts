@@ -1,7 +1,7 @@
 // src/hooks/useMultiplayerConnection.ts
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Peer, { type DataConnection } from 'peerjs';
-import type { MultiplayerData, InteractionData, HistoryMessage, Character, Context, Location, AudioTrack, Profile } from '../types';
+import type { MultiplayerData, InteractionData, HistoryMessage, Character, Context, Location, AudioTrack, profile } from '../types';
 
 // ─── Unified Multiplayer Protocol & Payloads ──────────────────────────
 export type MessageType =
@@ -56,7 +56,7 @@ export interface JoinResponsePayload {
         contexts: Context[];
         locations: Location[];
         audioTracks: AudioTrack[];
-        Profile?: Profile;
+        profile?: profile;
     };
     assignedCharacter?: Character | null;
     sessionRules?: {
@@ -79,7 +79,7 @@ export interface StateSyncPayload {
     contexts?: Context[];
     locations?: Location[];
     audioTracks?: AudioTrack[];
-    Profile?: Profile;
+    profile?: profile;
     interactionHistory?: HistoryMessage[];
 }
 

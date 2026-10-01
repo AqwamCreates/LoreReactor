@@ -1,24 +1,24 @@
 // src/utilities/characterLogic.ts
-import type { Character, InteractionData, HistoryMessage, Profile, tool, ChatMessage } from "../types";
+import type { Character, InteractionData, HistoryMessage, profile, tool, ChatMessage } from "../types";
 import { findLatestMessage } from "./messageLogic";
 import { getLocalMessageHistory } from "./timelineLogic";
 
-function getEffectiveTriStateBoolean<K extends keyof Character>(key: K, character: Character, profile?: Profile): boolean {
+function getEffectiveTriStateBoolean<K extends keyof Character>(key: K, character: Character, profile?: profile): boolean {
     const characterValue = character[key] as boolean;
-    const profileValue = profile?.[key as keyof Profile] as number | undefined;
+    const profileValue = profile?.[key as keyof profile] as number | undefined;
     if (profileValue === undefined || profileValue === 0) return characterValue;
     if (profileValue < 0) return false;
     return true;
 }
 
-function getEffectiveNumeric<K extends keyof Character>(key: K, character: Character, profile?: Profile): number {
+function getEffectiveNumeric<K extends keyof Character>(key: K, character: Character, profile?: profile): number {
     const characterValue = character[key] as number;
-    const profileValue = profile?.[key as keyof Profile] as number | undefined;
+    const profileValue = profile?.[key as keyof profile] as number | undefined;
     if (profileValue === undefined || profileValue < 0) return characterValue;
     return profileValue;
 }
 
-function getEffectiveRecordStringBoolean(key: string, character: Character, profile?: Profile): Record<string, boolean> {
+function getEffectiveRecordStringBoolean(key: string, character: Character, profile?: profile): Record<string, boolean> {
     const charAny = character as unknown as Record<string, unknown>;
     const characterRecord = (charAny[key] ?? {}) as Record<string, boolean>;
     if (!profile) return characterRecord;
@@ -42,74 +42,74 @@ function getEffectiveRecordStringBoolean(key: string, character: Character, prof
     return result;
 }
 
-export function getEffectiveUseFrontCameraImage(character: Character, profile?: Profile){
+export function getEffectiveUseFrontCameraImage(character: Character, profile?: profile){
     return getEffectiveTriStateBoolean("useFrontCameraImage", character, profile)
 }
 
-export function getEffectiveChatProbability(character: Character, profile?: Profile): number {
+export function getEffectiveChatProbability(character: Character, profile?: profile): number {
     return getEffectiveNumeric("chatProbability", character, profile);
 }
 
-export function getEffectiveMaximumChatStamina(character: Character, profile?: Profile): number {
+export function getEffectiveMaximumChatStamina(character: Character, profile?: profile): number {
     return getEffectiveNumeric("maximumChatStamina", character, profile);
 }
 
-export function getEffectiveInitiativeWeight(character: Character, profile?: Profile): number {
+export function getEffectiveInitiativeWeight(character: Character, profile?: profile): number {
     if (profile?.forceEqualInitiative) return 1;
     return character.initiativeWeight ?? 1;
 }
 
-export function getEffectiveNameSensitivity(character: Character, profile?: Profile): number {
+export function getEffectiveNameSensitivity(character: Character, profile?: profile): number {
     return getEffectiveNumeric("nameSensitivity", character, profile);
 }
 
-export function getEffectiveChatImpatienceSensitivity(character: Character, profile?: Profile): number {
+export function getEffectiveChatImpatienceSensitivity(character: Character, profile?: profile): number {
     return getEffectiveNumeric("chatImpatienceSensitivity", character, profile);
 }
 
-export function getEffectiveSkipProbability(character: Character, profile?: Profile): number {
+export function getEffectiveSkipProbability(character: Character, profile?: profile): number {
     return getEffectiveNumeric("skipProbability", character, profile);
 }
 
-export function getEffectiveMemoryRetentionWeight(character: Character, profile?: Profile): number {
+export function getEffectiveMemoryRetentionWeight(character: Character, profile?: profile): number {
     return getEffectiveNumeric("memoryRetentionWeight", character, profile);
 }
 
-export function getEffectiveContextSensitivity(character: Character, profile?: Profile): number {
+export function getEffectiveContextSensitivity(character: Character, profile?: profile): number {
     return getEffectiveNumeric("contextSensitivity", character, profile);
 }
 
-export function getEffectiveMaximumActionStamina(character: Character, profile?: Profile): number {
+export function getEffectiveMaximumActionStamina(character: Character, profile?: profile): number {
     return getEffectiveNumeric("maximumActionStamina", character, profile);
 }
 
-export function getEffectiveMessagesToDisableThinkPrompt(character: Character, profile?: Profile): number {
+export function getEffectiveMessagesToDisableThinkPrompt(character: Character, profile?: profile): number {
     return getEffectiveNumeric("numberOfMessagesToDisableThinkPrompt", character, profile);
 }
 
-export function getEffectiveMessagesToDisableMetaThinkInstructions(character: Character, profile?: Profile): number {
+export function getEffectiveMessagesToDisableMetaThinkInstructions(character: Character, profile?: profile): number {
     return getEffectiveNumeric("numberOfMessagesToDisableMetaThinkInstructions", character, profile);
 }
 
-export function getEffectiveMessagesToDisableDialoguePrompt(character: Character, profile?: Profile): number {
+export function getEffectiveMessagesToDisableDialoguePrompt(character: Character, profile?: profile): number {
     return getEffectiveNumeric("numberOfMessagesToDisableDialoguePrompt", character, profile);
 }
 
-export function getEffectiveMessagesToDisableStarterPrompt(character: Character, profile?: Profile): number {
+export function getEffectiveMessagesToDisableStarterPrompt(character: Character, profile?: profile): number {
     return getEffectiveNumeric("numberOfMessagesToDisableStarterPrompt", character, profile);
 }
 
-export function getEffectiveTools(character: Character, profile?: Profile): Record<tool, boolean> {
+export function getEffectiveTools(character: Character, profile?: profile): Record<tool, boolean> {
     return getEffectiveRecordStringBoolean("tools", character, profile);
 }
 
-export function isToolEnabled(character: Character, toolName: tool, profile?: Profile): boolean {
+export function isToolEnabled(character: Character, toolName: tool, profile?: profile): boolean {
     const effectiveTools = getEffectiveTools(character, profile);
     return effectiveTools[toolName] ?? false;
 }
 
 export function getNameSensitivityMultiplier(character: Character, interactionData: InteractionData): number {
-    const sensitivity = getEffectiveNameSensitivity(character, interactionData.Profile);
+    const sensitivity = getEffectiveNameSensitivity(character, interactionData.profile);
     if (sensitivity === 0) return 1;
 
     const globalHistory = getLocalMessageHistory(interactionData, character, ['chat']);
@@ -191,7 +191,7 @@ export function consumeActionStaminaForMessage(interactionMessage: HistoryMessag
     interactionMessage.remainingActionStamina = Math.max(0, interactionMessage.remainingActionStamina - amountOfActionStaminaConsumed);
 }
 
-export function generateChatStaminaForMessage(interactionMessage: HistoryMessage, amountOfChatStaminaGenerated: number, character: Character, profile?: Profile) {
+export function generateChatStaminaForMessage(interactionMessage: HistoryMessage, amountOfChatStaminaGenerated: number, character: Character, profile?: profile) {
     const maximumChatStamina = getEffectiveMaximumChatStamina(character, profile);
     const remainingChatStamina = interactionMessage.remainingChatStamina;
 
@@ -207,7 +207,7 @@ export function generateChatStaminaForMessage(interactionMessage: HistoryMessage
     interactionMessage.remainingChatStamina = newRemainingChatStamina;
 }
 
-export function generateActionStaminaForMessage(interactionMessage: HistoryMessage, amountOfActionStaminaGenerated: number, character: Character, profile?: Profile) {
+export function generateActionStaminaForMessage(interactionMessage: HistoryMessage, amountOfActionStaminaGenerated: number, character: Character, profile?: profile) {
     const maximumActionStamina = getEffectiveMaximumActionStamina(character, profile);
     const remainingActionStamina = interactionMessage.remainingActionStamina;
 
@@ -228,7 +228,7 @@ export function generateActionStaminaForMessage(interactionMessage: HistoryMessa
  * Mutates the interactionHistories in place by updating the character's last entry.
  */
 export function generateChatStaminaForInteractionData(data: InteractionData, amountOfChatStamina: number, character: Character) {
-    const maximumChatStamina = getEffectiveMaximumChatStamina(character, data.Profile);
+    const maximumChatStamina = getEffectiveMaximumChatStamina(character, data.profile);
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return;
     
     // FIX: Replaced obsolete findPreviousMessage with spatial findLatestMessage
@@ -236,7 +236,7 @@ export function generateChatStaminaForInteractionData(data: InteractionData, amo
     const previousMessage = latest?.message;
     if (!previousMessage) return;
     
-    generateChatStaminaForMessage(previousMessage, amountOfChatStamina, character, data.Profile);
+    generateChatStaminaForMessage(previousMessage, amountOfChatStamina, character, data.profile);
 }
 
 /**
@@ -244,7 +244,7 @@ export function generateChatStaminaForInteractionData(data: InteractionData, amo
  * Mutates the interactionHistories in place by updating the character's last entry.
  */
 export function generateActionStaminaForInteractionData(data: InteractionData, amountOfActionStamina: number, character: Character) {
-    const maximumActionStamina = getEffectiveMaximumActionStamina(character, data.Profile);
+    const maximumActionStamina = getEffectiveMaximumActionStamina(character, data.profile);
     if (maximumActionStamina === Number.POSITIVE_INFINITY) return;
     
     // FIX: Replaced obsolete findPreviousMessage with spatial findLatestMessage
@@ -252,7 +252,7 @@ export function generateActionStaminaForInteractionData(data: InteractionData, a
     const previousMessage = latest?.message;
     if (!previousMessage) return;
     
-    generateActionStaminaForMessage(previousMessage, amountOfActionStamina, character, data.Profile);
+    generateActionStaminaForMessage(previousMessage, amountOfActionStamina, character, data.profile);
 }
 
 /**
@@ -261,7 +261,7 @@ export function generateActionStaminaForInteractionData(data: InteractionData, a
  * participants' names.
  */
 export function getNameMentionCount(character: Character, interactionData: InteractionData): number {
-    const sensitivity = getEffectiveNameSensitivity(character, interactionData.Profile);
+    const sensitivity = getEffectiveNameSensitivity(character, interactionData.profile);
     if (sensitivity === 0) return 0;
 
     // FIX: Replaced flat interactionHistory array with spatial getLocalMessageHistory

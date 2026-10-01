@@ -13,7 +13,7 @@ export interface DisplayNameCache {
 
 function buildDisplayNameCache(interactionData: InteractionData, protagonist?: Character): DisplayNameCache {
     const participants = interactionData.participants;
-    const forceNameReveal = interactionData.Profile?.forceNameReveal ?? false;
+    const forceNameReveal = interactionData.profile?.forceNameReveal ?? false;
 
     const participantNameMap = new Map<string, string>();
     const participantAliasesMap = new Map<string, string[]>();

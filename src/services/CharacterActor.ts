@@ -1,5 +1,5 @@
 // src/services/CharacterActor.ts
-import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile } from '../types';
+import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, profile } from '../types';
 import { saveRawBudgetData } from '../storages/serverStorage';
 import { buildChatRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
 import { detectName } from '../utilities/nameDetection';
@@ -70,7 +70,7 @@ export interface TurnExecutionParams {
 async function processToolInvocations(
     rawText: string,
     character: Character,
-    profile: Profile | undefined,
+    profile: profile | undefined,
     nextMessage: ChatMessage,
     interactionData: InteractionData,
 ): Promise<{ resumeText: string; displayText: string; displayReplacements: { type: string; value: string }[] } | null> {
@@ -218,7 +218,7 @@ export class CharacterActor {
 
                     callbacks?.onDisplayText(displayOut);
 
-                    const enableExpression = data.Profile?.enableCharacterExpression ?? false;
+                    const enableExpression = data.profile?.enableCharacterExpression ?? false;
                     if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
                         const sentiment = await sentimentEngine.analyze(s.fullText);
                         if (sentiment && sentiment.topEmotion !== previousExpression) {
@@ -276,7 +276,7 @@ export class CharacterActor {
                         }
                     }
 
-                    const toolResult = await processToolInvocations(rawText, character, data.Profile, aiMessage!, data);
+                    const toolResult = await processToolInvocations(rawText, character, data.profile, aiMessage!, data);
                     if (!toolResult) {
                         accumulatedDisplayText = accumulator.getDisplayText();
                         break;
@@ -365,7 +365,7 @@ export class CharacterActor {
                     const requestCost = finalBudgetData.budgetSpent - bd.budgetSpent;
                     statsDelta.totalCost += requestCost;
 
-                    const toolResult = await processToolInvocations(rawText, character, data.Profile, aiMessage!, data);
+                    const toolResult = await processToolInvocations(rawText, character, data.profile, aiMessage!, data);
                     if (!toolResult) {
                         accumulatedDisplayText = accumulator.getDisplayText();
                         break;
@@ -437,7 +437,7 @@ export class CharacterActor {
                         }
                     }
 
-                    const toolResult = await processToolInvocations(rawText, character, data.Profile, aiMessage!, data);
+                    const toolResult = await processToolInvocations(rawText, character, data.profile, aiMessage!, data);
                     if (!toolResult) {
                         accumulatedDisplayText = accumulator.getDisplayText();
                         break;

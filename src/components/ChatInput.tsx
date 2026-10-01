@@ -1,7 +1,7 @@
 // src/components/ChatInput.tsx
 import type React from 'react';
 import { useState, useEffect, useRef, useMemo } from 'react';
-import type { BudgetStrategy, InteractionData, Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData } from '../types';
+import type { BudgetStrategy, InteractionData, Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, profile, Memory, Account, MultiplayerData } from '../types';
 import { getLocalMessageHistory } from '../utilities/timelineLogic';
 
 interface ChatInputProps {
@@ -26,7 +26,7 @@ interface ChatInputProps {
     allPromptBlocks: PromptBlock[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
-    allProfiles: Profile[];
+    allProfiles: profile[];
     allMemories: Memory[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
@@ -237,7 +237,7 @@ function getEntityOptions(
     allPrompts: PromptBlock[],
     allSamplers: Sampler[],
     allStops: StopPattern[],
-    allProfiles: Profile[],
+    allProfiles: profile[],
     allWorlds: World[],
     allMems: Memory[],
     allAccounts: Account[],

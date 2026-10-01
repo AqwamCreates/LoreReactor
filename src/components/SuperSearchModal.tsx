@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { 
     Character, Context, Location, AudioTrack, World, PromptBlock, 
-    LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, 
+    LanguageModel, Sampler, StopPattern, BudgetStrategy, profile, 
     Memory, Account, MultiplayerData, RawInteractionData, InteractionData, 
     ObjectData, ChatMessage
 } from '../types';
@@ -41,7 +41,7 @@ export interface SuperSearchModalProps {
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
     allBudgetStrategies: BudgetStrategy[];
-    allProfiles: Profile[];
+    allProfiles: profile[];
     allMemories: Memory[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];

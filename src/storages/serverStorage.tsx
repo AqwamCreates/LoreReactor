@@ -2,7 +2,7 @@
 import type { 
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
   Character, RawCharacter, RawInteractionMessage, RawWhisperMessage, InteractionData, RawInteractionData,
-  BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
+  BudgetStrategy, RawBudgetStrategy, InterjectableAction, profile, RawProfile,
   SummarizationStep, RawSummarizationStep, Webpage, RawWebpage,
   Memory, RawMemory, Location, RawLocation, World,
   BudgetData, RawBudgetData,
@@ -856,7 +856,7 @@ export const deleteRawBudgetStrategy = budgetStrategyRepo.remove;
 // PROFILE REPOSITORY
 // =============================================================================
 
-const profileRepo = createRepository<Profile, RawProfile>({
+const profileRepo = createRepository<profile, RawProfile>({
   entityKey: 'profiles',
   hydrate: (raw, id) => {
     const now = Date.now();
@@ -887,8 +887,8 @@ const profileRepo = createRepository<Profile, RawProfile>({
       }))
       : getDefaultSummarizationSteps();
 
-    return hydrateEntity<Profile, RawProfile>(raw, id, {
-        name: 'Unknown Profile',
+    return hydrateEntity<profile, RawProfile>(raw, id, {
+        name: 'Unknown profile',
         autonomousMode: false,
         autonomousInteractionIntervalMs: 1000,
         volume: 1,
@@ -1058,7 +1058,7 @@ async function buildInteractionDataShell(
   charMap: Map<string, Character>, 
   contextMap: Map<string, Context>,
   locationMap: Map<string, Location>,
-  profileMap: Map<string, Profile>,
+  profileMap: Map<string, profile>,
   audioTrackMap?: Map<string, AudioTrack>,
 ): Promise<InteractionData | null> {
   
@@ -1082,7 +1082,7 @@ async function buildInteractionDataShell(
     .map(lid => locationMap.get(lid))
     .filter((l): l is Location => l !== undefined);
 
-  const profile = rawInteractionData.ProfileId ? profileMap.get(rawInteractionData.ProfileId) : undefined;
+  const profile = rawInteractionData.profileId ? profileMap.get(rawInteractionData.profileId) : undefined;
 
   const audioTracks = audioTrackMap
     ? (rawInteractionData.audioTrackIds || [])
@@ -1108,7 +1108,7 @@ async function buildInteractionDataShell(
     lastUpdatedTimestamp: rawInteractionData.lastUpdatedTimestamp || Date.now(),
     parentInteractionDataId: rawInteractionData.parentInteractionDataId || null, 
     parentMessageId: rawInteractionData.parentMessageId || null,
-    Profile: profile,
+    profile: profile,
   };
 }
 
@@ -1217,9 +1217,9 @@ export async function loadRawInteractionData(
     for (const l of locResults) { if (l) locationMap.set(l.id, l); }
   }
 
-  const profileMap = new Map<string, Profile>();
-  if (rawInteractionData.ProfileId) {
-    const p = await loadRawProfile(rawInteractionData.ProfileId);
+  const profileMap = new Map<string, profile>();
+  if (rawInteractionData.profileId) {
+    const p = await loadRawProfile(rawInteractionData.profileId);
     if (p) profileMap.set(p.id, p);
   }
 
@@ -1287,7 +1287,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     await Promise.all(saveMessagePromises.slice(i, i + BATCH_SIZE));
   }
 
-  const { id, protagonists, participants, contexts, locations, audioTracks, interactionHistories, parentInteractionDataId, parentMessageId, Profile, ...rawInteractionData } = interactionData;
+  const { id, protagonists, participants, contexts, locations, audioTracks, interactionHistories, parentInteractionDataId, parentMessageId, profile, ...rawInteractionData } = interactionData;
   
   const rawHistories: Record<string, string[]> = {};
   for (const [locId, messages] of Object.entries(interactionHistories)) {
@@ -1304,7 +1304,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     interactionHistories: rawHistories,
     parentInteractionDataId: parentInteractionDataId || null, 
     parentMessageId: parentMessageId || null,
-    ProfileId: Profile?.id,
+    profileId: profile?.id,
     lastUpdatedTimestamp: Date.now(),
   };
   await putJson(`${PATHS.interactionData}/${id}.json`, payload);
@@ -1352,7 +1352,7 @@ export async function branchRawInteractionData(parentInteractionDataId: string, 
     lastUpdatedTimestamp: Date.now(), 
     parentInteractionDataId, 
     parentMessageId,
-    ProfileId: sourceChat.Profile?.id,
+    profileId: sourceChat.profile?.id,
   };
   await putJson(`${PATHS.interactionData}/${newChatId}.json`, newPayload);
   await updateManifest('interactionData', newChatId, 'add');

@@ -500,7 +500,7 @@ export interface InteractionData extends ObjectData {
   numberOfMessages?: number;
   parentInteractionDataId?: string | null;
   parentMessageId?: string | null;
-  Profile?: Profile;
+  profile?: profile;
 }
 
 export interface RawInteractionData extends RawData {
@@ -512,7 +512,7 @@ export interface RawInteractionData extends RawData {
   interactionHistories: Record<string, string[]>; // location Id -> InteractionHistory at that location.
   parentInteractionDataId?: string | null;
   parentMessageId?: string | null;
-  ProfileId?: string;
+  profileId?: string;
 }
 
 export type ExtensionType = 'Image Generation API' | 'Accessibility' | 'Extra';
@@ -693,7 +693,16 @@ export type textType = "normal" | "quoted" | "bolded" | "italicized" | "parenthe
 export type toolUsageDisplayMode = "none" | "icon" | "simple" | "detailed" | "full" | "raw" // Default is none.
 
 export type cacheEfficiencyConfigurationType = 'Character Name' | 'System Prompt' | 'Think Prompt' // 0 -> No optimization, 1 -> Limited to co-located participants, 2 -> All participants
-export interface Profile extends ObjectData {
+export interface AutoResumeSignal {
+
+  regularExpressionActivationTrigger?: string; // If not empty, this activates the auto-resume.
+  regularExpressionDeactivationTrigger?: string; // If not empty, this deactivates the auto-resume.
+  stopPattern: string; // This will append this to the existing stop patterns in the sampler if the activation signal is met. If the activation signal is empty, then a partial text would activate the actions instead.
+  minimumLength: string; // Default is 0. Measured based on individual text characters after the activation trigger. If empty, check the overall message length instead. Once the generated partial text exceeds this length, it would allow deactivationTrigger to take place.
+  maximumNumberOfAutoResumes: number // At 0, no auto-resume. Default is 10.
+
+}
+export interface profile extends ObjectData {
   autonomousMode: boolean;
   autonomousInteractionIntervalMs: number;
   volume: number;
@@ -732,6 +741,7 @@ export interface Profile extends ObjectData {
   summarizationSteps: SummarizationStep[];
   summarizationInstruction?: string // If empty, then use in-built default.
   enableSpeculativeMarkov: boolean;
+  autoResumeSignals: AutoResumeSignal[]; // When empty, the models will determine the natural stop. Otherwise, if the partially-generated text does not end with these signals, it will auto-resume until this signal is hit.
   characterSampler?: Sampler;
   webSummarizationSampler?: Sampler;
   interactionDataSummarizationSampler?: Sampler;
@@ -781,6 +791,7 @@ export interface RawProfile extends RawData {
   summarizationSteps: RawSummarizationStep[];
   summarizationInstruction?: string // If empty, then use in-built default.
   enableSpeculativeMarkov: boolean;
+  autoResumeSignals: AutoResumeSignal[]; // When empty, the models will determine the natural stop. Otherwise, if the partially-generated text does not end with these signals and has visited the activating, it will auto-resume until this signal is hit.
   characterSamplerId?: string;
   webSummarizationSamplerId?: string;
   interactionDataSummarizationSamplerId?: string;
@@ -895,7 +906,7 @@ export interface ActionFormatData {
     matrix?: Record<string, Record<string, number>>;
 }
 
-export type Entity = Character | Context | Location | AudioTrack | World | PromptBlock | LanguageModel | Sampler | StopPattern | Profile | BudgetStrategy | Account | MultiplayerData
+export type Entity = Character | Context | Location | AudioTrack | World | PromptBlock | LanguageModel | Sampler | StopPattern | profile | BudgetStrategy | Account | MultiplayerData
 
 export type entityType = 
     | 'character' | 'context' | 'location' | 'audioTrack' 

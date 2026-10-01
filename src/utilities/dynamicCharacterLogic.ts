@@ -81,10 +81,10 @@ export function getLocalInitiativeRank(character: Character, data: InteractionDa
         exclusivityBoost = Math.max(exclusivityBoost, ownerExclusivity);
     }
 
-    const charInit = getEffectiveInitiativeWeight(character, data.Profile);
+    const charInit = getEffectiveInitiativeWeight(character, data.profile);
     let outrankedBy = 0;
     for (const other of coLocated) {
-        if (getEffectiveInitiativeWeight(other, data.Profile) > charInit) outrankedBy++;
+        if (getEffectiveInitiativeWeight(other, data.profile) > charInit) outrankedBy++;
     }
 
     return 1 / (1 + outrankedBy * (1 - exclusivityBoost));
@@ -118,7 +118,7 @@ export function sampleStochasticRegenAmount(maxStamina: number): number {
 }
 
 export function computeGlobalScore(character: Character, data: InteractionData): number {
-    const profile = data.Profile;
+    const profile = data.profile;
     const latest = findLatestMessage(data, character);
     const lastMsg = latest?.message;
 
@@ -143,7 +143,7 @@ export function computeGlobalScore(character: Character, data: InteractionData):
 }
 
 export function computeChatScore(character: Character, data: InteractionData): number {
-    const profile = data.Profile;
+    const profile = data.profile;
     const latest = findLatestMessage(data, character);
     const lastMsg = latest?.message;
 
@@ -190,7 +190,7 @@ export function computeChatScore(character: Character, data: InteractionData): n
 }
 
 export function computeActionScore(character: Character, data: InteractionData, triggeringMessageText?: string): number {
-    const profile = data.Profile;
+    const profile = data.profile;
     const latest = findLatestMessage(data, character);
     const lastMsg = latest?.message;
 
@@ -233,7 +233,7 @@ export function computeModulatedRegenAmounts(
     character: Character,
     data: InteractionData,
 ): { chatRegen: number; actionRegen: number } {
-    const profile = data.Profile;
+    const profile = data.profile;
     const maxChat = getEffectiveMaximumChatStamina(character, profile);
     const maxAction = getEffectiveMaximumActionStamina(character, profile);
     const latest = findLatestMessage(data, character);
@@ -291,7 +291,7 @@ export function computeEffectiveSkip(
     data: InteractionData,
     triggeringMessageText?: string,
 ): number {
-    const profile = data.Profile;
+    const profile = data.profile;
     const baseSkip = getEffectiveSkipProbability(character, profile);
 
     const maxChat = getEffectiveMaximumChatStamina(character, profile);
@@ -387,7 +387,7 @@ export function computeMovementCost(fromId: string, toId: string, locations: Loc
  * No hardcoded caps; bounds are derived directly from the character's initiative weight.
  */
 export function computeAutonomousTickDelay(character: Character, data: InteractionData): number {
-    const profile = data.Profile;
+    const profile = data.profile;
     
     // 1. Base bounds derived entirely from character's initiative (higher initiative = faster potential reactions)
     const initiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));

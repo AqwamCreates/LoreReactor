@@ -297,7 +297,7 @@ export async function cloneChatUpToMessage(currentChat: InteractionData, message
         locations: (currentChat.locations || []).map(l => ({ ...l })),
         audioTracks: (currentChat.audioTracks || []).map(a => ({ ...a })),
         interactionHistories: clonedHistories,
-        Profile: currentChat.Profile,
+        profile: currentChat.profile,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
         parentInteractionDataId: null,

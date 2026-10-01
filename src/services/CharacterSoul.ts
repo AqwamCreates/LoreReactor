@@ -41,7 +41,7 @@ export class CharacterSoul {
             const data = getData();
             
             // ─── THE GATEKEEPER ───
-            if (!data || !data.Profile?.autonomousMode || !this.abortController) {
+            if (!data || !data.profile?.autonomousMode || !this.abortController) {
                 this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange);
                 return;
             }

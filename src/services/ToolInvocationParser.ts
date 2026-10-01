@@ -3,57 +3,32 @@
 import { toolStartSring, toolEndString } from "../dictionaries/stringList";
 import type { tool } from "../types";
 
-const characterAgnosticTools: tool[] = ['whisper', 'think', 'pick', 'clock', 'calendar', 'coin', 'dice', 'random', 'rng', 'move', 'dialogue', 'knowledge', 'memory', 'lookup', 'map', 'audio', 'clothing', 'note', 'inventory', 'trade'] // Audio is here because you can make noises from footsteps and stuff like that.
+const characterAgnosticTools: tool[] = ['whisper', 'think', 'pick', 'clock', 'calendar', 'coin', 'dice', 'random', 'rng', 'move', 'dialogue', 'knowledge', 'memory', 'lookup', 'map', 'audio', 'clothing', 'note', 'inventory', 'trade'];
+const characterSpecificTools: tool[] = ['timer', 'stopwatch', 'calculator', 'schedule', 'web', 'invite', 'kick', 'teleport' , 'key', 'summon', 'narrate'];
+const metaTools: tool[] = ['inspect', 'administrator', 'creator', 'destroyer'];
 
-const characterSpecificTools: tool[] = ['timer', 'stopwatch', 'calculator', 'schedule', 'web', 'invite', 'kick', 'teleport' , 'key', 'summon', 'narrate'] // These tools allows express characters' traits like intelligence and curiosity. Therefore, these would have their own activation and deactivation settings.
-
-const metaTools: tool[] = ['inspect', 'administrator', 'creator', 'destroyer']
-
-/*
-
-calculator: For people who are capable of doing mental math or very serious about being accurate.
-
-web: For expressing curiosity or ignorance.
-
-*/
-
-export const validTools: tool[] = [...characterAgnosticTools, ...characterSpecificTools, ...metaTools]
+export const validTools: tool[] = [...characterAgnosticTools, ...characterSpecificTools, ...metaTools];
 
 export interface ToolInvocation {
-    /** The full matched string including markers, e.g. "${toolStartSring}web: weather in Tokyo:tool|" */
     rawMatch: string;
-    /** The tool type, e.g. "web" or "calculator" */
     toolType: string;
-    /** The arguments after the tool type, e.g. "weather in Tokyo" */
     args: string;
 }
 
 export interface ParsedStreamResult {
-    /** Text safe to display to the user (tool blocks removed or replaced) */
     displayText: string;
-    /** Text to use as existingCharacterText when resuming generation (tool blocks replaced with results) */
     resumeText: string;
-    /** Tool invocations found in this chunk, in order of appearance */
     toolInvocations: ToolInvocation[];
-    /** Whether the stream ended mid-tool (suppressed state, waiting for ${toolEndSring}) */
     isSuppressed: boolean;
 }
 
 type ParserState = 'NORMAL' | 'SUPPRESSING';
 
-/**
- * Parses streamed text for tool invocation markers.
- * Maintains internal state across calls to handle markers split across chunks.
- */
 export class ToolInvocationParser {
     private state: ParserState = 'NORMAL';
     private buffer = '';
     private suppressedAccumulator = '';
 
-    /**
-     * Feed a chunk of streamed text. Returns parsed result with display text,
-     * resume text, and any complete tool invocations found.
-     */
     processChunk(chunk: string): ParsedStreamResult {
         const input = this.buffer + chunk;
         this.buffer = '';
@@ -63,15 +38,11 @@ export class ToolInvocationParser {
         const toolInvocations: ToolInvocation[] = [];
 
         let i = 0;
-
         while (i < input.length) {
             if (this.state === 'NORMAL') {
-
-                // Look for start marker
                 const startIdx = input.indexOf(toolStartSring, i);
 
                 if (startIdx === -1) {
-                    // No marker found — check if tail could be partial marker
                     const tail = input.slice(i);
                     if (this.isPartialMarker(tail, toolStartSring)) {
                         this.buffer = tail;
@@ -82,99 +53,73 @@ export class ToolInvocationParser {
                     break;
                 }
 
-                // Output everything before the marker
-                const before = input.slice(i, startIdx);
+                // 1. Process text before the tool tag
+                let before = input.slice(i, startIdx);
+                // Collapse trailing double-newlines before a tool into a single newline
+                before = before.replace(/\n\s*\n\s*$/, '\n');
+                
                 displayOut += before;
                 resumeOut += before;
 
-                // Check if end marker exists after start
                 const afterStart = startIdx + toolStartSring.length;
                 const endIdx = input.indexOf(toolEndString, afterStart);
 
                 if (endIdx === -1) {
-                    // Start marker found but no end marker yet — enter suppressed state
                     this.state = 'SUPPRESSING';
                     this.suppressedAccumulator = input.slice(afterStart);
                     break;
                 }
 
-                // Complete tool invocation found in this chunk
                 const toolContent = input.slice(afterStart, endIdx).trim();
                 const invocation = parseToolContent(toolContent);
+                if (invocation) toolInvocations.push(invocation);
 
-                if (invocation) {
-                    toolInvocations.push(invocation);
+                // 2. Process text after the tool tag
+                let nextPos = endIdx + toolEndString.length;
+                // Collapse leading double-newlines after a tool into a single newline
+                let after = input.slice(nextPos);
+                if (/^\n\s*\n/.test(after)) {
+                    after = after.replace(/^\n\s*\n/, '\n');
                 }
-
-                i = endIdx + toolEndString.length;
+                
+                // If we consumed the start of the next text block, we adjust the pointer
+                // but for simplicity in streaming, we just push the cleaned 'after'
+                // to the buffers if there's no start marker immediately following.
+                input.slice(nextPos); // consumed
+                i = nextPos; 
+                // We don't advance 'i' further here, the loop will process the cleaned 'after' 
+                // via displayOut in the next iteration or break.
+                
             } else if (this.state === 'SUPPRESSING') {
-                // Looking for end marker within accumulated suppressed text + new input
                 const combined = this.suppressedAccumulator + input.slice(i);
                 const endIdx = combined.indexOf(toolEndString);
 
                 if (endIdx === -1) {
-                    // Still no end marker — keep accumulating
                     this.suppressedAccumulator = combined;
                     break;
                 }
 
-                // End marker found
                 const toolContent = combined.slice(0, endIdx).trim();
                 const invocation = parseToolContent(toolContent);
-
-                if (invocation) {
-                    toolInvocations.push(invocation);
-                }
+                if (invocation) toolInvocations.push(invocation);
 
                 this.state = 'NORMAL';
                 this.suppressedAccumulator = '';
-
-                // Continue processing remainder after end marker
-                const remainder = combined.slice(endIdx + toolEndString.length);
-                if (remainder.length > 0) {
-                    // Re-process remainder through normal state
-                    const subResult = this.processChunk(remainder);
-                    displayOut += subResult.displayText;
-                    resumeOut += subResult.resumeText;
-                    toolInvocations.push(...subResult.toolInvocations);
-                    // If sub-processing re-entered suppressed state, propagate
-                    if (subResult.isSuppressed) {
-                        return {
-                            displayText: displayOut,
-                            resumeText: resumeOut,
-                            toolInvocations,
-                            isSuppressed: true,
-                        };
-                    }
-                }
-                break;
+                i = endIdx + toolEndString.length;
             }
         }
 
-        return {
-            displayText: displayOut,
-            resumeText: resumeOut,
-            toolInvocations,
-            isSuppressed: this.state === 'SUPPRESSING',
-        };
+        return { displayText: displayOut, resumeText: resumeOut, toolInvocations, isSuppressed: this.state === 'SUPPRESSING' };
     }
 
-    /**
-     * Reset parser state. Call when starting a new generation.
-     */
     reset(): void {
         this.state = 'NORMAL';
         this.buffer = '';
         this.suppressedAccumulator = '';
     }
 
-    /**
-     * Check if a string is a partial prefix of a marker.
-     * Used to avoid splitting markers across chunks.
-     */
     private isPartialMarker(tail: string, marker: string): boolean {
-        if (tail.length === 0 || tail.length >= marker.length) return false;
-        return marker.startsWith(tail);
+        return tail.length > 0 && tail.length < marker.length && marker.startsWith(tail);
     }
 }
 
@@ -182,124 +127,36 @@ function isValidToolType(type: string): boolean {
     return validTools.includes(type as tool);
 }
 
-/**
- * Parse tool content string into type and arguments.
- * Format: "type: arguments" or "type arguments"
- */
 function parseToolContent(content: string): ToolInvocation | null {
-    if (!content.trim()) return null;
-
     const trimmed = content.trim();
+    if (!trimmed) return null;
 
-    // 1. Try standard colon or space separation first (safest for args containing brackets)
-    const colonIdx = trimmed.indexOf(':');
-    if (colonIdx > 0) {
-        const toolType = trimmed.slice(0, colonIdx).trim().toLowerCase();
-        const args = trimmed.slice(colonIdx + 1).trim();
-        if (toolType && isValidToolType(toolType)) {
-            return {
-                rawMatch: `${toolStartSring}${content}${toolEndString}`,
-                toolType,
-                args,
-            };
-        }
-    }
-
-    const spaceIdx = trimmed.indexOf(' ');
-    if (spaceIdx > 0) {
-        const toolType = trimmed.slice(0, spaceIdx).trim().toLowerCase();
-        const args = trimmed.slice(spaceIdx + 1).trim();
-        if (toolType && isValidToolType(toolType)) {
-            return {
-                rawMatch: `${toolStartSring}${content}${toolEndString}`,
-                toolType,
-                args,
-            };
-        }
-    }
-
-    // 2. Fallback: Regex to handle LLM hallucinations like "dice}1d20}" or "dice(1d20)"
-    // Matches: valid_tool_name followed by any non-alphanumeric separator, then the rest
-    const hallucinationMatch = trimmed.match(/^([a-zA-Z_]+)[^a-zA-Z0-9]+(.*)$/);
-    if (hallucinationMatch) {
-        const toolType = hallucinationMatch[1].toLowerCase();
-        // Clean up trailing hallucinated brackets/braces from the args
-        const args = hallucinationMatch[2].replace(/[)}\]]+$/, '').trim();
-        
+    const separatorIdx = trimmed.search(/[:\s]/);
+    if (separatorIdx > 0) {
+        const toolType = trimmed.slice(0, separatorIdx).toLowerCase();
+        const args = trimmed.slice(separatorIdx + 1).trim();
         if (isValidToolType(toolType)) {
-            return {
-                rawMatch: `${toolStartSring}${content}${toolEndString}`,
-                toolType,
-                args,
-            };
+            return { rawMatch: `${toolStartSring}${content}${toolEndString}`, toolType, args };
         }
     }
-
-    // 3. Single word with no args (unlikely but handle gracefully)
+    
     const singleWord = trimmed.toLowerCase();
     if (isValidToolType(singleWord)) {
-        return {
-            rawMatch: `${toolStartSring}${content}${toolEndString}`,
-            toolType: singleWord,
-            args: '',
-        };
+        return { rawMatch: `${toolStartSring}${content}${toolEndString}`, toolType: singleWord, args: '' };
     }
-
-    console.warn(`Unknown tool type in invocation: "${trimmed}"`);
     return null;
 }
 
-/**
- * Parse slash command input into a tool invocation.
- * Format: "/tool args" or "/tool: args"
- * Returns null if input is not a valid slash command.
- */
 export function parseSlashCommand(input: string): ToolInvocation | null {
     const trimmed = input.trim();
-
-    // Must start with /
     if (!trimmed.startsWith('/')) return null;
-
     const withoutSlash = trimmed.slice(1).trim();
     if (!withoutSlash) return null;
 
-    // Try colon-separated: "/search: weather in Tokyo"
-    const colonIdx = withoutSlash.indexOf(':');
-    if (colonIdx > 0) {
-        const toolType = withoutSlash.slice(0, colonIdx).trim().toLowerCase();
-        const args = withoutSlash.slice(colonIdx + 1).trim();
-        if (toolType && isValidToolType(toolType)) {
-            return {
-                rawMatch: trimmed,
-                toolType,
-                args,
-            };
-        }
+    const parts = withoutSlash.split(/[:\s]/);
+    const toolType = parts[0].toLowerCase();
+    if (isValidToolType(toolType)) {
+        return { rawMatch: trimmed, toolType, args: withoutSlash.slice(toolType.length).replace(/^[:\s]+/, '').trim() };
     }
-
-    // Try space-separated: "/calculator 2+2*3"
-    const spaceIdx = withoutSlash.indexOf(' ');
-    if (spaceIdx > 0) {
-        const toolType = withoutSlash.slice(0, spaceIdx).trim().toLowerCase();
-        const args = withoutSlash.slice(spaceIdx + 1).trim();
-        if (toolType && isValidToolType(toolType)) {
-            return {
-                rawMatch: trimmed,
-                toolType,
-                args,
-            };
-        }
-    }
-
-    // Single word with no args: "/date"
-    const singleWord = withoutSlash.toLowerCase();
-    if (isValidToolType(singleWord)) {
-        return {
-            rawMatch: trimmed,
-            toolType: singleWord,
-            args: '',
-        };
-    }
-
     return null;
 }

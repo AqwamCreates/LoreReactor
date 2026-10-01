@@ -1,6 +1,6 @@
 // src/components/RestrictionReductionModal.tsx
 import { useState, useRef, useEffect, useMemo } from 'react';
-import type { Character, Profile, Sampler, LanguageModel } from '../types';
+import type { Character, profile, Sampler, LanguageModel } from '../types';
 import { EntitySelect } from './EntitySelect';
 import { EntitySelectList } from './EntitySelectList';
 import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
@@ -46,7 +46,7 @@ interface RestrictionReductionModalProps {
     onClose: () => void;
     onSaveCharacter: (character: Character) => Promise<boolean>;
     allCharacters: Character[];
-    allProfiles: Profile[];
+    allProfiles: profile[];
     allLanguageModels: LanguageModel[];
     allSamplers: Sampler[];
     runningModels: Record<string, { isRunning: boolean; port?: number }>;
@@ -1022,8 +1022,8 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
 
                     <div className="editor-section" style={{ margin: 0 }}>
                         <EntitySelect 
-                            label="Profile" 
-                            description="Profile providing settings and guidelines for prompt assembly during testing."
+                            label="profile" 
+                            description="profile providing settings and guidelines for prompt assembly during testing."
                             items={allProfiles} 
                             selectedId={selectedProfileId} 
                             onSelect={identifier => setSelectedProfileId(identifier)} 

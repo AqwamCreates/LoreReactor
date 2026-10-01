@@ -485,7 +485,7 @@ export function AlternateTimelinesModal({
                     contextCount: shell.contextIds?.length ?? 0,
                     locationCount: shell.locationIds?.length ?? 0,
                     audioTrackCount: shell.audioTrackIds?.length ?? 0,
-                    hasProfile: !!shell.ProfileId,
+                    hasProfile: !!shell.profileId,
                     isCurrent,
                     isAncestor,
                     hasChildren,

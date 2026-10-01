@@ -14,7 +14,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     const includeLocation = selectedEntities.includes('Location');
     const includeAudioTrack = selectedEntities.includes('AudioTrack');
     const includePromptBlock = selectedEntities.includes('PromptBlock');
-    const includeProfile = selectedEntities.includes('Profile');
+    const includeProfile = selectedEntities.includes('profile');
 
     if (includeCharacter) {
         parts.push(`  "characters": [{

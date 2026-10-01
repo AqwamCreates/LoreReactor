@@ -108,8 +108,8 @@ export function useChatAutoSave(options: UseChatAutoSaveOptions) {
 
         const hasActualChange = !prev
             || prev.name !== syncedData.name
-            || prev.Profile?.id !== syncedData.Profile?.id
-            || prev.Profile?.lastUpdatedTimestamp !== syncedData.Profile?.lastUpdatedTimestamp
+            || prev.profile?.id !== syncedData.profile?.id
+            || prev.profile?.lastUpdatedTimestamp !== syncedData.profile?.lastUpdatedTimestamp
             || haveEntitiesChanged(prev.protagonists, syncedData.protagonists)
             || haveEntitiesChanged(prev.participants, syncedData.participants)
             || haveEntitiesChanged(prev.contexts, syncedData.contexts)

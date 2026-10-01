@@ -1,10 +1,10 @@
 // src/hooks/useProfileManager.ts
 import { useState } from 'react';
-import type { Profile } from '../types';
+import type { profile } from '../types';
 import { loadAllRawProfiles, saveRawProfile, deleteRawProfile } from '../storages/serverStorage';
 
 export function useProfileManager() {
-    const [profiles, setProfiles] = useState<Profile[]>([]);
+    const [profiles, setProfiles] = useState<profile[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
     const loadProfiles = async () => {
@@ -17,7 +17,7 @@ export function useProfileManager() {
         }
     };
 
-    const saveProfile = async (profile: Profile) => {
+    const saveProfile = async (profile: profile) => {
         try {
             await saveRawProfile(profile);
             await loadProfiles();

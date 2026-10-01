@@ -528,7 +528,7 @@ export function useMultiplayerSync({
                     ...(payload.contexts !== undefined ? { contexts: payload.contexts } : {}),
                     ...(payload.locations !== undefined ? { locations: payload.locations } : {}),
                     ...(payload.audioTracks !== undefined ? { audioTracks: payload.audioTracks } : {}),
-                    ...(payload.Profile !== undefined ? { Profile: payload.Profile } : {}),
+                    ...(payload.profile !== undefined ? { profile: payload.profile } : {}),
                     lastUpdatedTimestamp: Date.now(),
                 };
 
@@ -932,7 +932,7 @@ export function useMultiplayerSync({
                     contexts: currentData.contexts,
                     locations: currentData.locations,
                     audioTracks: currentData.audioTracks,
-                    Profile: currentData.Profile,
+                    profile: currentData.profile,
                 } : undefined;
 
                 sendToRef.current(requestingAccountId, {
@@ -1356,7 +1356,7 @@ export function useMultiplayerSync({
                     contexts: currentData.contexts,
                     locations: currentData.locations,
                     audioTracks: currentData.audioTracks,
-                    Profile: currentData.Profile,
+                    profile: currentData.profile,
                 } : undefined;
 
                 sendToRef.current(accountId, {

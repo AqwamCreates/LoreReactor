@@ -1,7 +1,7 @@
 // src/components/AIRecommendationModal.tsx
 import type React from 'react';
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World, PromptBlock } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, profile, World, PromptBlock } from '../types';
 import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
 import { EntitySelectList } from './EntitySelectList';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -20,14 +20,14 @@ interface AIRecommendationModalProps {
     onSaveContext: (context: Context) => Promise<boolean>;
     onSaveLocation: (loc: Location) => Promise<boolean>;
     onSaveAudioTrack: (track: AudioTrack) => Promise<boolean>;
-    onSaveProfile: (profile: Profile) => Promise<boolean>;
+    onSaveProfile: (profile: profile) => Promise<boolean>;
     onSaveWorld: (world: World) => Promise<boolean>;
     onSavePromptBlock: (block: PromptBlock) => Promise<boolean>;
     onOpenCharacterEditor?: (char: Character | null, onApplyToRecommendation: (c: Character) => void) => void;
     onOpenContextEditor?: (context: Context | null, onApplyToRecommendation: (c: Context) => void) => void;
     onOpenLocationEditor?: (loc: Location | null, onApplyToRecommendation: (l: Location) => void) => void;
     onOpenAudioTrackEditor?: (track: AudioTrack | null, onApplyToRecommendation: (t: AudioTrack) => void) => void;
-    onOpenProfileEditor?: (profile: Profile | null, onApplyToRecommendation: (p: Profile) => void) => void;
+    onOpenProfileEditor?: (profile: profile | null, onApplyToRecommendation: (p: profile) => void) => void;
     onOpenPromptBlockEditor?: (block: PromptBlock | null, onApplyToRecommendation: (b: PromptBlock) => void) => void;
     allSamplers: Sampler[];
     aiRecommendationSampler?: Sampler;
@@ -380,7 +380,7 @@ export function AIRecommendationModal({
     if (hasCtxs) availableTabs.push('Context');
     if (hasLocs) availableTabs.push('Location');
     if (hasTracks) availableTabs.push('AudioTrack');
-    if (hasProf) availableTabs.push('Profile');
+    if (hasProf) availableTabs.push('profile');
     if (hasBlocks) availableTabs.push('PromptBlock');
     if (hasWorld) availableTabs.push('World');
     const effectiveTab = availableTabs.includes(activeTab) ? activeTab : 'raw';
@@ -451,7 +451,7 @@ export function AIRecommendationModal({
                                 {hasCtxs && <button type="button" className={`editor-button ${activeTab === 'Context' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('Context')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>📜 Contexts ({contexts.length})</button>}
                                 {hasLocs && <button type="button" className={`editor-button ${activeTab === 'Location' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('Location')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>📍 Locations ({locations.length})</button>}
                                 {hasTracks && <button type="button" className={`editor-button ${activeTab === 'AudioTrack' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('AudioTrack')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>🔊 Audio Tracks ({audioTracks.length})</button>}
-                                {hasProf && profile && <button type="button" className={`editor-button ${activeTab === 'Profile' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('Profile')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>👤 {profile.name}</button>}
+                                {hasProf && profile && <button type="button" className={`editor-button ${activeTab === 'profile' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('profile')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>👤 {profile.name}</button>}
                                 {hasBlocks && <button type="button" className={`editor-button ${activeTab === 'PromptBlock' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('PromptBlock')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>🧱 Prompt Blocks ({promptBlocks.length})</button>}
                                 {hasWorld && world && <button type="button" className={`editor-button ${activeTab === 'World' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('World')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>🌍 {world.name}</button>}
                                 <button type="button" className={`editor-button ${activeTab === 'raw' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('raw')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>📄 Raw JSON</button>
@@ -499,7 +499,7 @@ export function AIRecommendationModal({
                                 ))}
                             </div>}
 
-                            {effectiveTab === 'Profile' && hasProf && profile && <div className="entity-field-list">
+                            {effectiveTab === 'profile' && hasProf && profile && <div className="entity-field-list">
                                 {renderSummary(profile.description)}
                                 {renderFieldList(Object.entries(profile).filter(([k]) => k !== 'description' && k !== 'id' && k !== 'firstCreatedTimestamp' && k !== 'lastUpdatedTimestamp'))}
                                 {onOpenProfileEditor && <div style={{ marginTop: '12px', textAlign: 'center' }}><button type="button" className="editor-button editor-button-save" onClick={() => onOpenProfileEditor(profile, () => {})} style={editBtnStyle}>✏️ Open in Editor</button></div>}
@@ -523,7 +523,7 @@ export function AIRecommendationModal({
                                 <div className="entity-field-block"><div className="entity-field-title">Locations ({world.locations.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{world.locations.map((l, i) => <div key={l.id || i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>📍 {l.name}</div>{l.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{l.description.length > 150 ? l.description.substring(0, 150) + '...' : l.description}</div>}</div>)}</div></div>
                                 <div className="entity-field-block"><div className="entity-field-title">Audio Tracks ({world.audioTracks.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{world.audioTracks.map((t, i) => <div key={t.id || i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>🔊 {t.name}</div>{t.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{t.description.length > 150 ? t.description.substring(0, 150) + '...' : t.description}</div>}<div style={{ opacity: 0.5, fontSize: '0.6rem', marginTop: '1px' }}>{t.audioCategory || 'ambient'} • {t.filename}</div></div>)}</div></div>
                                 <div className="entity-field-block"><div className="entity-field-title">Prompt Blocks ({world.promptBlocks.length})</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>{world.promptBlocks.map((b, i) => <div key={b.id || i} style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem' }}><div style={{ fontWeight: 600 }}>🧱 {b.name}</div>{b.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{b.description.length > 150 ? b.description.substring(0, 150) + '...' : b.description}</div>}</div>)}</div></div>
-                                {world.profile && <div className="entity-field-block"><div className="entity-field-title">Profile</div><div style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem', marginTop: '4px' }}><div style={{ fontWeight: 600 }}>👤 {world.profile.name}</div>{world.profile.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{world.profile.description.length > 150 ? world.profile.description.substring(0, 150) + '...' : world.profile.description}</div>}</div></div>}
+                                {world.profile && <div className="entity-field-block"><div className="entity-field-title">profile</div><div style={{ padding: '4px 8px', background: 'var(--social-bg)', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.7rem', marginTop: '4px' }}><div style={{ fontWeight: 600 }}>👤 {world.profile.name}</div>{world.profile.description && <div style={{ opacity: 0.7, fontStyle: 'italic', marginTop: '2px', fontSize: '0.65rem' }}>{world.profile.description.length > 150 ? world.profile.description.substring(0, 150) + '...' : world.profile.description}</div>}</div></div>}
                                 <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                     {onOpenCharacterEditor && world.characters.map((c, i) => <button key={c.id || `wc-${i}`} type="button" className="editor-button editor-button-cancel" onClick={() => onOpenCharacterEditor(c, () => {})} style={worldEditBtnStyle}>✏️ Edit 🎭 {c.name}</button>)}
                                     {onOpenContextEditor && world.contexts.map((c, i) => <button key={c.id || `wx-${i}`} type="button" className="editor-button editor-button-cancel" onClick={() => onOpenContextEditor(c, () => {})} style={worldEditBtnStyle}>✏️ Edit 📜 {c.name}</button>)}

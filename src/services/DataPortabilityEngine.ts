@@ -1,7 +1,7 @@
 // src/services/DataPortabilityEngine.ts
 import type {
     Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock,
-    StopPattern, BudgetStrategy, Profile, InteractionData, InterjectableAction, Memory,
+    StopPattern, BudgetStrategy, profile, InteractionData, InterjectableAction, Memory,
     Account, MultiplayerData, SessionData, MultiplayerJoinData, ActionFormatData, BudgetData,
 } from '../types';
 import type { FormatPreferenceData } from './FormatPreferenceEngine';
@@ -44,7 +44,7 @@ export interface LoreReactorExport {
     promptBlocks: PromptBlock[];
     stopPatterns: StopPattern[];
     budgetStrategies: BudgetStrategy[];
-    profiles: Profile[];
+    profiles: profile[];
     memories: Memory[];
     accounts: Account[];
     multiplayerData: MultiplayerData[];
@@ -285,7 +285,7 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
     }
     for (const p of data.profiles) {
         try { await saveRawProfile(p); result.counts.profiles++; }
-        catch (e) { result.errors.push(`Profile "${p.name || p.id}": ${(e as Error).message}`); }
+        catch (e) { result.errors.push(`profile "${p.name || p.id}": ${(e as Error).message}`); }
     }
     for (const acc of (data.accounts ?? [])) {
         try { await saveRawAccount(acc); result.counts.accounts++; }

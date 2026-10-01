@@ -1,6 +1,6 @@
 // src/components/renderHelpers.tsx
 import type React from 'react';
-import type { LanguageModel, BudgetStrategy, Profile, RawInteractionData, cloudBackend, promptBlockType } from '../types';
+import type { LanguageModel, BudgetStrategy, profile, RawInteractionData, cloudBackend, promptBlockType } from '../types';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 
 export function getRenderSubTextForTriStates(value: number, text: string): React.ReactNode {
@@ -39,7 +39,7 @@ export function renderBudgetStrategySubtext(strategy: BudgetStrategy): React.Rea
     );
 }
 
-export function renderProfileSubtext(profile: Profile): React.ReactNode {
+export function renderProfileSubtext(profile: profile): React.ReactNode {
     const tools = profile?.tools
     const enableWebSearchText = getRenderSubTextForTriStates(tools.web, "Web Search");
     const enableCalculatorText = getRenderSubTextForTriStates(tools.calculator, "Calculator");

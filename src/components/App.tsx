@@ -128,7 +128,7 @@ function App() {
         promptBlock: { saveFunction: promptBlocks.savePromptBlock, deleteFunction: promptBlocks.deletePromptBlock, entityLabel: 'Prompt Block' },
         stopPattern: { saveFunction: stopPatterns.saveStopPattern, deleteFunction: stopPatterns.deleteStopPattern, entityLabel: 'Stop Pattern' },
         budgetStrategy: { saveFunction: budgetStrategies.saveStrategy, deleteFunction: budgetStrategies.deleteStrategy, entityLabel: 'Budget Strategy' },
-        profile: { saveFunction: profiles.saveProfile, deleteFunction: profiles.deleteProfile, entityLabel: 'Profile' },
+        profile: { saveFunction: profiles.saveProfile, deleteFunction: profiles.deleteProfile, entityLabel: 'profile' },
         account: { saveFunction: accounts.saveAccount, deleteFunction: accounts.deleteAccount, entityLabel: 'Account' },
         multiplayerData: { saveFunction: multiplayerDataManager.saveMultiplayerData, deleteFunction: multiplayerDataManager.deleteMultiplayerData, entityLabel: 'Multiplayer Data' },
     });
@@ -312,7 +312,7 @@ function App() {
         setSelectedGlobalModel,
         selectedCharacterId,
         allCharacters: characters.characters,
-        selectedProfileId: interactionData?.Profile?.id,
+        selectedProfileId: interactionData?.profile?.id,
         setSelectedCharacter,
         activeStrategy, budgetData,
         loadLocalModelForBudgetStrategyEngine: loadLocalModelForBudgetEngine,
@@ -320,9 +320,9 @@ function App() {
 
     // ─── Sentiment Engine ────────────────────────────────────
     useEffect(() => {
-        const enabled = interactionData?.Profile?.enableCharacterExpression ?? false;
+        const enabled = interactionData?.profile?.enableCharacterExpression ?? false;
         if (enabled) sentimentEngine.initialize();
-    }, [interactionData?.Profile?.enableCharacterExpression]);
+    }, [interactionData?.profile?.enableCharacterExpression]);
 
     // ─── Chat Auto-Save ──────────────────────────────────────────────
     useChatAutoSave({
@@ -638,10 +638,10 @@ function App() {
     const handleActivateProfileAndBroadcast = useCallback((profileId: string) => {
         entityToggles.handleActivateProfile(profileId);
         if (canBroadcastState && interactionData) {
-            const targetProfile = interactionData.Profile?.id === profileId 
+            const targetProfile = interactionData.profile?.id === profileId 
                 ? undefined 
                 : profiles.profiles.find(p => p.id === profileId);
-            (mp.multiplayerSync as any).broadcastStateSync?.({ Profile: targetProfile });
+            (mp.multiplayerSync as any).broadcastStateSync?.({ profile: targetProfile });
         }
     }, [entityToggles, canBroadcastState, interactionData, profiles.profiles, mp.multiplayerSync]);
 
@@ -679,7 +679,7 @@ function App() {
     const handleSend = useCallback(async () => {
         if (!inputText.trim() && !pendingFiles.length) return;
         let frontCam: string | undefined;
-        const profileCam = interactionData?.Profile?.useFrontCameraImage;
+        const profileCam = interactionData?.profile?.useFrontCameraImage;
         if (profileCam === 1) { const img = await captureFrontCameraImage(); if (img) frontCam = img; }
         else if (profileCam === 0 && currentCharacter?.useFrontCameraImage) { const img = await captureFrontCameraImage(); if (img) frontCam = img; }
         sendMessage(inputText, promptBlocks.promptBlocks, pendingFiles, frontCam);
@@ -806,7 +806,7 @@ function App() {
         const resolvedCtxs = (world.contextIds || []).map(id => contexts.contexts.find(c => c.id === id)).filter((c): c is Context => !!c);
         const resolvedLocs = (world.locationIds || []).map(id => locations.locations.find(l => l.id === id)).filter((l): l is Location => !!l);
         const resolvedAudio = (world.audioTrackIds || []).map(id => audioTracks.audioTracks.find(t => t.id === id)).filter((t): t is AudioTrack => !!t);
-        const resolvedProfile = world.profileId ? profiles.profiles.find(p => p.id === world.profileId) : interactionData.Profile;
+        const resolvedProfile = world.profileId ? profiles.profiles.find(p => p.id === world.profileId) : interactionData.profile;
 
         // 2. Merge alongside existing entities (deduplicated by ID)
         const existingParticipantIds = new Set((interactionData.participants || []).map(p => p.id));
@@ -840,7 +840,7 @@ function App() {
             contexts: mergedContexts,
             locations: mergedLocations,
             audioTracks: mergedAudioTracks,
-            Profile: resolvedProfile,
+            profile: resolvedProfile,
             lastUpdatedTimestamp: Date.now(),
         };
 
@@ -864,7 +864,7 @@ function App() {
                 contexts: updated.contexts,
                 locations: updated.locations,
                 audioTracks: updated.audioTracks,
-                Profile: updated.Profile,
+                profile: updated.profile,
             });
         }
     }, [interactionData, characters.characters, contexts.contexts, locations.locations, audioTracks.audioTracks, profiles.profiles, setInteractionData, addToast, canBroadcastState, mp.multiplayerSync]);
@@ -1064,7 +1064,7 @@ function App() {
                                 contexts: assigned.contexts,
                                 locations: assigned.locations,
                                 audioTracks: assigned.audioTracks,
-                                Profile: assigned.Profile,
+                                profile: assigned.profile,
                             });
                         }
                     }}

@@ -1,6 +1,6 @@
 // src/components/WorldEditorModal.tsx
 import { useState } from 'react';
-import type { World, Character, Context, Location, Profile, AudioTrack, PromptBlock } from '../types';
+import type { World, Character, Context, Location, profile, AudioTrack, PromptBlock } from '../types';
 import { EntitySelectList } from './EntitySelectList';
 import { v4 as uuidv4 } from 'uuid';
 import '../main.css';
@@ -13,7 +13,7 @@ interface WorldEditorModalProps {
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
-    allProfiles: Profile[];
+    allProfiles: profile[];
     allAudioTracks: AudioTrack[];
     allPromptBlocks: PromptBlock[];
     selectedCharacterIds: string[];
@@ -213,10 +213,10 @@ export function WorldEditorModal({
                             searchQuery={promptBlockSearch} onSearchChange={setPromptBlockSearch} />
                     </div>
 
-                    {/* Profile */}
+                    {/* profile */}
                     <div className="editor-section">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                            <span className="editor-section-title" style={{ margin: 0 }}>Profile</span>
+                            <span className="editor-section-title" style={{ margin: 0 }}>profile</span>
                             {currentProfileId && (
                                 <button type="button" className="budget-button budget-button-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyProfileFromChat}>
                                     Copy from Chat
@@ -224,7 +224,7 @@ export function WorldEditorModal({
                             )}
                         </div>
                         <select className="editor-select" value={profileId} onChange={e => setProfileId(e.target.value)}>
-                            <option value="">No Profile</option>
+                            <option value="">No profile</option>
                             {allProfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                     </div>

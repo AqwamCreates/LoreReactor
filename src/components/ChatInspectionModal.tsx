@@ -495,7 +495,7 @@ export function ChatInspectionModal({
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '0.65rem', opacity: 0.7 }}>
                                     <span>💬 {messageCount} message{messageCount !== 1 ? 's' : ''}</span>
                                     <span>🕐 Last active: {getRelativeTime(chat.lastUpdatedTimestamp)}</span>
-                                    {chat.Profile && <span>👤 Profile: {chat.Profile.name}</span>}
+                                    {chat.profile && <span>👤 profile: {chat.profile.name}</span>}
                                     {chat.parentInteractionDataId && (
                                         <button
                                             type="button"

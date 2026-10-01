@@ -1,6 +1,6 @@
 // src/hooks/useEntityToggles.ts
 import { useCallback } from 'react';
-import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy, InteractionData, MultiplayerData, HistoryMessage } from '../types';
+import type { Character, Context, Location, AudioTrack, profile, BudgetStrategy, InteractionData, MultiplayerData, HistoryMessage } from '../types';
 import { loadRawContext, loadRawLocation, loadRawAudioTrack, saveRawMultiplayerData } from '../storages/serverStorage';
 import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { useSessionStore } from './useSessionStore';
@@ -11,7 +11,7 @@ interface UseEntityTogglesOptions {
     allCharacters: Character[];
     activeExtensionIds: string[];
     setActiveExtensionIds: (ids: string[]) => void;
-    allProfiles: Profile[];
+    allProfiles: profile[];
     allBudgetStrategies: BudgetStrategy[];
     setInteractionData: (data: InteractionData) => void;
     setSelectedCharacter: (char: Character | null) => void;
@@ -297,16 +297,16 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
 
     const handleActivateProfile = useCallback((pid: string) => {
         if (!interactionData) return;
-        if (interactionData.Profile?.id === pid) {
-            const uc = { ...interactionData, Profile: undefined, lastUpdatedTimestamp: Date.now() };
+        if (interactionData.profile?.id === pid) {
+            const uc = { ...interactionData, profile: undefined, lastUpdatedTimestamp: Date.now() };
             setInteractionData(uc);
-            addToast('Profile deactivated.', 'info');
+            addToast('profile deactivated.', 'info');
         } else {
             const p = allProfiles.find(x => x.id === pid);
             if (!p) return;
-            const uc = { ...interactionData, Profile: p, lastUpdatedTimestamp: Date.now() };
+            const uc = { ...interactionData, profile: p, lastUpdatedTimestamp: Date.now() };
             setInteractionData(uc);
-            addToast(`Profile "${p.name}" activated!`, 'success');
+            addToast(`profile "${p.name}" activated!`, 'success');
         }
     }, [interactionData, allProfiles, setInteractionData, addToast]);
 

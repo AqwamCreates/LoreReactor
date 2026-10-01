@@ -38,7 +38,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { 
     Character, Context, Location, AudioTrack, World, 
     PromptBlock, Sampler, StopPattern, BudgetStrategy, 
-    Profile, InteractionData, ChatMessage, WhisperMessage, 
+    profile, InteractionData, ChatMessage, WhisperMessage, 
     HistoryMessage, Memory, Extension, Account, 
     MultiplayerData, LanguageModel, InterjectableAction 
 } from '../types';
@@ -71,7 +71,7 @@ function finalizeMessageById(
     if (wasAborted) return data;
 
     const newHistories = { ...data.interactionHistories };
-    for (const [locId, msgs] of Object.entries(newHistories)) {
+    for (const [locId, msgs] of Object.entries(newHistories) as [string, HistoryMessage[]][]) {
         const idx = msgs.findIndex(m => m.id === messageId && hasTextContent(m));
         if (idx !== -1) {
             newHistories[locId] = [...msgs];
@@ -127,14 +127,118 @@ function broadcastToolStateChanges(
         diff.contexts = after.contexts;
         hasChanges = true;
     }
-    if (before.Profile !== after.Profile) {
-        diff.Profile = after.Profile;
+    if (before.profile !== after.profile) {
+        diff.profile = after.profile;
         hasChanges = true;
     }
 
     if (hasChanges) {
         broadcastFn(diff);
     }
+}
+
+function evaluateAutoResumeSignals(
+    profile: profile | undefined, 
+    text: string, 
+    currentResumeCount: number
+): { shouldResume: boolean; patternsToInject: string[] } {
+    const signals = profile?.autoResumeSignals;
+    if (!signals || signals.length === 0) {
+        return { shouldResume: false, patternsToInject: [] };
+    }
+
+    let shouldResume = false;
+    const patternsToInject = new Set<string>();
+
+    for (const signal of signals) {
+        const maxResumes = signal.maximumNumberOfAutoResumes ?? 10;
+        if (currentResumeCount >= maxResumes) {
+            continue; // This signal has exhausted its resume quota
+        }
+
+        const activationTrigger = signal.regularExpressionActivationTrigger?.trim();
+        const deactivationTrigger = signal.regularExpressionDeactivationTrigger?.trim();
+        const stopPattern = signal.stopPattern?.trim();
+        const minimumLength = signal.minimumLength ? parseInt(signal.minimumLength, 10) : 0;
+
+        let isActivated = false;
+        let activationIndex = 0;
+        
+        if (!activationTrigger) {
+            // Empty activation trigger means it activates on any partial text or abortion
+            isActivated = true;
+        } else {
+            try {
+                const regex = new RegExp(activationTrigger);
+                const match = regex.exec(text);
+                if (match) {
+                    isActivated = true;
+                    activationIndex = match.index + match[0].length;
+                }
+            } catch (e) {
+                console.warn(`Invalid activation regex: ${activationTrigger}`, e);
+            }
+        }
+
+        if (!isActivated) continue;
+
+        if (stopPattern) {
+            patternsToInject.add(stopPattern);
+        }
+
+        let isDeactivated = false;
+        const trimmedText = text.trimEnd();
+        
+        if (deactivationTrigger) {
+            const textAfterActivation = text.slice(activationIndex);
+            const minLen = isNaN(minimumLength) ? 0 : minimumLength;
+            if (textAfterActivation.length >= minLen) {
+                try {
+                    const endsWithRegex = new RegExp(`${deactivationTrigger}$`);
+                    if (endsWithRegex.test(trimmedText) || trimmedText.endsWith(deactivationTrigger)) {
+                        isDeactivated = true;
+                    }
+                } catch (e) {
+                    if (trimmedText.endsWith(deactivationTrigger)) {
+                        isDeactivated = true;
+                    }
+                }
+            }
+        } else if (stopPattern) {
+            // If no explicit deactivation trigger, check if it ends with the injected stop pattern
+            if (trimmedText.endsWith(stopPattern)) {
+                isDeactivated = true;
+            }
+        }
+
+        if (!isDeactivated) {
+            shouldResume = true;
+        }
+    }
+
+    return { shouldResume, patternsToInject: Array.from(patternsToInject) };
+}
+
+function injectStopSignals(data: InteractionData, patterns: string[]): InteractionData {
+    if (patterns.length === 0) return data;
+    
+    const newData = { ...data };
+    const newParticipants = newData.participants.map(p => {
+        const existingPatterns = p.stopPatterns?.filter(sp => !sp.id.startsWith('auto-resume-stop-')) || [];
+        const newPatterns: StopPattern[] = patterns.map((s, i) => ({
+            id: `auto-resume-stop-${i}`,
+            name: `Auto Resume Stop ${i}`,
+            pattern: s,
+            firstCreatedTimestamp: Date.now(),
+            lastUpdatedTimestamp: Date.now(),
+        }));
+        return {
+            ...p,
+            stopPatterns: [...existingPatterns, ...newPatterns],
+        };
+    });
+    newData.participants = newParticipants;
+    return newData;
 }
 
 interface UseChatSessionOptions {
@@ -150,7 +254,7 @@ interface UseChatSessionOptions {
     allSamplers?: Sampler[];
     allStopPatterns?: StopPattern[];
     allBudgetStrategies?: BudgetStrategy[];
-    allProfiles?: Profile[];
+    allProfiles?: profile[];
     allWorlds?: World[];
     allMemories?: Memory[];
     allExtensions?: Extension[];
@@ -249,9 +353,9 @@ export function useChatSession(options: UseChatSessionOptions) {
         getState, setState, setActiveStrategy, setSelectedModel, setSelectedCharacter,
     } = state;
 
-    const interactionData = useSessionStore(s => s.interactionData);
-    const selectedModel = useSessionStore(s => s.selectedModel);
-    const autonomousMode = interactionData?.Profile?.autonomousMode ?? false;
+    const interactionData = useSessionStore((s: { interactionData: any; }) => s.interactionData);
+    const selectedModel = useSessionStore((s: { selectedModel: any; }) => s.selectedModel);
+    const autonomousMode = interactionData?.profile?.autonomousMode ?? false;
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const pendingPartialRef = useRef<{ text: string; character: Character } | null>(null);
@@ -260,6 +364,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     const isAtBottomRef = useRef(true);
     const wasStoppedRef = useRef(false);
     const isSpeculatingRef = useRef(false);
+    const autoResumeCountRef = useRef<number>(0);
 
     const resumeGenerationRef = useRef<(messageId: string, allPromptBlocks?: PromptBlock[]) => Promise<void>>(null);
     const streamingMessageIdRef = useRef<string | null>(null);
@@ -310,7 +415,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         const timeSinceLastToken = lastTokenTimestampRef.current > 0 ? (now - lastTokenTimestampRef.current) : 25;
         lastTokenTimestampRef.current = now;
 
-        const profile = getState().interactionData?.Profile;
+        const profile = getState().interactionData?.profile;
         if (profile?.enableSpeculativeMarkov && char && msgId && abortControllerRef.current && !isSpeculatingRef.current) {
             const model = getState().selectedModel;
             const currentData = getState().interactionData;
@@ -377,8 +482,8 @@ export function useChatSession(options: UseChatSessionOptions) {
                                 updatedData = { ...freshData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
                             } else {
                                 const updatedHistories = { ...freshData.interactionHistories };
-                                for (const [locId, msgs] of Object.entries(updatedHistories)) {
-                                    const idx = msgs.findIndex(m => m.id === msgId);
+                                for (const [locId, msgs] of Object.entries(updatedHistories) as [string, HistoryMessage[]][]) {
+                                    const idx = msgs.findIndex((m: { id: string; }) => m.id === msgId);
                                     if (idx !== -1) {
                                         updatedHistories[locId] = [...msgs];
                                         updatedHistories[locId][idx] = {
@@ -521,7 +626,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             const lastMsg = history[history.length - 1];
             if (hasTextContent(lastMsg)) {
                 const newHistories = { ...base.interactionHistories };
-                for (const [locId, msgs] of Object.entries(newHistories)) {
+                for (const [locId, msgs] of Object.entries(newHistories) as [string, HistoryMessage[]][]) {
                     const idx = msgs.findIndex(m => m.id === lastMsg.id);
                     if (idx !== -1) {
                         newHistories[locId] = [...msgs];
@@ -590,7 +695,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         lockAlreadyAcquired = false,
     }: GenerationTurnOptions) => {
         if (!lockAlreadyAcquired && !acquireLock()) return;
-        if (!data.Profile || !data.Profile?.enableCharacterExpression) sentimentEngine.unload();
+        if (!data.profile || !data.profile?.enableCharacterExpression) sentimentEngine.unload();
 
         const currentState = getState();
         if (!currentState.activeStrategy && !isModelReadyForGeneration()) {
@@ -603,6 +708,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         abortControllerRef.current = ctrl;
         wasStoppedRef.current = false;
         isSpeculatingRef.current = false;
+        autoResumeCountRef.current = 0;
         resetStream();
         setStreamingState(null, '');
         setStats({ latency: 0, timeToFirstToken: 0 });
@@ -675,6 +781,20 @@ export function useChatSession(options: UseChatSessionOptions) {
                 setInteractionData(ud);
                 broadcastNewMessages(preTurnCount, ud);
 
+                const history = getGlobalMessageHistory(ud);
+                const lastMsg = history[history.length - 1];
+                const text = hasTextContent(lastMsg) ? lastMsg.textContent : '';
+                
+                const evaluation = evaluateAutoResumeSignals(ud.profile, text, autoResumeCountRef.current);
+
+                if (evaluation.shouldResume && !wasStoppedRef.current) {
+                    autoResumeCountRef.current += 1;
+                    const injectedData = injectStopSignals(ud, evaluation.patternsToInject);
+                    setInteractionData(injectedData);
+                    autoResumeOnCutoff(injectedData, protagonistId, allPromptBlocks);
+                    return;
+                }
+
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
                     autoResumeOnCutoff(ud, protagonistId, allPromptBlocks);
                     return;
@@ -692,7 +812,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                     ui.playVoice(lm.textContent, lm.character);
                 }
             } else {
-                const enableAmbientNarration = ud?.Profile?.enableAmbientNarration ?? false;
+                const enableAmbientNarration = ud?.profile?.enableAmbientNarration ?? false;
                 if (enableAmbientNarration) {
                     const ad = await generateAmbientNarration(ud, ctrl.signal);
                     const sd = ad || ud;
@@ -781,7 +901,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                     slashMessage,
                     currentState.interactionData,
                     toolContext,
-                    currentState.interactionData.Profile?.toolUsageDisplayMode
+                    currentState.interactionData.profile?.toolUsageDisplayMode
                 );
 
                 slashMessage.textContent = toolResult.displayReplacement || toolResult.content || `[${slashInvocation.toolType}]`;
@@ -954,7 +1074,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             return; 
         }
 
-        const allProtagonistIds = new Set(currentState.interactionData.protagonists?.map(p => p.id) ?? [currentState.currentCharacter.id]);
+        const allProtagonistIds = new Set(currentState.interactionData.protagonists?.map((p: Character) => p.id) ?? [currentState.currentCharacter.id]);
 
         await executeTurnPipeline({
             data: currentState.interactionData,
@@ -1013,7 +1133,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             return;
         }
 
-        const allProtagonistIds = new Set(td.protagonists?.map(p => p.id) ?? [protagonist.id]);
+        const allProtagonistIds = new Set(td.protagonists?.map((p: Character) => p.id) ?? [protagonist.id]);
 
         await executeTurnPipeline({
             data: td,
@@ -1042,8 +1162,8 @@ export function useChatSession(options: UseChatSessionOptions) {
                 const paragraphs = (textContent.match(/\n\n/g) || []).length + 1;
 
                 const updatedHistories = { ...currentData.interactionHistories };
-                for (const [locId, msgs] of Object.entries(updatedHistories)) {
-                    const idx = msgs.findIndex(m => m.id === resumeId);
+                for (const [locId, msgs] of Object.entries(updatedHistories) as [string, HistoryMessage[]][]) {
+                    const idx = msgs.findIndex((m: HistoryMessage) => m.id === resumeId);
                     if (idx !== -1) {
                         updatedHistories[locId] = [...msgs];
                         updatedHistories[locId][idx] = {
@@ -1102,7 +1222,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         
         const currentInteractionData = getState().interactionData;
         if (!currentInteractionData) return;
-        if (!currentInteractionData.Profile || !currentInteractionData.Profile?.enableCharacterExpression) sentimentEngine.unload();
+        if (!currentInteractionData.profile || !currentInteractionData.profile?.enableCharacterExpression) sentimentEngine.unload();
         
         const history = getGlobalMessageHistory(currentInteractionData);
         const msg = history.find(m => m.id === messageId);
@@ -1154,22 +1274,28 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             const finalized = finalizeMessageById(result.interactionData, messageId, wasStoppedRef.current);
 
-            setState({
-                interactionData: finalized,
-                streamingCharacter: null,
-                streamingText: '',
-            });
-
             const finalizedMsg = getGlobalMessageHistory(finalized).find(m => m.id === messageId);
             if (finalizedMsg) onMessageBroadcastRef.current?.(finalizedMsg);
 
             resumingMessageIdRef.current = null;
             resumingExistingTextRef.current = '';
 
-            if (!result.isCompleted && !wasStoppedRef.current) {
+            const finalText = finalizedMsg && hasTextContent(finalizedMsg) ? finalizedMsg.textContent : '';
+            const evaluation = evaluateAutoResumeSignals(finalized.profile, finalText, autoResumeCountRef.current);
+            
+            let dataToSave = finalized;
+
+            if (evaluation.shouldResume && !wasStoppedRef.current) {
+                autoResumeCountRef.current += 1;
+                dataToSave = injectStopSignals(finalized, evaluation.patternsToInject);
+                setState({
+                    interactionData: dataToSave,
+                    streamingCharacter: null,
+                    streamingText: '',
+                });
                 setTimeout(() => {
-                    const allProtagonistIds = new Set(finalized.protagonists?.map(p => p.id) ?? [char.id]);
-                    const reMarkedId = findLastAIMessageId(finalized, allProtagonistIds);
+                    const allProtagonistIds = new Set(dataToSave.protagonists?.map(p => p.id) ?? [char.id]);
+                    const reMarkedId = findLastAIMessageId(dataToSave, allProtagonistIds);
                     if (reMarkedId) {
                         resumeGenerationRef.current?.(reMarkedId, allPromptBlocks);
                     }
@@ -1177,9 +1303,29 @@ export function useChatSession(options: UseChatSessionOptions) {
                 return;
             }
 
-            const finalMsg = getGlobalMessageHistory(finalized).find(m => m.id === messageId);
-            const finalText = finalMsg && hasTextContent(finalMsg) ? finalMsg.textContent : '';
-            const protagonistIds = new Set(currentInteractionData.protagonists?.map(p => p.id) ?? []);
+            if (!result.isCompleted && !wasStoppedRef.current) {
+                setState({
+                    interactionData: dataToSave,
+                    streamingCharacter: null,
+                    streamingText: '',
+                });
+                setTimeout(() => {
+                    const allProtagonistIds = new Set(dataToSave.protagonists?.map(p => p.id) ?? [char.id]);
+                    const reMarkedId = findLastAIMessageId(dataToSave, allProtagonistIds);
+                    if (reMarkedId) {
+                        resumeGenerationRef.current?.(reMarkedId, allPromptBlocks);
+                    }
+                }, 0);
+                return;
+            }
+
+            setState({
+                interactionData: dataToSave,
+                streamingCharacter: null,
+                streamingText: '',
+            });
+
+            const protagonistIds = new Set(currentInteractionData.protagonists?.map((p: Character) => p.id) ?? []);
             if (!protagonistIds.has(char.id)) ui.playVoice(finalText, char);
         } catch (e) {
             if ((e as Error).name !== 'AbortError') {
@@ -1255,8 +1401,8 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
 
         const updatedHistories: Record<string, HistoryMessage[]> = {};
-        for (const [locId, msgs] of Object.entries(currentInteractionData.interactionHistories || {})) {
-            const keptMsgs = msgs.filter(m => {
+        for (const [locId, msgs] of Object.entries(currentInteractionData.interactionHistories || {}) as [string, HistoryMessage[]][]) {
+            const keptMsgs = msgs.filter((m: { id: string; }) => {
                 const globalIdx = sortedHistory.findIndex(hm => hm.id === m.id);
                 return globalIdx !== -1 && globalIdx < trimIdx;
             });

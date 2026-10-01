@@ -77,7 +77,7 @@ export async function runTurnSequence(
         });
     };
 
-    const profile = currentInteractionData.Profile;
+    const profile = currentInteractionData.profile;
     
     const initialHistories: Record<string, HistoryMessage[]> = {};
     for (const [locId, msgs] of Object.entries(currentInteractionData.interactionHistories || {})) {

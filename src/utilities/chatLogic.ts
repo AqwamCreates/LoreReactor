@@ -141,7 +141,7 @@ export async function buildChatRequestBody(
     modelId: string,
 ): Promise<{ body: Record<string, unknown>; knownCharacterNames: Record<string, Record<string, boolean>>; fetchErrors: string[]; characterClothingWearingStatuses: Record<string, boolean> }> {
 
-    const profile = interactionData.Profile;
+    const profile = interactionData.profile;
 
     const { messages, stops, contextImages, locationImages, promptBlockImages, characterClothingWearingStatuses, fetchErrors } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId);
 
@@ -335,7 +335,7 @@ export async function buildChatRequestBody(
 }
 
 export function convertIdsToDisplayNames(text: string, interactionData: InteractionData, character: Character): string {
-    const profile = interactionData.Profile;
+    const profile = interactionData.profile;
     const stripThinkTokens = profile?.stripThinkTokens ?? false;
 
     let result = text;
@@ -391,7 +391,7 @@ export function createNewInteractionData(character: Character): InteractionData 
         lastUpdatedTimestamp: now,
         parentInteractionDataId: null,
         parentMessageId: null,
-        Profile: undefined,
+        profile: undefined,
     };
 }
 
@@ -404,8 +404,8 @@ export function createChatMessage(
     const latest = findLatestMessage(interactionData, character);
     const previousMessage = latest?.message;
     
-    const effectiveMaximumChatStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
-    const effectiveMaximumActionStamina = getEffectiveMaximumActionStamina(character, interactionData.Profile);
+    const effectiveMaximumChatStamina = getEffectiveMaximumChatStamina(character, interactionData.profile);
+    const effectiveMaximumActionStamina = getEffectiveMaximumActionStamina(character, interactionData.profile);
     const remainingChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaximumChatStamina;
     const remainingActionStamina = previousMessage?.remainingActionStamina ?? effectiveMaximumActionStamina;
     

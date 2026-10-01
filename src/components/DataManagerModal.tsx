@@ -1,6 +1,6 @@
 // src/components/DataManagerModal.tsx
 import { useState, useCallback, useMemo } from 'react';
-import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData } from '../types';
+import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, profile, Memory, RawInteractionData, Account, MultiplayerData } from '../types';
 import { useToast } from '../context/ToastContext';
 import { saveRawSessionData, deleteSessionData, deleteMultiplayerJoinData, deleteActionFormatData, clearPreferencesCache, clearSaveQueue, deleteFormatPreferences } from '../storages/serverStorage';
 import '../main.css';
@@ -17,7 +17,7 @@ interface DataManagerModalProps {
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
     allBudgetStrategies: BudgetStrategy[];
-    allProfiles: Profile[];
+    allProfiles: profile[];
     allMemories: Memory[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
@@ -332,7 +332,7 @@ export function DataManagerModal({
             for (const id of (shell.contextIds || [])) if (ctxIdSet.has(id)) referencedCtxIds.add(id);
             for (const id of (shell.locationIds || [])) if (locIdSet.has(id)) referencedLocIds.add(id);
             for (const id of (shell.audioTrackIds || [])) if (audioIdSet.has(id)) referencedAudioIds.add(id);
-            if (shell.ProfileId && profileIdSet.has(shell.ProfileId)) referencedProfileIds.add(shell.ProfileId);
+            if (shell.profileId && profileIdSet.has(shell.profileId)) referencedProfileIds.add(shell.profileId);
         }
 
         for (const c of allCharacters) {
@@ -506,7 +506,7 @@ export function DataManagerModal({
             for (const locId of world.locationIds) { if (!locIdSet.has(locId)) issues.push({ entityType: 'World', entityName: world.name, issue: 'References missing location', refType: 'Location', refId: locId }); }
             for (const audioId of world.audioTrackIds) { if (!audioIdSet.has(audioId)) issues.push({ entityType: 'World', entityName: world.name, issue: 'References missing audio track', refType: 'Audio Track', refId: audioId }); }
             for (const pbId of world.promptBlockIds) { if (!pbIdSet.has(pbId)) issues.push({ entityType: 'World', entityName: world.name, issue: 'References missing prompt block', refType: 'Prompt Block', refId: pbId }); }
-            if (world.profileId && !profileIdSet.has(world.profileId)) issues.push({ entityType: 'World', entityName: world.name, issue: 'References missing profile', refType: 'Profile', refId: world.profileId });
+            if (world.profileId && !profileIdSet.has(world.profileId)) issues.push({ entityType: 'World', entityName: world.name, issue: 'References missing profile', refType: 'profile', refId: world.profileId });
         }
         for (const c of allCharacters) {
             if (c.sampler?.id && !samplerIdSet.has(c.sampler.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'References missing sampler', refType: 'Sampler', refId: c.sampler.id });
@@ -684,7 +684,7 @@ export function DataManagerModal({
         for (const id of (shell.contextIds || [])) { if (exclusionIdSet.context.has(id)) return true; }
         for (const id of (shell.locationIds || [])) { if (exclusionIdSet.location.has(id)) return true; }
         for (const id of (shell.audioTrackIds || [])) { if (exclusionIdSet.audioTrack.has(id)) return true; }
-        if (shell.ProfileId && exclusionIdSet.profile.has(shell.ProfileId)) return true;
+        if (shell.profileId && exclusionIdSet.profile.has(shell.profileId)) return true;
         return false;
     }, [exclusions, exclusionIdSet]);
 

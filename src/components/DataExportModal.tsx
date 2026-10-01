@@ -1,6 +1,6 @@
 // src/components/DataExportModal.tsx
 import { useState } from 'react';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, profile, Memory, Account, MultiplayerData, RawInteractionData } from '../types';
 import { exportSelectedData, type LoreReactorExport } from '../services/DataPortabilityEngine';
 import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
@@ -17,7 +17,7 @@ interface DataExportModalProps {
     allPromptBlocks: PromptBlock[];
     allStopPatterns: StopPattern[];
     allBudgetStrategies: BudgetStrategy[];
-    allProfiles: Profile[];
+    allProfiles: profile[];
     allMemories: Memory[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];

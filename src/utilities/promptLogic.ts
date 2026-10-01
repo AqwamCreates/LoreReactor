@@ -1,5 +1,5 @@
 // src/utilities/promptLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, Context, StopPattern, PromptBlock, promptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger, Clothing, Profile, cacheEfficiencyConfigurationType } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, Context, StopPattern, PromptBlock, promptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger, Clothing, profile, cacheEfficiencyConfigurationType } from '../types';
 import type { ModelTemplate } from '../dictionaries/modelTemplates';
 import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
 import { fetchMultipleContextUrls } from './linkFetcher';
@@ -126,7 +126,7 @@ interface PromptBuildContext {
     characterParticipantId: number;
     characterParticipantTag: string;
     characterName: string;
-    profile: Profile | undefined;
+    profile: profile | undefined;
     cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number>;
     minimalVolatileCacheMode: boolean;
     currentLocation: Location | undefined;
@@ -870,7 +870,7 @@ function buildPromptContext(
     const characterParticipantId = getParticipantId(character, participants);
     const characterParticipantTag = getParticipantTag(character, participants);
     const characterName = character.name;
-    const profile = interactionData.Profile;
+    const profile = interactionData.profile;
 
     const cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number> =
         profile?.cacheEfficiencyLevels ?? { 'Character Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
@@ -1220,7 +1220,7 @@ function buildFatigueLines(ctx: PromptBuildContext): string[] {
     const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
 
     if (currentChatStamina !== undefined && effectiveMaxStamina !== Number.POSITIVE_INFINITY) {
-        const remainingChatStaminaInstructions = `${ctx.delimiters.blockStart('system')}I understand that I can create a minimum of 1 paragraph and a maximum of ${currentChatStamina} ${paragraphText}. If I exceed this, I will naturally stop my paragraphs.${ctx.delimiters.blockEnd}`;
+        const remainingChatStaminaInstructions = `${ctx.delimiters.blockStart('system')}I understand that I can create a minimum of 1 paragraph and a maximum of ${currentChatStamina} ${paragraphText}. If I exceed this, I will naturally stop my paragraphs as soon as possible.${ctx.delimiters.blockEnd}`;
         if (remainingChatStaminaInstructions) lines.push(remainingChatStaminaInstructions);
         const fatigue = getFatigueContext(currentChatStamina, effectiveMaxStamina);
         if (fatigue) lines.push(`${ctx.delimiters.blockStart('system')}${fatigue}${ctx.delimiters.blockEnd}`);

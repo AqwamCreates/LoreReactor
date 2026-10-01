@@ -1,13 +1,13 @@
 // src/hooks/useEntitySync.tsx
 import { useEffect, useRef } from 'react';
-import type { Character, Context, Profile, InteractionData } from '../types';
+import type { Character, Context, profile, InteractionData } from '../types';
 import { useSessionStore } from './useSessionStore';
 
 interface UseEntitySyncOptions {
     activeChatRestored: boolean;
     allCharacters: Character[];
     allContexts: Context[];
-    allProfiles: Profile[];
+    allProfiles: profile[];
     currentCharacter: Character | null;
     setInteractionData: (data: InteractionData) => void;
     setSelectedCharacter: (char: Character | null) => void;
@@ -42,7 +42,7 @@ export function useEntitySync(options: UseEntitySyncOptions) {
         const contextMap = new Map<string, Context>();
         for (const c of allContexts) contextMap.set(c.id, c);
 
-        const profileMap = new Map<string, Profile>();
+        const profileMap = new Map<string, profile>();
         for (const p of allProfiles) profileMap.set(p.id, p);
 
         let changed = false;
@@ -101,10 +101,10 @@ export function useEntitySync(options: UseEntitySyncOptions) {
         }
 
         // Sync profile
-        if (currentChat.Profile) {
-            const freshProfile = profileMap.get(currentChat.Profile.id);
-            if (freshProfile && freshProfile.lastUpdatedTimestamp !== currentChat.Profile.lastUpdatedTimestamp) {
-                updated.Profile = freshProfile; changed = true;
+        if (currentChat.profile) {
+            const freshProfile = profileMap.get(currentChat.profile.id);
+            if (freshProfile && freshProfile.lastUpdatedTimestamp !== currentChat.profile.lastUpdatedTimestamp) {
+                updated.profile = freshProfile; changed = true;
             }
         }
 

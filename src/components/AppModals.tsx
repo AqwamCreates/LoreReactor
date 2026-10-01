@@ -2,7 +2,7 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import type {
     Character, Context, Location, Sampler, StopPattern,
-    LanguageModel, BudgetStrategy, Profile, Extension,
+    LanguageModel, BudgetStrategy, profile, Extension,
     InteractionData, World, AudioTrack, PromptBlock,
     RawInteractionData, Memory, MultiplayerData, Account,
     cloudBackend, entityType
@@ -74,7 +74,7 @@ interface ApplicationModalsProperties {
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
     allBudgetStrategies: BudgetStrategy[];
-    allProfiles: Profile[];
+    allProfiles: profile[];
     allExtensions: Extension[];
     allWorlds: World[];
     allMemories: Memory[];
@@ -107,7 +107,7 @@ interface ApplicationModalsProperties {
     onActivateBudgetStrategy: (identifier: string) => void;
     onDeleteProfile: (identifier: string) => void;
     onActivateProfile: (identifier: string) => void;
-    onSaveProfile: (profile: Profile) => void;
+    onSaveProfile: (profile: profile) => void;
     onDeleteExtension: (identifier: string) => void;
     onToggleExtension: (identifier: string) => void;
     onSaveWorld: (world: World) => void;
@@ -257,7 +257,7 @@ export function AppModals({
     const [aiLocationSaveRedirect, setAiLocationSaveRedirect] = useState<((location: Location) => void) | null>(null);
     const [aiAudioTrackSaveRedirect, setAiAudioTrackSaveRedirect] = useState<((audioTrack: AudioTrack) => void) | null>(null);
     const [aiPromptBlockSaveRedirect, setAiPromptBlockSaveRedirect] = useState<((promptBlock: PromptBlock) => void) | null>(null);
-    const [aiProfileSaveRedirect, setAiProfileSaveRedirect] = useState<((profile: Profile) => void) | null>(null);
+    const [aiProfileSaveRedirect, setAiProfileSaveRedirect] = useState<((profile: profile) => void) | null>(null);
 
     const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
 
@@ -280,7 +280,7 @@ export function AppModals({
                 contextIds: interactionData.contexts?.map(c => c.id) ?? [],
                 locationIds: interactionData.locations?.map(l => l.id) ?? [],
                 audioTrackIds: interactionData.audioTracks?.map(a => a.id) ?? [],
-                profileId: interactionData.Profile?.id,
+                profileId: interactionData.profile?.id,
             } as unknown as ChatShellWithIdentifier);
         }
         return list;
@@ -597,17 +597,17 @@ export function AppModals({
                     title="Profiles" 
                     localLibraryItems={allProfiles} 
                     onClose={modals.profileList.close}
-                    onSelect={(profile: Profile) => profileModalProperties.open(profile)} 
+                    onSelect={(profile: profile) => profileModalProperties.open(profile)} 
                     onDelete={onDeleteProfile} 
                     onCreateNew={() => profileModalProperties.open()}
                     renderSubtext={renderProfileSubtext} 
                     emptyMessage="No profiles found." 
                     actionLabel="Delete" 
                     orderedListMode={false}
-                    activeSpecialActionId={interactionData?.Profile?.id || undefined} 
+                    activeSpecialActionId={interactionData?.profile?.id || undefined} 
                     specialActionIcon="★"
-                    onSpecialAction={(profile: Profile) => onActivateProfile(profile.id)}
-                    specialActionTooltip={(profile: Profile) => interactionData?.Profile?.id === profile.id ? `Deactivate ${profile.name}` : `Activate ${profile.name}`} 
+                    onSpecialAction={(profile: profile) => onActivateProfile(profile.id)}
+                    specialActionTooltip={(profile: profile) => interactionData?.profile?.id === profile.id ? `Deactivate ${profile.name}` : `Activate ${profile.name}`} 
                 />
             )}
 
@@ -706,7 +706,7 @@ export function AppModals({
                     onSaveContext={async (context: Context) => { onSaveContext(context); return true; }}
                     onSaveLocation={async (location: Location) => { onSaveLocation(location); return true; }}
                     onSaveAudioTrack={async (audioTrack: AudioTrack) => { onSaveAudioTrack(audioTrack); return true; }}
-                    onSaveProfile={async (profile: Profile) => { onSaveProfile(profile); return true; }}
+                    onSaveProfile={async (profile: profile) => { onSaveProfile(profile); return true; }}
                     onSaveWorld={async (world: World) => { onSaveWorld(world); return true; }}
                     onSavePromptBlock={async (promptBlock: PromptBlock) => { promptBlockModalProperties.save(promptBlock); return true; }}
                     onOpenCharacterEditor={(character, onApplyToRecommendation) => { setAiCharacterSaveRedirect(() => onApplyToRecommendation); characterModalProperties.open(character ?? undefined); }}
@@ -965,7 +965,7 @@ export function AppModals({
                     selectedCharacterIds={interactionData?.participants.map(participant => participant.id) || []}
                     currentContextIds={interactionData?.contexts?.map(context => context.id) || []}
                     currentLocationIds={interactionData?.locations?.map(location => location.id) || []}
-                    currentProfileId={interactionData?.Profile?.id}
+                    currentProfileId={interactionData?.profile?.id}
                     currentAudioTrackIds={interactionData?.audioTracks?.map(track => track.id) || []} 
                 />
             )}
@@ -1026,7 +1026,7 @@ export function AppModals({
             {profileModalProperties.isOpen && (
                 <ProfileEditorModal 
                     onClose={() => { setAiProfileSaveRedirect(null); profileModalProperties.close(); }}
-                    onSave={(profile: Profile) => { 
+                    onSave={(profile: profile) => { 
                         if (aiProfileSaveRedirect) { 
                             aiProfileSaveRedirect(profile); 
                             addToast('Applied profile changes to AI recommendation.', 'success'); 

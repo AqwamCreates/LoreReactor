@@ -161,7 +161,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
                 promptBlocks: schemaEntities.includes('PromptBlock') ? "/* see _entitySchema */" : [],
                 stopPatterns: [],
                 budgetStrategies: [],
-                profiles: schemaEntities.includes('Profile') ? "/* see _entitySchema */" : [],
+                profiles: schemaEntities.includes('profile') ? "/* see _entitySchema */" : [],
                 memories: [],
                 accounts: [],
                 multiplayerData: [],
@@ -238,7 +238,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
         (includeActions ? 1 : 0) + (includeActionFormatData ? 1 : 0) + 
         (includeFormatPreferences ? 1 : 0) + (includeSessionData ? 1 : 0) + (includeBudgetData ? 1 : 0);
 
-    const SCHEMA_ENTITY_OPTIONS = ['Character', 'Context', 'Location', 'AudioTrack', 'PromptBlock', 'Profile'] as const;
+    const SCHEMA_ENTITY_OPTIONS = ['Character', 'Context', 'Location', 'AudioTrack', 'PromptBlock', 'profile'] as const;
 
     return (
         <div className="modal-overlay" onClick={handleClose}>

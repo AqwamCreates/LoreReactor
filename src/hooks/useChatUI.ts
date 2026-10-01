@@ -27,7 +27,7 @@ export function useChatUI(
     useEffect(() => {
         if (!interactionData) return;
         const audioEngine = getAudioEngine();
-        const profileVolume = interactionData.Profile?.volume ?? -1;
+        const profileVolume = interactionData.profile?.volume ?? -1;
         audioEngine.setGlobalVolume(profileVolume);
         audioEngine.evaluate(interactionData);
     }, [interactionData]);

@@ -1,5 +1,5 @@
 // src/services/ChatMessageSummarizationEngine.ts
-import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock, cacheEfficiencyConfigurationType, Profile, SummarizationStep, StopPattern } from '../types';
+import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock, cacheEfficiencyConfigurationType, profile, SummarizationStep, StopPattern } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
@@ -50,7 +50,7 @@ export async function generateMessageSummary(
     message: HistoryMessage,
     maxTokens = 256,
     sampler?: Sampler,
-    profile?: Profile,
+    profile?: profile,
 ): Promise<string | null> {
     if (message.messageType !== 'chat') return null;
     const chatMsg = message as ChatMessage;
@@ -92,8 +92,8 @@ export async function generateCharacterMemory(
     if (localHistory.length === 0) return null;
 
     const participants = interactionData.participants;
-    const sampler = interactionData.Profile?.characterSampler || character.sampler;
-    const stopPattern = interactionData.Profile?.characterStopPattern;
+    const sampler = interactionData.profile?.characterSampler || character.sampler;
+    const stopPattern = interactionData.profile?.characterStopPattern;
 
     const allPromptBlocks: PromptBlock[] = [];
     const filteredMessages = getFilteredChatMessages(interactionData, character.id, allPromptBlocks);
@@ -106,7 +106,7 @@ export async function generateCharacterMemory(
     const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
     const delimiters = deriveDelimiters(resolvedChatTemplate);
 
-    const profile = interactionData.Profile;
+    const profile = interactionData.profile;
     const cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number> =
         profile?.cacheEfficiencyLevels ?? { 'Character Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
     const minimalVolatileCacheMode = profile?.minimalVolatileCacheMode ?? false;
@@ -238,10 +238,10 @@ export async function generateMissingSummaries(
 
     if (toSummarize.length === 0) return results;
 
-    const sampler = interactionData.Profile?.interactionDataSummarizationSampler;
+    const sampler = interactionData.profile?.interactionDataSummarizationSampler;
 
     for (const msg of toSummarize) {
-        const summary = await generateMessageSummary(msg, maxTokens, sampler, interactionData.Profile);
+        const summary = await generateMessageSummary(msg, maxTokens, sampler, interactionData.profile);
         if (summary) {
             results.set(msg.id, summary);
         }
@@ -253,7 +253,7 @@ async function compressChunk(
     messages: HistoryMessage[],
     maxTokens = 512,
     sampler?: Sampler,
-    profile?: Profile,
+    profile?: profile,
 ): Promise<string | null> {
     const chatMessages = messages.filter(
         (m): m is ChatMessage => m.messageType === 'chat' && !!(m as ChatMessage).textContent?.trim()
@@ -295,8 +295,8 @@ export async function generateLocationVisitSummary(
 
     const participants = interactionData.participants;
     const participantTag = getParticipantTag(character, participants);
-    const sampler = interactionData.Profile?.characterSampler || character.sampler;
-    const stopPattern = interactionData.Profile?.characterStopPattern;
+    const sampler = interactionData.profile?.characterSampler || character.sampler;
+    const stopPattern = interactionData.profile?.characterStopPattern;
 
     const allPromptBlocks: PromptBlock[] = [];
     const filteredMessages = getFilteredChatMessages(interactionData, character.id, allPromptBlocks);
@@ -408,7 +408,7 @@ export async function generatePeriodicCompression(
     const history = getLocalMessageHistory(interactionData, character);
     const existingContexts = interactionData.contexts || [];
 
-    const sampler = interactionData.Profile?.interactionDataSummarizationSampler;
+    const sampler = interactionData.profile?.interactionDataSummarizationSampler;
 
     const compressedRanges = new Set<string>();
     for (const context of existingContexts) {
@@ -449,7 +449,7 @@ export async function generatePeriodicCompression(
 
         const chunk = visibleChatMessages.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
-        const compressed = await compressChunk(chunk, maxTokens, sampler, interactionData.Profile);
+        const compressed = await compressChunk(chunk, maxTokens, sampler, interactionData.profile);
         if (!compressed) continue;
         newContexts.push({
             id: `auto-summary-${uuidv4()}`,
@@ -507,7 +507,7 @@ export async function generateRecursiveSummary(
     const existingContexts = interactionData.contexts || [];
     const now = Date.now();
 
-    const profile = interactionData.Profile;
+    const profile = interactionData.profile;
     const sampler = profile?.interactionDataSummarizationSampler;
     const stopPattern = profile?.interactionDataSummarizationStopPattern;
 
@@ -698,13 +698,13 @@ export async function generateEntropyPruningSummaries(
         cutoffVisibleIndex = chunkStart;
     }
 
-    const sampler = interactionData.Profile?.interactionDataSummarizationSampler;
+    const sampler = interactionData.profile?.interactionDataSummarizationSampler;
     for (let i = 0; i < cutoffVisibleIndex; i++) {
         const msg = visibleMessages[i];
         if (hasModelSummary(msg, modelId)) continue;
         if (!msg.textContent?.trim()) continue;
 
-        const summary = await generateMessageSummary(msg, maxTokens, sampler, interactionData.Profile);
+        const summary = await generateMessageSummary(msg, maxTokens, sampler, interactionData.profile);
         if (summary) results.set(msg.id, summary);
     }
 
@@ -716,7 +716,7 @@ export function checkTriggerThreshold(
     currentNumberOfTokens: number,
     languageModelContextLength: number
 ): SummarizationStep[] {
-    const profile = interactionData.Profile;
+    const profile = interactionData.profile;
     if (!profile?.summarizationSteps) return [];
 
     const activeSteps = [...profile.summarizationSteps]
