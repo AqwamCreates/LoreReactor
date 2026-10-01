@@ -126,7 +126,7 @@ export function getLocalMessageHistory(
             // --- CONVERGENCE HANDLING ---
             if (currentMsg.isConverged) {
                 const currentLocId = msgLocMap.get(currentMsg.id);
-                const globalIdx = globalHistory.findIndex(m => m.id === currentMsg!.id);
+                const globalIdx = globalHistory.findIndex(m => m.id === currentMsg?.id);
                 
                 let prevCharIdx = -1;
                 for (let i = globalIdx - 1; i >= 0; i--) {
