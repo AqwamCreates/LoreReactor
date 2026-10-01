@@ -2,7 +2,7 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import type {
     Character, Context, Location, Sampler, StopPattern,
-    LanguageModel, BudgetStrategy, profile, Extension,
+    LanguageModel, BudgetStrategy, Profile, Extension,
     InteractionData, World, AudioTrack, PromptBlock,
     RawInteractionData, Memory, MultiplayerData, Account,
     cloudBackend, entityType
@@ -74,7 +74,7 @@ interface ApplicationModalsProperties {
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
     allBudgetStrategies: BudgetStrategy[];
-    allProfiles: profile[];
+    allProfiles: Profile[];
     allExtensions: Extension[];
     allWorlds: World[];
     allMemories: Memory[];
@@ -107,7 +107,7 @@ interface ApplicationModalsProperties {
     onActivateBudgetStrategy: (identifier: string) => void;
     onDeleteProfile: (identifier: string) => void;
     onActivateProfile: (identifier: string) => void;
-    onSaveProfile: (profile: profile) => void;
+    onSaveProfile: (profile: Profile) => void;
     onDeleteExtension: (identifier: string) => void;
     onToggleExtension: (identifier: string) => void;
     onSaveWorld: (world: World) => void;
@@ -257,7 +257,7 @@ export function AppModals({
     const [aiLocationSaveRedirect, setAiLocationSaveRedirect] = useState<((location: Location) => void) | null>(null);
     const [aiAudioTrackSaveRedirect, setAiAudioTrackSaveRedirect] = useState<((audioTrack: AudioTrack) => void) | null>(null);
     const [aiPromptBlockSaveRedirect, setAiPromptBlockSaveRedirect] = useState<((promptBlock: PromptBlock) => void) | null>(null);
-    const [aiProfileSaveRedirect, setAiProfileSaveRedirect] = useState<((profile: profile) => void) | null>(null);
+    const [aiProfileSaveRedirect, setAiProfileSaveRedirect] = useState<((profile: Profile) => void) | null>(null);
 
     const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
 
@@ -597,7 +597,7 @@ export function AppModals({
                     title="Profiles" 
                     localLibraryItems={allProfiles} 
                     onClose={modals.profileList.close}
-                    onSelect={(profile: profile) => profileModalProperties.open(profile)} 
+                    onSelect={(profile: Profile) => profileModalProperties.open(profile)} 
                     onDelete={onDeleteProfile} 
                     onCreateNew={() => profileModalProperties.open()}
                     renderSubtext={renderProfileSubtext} 
@@ -606,8 +606,8 @@ export function AppModals({
                     orderedListMode={false}
                     activeSpecialActionId={interactionData?.profile?.id || undefined} 
                     specialActionIcon="★"
-                    onSpecialAction={(profile: profile) => onActivateProfile(profile.id)}
-                    specialActionTooltip={(profile: profile) => interactionData?.profile?.id === profile.id ? `Deactivate ${profile.name}` : `Activate ${profile.name}`} 
+                    onSpecialAction={(profile: Profile) => onActivateProfile(profile.id)}
+                    specialActionTooltip={(profile: Profile) => interactionData?.profile?.id === profile.id ? `Deactivate ${profile.name}` : `Activate ${profile.name}`} 
                 />
             )}
 
@@ -706,7 +706,7 @@ export function AppModals({
                     onSaveContext={async (context: Context) => { onSaveContext(context); return true; }}
                     onSaveLocation={async (location: Location) => { onSaveLocation(location); return true; }}
                     onSaveAudioTrack={async (audioTrack: AudioTrack) => { onSaveAudioTrack(audioTrack); return true; }}
-                    onSaveProfile={async (profile: profile) => { onSaveProfile(profile); return true; }}
+                    onSaveProfile={async (profile: Profile) => { onSaveProfile(profile); return true; }}
                     onSaveWorld={async (world: World) => { onSaveWorld(world); return true; }}
                     onSavePromptBlock={async (promptBlock: PromptBlock) => { promptBlockModalProperties.save(promptBlock); return true; }}
                     onOpenCharacterEditor={(character, onApplyToRecommendation) => { setAiCharacterSaveRedirect(() => onApplyToRecommendation); characterModalProperties.open(character ?? undefined); }}
@@ -1026,7 +1026,7 @@ export function AppModals({
             {profileModalProperties.isOpen && (
                 <ProfileEditorModal 
                     onClose={() => { setAiProfileSaveRedirect(null); profileModalProperties.close(); }}
-                    onSave={(profile: profile) => { 
+                    onSave={(profile: Profile) => { 
                         if (aiProfileSaveRedirect) { 
                             aiProfileSaveRedirect(profile); 
                             addToast('Applied profile changes to AI recommendation.', 'success'); 

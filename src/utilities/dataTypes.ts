@@ -1,5 +1,5 @@
 // src/services/aiRecommendationTypes.ts
-import type { Character, Context, Location, AudioTrack, PromptBlock, profile } from '../types';
+import type { Character, Context, Location, AudioTrack, PromptBlock, Profile } from '../types';
 
 export type EntityType = 'Character' | 'Context' | 'Location' | 'AudioTrack' | 'PromptBlock' | 'profile' | 'World';
 export type ViewTab = 'raw' | 'Character' | 'Context' | 'Location' | 'AudioTrack' | 'PromptBlock' | 'profile' | 'World';
@@ -54,7 +54,7 @@ export interface GeneratedOutput {
     locations?: Location[];
     audioTracks?: AudioTrack[];
     promptBlocks?: PromptBlock[];
-    profile?: profile;
+    profile?: Profile;
     world?: {
         name: string;
         description?: string;
@@ -63,7 +63,7 @@ export interface GeneratedOutput {
         locations: Location[];
         audioTracks: AudioTrack[];
         promptBlocks: PromptBlock[];
-        profile?: profile;
+        profile?: Profile;
     };
 }
 

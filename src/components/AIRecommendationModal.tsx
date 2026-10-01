@@ -1,7 +1,7 @@
 // src/components/AIRecommendationModal.tsx
 import type React from 'react';
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, profile, World, PromptBlock } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World, PromptBlock } from '../types';
 import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
 import { EntitySelectList } from './EntitySelectList';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -20,14 +20,14 @@ interface AIRecommendationModalProps {
     onSaveContext: (context: Context) => Promise<boolean>;
     onSaveLocation: (loc: Location) => Promise<boolean>;
     onSaveAudioTrack: (track: AudioTrack) => Promise<boolean>;
-    onSaveProfile: (profile: profile) => Promise<boolean>;
+    onSaveProfile: (profile: Profile) => Promise<boolean>;
     onSaveWorld: (world: World) => Promise<boolean>;
     onSavePromptBlock: (block: PromptBlock) => Promise<boolean>;
     onOpenCharacterEditor?: (char: Character | null, onApplyToRecommendation: (c: Character) => void) => void;
     onOpenContextEditor?: (context: Context | null, onApplyToRecommendation: (c: Context) => void) => void;
     onOpenLocationEditor?: (loc: Location | null, onApplyToRecommendation: (l: Location) => void) => void;
     onOpenAudioTrackEditor?: (track: AudioTrack | null, onApplyToRecommendation: (t: AudioTrack) => void) => void;
-    onOpenProfileEditor?: (profile: profile | null, onApplyToRecommendation: (p: profile) => void) => void;
+    onOpenProfileEditor?: (profile: Profile | null, onApplyToRecommendation: (p: Profile) => void) => void;
     onOpenPromptBlockEditor?: (block: PromptBlock | null, onApplyToRecommendation: (b: PromptBlock) => void) => void;
     allSamplers: Sampler[];
     aiRecommendationSampler?: Sampler;

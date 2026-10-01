@@ -1,5 +1,5 @@
 // src/utilities/dataConverters.ts
-import type { Character, Context, Location, AudioTrack, Sampler, profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StopPattern, tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StopPattern, tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';
 import type { GeneratedOutput } from './dataTypes';
@@ -462,12 +462,12 @@ function fillProfileDefaults(p: Record<string, unknown>): profile {
         },
         stripThinkTokens: (p.stripThinkTokens as boolean) ?? true,
         tools: parseToolsRecord(p.tools, defaultProfileTools) as Record<tool, tristateInteger>,
-        inputStrategy: (p.inputStrategy as profile['inputStrategy']) || ['System Prompt', 'Chat History', 'Context', 'Location', 'Text Injection'],
+        inputStrategy: (p.inputStrategy as Profile['inputStrategy']) || ['System Prompt', 'Chat History', 'Context', 'Location', 'Text Injection'],
         summarizationSteps: ((p.summarizationSteps as Record<string, unknown>[]) || []).map(s => ({
             id: ensureId(s),
             name: (s.name as string) || (s.strategyType as string) || '',
             description: (s.description as string) || undefined,
-            strategyType: (s.strategyType as profile['summarizationSteps'] extends (infer T)[] ? T : never).strategyType ?? 'Sliding Window Replace',
+            strategyType: (s.strategyType as Profile['summarizationSteps'] extends (infer T)[] ? T : never).strategyType ?? 'Sliding Window Replace',
             enabled: (s.enabled as boolean) ?? true,
             order: (s.order as number) ?? 0,
             slidingWindowSize: s.slidingWindowSize as number | undefined,

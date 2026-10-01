@@ -500,7 +500,7 @@ export interface InteractionData extends ObjectData {
   numberOfMessages?: number;
   parentInteractionDataId?: string | null;
   parentMessageId?: string | null;
-  profile?: profile;
+  profile?: Profile;
 }
 
 export interface RawInteractionData extends RawData {
@@ -702,7 +702,7 @@ export interface AutoResumeSignal {
   maximumNumberOfAutoResumes: number // At 0, no auto-resume. Default is 10.
 
 }
-export interface profile extends ObjectData {
+export interface Profile extends ObjectData {
   autonomousMode: boolean;
   autonomousInteractionIntervalMs: number;
   volume: number;
@@ -906,7 +906,7 @@ export interface ActionFormatData {
     matrix?: Record<string, Record<string, number>>;
 }
 
-export type Entity = Character | Context | Location | AudioTrack | World | PromptBlock | LanguageModel | Sampler | StopPattern | profile | BudgetStrategy | Account | MultiplayerData
+export type Entity = Character | Context | Location | AudioTrack | World | PromptBlock | LanguageModel | Sampler | StopPattern | Profile | BudgetStrategy | Account | MultiplayerData
 
 export type entityType = 
     | 'character' | 'context' | 'location' | 'audioTrack' 

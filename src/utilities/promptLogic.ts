@@ -1,5 +1,5 @@
 // src/utilities/promptLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, Context, StopPattern, PromptBlock, promptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger, Clothing, profile, cacheEfficiencyConfigurationType } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, Context, StopPattern, PromptBlock, promptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger, Clothing, Profile, cacheEfficiencyConfigurationType } from '../types';
 import type { ModelTemplate } from '../dictionaries/modelTemplates';
 import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
 import { fetchMultipleContextUrls } from './linkFetcher';
@@ -126,7 +126,7 @@ interface PromptBuildContext {
     characterParticipantId: number;
     characterParticipantTag: string;
     characterName: string;
-    profile: profile | undefined;
+    profile: Profile | undefined;
     cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number>;
     minimalVolatileCacheMode: boolean;
     currentLocation: Location | undefined;
