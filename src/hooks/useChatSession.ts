@@ -66,7 +66,8 @@ function calculateLatencyFactor(
 function finalizeMessageById(
     data: InteractionData,
     messageId: string,
-    wasAborted: boolean
+    wasAborted: boolean,
+    fallbackText?: string
 ): InteractionData {
     if (wasAborted) return data;
 
@@ -74,9 +75,15 @@ function finalizeMessageById(
     for (const [locId, msgs] of Object.entries(newHistories) as [string, HistoryMessage[]][]) {
         const idx = msgs.findIndex(m => m.id === messageId && hasTextContent(m));
         if (idx !== -1) {
+            const existingMsg = msgs[idx] as ChatMessage | WhisperMessage;
+            const finalContent = (fallbackText && fallbackText.length >= existingMsg.textContent.length)
+                ? fallbackText
+                : existingMsg.textContent;
+
             newHistories[locId] = [...msgs];
             newHistories[locId][idx] = {
-                ...newHistories[locId][idx],
+                ...existingMsg,
+                textContent: finalContent,
                 lastUpdatedTimestamp: Date.now(),
             } as ChatMessage | WhisperMessage;
             break;
@@ -772,6 +779,20 @@ export function useChatSession(options: UseChatSessionOptions) {
                 return;
             }
 
+            // If a tool abort caused turnResult to have no new message, commit live streaming text fallback
+            if (getGlobalMessageHistory(ud).length <= preTurnCount) {
+                const liveText = streamingTextRef.current?.trim();
+                if (liveText && respondingChar) {
+                    const currentLocId = getCurrentLocationId(ud, respondingChar) || 'global';
+                    const fallbackMsg = createChatMessage(ud, respondingChar, liveText);
+                    if (streamingMessageIdRef.current) fallbackMsg.id = streamingMessageIdRef.current;
+                    const newHistories = { ...ud.interactionHistories };
+                    if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
+                    newHistories[currentLocId].push(fallbackMsg);
+                    ud = { ...ud, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
+                }
+            }
+
             const preToolData = ud;
             ud = processPendingToolActions(ud, allCharactersRef.current, { onToast: addToast });
             broadcastToolStateChanges(preToolData, ud, onStateBroadcastRef.current);
@@ -941,7 +962,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         try {
             const currentInteractionData = currentState.interactionData;
 
-            // 1. REGENERATE STAMINA FOR PROTAGONIST BEFORE THEY SPEAK
             const { chatRegen, actionRegen } = computeModulatedRegenAmounts(activeCharacter, currentInteractionData);
             if (chatRegen > 0) {
                 generateChatStaminaForInteractionData(currentInteractionData, chatRegen, activeCharacter);
@@ -967,7 +987,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 knownCharacterNames
             });
 
-            // 2. CONSUME CHAT STAMINA BASED ON PARAGRAPH COUNT
             const paragraphs = (text.match(/\n\n/g) || []).length + 1;
             const chatCost = computeChatStaminaConsumptionCost(activeCharacter, currentInteractionData, paragraphs);
             if (chatCost > 0) {
@@ -999,7 +1018,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 learnFromUserMessage(text, allActionsRef.current.map(a => a.label), prevWrap);
             }
 
-            // 3. LOCATION TRAVEL & MOVEMENT STAMINA DEDUCTION (ARRIVING ON NEXT MESSAGE)
             const hasLocations = td.locations && td.locations.length > 0;
             if (hasLocations) {
                 const currentLocId = getCurrentLocationId(td, activeCharacter);
@@ -1150,37 +1168,34 @@ export function useChatSession(options: UseChatSessionOptions) {
         abortControllerRef.current = null;
 
         if (resumeId && currentData) {
-            const history = getGlobalMessageHistory(currentData);
-            const targetMsg = history.find(m => m.id === resumeId);
-            if (targetMsg && hasTextContent(targetMsg)) {
-                const textContent = targetMsg.textContent;
-                const paragraphs = (textContent.match(/\n\n/g) || []).length + 1;
-
-                const updatedHistories = { ...currentData.interactionHistories };
-                for (const [locId, msgs] of Object.entries(updatedHistories) as [string, HistoryMessage[]][]) {
-                    const idx = msgs.findIndex((m: HistoryMessage) => m.id === resumeId);
-                    if (idx !== -1) {
-                        updatedHistories[locId] = [...msgs];
-                        updatedHistories[locId][idx] = {
-                            ...targetMsg,
-                            textContent,
-                            lastUpdatedTimestamp: Date.now()
-                        } as ChatMessage | WhisperMessage;
-                        
-                        if (paragraphs > 0) consumeChatStaminaForMessage(updatedHistories[locId][idx], paragraphs);
-                        break;
-                    }
+            const streamedText = streamingTextRef.current || resumingExistingTextRef.current;
+            const updatedHistories = { ...currentData.interactionHistories };
+            for (const [locId, msgs] of Object.entries(updatedHistories) as [string, HistoryMessage[]][]) {
+                const idx = msgs.findIndex((m: HistoryMessage) => m.id === resumeId && hasTextContent(m));
+                if (idx !== -1) {
+                    const targetMsg = msgs[idx] as ChatMessage | WhisperMessage;
+                    const textContent = streamedText || targetMsg.textContent;
+                    const paragraphs = (textContent.match(/\n\n/g) || []).length + 1;
+                    updatedHistories[locId] = [...msgs];
+                    updatedHistories[locId][idx] = {
+                        ...targetMsg,
+                        textContent,
+                        lastUpdatedTimestamp: Date.now()
+                    } as ChatMessage | WhisperMessage;
+                    
+                    if (paragraphs > 0) consumeChatStaminaForMessage(updatedHistories[locId][idx], paragraphs);
+                    break;
                 }
-
-                setState({
-                    interactionData: { ...currentData, interactionHistories: updatedHistories, lastUpdatedTimestamp: Date.now() },
-                    streamingCharacter: null,
-                    streamingText: '',
-                    isLoading: false,
-                    latency: 0,
-                    timeToFirstToken: 0,
-                });
             }
+
+            setState({
+                interactionData: { ...currentData, interactionHistories: updatedHistories, lastUpdatedTimestamp: Date.now() },
+                streamingCharacter: null,
+                streamingText: '',
+                isLoading: false,
+                latency: 0,
+                timeToFirstToken: 0,
+            });
             resumingMessageIdRef.current = null;
             resumingExistingTextRef.current = '';
             pendingPartialRef.current = null;
@@ -1253,8 +1268,8 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         streamingCharacterRef.current = char;
         streamingMessageIdRef.current = messageId;
-
         streamingTextRef.current = existingText;
+
         useSessionStore.setState({
             isLoading: true,
             streamingCharacter: char,
@@ -1272,9 +1287,11 @@ export function useChatSession(options: UseChatSessionOptions) {
                 currentInteractionData, char, ctrl.signal,
                 throttledSetStreamingTextWithBroadcast, undefined, existingText, allPromptBlocks
             );
-            if (!result) return;
 
-            const finalized = finalizeMessageById(result.interactionData, messageId, wasStoppedRef.current);
+            // Fallback: If result is null (e.g. tool execution aborted sub-stream), save streamed text into history so it is not lost
+            const liveStreamedText = streamingTextRef.current || existingText;
+            const dataToFinalize = result?.interactionData || currentInteractionData;
+            const finalized = finalizeMessageById(dataToFinalize, messageId, wasStoppedRef.current, liveStreamedText);
 
             const finalizedMsg = getGlobalMessageHistory(finalized).find(m => m.id === messageId);
             if (finalizedMsg) onMessageBroadcastRef.current?.(finalizedMsg);
@@ -1282,7 +1299,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             resumingMessageIdRef.current = null;
             resumingExistingTextRef.current = '';
 
-            const finalText = finalizedMsg && hasTextContent(finalizedMsg) ? finalizedMsg.textContent : '';
+            const finalText = finalizedMsg && hasTextContent(finalizedMsg) ? finalizedMsg.textContent : liveStreamedText;
             const evaluation = evaluateAutoResumeSignals(finalized.profile, finalText, autoResumeCountRef.current);
             
             let dataToSave = finalized;
