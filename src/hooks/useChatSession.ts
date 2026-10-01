@@ -25,6 +25,16 @@ import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { MultiplayerEvents } from '../services/MultiplayerEvents';
 import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/timelineLogic';
+import { 
+    computeModulatedRegenAmounts, 
+    computeChatStaminaConsumptionCost, 
+    computeMovementCost 
+} from '../utilities/dynamicCharacterLogic';
+import { 
+    generateChatStaminaForInteractionData, 
+    generateActionStaminaForInteractionData 
+} from '../utilities/characterLogic';
+import { v4 as uuidv4 } from 'uuid';
 import type { 
     Character, Context, Location, AudioTrack, World, 
     PromptBlock, Sampler, StopPattern, BudgetStrategy, 
@@ -691,7 +701,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                     broadcastNewMessages(preTurnCount, sd);
                 } else {
                     setInteractionData(ud);
-                    broadcastNewMessages(preTurnCount, ud);
+                    broadcastNewMessages(preTurnCount, sd);
                 }
             }
         } catch (e) {
@@ -736,10 +746,9 @@ export function useChatSession(options: UseChatSessionOptions) {
         frontCameraImageBase64: string | undefined
     ) => {
         const currentState = getState();
-        const protagonist = currentState.interactionData?.protagonists?.[0];
-    const activeCharacter = isMultiplayerClient 
-        ? (joinProtagonistRef.current || protagonist || currentState.currentCharacter)
-        : (protagonist || currentState.currentCharacter);
+        const activeCharacter = isMultiplayerClient 
+            ? (joinProtagonistRef.current || currentState.currentCharacter)
+            : currentState.currentCharacter;
 
         if (!currentState.interactionData || !activeCharacter || (!text && (!files || !files.length))) return;
 
@@ -815,7 +824,17 @@ export function useChatSession(options: UseChatSessionOptions) {
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
 
         try {
-            const currentInteractionData = currentState.interactionData;
+            let currentInteractionData = currentState.interactionData;
+
+            // 1. REGENERATE STAMINA FOR PROTAGONIST BEFORE THEY SPEAK
+            const { chatRegen, actionRegen } = computeModulatedRegenAmounts(activeCharacter, currentInteractionData);
+            if (chatRegen > 0) {
+                generateChatStaminaForInteractionData(currentInteractionData, chatRegen, activeCharacter);
+            }
+            if (actionRegen > 0) {
+                generateActionStaminaForInteractionData(currentInteractionData, actionRegen, activeCharacter);
+            }
+
             const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
@@ -832,6 +851,13 @@ export function useChatSession(options: UseChatSessionOptions) {
                 frontCameraImage: frontCameraImageBase64,
                 knownCharacterNames
             });
+
+            // 2. CONSUME CHAT STAMINA BASED ON PARAGRAPH COUNT
+            const paragraphs = (text.match(/\n\n/g) || []).length + 1;
+            const chatCost = computeChatStaminaConsumptionCost(activeCharacter, currentInteractionData, paragraphs);
+            if (chatCost > 0) {
+                consumeChatStaminaForMessage(chatMessage, chatCost);
+            }
             
             const currentLocId = getCurrentLocationId(currentInteractionData, activeCharacter) || 'global';
             const newHistories = { ...currentInteractionData.interactionHistories };
@@ -844,7 +870,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             if (allActionsRef.current.length > 0) {
                 let prevWrap: '*' | '()' | 'none' | 'unknown' = 'unknown';
-                // FIXED: Use local history for character-specific perspective
                 const localHistory = getLocalMessageHistory(td, activeCharacter);
                 for (let i = localHistory.length - 2; i >= 0; i--) {
                     const prevMsg = localHistory[i];
@@ -859,25 +884,39 @@ export function useChatSession(options: UseChatSessionOptions) {
                 learnFromUserMessage(text, allActionsRef.current.map(a => a.label), prevWrap);
             }
 
+            // 3. LOCATION TRAVEL & MOVEMENT STAMINA DEDUCTION (ARRIVING ON NEXT MESSAGE)
             const hasLocations = td.locations && td.locations.length > 0;
             if (hasLocations) {
-                // FIXED: We already have chatMessage, no need to search global history for it
                 const currentLocId = getCurrentLocationId(td, activeCharacter);
                 const regexLoc = findReachableLocationByRegularExpression(td, chatMessage.textContent, activeCharacter);
                 const finalLocId = regexLoc?.id ?? currentLocId;
+
                 if (finalLocId && finalLocId !== currentLocId) {
-                    const updatedHistories = { ...td.interactionHistories };
-                    for (const [_locId, msgs] of Object.entries(updatedHistories)) {
-                        const idx = msgs.findIndex(m => m.id === chatMessage.id);
-                        if (idx !== -1) {
-                            const msg = msgs.splice(idx, 1)[0];
-                            if (!updatedHistories[finalLocId]) {
-                                updatedHistories[finalLocId] = [];
-                            }
-                            updatedHistories[finalLocId].push(msg);
-                            break;
-                        }
+                    let currentActionStamina = chatMessage.remainingActionStamina;
+                    const movementCost = computeMovementCost(currentLocId, finalLocId, td.locations);
+                    if (movementCost > 0 && currentActionStamina !== undefined) {
+                        currentActionStamina = Math.max(0, currentActionStamina - movementCost);
                     }
+
+                    const arrivalInteraction: HistoryMessage = {
+                        messageType: 'interaction',
+                        id: uuidv4(),
+                        character: { ...activeCharacter },
+                        isPresent: true,
+                        remainingChatStamina: chatMessage.remainingChatStamina,
+                        remainingActionStamina: currentActionStamina,
+                        characterClothingWearingStatuses: chatMessage.characterClothingWearingStatuses,
+                        characterLockedLocations: chatMessage.characterLockedLocations,
+                        parentMessageId: chatMessage.id,
+                        firstCreatedTimestamp: chatMessage.firstCreatedTimestamp + 1,
+                        lastUpdatedTimestamp: chatMessage.firstCreatedTimestamp + 1,
+                    };
+
+                    const updatedHistories = { ...td.interactionHistories };
+                    if (!updatedHistories[finalLocId]) {
+                        updatedHistories[finalLocId] = [];
+                    }
+                    updatedHistories[finalLocId].push(arrivalInteraction);
                     td = { ...td, interactionHistories: updatedHistories, lastUpdatedTimestamp: Date.now() };
                 }
             }
