@@ -1,6 +1,6 @@
 // src/components/ProfileEditorModal.tsx
 import { useState, useMemo, useCallback, type CSSProperties } from 'react';
-import type { Profile, PromptBlock, PromptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType } from '../types';
+import type { Profile, PromptBlock, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType } from '../types';
 import { SliderInput } from './SliderInput';
 import '../main.css';
 import { defaultInputStrategy, defaultProfileTools } from '../dictionaries/defaults';
