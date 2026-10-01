@@ -16,6 +16,7 @@ interface SessionState {
     streamingText: string;
     streamingCharacter: Character | null;
     currentCharacterExpression: string;
+    loadingLocations: Record<string, boolean>;
 
     // ── Model state ──────────────────────────────────────────────────
     selectedModel: LanguageModel | null;
@@ -103,6 +104,7 @@ export const useSessionStore = create<SessionState>()((set) => {
         streamingText: '',
         streamingCharacter: null,
         currentCharacterExpression: 'neutral',
+        loadingLocations: {},
 
         selectedModel: null,
         runningModels: {},

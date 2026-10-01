@@ -1,6 +1,6 @@
 // src/utilities/timelineLogic.ts
 import type { InteractionData, HistoryMessage, Character } from '../types';
-import { findLatestMessage, getMessageById } from './messageLogic';
+import { getMessageById } from './messageLogic';
 
 // ─── Timeline Cache ────────────────────────────────────────────────
 

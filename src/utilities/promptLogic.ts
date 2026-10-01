@@ -11,7 +11,6 @@ import { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocatio
 import { defaultInputStrategy } from '../dictionaries/defaults';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { generateLocationVisitSummary } from '../services/ChatMessageSummarizationEngine';
-import { compileTriggerRegexes } from './chatLogic';
 import { findLatestMessage } from './messageLogic';
 import { getLocalMessageHistory } from './timelineLogic';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from './dialoguePromptLogic';
@@ -43,6 +42,18 @@ type CombinationCache = Record<string, Record<string, { characterIdArray: string
 export interface EntityImageRef {
     entityId: string;
     filename: string;
+}
+
+// ─── Compile Trigger Regexes Helper ─────────────────────────────────
+
+function compileTriggerRegexes(triggers: RegularExpressionTrigger[] | undefined): RegExp[] {
+    if (!triggers || triggers.length === 0) return [];
+    const regexes: RegExp[] = [];
+    for (const t of triggers) {
+        if (!t.trigger.trim()) continue;
+        try { regexes.push(new RegExp(t.trigger)); } catch { /* skip invalid */ }
+    }
+    return regexes;
 }
 
 // ─── Dynamic Prompt Delimiters ─────────────────────────────────────
@@ -505,11 +516,11 @@ function getMessageFilterFlags(
             const msg = chatMessages[i];
 
             if (including) {
-                if (deactivationRegexes.some(r => r.test(msg.textContent))) {
+                if (deactivationRegexes.some((r: RegExp) => r.test(msg.textContent))) {
                     return;
                 }
             } else {
-                if (activationRegexes.some(r => r.test(msg.textContent))) {
+                if (activationRegexes.some((r: RegExp) => r.test(msg.textContent))) {
                     including = true;
                 } else {
                     excluded[i] = true;
@@ -2137,9 +2148,9 @@ function applyFilterTriggersUniversal(
     for (let i = 0; i < chatMessages.length; i++) {
         const msg = chatMessages[i];
         if (including) {
-            if (deactivationRegexes.some(r => r.test(msg.textContent))) return;
+            if (deactivationRegexes.some((r: RegExp) => r.test(msg.textContent))) return;
         } else {
-            if (activationRegexes.some(r => r.test(msg.textContent))) {
+            if (activationRegexes.some((r: RegExp) => r.test(msg.textContent))) {
                 including = true;
             } else {
                 excluded[i] = true;
