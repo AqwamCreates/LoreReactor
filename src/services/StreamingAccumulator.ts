@@ -39,14 +39,16 @@ export class StreamingAccumulator {
 
     /**
      * Commits the current live text into the permanent buffer and resets live state.
-     * Called after a tool invocation has been resolved and its replacement applied.
+     * Called after a tool invocation has been resolved and its replacement introduced.
      * @param replacementText - Optional text to append to committed instead of live
      *                     (e.g., calculator result that should appear inline)
      */
     commitLive(replacementText?: string): void {
         this.committed += replacementText ?? this.live;
         this.live = '';
-        this.lastRawLength = 0;
+        // DO NOT reset lastRawLength. The raw stream from the server is cumulative.
+        // Resetting it to 0 causes the caller to re-slice the entire history, 
+        // feeding already-processed tool markers back into the parser.
     }
 
     /**
@@ -76,16 +78,16 @@ export class StreamingAccumulator {
         return this.lastRawLength;
     }
 
-    /** Resets all state. Called when resuming after tool resolution. */
+    /** Resets all state. Called when starting a completely new generation. */
     reset(): void {
         this.committed = '';
         this.live = '';
         this.lastRawLength = 0;
     }
 
-    /** Soft reset: keeps committed text but clears live and raw tracking. */
+    /** Soft reset: keeps committed text but clears live buffer. */
     resetLive(): void {
         this.live = '';
-        this.lastRawLength = 0;
+        // DO NOT reset lastRawLength here either.
     }
 }
