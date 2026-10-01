@@ -45,7 +45,7 @@ import type {
 
 const engine = getLanguageModelEngine();
 
-const NO_ARG_TOOLS = ['coin', 'date'];
+const NO_ARG_TOOLS = ['coin', 'calendar'];
 const HOST_ONLY_TOOLS = ['administrator', 'creator', 'destroyer'];
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage | WhisperMessage {

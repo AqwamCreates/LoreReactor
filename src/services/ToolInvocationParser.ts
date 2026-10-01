@@ -1,12 +1,13 @@
 // src/services/ToolInvocationParser.ts
 
 import { toolStartSring, toolEndString } from "../dictionaries/stringList";
+import type { tool } from "../types";
 
-const characterAgnosticTools = ['whisper', 'think', 'pick', 'date', 'coin', 'dice', 'random', 'rng', 'move', 'dialogue', 'knowledge', 'memories', 'lookup', 'map', 'audio', 'clothing', 'note', 'inventory', 'trade'] // Audio is here because you can make noises from footsteps and stuff like that.
+const characterAgnosticTools: tool[] = ['whisper', 'think', 'pick', 'clock', 'calendar', 'coin', 'dice', 'random', 'rng', 'move', 'dialogue', 'knowledge', 'memory', 'lookup', 'map', 'audio', 'clothing', 'note', 'inventory', 'trade'] // Audio is here because you can make noises from footsteps and stuff like that.
 
-const characterSpecificTools = ['timer', 'stopwatch', 'calculator', 'schedule', 'web', 'invite', 'kick', 'teleport' , 'key', 'summon', 'narrate'] // These tools allows express characters' traits like intelligence and curiosity. Therefore, these would have their own activation and deactivation settings.
+const characterSpecificTools: tool[] = ['timer', 'stopwatch', 'calculator', 'schedule', 'web', 'invite', 'kick', 'teleport' , 'key', 'summon', 'narrate'] // These tools allows express characters' traits like intelligence and curiosity. Therefore, these would have their own activation and deactivation settings.
 
-const metaTools = ['inspect', 'administrator', 'creator', 'destroyer']
+const metaTools: tool[] = ['inspect', 'administrator', 'creator', 'destroyer']
 
 /*
 
@@ -16,7 +17,7 @@ web: For expressing curiosity or ignorance.
 
 */
 
-export const validTools = [...characterAgnosticTools, ...characterSpecificTools, ...metaTools]
+export const validTools: tool[] = [...characterAgnosticTools, ...characterSpecificTools, ...metaTools]
 
 export interface ToolInvocation {
     /** The full matched string including markers, e.g. "${toolStartSring}web: weather in Tokyo:tool|" */

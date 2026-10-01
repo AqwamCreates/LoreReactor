@@ -62,7 +62,6 @@ function appendPendingAction(nextMessage: BaseMessage, action: PendingToolAction
 }
 
 // ─── Entity Resolution Helpers (Synchronized with ChatInput.tsx logic) ───
-
 function getSessionCharacters(interactionData: InteractionData | null): Character[] {
     return interactionData?.participants || [];
 }
@@ -163,13 +162,11 @@ export async function executeTools(
 }
 
 // ─── Help helper ────────────────────────────────────────────────────
-
 function helpResult(toolType: string, args: string, usage: string): ToolResult {
     return { toolType, args, content: usage, displayReplacement: `[${toolType}: ${usage.split('\n')[0]}]` };
 }
 
 // ─── Display Mode Formatter ────────────────────────────────────────
-
 export function formatToolDisplay(
     result: ToolResult,
     rawMatch: string,
@@ -190,7 +187,6 @@ export function formatToolDisplay(
 }
 
 // ─── Whisper ────────────────────────────────────────────────────────
-
 function executeWhisper(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
@@ -231,7 +227,6 @@ function executeWhisper(args: string, nextMessage: BaseMessage, interactionData:
 }
 
 // ─── Think ──────────────────────────────────────────────────────────
-
 function executeThink(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const reasoning = args.trim();
     if (!reasoning) {
@@ -241,7 +236,6 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
     const characterId = character.id;
     const history = getGlobalMessageHistory(interactionData);
     const coLocatedParticipants = getCoLocatedParticipants(interactionData, character);
-    
     let wasAddressed = false;
     const recentWindow = coLocatedParticipants.length;
     for (let i = history.length - recentWindow; i < history.length; i++) {
@@ -256,16 +250,13 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
             }
         }
     }
-    
     let messagesSinceLastSpoke = 0;
     for (let i = history.length - 1; i >= 0; i--) {
         if (history[i].messageType === 'chat' && history[i].character.id === characterId) break;
         messagesSinceLastSpoke++;
     }
-    
     const remainingChatStamina = nextMessage.remainingChatStamina;
     const maximumChatStamina = character.maximumChatStamina;
-    
     const contextLines: string[] = [];
     contextLines.push(`You are ${nextMessage.character.name}.`);
     contextLines.push(`You were ${wasAddressed ? 'addressed' : 'not addressed'} in recent messages.`);
@@ -279,7 +270,6 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
     contextLines.push(`Your reasoning: ${reasoning}`);
     contextLines.push('');
     contextLines.push('Based on your reasoning and the above context, decide: should you speak now? Respond with your decision and brief justification. If you decide to speak, continue naturally after this tool result.');
-    
     const content = contextLines.join('\n');
     return {
         toolType: 'think',
@@ -290,7 +280,6 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
 }
 
 // ─── Random Pick ────────────────────────────────────────────────────
-
 function executeRandomPick(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     if (!expression.trim()) {
         return helpResult('pick', expression, 'pick <option1>, <option2>, ... — randomly picks one option from the list');
@@ -309,12 +298,10 @@ function executeRandomPick(expression: string, _nextMessage: BaseMessage, _inter
 }
 
 // ─── Clock ────────────────────────────────────────────────────────────
-// (Added: This was missing from your ToolExecutor.ts file but is required by your `tool` type)
 function executeClock(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const now = new Date();
     const trimmed = args.trim().toLowerCase();
     let timeStr: string;
-
     if (trimmed === '24h' || trimmed === '24') {
         timeStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
     } else if (trimmed === 'unix' || trimmed === 'timestamp') {
@@ -322,7 +309,6 @@ function executeClock(args: string, _nextMessage: BaseMessage, _interactionData:
     } else {
         timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
     }
-
     return { toolType: 'clock', args, content: timeStr, displayReplacement: `[🕰️ ${timeStr}]` };
 }
 
@@ -331,31 +317,27 @@ function executeCalendar(args: string, _nextMessage: BaseMessage, _interactionDa
     const now = new Date();
     const trimmed = args.trim().toLowerCase();
     let dateStr: string;
-    
-    if (trimmed === 'iso') { 
-        dateStr = now.toISOString(); 
-    } else if (trimmed === 'unix' || trimmed === 'timestamp') { 
-        dateStr = Math.floor(now.getTime() / 1000).toString(); 
-    } else if (trimmed === 'time') { 
-        dateStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }); 
-    } else if (trimmed === 'date') { 
-        dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }); 
-    } else { 
-        dateStr = now.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }); 
+    if (trimmed === 'iso') {
+        dateStr = now.toISOString();
+    } else if (trimmed === 'unix' || trimmed === 'timestamp') {
+        dateStr = Math.floor(now.getTime() / 1000).toString();
+    } else if (trimmed === 'time') {
+        dateStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    } else if (trimmed === 'date') {
+        dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    } else {
+        dateStr = now.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
     }
-    
     return { toolType: 'date', args, content: dateStr, displayReplacement: `[📅 ${dateStr}]` };
 }
 
 // ─── Coin Flip ───────────────────────────────────────────────────────
-
 function executeCoinFlip(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
     return { toolType: 'coin', args, content: result, displayReplacement: `[🪙 Coin flip: ${result}]` };
 }
 
 // ─── Roll Dice ──────────────────────────────────────────────────────
-
 interface RollGroup { count: number; sides: number }
 
 function executeDiceRoll(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
@@ -404,7 +386,6 @@ function parseRollExpression(expr: string): { groups: RollGroup[]; modifier: num
 }
 
 // ─── Random Number ───────────────────────────────────────────────────
-
 function executeRandom(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
@@ -428,8 +409,7 @@ function executeRandom(args: string, _nextMessage: BaseMessage, _interactionData
     return { toolType: 'random', args, content: result.toString(), displayReplacement: `[🎲 Random(${min}-${max}): ${result}]` };
 }
 
-// ─── RNG Table ────────────────────────────────────────────────
-
+// ─── RNG Table ────────────────────────────────────────────────────────
 function executeRng(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
@@ -474,7 +454,6 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
 }
 
 // ─── Move ───────────────────────────────────────────────────────────
-
 function executeMove(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
@@ -482,27 +461,20 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
     }
     const locations = interactionData.locations || [];
     if (locations.length === 0) return { toolType: 'move', args, content: '[Error: No locations available.]', displayReplacement: '[Error: No locations available.]' };
-    
     const currentLocation = getCurrentLocation(interactionData, nextMessage.character);
     if (!currentLocation) return { toolType: 'move', args, content: '[Error: No current location set.]', displayReplacement: '[Error: No current location set.]' };
-    
     const targetLocation = resolveLocation(trimmed, interactionData);
     if (!targetLocation) return { toolType: 'move', args, content: `[Error: Location "${trimmed}" not found.]`, displayReplacement: `[Error: Location "${trimmed}" not found.]` };
-    
     if (targetLocation.id === currentLocation.id) return { toolType: 'move', args, content: `Already at "${targetLocation.name}" (${targetLocation.id}).`, displayReplacement: `[🚶 Already at "${targetLocation.name}"]` };
-    
     const isAdjacent = currentLocation.locationBindings?.includes(targetLocation.id) || targetLocation.locationBindings?.includes(currentLocation.id);
     if (!isAdjacent) return { toolType: 'move', args, content: `[Error: "${targetLocation.name}" is not adjacent. Use teleport for non-adjacent movement.]`, displayReplacement: `[Error: Not adjacent]` };
-    
     if (isCharacterLockedFromLocation(interactionData, nextMessage.character.id, targetLocation.id)) {
         return { toolType: 'move', args, content: `[Error: "${targetLocation.name}" is locked for you. Use key unlock first.]`, displayReplacement: `[Error: Location locked]` };
     }
-    
     return { toolType: 'move', args, content: `Moved to "${targetLocation.name}" (${targetLocation.id}).`, displayReplacement: `[🚶 Moved to "${targetLocation.name}"]` };
 }
 
 // ─── Timer / Stopwatch Helpers ──────────────────────────────────────
-
 interface TimerEntry { name: string; targetTimestamp: number }
 interface StopwatchEntry { name: string; startTimestamp: number; pausedElapsedMs?: number }
 
@@ -548,7 +520,6 @@ function saveStopwatches(inventory: Inventory, stopwatches: StopwatchEntry[]): v
 }
 
 // ─── Timer ──────────────────────────────────────────────────────────
-
 function executeTimer(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
@@ -556,13 +527,11 @@ function executeTimer(args: string, nextMessage: BaseMessage, interactionData: I
     }
     const parts = trimmed.split(/\s+/);
     const subcommand = parts[0]?.toLowerCase();
-    
     const latest = findLatestMessage(interactionData, nextMessage.character);
     const currentMessage = latest?.message;
     const inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
     const timers = loadTimers(inventory);
     const now = Date.now();
-    
     switch (subcommand) {
         case 'set': {
             if (parts.length < 3) return { toolType: 'timer', args, content: '[Error: Usage: timer set <name> <duration>]', displayReplacement: '[Error: Usage: timer set <name> <duration>]' };
@@ -603,7 +572,6 @@ function executeTimer(args: string, nextMessage: BaseMessage, interactionData: I
 }
 
 // ─── Stopwatch ──────────────────────────────────────────────────────
-
 function executeStopwatch(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) {
@@ -611,13 +579,11 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
     }
     const parts = trimmed.split(/\s+/);
     const subcommand = parts[0]?.toLowerCase();
-    
     const latest = findLatestMessage(interactionData, nextMessage.character);
     const currentMessage = latest?.message;
     const inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
     const stopwatches = loadStopwatches(inventory);
     const now = Date.now();
-    
     switch (subcommand) {
         case 'start': {
             if (parts.length < 2) return { toolType: 'stopwatch', args, content: '[Error: Usage: stopwatch start <name>]', displayReplacement: '[Error: Usage: stopwatch start <name>]' };
@@ -678,7 +644,6 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
 }
 
 // ─── Schedule ───────────────────────────────────────────────────────
-
 interface ScheduleEntry { name: string; triggerTimestamp: number; action: string; repeatIntervalMs?: number }
 
 function loadSchedules(inventory: Inventory | undefined): ScheduleEntry[] {
@@ -697,13 +662,11 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
     }
     const parts = trimmed.split(/\s+/);
     const subcommand = parts[0]?.toLowerCase();
-    
     const latest = findLatestMessage(interactionData, nextMessage.character);
     const currentMessage = latest?.message;
     const inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
     const schedules = loadSchedules(inventory);
     const now = Date.now();
-    
     switch (subcommand) {
         case 'set': {
             if (parts.length < 4) return { toolType: 'schedule', args, content: '[Error: Usage: schedule set <name> <duration> <action>]', displayReplacement: '[Error: Usage: schedule set <name> <duration> <action>]' };
@@ -771,7 +734,6 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
 }
 
 // ─── Calculator ─────────────────────────────────────────────────────
-
 function executeCalculator(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     if (!expression.trim()) {
         return helpResult('calculator', expression, 'calculator <expression> — evaluate math (supports +, -, *, /, (), %, ^)');
@@ -793,7 +755,6 @@ function executeCalculator(expression: string, _nextMessage: BaseMessage, _inter
 }
 
 // ─── Web ────────────────────────────────────────────────────────────
-
 async function executeWeb(query: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): Promise<ToolResult> {
     if (!query.trim()) {
         return helpResult('web', query, 'web <query or URL> — search the web or fetch a webpage directly');
@@ -807,11 +768,11 @@ async function executeWeb(query: string, _nextMessage: BaseMessage, _interaction
         if (validResults.length === 0) {
             const errorMsg = results[0]?.error || 'No content retrieved';
             const label = isDirectUrl ? `Fetched: "${trimmedQuery}"` : `Searched: "${trimmedQuery}"`;
-            return { toolType: 'web', args: query, content: `[Error: ${errorMsg}]`, displayReplacement: `[🌐 ${label}]\n[Error: ${errorMsg}]` };
+            return { toolType: 'web', args: query, content: `[Error: ${errorMsg}]`, displayReplacement: `[🌐 ${label}] [Error: ${errorMsg}]` };
         }
         const result = validResults[0];
         const label = isDirectUrl ? `Fetched: "${trimmedQuery}"` : `Searched: "${trimmedQuery}"`;
-        return { toolType: 'web', args: query, content: result.content, displayReplacement: `[🌐 ${label}]\n${result.content}` };
+        return { toolType: 'web', args: query, content: result.content, displayReplacement: `[🌐 ${label}] ${result.content}` };
     } catch (e) {
         const errorContent = `[Error: Web request failed - ${(e as Error).message}]`;
         return { toolType: 'web', args: query, content: errorContent, displayReplacement: errorContent };
@@ -819,7 +780,6 @@ async function executeWeb(query: string, _nextMessage: BaseMessage, _interaction
 }
 
 // ─── Dialogue ──────────────────────────────────────────────────────
-
 function executeDialogue(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     const character = nextMessage.character;
@@ -856,7 +816,6 @@ function executeDialogue(args: string, nextMessage: BaseMessage, interactionData
 }
 
 // ─── Knowledge ──────────────────────────────────────────────────────
-
 function executeKnowledge(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     const character = nextMessage.character;
@@ -878,14 +837,13 @@ function executeKnowledge(args: string, nextMessage: BaseMessage, _interactionDa
         let matched = knowledgePrompts.filter(kp => kp.id === queryId);
         if (matched.length === 0) matched = knowledgePrompts.filter(kp => kp.id.startsWith(queryId));
         if (matched.length === 0) return { toolType: 'knowledge', args, content: `No knowledge matching ID "${queryId}". Use "knowledge list" to see available IDs.`, displayReplacement: `[🧠 No match for "${queryId}"]` };
-        const combined = matched.map(kp => `[${kp.id}] ${kp.name}\n${kp.content}`).join('\n---\n');
+        const combined = matched.map(kp => `[${kp.id}] ${kp.name} ${kp.content}`).join(' --- ');
         return { toolType: 'knowledge', args, content: combined, displayReplacement: `[🧠 Recalled ${matched.length} knowledge entry(ies)]` };
     }
     return { toolType: 'knowledge', args, content: `[Error: Unknown knowledge command "${subcommand}". Use list or recall <id>.]`, displayReplacement: `[Error: Unknown knowledge command]` };
 }
 
 // ─── Memory ─────────────────────────────────────────────────────────
-
 async function executeMemory(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): Promise<ToolResult> {
     const trimmed = args.trim();
     const character = nextMessage.character;
@@ -915,7 +873,7 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
                 if (m) { foundMemory = m; break; }
             }
             if (!foundMemory) return { toolType: 'memory', args, content: `No memory matching ID "${queryId}". Use "memory list" to see available IDs.`, displayReplacement: `[🧠 No match for "${queryId}"]` };
-            return { toolType: 'memory', args, content: `[${foundMemory.id}] ${foundMemory.name}\n${foundMemory.content}`, displayReplacement: `[🧠 Recalled 1 memory]` };
+            return { toolType: 'memory', args, content: `[${foundMemory.id}] ${foundMemory.name} ${foundMemory.content}`, displayReplacement: `[🧠 Recalled 1 memory]` };
         }
         const participantIds = new Set(getSessionCharacters(interactionData).map(p => p.id));
         const relevantMemories: string[] = [];
@@ -928,7 +886,7 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
             }
         }
         if (relevantMemories.length === 0) return { toolType: 'memory', args, content: 'No relevant memories for current conversation.', displayReplacement: '[🧠 No relevant memories]' };
-        return { toolType: 'memory', args, content: relevantMemories.join('\n---\n'), displayReplacement: `[🧠 Recalled ${relevantMemories.length} memory(ies)]` };
+        return { toolType: 'memory', args, content: relevantMemories.join(' --- '), displayReplacement: `[🧠 Recalled ${relevantMemories.length} memory(ies)]` };
     }
     if (subcommand === 'save') {
         const otherParticipants = getSessionCharacters(interactionData).filter(p => p.id !== character.id);
@@ -957,8 +915,7 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
     return { toolType: 'memory', args, content: `[Error: Unknown memory command "${subcommand}". Use list, recall [id], or save.]`, displayReplacement: `[Error: Unknown memory command]` };
 }
 
-// ─── Lookup ────────────────────────────────────────────────
-
+// ─── Lookup ─────────────────────────────────────────────────────────
 function executeLookup(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const query = args.trim().toLowerCase();
     if (!query) return helpResult('lookup', args, 'lookup <keyword> — search contexts and lore by keyword');
@@ -980,7 +937,6 @@ function executeLookup(args: string, _nextMessage: BaseMessage, interactionData:
 }
 
 // ─── Map ────────────────────────────────────────────────────────────
-
 function executeMap(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) return helpResult('map', args, 'map <location_id> or map <loc1_id> to <loc2_id> — distance between locations');
@@ -1015,7 +971,6 @@ function executeMap(args: string, _nextMessage: BaseMessage, interactionData: In
 }
 
 // ─── Audio ──────────────────────────────────────────────────────────
-
 function executeAudio(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) return helpResult('audio', args, 'audio play <track_id> | audio stop <track_id>');
@@ -1034,18 +989,15 @@ function executeAudio(args: string, _nextMessage: BaseMessage, interactionData: 
 }
 
 // ─── Note ──────────────────────────────────────────────────────────
-
 function executeNote(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) return helpResult('note', args, 'note set <key> <text> | note get <key> | note delete <key> | note list');
     const parts = trimmed.split(/\s+/);
     const subcommand = parts[0]?.toLowerCase();
-    
     const latest = findLatestMessage(interactionData, nextMessage.character);
     const currentMessage = latest?.message;
     let notes: Record<string, string> = {};
     if (currentMessage?.inventory && typeof currentMessage.inventory['__notes__'] === 'string') { try { notes = JSON.parse(currentMessage.inventory['__notes__'] as string); } catch { notes = {}; } }
-    
     switch (subcommand) {
         case 'list': { const entries = Object.entries(notes); if (entries.length === 0) return { toolType: 'note', args, content: 'No notes.', displayReplacement: '[📝 No notes]' }; return { toolType: 'note', args, content: entries.map(([k, v]) => `${k}: ${v}`).join('\n'), displayReplacement: `[📝 ${entries.length} note(s)]` }; }
         case 'set': { if (parts.length < 3) return { toolType: 'note', args, content: '[Error: Usage: note set <key> <text>]', displayReplacement: '[Error: Usage: note set <key> <text>]' }; const key = parts[1], text = parts.slice(2).join(' '); notes[key] = text; const inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {}; inventory['__notes__'] = JSON.stringify(notes); nextMessage.inventory = inventory; return { toolType: 'note', args, content: `Saved "${key}".`, displayReplacement: `[📝 Saved: "${key}"]` }; }
@@ -1056,17 +1008,14 @@ function executeNote(args: string, nextMessage: BaseMessage, interactionData: In
 }
 
 // ─── Inventory ──────────────────────────────────────────────────────
-
 function executeInventory(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) return helpResult('inventory', args, 'inventory list | inventory add <item> <qty> | inventory remove <item> <qty> | inventory set <item> <value>');
     const parts = trimmed.split(/\s+/);
     const subcommand = parts[0]?.toLowerCase();
-    
     const latest = findLatestMessage(interactionData, nextMessage.character);
     const currentMessage = latest?.message;
     const inventory: Inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
-    
     switch (subcommand) {
         case 'list': return { toolType: 'inventory', args, content: '[Inventory listed in prompt context]', displayReplacement: '[📦 Inventory listed above]' };
         case 'add': { if (parts.length < 3) return { toolType: 'inventory', args, content: '[Error: Usage: inventory add <item> <qty>]', displayReplacement: '[Error: Usage]' }; const item = parts.slice(1, -1).join(' '), qty = Number(parts[parts.length - 1]); if (!item || isNaN(qty) || qty <= 0) return { toolType: 'inventory', args, content: '[Error: Invalid item or quantity]', displayReplacement: '[Error: Invalid]' }; const current = typeof inventory[item] === 'number' ? (inventory[item] as number) : 0; inventory[item] = current + qty; nextMessage.inventory = inventory; return { toolType: 'inventory', args, content: `Added ${qty}x "${item}"`, displayReplacement: `[📦 Added ${qty}x "${item}"]` }; }
@@ -1077,7 +1026,6 @@ function executeInventory(args: string, nextMessage: BaseMessage, interactionDat
 }
 
 // ─── Trade ──────────────────────────────────────────────────────────
-
 interface PendingTradeOffer {
     id: string; fromCharId: string; fromCharName: string; toCharId: string; toCharName: string;
     giveItems: { item: string; qty: number }[]; takeItems: { item: string; qty: number }[]; createdAt: number;
@@ -1097,11 +1045,9 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
     if (!trimmed) return helpResult('trade', args, 'trade give <char_id> <item>:<qty>[,...] | trade take <char_id> <item>:<qty>[,...] | trade offer <char_id> <give_items> for <take_items> | trade accept <offer_id> | trade decline <offer_id> | trade list_offers');
     const parts = trimmed.split(/\s+/);
     const subcommand = parts[0]?.toLowerCase();
-    
     const latest = findLatestMessage(interactionData, nextMessage.character);
     const currentMessage = latest?.message;
     const myInventory: Inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
-    
     const parseItems = (raw: string): { item: string; qty: number }[] => {
         const entries: { item: string; qty: number }[] = [];
         const segments = raw.split(',');
@@ -1114,7 +1060,6 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
         }
         return entries;
     };
-    
     const getTargetInventory = (charId: string): { inventory: Inventory; msg: HistoryMessage; locId: string } | null => {
         const char = (context?.allCharacters || []).find(c => c.id === charId);
         if (!char) return null;
@@ -1123,7 +1068,6 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
         const inv = targetLatest.message.inventory ? { ...targetLatest.message.inventory } : {};
         return { inventory: inv, msg: targetLatest.message, locId: targetLatest.locationId };
     };
-    
     switch (subcommand) {
         case 'give': {
             if (parts.length < 3) return { toolType: 'trade', args, content: '[Error: Usage: trade give <char_id> <item>:<qty>[,...]]', displayReplacement: '[Error: Usage]' };
@@ -1148,7 +1092,6 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
                 transferred.push(`${qty}x "${item}"`);
             }
             nextMessage.inventory = myInventory;
-            
             const locMsgs = interactionData.interactionHistories[targetData.locId] || [];
             const msgIdx = locMsgs.findIndex(m => m.id === targetData.msg.id);
             if (msgIdx !== -1) {
@@ -1182,7 +1125,6 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
                 taken.push(`${qty}x "${item}"`);
             }
             nextMessage.inventory = myInventory;
-            
             const locMsgs = interactionData.interactionHistories[targetData.locId] || [];
             const msgIdx = locMsgs.findIndex(m => m.id === targetData.msg.id);
             if (msgIdx !== -1) {
@@ -1212,7 +1154,6 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
             const offer: PendingTradeOffer = { id: uuidv4(), fromCharId: nextMessage.character.id, fromCharName: nextMessage.character.name, toCharId: targetChar.id, toCharName: targetChar.name, giveItems, takeItems, createdAt: Date.now() };
             const targetOffers = loadPendingOffers(targetData.inventory);
             targetOffers.push(offer); savePendingOffers(targetData.inventory, targetOffers);
-            
             const locMsgs = interactionData.interactionHistories[targetData.locId] || [];
             const msgIdx = locMsgs.findIndex(m => m.id === targetData.msg.id);
             if (msgIdx !== -1) {
@@ -1221,7 +1162,6 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
                 interactionData.interactionHistories[targetData.locId][msgIdx] = updatedMsg;
             }
             interactionData.lastUpdatedTimestamp = Date.now();
-            
             const giveStr = giveItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
             const takeStr = takeItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
             return { toolType: 'trade', args, content: `Trade offer sent to ${targetChar.name} (ID: ${offer.id}): offering ${giveStr} for ${takeStr}. They must accept or decline.`, displayReplacement: `[🤝 Offer sent to ${targetChar.name}: ${giveStr} ↔ ${takeStr}]` };
@@ -1258,7 +1198,6 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
                 myInventory[item] = myCurrent + qty;
             }
             myOffers.splice(offerIdx, 1); savePendingOffers(myInventory, myOffers); nextMessage.inventory = myInventory;
-            
             const locMsgs = interactionData.interactionHistories[offererData.locId] || [];
             const msgIdx = locMsgs.findIndex(m => m.id === offererData.msg.id);
             if (msgIdx !== -1) {
@@ -1267,7 +1206,6 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
                 interactionData.interactionHistories[offererData.locId][msgIdx] = updatedMsg;
             }
             interactionData.lastUpdatedTimestamp = Date.now();
-            
             const receivedStr = offer.giveItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
             const gaveStr = offer.takeItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
             return { toolType: 'trade', args, content: `Accepted offer from ${offer.fromCharName}. Received: ${receivedStr}. Gave: ${gaveStr}.`, displayReplacement: `[🤝 Accepted trade with ${offer.fromCharName}]` };
@@ -1297,7 +1235,6 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
 }
 
 // ─── Invite ─────────────────────────────────────────────────────────
-
 function executeInvite(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) return helpResult('invite', args, 'invite <character_id> — bring existing participant to current location');
@@ -1313,13 +1250,11 @@ function executeInvite(args: string, nextMessage: BaseMessage, interactionData: 
 }
 
 // ─── Kick ───────────────────────────────────────────────────────────
-
 function executeKick(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) return helpResult('kick', args, 'kick locations | kick characters | kick <character_id> [location_id]');
     const parts = trimmed.split(/\s+/);
     const subcommand = parts[0]?.toLowerCase();
-    
     if (subcommand === 'locations') {
         const kicker = nextMessage.character;
         const kickerLoc = getCurrentLocation(interactionData, kicker);
@@ -1332,22 +1267,17 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
         if (coLocated.length === 0) return { toolType: 'kick', args, content: 'No co-located characters.', displayReplacement: '[👢 No characters to kick]' };
         return { toolType: 'kick', args, content: coLocated.map(c => `${c.name} (${c.id})`).join('\n'), displayReplacement: `[👢 ${coLocated.length} character(s)]` };
     }
-    
     const targetCharId = subcommand;
     const targetLocationId = parts.length > 1 ? parts.slice(1).join(' ').trim() : undefined;
     const allChars = context?.allCharacters || [];
     const targetChar = resolveCharacter(targetCharId, interactionData, allChars);
     if (!targetChar) return { toolType: 'kick', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: `[Error: Not found]` };
-    
     const kicker = nextMessage.character;
     const kickerLoc = getCurrentLocation(interactionData, kicker);
     const targetLoc = getCurrentLocation(interactionData, targetChar);
-    
     if (!kickerLoc || !targetLoc || kickerLoc.id !== targetLoc.id) return { toolType: 'kick', args, content: '[Error: Target not co-located.]', displayReplacement: `[Error: Not co-located]` };
-    
     const kickable = getReachableLocationsByCharacter(interactionData, kicker).filter(loc => !kickerLoc || loc.id !== kickerLoc.id);
     let destName: string, destId: string;
-    
     if (targetLocationId) {
         const destLoc = resolveLocation(targetLocationId, interactionData);
         if (!destLoc) return { toolType: 'kick', args, content: `[Error: Location "${targetLocationId}" not found.]`, displayReplacement: `[Error: Location not found]` };
@@ -1358,13 +1288,11 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
         const pick = kickable[Math.floor(Math.random() * kickable.length)];
         destName = pick.name; destId = pick.id;
     }
-    
     appendPendingAction(nextMessage, { type: 'kick', payload: { characterId: targetChar.id, characterName: targetChar.name, destinationLocationName: destName, destinationLocationId: destId } });
     return { toolType: 'kick', args, content: `Kicked ${targetChar.name} to "${destName}".`, displayReplacement: `[👢 Kicked ${targetChar.name} to ${destName}]` };
 }
 
 // ─── Teleport ───────────────────────────────────────────────────────
-
 function executeTeleport(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) return helpResult('teleport', args, 'teleport <location_id> — instant movement to any session location');
@@ -1378,7 +1306,6 @@ function executeTeleport(args: string, nextMessage: BaseMessage, interactionData
 }
 
 // ─── Key ────────────────────────────────────────────────────────────
-
 function executeKey(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) return helpResult('key', args, 'key lock <location_id> [character_id] | key unlock <location_id> [character_id]');
@@ -1415,7 +1342,6 @@ function executeKey(args: string, nextMessage: BaseMessage, interactionData: Int
 }
 
 // ─── Clothing ───────────────────────────────────────────────────────
-
 function executeClothing(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) return helpResult('clothing', args, 'clothing <character_id> wear <clothing_id> | clothing <character_id> remove <clothing_id>');
@@ -1446,7 +1372,6 @@ function executeClothing(args: string, nextMessage: BaseMessage, interactionData
 }
 
 // ─── Summon ─────────────────────────────────────────────────────────
-
 function executeSummon(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) return helpResult('summon', args, 'summon <character_id> — add non-participant character to session');
@@ -1460,7 +1385,6 @@ function executeSummon(args: string, nextMessage: BaseMessage, interactionData: 
 }
 
 // ─── Narrate ────────────────────────────────────────────────────────
-
 function executeNarrate(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) return helpResult('narrate', args, 'narrate <text> — inject ambient narration without consuming chat stamina');
@@ -1468,19 +1392,16 @@ function executeNarrate(args: string, _nextMessage: BaseMessage, _interactionDat
 }
 
 // ─── Inspect ────────────────────────────────────────────────────────
-
 function executeInspect(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) return helpResult('inspect', args, 'inspect <character_id> — examine character\'s visible state');
     const allChars = context?.allCharacters || [];
     const targetChar = resolveCharacter(trimmed, interactionData, allChars);
     if (!targetChar) return { toolType: 'inspect', args, content: `[Error: Character "${trimmed}" not found.]`, displayReplacement: `[Error: Not found]` };
-    
     let targetLocationName = 'unknown';
     let lastExpression = 'neutral';
     let itemCount = 0;
     const wornClothing: { name: string; id: string }[] = [];
-    
     const latest = findLatestMessage(interactionData, targetChar);
     if (latest) {
         const loc = interactionData.locations?.find(l => l.id === latest.locationId);
@@ -1493,13 +1414,11 @@ function executeInspect(args: string, _nextMessage: BaseMessage, interactionData
             }
         }
     }
-    
     const wornStr = wornClothing.length > 0 ? wornClothing.map(w => `${w.name} (${w.id})`).join(', ') : 'nothing notable';
     return { toolType: 'inspect', args, content: `${targetChar.name} (${targetChar.id}): Location: ${targetLocationName}, Expression: ${lastExpression}, Wearing: ${wornStr}, Items: ${itemCount}`, displayReplacement: `[🔍 ${targetChar.name}: 📍${targetLocationName}, 😊${lastExpression}, 👕${wornClothing.length}, 📦${itemCount}]` };
 }
 
 // ─── Administrator ──────────────────────────────────────────────────
-
 function executeAdministrator(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) return helpResult('administrator', args, 'administrator list_chats | list_accounts | list_multiplayer | move_protagonist <chat_id> | switch_model <model_name> | toggle_account <id> | join_session <id> [pwd] | leave_session | accept_join <id> | reject_join <id>');
@@ -1567,7 +1486,6 @@ function executeAdministrator(args: string, nextMessage: BaseMessage, interactio
 }
 
 // ─── Creator ────────────────────────────────────────────────────────
-
 const VALID_ENTITY_TYPES = ['character', 'context', 'location', 'audio_track', 'prompt_block', 'stop_pattern', 'sampler', 'budget_strategy', 'profile', 'world', 'memory', 'extension', 'account', 'multiplayer_data'];
 
 function executeCreator(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
@@ -1583,7 +1501,6 @@ function executeCreator(args: string, nextMessage: BaseMessage, _interactionData
 }
 
 // ─── Destroyer ──────────────────────────────────────────────────────
-
 function executeDestroyer(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
     if (!trimmed) return helpResult('destroyer', args, `destroyer <entity_type> <entity_id> — types: ${VALID_ENTITY_TYPES.join(', ')}`);
@@ -1620,7 +1537,6 @@ function executeDestroyer(args: string, nextMessage: BaseMessage, interactionDat
 }
 
 // ─── Process Pending Tool Actions ───────────────────────────────────
-
 export function processPendingToolActions(
     data: InteractionData,
     allCharacters: Character[],
@@ -1628,35 +1544,27 @@ export function processPendingToolActions(
 ): InteractionData {
     const protagonistIds = new Set(data.protagonists?.map(p => p.id) ?? []);
     const history = getGlobalMessageHistory(data);
-    
     let lastAiCharId: string | null = null;
     for (let i = history.length - 1; i >= 0; i--) {
         const msg = history[i];
         if (msg.messageType === 'chat' && !protagonistIds.has(msg.character.id)) { lastAiCharId = msg.character.id; break; }
     }
-    
     if (!lastAiCharId) return data;
-    
     const findPrevMsg = (d: InteractionData, charId: string) => {
         const char = allCharacters.find(c => c.id === charId);
         if (!char) return null;
         const latest = findLatestMessage(d, char);
         return latest?.message || null;
     };
-    
     const charLastMsg = findPrevMsg(data, lastAiCharId);
     if (!charLastMsg || charLastMsg.messageType !== 'chat') return data;
-    
     const targetMsg = charLastMsg as ChatMessage;
     const latestInfo = findLatestMessage(data, targetMsg.character);
     if (!latestInfo) return data;
-    
     const actions = loadPendingToolActions(targetMsg.inventory);
     if (actions.length === 0) return data;
-    
     let updatedData = { ...data, interactionHistories: { ...data.interactionHistories } };
     let changed = false;
-    
     for (const action of actions) {
         switch (action.type) {
             case 'summon': {
@@ -1752,13 +1660,10 @@ export function processPendingToolActions(
             case 'destroyer': options?.onToast?.(`💀 ${action.payload.entityType} "${action.payload.entityName}" deletion requested.`, 'info'); break;
         }
     }
-    
     if (!changed) return data;
-    
     const locId = latestInfo.locationId;
     const locMsgs = updatedData.interactionHistories[locId] || [];
     const targetMsgIdx = locMsgs.findIndex(m => m.id === targetMsg.id);
-    
     if (targetMsgIdx !== -1) {
         const cleanedMsg = { ...locMsgs[targetMsgIdx] } as ChatMessage;
         const cleanedInventory = cleanedMsg.inventory ? { ...cleanedMsg.inventory } : {};
@@ -1767,6 +1672,5 @@ export function processPendingToolActions(
         updatedData.interactionHistories[locId] = [...locMsgs];
         updatedData.interactionHistories[locId][targetMsgIdx] = cleanedMsg;
     }
-    
     return { ...updatedData, lastUpdatedTimestamp: Date.now() };
 }

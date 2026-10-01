@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import type { BudgetStrategy, InteractionData, Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData } from '../types';
 import { getLocalMessageHistory } from '../utilities/timelineLogic';
 
-
 interface ChatInputProps {
     inputText: string;
     setInputText: (text: string) => void;
@@ -54,7 +53,8 @@ const COMMAND_TREE: SlashCmd[] = [
     { name: 'coin', desc: 'Flip a coin' },
     { name: 'random', desc: 'Random integer', args: [{ name: 'range', type: 'text', desc: 'Min-Max or just Max', example: '1-100' }] },
     { name: 'pick', desc: 'Pick from list', args: [{ name: 'options', type: 'text', desc: 'Comma-separated choices', example: 'sword, shield, potion' }] },
-    { name: 'date', desc: 'Current date/time', args: [{ name: 'format', type: 'text', desc: 'Date format', example: 'iso', optional: true }] },
+    { name: 'clock', desc: 'Current time', args: [{ name: 'format', type: 'text', desc: 'Time format', example: '24h', optional: true }] },
+    { name: 'calendar', desc: 'Current date', args: [{ name: 'format', type: 'text', desc: 'Date format', example: 'iso', optional: true }] },
     { name: 'calculator', desc: 'Evaluate math', args: [{ name: 'expression', type: 'text', desc: 'Math expression', example: '15*7+3' }] },
     { name: 'move', desc: 'Move to adjacent location', args: [{ name: 'location', type: 'session_location', desc: 'Destination location' }] },
     { name: 'teleport', desc: 'Instant movement', args: [{ name: 'location', type: 'session_location', desc: 'Any session location' }] },
@@ -217,7 +217,6 @@ interface EntityOption { value: string; label: string; id: string; extra?: strin
 function getEntityDescription(entity: any): string {
     if (!entity) return '';
     
-    // STRICTLY check only true description or content fields. If none exist, return empty string.
     const rawDesc = entity.description ?? entity.content;
 
     if (rawDesc && typeof rawDesc === 'string' && rawDesc.trim().length > 0) {
@@ -331,7 +330,8 @@ function getEntityOptions(
     if (type === 'item') {
         if (!data || !localChar) return [];
         const localMessageHistory = getLocalMessageHistory(data, localChar, ['chat', 'whisper']);
-        const lastMsg = localMessageHistory[localMessageHistory.length - 1]
+        const lastMsg = localMessageHistory[localMessageHistory.length - 1]; // FIXED: Added missing semicolon
+        
         if (lastMsg?.inventory) {
             return Object.entries(lastMsg.inventory)
                 .filter(([k]) => !k.startsWith('__'))

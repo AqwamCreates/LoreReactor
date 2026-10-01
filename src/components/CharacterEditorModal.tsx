@@ -38,7 +38,7 @@ const TOOL_DESCRIPTIONS: Record<tool, string> = {
     clock: 'Allow this character to check the current time.',
     calendar: 'Allow this character to check the current date.',
     coin: 'Allow this character to flip a coin.',
-    dice: 'Allow this character to roll dice, such as 2d6+3,.',
+    dice: 'Allow this character to roll dice, such as 2d6+3.',
     random: 'Allow this character to generate random numbers.',
     rng: 'Allow this character to roll on named RNG tables defined in contexts.',
     move: 'Allow this character to move between adjacent locations using normal movement cost.',
@@ -172,7 +172,15 @@ function CharacterEditorModalInner({
     const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableDialoguePrompt ?? 0));
     const [numberOfMessagesToDisableStarterPromptStr, setNumberOfMessagesToDisableStarterPromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableStarterPrompt ?? 0));
 
-    const [tools, setTools] = useState<Record<tool, boolean>>(existingCharacter?.tools ?? { ...defaultCharacterTools });
+    // FIXED: Merge default tools with existing character tools to ensure new tools are added 
+    // and deprecated tools are dropped, while preserving existing preferences.
+    const initialTools: Record<tool, boolean> = {} as Record<tool, boolean>;
+    for (const key of Object.keys(defaultCharacterTools) as tool[]) {
+        initialTools[key] = existingCharacter?.tools?.[key] !== undefined 
+            ? existingCharacter.tools[key] 
+            : defaultCharacterTools[key];
+    }
+    const [tools, setTools] = useState<Record<tool, boolean>>(initialTools);
     const [toolSearchQuery, setToolSearchQuery] = useState('');
 
     const [memories, setMemories] = useState<Record<string, Memory[]>>(existingCharacter?.memories ?? {});
