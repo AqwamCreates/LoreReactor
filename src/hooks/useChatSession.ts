@@ -9,7 +9,7 @@ import { processPendingToolActions, executeTool, type ToolExecutionContext } fro
 import { parseSlashCommand } from '../services/ToolInvocationParser';
 import { runSummarization } from '../services/SummarizationEngine';
 import { consumeChatStaminaForMessage } from '../utilities/characterLogic';
-import { getCurrentLocationId, findLocationByRegex } from '../utilities/locationLogic';
+import { getCurrentLocationId, findLocationByRegularExpression, findReachableLocationByRegularExpression } from '../utilities/locationLogic';
 import { detectName } from '../utilities/nameDetection';
 import { getFilteredChatMessages } from '../utilities/promptLogic';
 import { loadRawBudgetData, deleteRawMessage } from '../storages/serverStorage';
@@ -863,9 +863,8 @@ export function useChatSession(options: UseChatSessionOptions) {
             if (hasLocations) {
                 // FIXED: We already have chatMessage, no need to search global history for it
                 const currentLocId = getCurrentLocationId(td, activeCharacter);
-                const regexLoc = findLocationByRegex(td.locations, chatMessage.textContent, activeCharacter);
+                const regexLoc = findReachableLocationByRegularExpression(td, chatMessage.textContent, activeCharacter);
                 const finalLocId = regexLoc?.id ?? currentLocId;
-
                 if (finalLocId && finalLocId !== currentLocId) {
                     const updatedHistories = { ...td.interactionHistories };
                     for (const [_locId, msgs] of Object.entries(updatedHistories)) {

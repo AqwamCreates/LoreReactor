@@ -1,7 +1,7 @@
 // src/services/InteractionOrchestrator.ts
 import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage, Location } from '../types';
 import { getEffectiveChatProbability, consumeChatStaminaForMessage, consumeActionStaminaForMessage, generateActionStaminaForInteractionData, generateChatStaminaForInteractionData, getEffectiveChatImpatienceSensitivity } from '../utilities/characterLogic';
-import { getCurrentLocationId, findLocationByRegex, getReachableLocationsByCharacter, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
+import { getCurrentLocationId, findLocationByRegularExpression, getReachableLocationsByCharacter, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { v4 as uuidv4 } from 'uuid';
 import {
     countParagraphs,
@@ -204,7 +204,7 @@ export async function runTurnSequence(
 
                 if (hasLocations) {
                     const currentLocId = getCurrentLocationId(resultData, speaker);
-                    const regexLoc = findLocationByRegex(resultData.locations, (newLastEntry as ChatMessage).textContent, speaker);
+                    const regexLoc = findLocationByRegularExpression(resultData.locations, (newLastEntry as ChatMessage).textContent, speaker);
                     const finalLoc = regexLoc !== undefined ? regexLoc : (currentLocId ? resultData.locations.find(l => l.id === currentLocId) : undefined);
 
                     if (regexLoc && currentLocId && regexLoc.id !== currentLocId) {

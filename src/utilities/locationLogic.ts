@@ -120,7 +120,7 @@ export function getReachableLocationsByCharacter(
     });
 }
 
-export function findLocationByRegex(locations: Location[], text: string, character: Character): Location | undefined {
+export function findLocationByRegularExpression(locations: Location[], text: string, character: Character): Location | undefined {
     if (!text || !locations.length) return undefined;
     for (const loc of locations) {
         const triggers = loc.regularExpressionActivationTriggers;
@@ -133,6 +133,32 @@ export function findLocationByRegex(locations: Location[], text: string, charact
                 if (regex.test(text)) return loc;
             } catch {
                 console.warn(`Invalid regex on location ${loc.id}: ${trigger.trigger}`);
+            }
+        }
+    }
+    return undefined;
+}
+
+export function findReachableLocationByRegularExpression(
+    interactionData: InteractionData,
+    text: string,
+    character: Character
+): Location | undefined {
+    if (!text) return undefined;
+    // Get only locations structurally reachable, unlocked, and binding-validated for this character
+    const reachableLocations = getReachableLocationsByCharacter(interactionData, character, text);
+    if (reachableLocations.length === 0) return undefined;
+
+    for (const loc of reachableLocations) {
+        const triggers = loc.regularExpressionActivationTriggers;
+        if (!triggers || triggers.length === 0) continue;
+        for (const trigger of triggers) {
+            if (!trigger.trigger.trim()) continue;
+            try {
+                const regex = new RegExp(trigger.trigger, 'i');
+                if (regex.test(text)) return loc;
+            } catch {
+                console.warn(`Invalid regex on reachable location ${loc.id}: ${trigger.trigger}`);
             }
         }
     }
