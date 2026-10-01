@@ -36,7 +36,7 @@ const TOOL_DESCRIPTIONS: Record<tool, string> = {
     think: 'Allow this character to think before committing to an output.',
     pick: 'Allow this character to randomly pick from a list of options.',
     clock: 'Allow this character to check the current time.',
-    date: 'Allow this character to check the current date.',
+    calendar: 'Allow this character to check the current date.',
     coin: 'Allow this character to flip a coin.',
     dice: 'Allow this character to roll dice, such as 2d6+3,.',
     random: 'Allow this character to generate random numbers.',

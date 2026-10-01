@@ -117,7 +117,7 @@ interface PromptBuildContext {
     allPromptBlocks: PromptBlock[];
     existingCharacterText: string;
 
-    localHistory: HistoryMessage[]; // <-- CHANGED: Character's perspective
+    localHistory: HistoryMessage[];
     participants: Character[];
     coLocatedProtagonists: Character[];
     coLocatedParticipants: Character[];
@@ -141,19 +141,6 @@ interface PromptBuildContext {
 }
 
 // ─── Small Helpers ────────────────────────────────────────────────
-
-function getDateAndTimeString(localTimestamp: number): string {
-    const dateAndTime = new Date(localTimestamp);
-    return dateAndTime.toLocaleString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-    });
-}
 
 function formatTimerDuration(ms: number): string {
     const totalSeconds = Math.floor(Math.abs(ms) / 1000);
@@ -832,7 +819,6 @@ export function detectUnsummarizedLocationDepartures(
     const latest = findLatestMessage(interactionData, character);
     const currentLocationId = latest?.locationId;
 
-    // We need global history here just to find the absolute indices for the summarization engine
     const globalHistory = Object.values(histories).flat().sort((a, b) => a.firstCreatedTimestamp - b.firstCreatedTimestamp);
     const segments: LocationVisitSegment[] = [];
 
@@ -875,7 +861,6 @@ function buildPromptContext(
     existingCharacterText: string,
     delimiters: PromptDelimiters,
 ): PromptBuildContext {
-    // STRICTLY USE LOCAL HISTORY FOR CHARACTER PERSPECTIVE
     const localHistory = getLocalMessageHistory(interactionData, character, ['chat', 'whisper']);
     const participants = interactionData.participants;
     const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
@@ -915,7 +900,7 @@ function buildPromptContext(
         modelId,
         allPromptBlocks,
         existingCharacterText,
-        localHistory, // <-- CHANGED
+        localHistory,
         participants,
         coLocatedProtagonists,
         coLocatedParticipants,
@@ -1138,7 +1123,7 @@ function buildLocationLines(ctx: PromptBuildContext): { lines: string[]; images:
         const reachable = getReachableLocationsByCharacter(ctx.interactionData, ctx.character);
         if (reachable.length > 0) {
             const reachableNames = reachable.map(r => replacePlaceholders(
-                r.name || 'Unknown Location', // FIXED: r is already a Location, so r.name is correct
+                r.name || 'Unknown Location',
                 ctx.characterParticipantTag, ctx.characterName,
                 ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
             ));
@@ -1248,7 +1233,6 @@ function buildAntiRepetitionNudgeLines(ctx: PromptBuildContext): string[] {
     const lines: string[] = [];
     const windowSize = Math.max(2, ctx.coLocatedParticipants.length * 2);
 
-    // STRICTLY USE LOCAL HISTORY FOR CHARACTER PERSPECTIVE
     const localHistory = getLocalMessageHistory(ctx.interactionData, ctx.character, ['chat', 'whisper'], windowSize);
     const recentAiMessages = localHistory.filter(m => m.character.id === ctx.characterId) as (ChatMessage | WhisperMessage)[];
 
@@ -1381,10 +1365,8 @@ export function createChatHistoryPrompt(
     const locations = ctx.interactionData.locations || [];
     const protagonistIds = ctx.protagonistIds;
 
-    // STRICTLY USE LOCAL HISTORY FOR CHARACTER PERSPECTIVE
     const localHistory = ctx.localHistory;
     
-    // Build location map for messages (still needed for summarization checks)
     const messageLocationMap = new Map<string, string>();
     for (const [locId, messages] of Object.entries(ctx.interactionData.interactionHistories || {})) {
         for (const msg of messages) {
@@ -1645,7 +1627,8 @@ const VOLATILE_BLOCK_TYPES: ReadonlySet<string> = new Set([
     'Location',
     'Inventory',
     'Weather',
-    'Date And Time',
+    'Date',
+    'Time',
     'Time Elapsed',
     'Fatigue Information',
     'Tool Instructions',
@@ -1804,7 +1787,7 @@ const PROMPT_BUILDERS: Record<string, (b: BuilderContext) => Promise<string[]>> 
     'Inventory': async (b) => buildInventoryLines(b.ctx),
     'Weather': async (b) => {
         const { profile } = b.ctx;
-        if (profile?.useWeather && profile?.weatherApiKey && b.latitude && b.longitude) {
+        if (profile?.weatherApiKey && b.latitude && b.longitude) {
             const weatherLine = await fetchCurrentWeather(b.latitude, b.longitude, profile.weatherApiKey);
             if (weatherLine) {
                 return [`${b.ctx.delimiters.blockStart('system')}${weatherLine}${b.ctx.delimiters.blockEnd}`];
@@ -1812,17 +1795,31 @@ const PROMPT_BUILDERS: Record<string, (b: BuilderContext) => Promise<string[]>> 
         }
         return [];
     },
-    'Date And Time': async (b) => {
-        const { profile } = b.ctx;
-        if (profile?.useCurrentDateAndTime && b.localTimestamp) {
-            const dateAndTime = getDateAndTimeString(b.localTimestamp);
-            return [`${b.ctx.delimiters.blockStart('system')}Today's date and time is ${dateAndTime}.${b.ctx.delimiters.blockEnd}`];
+    'Date': async (b) => {
+        if (b.localTimestamp) {
+            const dateStr = new Date(b.localTimestamp).toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+            });
+            return [`${b.ctx.delimiters.blockStart('system')}Today's date is ${dateStr}.${b.ctx.delimiters.blockEnd}`];
+        }
+        return [];
+    },
+    'Time': async (b) => {
+        if (b.localTimestamp) {
+            const timeStr = new Date(b.localTimestamp).toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true,
+            });
+            return [`${b.ctx.delimiters.blockStart('system')}The current time is ${timeStr}.${b.ctx.delimiters.blockEnd}`];
         }
         return [];
     },
     'Time Elapsed': async (b) => {
-        const { profile } = b.ctx;
-        if (profile?.useTimeElapsed && b.localTimestamp && b.ctx.localHistory.length > 0) {
+        if (b.localTimestamp && b.ctx.localHistory.length > 0) {
             const lastMsgTimestamp = b.ctx.localHistory[b.ctx.localHistory.length - 1].lastUpdatedTimestamp;
             const diffMs = Math.max(0, b.localTimestamp - lastMsgTimestamp);
             const totalSeconds = Math.floor(diffMs / 1000);
@@ -1913,7 +1910,6 @@ export async function buildPrompt(
     const segments = detectUnsummarizedLocationDepartures(interactionData, character, modelId);
     for (const segment of segments) {
         try {
-            // FIXED: Added segment.locationId to match the function signature
             const summary = await generateLocationVisitSummary(
                 interactionData, 
                 character, 
@@ -2073,7 +2069,6 @@ export async function buildPrompt(
                 promptLines.length = 0;
                 promptLines.push(resolvedInstructionTemplate.instructionTemplate.replace(/\{instruction\}/g, assembledSoFar).replace(/\{input\}/g, '').replace(/\{system\}/g, ctx.character.systemPrompt || ''));
             } else if (entry === 'Model Chat Template' && resolvedChatTemplate?.chatTemplate) {
-                // STRICTLY USE LOCAL HISTORY FOR CHARACTER PERSPECTIVE
                 const chatHistoryForTemplate = ctx.localHistory.filter((m): m is ChatMessage | WhisperMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId));
                 for (const msg of chatHistoryForTemplate) {
                     const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
@@ -2086,7 +2081,6 @@ export async function buildPrompt(
                 promptLines.length = 0;
                 promptLines.push(resolvedInstructionTemplate.instructionTemplate.replace(/\{instruction\}/g, `Continue the chat dialogue below. Write a single reply for the character "${ctx.characterName}".\n\n${assembledSoFar}`).replace(/\{input\}/g, '').replace(/\{system\}/g, ctx.character.systemPrompt || ''));
                 
-                // STRICTLY USE LOCAL HISTORY FOR CHARACTER PERSPECTIVE
                 const chatHistoryForTemplate = ctx.localHistory.filter((m): m is ChatMessage | WhisperMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId));
                 for (const msg of chatHistoryForTemplate) {
                     const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';

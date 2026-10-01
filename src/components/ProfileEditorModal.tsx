@@ -1,6 +1,6 @@
 // src/components/ProfileEditorModal.tsx
 import { useState, useMemo, useCallback, type CSSProperties } from 'react';
-import type { Profile, PromptBlock, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType } from '../types';
+import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType } from '../types';
 import { SliderInput } from './SliderInput';
 import '../main.css';
 import { defaultInputStrategy, defaultProfileTools } from '../dictionaries/defaults';
@@ -89,7 +89,7 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
 
 const ALL_BUILT_IN_BLOCK_TYPES = [...defaultInputStrategy, 'Model Instruction Template', 'Model Chat Template', 'Model Chat-Instruction Template']
 
-function isBuiltInBlockType(value: string): value is PromptBlockType {
+function isBuiltInBlockType(value: string): value is promptBlockType {
     return (ALL_BUILT_IN_BLOCK_TYPES as string[]).includes(value);
 }
 
@@ -201,7 +201,7 @@ export function ProfileEditorModal({
     const [tools, setTools] = useState<Record<tool, tristateInteger>>(mergeToolsWithDefaults(ep?.tools));
     const [toolSearchQuery, setToolSearchQuery] = useState('');
     const [narrateTexts, setNarrateTexts] = useState<Record<textType, boolean>>(ep ? migrateNarrateTexts(ep) : { ...DEFAULT_NARRATE_TEXTS });
-    const [inputStrategy, setInputStrategy] = useState<(PromptBlockType | string)[]>(ep?.inputStrategy?.length ? ep.inputStrategy : []);
+    const [inputStrategy, setInputStrategy] = useState<(promptBlockType | string)[]>(ep?.inputStrategy?.length ? ep.inputStrategy : []);
     const [summarizationSteps, setSummarizationSteps] = useState<SummarizationStep[]>(
         ep?.summarizationSteps != null ? [...ep.summarizationSteps].sort((a, b) => a.order - b.order) : getDefaultSummarizationSteps()
     );
@@ -232,7 +232,7 @@ export function ProfileEditorModal({
         return map;
     }, [allPromptBlocks]);
 
-    const getBlockLabel = (entry: PromptBlockType | string): string => {
+    const getBlockLabel = (entry: promptBlockType | string): string => {
         if (isBuiltInBlockType(entry)) return entry;
         const pb = promptBlockById.get(entry);
         return pb ? `🧱 ${pb.name}` : "🧱 (Unknown Block)";
@@ -323,7 +323,7 @@ export function ProfileEditorModal({
     const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
     const handleDrop = (e: React.DragEvent, dropIndex: number) => { e.preventDefault(); const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain')); if (dragIndex === dropIndex) return; const newOrder = [...inputStrategy]; const [removed] = newOrder.splice(dragIndex, 1); newOrder.splice(dropIndex, 0, removed); setInputStrategy(newOrder); setDraggedIndex(null); };
     const moveBlock = (index: number, direction: -1 | 1) => { const newIndex = index + direction; if (newIndex < 0 || newIndex >= inputStrategy.length) return; const newOrder = [...inputStrategy]; [newOrder[index], newOrder[newIndex]] = [newOrder[newIndex], newOrder[index]]; setInputStrategy(newOrder); };
-    const addBlock = (blockEntry: PromptBlockType | string) => { if (!inputStrategy.includes(blockEntry)) setInputStrategy(prev => [...prev, blockEntry]); };
+    const addBlock = (blockEntry: promptBlockType | string) => { if (!inputStrategy.includes(blockEntry)) setInputStrategy(prev => [...prev, blockEntry]); };
     const removeBlock = (index: number) => { setInputStrategy(prev => prev.filter((_, i) => i !== index)); };
 
     const missingBuiltInBlocks = ALL_BUILT_IN_BLOCK_TYPES.filter(b => !inputStrategy.includes(b) && b !== 'Memory');

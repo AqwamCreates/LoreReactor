@@ -141,7 +141,7 @@ export const defaultInputStrategy: promptBlockType[] = [
 ];
 
 export const defaultProfileTools: Record<tool, tristateInteger> = {
-    whisper: 0, think: 0, pick: 0, clock: 0, date: 0, coin: 0, dice: 0, random: 0, rng: 0,
+    whisper: 0, think: 0, pick: 0, clock: 0, calendar: 0, coin: 0, dice: 0, random: 0, rng: 0,
     move: 0, timer: 0, stopwatch: 0, schedule: 0, calculator: 0, web: 0, 
     dialogue: 0, knowledge: 0, memory: 0,
     lookup: 0, map: 0, audio: 0, key: 0, clothing: 0, note: 0, inventory: 0, trade: 0,
