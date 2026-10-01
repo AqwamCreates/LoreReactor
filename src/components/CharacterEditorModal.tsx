@@ -35,23 +35,24 @@ const TOOL_DESCRIPTIONS: Record<tool, string> = {
     whisper: 'Allow this character to give private messages',
     think: 'Allow this character to think before committing to an output.',
     pick: 'Allow this character to randomly pick from a list of options.',
-    date: 'Allow this character to check the current date and time during conversation.',
-    coin: 'Allow this character to flip a coin during conversation.',
-    dice: 'Allow this character to roll dice, such as 2d6+3, during conversation.',
-    random: 'Allow this character to generate random numbers during conversation.',
+    clock: 'Allow this character to check the current time.',
+    date: 'Allow this character to check the current date.',
+    coin: 'Allow this character to flip a coin.',
+    dice: 'Allow this character to roll dice, such as 2d6+3,.',
+    random: 'Allow this character to generate random numbers.',
     rng: 'Allow this character to roll on named RNG tables defined in contexts.',
     move: 'Allow this character to move between adjacent locations using normal movement cost.',
     timer: 'Allow this character to set, check, and manage countdown timers.',
     stopwatch: 'Allow this character to start, pause, resume, and stop stopwatches.',
     schedule: 'Allow this character to schedule.',
-    calculator: 'Allow this character to perform calculations during conversation.',
-    web: 'Allow this character to search the web during conversation.',
+    calculator: 'Allow this character to perform calculations.',
+    web: 'Allow this character to search the web.',
     dialogue: 'Allow this character to reference its own dialogue prompts.',
     knowledge: 'Allow this character to access its knowledge prompts on demand. Knowledge is not injected into context unless explicitly recalled via this tool.',
     memory: 'Allow this character to recall its own memories on demand. Memories are not injected into context unless explicitly recalled via this tool.',
     lookup: 'Allow this character to search contexts and lore by keyword.',
     map: 'Allow this character to check distances between locations.',
-    audio: 'Allow this character to play and stop audio tracks during conversation.',
+    audio: 'Allow this character to play and stop audio tracks.',
     clothing: 'Allow this character to wear and take off clothing.',
     note: 'Allow this character to save, retrieve, and manage persistent notes.',
     inventory: 'Allow this character to add, remove, set, and list inventory items.',
@@ -1284,7 +1285,7 @@ function CharacterEditorModalInner({
                                             <span>{toolLabels[toolName] ?? toolName}</span>
                                         </label>
                                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                                            {TOOL_DESCRIPTIONS[toolName] ?? 'Allow this character to use this tool during conversation.'}
+                                            {TOOL_DESCRIPTIONS[toolName] ?? 'Allow this character to use this tool.'}
                                         </div>
                                     </div>
                                 ))}

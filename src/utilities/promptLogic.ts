@@ -1,5 +1,5 @@
 // src/utilities/promptLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, Context, StopPattern, PromptBlock, PromptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger, Clothing, Profile, cacheEfficiencyConfigurationType } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, Context, StopPattern, PromptBlock, promptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger, Clothing, Profile, cacheEfficiencyConfigurationType } from '../types';
 import type { ModelTemplate } from '../dictionaries/modelTemplates';
 import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
 import { fetchMultipleContextUrls } from './linkFetcher';
@@ -390,7 +390,7 @@ function isPromptBlockCharacterBound(block: PromptBlock, selectedCharacterId: st
     return block.characterBindings.includes(selectedCharacterId);
 }
 
-function isBuiltInBlockType(value: string): value is PromptBlockType {
+function isBuiltInBlockType(value: string): value is promptBlockType {
     return (defaultInputStrategy as string[]).includes(value)
         || value === 'Model Chat Template'
         || value === 'Model Instruction Template'
@@ -1654,7 +1654,7 @@ const VOLATILE_BLOCK_TYPES: ReadonlySet<string> = new Set([
 
 function buildStructuredMessages(
     blockMap: Record<string, string[] | undefined>,
-    inputStrategy: (PromptBlockType | string)[],
+    inputStrategy: (promptBlockType | string)[],
     minimalVolatileCacheMode: boolean,
     existingCharacterText: string,
 ): OpenAIMessage[] {

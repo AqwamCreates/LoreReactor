@@ -183,10 +183,7 @@ export function ProfileEditorModal({
     const [numberOfMessagesToDisableStarterPrompt, setNumberOfMessagesToDisableStarterPrompt] = useState<number>(ep?.numberOfMessagesToDisableStarterPrompt ?? -1);
     const [forceNoContextImageInjection, setForceNoContextImageInjection] = useState(ep?.forceNoContextImageInjection ?? false);
     const [forceNoLocationImageInjection, setForceNoLocationImageInjection] = useState(ep?.forceNoLocationImageInjection ?? false);
-    const [useCurrentDateAndTime, setUseCurrentDateAndTime] = useState(ep?.useCurrentDateAndTime ?? false);
-    const [useWeather, setUseWeather] = useState(ep?.useWeather ?? false);
     const [weatherApiKey, setWeatherApiKey] = useState(ep?.weatherApiKey ?? '');
-    const [useTimeElapsed, setUseTimeElapsed] = useState(ep?.useTimeElapsed ?? false);
     const [useFrontCameraImage, setUseFrontCameraImage] = useState<tristateInteger>((ep?.useFrontCameraImage ?? 0) as tristateInteger);
     const [forceEqualInitiative, setForceEqualInitiative] = useState(ep?.forceEqualInitiative ?? false);
     const [chatProbability, setChatProbability] = useState<number>(ep?.chatProbability ?? -1);
@@ -288,7 +285,8 @@ export function ProfileEditorModal({
             maximumNumberOfTextCharacterRandomizationPerModel,
             forceNoCharacterImageInjection, forceNoContextImageInjection, forceNoLocationImageInjection,
             numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt, numberOfMessagesToDisableStarterPrompt,
-            useCurrentDateAndTime, useWeather, weatherApiKey, useTimeElapsed, useFrontCameraImage,
+            weatherApiKey,
+            useFrontCameraImage,
             forceEqualInitiative, chatProbability, maximumChatStamina,
             nameSensitivity, skipProbability, chatImpatienceSensitivity,
             memoryRetentionWeight, contextSensitivity, maximumActionStamina,
@@ -475,10 +473,11 @@ export function ProfileEditorModal({
 
                             <div className="editor-section">
                                 <span className="editor-section-title">Context Injection</span>
-                                <ProfileCheckbox checked={useCurrentDateAndTime} onChange={setUseCurrentDateAndTime} label="Use Current Date And Time" hint="Inject the current real-world date and time into the prompt so the model is aware of when the conversation is taking place." />
-                                <ProfileCheckbox checked={useWeather} onChange={setUseWeather} label="Use Weather" hint="Auto-detect your location via browser geolocation and inject current weather conditions using the OpenWeather API." spaced />
-                                {useWeather && (<div style={{ marginTop: '8px', marginLeft: '26px' }}><label className="editor-label editor-label-small">OpenWeather API Key</label><input type="password" value={weatherApiKey} onChange={(e) => setWeatherApiKey(e.target.value)} className="editor-input" placeholder="Paste your OpenWeather API key..." autoComplete="off" /><div style={FIELD_HINT_STYLE}>Free tier: 1,000 calls/day. Get one at openweathermap.org/api</div></div>)}
-                                <ProfileCheckbox checked={useTimeElapsed} onChange={setUseTimeElapsed} label="Use Time Elapsed" hint="Inject how long it has been since the last message was sent. Useful for real-time pacing awareness." spaced />
+                                <div style={{ marginBottom: '12px' }}>
+                                    <label className="editor-label editor-label-small">OpenWeather API Key</label>
+                                    <input type="password" value={weatherApiKey} onChange={(e) => setWeatherApiKey(e.target.value)} className="editor-input" placeholder="Paste your OpenWeather API key..." autoComplete="off" />
+                                    <div style={FIELD_HINT_STYLE}>Free tier: 1,000 calls/day. Get one at openweathermap.org/api</div>
+                                </div>
                                 <div style={{ marginTop: '12px' }}>{renderOverrideSlider('Use Front Camera Image Override', useFrontCameraImage, -1, 1, 1, 0, (val) => setUseFrontCameraImage(Math.round(val) as tristateInteger), 'Replace protagonist stored image with live front camera snapshot. Camera activates on first use and auto-closes after 10 minutes idle.', useFrontCameraImage === -1 ? '(Force Off)' : useFrontCameraImage === 1 ? '(Force On)' : '(Per-Character default)')}</div>
                             </div>
 

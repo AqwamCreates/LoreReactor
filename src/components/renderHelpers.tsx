@@ -1,6 +1,6 @@
 // src/components/renderHelpers.tsx
 import type React from 'react';
-import type { LanguageModel, BudgetStrategy, Profile, RawInteractionData, cloudBackend } from '../types';
+import type { LanguageModel, BudgetStrategy, Profile, RawInteractionData, cloudBackend, promptBlockType } from '../types';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 
 export function getRenderSubTextForTriStates(value: number, text: string): React.ReactNode {
@@ -47,12 +47,14 @@ export function renderProfileSubtext(profile: Profile): React.ReactNode {
     const enableKnowledge = getRenderSubTextForTriStates(tools.knowledge, "knowledge"); 
     const enableMemory = getRenderSubTextForTriStates(tools.memory, "memory");
 
+    const inputStrategy = profile.inputStrategy as promptBlockType[]
+
     const flags: string[] = [];
     if (profile.forceNameReveal) flags.push('Force Names');
     if (profile.enableCharacterExpression) flags.push('Expressions');
-    if (profile.useCurrentDateAndTime) flags.push('Clock');
-    if (profile.useWeather) flags.push('Weather');
-    if (profile.useTimeElapsed) flags.push('Time Elapsed');
+    if (inputStrategy.includes('Time')) flags.push('Clock');
+    if (inputStrategy.includes('Weather')) flags.push('Weather');
+    if (inputStrategy.includes('Time Elapsed')) flags.push('Time Elapsed');
     if (enableWebSearchText) flags.push(enableWebSearchText as string);
     if (enableCalculatorText) flags.push(enableCalculatorText as string);
     if (enableDialogue) flags.push(enableDialogue as string);

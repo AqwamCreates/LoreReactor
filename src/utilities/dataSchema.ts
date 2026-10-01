@@ -281,7 +281,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
       "summon": "number (-1, 0, or 1, default 0)", "narrate": "number (-1, 0, or 1, default 0)", "inspect": "number (-1, 0, or 1, default 0)",
       "administrator": "number (-1, 0, or 1, default 0)", "creator": "number (-1, 0, or 1, default 0)", "destroyer": "number (-1, 0, or 1, default 0)"
     },
-    "inputStrategy": ["array of PromptBlockType strings and/or custom prompt block UUIDs. Built-in types: ${defaultInputStrategy.join(', ')}. Custom prompt blocks are referenced by their UUID string."],
+    "inputStrategy": ["array of promptBlockType strings and/or custom prompt block UUIDs. Built-in types: ${defaultInputStrategy.join(', ')}. Custom prompt blocks are referenced by their UUID string."],
     "summarizationSteps": [{
       "strategyType": "'Sliding Window Replace' | 'Periodic Compression' | 'Recursive Summary' | 'Observation Masking' | 'Entropy Pruning'",
       "enabled": "boolean (default true)",

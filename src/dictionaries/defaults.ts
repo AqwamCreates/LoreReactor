@@ -1,5 +1,5 @@
 // src/dictionaries/defaults.ts
-import type { BudgetData, BudgetStrategy, Character, InterjectableAction, LanguageModel, MultiplayerData, PromptBlockType, Sampler, textType, tool, tristateInteger } from '../types';
+import type { BudgetData, BudgetStrategy, Character, InterjectableAction, LanguageModel, MultiplayerData, promptBlockType, Sampler, textType, tool, tristateInteger } from '../types';
 
 export const DEFAULT_BUDGET_RESET_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -9,6 +9,7 @@ export const defaultCharacterTools: Record<tool, boolean> = {
     whisper: true,
     think: false,
     pick: true,
+    clock: true,
     date: false,
     coin: true,
     dice: true,
@@ -133,14 +134,14 @@ export const defaultActions: InterjectableAction[] = [
     { label: 'Pout At', count: 0 },
 ];
 
-export const defaultInputStrategy: PromptBlockType[] = [
+export const defaultInputStrategy: promptBlockType[] = [
     'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt',
-    'Chat History', 'Context', 'Location', 'Weather', 'Inventory', 'Date And Time', 'Time Elapsed',
+    'Chat History', 'Context', 'Location', 'Weather', 'Inventory', 'Date', 'Time', 'Time Elapsed',
     'Fatigue Information', 'Starter Prompt', 'Tool Instructions', 'Anti-Repetition Nudge', 'Text Injection',
 ];
 
 export const defaultProfileTools: Record<tool, tristateInteger> = {
-    whisper: 0, think: 0, pick: 0, date: 0, coin: 0, dice: 0, random: 0, rng: 0,
+    whisper: 0, think: 0, pick: 0, clock: 0, date: 0, coin: 0, dice: 0, random: 0, rng: 0,
     move: 0, timer: 0, stopwatch: 0, schedule: 0, calculator: 0, web: 0, 
     dialogue: 0, knowledge: 0, memory: 0,
     lookup: 0, map: 0, audio: 0, key: 0, clothing: 0, note: 0, inventory: 0, trade: 0,

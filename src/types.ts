@@ -215,7 +215,7 @@ export interface RawMemory extends RawData {
   interactionDataId: string;
 }
 
-export type tool = "whisper" | "think" | "pick" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"
+export type tool = "whisper" | "think" | "pick" | "clock" | "date" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer"
 
 export interface DialoguePrompt extends ObjectData {
   content: string;
@@ -312,7 +312,7 @@ export interface RawCharacter extends RawData {
   contextSensitivity: number;
   maximumActionStamina: number;
   samplerId?: string | undefined;
-  stopPatternIds?: number[];
+  stopPatternIds?: string[];
   doNotInjectCharacterImage?: boolean;
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
@@ -567,7 +567,6 @@ export interface BudgetData extends ObjectData {
 }
 
 export interface RawBudgetData extends RawData {
-  id?: string;
   budgetSpent: number
   resetDuration: number
   averageLatencyMsPerTokenExponentialMovingAverageSmoothing: number;
@@ -616,7 +615,6 @@ export interface SummarizationStep extends ObjectData {
 }
 
 export interface RawSummarizationStep extends RawData {
-  id?: string;
   strategyType: SummarizationStrategyType;
   enabled: boolean;
   order: number;
@@ -635,7 +633,7 @@ export interface RawSummarizationStep extends RawData {
   entropyPruningTokenBudget?: number;      // Max tokens to keep raw (default: 2000)
 }
 
-export type PromptBlockType =
+export type promptBlockType =
   | 'System Prompt'
   | 'Think Prompt'
   | 'Meta Think Instructions'
@@ -646,7 +644,8 @@ export type PromptBlockType =
   | 'Location'
   | 'Weather'
   | 'Inventory'
-  | 'Date And Time'
+  | 'Date'
+  | 'Time'
   | 'Time Elapsed'
   | 'Fatigue Information'
   | 'Starter Prompt'
@@ -708,10 +707,7 @@ export interface Profile extends ObjectData {
   forceNoCharacterImageInjection: boolean;
   forceNoContextImageInjection: boolean;
   forceNoLocationImageInjection: boolean;
-  useCurrentDateAndTime: boolean;
-  useWeather: boolean;
   weatherApiKey?: string;
-  useTimeElapsed: boolean;
   useFrontCameraImage: tristateInteger; // -1 -> Disabled for all character, 0 -> Per-Character (Default), 1 -> Enabled for all character.
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
@@ -732,7 +728,7 @@ export interface Profile extends ObjectData {
   narrateTexts: Record<textType, boolean>;
   stripThinkTokens: boolean;
   tools: Record<tool, tristateInteger>;
-  inputStrategy: (PromptBlockType | string)[];
+  inputStrategy: (promptBlockType | string)[];
   summarizationSteps: SummarizationStep[];
   summarizationInstruction?: string // If empty, then use in-built default.
   enableSpeculativeMarkov: boolean;
@@ -760,10 +756,7 @@ export interface RawProfile extends RawData {
   forceNoCharacterImageInjection: boolean;
   forceNoContextImageInjection: boolean;
   forceNoLocationImageInjection: boolean;
-  useCurrentDateAndTime: boolean;
-  useWeather: boolean;
   weatherApiKey?: string;
-  useTimeElapsed: boolean;
   useFrontCameraImage: tristateInteger; // -1 -> Disabled for all character, 0 -> Per-Character (Default), 1 -> Enabled for all character.
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
@@ -784,7 +777,7 @@ export interface RawProfile extends RawData {
   narrateTexts: Record<textType, boolean>;
   stripThinkTokens: boolean;
   tools: Record<tool, tristateInteger>;
-  inputStrategy: (PromptBlockType | string)[];
+  inputStrategy: (promptBlockType | string)[];
   summarizationSteps: RawSummarizationStep[];
   summarizationInstruction?: string // If empty, then use in-built default.
   enableSpeculativeMarkov: boolean;
@@ -902,7 +895,7 @@ export interface ActionFormatData {
     matrix?: Record<string, Record<string, number>>;
 }
 
-export type Entity = Character | Context | Location | PromptBlock | LanguageModel | Sampler | StopPattern | Profile | BudgetStrategy | Account | MultiplayerData
+export type Entity = Character | Context | Location | AudioTrack | World | PromptBlock | LanguageModel | Sampler | StopPattern | Profile | BudgetStrategy | Account | MultiplayerData
 
 export type entityType = 
     | 'character' | 'context' | 'location' | 'audioTrack' 
