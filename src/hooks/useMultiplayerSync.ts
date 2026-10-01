@@ -31,6 +31,7 @@ interface SyncChatMessagePayload {
     characterId: string;
     messageType: 'chat';
     textContent: string;
+    doNotRespond: boolean;
     files?: string[];
     frontCameraImage?: string;
     remainingChatStamina?: number;
@@ -42,7 +43,6 @@ interface SyncChatMessagePayload {
     characterClothingWearingStatuses: Record<string, boolean>;
     characterLockedLocations: Record<string, string[]>;
     parentMessageId?: string | null;
-    doNotRespond?: boolean;
 }
 
 interface SyncInteractionMessagePayload {
@@ -420,6 +420,7 @@ export function useMultiplayerSync({
                         messageType: 'chat',
                         character,
                         textContent: chatPayload.textContent,
+                        doNotRespond: chatPayload.doNotRespond,
                         files: chatPayload.files ?? [],
                         frontCameraImage: chatPayload.frontCameraImage,
                         modelTextContentSummaries: {},

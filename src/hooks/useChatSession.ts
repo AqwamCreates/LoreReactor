@@ -412,6 +412,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 messageType: 'chat',
                 character: char,
                 textContent: text,
+                doNotRespond: false,
                 files: [],
                 modelTextContentSummaries: {},
                 modelInteractionTextContentSummaries: {},
