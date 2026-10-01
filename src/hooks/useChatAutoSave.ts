@@ -32,13 +32,11 @@ function haveMessagesChanged(prev: InteractionData | null, curr: InteractionData
     const prevLocIds = Object.keys(prevHistories);
     const currLocIds = Object.keys(currHistories);
 
-    // Check if the set of location IDs changed
     if (prevLocIds.length !== currLocIds.length) return true;
     for (const id of prevLocIds) {
         if (!Object.prototype.hasOwnProperty.call(currHistories, id)) return true;
     }
 
-    // Check messages within each location bucket
     for (const locId of currLocIds) {
         const prevMsgs = prevHistories[locId] || [];
         const currMsgs = currHistories[locId] || [];
@@ -66,61 +64,74 @@ function haveMessagesChanged(prev: InteractionData | null, curr: InteractionData
 interface UseChatAutoSaveOptions {
     interactionData: InteractionData | null;
     rawChatShells: RawInteractionData[];
-    refreshChatList: () => void;
+    refreshChatList: () => void | Promise<RawInteractionData[]>;
 }
 
 export function useChatAutoSave(options: UseChatAutoSaveOptions) {
-    const { interactionData, rawChatShells, refreshChatList } = options;
+    const { interactionData, refreshChatList } = options;
     const prevDataRef = useRef<InteractionData | null>(null);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isFirstRun = useRef(true);
 
     useEffect(() => {
         if (!interactionData || !interactionData.id) return;
-        if (!isChatSaveable(interactionData)) return;
 
-        // Hydration: sync the reference without saving
+        // Count total actual messages across all spatial location arrays
+        const totalMessages = Object.values(interactionData.interactionHistories || {}).reduce(
+            (acc, curr) => acc + curr.length, 
+            0
+        );
+
+        // Always ensure numberOfMessages matches the real spatial message count
+        const syncedData: InteractionData = {
+            ...interactionData,
+            numberOfMessages: totalMessages,
+        };
+
+        // Strictly gate via isChatSaveable: do not save if empty/unsaveable
+        if (!isChatSaveable(syncedData)) return;
+
+        // On initial hydration, set baseline
         if (isFirstRun.current) {
             isFirstRun.current = false;
-            prevDataRef.current = interactionData;
+            prevDataRef.current = syncedData;
             return;
         }
 
         const prev = prevDataRef.current;
 
-        // Switched to a different chat: update baseline without rewriting loaded data
-        if (prev && prev.id !== interactionData.id) {
-            prevDataRef.current = interactionData;
+        // If user switched to an entirely different chat, reset baseline without auto-saving
+        if (prev && prev.id !== syncedData.id) {
+            prevDataRef.current = syncedData;
             return;
         }
 
         const hasActualChange = !prev
-            || prev.name !== interactionData.name
-            || prev.Profile?.id !== interactionData.Profile?.id
-            || prev.Profile?.lastUpdatedTimestamp !== interactionData.Profile?.lastUpdatedTimestamp
-            || haveEntitiesChanged(prev.protagonists, interactionData.protagonists)
-            || haveEntitiesChanged(prev.participants, interactionData.participants)
-            || haveEntitiesChanged(prev.contexts, interactionData.contexts)
-            || haveEntitiesChanged(prev.locations, interactionData.locations)
-            || haveEntitiesChanged(prev.audioTracks, interactionData.audioTracks)
-            || haveMessagesChanged(prev, interactionData);
+            || prev.name !== syncedData.name
+            || prev.Profile?.id !== syncedData.Profile?.id
+            || prev.Profile?.lastUpdatedTimestamp !== syncedData.Profile?.lastUpdatedTimestamp
+            || haveEntitiesChanged(prev.protagonists, syncedData.protagonists)
+            || haveEntitiesChanged(prev.participants, syncedData.participants)
+            || haveEntitiesChanged(prev.contexts, syncedData.contexts)
+            || haveEntitiesChanged(prev.locations, syncedData.locations)
+            || haveEntitiesChanged(prev.audioTracks, syncedData.audioTracks)
+            || haveMessagesChanged(prev, syncedData);
 
         if (hasActualChange) {
-            prevDataRef.current = interactionData;
+            prevDataRef.current = syncedData;
 
-            // Debounce save to prevent disk flooding during rapid edits
             if (saveTimerRef.current) {
                 clearTimeout(saveTimerRef.current);
             }
 
-            const currentDataToSave = interactionData;
-            saveTimerRef.current = setTimeout(() => {
-                saveRawInteractionData(currentDataToSave).catch((e: unknown) => {
+            const currentDataToSave = syncedData;
+            saveTimerRef.current = setTimeout(async () => {
+                try {
+                    await saveRawInteractionData(currentDataToSave);
+                    // Refresh chat list so modal shell always shows the updated message count & timestamps
+                    await refreshChatList();
+                } catch (e: unknown) {
                     console.error('[useChatAutoSave] Failed to save chat:', e);
-                });
-
-                if (!rawChatShells.some((s: RawInteractionData) => s.id === currentDataToSave.id)) {
-                    refreshChatList();
                 }
             }, 600);
         }
@@ -130,5 +141,5 @@ export function useChatAutoSave(options: UseChatAutoSaveOptions) {
                 clearTimeout(saveTimerRef.current);
             }
         };
-    }, [interactionData, rawChatShells, refreshChatList]);
+    }, [interactionData, refreshChatList]);
 }

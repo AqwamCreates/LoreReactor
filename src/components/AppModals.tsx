@@ -10,6 +10,7 @@ import type {
 import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';
 import type { ModalController } from '../hooks/useAppModals';
 import { loadRawInteractionData } from '../storages/serverStorage';
+import { isChatSaveable } from '../utilities/chatSaveHelper';
 import { ManagerModal } from './ManagerModal';
 import {
     renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext,
@@ -260,10 +261,30 @@ export function AppModals({
 
     const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
 
-    const chatShellsWithIdentifiers = useMemo(
-        () => rawChatShells.filter((shell): shell is ChatShellWithIdentifier => !!shell.id),
-        [rawChatShells],
-    );
+    // Include the active chat session in the list only if it is saveable according to isChatSaveable
+    const chatShellsWithIdentifiers = useMemo(() => {
+        const list = rawChatShells.filter((shell): shell is ChatShellWithIdentifier => !!shell.id);
+
+        // If the active chat meets isChatSaveable, inject it with all required shell fields
+        if (isChatSaveable(interactionData) && interactionData?.id && !list.some(shell => shell.id === interactionData.id)) {
+            list.unshift({
+                id: interactionData.id,
+                name: interactionData.name || 'Untitled Chat',
+                firstCreatedTimestamp: interactionData.firstCreatedTimestamp,
+                lastUpdatedTimestamp: interactionData.lastUpdatedTimestamp,
+                numberOfMessages: interactionData.numberOfMessages ?? 0,
+                parentInteractionDataId: interactionData.parentInteractionDataId ?? null,
+                parentMessageId: interactionData.parentMessageId ?? null,
+                protagonistIds: interactionData.protagonists?.map(p => p.id) ?? [],
+                participantIds: interactionData.participants?.map(p => p.id) ?? [],
+                contextIds: interactionData.contexts?.map(c => c.id) ?? [],
+                locationIds: interactionData.locations?.map(l => l.id) ?? [],
+                audioTrackIds: interactionData.audioTracks?.map(a => a.id) ?? [],
+                profileId: interactionData.Profile?.id,
+            } as unknown as ChatShellWithIdentifier);
+        }
+        return list;
+    }, [rawChatShells, interactionData]);;
 
     const activeChatId = interactionData?.id;
     const activeChatName = interactionData?.name;
@@ -1065,4 +1086,4 @@ export function AppModals({
     );
 }
 
-export default AppModals
+export default AppModals;
