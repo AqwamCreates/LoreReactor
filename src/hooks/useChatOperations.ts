@@ -86,14 +86,17 @@ export function useChatOperations(options: UseChatOperationsOptions) {
             setInteractionData(fullChat);
             await saveRawSessionData({ activeChatId: id });
 
+            // FIX: Replaced flat interactionHistory array with spatial interactionHistories Record reduction
+            const allMessages = Object.values(fullChat.interactionHistories || {}).flat();
+            
             // Prime the Markov Engine for all characters in the switched chat
-            if (fullChat.id && fullChat.interactionHistory?.length > 0) {
-                const trainingMessages = fullChat.interactionHistory
+            if (fullChat.id && allMessages.length > 0) {
+                const trainingMessages = allMessages
                     .filter((m): m is ChatMessage | WhisperMessage => 
-                        (m.messageType === 'chat' || m.messageType === 'whisper') && !!m.character?.id && !!m.textContent
+                        (m.messageType === 'chat' || m.messageType === 'whisper') && !!m.character?.id && !!(m as ChatMessage | WhisperMessage).textContent
                     )
                     .map(m => ({
-                        textContent: m.textContent,
+                        textContent: (m as ChatMessage | WhisperMessage).textContent,
                         lastUpdatedTimestamp: m.lastUpdatedTimestamp || m.firstCreatedTimestamp || 0,
                         characterId: m.character.id,
                     }));

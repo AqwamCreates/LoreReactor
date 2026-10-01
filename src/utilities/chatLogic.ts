@@ -1,25 +1,19 @@
 // src/utilities/chatLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, Location, RegularExpressionTrigger, TextCharacterInjection } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, PromptBlock, RegularExpressionTrigger, TextCharacterInjection } from '../types';
 import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
 import { getKnownDisplayName, deriveDelimiters } from './promptLogic';
 import type { EntityImageRef } from './promptLogic';
 import { v4 as uuidv4 } from 'uuid';
 import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storages/serverStorage';
-import { getEffectiveUseFrontCameraImage, getEffectiveMaximumChatStamina, initializeClothingWearingStatuses } from './characterLogic';
+import { getEffectiveUseFrontCameraImage, getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, initializeClothingWearingStatuses } from './characterLogic';
 import { buildPrompt, getParticipantTag } from './promptLogic';
 import { getCoLocatedParticipants } from './locationLogic';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+import { findLatestMessage } from './messageLogic';
+import { getGlobalMessageHistory, getLocalMessageHistory } from './timelineLogic';
 
 // ─── Core Functions ────────────────────────────────────────────────
-
-export function findPreviousMessage(interactionData: InteractionData, characterId: string): HistoryMessage | null {
-    const interactionHistory = interactionData.interactionHistory;
-    for (let i = interactionHistory.length - 1; i >= 0; i--) {
-        if (interactionHistory[i].character.id === characterId) return interactionHistory[i];
-    }
-    return null;
-}
 
 export const getImageBase64 = async (url: string): Promise<string | null> => {
     try {
@@ -37,26 +31,6 @@ export const getImageBase64 = async (url: string): Promise<string | null> => {
     }
 };
 
-function detectLocationFromText(text: string, locations: Location[]): number | undefined {
-    for (let i = 0; i < locations.length; i++) {
-        const location = locations[i];
-        const triggers = location.regularExpressionActivationTriggers;
-        if (!triggers || triggers.length === 0) continue;
-        for (const trigger of triggers) {
-            if (!trigger.trigger.trim()) continue;
-            try {
-                const regex = new RegExp(trigger.trigger, 'i');
-                if (regex.test(text)) return i;
-            } catch { /* invalid regex, skip */ }
-        }
-    }
-    return undefined;
-}
-
-/**
- * Compiles regex patterns from trigger arrays for sequential message filtering.
- * Returns compiled regex arrays, skipping invalid patterns.
- */
 export function compileTriggerRegexes(triggers: RegularExpressionTrigger[] | undefined): RegExp[] {
     if (!triggers || triggers.length === 0) return [];
     const regexes: RegExp[] = [];
@@ -178,17 +152,15 @@ export async function buildChatRequestBody(
     let imageIdCounter = 1;
     const imageInjectionMessages: OpenAIMessage[] = [];
 
-    // ─── Get Dynamic Delimiters ─────────────────────────────────────
     const activeModel = getLanguageModelEngine().getContext();
     const effectiveChatTemplateKey = activeModel?.chatTemplate;
     const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
     const delimiters = deriveDelimiters(resolvedChatTemplate);
 
     if (!forceNoCharacterImageInjection) {
-
         if (!character.doNotInjectCharacterImage) {
-            const characterMessage = findPreviousMessage(interactionData, character.id);
-            const characterExpression = characterMessage?.characterExpression;
+            const characterMessage = findLatestMessage(interactionData, character);
+            const characterExpression = characterMessage?.message.characterExpression;
             const characterImagePath = await getCharacterImageUrlWithFallBack(character.id, characterExpression);
 
             if (characterImagePath) {
@@ -204,25 +176,19 @@ export async function buildChatRequestBody(
             }
         }
 
-        // Inject all co-located participant images (includes protagonists if co-located)
         const colocatedParticipants = getCoLocatedParticipants(interactionData, character);
         const protagonistIds = new Set(interactionData.protagonists?.map(p => p.id) ?? []);
         const effectiveUseFrontCameraImage = getEffectiveUseFrontCameraImage(character, profile);
 
         for (const participant of colocatedParticipants) {
-            // Skip self — already injected above
             if (participant.id === character.id) continue;
-
             if (participant.doNotInjectCharacterImage) continue;
 
-            const participantMessage = findPreviousMessage(interactionData, participant.id);
-            const participantExpression = participantMessage?.characterExpression;
-
+            const participantMessage = findLatestMessage(interactionData, participant);
+            const participantExpression = participantMessage?.message.characterExpression;
             let participantImageBase64: string | null = null;
 
-            // If this participant is a protagonist and front camera is enabled,
-            // use the front camera image from their last message if available
-            const chatMsg = participantMessage as ChatMessage | null;
+            const chatMsg = participantMessage?.message as ChatMessage | null;
             if (protagonistIds.has(participant.id) && effectiveUseFrontCameraImage && chatMsg?.frontCameraImage) {
                 participantImageBase64 = chatMsg.frontCameraImage;
             } else {
@@ -240,17 +206,15 @@ export async function buildChatRequestBody(
             const participantString = knownName ? `${participantTag} (${knownName})` : participantTag;
 
             filesBase64.push({ data: rawData, id: imageIdCounter++ });
-
             imageInjectionMessages.push({
                 role: 'system',
                 content: `${delimiters.blockStart('system')}I understand that the image ${imageIdCounter} is the appearance of ${participantString}.${delimiters.blockEnd}`,
             });
         }
 
-        // Attach files from co-located protagonists' most recent messages only
         for (const participant of colocatedParticipants) {
             if (!protagonistIds.has(participant.id)) continue;
-            const lastMsg = findPreviousMessage(interactionData, participant.id);
+            const lastMsg = findLatestMessage(interactionData, participant)?.message;
             if (!lastMsg || lastMsg.messageType !== 'chat') continue;
             const lastChatMsg = lastMsg as ChatMessage;
             if (lastChatMsg.files?.length) {
@@ -325,19 +289,10 @@ export async function buildChatRequestBody(
         filesBase64.push(...resolvedPromptBlockImages);
     }
 
-    // ─── Assemble Final Messages Array ──────────────────────────────
-    // Prepend image injection messages before the structured prompt messages
-    const finalMessages: OpenAIMessage[] = [
-        ...imageInjectionMessages,
-        ...messages,
-    ];
-
+    const finalMessages: OpenAIMessage[] = [...imageInjectionMessages, ...messages];
     const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
 
-    const finalStops = [
-        ...(Array.isArray(paramStops) ? paramStops : []),
-        ...stops,
-    ];
+    const finalStops = [...(Array.isArray(paramStops) ? paramStops : []), ...stops];
     const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
 
     const body: Record<string, unknown> = {
@@ -348,7 +303,6 @@ export async function buildChatRequestBody(
         stop: uniqueStops,
     };
 
-    // ─── Text Character Injection Logic ─────────────────────────────
     if (profile?.randomizeTextCharacterInjection) {
         const maxRetries = profile.maximumNumberOfTextCharacterRandomizationPerModel ?? 1;
         const injections: string[] = [];
@@ -356,21 +310,16 @@ export async function buildChatRequestBody(
             injections.push(generateInitialCharacterText(character));
         }
 
-        // Store base messages for retry reconstruction
         body._baseMessages = finalMessages.map(m => ({ ...m }));
 
-        // FIX: Replaced forbidden non-null assertion (!) with safe undefined check
         if (!profile.randomizeTextCharacterInjectionOnRetry && injections.length > 0) {
             const firstInjection = injections.shift();
-            if (firstInjection !== undefined) {
-                // Prepend injection to the first message's content
-                if (finalMessages.length > 0) {
-                    finalMessages[0] = {
-                        ...finalMessages[0],
-                        content: firstInjection + (typeof finalMessages[0].content === 'string' ? finalMessages[0].content : ''),
-                    };
-                    body.messages = finalMessages;
-                }
+            if (firstInjection !== undefined && finalMessages.length > 0) {
+                finalMessages[0] = {
+                    ...finalMessages[0],
+                    content: firstInjection + (typeof finalMessages[0].content === 'string' ? finalMessages[0].content : ''),
+                };
+                body.messages = finalMessages;
             }
         }
 
@@ -380,14 +329,13 @@ export async function buildChatRequestBody(
     }
 
     if (filesBase64.length > 0) body.image_data = filesBase64;
-
-    // ─── Inject Session ID for Provider Cache Affinity ──────────────
     body.session_id = interactionData.id;
 
     return { body, knownCharacterNames, fetchErrors, characterClothingWearingStatuses };
 }
 
-export function convertIdsToDisplayNames(text: string, interactionData: InteractionData): string {
+// STRICTLY USE LOCAL HISTORY FOR THIS SPECIFIC CHARACTER'S PERSPECTIVE
+export function convertIdsToDisplayNames(text: string, interactionData: InteractionData, character: Character): string {
     const profile = interactionData.Profile;
     const stripThinkTokens = profile?.stripThinkTokens ?? false;
 
@@ -402,14 +350,14 @@ export function convertIdsToDisplayNames(text: string, interactionData: Interact
     result = result.replace(/<memory>\}/g, '');
     result = result.replace(/<memory>[\s\S]*?\}/g, '');
 
-    // For display purposes, check if ANY message in history reveals the name
-    // (the user/reader always sees real names regardless of in-character knowledge)
+    const localHistory = getLocalMessageHistory(interactionData, character);
+    
     interactionData.participants.forEach((p, i) => {
         const tag = `Character ${i + 1}`;
-        // Check all messages for knownCharacterNames entries for this participant
         let knownName: string | null = null;
-        for (let mi = interactionData.interactionHistory.length - 1; mi >= 0; mi--) {
-            const msg = interactionData.interactionHistory[mi];
+        
+        for (let mi = localHistory.length - 1; mi >= 0; mi--) {
+            const msg = localHistory[mi];
             if (msg.knownCharacterNames) {
                 const candidates = [p.name, ...(p.aliases ?? [])];
                 for (const candidate of candidates) {
@@ -438,12 +386,13 @@ export function createNewInteractionData(character: Character): InteractionData 
         contexts: [],
         locations: [],
         audioTracks: [],
-        interactionHistory: [],
+        interactionHistories: {},
         numberOfMessages: 0,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
         parentInteractionDataId: null,
         parentMessageId: null,
+        Profile: undefined,
     };
 }
 
@@ -451,24 +400,26 @@ export function createChatMessage(
     interactionData: InteractionData,
     character: Character,
     textContent: string,
-    options?: { locationIndex?: number; files?: string[]; frontCameraImage?: string; knownCharacterNames?: Record<string, Record<string, boolean>>; clothingWearingStatuses?: Record<string, boolean> }
+    options?: { files?: string[]; frontCameraImage?: string; knownCharacterNames?: Record<string, Record<string, boolean>>; clothingWearingStatuses?: Record<string, boolean> }
 ): ChatMessage {
-    const previousMessage = findPreviousMessage(interactionData, character.id);
+    const latest = findLatestMessage(interactionData, character);
+    const previousMessage = latest?.message;
+    
     const effectiveMaximumChatStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
-    const effectiveMaximumActionStamina = getEffectiveMaximumChatStamina(character, interactionData.Profile);
+    const effectiveMaximumActionStamina = getEffectiveMaximumActionStamina(character, interactionData.Profile);
     const remainingChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaximumChatStamina;
     const remainingActionStamina = previousMessage?.remainingActionStamina ?? effectiveMaximumActionStamina;
-    const lastMessageId = interactionData.interactionHistory.length > 0 ? interactionData.interactionHistory[interactionData.interactionHistory.length - 1].id : null;
+    
+    // FIXED: Use GLOBAL history to find the absolute last message for parentMessageId.
+    // This is a structural timeline operation, not a character-perspective operation.
+    // The new message must attach to the end of the overall timeline.
+    const globalMessages = getGlobalMessageHistory(interactionData);
+    const lastMessageId = globalMessages.length > 0 ? globalMessages[globalMessages.length - 1].id : null;
     const now = Date.now();
 
     const id = uuidv4();
     const files = options?.files ?? [];
     const frontCameraImage = options?.frontCameraImage;
-
-    let locationIndex = options?.locationIndex;
-    if (locationIndex === undefined && interactionData.locations && interactionData.locations.length > 0) {
-        locationIndex = detectLocationFromText(textContent, interactionData.locations);
-    }
 
     const knownCharacterNames = options?.knownCharacterNames ??
         (character.knownCharacterNames
@@ -487,12 +438,12 @@ export function createChatMessage(
         messageType: 'chat',
         character: { ...character },
         textContent,
+        isPresent: true,
         files,
         frontCameraImage,
         remainingChatStamina,
         remainingActionStamina,
         knownCharacterNames,
-        locationIndex,
         characterClothingWearingStatuses: clothingWearingStatuses,
         characterLockedLocations: { ...prevLockedLocations },
         modelTextContentSummaries: {},
@@ -506,30 +457,73 @@ export function createChatMessage(
     } as ChatMessage;
 }
 
-export function addMessageToInteractionData(interactionData: InteractionData, newInteractionMessage: HistoryMessage): InteractionData {
+export function addMessageToInteractionData(
+    interactionData: InteractionData, 
+    newInteractionMessage: HistoryMessage,
+    locationId?: string
+): InteractionData {
+    const targetLocationId = locationId || 'global';
+    const newHistories = { ...interactionData.interactionHistories };
+    if (!newHistories[targetLocationId]) {
+        newHistories[targetLocationId] = [];
+    }
+    newHistories[targetLocationId] = [...newHistories[targetLocationId], newInteractionMessage];
+    
+    const totalMessages = Object.values(newHistories).reduce((acc, curr) => acc + curr.length, 0);
+    
     return {
         ...interactionData,
-        interactionHistory: [...interactionData.interactionHistory, newInteractionMessage],
-        numberOfMessages: (interactionData.numberOfMessages ?? interactionData.interactionHistory.length) + 1,
+        interactionHistories: newHistories,
+        numberOfMessages: totalMessages,
         lastUpdatedTimestamp: Date.now()
     };
 }
 
 export function editInteractionMessageInInteractionData(interactionData: InteractionData, messageId: string, newText: string): InteractionData {
-    const { interactionHistory } = interactionData;
-    const index = interactionHistory.findIndex(m => m.id === messageId);
-    if (index === -1) return interactionData;
+    const newHistories = { ...interactionData.interactionHistories };
+    let found = false;
+    
+    for (const [locId, messages] of Object.entries(newHistories)) {
+        const index = messages.findIndex((m: HistoryMessage) => m.id === messageId);
+        if (index !== -1) {
+            newHistories[locId] = [...messages];
+            const targetMsg = newHistories[locId][index];
+            
+            if (targetMsg.messageType === 'chat' || targetMsg.messageType === 'whisper') {
+                newHistories[locId][index] = { 
+                    ...targetMsg, 
+                    textContent: newText, 
+                    kvCacheTextContentPaths: {}, 
+                    kvCacheTextContentSummaryPaths: {}, 
+                    kvCacheInteractionTextContentSummaries: {} 
+                } as ChatMessage | WhisperMessage;
+            }
+            found = true;
+            break;
+        }
+    }
+    
+    if (!found) return interactionData;
+
+    const allMessages = getGlobalMessageHistory({ ...interactionData, interactionHistories: newHistories });
+    const msgIndex = allMessages.findIndex((m: HistoryMessage) => m.id === messageId);
+    
+    if (msgIndex !== -1) {
+        for (const [locId, messages] of Object.entries(newHistories)) {
+            newHistories[locId] = messages.map((m: HistoryMessage) => {
+                const globalIdx = allMessages.findIndex((am: HistoryMessage) => am.id === m.id);
+                if (globalIdx > msgIndex && (m.messageType === 'chat' || m.messageType === 'whisper')) {
+                    return { ...m, kvCacheTextContentPaths: {}, kvCacheTextContentSummaryPaths: {}, kvCacheInteractionTextContentSummaries: {} } as ChatMessage | WhisperMessage;
+                }
+                return m;
+            });
+        }
+    }
+
     return {
         ...interactionData,
-        interactionHistory: interactionHistory.map((message, idx) => {
-            if (idx === index && message.messageType === 'chat') {
-                return { ...message, textContent: newText, kvCacheTextContentPaths: {}, kvCacheTextContentSummaryPaths: {}, kvCacheInteractionTextContentSummaries: {} };
-            }
-            if (idx > index && message.messageType === 'chat') {
-                return { ...message, kvCacheTextContentPaths: {}, kvCacheTextContentSummaryPaths: {}, kvCacheInteractionTextContentSummaries: {} };
-            }
-            return message;
-        })
+        interactionHistories: newHistories,
+        lastUpdatedTimestamp: Date.now()
     };
 }
 
@@ -539,51 +533,55 @@ export function updatePartialMessageInInteractionData(
     newText: string,
     characterExpression?: string,
 ): InteractionData {
-    const history = [...interactionData.interactionHistory];
-    // Find the last message by this character and update its text.
-    for (let i = history.length - 1; i >= 0; i--) {
-        const m = history[i];
-        if (m.character.id === characterId && m.messageType === 'chat') {
-            history[i] = { ...m, textContent: newText, characterExpression: characterExpression ?? (m as ChatMessage).characterExpression, lastUpdatedTimestamp: Date.now() } as ChatMessage;
-            return { ...interactionData, interactionHistory: history, lastUpdatedTimestamp: Date.now() };
+    const newHistories = { ...interactionData.interactionHistories };
+    
+    const latest = findLatestMessage(interactionData, { id: characterId } as Character);
+    if (!latest) return interactionData;
+
+    const { message, locationId } = latest;
+    if (message.messageType !== 'chat') return interactionData;
+
+    const locMessages = newHistories[locationId];
+    const index = locMessages.findIndex((m: HistoryMessage) => m.id === message.id);
+    if (index !== -1) {
+        newHistories[locationId] = [...locMessages];
+        newHistories[locationId][index] = { 
+            ...message, 
+            textContent: newText, 
+            characterExpression: characterExpression ?? (message as ChatMessage).characterExpression, 
+            lastUpdatedTimestamp: Date.now() 
+        } as ChatMessage;
+    }
+
+    return { ...interactionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
+}
+
+export function deleteInteractionMessage(interactionData: InteractionData, messageId: string): { newHistories: Record<string, HistoryMessage[]>; invalidatedIds: string[] } {
+    const newHistories = { ...interactionData.interactionHistories };
+    
+    const allMessages = getGlobalMessageHistory(interactionData);
+    const targetGlobalIndex = allMessages.findIndex((m: HistoryMessage) => m.id === messageId);
+    
+    if (targetGlobalIndex === -1) return { newHistories: interactionData.interactionHistories, invalidatedIds: [] };
+
+    for (const [locId, messages] of Object.entries(newHistories)) {
+        const idx = messages.findIndex((m: HistoryMessage) => m.id === messageId);
+        if (idx !== -1) {
+            newHistories[locId] = messages.filter((m: HistoryMessage) => m.id !== messageId);
+            break;
         }
     }
-    return interactionData;
-}
 
-export function deleteInteractionMessage(interactionData: InteractionData, messageId: string): { newHistory: HistoryMessage[]; invalidatedIds: string[] } {
-    const interactionHistory = interactionData.interactionHistory;
-    const targetIndex = interactionHistory.findIndex(m => m.id === messageId);
-    if (targetIndex === -1) return { newHistory: interactionHistory, invalidatedIds: [] };
-    const newHistory = interactionHistory.filter(m => m.id !== messageId);
-    const finalHistory = newHistory.map((message, idx) => {
-        if (idx >= targetIndex && message.messageType === 'chat') {
-            return { ...message, kvCacheTextContentPaths: {}, kvCacheTextContentSummaryPaths: {}, kvCacheInteractionTextContentSummaries: {} };
-        }
-        return message;
-    });
-    return { newHistory: finalHistory, invalidatedIds: [messageId] };
-}
+    const newAllMessages = getGlobalMessageHistory({ ...interactionData, interactionHistories: newHistories });
+    for (const [locId, messages] of Object.entries(newHistories)) {
+        newHistories[locId] = messages.map((m: HistoryMessage) => {
+            const globalIdx = newAllMessages.findIndex((am: HistoryMessage) => am.id === m.id);
+            if (globalIdx > targetGlobalIndex && (m.messageType === 'chat' || m.messageType === 'whisper')) {
+                return { ...m, kvCacheTextContentPaths: {}, kvCacheTextContentSummaryPaths: {}, kvCacheInteractionTextContentSummaries: {} } as ChatMessage | WhisperMessage;
+            }
+            return m;
+        });
+    }
 
-export function branchInteractionMessage(interactionData: InteractionData, branchPointMessageId: string): InteractionData {
-    const branchIndex = interactionData.interactionHistory.findIndex(m => m.id === branchPointMessageId);
-    if (branchIndex === -1) throw new Error('Branch point message not found');
-    const currentTimestamp = Date.now();
-    const branchedHistory = interactionData.interactionHistory.slice(0, branchIndex + 1);
-    return {
-        id: uuidv4(),
-        name: `${interactionData.name} [#${branchIndex + 1}]`,
-        protagonists: interactionData.protagonists,
-        participants: interactionData.participants,
-        contexts: interactionData.contexts,
-        locations: interactionData.locations,
-        audioTracks: interactionData.audioTracks,
-        interactionHistory: branchedHistory,
-        numberOfMessages: branchedHistory.length,
-        firstCreatedTimestamp: currentTimestamp,
-        lastUpdatedTimestamp: currentTimestamp,
-        Profile: interactionData.Profile,
-        parentInteractionDataId: interactionData.id,
-        parentMessageId: branchPointMessageId,
-    };
+    return { newHistories, invalidatedIds: [messageId] };
 }

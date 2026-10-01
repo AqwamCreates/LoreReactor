@@ -29,7 +29,7 @@ export function StreamingIndicators({
 
     const isNotProtagOrAmbient = streamingCharacter.id !== selectedCharacterId && streamingCharacter.id !== AMBIENT_NARRATOR_ID;
     const dn = interactionData
-        ? getDelayedDisplayName(interactionData, Math.max(0, messagesLength - 1), streamingCharacter.id)
+        ? getDelayedDisplayName(interactionData, streamingCharacter, Math.max(0, messagesLength - 1))
         : streamingCharacter.name;
 
     const avatarColumn = isNotProtagOrAmbient && viewMode === 'ladder' && (

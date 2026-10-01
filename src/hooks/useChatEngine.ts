@@ -3,20 +3,18 @@ import { useCallback } from 'react';
 import type { Character, InteractionData, PromptBlock, BudgetStrategy, BudgetData, LanguageModel } from '../types';
 import { CharacterActor } from '../services/CharacterActor';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
-import { AutonomousSimulationEngine } from '../services/AutonomousSimulationEngine';
+import { CharacterSoul } from '../services/CharacterSoul'; // <-- UPDATED
 import { getBudgetStrategyEngine, type RequestMetadata } from '../services/BudgetStrategyEngine';
 import { updatePartialMessageInInteractionData } from '../utilities/chatLogic';
 
 const characterActor = new CharacterActor();
-const autonomousEngine = new AutonomousSimulationEngine();
+const characterSoul = new CharacterSoul();
 
 export interface HandleServerResponseResult {
     interactionData: InteractionData;
     isCompleted: boolean;
-    /** Raw prompt text captured during generation, used for FM regeneration correction */
     promptText?: string;
 }
-
 interface EngineDependencies {
     getState: () => any;
     setInteractionData: (d: InteractionData) => void;
@@ -26,7 +24,6 @@ interface EngineDependencies {
     setSelectedCharacterExpression: (e: string) => void;
     setLastSelectedModelId: (id: string | null) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
-    /** Optional callback to request a borrowed model from a peer for shared inference */
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
 }
 
@@ -53,7 +50,6 @@ export function useChatEngine(deps: EngineDependencies) {
 
         const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
 
-        // --- SHARED MODEL BORROWING ---
         let borrowedModel: LanguageModel | null = null;
         if (requestBorrowedModel) {
             try {
@@ -142,7 +138,6 @@ export function useChatEngine(deps: EngineDependencies) {
     ): Promise<{ interactionData: InteractionData; isCompleted: boolean; promptText?: string }> => {
         let lastPromptText: string | undefined = undefined;
 
-        // Matches TurnExecutor: (data, character, signal, onToken)
         const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken?: (t: string) => void) => {
             setStreamingState(c, '');
             const result = await handleServerResponse(d, c, s, onToken, undefined, '', promptBlocks, metadata);
@@ -164,7 +159,6 @@ export function useChatEngine(deps: EngineDependencies) {
 
         if (result) {
             setInteractionData(result.interactionData);
-            
             return {
                 interactionData: result.interactionData,
                 isCompleted: result.isCompleted,
@@ -180,18 +174,24 @@ export function useChatEngine(deps: EngineDependencies) {
         setData: (data: InteractionData) => void,
         resetStream: () => void
     ) => {
-        // Matches AutonomousExecutor: (data, character, signal)
         const executor = async (d: InteractionData, c: Character, s: AbortSignal) => {
             resetStream();
             setStreamingState(c, '');
-            // Autonomous mode passes empty metadata since there's no user context
             return handleServerResponse(d, c, s, undefined, undefined, '', undefined, {});
         };
-        autonomousEngine.start(executor, checkCanAct, getData, setData);
+        
+        // Start the CharacterSoul, which delegates to runTurnSequence
+        characterSoul.start(
+            executor, 
+            checkCanAct, 
+            getData, 
+            setData,
+            (character) => setStreamingState(character ?? null, '')
+        );
     }, [handleServerResponse, setStreamingState]);
 
     const stopAutonomousMode = useCallback(() => {
-        autonomousEngine.stop();
+        characterSoul.stop();
     }, []);
 
     return {

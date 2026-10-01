@@ -475,7 +475,10 @@ export function AlternateTimelinesModal({
                 position: { x: 0, y: 0 },
                 data: {
                     label: shell.name || 'Untitled',
-                    messageCount: shell.interactionIdHistory?.length ?? 0,
+                    // FIX: Replaced non-existent interactionIdHistory with spatial interactionHistories reduction
+                    messageCount: shell.interactionHistories 
+                        ? Object.values(shell.interactionHistories).reduce((sum, msgs) => sum + msgs.length, 0) 
+                        : 0,
                     lastActive: getRelativeTime(shell.lastUpdatedTimestamp),
                     childCount: children.length,
                     participantCount: shell.participantIds?.length ?? 0,

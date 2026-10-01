@@ -335,11 +335,12 @@ export interface BaseMessage {
   remainingChatStamina?: number;
   remainingActionStamina?: number;
   knownCharacterNames?: Record<string, Record<string, boolean>>; // Character Ids -> Character name + aliases -> The character name + aliases that is known by the message holder.
-  locationIndex?: number;
   characterExpression?: string;
   inventory?: Inventory,
   characterClothingWearingStatuses: Record<string, boolean>
   characterLockedLocations: Record<string, string[]> // Location Ids -> An array of character Ids.
+  isPresent?: boolean;
+  isConverged?: boolean; // Because when traversing the messages in reverse at convergence, it would take the wrong path as it does not see it made that jump.
   parentMessageId?: string | null;
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;
@@ -381,9 +382,10 @@ export interface RawBaseMessage {
   remainingChatStamina?: number;
   remainingActionStamina?: number;
   knownCharacterNames?: Record<string, Record<string, boolean>>; // Character Ids -> Character name + aliases -> The character name + aliases that is known by the message holder.
-  locationIndex?: number;
   characterExpression?: string;
   inventory?: Inventory,
+  isPresent?: boolean;
+  isConverged?: boolean; // Because when traversing the messages in reverse at convergence, it would take the wrong path as it does not see it made that jump.
   parentMessageId?: string | null;
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;
@@ -506,7 +508,7 @@ export interface RawInteractionData extends RawData {
   contextIds: string[];
   locationIds: string[];
   audioTrackIds: string[];
-  interactionIdHistory: string[];
+  interactionHistories: Record<string, string[]>; // location Id -> InteractionHistory at that location.
   parentInteractionDataId?: string | null;
   parentMessageId?: string | null;
   ProfileId?: string;
@@ -627,6 +629,9 @@ export interface RawSummarizationStep extends RawData {
   summaryTokenBudget?: number;
   summaryModelId?: string;
   triggerTokenThreshold?: number;
+  entropyPruningChunkSize?: number;        // Messages per chunk (default: 3)
+  entropyPruningThreshold?: number;        // Below this = fluff (default: 0.35)
+  entropyPruningTokenBudget?: number;      // Max tokens to keep raw (default: 2000)
 }
 
 export type PromptBlockType =

@@ -722,7 +722,11 @@ export function DataManagerModal({
         return rawChatShells.filter(shell => {
             if (!shell.id) return false;
             const matchesStale = includeStale && (shell.lastUpdatedTimestamp ?? 0) < staleCutoffMs;
-            const matchesLow = includeLowMessage && (shell.interactionIdHistory?.length ?? 0) < minMessagesThreshold;
+            
+            // FIX: Replaced non-existent interactionIdHistory with spatial interactionHistories reduction
+            const msgCount = Object.values(shell.interactionHistories || {}).reduce((sum, msgs) => sum + msgs.length, 0);
+            const matchesLow = includeLowMessage && msgCount < minMessagesThreshold;
+            
             if (!matchesStale && !matchesLow) return false;
             if (isShellExcluded(shell)) return false;
             return true;
@@ -1035,7 +1039,12 @@ export function DataManagerModal({
                                 </div>
                                 {bulkCandidates.length > 0 && (
                                     <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '6px', marginBottom: '10px' }}>
-                                        {bulkCandidates.slice(0, 50).map(shell => { const msgCount = shell.interactionIdHistory?.length ?? 0; const age = daysAgo(shell.lastUpdatedTimestamp ?? 0); return (<div key={shell.id} style={{ padding: '4px 8px', fontSize: '0.65rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: '8px' }}><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{shell.name || 'Untitled'}</span><span style={{ opacity: 0.5, whiteSpace: 'nowrap', flexShrink: 0 }}>{msgCount} msg • {age}d ago</span></div>); })}
+                                        {bulkCandidates.slice(0, 50).map(shell => { 
+                                            // FIX: Replaced non-existent interactionIdHistory with spatial interactionHistories reduction
+                                            const msgCount = Object.values(shell.interactionHistories || {}).reduce((sum, msgs) => sum + msgs.length, 0); 
+                                            const age = daysAgo(shell.lastUpdatedTimestamp ?? 0); 
+                                            return (<div key={shell.id} style={{ padding: '4px 8px', fontSize: '0.65rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: '8px' }}><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{shell.name || 'Untitled'}</span><span style={{ opacity: 0.5, whiteSpace: 'nowrap', flexShrink: 0 }}>{msgCount} msg • {age}d ago</span></div>); 
+                                        })}
                                         {bulkCandidates.length > 50 && (<div style={{ padding: '4px 8px', fontSize: '0.6rem', opacity: 0.4, textAlign: 'center' }}>...and {bulkCandidates.length - 50} more</div>)}
                                     </div>
                                 )}

@@ -133,10 +133,14 @@ export async function exportSelectedData(selection: {
     for (const id of selection.chatIds) {
         let full = await loadRawInteractionData(id, []);
         if (!full) continue;
-        if (!full.interactionHistory.length && (full.numberOfMessages ?? 0) > 0) {
+        
+        // FIX: Replaced the non-existent flat `interactionHistory` array with a reduction 
+        // over the spatially-partitioned `interactionHistories` Record.
+        const messageCount = Object.values(full.interactionHistories || {}).reduce((sum, msgs) => sum + msgs.length, 0);
+        if (messageCount === 0 && (full.numberOfMessages ?? 0) > 0) {
             try { full = await loadInteractionMessages(full); } catch { /* use shell */ }
         }
-        data.chats.push(full);
+        data.chats.push(full as InteractionData);
     }
     for (const id of selection.characterIds) {
         const full = await loadRawCharacter(id);

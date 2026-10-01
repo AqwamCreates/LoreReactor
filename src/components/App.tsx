@@ -434,7 +434,7 @@ function App() {
 
     // ─── Token Counter ───────────────────────────────────────────────
     const maxParticipantTokens = useTokenCounter({
-        messages: viewAssets.chatMessages || [],
+        messages: (viewAssets.chatMessages || []).filter((m): m is ChatMessage => m.messageType === 'chat'),
         interactionData,
         selectedModelId: models.selectedModelId,
         allLanguageModels,
@@ -492,9 +492,9 @@ function App() {
 
     // ─── Stable Committed Messages (Only updates when history changes, NOT on stream tokens) ──
     const committedMessages = useMemo(() => {
-        let base = [...safeMessages] as (ChatMessage | WhisperMessage)[];
+        let base = safeMessages.filter((m): m is ChatMessage | WhisperMessage => m.messageType === 'chat' || m.messageType === 'whisper');
         if (isMultiplayerChat && localProtagonist) {
-            base = base.filter((msg: ChatMessage | WhisperMessage) => {
+            base = base.filter((msg) => {
                 if (msg.messageType === 'whisper') {
                     const w = msg as WhisperMessage;
                     return w.character.id === localProtagonist.id || w.targetCharacterIds.includes(localProtagonist.id);
@@ -506,7 +506,7 @@ function App() {
     }, [safeMessages, isMultiplayerChat, localProtagonist]);
 
     const massStartIndex = messageActions.massDeleteId !== null
-        ? committedMessages.findIndex((m: ChatMessage | WhisperMessage) => m.id === messageActions.massDeleteId) : -1;
+        ? committedMessages.findIndex((m) => m.id === messageActions.massDeleteId) : -1;
 
     // ─── Budget Reset Timer ──────────────────────────────────────────
     const timeUntilResetRef = useRef<number | undefined>(undefined);
@@ -693,7 +693,7 @@ function App() {
         let targetIdx = -1;
         if (container && interactionData) {
             const rect = container.getBoundingClientRect();
-            const ids = new Set(safeMessages.map((m: ChatMessage | WhisperMessage) => m.id));
+            const ids = new Set(safeMessages.map(m => m.id));
             let bestTop = Number.POSITIVE_INFINITY;
             for (const el of container.querySelectorAll('[data-message-id]')) {
                 const mid = el.getAttribute('data-message-id');
@@ -701,12 +701,12 @@ function App() {
                 const r = el.getBoundingClientRect();
                 if (r.top < rect.bottom && r.bottom > rect.top && r.top < bestTop) { 
                     bestTop = r.top; 
-                    targetIdx = safeMessages.findIndex((m: ChatMessage | WhisperMessage) => m.id === mid); 
+                    targetIdx = safeMessages.findIndex(m => m.id === mid); 
                 }
             }
         }
         if (targetIdx === -1 && lastViewedMessageIdRef.current && interactionData)
-            targetIdx = safeMessages.findIndex((m: ChatMessage | WhisperMessage) => m.id === lastViewedMessageIdRef.current);
+            targetIdx = safeMessages.findIndex(m => m.id === lastViewedMessageIdRef.current);
         if (targetIdx >= 0 && interactionData) lastViewedMessageIdRef.current = safeMessages[targetIdx].id;
         suppressAutoScrollRef.current = true;
         setTimeout(() => {
@@ -934,7 +934,7 @@ function App() {
                             <div className="header-content">
                                 <div className="header-top">
                                     {viewMode === 'ladder' && safeMessages.length > 5 && (
-                                        <ChatMinimap messages={safeMessages.filter((m: ChatMessage | WhisperMessage): m is ChatMessage => m.messageType === 'chat')} containerRef={chatHistoryRef} selectedCharacterId={currentCharacter?.id} />
+                                        <ChatMinimap messages={safeMessages.filter((m: HistoryMessage): m is ChatMessage => m.messageType === 'chat')} containerRef={chatHistoryRef} selectedCharacterId={currentCharacter?.id} />
                                     )}
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                                         {chatOps.isEditingTitle

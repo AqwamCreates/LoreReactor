@@ -5,8 +5,9 @@ import { createChatMessage, addMessageToInteractionData } from '../utilities/cha
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { useSessionStore } from './useSessionStore';
-import { getCoLocatedParticipants } from '../utilities/locationLogic';
+import { getCoLocatedParticipants, getCurrentLocationId } from '../utilities/locationLogic';
 import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
+import { getGlobalMessageHistory } from '../utilities/timelineLogic'; // FIXED: Added import
 import { detectContext, composeFallbackSentence } from '../ambientNarration/composer';
 import { AMBIENT_NARRATOR } from '../ambientNarration/narrator';
 
@@ -26,8 +27,8 @@ export function useAmbientNarration(
         const coLocatedCount = protagonist ? getCoLocatedParticipants(data, protagonist).length : 0;
         const messageWindow = coLocatedCount + 1;
 
-        // Get all chat messages
-        const allChatMessages = data.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
+        // FIXED: Use getGlobalMessageHistory instead of deprecated data.interactionHistory
+        const allChatMessages = getGlobalMessageHistory(data).filter((m): m is ChatMessage => m.messageType === 'chat');
 
         // Apply universal message filter flags to exclude filtered messages
         const filterFlags = getUniversalMessageFilterFlags(
@@ -111,9 +112,12 @@ export function useAmbientNarration(
             await new Promise(r => setTimeout(r, 20));
         }
 
-        const chatMessage = createChatMessage(data, AMBIENT_NARRATOR, selected)
-
-        return addMessageToInteractionData(data, chatMessage);
+        const chatMessage = createChatMessage(data, AMBIENT_NARRATOR, selected);
+        
+        // FIXED: Determine the correct location bucket for the ambient message
+        const currentLocId = protagonist ? getCurrentLocationId(data, protagonist) : 'global';
+        
+        return addMessageToInteractionData(data, chatMessage, currentLocId || 'global');
     }, [setStreamingState, setStreamingText, streamingTextRef]);
 
     return { generateAmbientNarration, AMBIENT_NARRATOR };

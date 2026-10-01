@@ -1,9 +1,9 @@
 // src/hooks/useViewAssets.ts
 import { useState, useRef, useEffect, useMemo } from 'react';
-import type { Character, InteractionData, ChatMessage } from '../types';
+import type { Character, InteractionData} from '../types';
 import { getCharacterImageUrl, getLocationImageUrl, getMultiplayerCharacterImageUrl } from '../storages/serverStorage';
-import { mediaCache } from '../services/MediaCache';
-import { MultiplayerEvents } from '../services/MultiplayerEvents';
+import { getCurrentLocationId } from '../utilities/locationLogic';
+import { getLocalMessageHistory } from '../utilities/timelineLogic';
 import type { viewMode } from '../components/views/types';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
@@ -31,27 +31,12 @@ function resolvePortrait(
     const filename = images?.[expr] || images?.neutral;
     if (!filename) return null;
 
-    // 1. Direct Data URL or external Web URL
     if (filename.startsWith('data:') || filename.startsWith('http://') || filename.startsWith('https://')) {
         return filename;
     }
 
-    // 2. Check P2P WebRTC Media Cache
-    const cacheKey = `char_${characterId}_${filename}`;
-    const cached = mediaCache.get(cacheKey) || mediaCache.get(filename);
-    if (cached) return cached;
-
-    // 3. Fallback to local server URLs
     const localUrl = getCharacterImageUrl(characterId, filename);
     const mpUrl = isMultiplayerChat ? getMultiplayerCharacterImageUrl(characterId, filename) : null;
-
-    // 4. If joiner in multiplayer, request asset from host
-    if (isMultiplayerChat && !cached) {
-        MultiplayerEvents.emit('requestMediaAsset', {
-            assetType: 'image',
-            pathOrFilename: mpUrl || localUrl || filename,
-        });
-    }
 
     return localUrl || mpUrl;
 }
@@ -59,64 +44,42 @@ function resolvePortrait(
 function resolveLocationImage(
     locationId: string, 
     filename: string, 
-    isMultiplayerChat?: boolean
 ): string | null {
     if (!filename) return null;
 
-    // 1. Direct Data URL or external Web URL
     if (filename.startsWith('data:') || filename.startsWith('http://') || filename.startsWith('https://')) {
         return filename;
     }
 
-    // 2. Check P2P WebRTC Media Cache
-    const cacheKey = `loc_${locationId}_${filename}`;
-    const cached = mediaCache.get(cacheKey) || mediaCache.get(filename);
-    if (cached) return cached;
-
-    // 3. Fallback to local server URL
-    const localUrl = getLocationImageUrl(locationId, filename);
-
-    // 4. If joiner in multiplayer, request asset from host
-    if (isMultiplayerChat && !cached) {
-        MultiplayerEvents.emit('requestMediaAsset', {
-            assetType: 'image',
-            pathOrFilename: localUrl || filename,
-        });
-    }
-
-    return localUrl;
+    return getLocationImageUrl(locationId, filename);
 }
 
 function resolveLocationBackgroundUrl(
     interactionData: InteractionData, 
     localProtagonist: Character,
-    isMultiplayerChat?: boolean
 ): string | null {
     const locations = interactionData.locations;
     if (!locations || locations.length === 0) return null;
-    let currentLocIndex: number | undefined;
-    const history = interactionData.interactionHistory;
+    
+    const currentLocId = getCurrentLocationId(interactionData, localProtagonist);
+    if (!currentLocId) return null;
+    
+    const loc = locations.find(l => l.id === currentLocId);
+    if (!loc?.images || loc.images.length === 0) return null;
+    
+    const protagonistId = localProtagonist.id;
+    let lastUserText = '';
+    
+    // FIXED: Use LOCAL message history for the protagonist, including whispers
+    const history = getLocalMessageHistory(interactionData, localProtagonist, ['chat', 'whisper']);
     for (let i = history.length - 1; i >= 0; i--) {
-        const locationIndex = history[i].locationIndex;
-        if (locationIndex !== undefined && locationIndex >= 0) {
-            currentLocIndex = history[i].locationIndex;
+        const msg = history[i];
+        if (msg.character.id === protagonistId && 'textContent' in msg) {
+            lastUserText = msg.textContent;
             break;
         }
     }
-    if (currentLocIndex === undefined) return null;
-    const loc = locations[currentLocIndex];
-    if (!loc?.images || loc.images.length === 0) return null;
-    const protagonistId = localProtagonist.id;
-    let lastUserText = '';
-    if (protagonistId) {
-        for (let i = history.length - 1; i >= 0; i--) {
-            const msg = history[i];
-            if (msg.messageType === 'chat' && msg.character.id === protagonistId) {
-                lastUserText = msg.textContent;
-                break;
-            }
-        }
-    }
+    
     const regexTriggers = loc.backgroundImageRegularExpressionActivationTriggers;
     if (regexTriggers && Object.keys(regexTriggers).length > 0 && lastUserText) {
         for (const [idxStr, pattern] of Object.entries(regexTriggers)) {
@@ -126,12 +89,13 @@ function resolveLocationBackgroundUrl(
                 if (regex.test(lastUserText)) {
                     const idx = Number(idxStr);
                     if (idx >= 0 && idx < loc.images.length && loc.images[idx]) {
-                        return resolveLocationImage(loc.id, loc.images[idx], isMultiplayerChat);
+                        return resolveLocationImage(loc.id, loc.images[idx]);
                     }
                 }
             } catch {}
         }
     }
+    
     const weights = loc.backgroundImageWeights;
     if (weights && Object.keys(weights).length > 0) {
         const pool: { index: number; weight: number }[] = [];
@@ -147,12 +111,13 @@ function resolveLocationBackgroundUrl(
             let randomValue = Math.random() * totalWeight;
             for (const entry of pool) {
                 randomValue -= entry.weight;
-                if (randomValue <= 0) return resolveLocationImage(loc.id, loc.images[entry.index], isMultiplayerChat);
+                if (randomValue <= 0) return resolveLocationImage(loc.id, loc.images[entry.index]);
             }
-            return resolveLocationImage(loc.id, loc.images[pool[pool.length - 1].index], isMultiplayerChat);
+            return resolveLocationImage(loc.id, loc.images[pool[pool.length - 1].index]);
         }
     }
-    if (loc.images[0]) return resolveLocationImage(loc.id, loc.images[0], isMultiplayerChat);
+    
+    if (loc.images[0]) return resolveLocationImage(loc.id, loc.images[0]);
     return null;
 }
 
@@ -167,22 +132,14 @@ export function useViewAssets(options: UseViewAssetsOptions) {
 
     const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
     const centerAvatarRef = useRef<Character | null>(null);
-    const [, setMediaVersion] = useState(0);
 
     useEffect(() => { centerAvatarRef.current = centerAvatar; }, [centerAvatar]);
 
-    // Re-render when media finishes downloading over WebRTC
-    useEffect(() => {
-        const unsubscribe = MultiplayerEvents.on('mediaCacheUpdated', () => {
-            setMediaVersion(v => v + 1);
-        });
-        return unsubscribe;
-    }, []);
-
+    // FIXED: STRICTLY USE LOCAL MESSAGE HISTORY FOR THE PROTAGONIST, INCLUDING WHISPERS
     const chatMessages = useMemo(() => {
-        if (!interactionData) return [];
-        return interactionData.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat');
-    }, [interactionData]);
+        if (!interactionData || !localProtagonist) return [];
+        return getLocalMessageHistory(interactionData, localProtagonist, ['chat', 'whisper']);
+    }, [interactionData, localProtagonist]);
 
     const portraitUrlCache = useMemo(() => {
         const cache = new Map<string, string | null>();
@@ -219,7 +176,7 @@ export function useViewAssets(options: UseViewAssetsOptions) {
     }, [streamingCharacter, portraitUrlCache]);
 
     const locationBackgroundUrl = interactionData && localProtagonist
-        ? resolveLocationBackgroundUrl(interactionData, localProtagonist, isMultiplayerChat)
+        ? resolveLocationBackgroundUrl(interactionData, localProtagonist)
         : null;
 
     useEffect(() => {

@@ -31,8 +31,8 @@ function createEmptyChat(): InteractionData {
         contexts: [],
         locations: [],
         audioTracks: [],
-        interactionHistory: [],
-        numberOfMessages: 0,
+        // FIX: Replaced non-existent flat interactionHistory array with spatial interactionHistories Record
+        interactionHistories: {},
         firstCreatedTimestamp: Date.now(),
         lastUpdatedTimestamp: Date.now(),
         parentInteractionDataId: null,
@@ -90,14 +90,17 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
 
             setInteractionData(hydratedChat);
 
+            // FIX: Replaced flat interactionHistory array with spatial interactionHistories Record reduction
+            const allMessages = Object.values(hydratedChat.interactionHistories || {}).flat();
+            
             // Prime the Speculative Markov Engine with historical messages
-            if (hydratedChat.id && hydratedChat.interactionHistory?.length > 0) {
-                const trainingMessages = hydratedChat.interactionHistory
+            if (hydratedChat.id && allMessages.length > 0) {
+                const trainingMessages = allMessages
                     .filter((m): m is ChatMessage | WhisperMessage => 
-                        (m.messageType === 'chat' || m.messageType === 'whisper') && !!m.character?.id && !!m.textContent
+                        (m.messageType === 'chat' || m.messageType === 'whisper') && !!m.character?.id && !!(m as ChatMessage | WhisperMessage).textContent
                     )
                     .map(m => ({
-                        textContent: m.textContent,
+                        textContent: (m as ChatMessage | WhisperMessage).textContent,
                         lastUpdatedTimestamp: m.lastUpdatedTimestamp || m.firstCreatedTimestamp || 0,
                         characterId: m.character.id,
                     }));

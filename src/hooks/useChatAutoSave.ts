@@ -24,21 +24,39 @@ function haveEntitiesChanged<T extends { id: string; lastUpdatedTimestamp?: numb
 }
 
 function haveMessagesChanged(prev: InteractionData | null, curr: InteractionData): boolean {
-    if (!prev || !prev.interactionHistory || !curr.interactionHistory) return true;
-    if (prev.interactionHistory.length !== curr.interactionHistory.length) return true;
-    
-    for (let i = 0; i < prev.interactionHistory.length; i++) {
-        const p = prev.interactionHistory[i];
-        const c = curr.interactionHistory[i];
-        
-        if (p.id !== c.id) return true;
-        if (p.character.id !== c.character.id) return true;
-        if (p.lastUpdatedTimestamp !== c.lastUpdatedTimestamp) return true;
-        if (p.locationIndex !== c.locationIndex) return true;
+    if (!prev || !prev.interactionHistories || !curr.interactionHistories) return true;
 
-        if ('textContent' in p && 'textContent' in c) {
-            if ((p as ChatMessage | WhisperMessage).textContent !== (c as ChatMessage | WhisperMessage).textContent) {
-                return true;
+    const prevHistories = prev.interactionHistories;
+    const currHistories = curr.interactionHistories;
+
+    const prevLocIds = Object.keys(prevHistories);
+    const currLocIds = Object.keys(currHistories);
+
+    // Check if the set of location IDs changed
+    if (prevLocIds.length !== currLocIds.length) return true;
+    for (const id of prevLocIds) {
+        if (!Object.prototype.hasOwnProperty.call(currHistories, id)) return true;
+    }
+
+    // Check messages within each location bucket
+    for (const locId of currLocIds) {
+        const prevMsgs = prevHistories[locId] || [];
+        const currMsgs = currHistories[locId] || [];
+
+        if (prevMsgs.length !== currMsgs.length) return true;
+
+        for (let i = 0; i < prevMsgs.length; i++) {
+            const p = prevMsgs[i];
+            const c = currMsgs[i];
+
+            if (p.id !== c.id) return true;
+            if (p.character.id !== c.character.id) return true;
+            if (p.lastUpdatedTimestamp !== c.lastUpdatedTimestamp) return true;
+
+            if ('textContent' in p && 'textContent' in c) {
+                if ((p as ChatMessage | WhisperMessage).textContent !== (c as ChatMessage | WhisperMessage).textContent) {
+                    return true;
+                }
             }
         }
     }

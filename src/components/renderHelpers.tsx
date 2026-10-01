@@ -72,7 +72,12 @@ export function renderProfileSubtext(profile: Profile): React.ReactNode {
 export function renderChatSubtext(c: RawInteractionData): string {
     const parts: string[] = [];
     if (c.parentInteractionDataId) parts.push(`Branch of ${c.parentInteractionDataId.substring(0, 8)}...`);
-    const msgCount = c.interactionIdHistory?.length ?? 0;
+    
+    // FIX: Replaced non-existent interactionIdHistory with spatial interactionHistories reduction
+    const msgCount = c.interactionHistories 
+        ? Object.values(c.interactionHistories).reduce((sum, msgs) => sum + msgs.length, 0) 
+        : 0;
+        
     parts.push(`${msgCount} message${msgCount !== 1 ? 's' : ''}`);
     const charCount = c.participantIds?.length ?? 0;
     parts.push(`${charCount} character${charCount !== 1 ? 's' : ''}`);
@@ -82,7 +87,8 @@ export function renderChatSubtext(c: RawInteractionData): string {
 }
 
 export function renderContextSubtext(i: {
-    regularExpressionActivationTrigger?: string;
+    // FIX: Corrected property name to match the actual Context schema (plural, array)
+    regularExpressionActivationTriggers?: unknown[];
     images?: unknown[];
     searchTerms?: unknown[];
     urls?: unknown[];
@@ -92,7 +98,10 @@ export function renderContextSubtext(i: {
     const imageCount = i.images?.length ?? 0;
     const searchTermCount = i.searchTerms?.length ?? 0;
     const urlCount = i.urls?.length ?? 0;
-    if (!i.regularExpressionActivationTrigger) parts.push('📌'); else parts.push('⚡');
+    
+    // FIX: Check array length instead of singular string existence
+    if (!i.regularExpressionActivationTriggers?.length) parts.push('📌'); else parts.push('⚡');
+    
     if (imageCount > 0) parts.push(`🖼️${imageCount}`);
     if (searchTermCount > 0) parts.push(`🔎${searchTermCount}`);
     if (urlCount > 0) parts.push(`🔗${urlCount}`);
@@ -101,14 +110,18 @@ export function renderContextSubtext(i: {
 }
 
 export function renderLocationSubtext(loc: {
-    regularExpressionActivationTrigger?: string;
+    // FIX: Corrected property name to match the actual Location schema (plural, array)
+    regularExpressionActivationTriggers?: unknown[];
     images?: unknown[];
     text?: string;
     characterBindings?: string[];
 }): string {
     const parts: string[] = [];
-    if (loc.regularExpressionActivationTrigger) parts.push('⚡');
+    
+    // FIX: Check array length instead of singular string existence
+    if (loc.regularExpressionActivationTriggers?.length) parts.push('⚡');
     else parts.push('📍');
+    
     const imageCount = loc.images?.length ?? 0;
     if (imageCount > 0) parts.push(`🖼️${imageCount}`);
     const bindingCount = loc.characterBindings?.length ?? 0;

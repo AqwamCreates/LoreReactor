@@ -99,7 +99,8 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
 
     return (
         <div className="chat-history" ref={chatHistoryRef}>
-            {interactionData.interactionHistory.length > 3 && (
+            {/* FIX: Replaced non-existent interactionData.interactionHistory with the pre-computed displayMessages prop */}
+            {displayMessages.length > 3 && (
                 <ChatScrollButtons containerRef={chatHistoryRef} messageCount={displayMessages.length} />
             )}
 

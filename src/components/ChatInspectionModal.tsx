@@ -189,7 +189,6 @@ function useCharacterPortraits(characters: Character[]): Map<string, string | nu
 // ─── Component ───────────────────────────────────────────────────────
 
 export function ChatInspectionModal({
-    
     onClose,
     inspectionStack,
     onInspectingParentInteractionData,
@@ -199,14 +198,12 @@ export function ChatInspectionModal({
     const [sessionIdCopied, setSessionIdCopied] = useState(false);
 
     const internalStack = useMemo(() => {
-
         if (initializedFromStack !== inspectionStack) {
             return inspectionStack.length > 0 ? [...inspectionStack] : [];
         }
-
         if (userNavStack.length > 0) return userNavStack;
         return inspectionStack.length > 0 ? [...inspectionStack] : [];
-    }, [ inspectionStack, initializedFromStack, userNavStack]);
+    }, [inspectionStack, initializedFromStack, userNavStack]);
 
     if (initializedFromStack !== inspectionStack) {
         setInitializedFromStack(inspectionStack);
@@ -226,6 +223,12 @@ export function ChatInspectionModal({
     const hasContexts = contexts.length > 0;
     const hasAudioTracks = audioTracks.length > 0;
     const parentName = canGoBack ? internalStack[1]?.name : undefined;
+
+    // FIX: Replaced flat interactionHistory.length with spatial interactionHistories reduction
+    const messageCount = useMemo(() => {
+        if (!chat?.interactionHistories) return 0;
+        return Object.values(chat.interactionHistories).reduce((sum, msgs) => sum + msgs.length, 0);
+    }, [chat]);
 
     const allVisibleCharacters = useMemo(() => {
         const map = new Map<string, Character>();
@@ -266,11 +269,20 @@ export function ChatInspectionModal({
             return { nodes: [] as Node[], edges: [] as Edge[] };
         }
 
+        // FIX: Replaced flat interactionHistory and locationIndex with spatial lookup
         let currentLoc: Location | undefined;
-        for (let i = chat.interactionHistory.length - 1; i >= 0; i--) {
-            if (chat.interactionHistory[i].locationIndex !== undefined && chat.locations) {
-                currentLoc = chat.locations[chat.interactionHistory[i].locationIndex!];
-                break;
+        if (chat.protagonists && chat.protagonists.length > 0) {
+            currentLoc = getCurrentLocation(chat, chat.protagonists[0]);
+        }
+        if (!currentLoc) {
+            let maxTime = -1;
+            for (const [locId, messages] of Object.entries(chat.interactionHistories || {})) {
+                for (const msg of messages) {
+                    if (msg.firstCreatedTimestamp > maxTime) {
+                        maxTime = msg.firstCreatedTimestamp;
+                        currentLoc = chat.locations?.find(l => l.id === locId);
+                    }
+                }
             }
         }
 
@@ -440,7 +452,7 @@ export function ChatInspectionModal({
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '700px', maxHeight: '90vh' }}>
                 <div className="modal-header">
                     <h2 style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>
-                        {chat.name || 'Untitled Chat'}
+                        {chat?.name || 'Untitled Chat'}
                     </h2>
                     <div className="editor-modal-actions">
                         {canGoBack && (
@@ -458,269 +470,273 @@ export function ChatInspectionModal({
                 </div>
 
                 <div className="modal-body editor-modal-body" style={{ overflowY: 'auto' }}>
-                    {/* Session ID */}
-                    <div className="editor-section" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div style={{ fontSize: '0.65rem', opacity: 0.7, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, textAlign: 'left' }}>
-                                🔗 Session ID: {chat.id}
+                    {chat && (
+                        <>
+                            {/* Session ID */}
+                            <div className="editor-section" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={{ fontSize: '0.65rem', opacity: 0.7, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, textAlign: 'left' }}>
+                                        🔗 Session ID: {chat.id}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleCopySessionId}
+                                        className="toolbar-button"
+                                        title="Copy Session ID"
+                                        style={{ fontSize: '0.65rem', padding: '3px 8px', flexShrink: 0 }}
+                                    >
+                                        {sessionIdCopied ? '✅ Copied' : '📋 Copy'}
+                                    </button>
+                                </div>
                             </div>
-                            <button
-                                type="button"
-                                onClick={handleCopySessionId}
-                                className="toolbar-button"
-                                title="Copy Session ID"
-                                style={{ fontSize: '0.65rem', padding: '3px 8px', flexShrink: 0 }}
-                            >
-                                {sessionIdCopied ? '✅ Copied' : '📋 Copy'}
-                            </button>
-                        </div>
-                    </div>
 
-                    {/* Stats */}
-                    <div className="editor-section" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '0.65rem', opacity: 0.7 }}>
-                            <span>💬 {chat.interactionHistory.length} message{chat.interactionHistory.length !== 1 ? 's' : ''}</span>
-                            <span>🕐 Last active: {getRelativeTime(chat.lastUpdatedTimestamp)}</span>
-                            {chat.Profile && <span>👤 Profile: {chat.Profile.name}</span>}
-                            {chat.parentInteractionDataId && (
-                                <button
-                                    type="button"
-                                    onClick={handleNavigateToParent}
-                                    style={{
-                                        background: 'none', border: 'none', cursor: 'pointer',
-                                        fontSize: '0.65rem', opacity: 0.7, color: 'var(--accent)',
-                                        padding: 0, textDecoration: 'underline',
-                                    }}
-                                >
-                                    🌿 Branching Timeline From {parentName || 'Unknown'}
-                                </button>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Protagonists */}
-                    {protagonists.length > 0 && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">Protagonists ({protagonists.length})</span>
-                            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0' }}>
-                                {protagonists.map((p, i) => {
-                                    const pLoc = hasLocations ? getCurrentLocation(chat, p) : undefined;
-                                    const portraitUrl = portraits.get(p.id) ?? null;
-                                    return (
-                                        <div key={p.id} style={{
-                                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
-                                            padding: '8px', minWidth: '80px', maxWidth: '100px',
-                                            background: 'var(--accent-dim, rgba(255,255,255,0.08))',
-                                            border: '1px solid var(--accent)',
-                                            borderRadius: '6px', flexShrink: 0,
-                                        }}>
-                                            {portraitUrl ? (
-                                                <img
-                                                    src={portraitUrl}
-                                                    alt={p.name}
-                                                    style={{
-                                                        width: '36px', height: '64px',
-                                                        borderRadius: '4px', objectFit: 'cover',
-                                                        aspectRatio: '9 / 16',
-                                                    }}
-                                                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                                />
-                                            ) : (
-                                                <div className="character-avatar placeholder" style={{ width: '36px', height: '64px', borderRadius: '4px', aspectRatio: '9 / 16' }} />
-                                            )}
-                                            <div style={{ fontSize: '0.7rem', fontWeight: 'bold', textAlign: 'center', lineHeight: 1.2 }}>
-                                                {p.name}
-                                            </div>
-                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, textAlign: 'center' }}>
-                                                [Protagonist {i + 1}]
-                                            </div>
-                                            {pLoc && (
-                                                <div style={{
-                                                    fontSize: '0.55rem', opacity: 0.7, textAlign: 'center',
-                                                    padding: '1px 4px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px',
-                                                    marginTop: '2px', maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                                }}>
-                                                    📍 {pLoc.name}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                            {/* Stats */}
+                            <div className="editor-section" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '0.65rem', opacity: 0.7 }}>
+                                    <span>💬 {messageCount} message{messageCount !== 1 ? 's' : ''}</span>
+                                    <span>🕐 Last active: {getRelativeTime(chat.lastUpdatedTimestamp)}</span>
+                                    {chat.Profile && <span>👤 Profile: {chat.Profile.name}</span>}
+                                    {chat.parentInteractionDataId && (
+                                        <button
+                                            type="button"
+                                            onClick={handleNavigateToParent}
+                                            style={{
+                                                background: 'none', border: 'none', cursor: 'pointer',
+                                                fontSize: '0.65rem', opacity: 0.7, color: 'var(--accent)',
+                                                padding: 0, textDecoration: 'underline',
+                                            }}
+                                        >
+                                            🌿 Branching Timeline From {parentName || 'Unknown'}
+                                        </button>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    )}
 
-                    {/* Participants */}
-                    {participants.length > 0 && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">Participants ({participants.length})</span>
-                            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0' }}>
-                                {participants.map((p, i) => {
-                                    const isProtag = protagonistIds.has(p.id);
-                                    const pLoc = hasLocations ? getCurrentLocation(chat, p) : undefined;
-                                    const portraitUrl = portraits.get(p.id) ?? null;
-                                    return (
-                                        <div key={p.id} style={{
-                                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
-                                            padding: '8px', minWidth: '80px', maxWidth: '100px',
-                                            background: isProtag ? 'var(--accent-dim, rgba(255,255,255,0.08))' : 'var(--social-bg)',
-                                            border: isProtag ? '1px solid var(--accent)' : '1px solid var(--border)',
-                                            borderRadius: '6px', flexShrink: 0,
-                                        }}>
-                                            {portraitUrl ? (
-                                                <img
-                                                    src={portraitUrl}
-                                                    alt={p.name}
-                                                    style={{
-                                                        width: '36px', height: '64px',
-                                                        borderRadius: '4px', objectFit: 'cover',
-                                                        aspectRatio: '9 / 16',
-                                                    }}
-                                                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                                />
-                                            ) : (
-                                                <div className="character-avatar placeholder" style={{ width: '36px', height: '64px', borderRadius: '4px', aspectRatio: '9 / 16' }} />
-                                            )}
-                                            <div style={{ fontSize: '0.7rem', fontWeight: 'bold', textAlign: 'center', lineHeight: 1.2 }}>
-                                                {p.name}
-                                            </div>
-                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, textAlign: 'center' }}>
-                                                [Character {i + 1}]
-                                            </div>
-                                            {pLoc && (
-                                                <div style={{
-                                                    fontSize: '0.55rem', opacity: 0.7, textAlign: 'center',
-                                                    padding: '1px 4px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px',
-                                                    marginTop: '2px', maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            {/* Protagonists */}
+                            {protagonists.length > 0 && (
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Protagonists ({protagonists.length})</span>
+                                    <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0' }}>
+                                        {protagonists.map((p, i) => {
+                                            const pLoc = hasLocations ? getCurrentLocation(chat, p) : undefined;
+                                            const portraitUrl = portraits.get(p.id) ?? null;
+                                            return (
+                                                <div key={p.id} style={{
+                                                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+                                                    padding: '8px', minWidth: '80px', maxWidth: '100px',
+                                                    background: 'var(--accent-dim, rgba(255,255,255,0.08))',
+                                                    border: '1px solid var(--accent)',
+                                                    borderRadius: '6px', flexShrink: 0,
                                                 }}>
-                                                    📍 {pLoc.name}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Occupied Locations */}
-                    {occupiedLocations.length > 0 && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">Occupied Locations ({occupiedLocations.length})</span>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                {occupiedLocations.map(({ location, participants: locParts }) => (
-                                    <div key={location.id} style={{
-                                        padding: '8px 10px',
-                                        background: 'var(--social-bg)',
-                                        border: '1px solid var(--border)',
-                                        borderRadius: '6px',
-                                    }}>
-                                        <div style={{ fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '6px' }}>
-                                            📍 {location.name}
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                            {locParts.map(pp => (
-                                                <div key={`${pp.name}-${pp.index}`} style={{
-                                                    display: 'flex', alignItems: 'center', gap: '4px',
-                                                    padding: '3px 8px',
-                                                    background: protagonistIds.has(participants[pp.index]?.id)
-                                                        ? 'rgba(74, 222, 128, 0.08)'
-                                                        : 'rgba(255,255,255,0.05)',
-                                                    borderRadius: '4px',
-                                                    border: protagonistIds.has(participants[pp.index]?.id)
-                                                        ? '1px solid rgba(74, 222, 128, 0.3)'
-                                                        : '1px solid transparent',
-                                                }}>
-                                                    {pp.portraitUrl ? (
+                                                    {portraitUrl ? (
                                                         <img
-                                                            src={pp.portraitUrl}
-                                                            alt={pp.name}
+                                                            src={portraitUrl}
+                                                            alt={p.name}
                                                             style={{
-                                                                width: '18px', height: '32px',
-                                                                borderRadius: '2px', objectFit: 'cover',
+                                                                width: '36px', height: '64px',
+                                                                borderRadius: '4px', objectFit: 'cover',
                                                                 aspectRatio: '9 / 16',
                                                             }}
                                                             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                                         />
                                                     ) : (
-                                                        <div className="character-avatar placeholder" style={{ width: '18px', height: '32px', borderRadius: '2px', aspectRatio: '9 / 16' }} />
+                                                        <div className="character-avatar placeholder" style={{ width: '36px', height: '64px', borderRadius: '4px', aspectRatio: '9 / 16' }} />
                                                     )}
-                                                    <span style={{ fontSize: '0.65rem' }}>
-                                                        {pp.name} [{pp.index + 1}]
-                                                    </span>
+                                                    <div style={{ fontSize: '0.7rem', fontWeight: 'bold', textAlign: 'center', lineHeight: 1.2 }}>
+                                                        {p.name}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, textAlign: 'center' }}>
+                                                        [Protagonist {i + 1}]
+                                                    </div>
+                                                    {pLoc && (
+                                                        <div style={{
+                                                            fontSize: '0.55rem', opacity: 0.7, textAlign: 'center',
+                                                            padding: '1px 4px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px',
+                                                            marginTop: '2px', maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                        }}>
+                                                            📍 {pLoc.name}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            ))}
-                                        </div>
+                                            );
+                                        })}
                                     </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+                                </div>
+                            )}
 
-                    {/* Contexts */}
-                    {hasContexts && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">Contexts ({contexts.length})</span>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                {contexts.map(c => (
-                                    <span key={c.id} style={{
-                                        fontSize: '0.65rem', padding: '2px 8px',
-                                        background: 'var(--social-bg)', border: '1px solid var(--border)',
-                                        borderRadius: '12px',
-                                    }}>
-                                        📜 {c.name}
-                                    </span>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Location Map */}
-                    {hasLocations && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">Location Map</span>
-                            <div style={{ height: '400px', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
-                                <ReactFlow
-                                    nodes={nodes}
-                                    edges={edges}
-                                    nodeTypes={nodeTypes}
-                                    fitView
-                                    fitViewOptions={{ padding: 0.25 }}
-                                    colorMode="dark"
-                                    nodesDraggable={false}
-                                    nodesConnectable={false}
-                                    elementsSelectable={false}
-                                    panOnScroll={true}
-                                    zoomOnDoubleClick={false}
-                                    minZoom={0.3}
-                                    maxZoom={3}
-                                    proOptions={{ hideAttribution: true }}
-                                    style={{ background: 'var(--social-bg)' }}
-                                >
-                                    <Background gap={20} size={1} color="rgba(255,255,255,0.04)" />
-                                    <Controls showInteractive={false} />
-                                </ReactFlow>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Audio Tracks */}
-                    {hasAudioTracks && (
-                        <div className="editor-section">
-                            <span className="editor-section-title">Audio Tracks ({audioTracks.length})</span>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                {audioTracks.map(t => (
-                                    <div key={t.id} style={{
-                                        display: 'flex', alignItems: 'center', gap: '8px',
-                                        padding: '6px 8px', background: 'var(--social-bg)',
-                                        border: '1px solid var(--border)', borderRadius: '4px',
-                                    }}>
-                                        <span>{t.audioCategory === 'ambient' ? '🌿' : t.audioCategory === 'music' ? '🎵' : '💥'}</span>
-                                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>{t.name}</span>
+                            {/* Participants */}
+                            {participants.length > 0 && (
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Participants ({participants.length})</span>
+                                    <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0' }}>
+                                        {participants.map((p, i) => {
+                                            const isProtag = protagonistIds.has(p.id);
+                                            const pLoc = hasLocations ? getCurrentLocation(chat, p) : undefined;
+                                            const portraitUrl = portraits.get(p.id) ?? null;
+                                            return (
+                                                <div key={p.id} style={{
+                                                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+                                                    padding: '8px', minWidth: '80px', maxWidth: '100px',
+                                                    background: isProtag ? 'var(--accent-dim, rgba(255,255,255,0.08))' : 'var(--social-bg)',
+                                                    border: isProtag ? '1px solid var(--accent)' : '1px solid var(--border)',
+                                                    borderRadius: '6px', flexShrink: 0,
+                                                }}>
+                                                    {portraitUrl ? (
+                                                        <img
+                                                            src={portraitUrl}
+                                                            alt={p.name}
+                                                            style={{
+                                                                width: '36px', height: '64px',
+                                                                borderRadius: '4px', objectFit: 'cover',
+                                                                aspectRatio: '9 / 16',
+                                                            }}
+                                                            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                        />
+                                                    ) : (
+                                                        <div className="character-avatar placeholder" style={{ width: '36px', height: '64px', borderRadius: '4px', aspectRatio: '9 / 16' }} />
+                                                    )}
+                                                    <div style={{ fontSize: '0.7rem', fontWeight: 'bold', textAlign: 'center', lineHeight: 1.2 }}>
+                                                        {p.name}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, textAlign: 'center' }}>
+                                                        [Character {i + 1}]
+                                                    </div>
+                                                    {pLoc && (
+                                                        <div style={{
+                                                            fontSize: '0.55rem', opacity: 0.7, textAlign: 'center',
+                                                            padding: '1px 4px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px',
+                                                            marginTop: '2px', maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                        }}>
+                                                            📍 {pLoc.name}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-                                ))}
-                            </div>
-                        </div>
+                                </div>
+                            )}
+
+                            {/* Occupied Locations */}
+                            {occupiedLocations.length > 0 && (
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Occupied Locations ({occupiedLocations.length})</span>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {occupiedLocations.map(({ location, participants: locParts }) => (
+                                            <div key={location.id} style={{
+                                                padding: '8px 10px',
+                                                background: 'var(--social-bg)',
+                                                border: '1px solid var(--border)',
+                                                borderRadius: '6px',
+                                            }}>
+                                                <div style={{ fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '6px' }}>
+                                                    📍 {location.name}
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                                    {locParts.map(pp => (
+                                                        <div key={`${pp.name}-${pp.index}`} style={{
+                                                            display: 'flex', alignItems: 'center', gap: '4px',
+                                                            padding: '3px 8px',
+                                                            background: protagonistIds.has(participants[pp.index]?.id)
+                                                                ? 'rgba(74, 222, 128, 0.08)'
+                                                                : 'rgba(255,255,255,0.05)',
+                                                            borderRadius: '4px',
+                                                            border: protagonistIds.has(participants[pp.index]?.id)
+                                                                ? '1px solid rgba(74, 222, 128, 0.3)'
+                                                                : '1px solid transparent',
+                                                        }}>
+                                                            {pp.portraitUrl ? (
+                                                                <img
+                                                                    src={pp.portraitUrl}
+                                                                    alt={pp.name}
+                                                                    style={{
+                                                                        width: '18px', height: '32px',
+                                                                        borderRadius: '2px', objectFit: 'cover',
+                                                                        aspectRatio: '9 / 16',
+                                                                    }}
+                                                                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                                />
+                                                            ) : (
+                                                                <div className="character-avatar placeholder" style={{ width: '18px', height: '32px', borderRadius: '2px', aspectRatio: '9 / 16' }} />
+                                                            )}
+                                                            <span style={{ fontSize: '0.65rem' }}>
+                                                                {pp.name} [{pp.index + 1}]
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Contexts */}
+                            {hasContexts && (
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Contexts ({contexts.length})</span>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                        {contexts.map(c => (
+                                            <span key={c.id} style={{
+                                                fontSize: '0.65rem', padding: '2px 8px',
+                                                background: 'var(--social-bg)', border: '1px solid var(--border)',
+                                                borderRadius: '12px',
+                                            }}>
+                                                📜 {c.name}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Location Map */}
+                            {hasLocations && (
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Location Map</span>
+                                    <div style={{ height: '400px', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                                        <ReactFlow
+                                            nodes={nodes}
+                                            edges={edges}
+                                            nodeTypes={nodeTypes}
+                                            fitView
+                                            fitViewOptions={{ padding: 0.25 }}
+                                            colorMode="dark"
+                                            nodesDraggable={false}
+                                            nodesConnectable={false}
+                                            elementsSelectable={false}
+                                            panOnScroll={true}
+                                            zoomOnDoubleClick={false}
+                                            minZoom={0.3}
+                                            maxZoom={3}
+                                            proOptions={{ hideAttribution: true }}
+                                            style={{ background: 'var(--social-bg)' }}
+                                        >
+                                            <Background gap={20} size={1} color="rgba(255,255,255,0.04)" />
+                                            <Controls showInteractive={false} />
+                                        </ReactFlow>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Audio Tracks */}
+                            {hasAudioTracks && (
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Audio Tracks ({audioTracks.length})</span>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        {audioTracks.map(t => (
+                                            <div key={t.id} style={{
+                                                display: 'flex', alignItems: 'center', gap: '8px',
+                                                padding: '6px 8px', background: 'var(--social-bg)',
+                                                border: '1px solid var(--border)', borderRadius: '4px',
+                                            }}>
+                                                <span>{t.audioCategory === 'ambient' ? '🌿' : t.audioCategory === 'music' ? '🎵' : '💥'}</span>
+                                                <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>{t.name || t.filename}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
             </div>

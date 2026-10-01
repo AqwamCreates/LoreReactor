@@ -1,6 +1,6 @@
 // src/hooks/useEntityToggles.ts
 import { useCallback } from 'react';
-import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy, InteractionData, MultiplayerData } from '../types';
+import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy, InteractionData, MultiplayerData, HistoryMessage } from '../types';
 import { loadRawContext, loadRawLocation, loadRawAudioTrack, saveRawMultiplayerData } from '../storages/serverStorage';
 import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { useSessionStore } from './useSessionStore';
@@ -37,6 +37,32 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
     const currentAccountId = useSessionStore(s => s.currentAccountId);
     const multiplayerData = useSessionStore(s => s.multiplayerData);
 
+    // Helper to check if character has chat messages and to clean spatial histories
+    const checkAndCleanHistories = (histories: Record<string, HistoryMessage[]> | undefined, id: string) => {
+        let hasChatMessages = false;
+        const newHistories: Record<string, HistoryMessage[]> = {};
+        
+        for (const messages of Object.values(histories || {})) {
+            if (messages.some(m => m.character.id === id && m.messageType === 'chat')) {
+                hasChatMessages = true;
+                break;
+            }
+        }
+        
+        if (hasChatMessages) {
+            return { hasChatMessages, histories };
+        }
+        
+        // If no chat messages, strip all trace of the character (e.g. initial spatial placement interactions)
+        for (const [locId, messages] of Object.entries(histories || {})) {
+            const filtered = messages.filter(m => m.character.id !== id);
+            if (filtered.length > 0) {
+                newHistories[locId] = filtered;
+            }
+        }
+        return { hasChatMessages, histories: newHistories };
+    };
+
     const handleToggleParticipant = useCallback(async (charId: string) => {
         if (!interactionData) return;
         
@@ -55,12 +81,8 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
                 const updatedProtagonists = (interactionData.protagonists || []).filter(p => p.id !== charId);
                 const newActiveProtagonist = updatedProtagonists[0];
                 
-                const hasChatMessages = interactionData.interactionHistory.some(
-                    m => m.character.id === charId && m.messageType === 'chat'
-                );
-                const updatedHistory = hasChatMessages 
-                    ? interactionData.interactionHistory 
-                    : interactionData.interactionHistory.filter(m => m.character.id !== charId);
+                // FIX: Replaced flat interactionHistory array with spatial interactionHistories Record reduction
+                const { histories: updatedHistories } = checkAndCleanHistories(interactionData.interactionHistories, charId);
                 
                 const np = interactionData.participants.filter(p => p.id !== charId);
                 
@@ -68,7 +90,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
                     ...interactionData,
                     participants: np,
                     protagonists: updatedProtagonists,
-                    interactionHistory: updatedHistory,
+                    interactionHistories: updatedHistories as Record<string, HistoryMessage[]>,
                     lastUpdatedTimestamp: Date.now(),
                 };
                 
@@ -79,18 +101,13 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             } else {
                 const np = interactionData.participants.filter(p => p.id !== charId);
                 
-                const hasChatMessages = interactionData.interactionHistory.some(
-                    m => m.character.id === charId && m.messageType === 'chat'
-                );
-                
-                const cleanedHistory = hasChatMessages
-                    ? interactionData.interactionHistory
-                    : interactionData.interactionHistory.filter(m => m.character.id !== charId);
+                // FIX: Replaced flat interactionHistory array with spatial interactionHistories Record reduction
+                const { histories: cleanedHistories } = checkAndCleanHistories(interactionData.interactionHistories, charId);
 
                 const updatedData: InteractionData = {
                     ...interactionData,
                     participants: np,
-                    interactionHistory: cleanedHistory,
+                    interactionHistories: cleanedHistories as Record<string, HistoryMessage[]>,
                     lastUpdatedTimestamp: Date.now(),
                 };
                 
@@ -213,10 +230,14 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             if (!updatedMultiplayerData) {
                 updatedMultiplayerData = createDefaultMultiplayerData();
             }
+            
+            // FIX: Corrected the fallback object to strictly match the MultiplayerDataAccountConfiguration interface
             const existingCfg = updatedMultiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId] || {
                 isWhitelisted: true, isBlacklisted: false, isAdministrator: false,
-                canUseJoinerCharacterIds: true, canUseHosterCharacterId: true,
-                joinerCharacterIdsRequiresHosterApproval: false, hosterCharacterIdsRequiresHosterApproval: false,
+                canUseJoinerCharacterIds: true,
+                joinerCharacterIdsRequiresHosterApproval: false,
+                sharedHosterCharacterIds: [],
+                hosterCharacterIdsRequiresHosterApproval: false,
                 whitelistedCharacterIds: [], blacklistedCharacterIds: [], pendingCharacterIds: []
             };
             

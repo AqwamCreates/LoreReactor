@@ -760,6 +760,7 @@ const audioTrackRepo = createRepository<AudioTrack, RawAudioTrack>({
   entityKey: 'audioTracks',
   hydrate: (raw, id) => hydrateEntity<AudioTrack, RawAudioTrack>(raw, id, {
     name: 'Untitled Track',
+    filename: '',
     loop: false,
     volume: 1,
     audioCategory: 'ambient',
@@ -809,6 +810,8 @@ const modelRepo = createRepository<LanguageModel, RawLanguageModel>({
   entityKey: 'models',
   hydrate: (raw, id) => hydrateEntity<LanguageModel, RawLanguageModel>(raw, id, {
     name: 'Unknown Model',
+    backend: 'Other',
+    contextLength: 4096,
   }),
 });
 
@@ -876,6 +879,9 @@ const profileRepo = createRepository<Profile, RawProfile>({
           summaryTokenBudget: step.summaryTokenBudget,
           summaryModelId: step.summaryModelId,
           triggerTokenThreshold: step.triggerTokenThreshold,
+          entropyPruningChunkSize: step.entropyPruningChunkSize,
+          entropyPruningThreshold: step.entropyPruningThreshold,
+          entropyPruningTokenBudget: step.entropyPruningTokenBudget,
           firstCreatedTimestamp: step.firstCreatedTimestamp || now,
           lastUpdatedTimestamp: step.lastUpdatedTimestamp || now,
       }))
@@ -883,11 +889,23 @@ const profileRepo = createRepository<Profile, RawProfile>({
 
     return hydrateEntity<Profile, RawProfile>(raw, id, {
         name: 'Unknown Profile',
+        autonomousMode: false,
+        autonomousInteractionIntervalMs: 1000,
+        volume: 1,
         forceNameReveal: false,
+        enableAmbientNarration: false,
         toolUsageDisplayMode: 'none',
         enableCharacterExpression: false,
+        randomizeTextCharacterInjection: false,
+        randomizeTextCharacterInjectionOnRetry: true,
+        maximumNumberOfTextCharacterRandomizationPerModel: 1,
+        forceNoCharacterImageInjection: false,
+        forceNoContextImageInjection: false,
+        forceNoLocationImageInjection: false,
         useCurrentDateAndTime: false,
+        useWeather: false,
         useTimeElapsed: false,
+        useFrontCameraImage: 0,
         numberOfMessagesToDisableThinkPrompt: -1,
         numberOfMessagesToDisableMetaThinkInstructions: -1,
         numberOfMessagesToDisableDialoguePrompt: -1,
@@ -907,6 +925,7 @@ const profileRepo = createRepository<Profile, RawProfile>({
         stripThinkTokens: false,
         tools: {} as Record<tool, tristateInteger>,
         inputStrategy: [...defaultInputStrategy],
+        enableSpeculativeMarkov: false,
     }, {
         summarizationSteps: () => summarizationSteps,
     });
@@ -936,6 +955,8 @@ const webpageRepo = createRepository<Webpage, RawWebpage>({
   entityKey: 'webpages',
   hydrate: (raw, id) => hydrateEntity<Webpage, RawWebpage>(raw, id, {
     name: 'Untitled Webpage',
+    url: '',
+    content: '',
   }),
 });
 
@@ -956,7 +977,14 @@ export async function findWebpageByUrl(url: string): Promise<Webpage | null> {
 
 const worldRepo = createRepository<World, World>({
   entityKey: 'worlds',
-  hydrate: (raw) => raw,
+  hydrate: (raw, id) => hydrateEntity<World, World>(raw, id, {
+    name: 'Untitled World',
+    characterIds: [],
+    contextIds: [],
+    locationIds: [],
+    audioTrackIds: [],
+    promptBlockIds: [],
+  }),
   serialize: (world) => world,
 });
 
@@ -975,6 +1003,8 @@ const accountRepo = createRepository<Account, Account>({
   hydrate: (raw, id) => hydrateEntity<Account, Account>(raw, id, {
     username: '',
     password: '',
+    sharedCharacterIds: [],
+    sharedLanguageModelIds: [],
   }),
 });
 
@@ -992,6 +1022,11 @@ const multiplayerDataRepo = createRepository<MultiplayerData, MultiplayerData>({
   entityKey: 'multiplayerData',
   hydrate: (raw, id) => hydrateEntity<MultiplayerData, MultiplayerData>(raw, id, {
     password: '',
+    canUseJoinerCharacterIds: false,
+    joinerCharacterIdsRequiresHosterApproval: false,
+    sharedHosterCharacterIds: [],
+    hosterCharacterIdsRequiresHosterApproval: false,
+    useJoinerLanguageModel: 0,
     interactionDataIds: [],
     multiplayerDataAccountConfigurations: {},
     pendingAccountIds: [],
@@ -1008,7 +1043,7 @@ export const deleteRawMultiplayerData = multiplayerDataRepo.remove;
 // CHAT MESSAGE REPOSITORY
 // =============================================================================
 
-export async function deleteRawInteractionMessage(id: string): Promise<void> { 
+export async function deleteRawMessage(id: string): Promise<void> { 
     await deleteResource(`${PATHS.interactionMessages}/${id}.json`); 
 }
 
@@ -1058,6 +1093,10 @@ async function buildInteractionDataShell(
         .filter((t): t is AudioTrack => t !== undefined)
     : [];
 
+  const totalMessages = rawInteractionData.interactionHistories 
+    ? Object.values(rawInteractionData.interactionHistories).reduce((sum, arr) => sum + arr.length, 0) 
+    : 0;
+
   return {
     id, 
     name: rawInteractionData.name || "Untitled Chat", 
@@ -1066,8 +1105,8 @@ async function buildInteractionDataShell(
     contexts,
     locations,
     audioTracks,
-    interactionHistory: [],
-    numberOfMessages: rawInteractionData.interactionIdHistory?.length ?? 0,
+    interactionHistories: {},
+    numberOfMessages: totalMessages,
     firstCreatedTimestamp: rawInteractionData.firstCreatedTimestamp || Date.now(), 
     lastUpdatedTimestamp: rawInteractionData.lastUpdatedTimestamp || Date.now(),
     parentInteractionDataId: rawInteractionData.parentInteractionDataId || null, 
@@ -1077,10 +1116,11 @@ async function buildInteractionDataShell(
 }
 
 export async function loadInteractionMessages(interactionData: InteractionData): Promise<InteractionData> {
-    if (interactionData.interactionHistory.length > 0) return interactionData;
+    const hasMessages = Object.values(interactionData.interactionHistories).some(arr => arr.length > 0);
+    if (hasMessages) return interactionData;
 
     const rawInteractionData = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${interactionData.id}.json`);
-    if (!rawInteractionData || !rawInteractionData.interactionIdHistory || rawInteractionData.interactionIdHistory.length === 0) {
+    if (!rawInteractionData || !rawInteractionData.interactionHistories || Object.keys(rawInteractionData.interactionHistories).length === 0) {
         return interactionData;
     }
 
@@ -1090,23 +1130,40 @@ export async function loadInteractionMessages(interactionData: InteractionData):
         charMap.set(p.id, p);
     }
 
-    const messagePromises = rawInteractionData.interactionIdHistory.map(async (messageId) => {
-        const rawMessage = await fetchJson<RawInteractionMessage | RawChatMessage | RawWhisperMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
-        if (!rawMessage) return null;
+    const interactionHistories: Record<string, HistoryMessage[]> = {};
+    const allPromises: Promise<void>[] = [];
 
-        const character = charMap.get(rawMessage.characterId);
-        const { characterId, ...messageWithoutCharId } = rawMessage;
+    for (const [locationId, messageIds] of Object.entries(rawInteractionData.interactionHistories)) {
+        interactionHistories[locationId] = new Array(messageIds.length);
+        messageIds.forEach((messageId, index) => {
+            allPromises.push((async () => {
+                const rawMessage = await fetchJson<RawInteractionMessage | RawChatMessage | RawWhisperMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
+                if (!rawMessage) {
+                    interactionHistories[locationId][index] = null as any;
+                    return;
+                }
 
-        return {
-            id: messageId,
-            ...messageWithoutCharId,
-            character: character || createDeletedCharacterStub(characterId),
-        } as HistoryMessage;
-    });
+                const character = charMap.get(rawMessage.characterId);
+                const { characterId, ...messageWithoutCharId } = rawMessage;
 
-    const interactionHistory = (await Promise.all(messagePromises)).filter((m): m is HistoryMessage => m !== null);
+                interactionHistories[locationId][index] = {
+                    id: messageId,
+                    ...messageWithoutCharId,
+                    character: character || createDeletedCharacterStub(characterId),
+                } as HistoryMessage;
+            })());
+        });
+    }
 
-    return { ...interactionData, interactionHistory, numberOfMessages: interactionHistory.length };
+    await Promise.all(allPromises);
+
+    for (const locId of Object.keys(interactionHistories)) {
+        interactionHistories[locId] = interactionHistories[locId].filter(m => m !== null);
+    }
+
+    const totalMessages = Object.values(interactionHistories).reduce((sum, arr) => sum + arr.length, 0);
+
+    return { ...interactionData, interactionHistories, numberOfMessages: totalMessages };
 }
 
 export async function loadRawInteractionData(
@@ -1217,7 +1274,9 @@ export async function loadAllRawInteractionDataShells(): Promise<RawInteractionD
 }
 
 export async function saveRawInteractionData(interactionData: InteractionData): Promise<void> {
-  const saveMessagePromises = interactionData.interactionHistory.map(message => {
+  const allMessages = Object.values(interactionData.interactionHistories).flat();
+  
+  const saveMessagePromises = allMessages.map(message => {
     const { id, character, ...rawMsg } = message;
     const payload = {
       ...rawMsg,
@@ -1231,7 +1290,13 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     await Promise.all(saveMessagePromises.slice(i, i + BATCH_SIZE));
   }
 
-  const { id, protagonists, participants, contexts, locations, audioTracks, interactionHistory, parentInteractionDataId, parentMessageId, Profile, ...rawInteractionData } = interactionData;
+  const { id, protagonists, participants, contexts, locations, audioTracks, interactionHistories, parentInteractionDataId, parentMessageId, Profile, ...rawInteractionData } = interactionData;
+  
+  const rawHistories: Record<string, string[]> = {};
+  for (const [locId, messages] of Object.entries(interactionHistories)) {
+      rawHistories[locId] = messages.map(m => m.id);
+  }
+
   const payload: RawInteractionData = {
     ...rawInteractionData, 
     protagonistIds: protagonists.map(p => p.id),
@@ -1239,7 +1304,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     contextIds: contexts?.map(i => i.id) || [],
     locationIds: locations?.map(l => l.id) || [],
     audioTrackIds: audioTracks?.map(t => t.id) || [],
-    interactionIdHistory: interactionHistory.map(m => m.id),
+    interactionHistories: rawHistories,
     parentInteractionDataId: parentInteractionDataId || null, 
     parentMessageId: parentMessageId || null,
     ProfileId: Profile?.id,
@@ -1252,9 +1317,32 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
 export async function branchRawInteractionData(parentInteractionDataId: string, parentMessageId: string): Promise<string> {
   const sourceChat = await loadRawInteractionData(parentInteractionDataId);
   if (!sourceChat) throw new Error("Source chat not found");
-  const branchIndex = sourceChat.interactionHistory.findIndex(m => m.id === parentMessageId);
-  if (branchIndex === -1) throw new Error("Branch point message not found");
+  
+  let branchLocationId: string | null = null;
+  let branchIndex = -1;
+  
+  for (const [locId, messages] of Object.entries(sourceChat.interactionHistories)) {
+      const idx = messages.findIndex(m => m.id === parentMessageId);
+      if (idx !== -1) {
+          branchLocationId = locId;
+          branchIndex = idx;
+          break;
+      }
+  }
+  
+  if (branchIndex === -1 || !branchLocationId) throw new Error("Branch point message not found");
+  
   const newChatId = uuidv4();
+  
+  const slicedHistories: Record<string, string[]> = {};
+  for (const [locId, messages] of Object.entries(sourceChat.interactionHistories)) {
+      if (locId === branchLocationId) {
+          slicedHistories[locId] = messages.slice(0, branchIndex + 1).map(m => m.id);
+      } else {
+          slicedHistories[locId] = messages.map(m => m.id);
+      }
+  }
+
   const newPayload: RawInteractionData = {
     name: `${sourceChat.name} (Branch)`, 
     protagonistIds: sourceChat.protagonists.map(p => p.id),
@@ -1262,7 +1350,7 @@ export async function branchRawInteractionData(parentInteractionDataId: string, 
     contextIds: sourceChat.contexts?.map(i => i.id) || [],
     locationIds: sourceChat.locations?.map(l => l.id) || [],
     audioTrackIds: sourceChat.audioTracks?.map(t => t.id) || [],
-    interactionIdHistory: sourceChat.interactionHistory.slice(0, branchIndex + 1).map(m => m.id),
+    interactionHistories: slicedHistories,
     firstCreatedTimestamp: Date.now(), 
     lastUpdatedTimestamp: Date.now(), 
     parentInteractionDataId, 

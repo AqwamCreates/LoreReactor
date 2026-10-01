@@ -117,15 +117,16 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                 </div>
             )}
 
-            {interactionData && interactionData.interactionHistory.length > 5 && (
+            {/* FIX: Replaced non-existent interactionData.interactionHistory with the pre-computed displayMessages prop */}
+            {interactionData && displayMessages.length > 5 && (
                 <ChatMinimap
-                    messages={interactionData.interactionHistory.filter((m): m is ChatMessage => m.messageType === 'chat')}
+                    messages={displayMessages.filter((m): m is ChatMessage => m.messageType === 'chat')}
                     containerRef={chatHistoryRef}
                     selectedCharacterId={selectedCharacterId}
                 />
             )}
 
-            {interactionData && interactionData.interactionHistory.length > 3 && (
+            {interactionData && displayMessages.length > 3 && (
                 <ChatScrollButtons 
                     containerRef={chatHistoryRef} 
                     messageCount={displayMessages.length} 

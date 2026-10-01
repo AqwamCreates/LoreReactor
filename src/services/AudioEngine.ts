@@ -1,9 +1,11 @@
 // src/services/AudioEngine.ts
-import type { AudioTrack, InteractionData, ChatMessage, PromptBlock, Location, RegularExpressionTrigger } from '../types';
+import type { AudioTrack, InteractionData, PromptBlock, Location, RegularExpressionTrigger, Character, ChatMessage, WhisperMessage } from '../types';
 import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
 import { getAudioTrackUrl } from '../storages/serverStorage';
 import { mediaCache } from './MediaCache';
 import { MultiplayerEvents } from './MultiplayerEvents';
+import { getLocalMessageHistory } from '../utilities/timelineLogic';
+import { findLatestMessage } from '../utilities/messageLogic';
 
 interface ActiveTrackState {
     track: AudioTrack;
@@ -15,9 +17,6 @@ interface ActiveTrackState {
 
 /**
  * Tests if any trigger in the array matches the given search space.
- * Audio tracks evaluate against a single latest-message string, so
- * context/target filtering (designed for full chat history arrays) is
- * not applicable here — every trigger is tested directly.
  */
 function doesAnyTriggerMatch(triggers: RegularExpressionTrigger[] | undefined, searchSpace: string): boolean {
     if (!triggers || triggers.length === 0) return false;
@@ -38,11 +37,10 @@ export class AudioEngine {
     private bufferCache: Map<string, AudioBuffer> = new Map();
     private globalVolumeOverride = -1;
     private animationFrameId: number | null = null;
-    private previousLocationIds: Map<string, number | undefined> = new Map();
+    private previousLocationIds: Map<string, string | undefined> = new Map();
     private mediaUnsubscribe: (() => void) | null = null;
 
     constructor() {
-        // Automatically play pending tracks as soon as their audio data arrives over WebRTC
         this.mediaUnsubscribe = MultiplayerEvents.on('mediaCacheUpdated', () => {
             for (const [trackId, state] of this.activeTracks.entries()) {
                 if (!state.isPlaying) {
@@ -91,13 +89,11 @@ export class AudioEngine {
         if (cached) return cached;
 
         try {
-            // 1. Direct Web URL or Data URL
             let targetUrl: string | null = null;
             if (filename.startsWith('data:') || filename.startsWith('http://') || filename.startsWith('https://')) {
                 targetUrl = filename;
             }
 
-            // 2. Check P2P WebRTC Media Cache
             if (!targetUrl) {
                 const fromMediaCache = mediaCache.get(cacheKey) || mediaCache.get(filename);
                 if (fromMediaCache) {
@@ -105,7 +101,6 @@ export class AudioEngine {
                 }
             }
 
-            // 3. Fallback to server URL
             if (!targetUrl) {
                 targetUrl = getAudioTrackUrl(audioTrackId, filename);
             }
@@ -114,7 +109,6 @@ export class AudioEngine {
 
             const response = await fetch(targetUrl);
             if (!response.ok) {
-                // If local server fetch fails, request asset from host over WebRTC
                 MultiplayerEvents.emit('requestMediaAsset', {
                     assetType: 'audio',
                     pathOrFilename: targetUrl || filename,
@@ -129,7 +123,6 @@ export class AudioEngine {
             this.bufferCache.set(cacheKey, buffer);
             return buffer;
         } catch (e) {
-            // If decoding fails or network error occurs, request from host
             MultiplayerEvents.emit('requestMediaAsset', {
                 assetType: 'audio',
                 pathOrFilename: filename,
@@ -213,6 +206,9 @@ export class AudioEngine {
     evaluate(interactionData: InteractionData, allPromptBlocks: PromptBlock[] = []): void {
         const tracks = interactionData.audioTracks || [];
         const locations = interactionData.locations || [];
+        
+        // FIXED: Use the protagonist to evaluate perspective-specific audio triggers
+        const protagonist = interactionData.protagonists?.[0];
 
         this.checkLocationEnterTriggers(interactionData, tracks, locations);
 
@@ -223,46 +219,42 @@ export class AudioEngine {
             return;
         }
 
-        const currentLocationId = this.getCurrentLocationId(interactionData);
+        // FIXED: Pass character to get character-specific location
+        const currentLocationId = protagonist ? this.getCurrentLocationId(interactionData, protagonist) : undefined;
         const currentContextIds = new Set((interactionData.contexts || []).map(c => c.id));
 
-        const latestMessageText = this.getLatestVisibleMessageText(interactionData, allPromptBlocks);
+        // FIXED: Pass character to get character-specific visible message text
+        const latestMessageText = protagonist ? this.getLatestVisibleMessageText(interactionData, protagonist, allPromptBlocks) : '';
 
         const shouldBeActive = new Set<string>();
 
         for (const track of tracks) {
             let active = false;
 
-            // Activation triggers: any match against latest message text activates the track
             if (latestMessageText && doesAnyTriggerMatch(track.regularExpressionActivationTriggers, latestMessageText)) {
                 active = true;
             }
 
-            // Deactivation triggers: any match deactivates the track
             if (active && latestMessageText && doesAnyTriggerMatch(track.regularExpressionDeactivationTriggers, latestMessageText)) {
                 active = false;
             }
 
-            // Exclusion activation: overrides normal activation logic
             if (!active && latestMessageText && doesAnyTriggerMatch(track.regularExpressionExclusionActivationTriggers, latestMessageText)) {
                 if (!doesAnyTriggerMatch(track.regularExpressionExclusionDeactivationTriggers, latestMessageText)) {
                     active = false;
                 }
             }
 
-            // Location bindings fallback
             if (!active && track.locationBindings.length > 0 && currentLocationId) {
                 if (track.locationBindings.includes(currentLocationId)) active = true;
             }
 
-            // Context bindings fallback
             if (!active && track.contextBindings.length > 0) {
                 for (const ctxId of track.contextBindings) {
                     if (currentContextIds.has(ctxId)) { active = true; break; }
                 }
             }
 
-            // No triggers and no bindings = always active
             const hasTriggers = (track.regularExpressionActivationTriggers?.length ?? 0) > 0;
             const hasBindings = track.locationBindings.length > 0 || track.contextBindings.length > 0;
             if (!hasTriggers && !hasBindings) {
@@ -297,24 +289,18 @@ export class AudioEngine {
         if (tracks.length === 0 || locations.length === 0) return;
 
         const participants = interactionData.participants || [];
-        const history = interactionData.interactionHistory;
 
         for (const participant of participants) {
-            let currentLocIdx: number | undefined;
-            for (let i = history.length - 1; i >= 0; i--) {
-                if (history[i].character.id === participant.id && history[i].locationIndex !== undefined) {
-                    currentLocIdx = history[i].locationIndex;
-                    break;
-                }
-            }
+            // FIXED: Uses findLatestMessage (character-scoped) to get the specific character's current locationId
+            const latest = findLatestMessage(interactionData, participant);
+            const currentLocId = latest?.locationId;
+            const previousLocId = this.previousLocationIds.get(participant.id);
 
-            const previousLocIdx = this.previousLocationIds.get(participant.id);
+            const hasTransitioned = previousLocId !== undefined && currentLocId !== undefined && currentLocId !== previousLocId;
+            const firstAssignment = previousLocId === undefined && currentLocId !== undefined;
 
-            const hasTransitioned = previousLocIdx !== undefined && currentLocIdx !== undefined && currentLocIdx !== previousLocIdx;
-            const firstAssignment = previousLocIdx === undefined && currentLocIdx !== undefined;
-
-            if ((hasTransitioned || firstAssignment) && currentLocIdx !== undefined) {
-                const location = locations[currentLocIdx];
+            if ((hasTransitioned || firstAssignment) && currentLocId) {
+                const location = locations.find(l => l.id === currentLocId);
                 if (location?.playAudioTrackOnEnterWeights) {
                     const sampledTrackId = this.sampleWeightedTrack(location.playAudioTrackOnEnterWeights);
                     if (sampledTrackId) {
@@ -326,7 +312,7 @@ export class AudioEngine {
                 }
             }
 
-            this.previousLocationIds.set(participant.id, currentLocIdx);
+            this.previousLocationIds.set(participant.id, currentLocId);
         }
     }
 
@@ -346,36 +332,32 @@ export class AudioEngine {
         return entries[entries.length - 1][0];
     }
 
-    private getCurrentLocationId(interactionData: InteractionData): string | undefined {
-        const history = interactionData.interactionHistory;
-        for (let i = history.length - 1; i >= 0; i--) {
-            const msg = history[i];
-            if (msg.locationIndex !== undefined && interactionData.locations) {
-                const loc = interactionData.locations[msg.locationIndex];
-                if (loc) return loc.id;
-            }
-        }
-        return undefined;
+    // FIXED: Now takes a character parameter to ensure character-specific location resolution
+    private getCurrentLocationId(interactionData: InteractionData, character: Character): string | undefined {
+        const latest = findLatestMessage(interactionData, character);
+        return latest?.locationId;
     }
 
+    // FIXED: Now takes a character parameter and uses LOCAL history to respect character-specific visibility (e.g., whispers)
     private getLatestVisibleMessageText(
         interactionData: InteractionData,
+        character: Character,
         allPromptBlocks: PromptBlock[],
     ): string {
-        const history = interactionData.interactionHistory;
-        const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
-        if (chatMessages.length === 0) return '';
+        const localHistory = getLocalMessageHistory(interactionData, character, ['chat', 'whisper']) as (ChatMessage | WhisperMessage)[];
+        if (localHistory.length === 0) return '';
 
         const filterFlags = getUniversalMessageFilterFlags(
-            chatMessages,
+            localHistory,
             interactionData.contexts || [],
             interactionData.locations || [],
             allPromptBlocks,
         );
 
-        for (let i = chatMessages.length - 1; i >= 0; i--) {
-            if (!filterFlags[i] && chatMessages[i].textContent) {
-                return chatMessages[i].textContent;
+        for (let i = localHistory.length - 1; i >= 0; i--) {
+            const msg = localHistory[i];
+            if (!filterFlags[i] && 'textContent' in msg && msg.textContent) {
+                return msg.textContent;
             }
         }
         return '';

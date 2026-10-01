@@ -498,6 +498,27 @@ function getMimeType(ext: string): string {
 
 // ─── Startup Data Sanitizer ──────────────────────────────────────────
 
+const MANIFEST_DIRS = [
+  'character_data',
+  'multiplayer_character_data',
+  'sampler_data',
+  'context_data',
+  'location_data',
+  'model_data',
+  'stop_pattern_data',
+  'interaction_messages',
+  'interaction_data',
+  'budget_strategies',
+  'profile_data',
+  'world_data',
+  'webpage_data',
+  'memory_data',
+  'audio_track_data',
+  'prompt_block_data',
+  'account_data',
+  'multiplayer_data',
+];
+
 /**
  * Read a manifest.json array, remove IDs whose .json files no longer exist,
  * rewrite the manifest. Creates directory and empty manifest if missing.
@@ -710,29 +731,8 @@ function sanitizeChatHistories(): number {
 function runStartupSanitization(): void {
   log.info('Running startup data sanitization...');
 
-  const manifestDirs = [
-    'character_data',
-    'multiplayer_character_data',
-    'sampler_data',
-    'context_data',
-    'location_data',
-    'model_data',
-    'stop_pattern_data',
-    'interaction_messages',
-    'interaction_data',
-    'budget_strategies',
-    'profile_data',
-    'world_data',
-    'webpage_data',
-    'memory_data',
-    'audio_track_data',
-    'prompt_block_data',
-    'account_data',
-    'multiplayer_data',
-  ];
-
   let totalManifestOrphans = 0;
-  for (const dir of manifestDirs) {
+  for (const dir of MANIFEST_DIRS) {
     totalManifestOrphans += sanitizeManifestDir(dir);
   }
 
@@ -1004,6 +1004,34 @@ app.use('/user_data', (req, response) => {
   if (req.method === 'DELETE') {
     fs.unlink(filePath, (error) => {
       if (error && error.code !== 'ENOENT') return response.status(500).json({ error: 'Delete Failed' });
+
+      const relativeDir = path.dirname(relativePath);
+      const fileName = path.basename(filePath);
+
+      if (MANIFEST_DIRS.includes(relativeDir) && fileName.endsWith('.json') && fileName !== 'manifest.json') {
+        const id = fileName.replace(/\.json$/, '');
+        const manifestPath = path.join(directory, 'manifest.json');
+
+        if (fs.existsSync(manifestPath)) {
+          try {
+            const raw = fs.readFileSync(manifestPath, 'utf-8');
+            const manifest: unknown = JSON.parse(raw);
+            if (Array.isArray(manifest)) {
+              const cleaned = manifest.filter((entry: unknown) => {
+                const entryId = typeof entry === 'string' ? entry : String(entry);
+                return entryId !== id;
+              });
+              if (cleaned.length !== manifest.length) {
+                fs.writeFileSync(manifestPath, JSON.stringify(cleaned, null, 2), 'utf-8');
+                log.info(`Removed ${id} from ${relativeDir}/manifest.json`);
+              }
+            }
+          } catch (e) {
+            log.warn(`Failed to update ${relativeDir}/manifest.json: ${(e as Error).message}`);
+          }
+        }
+      }
+
       response.json({ success: true });
     });
     return;

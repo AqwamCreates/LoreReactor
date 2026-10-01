@@ -1,7 +1,13 @@
 // src/hooks/useMessageActions.ts
 import { useState, useCallback } from 'react';
 import type { Character, InteractionData } from '../types';
-import { deleteMessage, massDeleteMessages, editMessage, branchMessage, cloneChatUpToMessage } from '../utilities/messageLogic';
+import { 
+    deleteMessage, 
+    massDeleteMessages, 
+    editChatMessage as editMessage, 
+    branchMessage, 
+    cloneChatUpToMessage 
+} from '../utilities/messageLogic';
 import { saveRawInteractionData, saveRawSessionData } from '../storages/serverStorage';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 
@@ -52,7 +58,6 @@ export function useMessageActions(options: UseMessageActionsOptions) {
             setEditingId(null);
             setEditDraft('');
 
-            // Deterministic immediate regeneration without fragile detached effect
             await regenerateFromMessage(targetId, updatedData.protagonists ?? []);
         } catch (e) {
             addToast((e as Error).message, 'error');
@@ -73,15 +78,10 @@ export function useMessageActions(options: UseMessageActionsOptions) {
     const handleMassDeleteConfirm = useCallback(async () => {
         if (!interactionData || !massDeleteId) return;
         const targetId = massDeleteId;
-        const idx = interactionData.interactionHistory.findIndex(m => m.id === targetId);
         
-        if (idx === -1) {
-            setMassDeleteId(null);
-            return;
-        }
-
         try {
-            const updated = await massDeleteMessages(interactionData, idx);
+            // FIXED: Just pass the messageId. massDeleteMessages resolves the location internally.
+            const updated = await massDeleteMessages(interactionData, targetId);
             setInteractionData(updated);
             addToast('Messages deleted.', 'info');
         } catch (e) {
@@ -94,6 +94,7 @@ export function useMessageActions(options: UseMessageActionsOptions) {
     const handleBranch = useCallback(async (id: string) => {
         if (!interactionData) return;
         try {
+            // FIXED: Just pass the messageId. branchMessage resolves the location internally.
             const branchedChat = await branchMessage(interactionData, id);
             await saveRawInteractionData(branchedChat);
             await saveRawSessionData({ activeChatId: branchedChat.id });
@@ -103,7 +104,6 @@ export function useMessageActions(options: UseMessageActionsOptions) {
                 setSelectedCharacter(localProtagonist);
             }
 
-            // Prime Markov model for the newly created branch
             speculativeMarkovEngine.clearSession(branchedChat.id);
 
             refreshChatList();
@@ -117,6 +117,7 @@ export function useMessageActions(options: UseMessageActionsOptions) {
     const handleClone = useCallback(async (id: string) => {
         if (!interactionData) return;
         try {
+            // FIXED: Just pass the messageId. cloneChatUpToMessage resolves the location internally.
             const clonedChat = await cloneChatUpToMessage(interactionData, id);
             await saveRawInteractionData(clonedChat);
             await saveRawSessionData({ activeChatId: clonedChat.id });

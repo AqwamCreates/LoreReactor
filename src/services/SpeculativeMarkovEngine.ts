@@ -71,6 +71,10 @@ export class SpeculativeMarkovEngine {
 
     /**
      * INCREMENTAL SYNC: Only processes messages newer than the last sync.
+     * 
+     * IMPORTANT CONTRACT: The caller MUST filter `messages` to only include those 
+     * actually authored by `characterId`. Passing witnessed messages from other 
+     * characters will contaminate this character's n-gram model with foreign speech patterns.
      */
     public syncMessages(
         messages: { textContent: string; lastUpdatedTimestamp: number }[], 

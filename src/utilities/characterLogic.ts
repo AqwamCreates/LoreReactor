@@ -1,6 +1,7 @@
 // src/utilities/characterLogic.ts
-import type { Character, InteractionData, HistoryMessage, Profile, tool } from "../types";
-import { findPreviousMessage } from "./chatLogic";
+import type { Character, InteractionData, HistoryMessage, Profile, tool, ChatMessage } from "../types";
+import { findLatestMessage } from "./messageLogic";
+import { getLocalMessageHistory } from "./timelineLogic";
 
 function getEffectiveTriStateBoolean<K extends keyof Character>(key: K, character: Character, profile?: Profile): boolean {
     const characterValue = character[key] as boolean;
@@ -111,11 +112,10 @@ export function getNameSensitivityMultiplier(character: Character, interactionDa
     const sensitivity = getEffectiveNameSensitivity(character, interactionData.Profile);
     if (sensitivity === 0) return 1;
 
-    const history = interactionData.interactionHistory;
-    if (history.length === 0) return 1;
+    const globalHistory = getLocalMessageHistory(interactionData, character, ['chat']);
+    if (globalHistory.length === 0) return 1;
 
-    const latestMessage = history[history.length - 1];
-    if (latestMessage.messageType !== 'chat') return 1;
+    const latestMessage = globalHistory[globalHistory.length - 1] as ChatMessage;
     if (latestMessage.character.id === character.id) return 1;
 
     const textLower = latestMessage.textContent.toLowerCase();
@@ -225,25 +225,33 @@ export function generateActionStaminaForMessage(interactionMessage: HistoryMessa
 
 /**
  * Regenerate chat stamina for a character based on their previous interaction.
- * Mutates the interactionHistory in place by updating the character's last entry.
+ * Mutates the interactionHistories in place by updating the character's last entry.
  */
 export function generateChatStaminaForInteractionData(data: InteractionData, amountOfChatStamina: number, character: Character) {
     const maximumChatStamina = getEffectiveMaximumChatStamina(character, data.Profile);
     if (maximumChatStamina === Number.POSITIVE_INFINITY) return;
-    const previousMessage = findPreviousMessage(data, character.id);
+    
+    // FIX: Replaced obsolete findPreviousMessage with spatial findLatestMessage
+    const latest = findLatestMessage(data, character);
+    const previousMessage = latest?.message;
     if (!previousMessage) return;
+    
     generateChatStaminaForMessage(previousMessage, amountOfChatStamina, character, data.Profile);
 }
 
 /**
  * Regenerate action stamina for a character based on their previous interaction.
- * Mutates the interactionHistory in place by updating the character's last entry.
+ * Mutates the interactionHistories in place by updating the character's last entry.
  */
 export function generateActionStaminaForInteractionData(data: InteractionData, amountOfActionStamina: number, character: Character) {
     const maximumActionStamina = getEffectiveMaximumActionStamina(character, data.Profile);
     if (maximumActionStamina === Number.POSITIVE_INFINITY) return;
-    const previousMessage = findPreviousMessage(data, character.id);
+    
+    // FIX: Replaced obsolete findPreviousMessage with spatial findLatestMessage
+    const latest = findLatestMessage(data, character);
+    const previousMessage = latest?.message;
     if (!previousMessage) return;
+    
     generateActionStaminaForMessage(previousMessage, amountOfActionStamina, character, data.Profile);
 }
 
@@ -251,23 +259,16 @@ export function generateActionStaminaForInteractionData(data: InteractionData, a
  * Count how many times a character's name (full or partial) appears in the
  * most recent chat message, excluding mentions that overlap with other
  * participants' names.
- * 
- * Returns 0 if:
- * - History is empty
- * - Latest message is not a chat message
- * - Latest message was sent by this character (self-mentions don't count)
- * - nameSensitivity = 0
- * - Name doesn't appear in the message text
  */
 export function getNameMentionCount(character: Character, interactionData: InteractionData): number {
     const sensitivity = getEffectiveNameSensitivity(character, interactionData.Profile);
     if (sensitivity === 0) return 0;
 
-    const history = interactionData.interactionHistory;
-    if (history.length === 0) return 0;
+    // FIX: Replaced flat interactionHistory array with spatial getLocalMessageHistory
+    const localHistory = getLocalMessageHistory(interactionData, character, ['chat']);
+    if (localHistory.length === 0) return 0;
 
-    const latestMessage = history[history.length - 1];
-    if (latestMessage.messageType !== 'chat') return 0;
+    const latestMessage = localHistory[localHistory.length - 1] as ChatMessage;
     if (latestMessage.character.id === character.id) return 0;
 
     const textLower = latestMessage.textContent.toLowerCase();

@@ -5,7 +5,10 @@ export function isChatSaveable(data: InteractionData | null): boolean {
     if (!data) return false;
 
     // 1. Save if any messages exist (user, AI, actions, etc.)
-    if (data.interactionHistory && data.interactionHistory.length > 0) {
+    // FIX: Replaced the non-existent flat `interactionHistory` array with a check 
+    // across the spatially-partitioned `interactionHistories` Record.
+    const hasMessages = Object.values(data.interactionHistories || {}).some(messages => messages.length > 0);
+    if (hasMessages) {
         return true;
     }
 

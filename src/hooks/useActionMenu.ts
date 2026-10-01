@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Character, InteractionData } from '../types';
 import { initializeActionFormatEngine, getActionFormatEngine, type ActionWrap, type ActionCase, type ActionPunctuation } from '../services/ActionFormatEngine';
 import type { useActionManager } from './useActionManager';
+import { getLocalMessageHistory } from '../utilities/timelineLogic';
 
 function formatActionString(label: string, targetName: string, wrap: ActionWrap, casing: ActionCase, punctuation: ActionPunctuation): string {
     let result = label.trim();
@@ -118,8 +119,9 @@ export function useActionMenu(options: UseActionMenuOptions) {
 
         // Determine user's previous action wrapping style
         let prevUserWrap: ActionWrap | 'unknown' = 'unknown';
-        for (let i = interactionData.interactionHistory.length - 1; i >= 0; i--) {
-            const msg = interactionData.interactionHistory[i];
+        const localMessageHistory = getLocalMessageHistory(interactionData, protagonist)
+        for (let i = localMessageHistory.length - 1; i >= 0; i--) {
+            const msg = localMessageHistory[i];
             if (msg.character.id === currentCharacter.id && msg.messageType === 'chat') {
                 const text = msg.textContent;
                 if (text.includes('*')) prevUserWrap = '*';

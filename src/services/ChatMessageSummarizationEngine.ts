@@ -7,6 +7,7 @@ import { createChatHistoryPrompt, getParticipantTag, replacePlaceholders, getUni
 import { detectName } from '../utilities/nameDetection';
 import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
 import { getCoLocatedProtagonists, getCoLocatedParticipants } from '../utilities/locationLogic';
+import { getLocalMessageHistory } from '../utilities/timelineLogic';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { getStemmedContentWords } from '../utilities/stemmerHelper';
 
@@ -87,8 +88,8 @@ export async function generateCharacterMemory(
     modelId: string,
     maxTokens = 512,
 ): Promise<string | null> {
-    const history = interactionData.interactionHistory;
-    if (history.length === 0) return null;
+    const localHistory = getLocalMessageHistory(interactionData, character);
+    if (localHistory.length === 0) return null;
 
     const participants = interactionData.participants;
     const sampler = interactionData.Profile?.characterSampler || character.sampler;
@@ -100,7 +101,6 @@ export async function generateCharacterMemory(
     const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
     const coLocatedParticipants = getCoLocatedParticipants(interactionData, character);
 
-    // ─── Get Dynamic Delimiters & Stop Tokens ───────────────────────
     const activeModel = getLanguageModelEngine().getContext();
     const effectiveChatTemplateKey = activeModel?.chatTemplate;
     const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
@@ -118,7 +118,7 @@ export async function generateCharacterMemory(
         modelId,
         allPromptBlocks,
         existingCharacterText: '',
-        interactionHistory: history,
+        localHistory,
         participants,
         coLocatedProtagonists,
         coLocatedParticipants,
@@ -131,11 +131,11 @@ export async function generateCharacterMemory(
         cacheEfficiencyLevels,
         minimalVolatileCacheMode,
         currentLocation: undefined,
-        currentLocationIndex: undefined,
+        currentLocationId: undefined,
         characterIdArray: [] as string[],
         textContentArray: [] as string[],
         combinationCache: {},
-        numberOfMessagesByParticipant: history.filter(
+        numberOfMessagesByParticipant: localHistory.filter(
             msg => msg.character.id === character.id && msg.messageType === 'chat'
         ).length,
         delimiters,
@@ -144,18 +144,15 @@ export async function generateCharacterMemory(
     const { chatHistoryPrompt } = createChatHistoryPrompt(ctx);
     const participantTag = ctx.characterParticipantTag;
 
-    // ─── Resolve Memory Prompt Template ─────────────────────────────
-    // 1. Find the most recent expression for this character in the history
     let recentExpression = 'neutral';
-    for (let i = history.length - 1; i >= 0; i--) {
-        const msg = history[i];
+    for (let i = localHistory.length - 1; i >= 0; i--) {
+        const msg = localHistory[i];
         if (msg.character.id === character.id && msg.characterExpression) {
             recentExpression = msg.characterExpression;
             break;
         }
     }
 
-    // 2. Look up template: recent expression -> 'neutral' -> system default
     let memoryPromptTemplate = character.memoryPrompts?.[recentExpression];
     if (!memoryPromptTemplate) {
         memoryPromptTemplate = character.memoryPrompts?.['neutral'];
@@ -181,7 +178,6 @@ export async function generateCharacterMemory(
     const promptLines = [systemPrompt, thinkPrompt, `${delimiters.blockStart('system')}The Start Of My Memory${delimiters.blockEnd}`, chatHistoryPrompt, `${delimiters.blockStart('system')}The End Of My Memory${delimiters.blockEnd}`, perspectiveInstruction, memoryInjection];
     const prompt = promptLines.filter(l => l.length > 0).join('\n\n');
 
-    // Use dynamic model-specific and profile-specific stop tokens
     const templateStops = resolvedChatTemplate?.stopPatterns || [];
     const profileStops = stopPattern?.pattern ? [stopPattern.pattern] : [];
     const turnEndStopStr = delimiters.turnEnd.trim();
@@ -202,14 +198,21 @@ export async function generateCharacterMemory(
     return text.trim();
 }
 
+/**
+ * Generate missing message summaries for a specific character's local history.
+ * This ensures we only summarize messages the character actually experienced.
+ */
 export async function generateMissingSummaries(
     interactionData: InteractionData,
+    character: Character, // ADDED: Scope to character perspective
     windowSize: number,
     modelId: string,
     maxTokens = 256,
 ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
-    const history = interactionData.interactionHistory;
+    
+    // STRICTLY USE LOCAL HISTORY FOR CHARACTER PERSPECTIVE
+    const history = getLocalMessageHistory(interactionData, character);
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
 
     const filterFlags = getUniversalMessageFilterFlags(
@@ -252,7 +255,6 @@ async function compressChunk(
     sampler?: Sampler,
     profile?: Profile,
 ): Promise<string | null> {
-    // Filter to only chat messages with actual content
     const chatMessages = messages.filter(
         (m): m is ChatMessage => m.messageType === 'chat' && !!(m as ChatMessage).textContent?.trim()
     );
@@ -274,16 +276,21 @@ async function compressChunk(
 
 /**
  * Generate a location visit summary from a character's perspective.
+ * Note: This uses global history indices because startIdx/endIdx are derived 
+ * from global history searches in detectUnsummarizedLocationDepartures.
  */
 export async function generateLocationVisitSummary(
     interactionData: InteractionData,
     character: Character,
     modelId: string,
+    locationId: string,
+    nextLocationId: string | undefined,
     startIdx: number,
     endIdx: number,
     maxTokens = 512,
 ): Promise<string | null> {
-    const history = interactionData.interactionHistory;
+    // Must use global history here to match the startIdx/endIdx from detectUnsummarizedLocationDepartures
+    const history = getLocalMessageHistory(interactionData, character);
     if (startIdx < 0 || endIdx >= history.length || startIdx > endIdx) return null;
 
     const participants = interactionData.participants;
@@ -295,7 +302,6 @@ export async function generateLocationVisitSummary(
     const filteredMessages = getFilteredChatMessages(interactionData, character.id, allPromptBlocks);
     const knownCharacterNames = detectName(character, filteredMessages);
 
-    // ─── Get Dynamic Delimiters & Stop Tokens ───────────────────────
     const activeModel = getLanguageModelEngine().getContext();
     const effectiveChatTemplateKey = activeModel?.chatTemplate;
     const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
@@ -312,16 +318,14 @@ export async function generateLocationVisitSummary(
         const charName = chatMsg.character.name;
 
         const text = chatMsg.modelTextContentSummaries?.[modelId] || chatMsg.textContent;
-
-        // Use dynamic turn delimiters
         scopedMessages.push(`${delimiters.turnStart(`${tag} (${charName})`)}${text}${delimiters.turnEnd}`);
     }
 
     if (scopedMessages.length === 0) return null;
 
     const locs = interactionData.locations;
-    const locIdx = history[startIdx]?.locationIndex;
-    const locationName = locIdx !== undefined && locs && locs[locIdx] ? locs[locIdx].name : 'an unknown location';
+    const locationName = locs.find(l => l.id === locationId)?.name || 'an unknown location';
+    const nextLocationName = nextLocationId ? locs.find(l => l.id === nextLocationId)?.name : undefined;
 
     const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
 
@@ -334,8 +338,6 @@ export async function generateLocationVisitSummary(
 
     const scopedHistoryBlock = `${delimiters.blockStart('system')}Events at ${locationName}:\n${scopedMessages.join('\n')}${delimiters.blockEnd}`;
 
-    // ─── Resolve Memory Prompt Template ─────────────────────────────
-    // 1. Find the most recent expression for this character in the scoped range (or fallback to overall history)
     let recentExpression = 'neutral';
     for (let i = endIdx; i >= startIdx; i--) {
         const msg = history[i];
@@ -354,13 +356,14 @@ export async function generateLocationVisitSummary(
         }
     }
 
-    // 2. Look up template: recent expression -> 'neutral' -> system default
     let memoryPromptTemplate = character.memoryPrompts?.[recentExpression];
     if (!memoryPromptTemplate) {
         memoryPromptTemplate = character.memoryPrompts?.['neutral'];
     }
 
-    const systemDefaultPerspective = `I am ${participantTag}. ${LOCATION_VISIT_MEMORY_PROMPT} I will never use 'Character #' or 'Character # (Name)' unless I require it.`;
+    const systemDefaultPerspective = nextLocationName 
+        ? `I am ${participantTag}. I am reflecting on what happened at ${locationName} before I moved to ${nextLocationName}. ${LOCATION_VISIT_MEMORY_PROMPT} I will never use 'Character #' or 'Character # (Name)' unless I require it.`
+        : `I am ${participantTag}. ${LOCATION_VISIT_MEMORY_PROMPT} I will never use 'Character #' or 'Character # (Name)' unless I require it.`;
 
     const finalMemoryInstruction = memoryPromptTemplate 
         ? replacePlaceholders(memoryPromptTemplate, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)
@@ -371,7 +374,6 @@ export async function generateLocationVisitSummary(
     const promptLines = [systemPrompt, thinkPrompt, scopedHistoryBlock, perspectiveInstruction];
     const prompt = promptLines.filter(l => l.length > 0).join('\n\n');
 
-    // Use dynamic model-specific and profile-specific stop tokens
     const templateStops = resolvedChatTemplate?.stopPatterns || [];
     const profileStops = stopPattern?.pattern ? [stopPattern.pattern] : [];
     const turnEndStopStr = delimiters.turnEnd.trim();
@@ -392,13 +394,18 @@ export async function generateLocationVisitSummary(
     return text.trim();
 }
 
+/**
+ * Generate periodic compression contexts for a specific character's local history.
+ */
 export async function generatePeriodicCompression(
     interactionData: InteractionData,
+    character: Character, // ADDED: Scope to character perspective
     periodicCompressionInterval: number,
     periodicCompressionChunkSize: number,
     maxTokens = 512,
 ): Promise<Context[]> {
-    const history = interactionData.interactionHistory;
+    // STRICTLY USE LOCAL HISTORY FOR CHARACTER PERSPECTIVE
+    const history = getLocalMessageHistory(interactionData, character);
     const existingContexts = interactionData.contexts || [];
 
     const sampler = interactionData.Profile?.interactionDataSummarizationSampler;
@@ -485,18 +492,22 @@ async function mergeSummaries(
     return text || null;
 }
 
+/**
+ * Generate recursive summary contexts for a specific character's local history.
+ */
 export async function generateRecursiveSummary(
     interactionData: InteractionData,
+    character: Character, // ADDED: Scope to character perspective
     chunkSize: number,
     maxDepth: number,
     maxTokens = 1024,
 ): Promise<Context[]> {
-    const history = interactionData.interactionHistory;
+    // STRICTLY USE LOCAL HISTORY FOR CHARACTER PERSPECTIVE
+    const history = getLocalMessageHistory(interactionData, character);
     const existingContexts = interactionData.contexts || [];
     const now = Date.now();
 
-    const profile = interactionData.Profile
-
+    const profile = interactionData.Profile;
     const sampler = profile?.interactionDataSummarizationSampler;
     const stopPattern = profile?.interactionDataSummarizationStopPattern;
 
@@ -606,8 +617,14 @@ export async function generateRecursiveSummary(
     return newContexts;
 }
 
+/**
+ * Generate entropy pruning summaries for a specific character's local history.
+ * This ensures we only summarize messages the character actually experienced,
+ * preventing omniscient summaries of parallel conversations.
+ */
 export async function generateEntropyPruningSummaries(
     interactionData: InteractionData,
+    character: Character, // ADDED: Scope to character perspective
     modelId: string,
     maxTokens = 256,
     entropyPruningChunkSize = 3,
@@ -615,7 +632,9 @@ export async function generateEntropyPruningSummaries(
     maxRawTokens = 2000,
 ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
-    const history = interactionData.interactionHistory;
+    
+    // STRICTLY USE LOCAL HISTORY FOR CHARACTER PERSPECTIVE
+    const history = getLocalMessageHistory(interactionData, character);
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
 
     const filterFlags = getUniversalMessageFilterFlags(chatMessages, interactionData.contexts || [], interactionData.locations || [], []);
@@ -623,38 +642,40 @@ export async function generateEntropyPruningSummaries(
 
     if (visibleMessages.length <= entropyPruningChunkSize) return results;
 
+    // Build a map of messageId -> locationId for boundary checks
+    const messageLocationMap = new Map<string, string>();
+    for (const [locId, messages] of Object.entries(interactionData.interactionHistories || {})) {
+        for (const msg of messages) {
+            messageLocationMap.set(msg.id, locId);
+        }
+    }
+
     let accumulatedTokens = 0;
     let cutoffVisibleIndex = visibleMessages.length;
 
-    // Walk backward to find the entropy cutoff point.
-    // Everything BEFORE the cutoff is old/fluff that should be summarized.
-    // Everything FROM the cutoff onward is recent/meaningful and stays raw.
     for (let i = visibleMessages.length; i > entropyPruningChunkSize; i -= entropyPruningChunkSize) {
         const chunkStart = Math.max(0, i - entropyPruningChunkSize);
         const currentChunk = visibleMessages.slice(chunkStart, i);
         const previousChunk = visibleMessages.slice(Math.max(0, chunkStart - entropyPruningChunkSize), chunkStart);
 
-        // Use token engine for accurate counting
         for (const msg of currentChunk) {
             accumulatedTokens += await tokenEngine.countTokens(msg.textContent);
         }
 
-        // Hard boundary: location change — always keep location transitions raw
         let hardBoundary = false;
         for (let j = 1; j < currentChunk.length; j++) {
             const prev = currentChunk[j - 1];
             const curr = currentChunk[j];
-            if (prev.locationIndex !== undefined && curr.locationIndex !== undefined && prev.locationIndex !== curr.locationIndex) {
+            const prevLoc = messageLocationMap.get(prev.id);
+            const currLoc = messageLocationMap.get(curr.id);
+            if (prevLoc !== undefined && currLoc !== undefined && prevLoc !== currLoc) {
                 hardBoundary = true;
                 break;
             }
         }
         if (hardBoundary) { cutoffVisibleIndex = i; break; }
-
-        // Hard boundary: token budget exceeded — must summarize everything before this point
         if (accumulatedTokens >= maxRawTokens) { cutoffVisibleIndex = i; break; }
 
-        // Soft boundary: Lexical drift (high drift = new topic = keep raw, low drift = repetitive = summarize)
         if (previousChunk.length > 0) {
             const currentWords = new Set<string>();
             for (const msg of currentChunk) for (const w of getStemmedContentWords(msg.textContent)) currentWords.add(w);
@@ -669,8 +690,6 @@ export async function generateEntropyPruningSummaries(
             const lexicalOverlap = union > 0 ? intersection / union : 0;
             const driftScore = 1 - lexicalOverlap;
 
-            // If drift is BELOW threshold, this chunk is repetitive/fluff relative to the previous one.
-            // Mark the cutoff here — everything before this will be summarized.
             if (driftScore < entropyPruningThreshold) {
                 cutoffVisibleIndex = chunkStart;
                 break;
@@ -679,7 +698,6 @@ export async function generateEntropyPruningSummaries(
         cutoffVisibleIndex = chunkStart;
     }
 
-    // Generate summaries for everything before the cutoff (the old/fluff portion)
     const sampler = interactionData.Profile?.interactionDataSummarizationSampler;
     for (let i = 0; i < cutoffVisibleIndex; i++) {
         const msg = visibleMessages[i];
@@ -692,8 +710,6 @@ export async function generateEntropyPruningSummaries(
 
     return results;
 }
-
-// ─── UPDATE: checkTriggerThreshold — returns ALL triggered steps ─────────────────────────────────
 
 export function checkTriggerThreshold(
     interactionData: InteractionData,

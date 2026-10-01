@@ -2,6 +2,8 @@
 import type React from 'react';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import type { BudgetStrategy, InteractionData, Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData } from '../types';
+import { getLocalMessageHistory } from '../utilities/timelineLogic';
+
 
 interface ChatInputProps {
     inputText: string;
@@ -327,9 +329,9 @@ function getEntityOptions(
     }
 
     if (type === 'item') {
-        const lastMsg = [...(data?.interactionHistory || [])].reverse().find(m =>
-            m.character.id === localChar?.id && m.messageType === 'chat' && m.inventory
-        );
+        if (!data || !localChar) return [];
+        const localMessageHistory = getLocalMessageHistory(data, localChar, ['chat', 'whisper']);
+        const lastMsg = localMessageHistory[localMessageHistory.length - 1]
         if (lastMsg?.inventory) {
             return Object.entries(lastMsg.inventory)
                 .filter(([k]) => !k.startsWith('__'))

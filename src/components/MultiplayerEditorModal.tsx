@@ -47,7 +47,6 @@ function createDefaultAccountConfig(sessionDefaults: {
 }
 
 export function MultiplayerEditorModal({
-    
     onClose,
     onSave,
     existingMultiplayerData,
@@ -287,13 +286,19 @@ function MultiplayerEditorModalInner({
         onRejectJoinRequest?.(accountId);
     }, [onRejectJoinRequest]);
 
+    // FIXED: Calculate total messages from the new interactionHistories Record
     const chatShellItems = useMemo(() => {
-        return rawChatShells.filter(s => s.id).map(s => ({
-            id: s.id!,
-            name: s.name || 'Untitled Chat',
-            description: `${s.interactionIdHistory?.length ?? 0} messages`,
-            lastUpdatedTimestamp: s.lastUpdatedTimestamp,
-        }));
+        return rawChatShells.filter(s => s.id).map(s => {
+            const totalMessages = s.interactionHistories 
+                ? Object.values(s.interactionHistories).reduce((acc, curr) => acc + curr.length, 0)
+                : 0;
+            return {
+                id: s.id!,
+                name: s.name || 'Untitled Chat',
+                description: `${totalMessages} messages`,
+                lastUpdatedTimestamp: s.lastUpdatedTimestamp,
+            };
+        });
     }, [rawChatShells]);
 
     const filteredAccountConfigs = useMemo(() => {

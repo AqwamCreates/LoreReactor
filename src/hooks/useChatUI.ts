@@ -43,7 +43,11 @@ export function useChatUI(
     // --- Auto-scroll to bottom on initial chat load ---
     useEffect(() => {
         if (!interactionData || hasScrolledToBottomRef.current) return;
-        if ((interactionData.interactionHistory?.length ?? 0) === 0) return;
+        
+        // FIX: Replaced non-existent flat interactionHistory array with a reduction 
+        // over the spatial interactionHistories Record to accurately count total messages.
+        const messageCount = Object.values(interactionData.interactionHistories || {}).reduce((sum, msgs) => sum + msgs.length, 0);
+        if (messageCount === 0) return;
 
         const frameId = requestAnimationFrame(() => {
             if (messageEndRef.current) {

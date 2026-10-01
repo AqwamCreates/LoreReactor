@@ -1,6 +1,6 @@
 // src/services/CharacterActor.ts
 import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile } from '../types';
-import { loadRawBudgetData, saveRawBudgetData } from '../storages/serverStorage';
+import { saveRawBudgetData } from '../storages/serverStorage';
 import { buildChatRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
 import { detectName } from '../utilities/nameDetection';
 import { getFilteredChatMessages } from '../utilities/promptLogic';
@@ -66,7 +66,6 @@ export interface TurnExecutionParams {
     /** Metadata for FM feature extraction */
     metadata?: RequestMetadata;
 }
-
 
 async function processToolInvocations(
     rawText: string,
@@ -299,21 +298,16 @@ export class CharacterActor {
                 bse.setStrategy(strat);
                 bse.setRunningModels(runningModels);
 
-                let bd: BudgetData | null = finalBudgetData;
+                // Rely on the engine's existing data (hydrated by useChatSession on mount)
+                let bd: BudgetData | null = bse.getBudgetData();
+                
+                // Fallback ONLY if the engine is completely empty (e.g., first ever run)
                 if (!bd) {
-                    try { bd = await loadRawBudgetData(); } catch (e) { console.warn('Failed to load budget data:', e); }
-                    if (!bd) {
-                        const newBd: BudgetData = { ...defaultBudgetData, budgetStrategy: strat };
-                        try {
-                            await saveRawBudgetData(newBd);
-                            bd = newBd;
-                        } catch (e) {
-                            console.error('Failed to create budget data:', e);
-                            return { error: { message: 'Failed to initialize budget tracking', type: 'budget' } };
-                        }
-                    }
+                    const newBd: BudgetData = { ...defaultBudgetData, budgetStrategy: strat };
+                    bse.setBudgetData(newBd);
+                    bd = newBd;
+                    saveRawBudgetData(newBd).catch(e => console.warn('Failed to save initial budget data:', e));
                 }
-                bse.setBudgetData(bd);
 
                 const streamToolParser = new ToolInvocationParser();
                 const accumulator = new StreamingAccumulator();
@@ -364,6 +358,8 @@ export class CharacterActor {
                     if (!finalBudgetData) {
                         return { error: { message: 'Failed to get budget data', type: 'budget' } };
                     }
+                    
+                    // Save the updated budget data after the turn
                     await saveRawBudgetData(finalBudgetData);
 
                     const requestCost = finalBudgetData.budgetSpent - bd.budgetSpent;
@@ -464,7 +460,7 @@ export class CharacterActor {
             }
 
             const finalDisplayText = accumulatedDisplayText || rawText;
-            const displayText = convertIdsToDisplayNames(finalDisplayText, data);
+            const displayText = convertIdsToDisplayNames(finalDisplayText, data, character);
 
             let updatedData: InteractionData;
 

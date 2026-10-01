@@ -1,7 +1,8 @@
 // src/components/ParticipantControlModal.tsx
 import { useState, useMemo } from 'react';
 import type { Character, InteractionData, HistoryMessage } from '../types';
-import { getCurrentLocationIndex } from '../utilities/locationLogic';
+import { findLatestMessage } from '../utilities/messageLogic';
+import { v4 as uuidv4 } from 'uuid';
 import '../main.css';
 
 interface ParticipantControlModalProps {
@@ -19,18 +20,20 @@ interface ParticipantControlModalProps {
 function deriveInitialOverrides(interactionData: InteractionData): {
     chatStamina: Record<string, number>;
     actionStamina: Record<string, number>;
-    location: Record<string, number | ''>;
+    location: Record<string, string | ''>;
 } {
     const chatStamina: Record<string, number> = {};
     const actionStamina: Record<string, number> = {};
-    const location: Record<string, number | ''> = {};
+    const location: Record<string, string | ''> = {};
 
     for (const p of interactionData.participants) {
-        const lastMsg = [...interactionData.interactionHistory].reverse().find(m => m.character.id === p.id);
+        // FIX: Use spatial findLatestMessage to accurately resolve the character's current state
+        const latest = findLatestMessage(interactionData, p);
+        const lastMsg = latest?.message;
+        
         chatStamina[p.id] = lastMsg?.remainingChatStamina ?? p.maximumChatStamina ?? 4;
         actionStamina[p.id] = lastMsg?.remainingActionStamina ?? p.maximumActionStamina ?? 5;
-        const locIdx = getCurrentLocationIndex(interactionData, p);
-        location[p.id] = locIdx !== undefined ? locIdx : '';
+        location[p.id] = latest?.locationId ?? '';
     }
 
     return { chatStamina, actionStamina, location };
@@ -52,7 +55,8 @@ export function ParticipantControlModal({
 
     const [chatStaminaOverrides, setChatStaminaOverrides] = useState<Record<string, number>>(initials.chatStamina);
     const [actionStaminaOverrides, setActionStaminaOverrides] = useState<Record<string, number>>(initials.actionStamina);
-    const [locationOverrides, setLocationOverrides] = useState<Record<string, number | ''>>(initials.location);
+    // FIX: Location overrides now use string IDs instead of number indices
+    const [locationOverrides, setLocationOverrides] = useState<Record<string, string | ''>>(initials.location);
     const [selectedCharId, setSelectedCharId] = useState<string>('');
     const [customMessageText, setCustomMessageText] = useState('');
 
@@ -65,57 +69,114 @@ export function ParticipantControlModal({
     };
 
     const handleLocationChange = (charId: string, value: string) => {
-        setLocationOverrides(prev => ({ ...prev, [charId]: value === '' ? '' : Number(value) }));
+        setLocationOverrides(prev => ({ ...prev, [charId]: value }));
     };
 
     const applyOverrides = () => {
         if (isReadOnly) return;
-        const updatedHistory = [...interactionData.interactionHistory];
+        
+        let updatedHistories = { ...interactionData.interactionHistories };
+        let changed = false;
 
-        // Map of last message index per character
-        const lastMsgIndices: Record<string, number> = {};
-        for (let i = 0; i < updatedHistory.length; i++) {
-            lastMsgIndices[updatedHistory[i].character.id] = i;
-        }
-
-        // Apply overrides to existing latest message, or create baseline for characters who haven't spoken yet
         for (const p of interactionData.participants) {
             const charId = p.id;
             const hasChatChanged = chatStaminaOverrides[charId] !== undefined && chatStaminaOverrides[charId] !== initials.chatStamina[charId];
             const hasActionChanged = actionStaminaOverrides[charId] !== undefined && actionStaminaOverrides[charId] !== initials.actionStamina[charId];
             const hasLocChanged = locationOverrides[charId] !== undefined && locationOverrides[charId] !== initials.location[charId];
 
-            const idx = lastMsgIndices[charId];
-            if (idx !== undefined) {
-                updatedHistory[idx] = {
-                    ...updatedHistory[idx],
-                    remainingChatStamina: chatStaminaOverrides[charId] ?? updatedHistory[idx].remainingChatStamina,
-                    remainingActionStamina: actionStaminaOverrides[charId] ?? updatedHistory[idx].remainingActionStamina,
-                    locationIndex: locationOverrides[charId] === '' ? undefined : (locationOverrides[charId] !== undefined ? Number(locationOverrides[charId]) : updatedHistory[idx].locationIndex),
-                };
+            const latest = findLatestMessage(interactionData, p);
+            
+            if (latest) {
+                const { message, locationId } = latest;
+                const locMsgs = updatedHistories[locationId] ? [...updatedHistories[locationId]] : [];
+                const msgIdx = locMsgs.findIndex(m => m.id === message.id);
+                
+                let updatedMsg = { ...message };
+                let msgChanged = false;
+
+                if (hasChatChanged) {
+                    updatedMsg.remainingChatStamina = chatStaminaOverrides[charId];
+                    msgChanged = true;
+                }
+                if (hasActionChanged) {
+                    updatedMsg.remainingActionStamina = actionStaminaOverrides[charId];
+                    msgChanged = true;
+                }
+                
+                if (msgChanged && msgIdx !== -1) {
+                    locMsgs[msgIdx] = updatedMsg;
+                    updatedHistories[locationId] = locMsgs;
+                    changed = true;
+                }
+                
+                // Handle spatial location change
+                if (hasLocChanged && locationOverrides[charId] !== '') {
+                    const newLocId = locationOverrides[charId] as string;
+                    if (newLocId !== locationId) {
+                        // Mark old message as not present
+                        if (msgIdx !== -1) {
+                            const oldLocMsgs = updatedHistories[locationId] ? [...updatedHistories[locationId]] : [];
+                            const oldIdx = oldLocMsgs.findIndex(m => m.id === message.id);
+                            if (oldIdx !== -1) {
+                                oldLocMsgs[oldIdx] = { ...oldLocMsgs[oldIdx], isPresent: false };
+                                updatedHistories[locationId] = oldLocMsgs;
+                            }
+                        }
+                        
+                        // Add to new location
+                        const newLocMsgs = updatedHistories[newLocId] ? [...updatedHistories[newLocId]] : [];
+                        const moveMsg: HistoryMessage = {
+                            ...updatedMsg, // Inherit updated stamina
+                            id: uuidv4(),
+                            messageType: 'interaction',
+                            isPresent: true,
+                            isConverged: newLocMsgs.length > 0,
+                            parentMessageId: message.id,
+                            firstCreatedTimestamp: Date.now(),
+                            lastUpdatedTimestamp: Date.now(),
+                        };
+                        newLocMsgs.push(moveMsg);
+                        updatedHistories[newLocId] = newLocMsgs;
+                        changed = true;
+                    }
+                }
             } else if (hasChatChanged || hasActionChanged || hasLocChanged) {
                 // Character has not spoken yet: create baseline interaction record so their settings stick
                 const now = Date.now();
-                const baselineMsg: HistoryMessage = {
-                    id: `init-${charId}-${now}`,
-                    messageType: 'interaction',
-                    character: p,
-                    remainingChatStamina: chatStaminaOverrides[charId] ?? p.maximumChatStamina ?? 4,
-                    remainingActionStamina: actionStaminaOverrides[charId] ?? p.maximumActionStamina ?? 5,
-                    locationIndex: locationOverrides[charId] === '' || locationOverrides[charId] === undefined ? undefined : Number(locationOverrides[charId]),
-                    characterClothingWearingStatuses: {},
-                    characterLockedLocations: {},
-                    parentMessageId: null,
-                    firstCreatedTimestamp: now,
-                    lastUpdatedTimestamp: now,
-                };
-                updatedHistory.push(baselineMsg);
+                const targetLocId = (hasLocChanged && locationOverrides[charId] !== '') 
+                    ? locationOverrides[charId] as string 
+                    : (initials.location[charId] !== '' ? initials.location[charId] as string : undefined);
+                    
+                if (targetLocId) {
+                    const newLocMsgs = updatedHistories[targetLocId] ? [...updatedHistories[targetLocId]] : [];
+                    const baselineMsg: HistoryMessage = {
+                        id: `init-${charId}-${now}`,
+                        messageType: 'interaction',
+                        character: p,
+                        isPresent: true,
+                        remainingChatStamina: hasChatChanged ? chatStaminaOverrides[charId] : (p.maximumChatStamina ?? 4),
+                        remainingActionStamina: hasActionChanged ? actionStaminaOverrides[charId] : (p.maximumActionStamina ?? 5),
+                        characterClothingWearingStatuses: {},
+                        characterLockedLocations: {},
+                        parentMessageId: null,
+                        firstCreatedTimestamp: now,
+                        lastUpdatedTimestamp: now,
+                    };
+                    newLocMsgs.push(baselineMsg);
+                    updatedHistories[targetLocId] = newLocMsgs;
+                    changed = true;
+                }
             }
+        }
+
+        if (!changed) {
+            onClose();
+            return;
         }
 
         const updated: InteractionData = {
             ...interactionData,
-            interactionHistory: updatedHistory,
+            interactionHistories: updatedHistories,
             lastUpdatedTimestamp: Date.now(),
         };
 
@@ -273,7 +334,8 @@ export function ParticipantControlModal({
                             {interactionData.participants.map(p => {
                                 const maxStamina = p.maximumChatStamina ?? 4;
                                 const current = chatStaminaOverrides[p.id] ?? maxStamina;
-                                const hasSpoken = interactionData.interactionHistory.some(m => m.character.id === p.id);
+                                // FIX: Replaced flat array .some() with spatial findLatestMessage
+                                const hasSpoken = !!findLatestMessage(interactionData, p);
 
                                 return (
                                     <div key={p.id} className="participant-control-stamina-row">
@@ -311,7 +373,7 @@ export function ParticipantControlModal({
                             {interactionData.participants.map(p => {
                                 const maxActionStamina = p.maximumActionStamina ?? 5;
                                 const current = actionStaminaOverrides[p.id] ?? maxActionStamina;
-                                const hasSpoken = interactionData.interactionHistory.some(m => m.character.id === p.id);
+                                const hasSpoken = !!findLatestMessage(interactionData, p);
 
                                 return (
                                     <div key={p.id} className="participant-control-stamina-row">
@@ -342,7 +404,7 @@ export function ParticipantControlModal({
                     <div className="editor-section">
                         <span className="editor-section-title">Location</span>
                         <div className="entity-ref-hint">
-                            Override the current location for each participant. This sets the locationIndex on their latest message, controlling which location context is active for them.
+                            Override the current location for each participant. This routes their presence to the correct spatial bucket, controlling which location context is active for them.
                         </div>
 
                         <div className="participant-control-stamina-list">
@@ -362,8 +424,9 @@ export function ParticipantControlModal({
                                                 disabled={isReadOnly}
                                             >
                                                 <option value="">None</option>
-                                                {locations.map((loc, idx) => (
-                                                    <option key={loc.id} value={String(idx)}>{loc.name}</option>
+                                                {/* FIX: Replaced array indices with locationId strings */}
+                                                {locations.map((loc) => (
+                                                    <option key={loc.id} value={loc.id}>{loc.name}</option>
                                                 ))}
                                             </select>
                                         </div>

@@ -4,7 +4,7 @@ import type {
     Character, Context, Location, AudioTrack, World, PromptBlock, 
     LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, 
     Memory, Account, MultiplayerData, RawInteractionData, InteractionData, 
-    ObjectData
+    ObjectData, ChatMessage
 } from '../types';
 import { localURL } from '../configurations';
 import '../main.css';
@@ -229,7 +229,10 @@ export function SuperSearchModal({
         for (const shell of rawChatShells) {
             if (!shell.id) continue;
             const chatName = shell.name || 'Untitled Chat';
-            for (const msgId of (shell.interactionIdHistory || [])) {
+            
+            // FIX: Replaced non-existent interactionIdHistory with flattened spatial interactionHistories Record
+            const allMsgIds = Object.values(shell.interactionHistories || {}).flat();
+            for (const msgId of allMsgIds) {
                 let list = map.get(msgId);
                 if (!list) {
                     list = [];
@@ -244,7 +247,10 @@ export function SuperSearchModal({
         if (currentInteractionData?.id) {
             const activeId = currentInteractionData.id;
             const activeName = currentInteractionData.name || 'Untitled Chat';
-            for (const msg of (currentInteractionData.interactionHistory || [])) {
+            
+            // FIX: Replaced non-existent interactionHistory with flattened spatial interactionHistories Record
+            const allMessages = Object.values(currentInteractionData.interactionHistories || {}).flat();
+            for (const msg of allMessages) {
                 let list = map.get(msg.id);
                 if (!list) {
                     list = [];
@@ -401,17 +407,20 @@ export function SuperSearchModal({
         const messageResults: SearchMatchResult[] = [];
 
         if (currentInteractionData) {
-            for (const msg of (currentInteractionData.interactionHistory || [])) {
-                if (msg.messageType === 'chat' && typeof msg.textContent === 'string' && msg.textContent.toLowerCase().includes(lowerQuery)) {
-                    seenMessageIds.add(msg.id);
-                    const chats = messageToChatsMap.get(msg.id) || [{ chatId: currentInteractionData.id, chatName: currentInteractionData.name || 'Untitled Chat' }];
+            // FIX: Replaced non-existent interactionHistory with flattened spatial interactionHistories Record
+            const allMessages = Object.values(currentInteractionData.interactionHistories || {}).flat();
+            for (const msg of allMessages) {
+                if (msg.messageType === 'chat' && typeof (msg as ChatMessage).textContent === 'string' && (msg as ChatMessage).textContent.toLowerCase().includes(lowerQuery)) {
+                    const chatMsg = msg as ChatMessage;
+                    seenMessageIds.add(chatMsg.id);
+                    const chats = messageToChatsMap.get(chatMsg.id) || [{ chatId: currentInteractionData.id, chatName: currentInteractionData.name || 'Untitled Chat' }];
                     messageResults.push({
                         tabId: 'message',
-                        id: msg.id,
-                        title: `🎭 ${msg.character.name}`,
-                        matches: [{ field: 'textContent', text: msg.textContent, snippet: makeSnippet(msg.textContent, lowerQuery) }],
+                        id: chatMsg.id,
+                        title: `🎭 ${chatMsg.character.name}`,
+                        matches: [{ field: 'textContent', text: chatMsg.textContent, snippet: makeSnippet(chatMsg.textContent, lowerQuery) }],
                         chats,
-                        rawEntity: msg,
+                        rawEntity: chatMsg,
                         parentEntity: currentInteractionData,
                     });
                 }

@@ -1,24 +1,27 @@
 // src/utilities/dynamicCharacterLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage } from '../types';
-import { getEffectiveInitiativeWeight, getEffectiveNameSensitivity, getNameMentionCount, getEffectiveSkipProbability, getEffectiveChatImpatienceSensitivity, getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina } from './characterLogic';
-import { findPreviousMessage } from './chatLogic';
-import { getCurrentLocationIndex, getCurrentLocation, getReachableLocations, isLocationOwner } from './locationLogic';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, Location } from '../types';
+import { 
+    getEffectiveInitiativeWeight, 
+    getEffectiveNameSensitivity, 
+    getNameMentionCount, 
+    getEffectiveSkipProbability, 
+    getEffectiveChatImpatienceSensitivity, 
+    getEffectiveMaximumChatStamina, 
+    getEffectiveMaximumActionStamina 
+} from './characterLogic';
+import { findLatestMessage } from './messageLogic';
+import { getCurrentLocationId, getCurrentLocation, getReachableLocations, isLocationOwner } from './locationLogic';
+import { getLocalMessageHistory, getLocationMessageHistory } from './timelineLogic';
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
     return msg.messageType === 'chat';
 }
 
-/**
- * Count paragraphs in text by counting double-newline separators.
- */
 export function countParagraphs(text: string): number {
     if (!text || !text.trim()) return 0;
     return (text.match(/\n\n/g) || []).length + 1;
 }
 
-/**
- * Count chat messages since this character last spoke.
- */
 export function getTurnsSinceLastSpoken(history: HistoryMessage[], characterId: string): number {
     let turns = 0;
     for (let i = history.length - 1; i >= 0; i--) {
@@ -30,18 +33,12 @@ export function getTurnsSinceLastSpoken(history: HistoryMessage[], characterId: 
     return turns;
 }
 
-/**
- * Milliseconds since character's last history entry.
- */
-export function getTimeSinceLastActionMs(data: InteractionData, characterId: string): number {
-    const last = findPreviousMessage(data, characterId);
-    if (!last) return Infinity;
-    return Date.now() - last.lastUpdatedTimestamp;
+export function getTimeSinceLastActionMs(data: InteractionData, character: Character): number {
+    const latest = findLatestMessage(data, character);
+    if (!latest) return Number.POSITIVE_INFINITY;
+    return Date.now() - latest.message.lastUpdatedTimestamp;
 }
 
-/**
- * Harmonic-decay-weighted participation ratio ∈ [0, 1].
- */
 export function getParticipationMomentum(history: HistoryMessage[], charId: string): number {
     let recentWeight = 0;
     let totalWeight = 0;
@@ -54,36 +51,19 @@ export function getParticipationMomentum(history: HistoryMessage[], charId: stri
     return totalWeight === 0 ? 1 : recentWeight / totalWeight;
 }
 
-/**
- * Check if a character is an owner of the given location.
- */
-
-
-/**
- * Local initiative rank ∈ (0, 1] with domain exclusivity boost.
- * Characters are ranked only against co-located peers, not globally.
- * Domain-bound characters get a boost that offsets being outranked.
- * 
- * OWNER BINDINGS INTERACTION:
- * Owners receive a stronger exclusivity boost than characters merely in
- * characterBindings. An owner's exclusivityBoost uses the full exclusivity
- * value directly, while non-owners use the original formula. This means
- * owners maintain higher local rank even when outranked by visitors with
- * higher raw initiative weight. Domain authority matters.
- */
 export function getLocalInitiativeRank(character: Character, data: InteractionData): number {
-    const charLoc = getCurrentLocationIndex(data, character);
-    if (charLoc === undefined) return 1;
+    const charLocId = getCurrentLocationId(data, character);
+    if (!charLocId) return 1;
 
     const coLocated = data.participants.filter(p => {
         if (p.id === character.id) return false;
-        const pLoc = getCurrentLocationIndex(data, p);
-        return pLoc !== undefined && pLoc === charLoc;
+        const pLocId = getCurrentLocationId(data, p);
+        return pLocId === charLocId;
     });
 
     if (coLocated.length === 0) return 1;
 
-    const locObj = data.locations?.[charLoc];
+    const locObj = getCurrentLocation(data, character);
     let exclusivityBoost = 0;
     if (locObj?.characterBindings && locObj.characterBindings.length > 0) {
         const totalParticipants = data.participants.length + 1;
@@ -94,14 +74,10 @@ export function getLocalInitiativeRank(character: Character, data: InteractionDa
         }
     }
 
-    // Owner bindings provide a stronger exclusivity boost
     if (isLocationOwner(character, locObj)) {
         const totalParticipants = data.participants.length + 1;
         const ownerCount = locObj?.ownerBindings?.length ?? 0;
-        // Owners get a boost proportional to how exclusive their ownership is
-        // Fewer owners = higher boost. Single owner gets max boost.
         const ownerExclusivity = ownerCount > 0 ? 1 - (ownerCount / totalParticipants) : 0;
-        // Owner boost is always at least as strong as characterBindings boost
         exclusivityBoost = Math.max(exclusivityBoost, ownerExclusivity);
     }
 
@@ -114,9 +90,6 @@ export function getLocalInitiativeRank(character: Character, data: InteractionDa
     return 1 / (1 + outrankedBy * (1 - exclusivityBoost));
 }
 
-/**
- * Sample stochastic regen amount using log-weighted cumulative distribution.
- */
 export function sampleStochasticRegenAmount(maxStamina: number): number {
     if (maxStamina <= 0 || maxStamina === Number.POSITIVE_INFINITY) return 0;
 
@@ -144,12 +117,10 @@ export function sampleStochasticRegenAmount(maxStamina: number): number {
     return lo + 1;
 }
 
-/**
- * Compute global turn score for weighted selection.
- */
 export function computeGlobalScore(character: Character, data: InteractionData): number {
     const profile = data.Profile;
-    const lastMsg = findPreviousMessage(data, character.id);
+    const latest = findLatestMessage(data, character);
+    const lastMsg = latest?.message;
 
     const maxAction = getEffectiveMaximumActionStamina(character, profile);
     const maxChat = getEffectiveMaximumChatStamina(character, profile);
@@ -162,21 +133,19 @@ export function computeGlobalScore(character: Character, data: InteractionData):
     const staminaRatio = (remainingAction + remainingChat) / maxTotal;
     const baseInitiative = getEffectiveInitiativeWeight(character, profile);
     const localRank = getLocalInitiativeRank(character, data);
-    const momentum = getParticipationMomentum(data.interactionHistory, character.id);
+    const momentum = getParticipationMomentum(getLocalMessageHistory(data, character), character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
 
-    const timeSince = getTimeSinceLastActionMs(data, character.id);
+    const timeSince = getTimeSinceLastActionMs(data, character);
     const timeMultiplier = 1 + Math.log1p(timeSince);
 
     return staminaRatio * effectiveInitiative * timeMultiplier;
 }
 
-/**
- * Compute chat-specific score for speaker selection among co-located candidates.
- */
 export function computeChatScore(character: Character, data: InteractionData): number {
     const profile = data.Profile;
-    const lastMsg = findPreviousMessage(data, character.id);
+    const latest = findLatestMessage(data, character);
+    const lastMsg = latest?.message;
 
     const maxChat = getEffectiveMaximumChatStamina(character, profile);
     const remainingChat = lastMsg?.remainingChatStamina ?? maxChat;
@@ -186,32 +155,33 @@ export function computeChatScore(character: Character, data: InteractionData): n
     const staminaRatio = remainingChat / maxChat;
     const baseInitiative = getEffectiveInitiativeWeight(character, profile);
     const localRank = getLocalInitiativeRank(character, data);
-    const momentum = getParticipationMomentum(data.interactionHistory, character.id);
+    const momentum = getParticipationMomentum(getLocalMessageHistory(data, character), character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
 
-    const timeSince = getTimeSinceLastActionMs(data, character.id);
+    const timeSince = getTimeSinceLastActionMs(data, character);
     const timeMultiplier = 1 + Math.log1p(timeSince);
 
-    const turnsSince = getTurnsSinceLastSpoken(data.interactionHistory, character.id);
+    const turnsSince = getTurnsSinceLastSpoken(getLocalMessageHistory(data, character), character.id);
     const impatience = getEffectiveChatImpatienceSensitivity(character, profile);
 
-    const charLoc = getCurrentLocationIndex(data, character);
+    const charLocId = getCurrentLocationId(data, character);
     let localActivityDensity = 0;
-    if (charLoc !== undefined) {
-        for (let i = data.interactionHistory.length - 1; i >= 0; i--) {
-            const msg = data.interactionHistory[i];
+    
+    if (charLocId) {
+        const locHistory = getLocationMessageHistory(data, charLocId);
+        for (let i = locHistory.length - 1; i >= 0; i--) {
+            const msg = locHistory[i];
             if (!hasTextContent(msg)) continue;
             if (msg.character.id === character.id) continue;
-            if (msg.locationIndex !== charLoc) continue;
-            const age = data.interactionHistory.length - 1 - i;
+            const age = locHistory.length - 1 - i;
             localActivityDensity += 1 / (1 + age);
         }
     }
+    
     const patienceBoost = Math.log1p(localActivityDensity);
     const effectiveImpatience = impatience / (1 + patienceBoost);
     const compressedImpatience = Math.log1p(turnsSince * effectiveImpatience);
 
-    // Name mention priority boost
     const mentionCount = getNameMentionCount(character, data);
     const nameSensitivity = getEffectiveNameSensitivity(character, profile);
     const nameMentionBoost = 1 + Math.log1p(mentionCount * nameSensitivity);
@@ -219,12 +189,10 @@ export function computeChatScore(character: Character, data: InteractionData): n
     return staminaRatio * effectiveInitiative * timeMultiplier * compressedImpatience * nameMentionBoost;
 }
 
-/**
- * Compute action-specific score for mover selection among non-co-located candidates.
- */
 export function computeActionScore(character: Character, data: InteractionData, triggeringMessageText?: string): number {
     const profile = data.Profile;
-    const lastMsg = findPreviousMessage(data, character.id);
+    const latest = findLatestMessage(data, character);
+    const lastMsg = latest?.message;
 
     const maxAction = getEffectiveMaximumActionStamina(character, profile);
     const remainingAction = lastMsg?.remainingActionStamina ?? maxAction;
@@ -234,23 +202,20 @@ export function computeActionScore(character: Character, data: InteractionData, 
     const staminaRatio = remainingAction / maxAction;
     const baseInitiative = getEffectiveInitiativeWeight(character, profile);
     const localRank = getLocalInitiativeRank(character, data);
-    const momentum = getParticipationMomentum(data.interactionHistory, character.id);
+    const momentum = getParticipationMomentum(getLocalMessageHistory(data, character), character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
 
-    const timeSince = getTimeSinceLastActionMs(data, character.id);
+    const timeSince = getTimeSinceLastActionMs(data, character);
     const timeMultiplier = 1 + Math.log1p(timeSince);
 
-    const moverLoc = getCurrentLocationIndex(data, character);
-    const reachable = getReachableLocations(data.locations, moverLoc, triggeringMessageText);
+    const moverLocId = getCurrentLocationId(data, character);
+    const reachable = getReachableLocations(data.locations || [], moverLocId, triggeringMessageText);
     const totalLocs = data.locations?.length ?? 1;
     const reachabilitySignal = Math.log1p(reachable.length) / Math.log1p(totalLocs);
 
     return staminaRatio * effectiveInitiative * timeMultiplier * (0.5 + reachabilitySignal);
 }
 
-/**
- * Weighted random selection from a pool of candidates.
- */
 export function weightedSample<T>(pool: { item: T; weight: number }[]): T | null {
     if (pool.length === 0) return null;
     const totalWeight = pool.reduce((sum, e) => sum + Math.max(0, e.weight), 0);
@@ -264,18 +229,6 @@ export function weightedSample<T>(pool: { item: T; weight: number }[]): T | null
     return pool[pool.length - 1].item;
 }
 
-/**
- * Compute contextually modulated regen amounts for both stamina pools.
- * Base amount from stochastic sampler, then scaled by idle acceleration
- * and social polarity.
- * 
- * OWNER BINDINGS INTERACTION:
- * Owners in their own space receive a regen bonus. The density signal is
- * shifted positively by log1p(ownerBonus) where ownerBonus scales with
- * how many co-located peers are present. More peers in an owned space =
- * faster recovery. This represents the comfort and confidence of being
- * in one's own domain accelerating stamina restoration.
- */
 export function computeModulatedRegenAmounts(
     character: Character,
     data: InteractionData,
@@ -283,14 +236,14 @@ export function computeModulatedRegenAmounts(
     const profile = data.Profile;
     const maxChat = getEffectiveMaximumChatStamina(character, profile);
     const maxAction = getEffectiveMaximumActionStamina(character, profile);
-    const lastMsg = findPreviousMessage(data, character.id);
+    const latest = findLatestMessage(data, character);
+    const lastMsg = latest?.message;
 
     let chatRegen = sampleStochasticRegenAmount(maxChat);
     let actionRegen = sampleStochasticRegenAmount(maxAction);
 
     if (!lastMsg) return { chatRegen, actionRegen };
 
-    // Idle acceleration
     const timeSinceMs = Date.now() - lastMsg.lastUpdatedTimestamp;
     if (maxChat !== Number.POSITIVE_INFINITY && maxChat > 0) {
         const chatIdleFactor = timeSinceMs / (timeSinceMs + maxChat * 1000);
@@ -301,14 +254,13 @@ export function computeModulatedRegenAmounts(
         actionRegen *= (1 + actionIdleFactor);
     }
 
-    // Social polarity
-    const charLoc = getCurrentLocationIndex(data, character);
-    const currentLoc = charLoc !== undefined ? data.locations?.[charLoc] : undefined;
-    const coLocatedCount = charLoc !== undefined
+    const charLocId = getCurrentLocationId(data, character);
+    const currentLoc = getCurrentLocation(data, character);
+    const coLocatedCount = charLocId
         ? data.participants.filter(p => {
             if (p.id === character.id) return false;
-            const pLoc = getCurrentLocationIndex(data, p);
-            return pLoc !== undefined && pLoc === charLoc;
+            const pLocId = getCurrentLocationId(data, p);
+            return pLocId === charLocId;
         }).length
         : 0;
 
@@ -316,7 +268,6 @@ export function computeModulatedRegenAmounts(
     const socialPolarity = 0.5 - baseSkip;
     let densitySignal = socialPolarity * Math.log1p(coLocatedCount);
 
-    // Owner regen bonus: shift density signal positively when in owned space
     if (isLocationOwner(character, currentLoc) && coLocatedCount > 0) {
         const ownerBonus = Math.log1p(coLocatedCount) * 0.3;
         densitySignal += ownerBonus;
@@ -335,18 +286,6 @@ export function computeModulatedRegenAmounts(
     };
 }
 
-/**
- * Compute effective skip probability with depletion, verbosity, escape
- * valuation, and home comfort modulators.
- * 
- * OWNER BINDINGS INTERACTION:
- * Owners in their own space have their home comfort ratio floored at 1.0
- * minimum. This means owners always feel at home regardless of weight
- * configuration, making them significantly less likely to skip when in
- * their own domain. The comfortNorm subtraction from effectiveSkip is
- * maximized for owners, reducing withdrawal tendency proportionally to
- * their domain authority.
- */
 export function computeEffectiveSkip(
     character: Character,
     data: InteractionData,
@@ -355,27 +294,25 @@ export function computeEffectiveSkip(
     const profile = data.Profile;
     const baseSkip = getEffectiveSkipProbability(character, profile);
 
-    // Depletion coupling
     const maxChat = getEffectiveMaximumChatStamina(character, profile);
-    const lastMsg = findPreviousMessage(data, character.id);
+    const latest = findLatestMessage(data, character);
+    const lastMsg = latest?.message;
     const currentChat = lastMsg?.remainingChatStamina ?? maxChat;
     const staminaRatio = maxChat > 0 ? currentChat / maxChat : 1;
     const depletionRaw = (1 - staminaRatio) * (1 - staminaRatio);
     const dNorm = depletionRaw / (1 + depletionRaw);
 
-    // Verbosity coupling
     let verbosityRaw = 0;
     if (lastMsg && hasTextContent(lastMsg)) {
         verbosityRaw = Math.log1p(countParagraphs(lastMsg.textContent));
     }
     const vNorm = verbosityRaw / (1 + verbosityRaw);
 
-    // Weighted escape route valuation
-    const winnerLoc = getCurrentLocationIndex(data, character);
+    const winnerLocId = getCurrentLocationId(data, character);
     let weightedEscapeValue = 0;
-    if (winnerLoc !== undefined && data.locations) {
-        const reachable = getReachableLocations(data.locations, winnerLoc, triggeringMessageText);
-        for (const { location } of reachable) {
+    if (winnerLocId && data.locations) {
+        const reachable = getReachableLocations(data.locations, winnerLocId, triggeringMessageText);
+        for (const location of reachable) {
             const charWeight = location.characterWeights?.[character.id];
             const weight = charWeight !== undefined ? charWeight : (location.globalWeight ?? 0);
             weightedEscapeValue += Math.max(0, weight);
@@ -384,13 +321,11 @@ export function computeEffectiveSkip(
     const escapeRaw = Math.log1p(weightedEscapeValue);
     const eNorm = escapeRaw / (1 + escapeRaw);
 
-    // Home comfort skip reduction
     const currentLoc = getCurrentLocation(data, character);
     const homeWeight = currentLoc?.characterWeights?.[character.id] ?? 0;
     const globalWeight = currentLoc?.globalWeight ?? 1;
     let homeComfortRatio = globalWeight > 0 ? homeWeight / globalWeight : 0;
 
-    // Owner bindings: floor comfort ratio at 1.0 — owners always feel at home
     if (isLocationOwner(character, currentLoc)) {
         homeComfortRatio = Math.max(homeComfortRatio, 1.0);
     }
@@ -406,17 +341,6 @@ export function computeEffectiveSkip(
     return 1 / (1 + Math.exp(-10 * (effectiveSkip - 0.5)));
 }
 
-/**
- * Compute total chat stamina consumption cost for a speech act.
- * Combines paragraph count and group load.
- * 
- * OWNER BINDINGS INTERACTION:
- * When speaking in an owned location, the social load multiplier is
- * reduced by half. Owners are socially dominant in their space — speaking
- * costs less stamina because they're not competing for conversational
- * territory. The coLocatedCount is multiplied by 0.5 when the speaker
- * is an owner of the current location.
- */
 export function computeChatStaminaConsumptionCost(
     speaker: Character,
     data: InteractionData,
@@ -428,20 +352,18 @@ export function computeChatStaminaConsumptionCost(
     
     let coLocatedCount: number;
     if (!hasLocations) {
-        // No location system: all participants are effectively co-located
         coLocatedCount = data.participants.filter(p => p.id !== speaker.id).length;
     } else {
-        const speakerLoc = getCurrentLocationIndex(data, speaker);
-        const speakerLocation = speakerLoc !== undefined ? data.locations?.[speakerLoc] : undefined;
-        coLocatedCount = speakerLoc !== undefined
+        const speakerLocId = getCurrentLocationId(data, speaker);
+        const speakerLocation = getCurrentLocation(data, speaker);
+        coLocatedCount = speakerLocId
             ? data.participants.filter(p => {
                 if (p.id === speaker.id) return false;
-                const pLoc = getCurrentLocationIndex(data, p);
-                return pLoc !== undefined && pLoc === speakerLoc;
+                const pLocId = getCurrentLocationId(data, p);
+                return pLocId === speakerLocId;
             }).length
             : 0;
 
-        // Owner social load reduction: halve the co-located count for owners
         if (isLocationOwner(speaker, speakerLocation)) {
             coLocatedCount = Math.floor(coLocatedCount * 0.5);
         }
@@ -451,9 +373,44 @@ export function computeChatStaminaConsumptionCost(
     return paragraphs * loadMultiplier;
 }
 
+export function computeMovementCost(fromId: string, toId: string, locations: Location[]): number {
+    if (fromId === toId) return 0;
+    const fromLoc = locations.find(l => l.id === fromId);
+    const distance = fromLoc?.locationDistances?.[toId];
+    
+    if (distance !== undefined) return Math.sqrt(Math.max(0, distance));
+    return 1; 
+}
+
 /**
- * Compute movement action stamina cost based on distance.
+ * Computes the dynamic tick delay for autonomous actions based PURELY on character stats and live interaction data.
+ * No hardcoded caps; bounds are derived directly from the character's initiative weight.
  */
-export function computeMovementCost(fromIndex: number, toIndex: number): number {
-    return Math.sqrt(Math.abs(toIndex - fromIndex));
+export function computeAutonomousTickDelay(character: Character, data: InteractionData): number {
+    const profile = data.Profile;
+    
+    // 1. Base bounds derived entirely from character's initiative (higher initiative = faster potential reactions)
+    const initiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
+    const minDelay = 1000 / initiative;  // Scaling factor: high initiative chars can react in ~500ms, low in ~2000ms
+    const maxDelay = 10000 / initiative; // Scaling factor: high initiative chars idle for ~5s, low for ~20s
+
+    // 2. Impatience factor (higher impatience = faster ticks)
+    const impatience = getEffectiveChatImpatienceSensitivity(character, profile);
+    const impatienceFactor = 1 / (1 + impatience);
+
+    // 3. Name mention factor (if called by name, react MUCH faster based on their sensitivity)
+    const mentionCount = getNameMentionCount(character, data);
+    const nameSensitivity = getEffectiveNameSensitivity(character, profile);
+    const nameMentionBoost = 1 + Math.log1p(mentionCount * nameSensitivity);
+    const nameFactor = 1 / nameMentionBoost;
+
+    // 4. Time since last action factor (longer wait = higher urgency to act)
+    const timeSinceMs = getTimeSinceLastActionMs(data, character);
+    const timeFactor = 1 / (1 + Math.log1p(timeSinceMs / 5000)); // 5000ms is just a scaling constant for the log curve
+
+    // Combine all dynamic factors
+    const dynamicDelay = maxDelay * impatienceFactor * nameFactor * timeFactor;
+
+    // Clamp strictly to the character's own derived min/max bounds
+    return Math.max(minDelay, Math.min(maxDelay, dynamicDelay));
 }
