@@ -735,7 +735,7 @@ function App() {
         addToast(`Sent first message as ${char.name}`, 'success');
 
         if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
-            handleBroadcastMessage({ ...msg, triggerResponse: false } as any);
+            handleBroadcastMessage({ ...msg, doNotRespond: true });
         }
     }, [interactionData, mp.isMultiplayerClient, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
 
@@ -759,7 +759,7 @@ function App() {
         addToast(`Injected message as ${char.name}`, 'success');
 
         if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
-            handleBroadcastMessage({ ...msg, triggerResponse: false } as any);
+            handleBroadcastMessage({ ...msg, doNotRespond: true });
         }
     }, [interactionData, mp.isMultiplayerClient, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
 
@@ -772,7 +772,7 @@ function App() {
         addToast(`Injected first message as ${char.name}`, 'success');
 
         if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
-            handleBroadcastMessage({ ...msg, triggerResponse: false } as any);
+            handleBroadcastMessage({ ...msg, doNotRespond: true });
         }
     }, [interactionData, mp.isMultiplayerClient, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
 

@@ -42,17 +42,18 @@ interface SyncChatMessagePayload {
     characterClothingWearingStatuses: Record<string, boolean>;
     characterLockedLocations: Record<string, string[]>;
     parentMessageId?: string | null;
-    triggerResponse?: boolean;
+    doNotRespond?: boolean;
 }
 
 interface SyncInteractionMessagePayload {
     messageId: string;
     characterId: string;
     messageType: 'interaction';
+    isPresent?: boolean; // <--- ADDED FOR LOCATION TRAVEL SYNC
     remainingChatStamina?: number;
     remainingActionStamina?: number;
     knownCharacterNames?: Record<string, Record<string, boolean>>;
-    locationId?: string; // FIX: Replaced locationIndex with locationId
+    locationId?: string;
     characterExpression?: string;
     inventory?: Record<string, string | number>;
     characterClothingWearingStatuses: Record<string, boolean>;
@@ -134,6 +135,7 @@ function extractSyncPayload(message: HistoryMessage, locationId?: string): SyncM
         characterClothingWearingStatuses: message.characterClothingWearingStatuses,
         characterLockedLocations: message.characterLockedLocations,
         parentMessageId: message.parentMessageId ?? null,
+        isPresent: message.isPresent,
     };
 
     if (message.messageType === 'whisper') {
@@ -152,7 +154,7 @@ function extractSyncPayload(message: HistoryMessage, locationId?: string): SyncM
             textContent: message.textContent,
             files: message.files,
             frontCameraImage: message.frontCameraImage,
-            triggerResponse: (message as any).triggerResponse,
+            doNotRespond: message.doNotRespond,
         } satisfies SyncChatMessagePayload;
     }
 
@@ -442,6 +444,7 @@ export function useMultiplayerSync({
                         id: interactionPayload.messageId,
                         messageType: 'interaction',
                         character,
+                        isPresent: interactionPayload.isPresent ?? true,
                         remainingChatStamina: interactionPayload.remainingChatStamina,
                         remainingActionStamina: interactionPayload.remainingActionStamina,
                         knownCharacterNames: interactionPayload.knownCharacterNames,
@@ -488,7 +491,7 @@ export function useMultiplayerSync({
 
                         if (payload.messageType === 'chat') {
                             const chatPayload = payload as SyncChatMessagePayload;
-                            if (chatPayload.triggerResponse !== false) {
+                            if (chatPayload.doNotRespond) {
                                 MultiplayerEvents.emit('peerMessageReceived', newMessage as ChatMessage);
                             }
                         } else if (payload.messageType === 'whisper') {

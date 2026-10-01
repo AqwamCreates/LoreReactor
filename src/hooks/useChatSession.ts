@@ -701,7 +701,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                     broadcastNewMessages(preTurnCount, sd);
                 } else {
                     setInteractionData(ud);
-                    broadcastNewMessages(preTurnCount, sd);
+                    broadcastNewMessages(preTurnCount, ud);
                 }
             }
         } catch (e) {
@@ -891,7 +891,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 const regexLoc = findReachableLocationByRegularExpression(td, chatMessage.textContent, activeCharacter);
                 const finalLocId = regexLoc?.id ?? currentLocId;
 
-                if (finalLocId && finalLocId !== currentLocId) {
+                if (currentLocId && finalLocId && finalLocId !== currentLocId) {
                     let currentActionStamina = chatMessage.remainingActionStamina;
                     const movementCost = computeMovementCost(currentLocId, finalLocId, td.locations);
                     if (movementCost > 0 && currentActionStamina !== undefined) {
@@ -911,6 +911,9 @@ export function useChatSession(options: UseChatSessionOptions) {
                         firstCreatedTimestamp: chatMessage.firstCreatedTimestamp + 1,
                         lastUpdatedTimestamp: chatMessage.firstCreatedTimestamp + 1,
                     };
+
+                    // BROADCAST ARRIVAL INTERACTION FOR MULTIPLAYER SYNC
+                    onMessageBroadcastRef.current?.(arrivalInteraction);
 
                     const updatedHistories = { ...td.interactionHistories };
                     if (!updatedHistories[finalLocId]) {

@@ -355,6 +355,7 @@ export interface ChatMessage extends BaseMessage {
   textContent: string;
   files?: string[];
   frontCameraImage?: string;
+  doNotRespond: boolean;
   modelTextContentSummaries: Record<string, string>;
   modelInteractionTextContentSummaries: Record<string, string>;
   kvCacheTextContentPaths: Record<string, string>;

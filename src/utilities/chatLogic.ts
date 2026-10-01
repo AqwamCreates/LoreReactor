@@ -334,7 +334,6 @@ export async function buildChatRequestBody(
     return { body, knownCharacterNames, fetchErrors, characterClothingWearingStatuses };
 }
 
-// STRICTLY USE LOCAL HISTORY FOR THIS SPECIFIC CHARACTER'S PERSPECTIVE
 export function convertIdsToDisplayNames(text: string, interactionData: InteractionData, character: Character): string {
     const profile = interactionData.Profile;
     const stripThinkTokens = profile?.stripThinkTokens ?? false;
@@ -410,9 +409,6 @@ export function createChatMessage(
     const remainingChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaximumChatStamina;
     const remainingActionStamina = previousMessage?.remainingActionStamina ?? effectiveMaximumActionStamina;
     
-    // FIXED: Use GLOBAL history to find the absolute last message for parentMessageId.
-    // This is a structural timeline operation, not a character-perspective operation.
-    // The new message must attach to the end of the overall timeline.
     const globalMessages = getGlobalMessageHistory(interactionData);
     const lastMessageId = globalMessages.length > 0 ? globalMessages[globalMessages.length - 1].id : null;
     const now = Date.now();
@@ -554,34 +550,4 @@ export function updatePartialMessageInInteractionData(
     }
 
     return { ...interactionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
-}
-
-export function deleteInteractionMessage(interactionData: InteractionData, messageId: string): { newHistories: Record<string, HistoryMessage[]>; invalidatedIds: string[] } {
-    const newHistories = { ...interactionData.interactionHistories };
-    
-    const allMessages = getGlobalMessageHistory(interactionData);
-    const targetGlobalIndex = allMessages.findIndex((m: HistoryMessage) => m.id === messageId);
-    
-    if (targetGlobalIndex === -1) return { newHistories: interactionData.interactionHistories, invalidatedIds: [] };
-
-    for (const [locId, messages] of Object.entries(newHistories)) {
-        const idx = messages.findIndex((m: HistoryMessage) => m.id === messageId);
-        if (idx !== -1) {
-            newHistories[locId] = messages.filter((m: HistoryMessage) => m.id !== messageId);
-            break;
-        }
-    }
-
-    const newAllMessages = getGlobalMessageHistory({ ...interactionData, interactionHistories: newHistories });
-    for (const [locId, messages] of Object.entries(newHistories)) {
-        newHistories[locId] = messages.map((m: HistoryMessage) => {
-            const globalIdx = newAllMessages.findIndex((am: HistoryMessage) => am.id === m.id);
-            if (globalIdx > targetGlobalIndex && (m.messageType === 'chat' || m.messageType === 'whisper')) {
-                return { ...m, kvCacheTextContentPaths: {}, kvCacheTextContentSummaryPaths: {}, kvCacheInteractionTextContentSummaries: {} } as ChatMessage | WhisperMessage;
-            }
-            return m;
-        });
-    }
-
-    return { newHistories, invalidatedIds: [messageId] };
 }

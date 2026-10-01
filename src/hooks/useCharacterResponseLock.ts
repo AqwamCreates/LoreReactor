@@ -4,7 +4,8 @@ import { useSessionStore } from './useSessionStore';
 
 export function useCharacterResponseLock() {
     const activeLocationLocksRef = useRef<Set<string>>(new Set());
-    const globalIsLoadingRef = useRef(false);
+    const isLoadingRef = useRef(false);
+    const isLoading = useSessionStore(s => s.isLoading);
 
     const acquireLock = useCallback((locationId?: string): boolean => {
         if (locationId) {
@@ -18,8 +19,8 @@ export function useCharacterResponseLock() {
             return true;
         }
 
-        if (globalIsLoadingRef.current) return false;
-        globalIsLoadingRef.current = true;
+        if (isLoadingRef.current) return false;
+        isLoadingRef.current = true;
         useSessionStore.setState({ isLoading: true });
         return true;
     }, []);
@@ -34,7 +35,7 @@ export function useCharacterResponseLock() {
             return;
         }
 
-        globalIsLoadingRef.current = false;
+        isLoadingRef.current = false;
         useSessionStore.setState({ isLoading: false });
     }, []);
 
@@ -43,6 +44,8 @@ export function useCharacterResponseLock() {
     }, []);
 
     return { 
+        isLoading,
+        isLoadingRef, // <--- Restored for backwards compatibility
         activeLocationLocksRef, 
         acquireLock, 
         releaseLock, 
