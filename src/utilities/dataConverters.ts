@@ -411,7 +411,7 @@ function parseCacheEfficiencyLevels(raw: unknown): Record<cacheEfficiencyConfigu
     return result;
 }
 
-function fillProfileDefaults(p: Record<string, unknown>): profile {
+function fillProfileDefaults(p: Record<string, unknown>): Profile {
     const now = Date.now();
     const rawNarrateTexts = (p.narrateTexts && typeof p.narrateTexts === 'object') ? p.narrateTexts as Record<string, unknown> : {};
     return {
@@ -557,7 +557,7 @@ export function resolveWorldCrossReferences(
     world: NonNullable<GeneratedOutput['world']>,
     injectLocationImages: boolean,
     allAudioTracks: AudioTrack[],
-): { characters: Character[]; contexts: Context[]; locations: Location[]; audioTracks: AudioTrack[]; promptBlocks: PromptBlock[]; profile?: profile } {
+): { characters: Character[]; contexts: Context[]; locations: Location[]; audioTracks: AudioTrack[]; promptBlocks: PromptBlock[]; profile?: Profile } {
     const characters = world.characters;
     const contexts = world.contexts;
     const locations = world.locations;

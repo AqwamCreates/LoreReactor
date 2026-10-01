@@ -50,7 +50,7 @@ export async function generateMessageSummary(
     message: HistoryMessage,
     maxTokens = 256,
     sampler?: Sampler,
-    profile?: profile,
+    profile?: Profile,
 ): Promise<string | null> {
     if (message.messageType !== 'chat') return null;
     const chatMsg = message as ChatMessage;
@@ -253,7 +253,7 @@ async function compressChunk(
     messages: HistoryMessage[],
     maxTokens = 512,
     sampler?: Sampler,
-    profile?: profile,
+    profile?: Profile,
 ): Promise<string | null> {
     const chatMessages = messages.filter(
         (m): m is ChatMessage => m.messageType === 'chat' && !!(m as ChatMessage).textContent?.trim()

@@ -2,7 +2,7 @@
 import type { ToolInvocation } from '../services/ToolInvocationParser';
 import { fetchLinkContent, buildSearchUrl } from '../utilities/linkFetcher';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from '../utilities/dialoguePromptLogic';
-import type { BaseMessage, Character, Context, Location, AudioTrack, profile, InteractionData, Inventory, ChatMessage, WhisperMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension, Account, MultiplayerData, toolUsageDisplayMode, HistoryMessage } from '../types';
+import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, WhisperMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension, Account, MultiplayerData, toolUsageDisplayMode, HistoryMessage } from '../types';
 import { findLatestMessage } from '../utilities/messageLogic';
 import { getGlobalMessageHistory } from '../utilities/timelineLogic';
 import { getCurrentLocation, getReachableLocationsByCharacter, isCharacterLockedFromLocation, getCoLocatedParticipants } from '../utilities/locationLogic';
@@ -27,7 +27,7 @@ export interface ToolExecutionContext {
     allStopPatterns?: StopPattern[];
     allSamplers?: Sampler[];
     allBudgetStrategies?: BudgetStrategy[];
-    allProfiles?: profile[];
+    allProfiles?: Profile[];
     allWorlds?: World[];
     allMemories?: Memory[];
     allExtensions?: Extension[];
@@ -61,6 +61,7 @@ function appendPendingAction(nextMessage: BaseMessage, action: PendingToolAction
     nextMessage.inventory = inventory;
 }
 
+// ─── Entity Resolution Helpers (Synchronized with ChatInput.tsx logic) ───
 function getSessionCharacters(interactionData: InteractionData | null): Character[] {
     return interactionData?.participants || [];
 }
@@ -139,15 +140,7 @@ export async function executeTool(
     const toolType = invocation.toolType;
     const args = invocation.args;
     const executeFunction = toolFunctions[toolType as string];
-    if (executeFunction) {
-        const result = await executeFunction(args, nextMessage, interactionData, context, displayMode);
-        // Ensure result fields are trimmed of rogue surrounding whitespaces/newlines
-        return {
-            ...result,
-            content: result.content.trim(),
-            displayReplacement: result.displayReplacement.trim(),
-        };
-    }
+    if (executeFunction) return executeFunction(args, nextMessage, interactionData, context, displayMode);
     console.warn(`Unknown tool type: ${toolType}`);
     const errorContent = `[Error: Unknown tool "${toolType}"]`;
     return { toolType, args, content: errorContent, displayReplacement: errorContent };
@@ -168,36 +161,28 @@ export async function executeTools(
     return results;
 }
 
+// ─── Help helper ────────────────────────────────────────────────────
 function helpResult(toolType: string, args: string, usage: string): ToolResult {
     return { toolType, args, content: usage, displayReplacement: `[${toolType}: ${usage.split('\n')[0]}]` };
 }
 
-// ─── Display Mode Formatter (Sanitized against rogue newlines) ───────
+// ─── Display Mode Formatter ────────────────────────────────────────
 export function formatToolDisplay(
     result: ToolResult,
     rawMatch: string,
     mode: toolUsageDisplayMode,
 ): string {
-    const cleanDisplay = result.displayReplacement.trim();
-    const cleanContent = result.content.trim();
-
     switch (mode) {
-        case 'none': 
-            return cleanDisplay;
+        case 'none': return result.displayReplacement;
         case 'icon': {
-            const iconMatch = cleanDisplay.match(/^\[?([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}⚡🔧💀🛠️✨📨🔒🔓👕🎙️📝📦🗺️🌐🔍🎲🪙📅⏱️❓💭🤫])/u);
-            return iconMatch ? iconMatch[1] : cleanDisplay;
+            const iconMatch = result.displayReplacement.match(/^\[?([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}⚡🔧💀🛠️✨📨🔒🔓👕🎙️📝📦🗺️🌐🔍🎲🪙📅⏱️❓💭🤫])/u);
+            return iconMatch ? iconMatch[1] : result.displayReplacement;
         }
-        case 'simple': 
-        case 'detailed': 
-            // Flatten internal newlines in inline display to prevent breaking message vertical rhythm
-            return cleanDisplay.replace(/\n+/g, ' ');
-        case 'full': 
-            return `[${result.toolType}(${result.args}) → ${cleanContent}]`;
-        case 'raw': 
-            return rawMatch;
-        default: 
-            return cleanDisplay.replace(/\n+/g, ' ');
+        case 'simple': return result.displayReplacement;
+        case 'detailed': return result.displayReplacement;
+        case 'full': return `[${result.toolType}(${result.args}) → ${result.content}]`;
+        case 'raw': return rawMatch;
+        default: return result.displayReplacement;
     }
 }
 
@@ -294,7 +279,7 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
     };
 }
 
-// ─── Random Pick ────────────────────────────────────────────────----
+// ─── Random Pick ────────────────────────────────────────────────────
 function executeRandomPick(expression: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     if (!expression.trim()) {
         return helpResult('pick', expression, 'pick <option1>, <option2>, ... — randomly picks one option from the list');
@@ -327,7 +312,7 @@ function executeClock(args: string, _nextMessage: BaseMessage, _interactionData:
     return { toolType: 'clock', args, content: timeStr, displayReplacement: `[🕰️ ${timeStr}]` };
 }
 
-// ─── Date / Calendar ────────────────────────────────────────────────
+// ─── Date ────────────────────────────────────────────────────────────
 function executeCalendar(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const now = new Date();
     const trimmed = args.trim().toLowerCase();
@@ -437,7 +422,7 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
         tableContext = contexts.find(c => c.name?.toLowerCase() === lowerTrimmed && c.text);
     }
     if (!tableContext || !tableContext.text) {
-        const errorContent = `[Error: RNG table "${trimmed}" not found.]`;
+        const errorContent = `[Error: RNG table "${trimmed}" not found. Use context ID or exact name. Create a context with entries formatted as "1-10: outcome text" per line.]`;
         return { toolType: 'rng', args, content: errorContent, displayReplacement: errorContent };
     }
     const lines = tableContext.text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -457,7 +442,7 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
         }
     }
     if (entries.length === 0) {
-        const errorContent = `[Error: Table "${tableContext.name}" has no valid entries.]`;
+        const errorContent = `[Error: Table "${tableContext.name}" has no valid entries. Format each line as "1-10: outcome" or "5: outcome".]`;
         return { toolType: 'rng', args, content: errorContent, displayReplacement: errorContent };
     }
     const roll = Math.floor(Math.random() * globalMax) + 1;
@@ -482,13 +467,14 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
     if (!targetLocation) return { toolType: 'move', args, content: `[Error: Location "${trimmed}" not found.]`, displayReplacement: `[Error: Location "${trimmed}" not found.]` };
     if (targetLocation.id === currentLocation.id) return { toolType: 'move', args, content: `Already at "${targetLocation.name}" (${targetLocation.id}).`, displayReplacement: `[🚶 Already at "${targetLocation.name}"]` };
     const isAdjacent = currentLocation.locationBindings?.includes(targetLocation.id) || targetLocation.locationBindings?.includes(currentLocation.id);
-    if (!isAdjacent) return { toolType: 'move', args, content: `[Error: "${targetLocation.name}" is not adjacent.]`, displayReplacement: `[Error: Not adjacent]` };
+    if (!isAdjacent) return { toolType: 'move', args, content: `[Error: "${targetLocation.name}" is not adjacent. Use teleport for non-adjacent movement.]`, displayReplacement: `[Error: Not adjacent]` };
     if (isCharacterLockedFromLocation(interactionData, nextMessage.character.id, targetLocation.id)) {
-        return { toolType: 'move', args, content: `[Error: "${targetLocation.name}" is locked for you.]`, displayReplacement: `[Error: Location locked]` };
+        return { toolType: 'move', args, content: `[Error: "${targetLocation.name}" is locked for you. Use key unlock first.]`, displayReplacement: `[Error: Location locked]` };
     }
     return { toolType: 'move', args, content: `Moved to "${targetLocation.name}" (${targetLocation.id}).`, displayReplacement: `[🚶 Moved to "${targetLocation.name}"]` };
 }
 
+// ─── Timer / Stopwatch Helpers ──────────────────────────────────────
 interface TimerEntry { name: string; targetTimestamp: number }
 interface StopwatchEntry { name: string; startTimestamp: number; pausedElapsedMs?: number }
 
@@ -548,9 +534,9 @@ function executeTimer(args: string, nextMessage: BaseMessage, interactionData: I
     const now = Date.now();
     switch (subcommand) {
         case 'set': {
-            if (parts.length < 3) return { toolType: 'timer', args, content: '[Error: Usage: timer set <name> <duration>]', displayReplacement: '[Error: Usage]' };
+            if (parts.length < 3) return { toolType: 'timer', args, content: '[Error: Usage: timer set <name> <duration>]', displayReplacement: '[Error: Usage: timer set <name> <duration>]' };
             const name = parts[1], durationStr = parts.slice(2).join(' '), durationMs = parseDurationToMs(durationStr);
-            if (!durationMs) return { toolType: 'timer', args, content: `[Error: Invalid duration "${durationStr}"]`, displayReplacement: '[Error: Invalid duration]' };
+            if (!durationMs) return { toolType: 'timer', args, content: `[Error: Invalid duration "${durationStr}"]`, displayReplacement: `[Error: Invalid duration]` };
             const filtered = timers.filter(t => t.name.toLowerCase() !== name.toLowerCase());
             filtered.push({ name, targetTimestamp: now + durationMs });
             saveTimers(inventory, filtered); nextMessage.inventory = inventory;
@@ -566,13 +552,13 @@ function executeTimer(args: string, nextMessage: BaseMessage, interactionData: I
                 return { toolType: 'timer', args, content: `Timer "${timer.name}": ${formatDuration(remaining)} remaining.`, displayReplacement: `[⏱️ "${timer.name}": ${formatDuration(remaining)} left]` };
             }
             if (timers.length === 0) return { toolType: 'timer', args, content: 'No active timers.', displayReplacement: '[⏱️ No active timers]' };
-            return { toolType: 'timer', args, content: timers.map(t => { const r = t.targetTimestamp - now; return r <= 0 ? `${t.name}: EXPIRED` : `${t.name}: ${formatDuration(r)} remaining`; }).join('\n'), displayReplacement: `[⏱️ ${timers.length} active timer(s)]` };
+            return { toolType: 'timer', args, content: timers.map(t => { const r = t.targetTimestamp - now; return r <= 0 ? `${t.name}: EXPIRED` : `${t.name}: ${formatDuration(r)} remaining`; }).join('\n'), displayReplacement: `[⏱️ ${timers.length} timer(s)]` };
         }
         case 'delete': {
-            if (parts.length < 2) return { toolType: 'timer', args, content: '[Error: Usage: timer delete <name>]', displayReplacement: '[Error: Usage]' };
+            if (parts.length < 2) return { toolType: 'timer', args, content: '[Error: Usage: timer delete <name>]', displayReplacement: '[Error: Usage: timer delete <name>]' };
             const name = parts.slice(1).join(' ').toLowerCase();
             const idx = timers.findIndex(t => t.name.toLowerCase() === name);
-            if (idx === -1) return { toolType: 'timer', args, content: `No timer named "${name}".`, displayReplacement: '[⏱️ No timer]' };
+            if (idx === -1) return { toolType: 'timer', args, content: `No timer named "${name}".`, displayReplacement: `[⏱️ No timer: "${name}"]` };
             const deletedName = timers[idx].name; timers.splice(idx, 1);
             saveTimers(inventory, timers); nextMessage.inventory = inventory;
             return { toolType: 'timer', args, content: `Timer "${deletedName}" deleted.`, displayReplacement: `[⏱️ Deleted: "${deletedName}"]` };
@@ -581,7 +567,7 @@ function executeTimer(args: string, nextMessage: BaseMessage, interactionData: I
             if (timers.length === 0) return { toolType: 'timer', args, content: 'No active timers.', displayReplacement: '[⏱️ No active timers]' };
             return { toolType: 'timer', args, content: timers.map(t => { const r = t.targetTimestamp - now; return r <= 0 ? `${t.name}: EXPIRED` : `${t.name}: ${formatDuration(r)} remaining`; }).join('\n'), displayReplacement: `[⏱️ ${timers.length} timer(s)]` };
         }
-        default: return { toolType: 'timer', args, content: `[Error: Unknown timer command.]`, displayReplacement: '[Error: Unknown command]' };
+        default: return { toolType: 'timer', args, content: `[Error: Unknown timer command "${subcommand}". Use set, check, delete, or list.]`, displayReplacement: `[Error: Unknown timer command]` };
     }
 }
 
@@ -600,49 +586,48 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
     const now = Date.now();
     switch (subcommand) {
         case 'start': {
-            if (parts.length < 2) return { toolType: 'stopwatch', args, content: '[Error: Usage: stopwatch start <name>]', displayReplacement: '[Error: Usage]' };
+            if (parts.length < 2) return { toolType: 'stopwatch', args, content: '[Error: Usage: stopwatch start <name>]', displayReplacement: '[Error: Usage: stopwatch start <name>]' };
             const name = parts.slice(1).join(' ');
             const filtered = stopwatches.filter(s => s.name.toLowerCase() !== name.toLowerCase());
             filtered.push({ name, startTimestamp: now }); saveStopwatches(inventory, filtered); nextMessage.inventory = inventory;
             return { toolType: 'stopwatch', args, content: `Stopwatch "${name}" started.`, displayReplacement: `[⏱️ Stopwatch "${name}" started]` };
         }
         case 'pause': {
-            if (parts.length < 2) return { toolType: 'stopwatch', args, content: '[Error: Usage: stopwatch pause <name>]', displayReplacement: '[Error: Usage]' };
+            if (parts.length < 2) return { toolType: 'stopwatch', args, content: '[Error: Usage: stopwatch pause <name>]', displayReplacement: '[Error: Usage: stopwatch pause <name>]' };
             const sw = stopwatches.find(s => s.name.toLowerCase() === parts.slice(1).join(' ').toLowerCase());
-            if (!sw) return { toolType: 'stopwatch', args, content: `No stopwatch.`, displayReplacement: '[⏱️ No stopwatch]' };
-            if (sw.pausedElapsedMs !== undefined) return { toolType: 'stopwatch', args, content: `Already paused.`, displayReplacement: '[⏱️ Already paused]' };
+            if (!sw) return { toolType: 'stopwatch', args, content: `No stopwatch named "${parts.slice(1).join(' ')}".`, displayReplacement: `[⏱️ No stopwatch]` };
+            if (sw.pausedElapsedMs !== undefined) return { toolType: 'stopwatch', args, content: `Already paused.`, displayReplacement: `[⏱️ Already paused]` };
             sw.pausedElapsedMs = now - sw.startTimestamp; saveStopwatches(inventory, stopwatches); nextMessage.inventory = inventory;
             return { toolType: 'stopwatch', args, content: `Paused at ${formatDuration(sw.pausedElapsedMs)}.`, displayReplacement: `[⏱️ Paused: ${formatDuration(sw.pausedElapsedMs)}]` };
         }
         case 'resume': {
-            if (parts.length < 2) return { toolType: 'stopwatch', args, content: '[Error: Usage: stopwatch resume <name>]', displayReplacement: '[Error: Usage]' };
+            if (parts.length < 2) return { toolType: 'stopwatch', args, content: '[Error: Usage: stopwatch resume <name>]', displayReplacement: '[Error: Usage: stopwatch resume <name>]' };
             const sw = stopwatches.find(s => s.name.toLowerCase() === parts.slice(1).join(' ').toLowerCase());
-            if (!sw) return { toolType: 'stopwatch', args, content: `No stopwatch.`, displayReplacement: '[⏱️ No stopwatch]' };
-            if (sw.pausedElapsedMs === undefined) return { toolType: 'stopwatch', args, content: `Not paused.`, displayReplacement: '[⏱️ Not paused]' };
+            if (!sw) return { toolType: 'stopwatch', args, content: `No stopwatch.`, displayReplacement: `[⏱️ No stopwatch]` };
+            if (sw.pausedElapsedMs === undefined) return { toolType: 'stopwatch', args, content: `Not paused.`, displayReplacement: `[⏱️ Not paused]` };
             sw.startTimestamp = now - sw.pausedElapsedMs; delete sw.pausedElapsedMs; saveStopwatches(inventory, stopwatches); nextMessage.inventory = inventory;
-            return { toolType: 'stopwatch', args, content: `Resumed.`, displayReplacement: '[⏱️ Resumed]' };
+            return { toolType: 'stopwatch', args, content: `Resumed.`, displayReplacement: `[⏱️ Resumed]` };
         }
         case 'stop': {
-            if (parts.length < 2) return { toolType: 'stopwatch', args, content: '[Error: Usage: stopwatch stop <name>]', displayReplacement: '[Error: Usage]' };
+            if (parts.length < 2) return { toolType: 'stopwatch', args, content: '[Error: Usage: stopwatch stop <name>]', displayReplacement: '[Error: Usage: stopwatch stop <name>]' };
             const idx = stopwatches.findIndex(s => s.name.toLowerCase() === parts.slice(1).join(' ').toLowerCase());
-            if (idx === -1) return { toolType: 'stopwatch', args, content: `No stopwatch.`, displayReplacement: '[⏱️ No stopwatch]' };
+            if (idx === -1) return { toolType: 'stopwatch', args, content: `No stopwatch.`, displayReplacement: `[⏱️ No stopwatch]` };
             const sw = stopwatches[idx], elapsed = sw.pausedElapsedMs !== undefined ? sw.pausedElapsedMs : now - sw.startTimestamp;
             stopwatches.splice(idx, 1); saveStopwatches(inventory, stopwatches); nextMessage.inventory = inventory;
             return { toolType: 'stopwatch', args, content: `Stopped at ${formatDuration(elapsed)}.`, displayReplacement: `[⏱️ Stopped: ${formatDuration(elapsed)}]` };
         }
         case 'reset': {
-            if (parts.length < 2) return { toolType: 'stopwatch', args, content: '[Error: Usage: stopwatch reset <name>]', displayReplacement: '[Error: Usage]' };
+            if (parts.length < 2) return { toolType: 'stopwatch', args, content: '[Error: Usage: stopwatch reset <name>]', displayReplacement: '[Error: Usage: stopwatch reset <name>]' };
             const sw = stopwatches.find(s => s.name.toLowerCase() === parts.slice(1).join(' ').toLowerCase());
-            if (!sw) return { toolType: 'stopwatch', args, content: `No stopwatch.`, displayReplacement: '[⏱️ No stopwatch]' };
+            if (!sw) return { toolType: 'stopwatch', args, content: `No stopwatch.`, displayReplacement: `[⏱️ No stopwatch]` };
             sw.startTimestamp = now; delete sw.pausedElapsedMs; saveStopwatches(inventory, stopwatches); nextMessage.inventory = inventory;
-            return { toolType: 'stopwatch', args, content: `Reset.`, displayReplacement: '[⏱️ Reset]' };
+            return { toolType: 'stopwatch', args, content: `Reset.`, displayReplacement: `[⏱️ Reset]` };
         }
-        case 'check':
-        case 'list': {
+        case 'check': {
             const specificName = parts.slice(1).join(' ').toLowerCase();
-            if (specificName && subcommand === 'check') {
+            if (specificName) {
                 const sw = stopwatches.find(s => s.name.toLowerCase() === specificName);
-                if (!sw) return { toolType: 'stopwatch', args, content: `No stopwatch.`, displayReplacement: '[⏱️ No stopwatch]' };
+                if (!sw) return { toolType: 'stopwatch', args, content: `No stopwatch.`, displayReplacement: `[⏱️ No stopwatch]` };
                 const elapsed = sw.pausedElapsedMs !== undefined ? sw.pausedElapsedMs : now - sw.startTimestamp;
                 const status = sw.pausedElapsedMs !== undefined ? 'PAUSED' : 'RUNNING';
                 return { toolType: 'stopwatch', args, content: `${sw.name}: ${formatDuration(elapsed)} (${status})`, displayReplacement: `[⏱️ ${sw.name}: ${formatDuration(elapsed)} ${status}]` };
@@ -650,7 +635,11 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
             if (stopwatches.length === 0) return { toolType: 'stopwatch', args, content: 'No active stopwatches.', displayReplacement: '[⏱️ No active stopwatches]' };
             return { toolType: 'stopwatch', args, content: stopwatches.map(s => { const e = s.pausedElapsedMs !== undefined ? s.pausedElapsedMs : now - s.startTimestamp; return `${s.name}: ${formatDuration(e)} (${s.pausedElapsedMs !== undefined ? 'PAUSED' : 'RUNNING'})`; }).join('\n'), displayReplacement: `[⏱️ ${stopwatches.length} stopwatch(es)]` };
         }
-        default: return { toolType: 'stopwatch', args, content: `[Error: Unknown command]`, displayReplacement: '[Error: Unknown command]' };
+        case 'list': {
+            if (stopwatches.length === 0) return { toolType: 'stopwatch', args, content: 'No active stopwatches.', displayReplacement: '[⏱️ No active stopwatches]' };
+            return { toolType: 'stopwatch', args, content: stopwatches.map(s => { const e = s.pausedElapsedMs !== undefined ? s.pausedElapsedMs : now - s.startTimestamp; return `${s.name}: ${formatDuration(e)} (${s.pausedElapsedMs !== undefined ? 'PAUSED' : 'RUNNING'})`; }).join('\n'), displayReplacement: `[⏱️ ${stopwatches.length} stopwatch(es)]` };
+        }
+        default: return { toolType: 'stopwatch', args, content: `[Error: Unknown stopwatch command "${subcommand}"]`, displayReplacement: `[Error: Unknown stopwatch command]` };
     }
 }
 
@@ -680,48 +669,48 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
     const now = Date.now();
     switch (subcommand) {
         case 'set': {
-            if (parts.length < 4) return { toolType: 'schedule', args, content: '[Error: Usage: schedule set <name> <duration> <action>]', displayReplacement: '[Error: Usage]' };
+            if (parts.length < 4) return { toolType: 'schedule', args, content: '[Error: Usage: schedule set <name> <duration> <action>]', displayReplacement: '[Error: Usage: schedule set <name> <duration> <action>]' };
             const name = parts[1]; const durationStr = parts[2]; const action = parts.slice(3).join(' ');
             const durationMs = parseDurationToMs(durationStr);
-            if (!durationMs) return { toolType: 'schedule', args, content: `[Error: Invalid duration]`, displayReplacement: '[Error: Invalid duration]' };
+            if (!durationMs) return { toolType: 'schedule', args, content: `[Error: Invalid duration "${durationStr}"]`, displayReplacement: `[Error: Invalid duration]` };
             const filtered = schedules.filter(s => s.name.toLowerCase() !== name.toLowerCase());
             filtered.push({ name, triggerTimestamp: now + durationMs, action });
             saveSchedules(inventory, filtered); nextMessage.inventory = inventory;
             return { toolType: 'schedule', args, content: `Scheduled "${name}" in ${formatDuration(durationMs)}: ${action}`, displayReplacement: `[📅 Scheduled "${name}" in ${formatDuration(durationMs)}]` };
         }
         case 'set_repeat': {
-            if (parts.length < 4) return { toolType: 'schedule', args, content: '[Error: Usage: schedule set_repeat <name> <interval> <action>]', displayReplacement: '[Error: Usage]' };
+            if (parts.length < 4) return { toolType: 'schedule', args, content: '[Error: Usage: schedule set_repeat <name> <interval> <action>]', displayReplacement: '[Error: Usage: schedule set_repeat <name> <interval> <action>]' };
             const name = parts[1]; const intervalStr = parts[2]; const action = parts.slice(3).join(' ');
             const intervalMs = parseDurationToMs(intervalStr);
-            if (!intervalMs) return { toolType: 'schedule', args, content: `[Error: Invalid interval]`, displayReplacement: '[Error: Invalid interval]' };
+            if (!intervalMs) return { toolType: 'schedule', args, content: `[Error: Invalid interval "${intervalStr}"]`, displayReplacement: `[Error: Invalid interval]` };
             const filtered = schedules.filter(s => s.name.toLowerCase() !== name.toLowerCase());
             filtered.push({ name, triggerTimestamp: now + intervalMs, action, repeatIntervalMs: intervalMs });
             saveSchedules(inventory, filtered); nextMessage.inventory = inventory;
-            return { toolType: 'schedule', args, content: `Repeating schedule "${name}" every ${formatDuration(intervalMs)}: ${action}`, displayReplacement: `[📅 Repeating "${name}"]` };
+            return { toolType: 'schedule', args, content: `Repeating schedule "${name}" every ${formatDuration(intervalMs)}: ${action}`, displayReplacement: `[📅 Repeating "${name}" every ${formatDuration(intervalMs)}]` };
         }
         case 'check': {
             const specificName = parts.slice(1).join(' ').toLowerCase();
             if (specificName) {
                 const entry = schedules.find(s => s.name.toLowerCase() === specificName);
-                if (!entry) return { toolType: 'schedule', args, content: `No schedule named "${specificName}".`, displayReplacement: '[📅 No schedule]' };
+                if (!entry) return { toolType: 'schedule', args, content: `No schedule named "${specificName}".`, displayReplacement: `[📅 No schedule: "${specificName}"]` };
                 const remaining = entry.triggerTimestamp - now;
                 const repeatStr = entry.repeatIntervalMs ? ` (repeats every ${formatDuration(entry.repeatIntervalMs)})` : ' (one-time)';
                 if (remaining <= 0) return { toolType: 'schedule', args, content: `Schedule "${entry.name}" TRIGGERED: ${entry.action}${repeatStr}`, displayReplacement: `[📅 "${entry.name}": TRIGGERED]` };
-                return { toolType: 'schedule', args, content: `Schedule "${entry.name}": ${formatDuration(remaining)} remaining.`, displayReplacement: `[📅 "${entry.name}": ${formatDuration(remaining)} left]` };
+                return { toolType: 'schedule', args, content: `Schedule "${entry.name}": ${formatDuration(remaining)} remaining. Action: ${entry.action}${repeatStr}`, displayReplacement: `[📅 "${entry.name}": ${formatDuration(remaining)} left]` };
             }
             if (schedules.length === 0) return { toolType: 'schedule', args, content: 'No active schedules.', displayReplacement: '[📅 No active schedules]' };
             const lines = schedules.map(s => {
                 const remaining = s.triggerTimestamp - now;
-                const repeatStr = s.repeatIntervalMs ? ` (repeats ${formatDuration(s.repeatIntervalMs)})` : '';
-                return remaining <= 0 ? `${s.name}: TRIGGERED → ${s.action}` : `${s.name}: ${formatDuration(remaining)} left → ${s.action}${repeatStr}`;
+                const repeatStr = s.repeatIntervalMs ? ` (repeats ${formatDuration(s.repeatIntervalMs)})` : ' (once)';
+                return remaining <= 0 ? `${s.name}: TRIGGERED → ${s.action}${repeatStr}` : `${s.name}: ${formatDuration(remaining)} left → ${s.action}${repeatStr}`;
             });
             return { toolType: 'schedule', args, content: lines.join('\n'), displayReplacement: `[📅 ${schedules.length} schedule(s)]` };
         }
         case 'cancel': {
-            if (parts.length < 2) return { toolType: 'schedule', args, content: '[Error: Usage: schedule cancel <name>]', displayReplacement: '[Error: Usage]' };
+            if (parts.length < 2) return { toolType: 'schedule', args, content: '[Error: Usage: schedule cancel <name>]', displayReplacement: '[Error: Usage: schedule cancel <name>]' };
             const name = parts.slice(1).join(' ').toLowerCase();
             const idx = schedules.findIndex(s => s.name.toLowerCase() === name);
-            if (idx === -1) return { toolType: 'schedule', args, content: `No schedule named "${name}".`, displayReplacement: '[📅 No schedule]' };
+            if (idx === -1) return { toolType: 'schedule', args, content: `No schedule named "${name}".`, displayReplacement: `[📅 No schedule: "${name}"]` };
             const cancelledName = schedules[idx].name; schedules.splice(idx, 1);
             saveSchedules(inventory, schedules); nextMessage.inventory = inventory;
             return { toolType: 'schedule', args, content: `Cancelled schedule "${cancelledName}".`, displayReplacement: `[📅 Cancelled: "${cancelledName}"]` };
@@ -729,17 +718,18 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
         case 'cancel_all': {
             if (schedules.length === 0) return { toolType: 'schedule', args, content: 'No schedules to cancel.', displayReplacement: '[📅 No schedules]' };
             const count = schedules.length; saveSchedules(inventory, []); nextMessage.inventory = inventory;
-            return { toolType: 'schedule', args, content: `Cancelled all ${count} schedule(s).`, displayReplacement: `[📅 Cancelled all]` };
+            return { toolType: 'schedule', args, content: `Cancelled all ${count} schedule(s).`, displayReplacement: `[📅 Cancelled all ${count} schedule(s)]` };
         }
         case 'list': {
             if (schedules.length === 0) return { toolType: 'schedule', args, content: 'No active schedules.', displayReplacement: '[📅 No active schedules]' };
             const lines = schedules.map(s => {
                 const remaining = s.triggerTimestamp - now;
-                return remaining <= 0 ? `${s.name}: TRIGGERED → ${s.action}` : `${s.name}: ${formatDuration(remaining)} left → ${s.action}`;
+                const repeatStr = s.repeatIntervalMs ? ` (repeats ${formatDuration(s.repeatIntervalMs)})` : ' (once)';
+                return remaining <= 0 ? `${s.name}: TRIGGERED → ${s.action}${repeatStr}` : `${s.name}: ${formatDuration(remaining)} left → ${s.action}${repeatStr}`;
             });
             return { toolType: 'schedule', args, content: lines.join('\n'), displayReplacement: `[📅 ${schedules.length} schedule(s)]` };
         }
-        default: return { toolType: 'schedule', args, content: `[Error: Unknown command]`, displayReplacement: '[Error: Unknown command]' };
+        default: return { toolType: 'schedule', args, content: `[Error: Unknown schedule command "${subcommand}". Use set, set_repeat, check, cancel, cancel_all, or list.]`, displayReplacement: `[Error: Unknown schedule command]` };
     }
 }
 
@@ -782,9 +772,7 @@ async function executeWeb(query: string, _nextMessage: BaseMessage, _interaction
         }
         const result = validResults[0];
         const label = isDirectUrl ? `Fetched: "${trimmedQuery}"` : `Searched: "${trimmedQuery}"`;
-        // Clean single line preview for displayReplacement
-        const cleanContentPreview = result.content.trim().replace(/\n+/g, ' ').substring(0, 150);
-        return { toolType: 'web', args: query, content: result.content, displayReplacement: `[🌐 ${label}] ${cleanContentPreview}...` };
+        return { toolType: 'web', args: query, content: result.content, displayReplacement: `[🌐 ${label}] ${result.content}` };
     } catch (e) {
         const errorContent = `[Error: Web request failed - ${(e as Error).message}]`;
         return { toolType: 'web', args: query, content: errorContent, displayReplacement: errorContent };
@@ -804,23 +792,27 @@ function executeDialogue(args: string, nextMessage: BaseMessage, interactionData
     }
     const subcommand = trimmed.split(/\s+/)[0]?.toLowerCase();
     if (subcommand === 'list') {
-        const entries = dialoguePrompts.map(dp => `${dp.id} | ${dp.name}`);
+        const entries = dialoguePrompts.map(dp => {
+            const hasTriggers = (dp.regularExpressionActivationTriggers?.length ?? 0) > 0;
+            const bindings = dp.dialoguePromptBindings?.length ?? 0;
+            return `${dp.id} | ${dp.name}${hasTriggers ? ' [regex]' : ''}${bindings > 0 ? ` [→${bindings}]` : ''}`;
+        });
         return { toolType: 'dialogue', args, content: entries.join('\n'), displayReplacement: `[💬 ${entries.length} dialogue prompt(s)]` };
     }
     if (subcommand === 'recall') {
         const queryId = trimmed.slice(subcommand.length).trim();
-        if (!queryId) return { toolType: 'dialogue', args, content: '[Error: Missing ID]', displayReplacement: '[Error: Missing ID]' };
+        if (!queryId) return { toolType: 'dialogue', args, content: '[Error: Usage: dialogue recall <id>]', displayReplacement: '[Error: Missing ID]' };
         const matched = dialoguePrompts.filter(dp => dp.id === queryId || dp.id.startsWith(queryId));
-        if (matched.length === 0) return { toolType: 'dialogue', args, content: `No dialogue prompt matching ID "${queryId}".`, displayReplacement: '[💬 No match]' };
+        if (matched.length === 0) return { toolType: 'dialogue', args, content: `No dialogue prompt matching ID "${queryId}".`, displayReplacement: `[💬 No match for "${queryId}"]` };
         const textContentArray: string[] = [];
         const history = getGlobalMessageHistory(interactionData);
         for (const msg of history) { if (msg.messageType === 'chat') textContentArray.push((msg as ChatMessage).textContent); }
         const searchSpace = buildDialogueSearchSpace(textContentArray);
         const recalledContents = collectActiveDialoguePromptContent(matched, searchSpace);
-        if (recalledContents.length === 0) return { toolType: 'dialogue', args, content: `Matched prompts but none are currently active.`, displayReplacement: '[💬 Inactive]' };
+        if (recalledContents.length === 0) return { toolType: 'dialogue', args, content: `Matched ${matched.length} prompt(s) by ID but none are currently active.`, displayReplacement: `[💬 Matched but inactive]` };
         return { toolType: 'dialogue', args, content: recalledContents.join('\n'), displayReplacement: `[💬 Recalled ${recalledContents.length} dialogue instruction(s)]` };
     }
-    return { toolType: 'dialogue', args, content: '[Error: Unknown dialogue command]', displayReplacement: '[Error: Unknown command]' };
+    return { toolType: 'dialogue', args, content: `[Error: Unknown dialogue command "${subcommand}". Use list or recall <id>.]`, displayReplacement: `[Error: Unknown dialogue command]` };
 }
 
 // ─── Knowledge ──────────────────────────────────────────────────────
@@ -828,29 +820,34 @@ function executeKnowledge(args: string, nextMessage: BaseMessage, _interactionDa
     const trimmed = args.trim();
     const character = nextMessage.character;
     const knowledgePrompts = character.knowledgePrompts;
-    if (!knowledgePrompts || knowledgePrompts.length === 0) return helpResult('knowledge', args, 'knowledge — no knowledge prompts configured');
-    if (!trimmed) return helpResult('knowledge', args, 'knowledge list | knowledge recall <id>');
+    if (!knowledgePrompts || knowledgePrompts.length === 0) return helpResult('knowledge', args, 'knowledge — no knowledge prompts configured for this character');
+    if (!trimmed) return helpResult('knowledge', args, 'knowledge list | knowledge recall <id> — recall knowledge by ID');
     const subcommand = trimmed.split(/\s+/)[0]?.toLowerCase();
     if (subcommand === 'list') {
-        const entries = knowledgePrompts.map(kp => `${kp.id} | ${kp.name}`);
+        const entries = knowledgePrompts.map(kp => {
+            const hasTriggers = (kp.regularExpressionActivationTriggers?.length ?? 0) > 0;
+            const bindings = kp.knowledgePromptBindings?.length ?? 0;
+            return `${kp.id} | ${kp.name}${hasTriggers ? ' [regex]' : ''}${bindings > 0 ? ` [→${bindings}]` : ''}`;
+        });
         return { toolType: 'knowledge', args, content: entries.join('\n'), displayReplacement: `[🧠 ${entries.length} knowledge prompt(s)]` };
     }
     if (subcommand === 'recall') {
         const queryId = trimmed.slice(subcommand.length).trim();
-        if (!queryId) return { toolType: 'knowledge', args, content: '[Error: Missing ID]', displayReplacement: '[Error: Missing ID]' };
-        let matched = knowledgePrompts.filter(kp => kp.id === queryId || kp.id.startsWith(queryId));
-        if (matched.length === 0) return { toolType: 'knowledge', args, content: `No knowledge matching ID "${queryId}".`, displayReplacement: '[🧠 No match]' };
+        if (!queryId) return { toolType: 'knowledge', args, content: '[Error: Usage: knowledge recall <id>]', displayReplacement: '[Error: Missing ID]' };
+        let matched = knowledgePrompts.filter(kp => kp.id === queryId);
+        if (matched.length === 0) matched = knowledgePrompts.filter(kp => kp.id.startsWith(queryId));
+        if (matched.length === 0) return { toolType: 'knowledge', args, content: `No knowledge matching ID "${queryId}". Use "knowledge list" to see available IDs.`, displayReplacement: `[🧠 No match for "${queryId}"]` };
         const combined = matched.map(kp => `[${kp.id}] ${kp.name} ${kp.content}`).join(' --- ');
         return { toolType: 'knowledge', args, content: combined, displayReplacement: `[🧠 Recalled ${matched.length} knowledge entry(ies)]` };
     }
-    return { toolType: 'knowledge', args, content: '[Error: Unknown command]', displayReplacement: '[Error: Unknown command]' };
+    return { toolType: 'knowledge', args, content: `[Error: Unknown knowledge command "${subcommand}". Use list or recall <id>.]`, displayReplacement: `[Error: Unknown knowledge command]` };
 }
 
 // ─── Memory ─────────────────────────────────────────────────────────
 async function executeMemory(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): Promise<ToolResult> {
     const trimmed = args.trim();
     const character = nextMessage.character;
-    if (!trimmed) return helpResult('memory', args, 'memory list | memory recall [id] | memory save');
+    if (!trimmed) return helpResult('memory', args, 'memory list | memory recall [id] | memory save — save uses auto-summarization, no content arg needed');
     const parts = trimmed.split(/\s+/);
     const subcommand = parts[0]?.toLowerCase();
     if (subcommand === 'list') {
@@ -875,8 +872,8 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
                 const m = mems.find(mem => mem.id === queryId || mem.id.startsWith(queryId));
                 if (m) { foundMemory = m; break; }
             }
-            if (!foundMemory) return { toolType: 'memory', args, content: `No memory matching ID "${queryId}".`, displayReplacement: '[🧠 No match]' };
-            return { toolType: 'memory', args, content: `[${foundMemory.id}] ${foundMemory.name} ${foundMemory.content}`, displayReplacement: '[🧠 Recalled 1 memory]' };
+            if (!foundMemory) return { toolType: 'memory', args, content: `No memory matching ID "${queryId}". Use "memory list" to see available IDs.`, displayReplacement: `[🧠 No match for "${queryId}"]` };
+            return { toolType: 'memory', args, content: `[${foundMemory.id}] ${foundMemory.name} ${foundMemory.content}`, displayReplacement: `[🧠 Recalled 1 memory]` };
         }
         const participantIds = new Set(getSessionCharacters(interactionData).map(p => p.id));
         const relevantMemories: string[] = [];
@@ -888,19 +885,19 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
                 }
             }
         }
-        if (relevantMemories.length === 0) return { toolType: 'memory', args, content: 'No relevant memories.', displayReplacement: '[🧠 No relevant memories]' };
+        if (relevantMemories.length === 0) return { toolType: 'memory', args, content: 'No relevant memories for current conversation.', displayReplacement: '[🧠 No relevant memories]' };
         return { toolType: 'memory', args, content: relevantMemories.join(' --- '), displayReplacement: `[🧠 Recalled ${relevantMemories.length} memory(ies)]` };
     }
     if (subcommand === 'save') {
         const otherParticipants = getSessionCharacters(interactionData).filter(p => p.id !== character.id);
-        if (otherParticipants.length === 0) return { toolType: 'memory', args, content: '[Error: No other participants.]', displayReplacement: '[🧠 No participants]' };
+        if (otherParticipants.length === 0) return { toolType: 'memory', args, content: '[Error: No other participants to create memories with.]', displayReplacement: '[🧠 No participants]' };
         const ts = Date.now();
         let summaryText: string | null = null;
         try {
             const text = await generateCharacterMemory(interactionData, character, '', 512);
             if (text) summaryText = text;
         } catch {}
-        if (!summaryText) return { toolType: 'memory', args, content: '[Error: Summarization failed.]', displayReplacement: '[🧠 Summarization failed]' };
+        if (!summaryText) return { toolType: 'memory', args, content: '[Error: Failed to generate memory summary.]', displayReplacement: '[🧠 Summarization failed]' };
         if (!character.memories) character.memories = {};
         for (const other of otherParticipants) {
             const newMemory: Memory = { id: uuidv4(), name: `Memory with ${other.name}`, content: summaryText, interactionData: interactionData, firstCreatedTimestamp: ts, lastUpdatedTimestamp: ts };
@@ -910,12 +907,12 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
         character.memories.global = [globalMemory];
         try { await saveRawCharacter(character); } catch (e) {
             console.warn('Failed to save character memories:', e);
-            return { toolType: 'memory', args, content: '[Error: Save failed]', displayReplacement: '[🧠 Save failed]' };
+            return { toolType: 'memory', args, content: '[Error: Failed to save memory]', displayReplacement: '[🧠 Save failed]' };
         }
         context?.addToast?.(`🧠 Memory saved for ${character.name}`, 'success');
-        return { toolType: 'memory', args, content: `Memory saved: "${summaryText.substring(0, 100)}..."`, displayReplacement: '[🧠 Memory saved]' };
+        return { toolType: 'memory', args, content: `Memory saved: "${summaryText.substring(0, 100)}${summaryText.length > 100 ? '...' : ''}"`, displayReplacement: `[🧠 Memory saved]` };
     }
-    return { toolType: 'memory', args, content: '[Error: Unknown memory command]', displayReplacement: '[Error: Unknown command]' };
+    return { toolType: 'memory', args, content: `[Error: Unknown memory command "${subcommand}". Use list, recall [id], or save.]`, displayReplacement: `[Error: Unknown memory command]` };
 }
 
 // ─── Lookup ─────────────────────────────────────────────────────────
@@ -935,14 +932,14 @@ function executeLookup(args: string, _nextMessage: BaseMessage, interactionData:
             matches.push({ id: context.id, name: context.name || 'Untitled', snippet });
         }
     }
-    if (matches.length === 0) return { toolType: 'lookup', args, content: `No results for "${args.trim()}".`, displayReplacement: `[🔍 No results]` };
-    return { toolType: 'lookup', args, content: matches.map(m => `[${m.id}] ${m.name}: ${m.snippet}`).join('\n'), displayReplacement: `[🔍 Found ${matches.length} result(s)]` };
+    if (matches.length === 0) return { toolType: 'lookup', args, content: `No results for "${args.trim()}".`, displayReplacement: `[🔍 No results for "${args.trim()}"]` };
+    return { toolType: 'lookup', args, content: matches.map(m => `[${m.id}] ${m.name}: ${m.snippet}`).join('\n'), displayReplacement: `[🔍 Found ${matches.length} result(s) for "${args.trim()}"]` };
 }
 
 // ─── Map ────────────────────────────────────────────────────────────
 function executeMap(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
-    if (!trimmed) return helpResult('map', args, 'map <location_id> or map <loc1_id> to <loc2_id>');
+    if (!trimmed) return helpResult('map', args, 'map <location_id> or map <loc1_id> to <loc2_id> — distance between locations');
     const locations = interactionData.locations || [];
     if (locations.length === 0) return { toolType: 'map', args, content: '[Error: No locations available.]', displayReplacement: '[Error: No locations]' };
     const toMatch = trimmed.match(/^(\S+)\s+to\s+(\S+)$/i);
@@ -954,8 +951,8 @@ function executeMap(args: string, _nextMessage: BaseMessage, interactionData: In
         fromLoc = getCurrentLocation(interactionData, _nextMessage.character);
         toLoc = resolveLocation(trimmed, interactionData);
     }
-    if (!toLoc) return { toolType: 'map', args, content: `[Error: Location not found.]`, displayReplacement: '[Error: Not found]' };
-    if (!fromLoc) return { toolType: 'map', args, content: '[Error: No current location.]', displayReplacement: '[Error: No location]' };
+    if (!toLoc) return { toolType: 'map', args, content: `[Error: Location "${trimmed}" not found.]`, displayReplacement: `[Error: Location not found]` };
+    if (!fromLoc) return { toolType: 'map', args, content: '[Error: No current location. Use "map <loc1_id> to <loc2_id>" format.]', displayReplacement: '[Error: No current location]' };
     if (fromLoc.id === toLoc.id) return { toolType: 'map', args, content: `Already at "${toLoc.name}".`, displayReplacement: `[🗺️ Already at "${toLoc.name}"]` };
     let distanceKm = fromLoc.locationDistances?.[toLoc.id];
     if (distanceKm === undefined && fromLoc.latitude !== undefined && fromLoc.longitude !== undefined && toLoc.latitude !== undefined && toLoc.longitude !== undefined) {
@@ -965,11 +962,12 @@ function executeMap(args: string, _nextMessage: BaseMessage, interactionData: In
         const a = Math.sin(dLat / 2) ** 2 + Math.cos(fromLoc.latitude * Math.PI / 180) * Math.cos(toLoc.latitude * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
         distanceKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     } else if (distanceKm === undefined) {
-        return { toolType: 'map', args, content: `[Error: Distance unknown.]`, displayReplacement: '[Error: Distance unknown]' };
+        return { toolType: 'map', args, content: `[Error: Distance unknown and coordinates missing for one or both locations.]`, displayReplacement: `[Error: Distance unknown]` };
     }
     const rounded = Math.round(distanceKm * 10) / 10;
     const walkHours = Math.round((distanceKm / 5) * 10) / 10;
-    return { toolType: 'map', args, content: `Distance: ${rounded} km. ~${walkHours} hours walking.`, displayReplacement: `[🗺️ ${fromLoc.name} → ${toLoc.name}: ${rounded} km]` };
+    const rideHours = Math.round((distanceKm / 30) * 10) / 10;
+    return { toolType: 'map', args, content: `Distance: ${rounded} km. ~${walkHours} hours of walking, ~${rideHours}h riding.`, displayReplacement: `[🗺️ ${fromLoc.name} → ${toLoc.name}: ${rounded} km]` };
 }
 
 // ─── Audio ──────────────────────────────────────────────────────────
@@ -979,12 +977,12 @@ function executeAudio(args: string, _nextMessage: BaseMessage, interactionData: 
     const parts = trimmed.split(/\s+/);
     const subcommand = parts[0]?.toLowerCase();
     const trackId = parts.slice(1).join(' ').trim();
-    if (!trackId) return { toolType: 'audio', args, content: `[Error: Missing track_id]`, displayReplacement: '[Error: Missing track_id]' };
-    if (subcommand !== 'play' && subcommand !== 'stop') return { toolType: 'audio', args, content: `[Error: Unknown command]`, displayReplacement: '[Error: Unknown command]' };
+    if (!trackId) return { toolType: 'audio', args, content: `[Error: Usage: audio ${subcommand || 'play'} <track_id>]`, displayReplacement: `[Error: Missing track_id]` };
+    if (subcommand !== 'play' && subcommand !== 'stop') return { toolType: 'audio', args, content: `[Error: Unknown audio command "${subcommand}". Use play or stop.]`, displayReplacement: `[Error: Unknown command]` };
     const audioTracks = interactionData.audioTracks || context?.allAudioTracks || [];
     const track = audioTracks.find(t => t.id === trackId || t.name.toLowerCase() === trackId.toLowerCase());
-    if (!track) return { toolType: 'audio', args, content: `[Error: Track not found]`, displayReplacement: '[Error: Track not found]' };
-    if (!track.playableByParticipants) return { toolType: 'audio', args, content: `[Error: Not playable]`, displayReplacement: '[Error: Not playable]' };
+    if (!track) return { toolType: 'audio', args, content: `[Error: Track ID or name "${trackId}" not found]`, displayReplacement: `[Error: Track not found]` };
+    if (!track.playableByParticipants) return { toolType: 'audio', args, content: `[Error: Track not playable by participants]`, displayReplacement: `[Error: Not playable]` };
     const audioEngine = getAudioEngine();
     if (subcommand === 'play') { audioEngine.startTrack(track); return { toolType: 'audio', args, content: `Playing "${track.name}"`, displayReplacement: `[🔊 Playing "${track.name}"]` }; }
     else { audioEngine.stopTrack(track.id); return { toolType: 'audio', args, content: `Stopped "${track.name}"`, displayReplacement: `[🔇 Stopped "${track.name}"]` }; }
@@ -1002,27 +1000,28 @@ function executeNote(args: string, nextMessage: BaseMessage, interactionData: In
     if (currentMessage?.inventory && typeof currentMessage.inventory['__notes__'] === 'string') { try { notes = JSON.parse(currentMessage.inventory['__notes__'] as string); } catch { notes = {}; } }
     switch (subcommand) {
         case 'list': { const entries = Object.entries(notes); if (entries.length === 0) return { toolType: 'note', args, content: 'No notes.', displayReplacement: '[📝 No notes]' }; return { toolType: 'note', args, content: entries.map(([k, v]) => `${k}: ${v}`).join('\n'), displayReplacement: `[📝 ${entries.length} note(s)]` }; }
-        case 'set': { if (parts.length < 3) return { toolType: 'note', args, content: '[Error: Usage]', displayReplacement: '[Error: Usage]' }; const key = parts[1], text = parts.slice(2).join(' '); notes[key] = text; const inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {}; inventory['__notes__'] = JSON.stringify(notes); nextMessage.inventory = inventory; return { toolType: 'note', args, content: `Saved "${key}".`, displayReplacement: `[📝 Saved: "${key}"]` }; }
-        case 'get': { if (parts.length < 2) return { toolType: 'note', args, content: '[Error: Usage]', displayReplacement: '[Error: Usage]' }; const value = notes[parts[1]]; if (value === undefined) return { toolType: 'note', args, content: `Not found.`, displayReplacement: '[📝 Not found]' }; return { toolType: 'note', args, content: value, displayReplacement: `[📝 ${parts[1]}]` }; }
-        case 'delete': { if (parts.length < 2) return { toolType: 'note', args, content: '[Error: Usage]', displayReplacement: '[Error: Usage]' }; if (notes[parts[1]] === undefined) return { toolType: 'note', args, content: `Not found.`, displayReplacement: '[📝 Not found]' }; delete notes[parts[1]]; const inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {}; if (Object.keys(notes).length === 0) delete inventory['__notes__']; else inventory['__notes__'] = JSON.stringify(notes); nextMessage.inventory = inventory; return { toolType: 'note', args, content: `Deleted.`, displayReplacement: '[📝 Deleted]' }; }
-        default: return { toolType: 'note', args, content: '[Error: Unknown command]', displayReplacement: '[Error: Unknown command]' };
+        case 'set': { if (parts.length < 3) return { toolType: 'note', args, content: '[Error: Usage: note set <key> <text>]', displayReplacement: '[Error: Usage: note set <key> <text>]' }; const key = parts[1], text = parts.slice(2).join(' '); notes[key] = text; const inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {}; inventory['__notes__'] = JSON.stringify(notes); nextMessage.inventory = inventory; return { toolType: 'note', args, content: `Saved "${key}".`, displayReplacement: `[📝 Saved: "${key}"]` }; }
+        case 'get': { if (parts.length < 2) return { toolType: 'note', args, content: '[Error: Usage: note get <key>]', displayReplacement: '[Error: Usage: note get <key>]' }; const value = notes[parts[1]]; if (value === undefined) return { toolType: 'note', args, content: `Not found: "${parts[1]}".`, displayReplacement: `[📝 Not found: "${parts[1]}"]` }; return { toolType: 'note', args, content: value, displayReplacement: `[📝 ${parts[1]}: ${value}]` }; }
+        case 'delete': { if (parts.length < 2) return { toolType: 'note', args, content: '[Error: Usage: note delete <key>]', displayReplacement: '[Error: Usage: note delete <key>]' }; if (notes[parts[1]] === undefined) return { toolType: 'note', args, content: `Not found.`, displayReplacement: `[📝 Not found]` }; delete notes[parts[1]]; const inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {}; if (Object.keys(notes).length === 0) delete inventory['__notes__']; else inventory['__notes__'] = JSON.stringify(notes); nextMessage.inventory = inventory; return { toolType: 'note', args, content: `Deleted "${parts[1]}".`, displayReplacement: `[📝 Deleted: "${parts[1]}"]` }; }
+        default: return { toolType: 'note', args, content: `[Error: Unknown note command "${subcommand}"]`, displayReplacement: `[Error: Unknown note command]` };
     }
 }
 
 // ─── Inventory ──────────────────────────────────────────────────────
 function executeInventory(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
-    if (!trimmed) return helpResult('inventory', args, 'inventory list | inventory add <item> <qty> | inventory remove <item> <qty>');
+    if (!trimmed) return helpResult('inventory', args, 'inventory list | inventory add <item> <qty> | inventory remove <item> <qty> | inventory set <item> <value>');
     const parts = trimmed.split(/\s+/);
     const subcommand = parts[0]?.toLowerCase();
     const latest = findLatestMessage(interactionData, nextMessage.character);
     const currentMessage = latest?.message;
     const inventory: Inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
     switch (subcommand) {
-        case 'list': return { toolType: 'inventory', args, content: '[Inventory listed in prompt context]', displayReplacement: '[📦 Inventory listed]' };
-        case 'add': { if (parts.length < 3) return { toolType: 'inventory', args, content: '[Error: Usage]', displayReplacement: '[Error: Usage]' }; const item = parts.slice(1, -1).join(' '), qty = Number(parts[parts.length - 1]); if (!item || isNaN(qty) || qty <= 0) return { toolType: 'inventory', args, content: '[Error: Invalid]', displayReplacement: '[Error: Invalid]' }; const current = typeof inventory[item] === 'number' ? (inventory[item] as number) : 0; inventory[item] = current + qty; nextMessage.inventory = inventory; return { toolType: 'inventory', args, content: `Added ${qty}x "${item}"`, displayReplacement: `[📦 Added ${qty}x "${item}"]` }; }
-        case 'remove': { if (parts.length < 3) return { toolType: 'inventory', args, content: '[Error: Usage]', displayReplacement: '[Error: Usage]' }; const item = parts.slice(1, -1).join(' '), qty = Number(parts[parts.length - 1]); if (!item || isNaN(qty) || qty <= 0) return { toolType: 'inventory', args, content: '[Error: Invalid]', displayReplacement: '[Error: Invalid]' }; const current = typeof inventory[item] === 'number' ? (inventory[item] as number) : 0; const nv = current - qty; if (nv <= 0) delete inventory[item]; else inventory[item] = nv; nextMessage.inventory = inventory; return { toolType: 'inventory', args, content: `Removed ${qty}x "${item}"`, displayReplacement: `[📦 Removed ${qty}x "${item}"]` }; }
-        default: return { toolType: 'inventory', args, content: '[Error: Unknown command]', displayReplacement: '[Error: Unknown command]' };
+        case 'list': return { toolType: 'inventory', args, content: '[Inventory listed in prompt context]', displayReplacement: '[📦 Inventory listed above]' };
+        case 'add': { if (parts.length < 3) return { toolType: 'inventory', args, content: '[Error: Usage: inventory add <item> <qty>]', displayReplacement: '[Error: Usage]' }; const item = parts.slice(1, -1).join(' '), qty = Number(parts[parts.length - 1]); if (!item || isNaN(qty) || qty <= 0) return { toolType: 'inventory', args, content: '[Error: Invalid item or quantity]', displayReplacement: '[Error: Invalid]' }; const current = typeof inventory[item] === 'number' ? (inventory[item] as number) : 0; inventory[item] = current + qty; nextMessage.inventory = inventory; return { toolType: 'inventory', args, content: `Added ${qty}x "${item}"`, displayReplacement: `[📦 Added ${qty}x "${item}"]` }; }
+        case 'remove': { if (parts.length < 3) return { toolType: 'inventory', args, content: '[Error: Usage: inventory remove <item> <qty>]', displayReplacement: '[Error: Usage]' }; const item = parts.slice(1, -1).join(' '), qty = Number(parts[parts.length - 1]); if (!item || isNaN(qty) || qty <= 0) return { toolType: 'inventory', args, content: '[Error: Invalid]', displayReplacement: '[Error: Invalid]' }; const current = typeof inventory[item] === 'number' ? (inventory[item] as number) : 0; const nv = current - qty; if (nv <= 0) delete inventory[item]; else inventory[item] = nv; nextMessage.inventory = inventory; return { toolType: 'inventory', args, content: `Removed ${qty}x "${item}"`, displayReplacement: `[📦 Removed ${qty}x "${item}"]` }; }
+        case 'set': { if (parts.length < 3) return { toolType: 'inventory', args, content: '[Error: Usage: inventory set <item> <value>]', displayReplacement: '[Error: Usage]' }; const item = parts.slice(1, -1).join(' '), rawValue = parts[parts.length - 1]; if (!item) return { toolType: 'inventory', args, content: '[Error: Invalid item]', displayReplacement: '[Error: Invalid]' }; const numValue = Number(rawValue); inventory[item] = !isNaN(numValue) ? numValue : rawValue; nextMessage.inventory = inventory; return { toolType: 'inventory', args, content: `Set "${item}"`, displayReplacement: `[📦 Set "${item}"]` }; }
+        default: return { toolType: 'inventory', args, content: `[Error: Unknown inventory command "${subcommand}"]`, displayReplacement: `[Error: Unknown command]` };
     }
 }
 
@@ -1043,7 +1042,7 @@ function savePendingOffers(inventory: Inventory, offers: PendingTradeOffer[]): v
 
 function executeTrade(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
-    if (!trimmed) return helpResult('trade', args, 'trade give <char_id> <item>:<qty> | trade take <char_id> <item>:<qty> | trade offer ... | trade accept <id> | trade decline <id> | trade list_offers');
+    if (!trimmed) return helpResult('trade', args, 'trade give <char_id> <item>:<qty>[,...] | trade take <char_id> <item>:<qty>[,...] | trade offer <char_id> <give_items> for <take_items> | trade accept <offer_id> | trade decline <offer_id> | trade list_offers');
     const parts = trimmed.split(/\s+/);
     const subcommand = parts[0]?.toLowerCase();
     const latest = findLatestMessage(interactionData, nextMessage.character);
@@ -1051,7 +1050,8 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
     const myInventory: Inventory = currentMessage?.inventory ? { ...currentMessage.inventory } : {};
     const parseItems = (raw: string): { item: string; qty: number }[] => {
         const entries: { item: string; qty: number }[] = [];
-        for (const seg of raw.split(',')) {
+        const segments = raw.split(',');
+        for (const seg of segments) {
             const colonIdx = seg.lastIndexOf(':');
             if (colonIdx === -1) continue;
             const item = seg.substring(0, colonIdx).trim();
@@ -1070,40 +1070,181 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
     };
     switch (subcommand) {
         case 'give': {
-            if (parts.length < 3) return { toolType: 'trade', args, content: '[Error: Usage]', displayReplacement: '[Error: Usage]' };
-            const targetCharId = parts[1]; const items = parseItems(parts.slice(2).join(' '));
-            if (items.length === 0) return { toolType: 'trade', args, content: '[Error: No valid items]', displayReplacement: '[Error: No valid items]' };
-            const targetChar = resolveCharacter(targetCharId, interactionData, context?.allCharacters || []);
-            if (!targetChar) return { toolType: 'trade', args, content: '[Error: Target not found]', displayReplacement: '[Error: Not found]' };
-            const targetData = getTargetInventory(targetChar.id);
-            if (!targetData) return { toolType: 'trade', args, content: '[Error: Target history missing]', displayReplacement: '[Error: Missing history]' };
+            if (parts.length < 3) return { toolType: 'trade', args, content: '[Error: Usage: trade give <char_id> <item>:<qty>[,...]]', displayReplacement: '[Error: Usage]' };
+            const targetCharId = parts[1]; const itemsRaw = parts.slice(2).join(' '); const items = parseItems(itemsRaw);
+            if (items.length === 0) return { toolType: 'trade', args, content: '[Error: No valid items. Format: item:qty or item1:qty1,item2:qty2]', displayReplacement: '[Error: No valid items]' };
+            const allChars = context?.allCharacters || [];
+            const targetChar = resolveCharacter(targetCharId, interactionData, allChars);
+            if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: '[Error: Character not found]' };
             for (const { item, qty } of items) {
                 const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
-                if (myCurrent < qty) return { toolType: 'trade', args, content: `[Error: Not enough "${item}"]`, displayReplacement: '[Error: Not enough]' };
+                if (myCurrent < qty) return { toolType: 'trade', args, content: `[Error: Not enough "${item}". Have ${myCurrent}, need ${qty}.]`, displayReplacement: `[Error: Not enough "${item}"]` };
             }
+            const targetData = getTargetInventory(targetChar.id);
+            if (!targetData) return { toolType: 'trade', args, content: `[Error: No message history for "${targetChar.name}".]`, displayReplacement: '[Error: Target has no history]' };
+            const transferred: string[] = [];
             for (const { item, qty } of items) {
-                myInventory[item] = (myInventory[item] as number) - qty;
-                if (myInventory[item] <= 0) delete myInventory[item];
-                targetData.inventory[item] = (typeof targetData.inventory[item] === 'number' ? targetData.inventory[item] : 0) + qty;
+                const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
+                const newMyQty = myCurrent - qty;
+                if (newMyQty <= 0) delete myInventory[item]; else myInventory[item] = newMyQty;
+                const targetCurrent = typeof targetData.inventory[item] === 'number' ? (targetData.inventory[item] as number) : 0;
+                targetData.inventory[item] = targetCurrent + qty;
+                transferred.push(`${qty}x "${item}"`);
             }
             nextMessage.inventory = myInventory;
-            return { toolType: 'trade', args, content: `Gave items to ${targetChar.name}.`, displayReplacement: `[🤝 Gave items to ${targetChar.name}]` };
+            const locMsgs = interactionData.interactionHistories[targetData.locId] || [];
+            const msgIdx = locMsgs.findIndex(m => m.id === targetData.msg.id);
+            if (msgIdx !== -1) {
+                const updatedMsg = { ...locMsgs[msgIdx], inventory: targetData.inventory } as ChatMessage;
+                interactionData.interactionHistories[targetData.locId] = [...locMsgs];
+                interactionData.interactionHistories[targetData.locId][msgIdx] = updatedMsg;
+            }
+            interactionData.lastUpdatedTimestamp = Date.now();
+            return { toolType: 'trade', args, content: `Gave to ${targetChar.name}: ${transferred.join(', ')}.`, displayReplacement: `[🤝 Gave ${items.length} item(s) to ${targetChar.name}]` };
+        }
+        case 'take': {
+            if (parts.length < 3) return { toolType: 'trade', args, content: '[Error: Usage: trade take <char_id> <item>:<qty>[,...]]', displayReplacement: '[Error: Usage]' };
+            const targetCharId = parts[1]; const itemsRaw = parts.slice(2).join(' '); const items = parseItems(itemsRaw);
+            if (items.length === 0) return { toolType: 'trade', args, content: '[Error: No valid items. Format: item:qty or item1:qty1,item2:qty2]', displayReplacement: '[Error: No valid items]' };
+            const allChars = context?.allCharacters || [];
+            const targetChar = resolveCharacter(targetCharId, interactionData, allChars);
+            if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: '[Error: Character not found]' };
+            const targetData = getTargetInventory(targetChar.id);
+            if (!targetData) return { toolType: 'trade', args, content: `[Error: No message history for "${targetChar.name}".]`, displayReplacement: '[Error: Target has no history]' };
+            for (const { item, qty } of items) {
+                const targetCurrent = typeof targetData.inventory[item] === 'number' ? (targetData.inventory[item] as number) : 0;
+                if (targetCurrent < qty) return { toolType: 'trade', args, content: `[Error: ${targetChar.name} doesn't have enough "${item}". Has ${targetCurrent}, need ${qty}.]`, displayReplacement: `[Error: Target lacks "${item}"]` };
+            }
+            const taken: string[] = [];
+            for (const { item, qty } of items) {
+                const targetCurrent = typeof targetData.inventory[item] === 'number' ? (targetData.inventory[item] as number) : 0;
+                const newTargetQty = targetCurrent - qty;
+                if (newTargetQty <= 0) delete targetData.inventory[item]; else targetData.inventory[item] = newTargetQty;
+                const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
+                myInventory[item] = myCurrent + qty;
+                taken.push(`${qty}x "${item}"`);
+            }
+            nextMessage.inventory = myInventory;
+            const locMsgs = interactionData.interactionHistories[targetData.locId] || [];
+            const msgIdx = locMsgs.findIndex(m => m.id === targetData.msg.id);
+            if (msgIdx !== -1) {
+                const updatedMsg = { ...locMsgs[msgIdx], inventory: targetData.inventory } as ChatMessage;
+                interactionData.interactionHistories[targetData.locId] = [...locMsgs];
+                interactionData.interactionHistories[targetData.locId][msgIdx] = updatedMsg;
+            }
+            interactionData.lastUpdatedTimestamp = Date.now();
+            return { toolType: 'trade', args, content: `Took from ${targetChar.name}: ${taken.join(', ')}.`, displayReplacement: `[🤝 Took ${items.length} item(s) from ${targetChar.name}]` };
+        }
+        case 'offer': {
+            const forIdx = parts.findIndex(p => p.toLowerCase() === 'for');
+            if (forIdx === -1 || parts.length < 5) return { toolType: 'trade', args, content: '[Error: Usage: trade offer <char_id> <give_items> for <take_items>]', displayReplacement: '[Error: Usage]' };
+            const targetCharId = parts[1];
+            const giveItemsRaw = parts.slice(2, forIdx).join(' '); const takeItemsRaw = parts.slice(forIdx + 1).join(' ');
+            const giveItems = parseItems(giveItemsRaw); const takeItems = parseItems(takeItemsRaw);
+            if (giveItems.length === 0 || takeItems.length === 0) return { toolType: 'trade', args, content: '[Error: No valid items. Format: item:qty or item1:qty1,item2:qty2]', displayReplacement: '[Error: No valid items]' };
+            const allChars = context?.allCharacters || [];
+            const targetChar = resolveCharacter(targetCharId, interactionData, allChars);
+            if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: '[Error: Character not found]' };
+            for (const { item, qty } of giveItems) {
+                const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
+                if (myCurrent < qty) return { toolType: 'trade', args, content: `[Error: Not enough "${item}". Have ${myCurrent}, need ${qty}.]`, displayReplacement: `[Error: Not enough "${item}"]` };
+            }
+            const targetData = getTargetInventory(targetChar.id);
+            if (!targetData) return { toolType: 'trade', args, content: `[Error: No message history for "${targetChar.name}".]`, displayReplacement: '[Error: Target has no history]' };
+            const offer: PendingTradeOffer = { id: uuidv4(), fromCharId: nextMessage.character.id, fromCharName: nextMessage.character.name, toCharId: targetChar.id, toCharName: targetChar.name, giveItems, takeItems, createdAt: Date.now() };
+            const targetOffers = loadPendingOffers(targetData.inventory);
+            targetOffers.push(offer); savePendingOffers(targetData.inventory, targetOffers);
+            const locMsgs = interactionData.interactionHistories[targetData.locId] || [];
+            const msgIdx = locMsgs.findIndex(m => m.id === targetData.msg.id);
+            if (msgIdx !== -1) {
+                const updatedMsg = { ...locMsgs[msgIdx], inventory: targetData.inventory } as ChatMessage;
+                interactionData.interactionHistories[targetData.locId] = [...locMsgs];
+                interactionData.interactionHistories[targetData.locId][msgIdx] = updatedMsg;
+            }
+            interactionData.lastUpdatedTimestamp = Date.now();
+            const giveStr = giveItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
+            const takeStr = takeItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
+            return { toolType: 'trade', args, content: `Trade offer sent to ${targetChar.name} (ID: ${offer.id}): offering ${giveStr} for ${takeStr}. They must accept or decline.`, displayReplacement: `[🤝 Offer sent to ${targetChar.name}: ${giveStr} ↔ ${takeStr}]` };
+        }
+        case 'accept': {
+            if (parts.length < 2) return { toolType: 'trade', args, content: '[Error: Usage: trade accept <offer_id>]', displayReplacement: '[Error: Usage]' };
+            const offerId = parts[1].trim();
+            const myOffers = loadPendingOffers(myInventory);
+            const offerIdx = myOffers.findIndex(o => o.id === offerId || o.id.startsWith(offerId));
+            if (offerIdx === -1) return { toolType: 'trade', args, content: `[Error: No pending offer matching "${offerId}". Use "trade list_offers" to see available offers.]`, displayReplacement: `[Error: Offer not found]` };
+            const offer = myOffers[offerIdx];
+            for (const { item, qty } of offer.takeItems) {
+                const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
+                if (myCurrent < qty) return { toolType: 'trade', args, content: `[Error: Cannot accept. You don't have enough "${item}". Have ${myCurrent}, need ${qty}.]`, displayReplacement: `[Error: Not enough "${item}"]` };
+            }
+            const offererData = getTargetInventory(offer.fromCharId);
+            if (!offererData) return { toolType: 'trade', args, content: `[Error: Cannot find ${offer.fromCharName}'s inventory. Offer may be stale.]`, displayReplacement: '[Error: Offerer not found]' };
+            for (const { item, qty } of offer.giveItems) {
+                const offererCurrent = typeof offererData.inventory[item] === 'number' ? (offererData.inventory[item] as number) : 0;
+                if (offererCurrent < qty) return { toolType: 'trade', args, content: `[Error: ${offer.fromCharName} no longer has enough "${item}". Offer is stale.]`, displayReplacement: `[Error: Offer stale — "${item}" unavailable]` };
+            }
+            for (const { item, qty } of offer.takeItems) {
+                const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
+                const newMyQty = myCurrent - qty;
+                if (newMyQty <= 0) delete myInventory[item]; else myInventory[item] = newMyQty;
+                const offererCurrent = typeof offererData.inventory[item] === 'number' ? (offererData.inventory[item] as number) : 0;
+                offererData.inventory[item] = offererCurrent + qty;
+            }
+            for (const { item, qty } of offer.giveItems) {
+                const offererCurrent = typeof offererData.inventory[item] === 'number' ? (offererData.inventory[item] as number) : 0;
+                const newOffererQty = offererCurrent - qty;
+                if (newOffererQty <= 0) delete offererData.inventory[item]; else offererData.inventory[item] = newOffererQty;
+                const myCurrent = typeof myInventory[item] === 'number' ? (myInventory[item] as number) : 0;
+                myInventory[item] = myCurrent + qty;
+            }
+            myOffers.splice(offerIdx, 1); savePendingOffers(myInventory, myOffers); nextMessage.inventory = myInventory;
+            const locMsgs = interactionData.interactionHistories[offererData.locId] || [];
+            const msgIdx = locMsgs.findIndex(m => m.id === offererData.msg.id);
+            if (msgIdx !== -1) {
+                const updatedMsg = { ...locMsgs[msgIdx], inventory: offererData.inventory } as ChatMessage;
+                interactionData.interactionHistories[offererData.locId] = [...locMsgs];
+                interactionData.interactionHistories[offererData.locId][msgIdx] = updatedMsg;
+            }
+            interactionData.lastUpdatedTimestamp = Date.now();
+            const receivedStr = offer.giveItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
+            const gaveStr = offer.takeItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
+            return { toolType: 'trade', args, content: `Accepted offer from ${offer.fromCharName}. Received: ${receivedStr}. Gave: ${gaveStr}.`, displayReplacement: `[🤝 Accepted trade with ${offer.fromCharName}]` };
+        }
+        case 'decline': {
+            if (parts.length < 2) return { toolType: 'trade', args, content: '[Error: Usage: trade decline <offer_id>]', displayReplacement: '[Error: Usage]' };
+            const offerId = parts[1].trim();
+            const myOffers = loadPendingOffers(myInventory);
+            const offerIdx = myOffers.findIndex(o => o.id === offerId || o.id.startsWith(offerId));
+            if (offerIdx === -1) return { toolType: 'trade', args, content: `[Error: No pending offer matching "${offerId}". Use "trade list_offers" to see available offers.]`, displayReplacement: `[Error: Offer not found]` };
+            const declinedOffer = myOffers[offerIdx];
+            myOffers.splice(offerIdx, 1); savePendingOffers(myInventory, myOffers); nextMessage.inventory = myInventory;
+            return { toolType: 'trade', args, content: `Declined trade offer from ${declinedOffer.fromCharName} (ID: ${declinedOffer.id}).`, displayReplacement: `[🤝 Declined offer from ${declinedOffer.fromCharName}]` };
         }
         case 'list_offers': {
             const myOffers = loadPendingOffers(myInventory);
             if (myOffers.length === 0) return { toolType: 'trade', args, content: 'No pending trade offers.', displayReplacement: '[🤝 No pending offers]' };
-            return { toolType: 'trade', args, content: myOffers.map(o => `[${o.id}] From ${o.fromCharName}`).join('\n'), displayReplacement: `[🤝 ${myOffers.length} pending offer(s)]` };
+            const lines = myOffers.map(o => {
+                const giveStr = o.giveItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
+                const takeStr = o.takeItems.map(i => `${i.qty}x "${i.item}"`).join(', ');
+                return `[${o.id}] From ${o.fromCharName}: offering ${giveStr} for ${takeStr}`;
+            });
+            return { toolType: 'trade', args, content: lines.join('\n'), displayReplacement: `[🤝 ${myOffers.length} pending offer(s)]` };
         }
-        default: return { toolType: 'trade', args, content: '[Error: Unknown command]', displayReplacement: '[Error: Unknown command]' };
+        default: return { toolType: 'trade', args, content: `[Error: Unknown trade command "${subcommand}". Use give, take, offer, accept, decline, or list_offers.]`, displayReplacement: `[Error: Unknown trade command]` };
     }
 }
 
 // ─── Invite ─────────────────────────────────────────────────────────
 function executeInvite(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
-    if (!trimmed) return helpResult('invite', args, 'invite <character_id>');
-    const targetChar = resolveCharacter(trimmed, interactionData, context?.allCharacters || []);
-    if (!targetChar) return { toolType: 'invite', args, content: '[Error: Character not found]', displayReplacement: '[Error: Not found]' };
+    if (!trimmed) return helpResult('invite', args, 'invite <character_id> — bring existing participant to current location');
+    const allChars = context?.allCharacters || [];
+    const targetChar = resolveCharacter(trimmed, interactionData, allChars);
+    if (!targetChar) return { toolType: 'invite', args, content: `[Error: Character ID or name "${trimmed}" not found.]`, displayReplacement: `[Error: Not found]` };
+    const isProtagonist = interactionData.protagonists?.some(p => p.id === targetChar.id) ?? false;
+    if (isProtagonist) return { toolType: 'invite', args, content: '[Error: Cannot invite protagonist. Use summon.]', displayReplacement: `[Error: Cannot invite protagonist]` };
+    const sessionParticipants = getSessionCharacters(interactionData);
+    if (!sessionParticipants.some(p => p.id === targetChar.id)) return { toolType: 'invite', args, content: '[Error: Not a session participant. Use summon.]', displayReplacement: `[Error: Not a participant]` };
     appendPendingAction(nextMessage, { type: 'invite', payload: { characterId: targetChar.id, characterName: targetChar.name } });
     return { toolType: 'invite', args, content: `Invited ${targetChar.name}.`, displayReplacement: `[📨 Invited ${targetChar.name}]` };
 }
@@ -1111,73 +1252,134 @@ function executeInvite(args: string, nextMessage: BaseMessage, interactionData: 
 // ─── Kick ───────────────────────────────────────────────────────────
 function executeKick(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
-    if (!trimmed) return helpResult('kick', args, 'kick <character_id>');
-    const targetChar = resolveCharacter(trimmed, interactionData, context?.allCharacters || []);
-    if (!targetChar) return { toolType: 'kick', args, content: '[Error: Character not found]', displayReplacement: '[Error: Not found]' };
-    const kickerLoc = getCurrentLocation(interactionData, nextMessage.character);
-    const kickable = getReachableLocationsByCharacter(interactionData, nextMessage.character).filter(loc => !kickerLoc || loc.id !== kickerLoc.id);
-    if (kickable.length === 0) return { toolType: 'kick', args, content: '[Error: No reachable locations]', displayReplacement: '[Error: No destinations]' };
-    const pick = kickable[Math.floor(Math.random() * kickable.length)];
-    appendPendingAction(nextMessage, { type: 'kick', payload: { characterId: targetChar.id, characterName: targetChar.name, destinationLocationName: pick.name, destinationLocationId: pick.id } });
-    return { toolType: 'kick', args, content: `Kicked ${targetChar.name} to "${pick.name}".`, displayReplacement: `[👢 Kicked ${targetChar.name}]` };
+    if (!trimmed) return helpResult('kick', args, 'kick locations | kick characters | kick <character_id> [location_id]');
+    const parts = trimmed.split(/\s+/);
+    const subcommand = parts[0]?.toLowerCase();
+    if (subcommand === 'locations') {
+        const kicker = nextMessage.character;
+        const kickerLoc = getCurrentLocation(interactionData, kicker);
+        const reachable = getReachableLocationsByCharacter(interactionData, kicker).filter(loc => !kickerLoc || loc.id !== kickerLoc.id);
+        if (reachable.length === 0) return { toolType: 'kick', args, content: 'No reachable locations.', displayReplacement: '[👢 No kickable locations]' };
+        return { toolType: 'kick', args, content: reachable.map(loc => `${loc.name} (${loc.id})`).join('\n'), displayReplacement: `[👢 ${reachable.length} location(s)]` };
+    }
+    if (subcommand === 'characters') {
+        const coLocated = getCoLocatedParticipants(interactionData, nextMessage.character);
+        if (coLocated.length === 0) return { toolType: 'kick', args, content: 'No co-located characters.', displayReplacement: '[👢 No characters to kick]' };
+        return { toolType: 'kick', args, content: coLocated.map(c => `${c.name} (${c.id})`).join('\n'), displayReplacement: `[👢 ${coLocated.length} character(s)]` };
+    }
+    const targetCharId = subcommand;
+    const targetLocationId = parts.length > 1 ? parts.slice(1).join(' ').trim() : undefined;
+    const allChars = context?.allCharacters || [];
+    const targetChar = resolveCharacter(targetCharId, interactionData, allChars);
+    if (!targetChar) return { toolType: 'kick', args, content: `[Error: Character "${targetCharId}" not found.]`, displayReplacement: `[Error: Not found]` };
+    const kicker = nextMessage.character;
+    const kickerLoc = getCurrentLocation(interactionData, kicker);
+    const targetLoc = getCurrentLocation(interactionData, targetChar);
+    if (!kickerLoc || !targetLoc || kickerLoc.id !== targetLoc.id) return { toolType: 'kick', args, content: '[Error: Target not co-located.]', displayReplacement: `[Error: Not co-located]` };
+    const kickable = getReachableLocationsByCharacter(interactionData, kicker).filter(loc => !kickerLoc || loc.id !== kickerLoc.id);
+    let destName: string, destId: string;
+    if (targetLocationId) {
+        const destLoc = resolveLocation(targetLocationId, interactionData);
+        if (!destLoc) return { toolType: 'kick', args, content: `[Error: Location "${targetLocationId}" not found.]`, displayReplacement: `[Error: Location not found]` };
+        if (!kickable.some(loc => loc.id === destLoc.id)) return { toolType: 'kick', args, content: '[Error: Destination not reachable or locked.]', displayReplacement: `[Error: Not reachable]` };
+        destName = destLoc.name; destId = destLoc.id;
+    } else {
+        if (kickable.length === 0) return { toolType: 'kick', args, content: '[Error: No reachable destinations.]', displayReplacement: `[Error: No destinations]` };
+        const pick = kickable[Math.floor(Math.random() * kickable.length)];
+        destName = pick.name; destId = pick.id;
+    }
+    appendPendingAction(nextMessage, { type: 'kick', payload: { characterId: targetChar.id, characterName: targetChar.name, destinationLocationName: destName, destinationLocationId: destId } });
+    return { toolType: 'kick', args, content: `Kicked ${targetChar.name} to "${destName}".`, displayReplacement: `[👢 Kicked ${targetChar.name} to ${destName}]` };
 }
 
 // ─── Teleport ───────────────────────────────────────────────────────
 function executeTeleport(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
-    if (!trimmed) return helpResult('teleport', args, 'teleport <location_id>');
+    if (!trimmed) return helpResult('teleport', args, 'teleport <location_id> — instant movement to any session location');
+    const locations = interactionData.locations || [];
+    if (locations.length === 0) return { toolType: 'teleport', args, content: '[Error: No session locations.]', displayReplacement: '[Error: No locations]' };
     const targetLocation = resolveLocation(trimmed, interactionData);
-    if (!targetLocation) return { toolType: 'teleport', args, content: '[Error: Location not found]', displayReplacement: '[Error: Not found]' };
+    if (!targetLocation) return { toolType: 'teleport', args, content: `[Error: Location "${trimmed}" not found in session.]`, displayReplacement: `[Error: Not found]` };
+    const currentLocation = getCurrentLocation(interactionData, nextMessage.character);
+    if (currentLocation && targetLocation.id === currentLocation.id) return { toolType: 'teleport', args, content: `Already at "${targetLocation.name}".`, displayReplacement: `[⚡ Already there]` };
     return { toolType: 'teleport', args, content: `Teleported to "${targetLocation.name}".`, displayReplacement: `[⚡ Teleported to "${targetLocation.name}"]` };
 }
 
-// ─── Key ────────────────────────────────────────────────            
+// ─── Key ────────────────────────────────────────────────────────────
 function executeKey(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
-    if (!trimmed) return helpResult('key', args, 'key lock|unlock <location_id>');
+    if (!trimmed) return helpResult('key', args, 'key lock <location_id> [character_id] | key unlock <location_id> [character_id]');
     const parts = trimmed.split(/\s+/);
     const subcommand = parts[0]?.toLowerCase();
     const locationQuery = parts[1]?.trim();
-    if (!locationQuery || (subcommand !== 'lock' && subcommand !== 'unlock')) return { toolType: 'key', args, content: '[Error: Usage]', displayReplacement: '[Error: Usage]' };
+    const targetCharQuery = parts.length > 2 ? parts.slice(2).join(' ').trim() : undefined;
+    if (!locationQuery) return { toolType: 'key', args, content: `[Error: Usage: key ${subcommand || 'lock'} <location_id> [character_id]]`, displayReplacement: `[Error: Missing location_id]` };
+    if (subcommand !== 'lock' && subcommand !== 'unlock') return { toolType: 'key', args, content: `[Error: Use lock or unlock.]`, displayReplacement: `[Error: Use lock or unlock]` };
     const targetLocation = resolveLocation(locationQuery, interactionData);
-    if (!targetLocation) return { toolType: 'key', args, content: '[Error: Location not found]', displayReplacement: '[Error: Not found]' };
+    if (!targetLocation) return { toolType: 'key', args, content: `[Error: Location "${locationQuery}" not found in session.]`, displayReplacement: `[Error: Not found]` };
+    const allChars = context?.allCharacters || [];
+    const resolvedTargetChar = targetCharQuery ? resolveCharacter(targetCharQuery, interactionData, allChars) : undefined;
+    const charsToModify: string[] = resolvedTargetChar ? [resolvedTargetChar.id] : targetCharQuery ? [targetCharQuery] : getSessionCharacters(interactionData).map(p => p.id);
     const lockedLocations = nextMessage.characterLockedLocations ? { ...nextMessage.characterLockedLocations } : {};
     if (subcommand === 'lock') {
-        lockedLocations[targetLocation.id] = getSessionCharacters(interactionData).map(p => p.id);
+        const existing = lockedLocations[targetLocation.id] ? [...lockedLocations[targetLocation.id]] : [];
+        for (const charId of charsToModify) { if (!existing.includes(charId)) existing.push(charId); }
+        lockedLocations[targetLocation.id] = existing;
         nextMessage.characterLockedLocations = lockedLocations;
-        return { toolType: 'key', args, content: `Locked "${targetLocation.name}".`, displayReplacement: `[🔒 Locked "${targetLocation.name}"]` };
-    } else {
-        delete lockedLocations[targetLocation.id];
-        nextMessage.characterLockedLocations = lockedLocations;
-        return { toolType: 'key', args, content: `Unlocked "${targetLocation.name}".`, displayReplacement: `[🔓 Unlocked "${targetLocation.name}"]` };
+        const desc = targetCharQuery ? `Locked "${targetLocation.name}" for character ${targetCharQuery}.` : `Locked "${targetLocation.name}" for all characters.`;
+        return { toolType: 'key', args, content: desc, displayReplacement: `[🔒 Locked "${targetLocation.name}"]` };
     }
+    if (!lockedLocations[targetLocation.id] || lockedLocations[targetLocation.id].length === 0) {
+        return { toolType: 'key', args, content: `"${targetLocation.name}" is not locked.`, displayReplacement: `[🔓 Not locked]` };
+    }
+    if (resolvedTargetChar) { lockedLocations[targetLocation.id] = lockedLocations[targetLocation.id].filter(id => id !== resolvedTargetChar.id); }
+    else if (targetCharQuery) { lockedLocations[targetLocation.id] = lockedLocations[targetLocation.id].filter(id => id !== targetCharQuery); }
+    else { delete lockedLocations[targetLocation.id]; }
+    if (lockedLocations[targetLocation.id] && lockedLocations[targetLocation.id].length === 0) { delete lockedLocations[targetLocation.id]; }
+    nextMessage.characterLockedLocations = lockedLocations;
+    const desc = targetCharQuery ? `Unlocked "${targetLocation.name}" for character ${targetCharQuery}.` : `Unlocked "${targetLocation.name}" for all characters.`;
+    return { toolType: 'key', args, content: desc, displayReplacement: `[🔓 Unlocked "${targetLocation.name}"]` };
 }
 
 // ─── Clothing ───────────────────────────────────────────────────────
 function executeClothing(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
+    if (!trimmed) return helpResult('clothing', args, 'clothing <character_id> wear <clothing_id> | clothing <character_id> remove <clothing_id>');
     const wearMatch = trimmed.match(/^(\S+)\s+wear\s+(\S+)$/i);
     const removeMatch = trimmed.match(/^(\S+)\s+remove\s+(\S+)$/i);
-    if (!wearMatch && !removeMatch) return helpResult('clothing', args, 'clothing <char_id> wear|remove <clothing_id>');
-    const charQuery = (wearMatch || removeMatch)![1].trim();
-    const clothingId = (wearMatch || removeMatch)![2].trim();
-    const action = wearMatch ? 'wear' : 'remove';
-    const targetChar = resolveCharacter(charQuery, interactionData, context?.allCharacters || []);
-    if (!targetChar) return { toolType: 'clothing', args, content: '[Error: Character not found]', displayReplacement: '[Error: Not found]' };
+    let charQuery: string, clothingId: string, action: 'wear' | 'remove';
+    if (wearMatch) { charQuery = wearMatch[1].trim(); clothingId = wearMatch[2].trim(); action = 'wear'; }
+    else if (removeMatch) { charQuery = removeMatch[1].trim(); clothingId = removeMatch[2].trim(); action = 'remove'; }
+    else return { toolType: 'clothing', args, content: '[Error: Use "clothing <char_id> wear|remove <clothing_id>"]', displayReplacement: `[Error: Invalid syntax]` };
+    const allChars = context?.allCharacters || [];
+    const targetChar = resolveCharacter(charQuery, interactionData, allChars);
+    if (!targetChar) return { toolType: 'clothing', args, content: `[Error: Character "${charQuery}" not found.]`, displayReplacement: `[Error: Character not found]` };
     const clothingItem = targetChar.clothings?.find(c => c.id === clothingId || c.name.toLowerCase() === clothingId.toLowerCase());
-    if (!clothingItem) return { toolType: 'clothing', args, content: '[Error: Clothing not found]', displayReplacement: '[Error: Clothing not found]' };
+    if (!clothingItem) return { toolType: 'clothing', args, content: `[Error: Clothing "${clothingId}" not found. Available: ${targetChar.clothings?.map(c => `${c.name} (${c.id})`).join(', ') || 'none'}]`, displayReplacement: `[Error: Clothing not found]` };
     const wearingStatuses = nextMessage.characterClothingWearingStatuses ? { ...nextMessage.characterClothingWearingStatuses } : {};
-    wearingStatuses[clothingItem.id] = (action === 'wear');
-    nextMessage.characterClothingWearingStatuses = wearingStatuses;
-    return { toolType: 'clothing', args, content: `${targetChar.name} ${action}s "${clothingItem.name}".`, displayReplacement: `[👕 ${targetChar.name} ${action}s "${clothingItem.name}"]` };
+    if (action === 'wear') {
+        if (wearingStatuses[clothingItem.id]) return { toolType: 'clothing', args, content: `Already wearing "${clothingItem.name}".`, displayReplacement: `[👕 Already wearing]` };
+        wearingStatuses[clothingItem.id] = true;
+        for (const boundId of clothingItem.clothingBindings || []) wearingStatuses[boundId] = false;
+        nextMessage.characterClothingWearingStatuses = wearingStatuses;
+        return { toolType: 'clothing', args, content: `${targetChar.name} wore "${clothingItem.name}".`, displayReplacement: `[👕 Wore "${clothingItem.name}"]` };
+    } else {
+        if (wearingStatuses[clothingItem.id] !== true) return { toolType: 'clothing', args, content: `Not wearing "${clothingItem.name}".`, displayReplacement: `[👕 Not wearing]` };
+        wearingStatuses[clothingItem.id] = false;
+        nextMessage.characterClothingWearingStatuses = wearingStatuses;
+        return { toolType: 'clothing', args, content: `${targetChar.name} removed "${clothingItem.name}".`, displayReplacement: `[👕 Removed "${clothingItem.name}"]` };
+    }
 }
 
 // ─── Summon ─────────────────────────────────────────────────────────
 function executeSummon(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
-    if (!trimmed) return helpResult('summon', args, 'summon <character_id>');
-    const targetChar = getGlobalCharacters(interactionData, context?.allCharacters || []).find(c => c.id === trimmed || c.name.toLowerCase() === trimmed.toLowerCase());
-    if (!targetChar) return { toolType: 'summon', args, content: '[Error: Character not found]', displayReplacement: '[Error: Not found]' };
+    if (!trimmed) return helpResult('summon', args, 'summon <character_id> — add non-participant character to session');
+    const allChars = context?.allCharacters || [];
+    const globalChars = getGlobalCharacters(interactionData, allChars);
+    const targetChar = globalChars.find(c => c.id === trimmed || c.name.toLowerCase() === trimmed.toLowerCase() || c.id.startsWith(trimmed)) || allChars.find(c => c.id === trimmed || c.name.toLowerCase() === trimmed.toLowerCase());
+    if (!targetChar) return { toolType: 'summon', args, content: `[Error: Character "${trimmed}" does not exist.]`, displayReplacement: `[Error: Not found]` };
+    if (getSessionCharacters(interactionData).some(p => p.id === targetChar.id)) return { toolType: 'summon', args, content: '[Error: Already a participant. Use invite.]', displayReplacement: `[Error: Already participant]` };
     appendPendingAction(nextMessage, { type: 'summon', payload: { characterId: targetChar.id, characterName: targetChar.name } });
     return { toolType: 'summon', args, content: `Summoned ${targetChar.name}.`, displayReplacement: `[✨ Summoned ${targetChar.name}]` };
 }
@@ -1185,35 +1387,101 @@ function executeSummon(args: string, nextMessage: BaseMessage, interactionData: 
 // ─── Narrate ────────────────────────────────────────────────────────
 function executeNarrate(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
-    if (!trimmed) return helpResult('narrate', args, 'narrate <text>');
+    if (!trimmed) return helpResult('narrate', args, 'narrate <text> — inject ambient narration without consuming chat stamina');
     return { toolType: 'narrate', args, content: trimmed, displayReplacement: `[🎙️ ${trimmed}]` };
 }
 
 // ─── Inspect ────────────────────────────────────────────────────────
 function executeInspect(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
-    if (!trimmed) return helpResult('inspect', args, 'inspect <character_id>');
-    const targetChar = resolveCharacter(trimmed, interactionData, context?.allCharacters || []);
-    if (!targetChar) return { toolType: 'inspect', args, content: '[Error: Character not found]', displayReplacement: '[Error: Not found]' };
+    if (!trimmed) return helpResult('inspect', args, 'inspect <character_id> — examine character\'s visible state');
+    const allChars = context?.allCharacters || [];
+    const targetChar = resolveCharacter(trimmed, interactionData, allChars);
+    if (!targetChar) return { toolType: 'inspect', args, content: `[Error: Character "${trimmed}" not found.]`, displayReplacement: `[Error: Not found]` };
+    let targetLocationName = 'unknown';
+    let lastExpression = 'neutral';
+    let itemCount = 0;
+    const wornClothing: { name: string; id: string }[] = [];
     const latest = findLatestMessage(interactionData, targetChar);
-    const loc = interactionData.locations?.find(l => l.id === latest?.locationId);
-    return { toolType: 'inspect', args, content: `${targetChar.name}: Location: ${loc?.name || 'unknown'}`, displayReplacement: `[🔍 ${targetChar.name}: 📍${loc?.name || 'unknown'}]` };
+    if (latest) {
+        const loc = interactionData.locations?.find(l => l.id === latest.locationId);
+        if (loc) targetLocationName = loc.name;
+        lastExpression = latest.message.characterExpression || 'neutral';
+        itemCount = Object.keys(latest.message.inventory || {}).filter(k => !k.startsWith('__')).length;
+        if (latest.message.characterClothingWearingStatuses) {
+            for (const clothing of targetChar.clothings || []) {
+                if (latest.message.characterClothingWearingStatuses[clothing.id]) wornClothing.push({ name: clothing.name, id: clothing.id });
+            }
+        }
+    }
+    const wornStr = wornClothing.length > 0 ? wornClothing.map(w => `${w.name} (${w.id})`).join(', ') : 'nothing notable';
+    return { toolType: 'inspect', args, content: `${targetChar.name} (${targetChar.id}): Location: ${targetLocationName}, Expression: ${lastExpression}, Wearing: ${wornStr}, Items: ${itemCount}`, displayReplacement: `[🔍 ${targetChar.name}: 📍${targetLocationName}, 😊${lastExpression}, 👕${wornClothing.length}, 📦${itemCount}]` };
 }
 
 // ─── Administrator ──────────────────────────────────────────────────
 function executeAdministrator(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
-    if (!trimmed) return helpResult('administrator', args, 'administrator list_chats | switch_model <name> | ...');
+    if (!trimmed) return helpResult('administrator', args, 'administrator list_chats | list_accounts | list_multiplayer | move_protagonist <chat_id> | switch_model <model_name> | toggle_account <id> | join_session <id> [pwd] | leave_session | accept_join <id> | reject_join <id>');
     const parts = trimmed.split(/\s+/);
     const subcommand = parts[0]?.toLowerCase();
     switch (subcommand) {
-        case 'list_chats': return { toolType: 'administrator', args, content: `Session: "${interactionData.name}"`, displayReplacement: "[🔧 Session info]" };
+        case 'list_chats': return { toolType: 'administrator', args, content: `Session: "${interactionData.name}" (${getSessionCharacters(interactionData).length} participants, ${getGlobalMessageHistory(interactionData).length} messages)`, displayReplacement: "[🔧 Session info]" };
+        case 'list_accounts': {
+            const accounts = context?.allAccounts || [];
+            if (accounts.length === 0) return { toolType: 'administrator', args, content: 'No accounts configured.', displayReplacement: '[🔑 No accounts]' };
+            const accountList = accounts.map(a => `${a.id} | ${a.username} ${a.sharedCharacterIds ? '(Shares Characters)' : ''}`).join('\n');
+            const languageModelList = accounts.map(a => `${a.id} | ${a.username} ${a.sharedLanguageModelIds ? '(Shares LM)' : ''}`).join('\n');
+            const list = `${accountList}${(accountList !== '') ? '\n' : ''}${languageModelList}`;
+            return { toolType: 'administrator', args, content: list, displayReplacement: `[🔑 ${accounts.length} account(s)]` };
+        }
+        case 'list_multiplayer': {
+            const sessions = context?.allMultiplayerData || [];
+            if (sessions.length === 0) return { toolType: 'administrator', args, content: 'No multiplayer sessions configured.', displayReplacement: '[👥 No sessions]' };
+            const list = sessions.map(s => `${s.id} | ${s.name} (${s.interactionDataIds.length} chats, ${Object.keys(s.multiplayerDataAccountConfigurations).length} accounts)`).join('\n');
+            return { toolType: 'administrator', args, content: list, displayReplacement: `[👥 ${sessions.length} session(s)]` };
+        }
+        case 'move_protagonist': {
+            const targetChatId = parts.slice(1).join(' ');
+            if (!targetChatId) return { toolType: 'administrator', args, content: '[Error: Usage: administrator move_protagonist <chat_id>]', displayReplacement: '[Error: Missing chat_id]' };
+            appendPendingAction(nextMessage, { type: 'administrator_move_protagonist', payload: { chatId: targetChatId } });
+            return { toolType: 'administrator', args, content: `Transfer requested: "${targetChatId}".`, displayReplacement: `[🔧 Transfer: ${targetChatId}]` };
+        }
         case 'switch_model': {
             const modelName = parts.slice(1).join(' ');
+            if (!modelName) return { toolType: 'administrator', args, content: '[Error: Usage: administrator switch_model <model_name>]', displayReplacement: '[Error: Missing model_name]' };
             appendPendingAction(nextMessage, { type: 'administrator_switch_model', payload: { modelName } });
-            return { toolType: 'administrator', args, content: `Switch model: ${modelName}`, displayReplacement: `[🔧 Switch: ${modelName}]` };
+            return { toolType: 'administrator', args, content: `Model switch requested: "${modelName}".`, displayReplacement: `[🔧 Switch: ${modelName}]` };
         }
-        default: return { toolType: 'administrator', args, content: '[Error: Unknown command]', displayReplacement: '[Error: Unknown command]' };
+        case 'toggle_account': {
+            const accountId = parts.slice(1).join(' ').trim();
+            if (!accountId) return { toolType: 'administrator', args, content: '[Error: Usage: administrator toggle_account <account_id>]', displayReplacement: '[Error: Missing account_id]' };
+            appendPendingAction(nextMessage, { type: 'administrator_toggle_account', payload: { accountId } });
+            return { toolType: 'administrator', args, content: `Toggle requested for account "${accountId}".`, displayReplacement: `[🔑 Toggle: ${accountId}]` };
+        }
+        case 'join_session': {
+            const sessionId = parts[1]; const password = parts.slice(2).join(' ').trim();
+            if (!sessionId) return { toolType: 'administrator', args, content: '[Error: Usage: administrator join_session <session_id> [password]]', displayReplacement: '[Error: Missing session_id]' };
+            appendPendingAction(nextMessage, { type: 'administrator_join_session', payload: { sessionId, password } });
+            return { toolType: 'administrator', args, content: `Join requested for session "${sessionId}".`, displayReplacement: `[👥 Join: ${sessionId}]` };
+        }
+        case 'leave_session': {
+            appendPendingAction(nextMessage, { type: 'administrator_leave_session', payload: {} });
+            return { toolType: 'administrator', args, content: `Leave session requested.`, displayReplacement: `[👥 Leave session]` };
+        }
+        case 'accept_join': {
+            const accountId = parts.slice(1).join(' ').trim();
+            if (!accountId) return { toolType: 'administrator', args, content: '[Error: Usage: administrator accept_join <account_id>]', displayReplacement: '[Error: Missing account_id]' };
+            appendPendingAction(nextMessage, { type: 'administrator_accept_join', payload: { accountId } });
+            return { toolType: 'administrator', args, content: `Accept join requested for "${accountId}".`, displayReplacement: `[👥 Accept: ${accountId}]` };
+        }
+        case 'reject_join': {
+            const accountId = parts.slice(1).join(' ').trim();
+            if (!accountId) return { toolType: 'administrator', args, content: '[Error: Usage: administrator reject_join <account_id>]', displayReplacement: '[Error: Missing account_id]' };
+            appendPendingAction(nextMessage, { type: 'administrator_reject_join', payload: { accountId } });
+            return { toolType: 'administrator', args, content: `Reject join requested for "${accountId}".`, displayReplacement: `[👥 Reject: ${accountId}]` };
+        }
+        case 'list_models': return { toolType: 'administrator', args, content: 'Use Language Models panel.', displayReplacement: "[🔧 Use panel]" };
+        default: return { toolType: 'administrator', args, content: `[Error: Unknown command "${subcommand}"]`, displayReplacement: `[Error: Unknown command]` };
     }
 }
 
@@ -1222,23 +1490,50 @@ const VALID_ENTITY_TYPES = ['character', 'context', 'location', 'audio_track', '
 
 function executeCreator(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
-    if (!trimmed) return helpResult('creator', args, 'creator <type> <name>');
+    if (!trimmed) return helpResult('creator', args, `creator <entity_type> <name> — types: ${VALID_ENTITY_TYPES.join(', ')}`);
     const parts = trimmed.split(/\s+/);
     const entityType = parts[0]?.toLowerCase(), entityName = parts.slice(1).join(' ');
-    if (!VALID_ENTITY_TYPES.includes(entityType)) return { toolType: 'creator', args, content: '[Error: Unknown type]', displayReplacement: '[Error: Unknown type]' };
+    if (!entityName) return { toolType: 'creator', args, content: `[Error: Usage: creator ${entityType || '<type>'} <name>]`, displayReplacement: `[Error: Missing name]` };
+    if (!VALID_ENTITY_TYPES.includes(entityType)) return { toolType: 'creator', args, content: `[Error: Unknown type "${entityType}". Valid: ${VALID_ENTITY_TYPES.join(', ')}]`, displayReplacement: `[Error: Unknown type]` };
     appendPendingAction(nextMessage, { type: 'creator', payload: { entityType, entityName } });
-    return { toolType: 'creator', args, content: `Created ${entityType} "${entityName}".`, displayReplacement: `[🛠️ ${entityType}: "${entityName}"]` };
+    context?.addToast?.(`Creator: ${entityType} "${entityName}" initiated.`, 'info');
+    return { toolType: 'creator', args, content: `Creation: ${entityType} "${entityName}".`, displayReplacement: `[🛠️ ${entityType}: "${entityName}"]` };
 }
 
 // ─── Destroyer ──────────────────────────────────────────────────────
 function executeDestroyer(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const trimmed = args.trim();
-    if (!trimmed) return helpResult('destroyer', args, 'destroyer <type> <id>');
+    if (!trimmed) return helpResult('destroyer', args, `destroyer <entity_type> <entity_id> — types: ${VALID_ENTITY_TYPES.join(', ')}`);
     const parts = trimmed.split(/\s+/);
     const entityType = parts[0]?.toLowerCase(), entityId = parts.slice(1).join(' ').trim();
-    if (!VALID_ENTITY_TYPES.includes(entityType)) return { toolType: 'destroyer', args, content: '[Error: Unknown type]', displayReplacement: '[Error: Unknown type]' };
-    appendPendingAction(nextMessage, { type: 'destroyer', payload: { entityType, entityId, entityName: entityId } });
-    return { toolType: 'destroyer', args, content: `Destroyed ${entityType} "${entityId}".`, displayReplacement: `[💀 ${entityType}: "${entityId}"]` };
+    if (!entityId) return { toolType: 'destroyer', args, content: `[Error: Usage: destroyer ${entityType || '<type>'} <entity_id>]`, displayReplacement: `[Error: Missing entity_id]` };
+    if (!VALID_ENTITY_TYPES.includes(entityType)) return { toolType: 'destroyer', args, content: `[Error: Unknown type "${entityType}". Valid: ${VALID_ENTITY_TYPES.join(', ')}]`, displayReplacement: `[Error: Unknown type]` };
+    let targetName = entityId;
+    switch (entityType) {
+        case 'character': {
+            const t = (context?.allCharacters || []).find(c => c.id === entityId || c.name.toLowerCase() === entityId.toLowerCase());
+            if (!t) return { toolType: 'destroyer', args, content: `[Error: Character ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` };
+            const isProtagonist = interactionData.protagonists?.some(p => p.id === t.id) ?? false;
+            if (isProtagonist) return { toolType: 'destroyer', args, content: '[Error: Cannot destroy protagonist.]', displayReplacement: `[💀 Cannot destroy protagonist]` };
+            targetName = t.name; break;
+        }
+        case 'context': { const t = (context?.allContexts || interactionData.contexts || []).find(c => c.id === entityId || c.name?.toLowerCase() === entityId.toLowerCase()); if (!t) return { toolType: 'destroyer', args, content: `[Error: Context ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` }; targetName = t.name || targetName; break; }
+        case 'location': { const t = (context?.allLocations || interactionData.locations || []).find(l => l.id === entityId || l.name.toLowerCase() === entityId.toLowerCase()); if (!t) return { toolType: 'destroyer', args, content: `[Error: Location ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` }; targetName = t.name; break; }
+        case 'audio_track': { const t = (context?.allAudioTracks || interactionData.audioTracks || []).find(a => a.id === entityId || a.name.toLowerCase() === entityId.toLowerCase()); if (!t) return { toolType: 'destroyer', args, content: `[Error: Audio track ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` }; targetName = t.name; break; }
+        case 'prompt_block': { const t = (context?.allPromptBlocks || []).find(p => p.id === entityId || p.name.toLowerCase() === entityId.toLowerCase()); if (!t) return { toolType: 'destroyer', args, content: `[Error: Prompt block ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` }; targetName = t.name; break; }
+        case 'stop_pattern': { const t = (context?.allStopPatterns || []).find(s => s.id === entityId || s.name.toLowerCase() === entityId.toLowerCase()); if (!t) return { toolType: 'destroyer', args, content: `[Error: Stop pattern ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` }; targetName = t.name; break; }
+        case 'sampler': { const t = (context?.allSamplers || []).find(s => s.id === entityId || s.name.toLowerCase() === entityId.toLowerCase()); if (!t) return { toolType: 'destroyer', args, content: `[Error: Sampler ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` }; targetName = t.name; break; }
+        case 'budget_strategy': { const t = (context?.allBudgetStrategies || []).find(b => b.id === entityId || b.name.toLowerCase() === entityId.toLowerCase()); if (!t) return { toolType: 'destroyer', args, content: `[Error: Budget strategy ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` }; targetName = t.name; break; }
+        case 'profile': { const t = (context?.allProfiles || []).find(p => p.id === entityId || p.name.toLowerCase() === entityId.toLowerCase()); if (!t) return { toolType: 'destroyer', args, content: `[Error: Profile ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` }; targetName = t.name; break; }
+        case 'world': { const t = (context?.allWorlds || []).find(w => w.id === entityId || w.name.toLowerCase() === entityId.toLowerCase()); if (!t) return { toolType: 'destroyer', args, content: `[Error: World ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` }; targetName = t.name; break; }
+        case 'memory': { const t = (context?.allMemories || []).find(m => m.id === entityId || m.name.toLowerCase() === entityId.toLowerCase()); if (!t) return { toolType: 'destroyer', args, content: `[Error: Memory ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` }; targetName = t.name; break; }
+        case 'extension': { const t = (context?.allExtensions || []).find(e => e.id === entityId || e.name.toLowerCase() === entityId.toLowerCase()); if (!t) return { toolType: 'destroyer', args, content: `[Error: Extension ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` }; targetName = t.name; break; }
+        case 'account': { const t = (context?.allAccounts || []).find(a => a.id === entityId || a.username.toLowerCase() === entityId.toLowerCase()); if (!t) return { toolType: 'destroyer', args, content: `[Error: Account ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` }; targetName = t.username; break; }
+        case 'multiplayer_data': { const t = (context?.allMultiplayerData || []).find(m => m.id === entityId || m.name.toLowerCase() === entityId.toLowerCase()); if (!t) return { toolType: 'destroyer', args, content: `[Error: Multiplayer session ID "${entityId}" not found.]`, displayReplacement: `[💀 Not found]` }; targetName = t.name; break; }
+    }
+    appendPendingAction(nextMessage, { type: 'destroyer', payload: { entityType, entityId, entityName: targetName } });
+    context?.addToast?.(`Destroyer: ${entityType} "${targetName}" initiated.`, 'info');
+    return { toolType: 'destroyer', args, content: `Deletion: ${entityType} "${targetName}" (${entityId}). Irreversible.`, displayReplacement: `[💀 ${entityType}: "${targetName}"]` };
 }
 
 // ─── Process Pending Tool Actions ───────────────────────────────────
@@ -1277,33 +1572,62 @@ export function processPendingToolActions(
                 const sessionParticipants = updatedData.participants || [];
                 if (sessionParticipants.some(p => p.id === charId)) break;
                 const realCharacter = allCharacters.find(c => c.id === charId);
-                if (!realCharacter) break;
+                if (!realCharacter) { options?.onToast?.(`⚠️ Cannot summon "${action.payload.characterName}": not found.`, 'error'); break; }
                 updatedData = { ...updatedData, participants: [...sessionParticipants, { ...realCharacter }], lastUpdatedTimestamp: Date.now() };
                 changed = true;
+                options?.onToast?.(`✨ ${realCharacter.name} joined.`, 'info');
+                break;
+            }
+            case 'kick': {
+                const sessionParticipants = updatedData.participants || [];
+                const kickedChar = sessionParticipants.find(p => p.id === action.payload.characterId);
+                if (kickedChar) {
+                    const destLocId = action.payload.destinationLocationId;
+                    const prevKickedMsg = findPrevMsg(updatedData, kickedChar.id);
+                    const prevLockedLocations = prevKickedMsg?.characterLockedLocations ?? {};
+                    const kickMsg: HistoryMessage = {
+                        messageType: 'interaction', id: uuidv4(), character: { ...kickedChar }, isPresent: true,
+                        characterClothingWearingStatuses: (prevKickedMsg as ChatMessage)?.characterClothingWearingStatuses ?? {},
+                        characterLockedLocations: { ...prevLockedLocations },
+                        parentMessageId: history.length > 0 ? history[history.length - 1].id : null,
+                        firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
+                    };
+                    if (destLocId) {
+                        if (!updatedData.interactionHistories[destLocId]) updatedData.interactionHistories[destLocId] = [];
+                        updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], kickMsg];
+                    }
+                    updatedData = { ...updatedData, lastUpdatedTimestamp: Date.now() };
+                    changed = true;
+                    options?.onToast?.(`👢 ${action.payload.characterName} kicked to ${action.payload.destinationLocationName || 'unknown'}.`, 'info');
+                }
                 break;
             }
             case 'invite': {
                 const charId = action.payload.characterId;
-                let invitedChar = (updatedData.participants || []).find(p => p.id === charId) || allCharacters.find(c => c.id === charId);
+                let invitedChar = (updatedData.participants || []).find(p => p.id === charId);
+                if (!invitedChar) invitedChar = allCharacters.find(c => c.id === charId);
                 if (invitedChar) {
+                    const charToInvite = invitedChar;
                     const kickerLoc = getCurrentLocation(updatedData, charLastMsg.character);
                     const currentLocId = kickerLoc?.id;
-                    const prevInvitedMsg = findPrevMsg(updatedData, invitedChar.id);
+                    const prevInvitedMsg = findPrevMsg(updatedData, charToInvite.id);
+                    const prevLockedLocations = prevInvitedMsg?.characterLockedLocations ?? {};
                     const inviteMsg: HistoryMessage = {
-                        messageType: 'interaction', id: uuidv4(), character: { ...invitedChar }, isPresent: true,
+                        messageType: 'interaction', id: uuidv4(), character: { ...charToInvite }, isPresent: true,
                         characterClothingWearingStatuses: (prevInvitedMsg as ChatMessage)?.characterClothingWearingStatuses ?? {},
-                        characterLockedLocations: prevInvitedMsg?.characterLockedLocations ?? {},
+                        characterLockedLocations: { ...prevLockedLocations },
                         parentMessageId: history.length > 0 ? history[history.length - 1].id : null,
                         firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
                     };
                     if (currentLocId) {
                         if (!updatedData.interactionHistories[currentLocId]) updatedData.interactionHistories[currentLocId] = [];
-                        updatedData.interactionHistories[currentLocId].push(inviteMsg);
+                        updatedData.interactionHistories[currentLocId] = [...updatedData.interactionHistories[currentLocId], inviteMsg];
                     }
-                    const isAlreadyPart = (updatedData.participants || []).some(p => p.id === invitedChar!.id);
-                    const newParticipants = isAlreadyPart ? (updatedData.participants || []) : [...(updatedData.participants || []), { ...invitedChar! }];
+                    const isAlreadyPart = (updatedData.participants || []).some(p => p.id === charToInvite.id);
+                    const newParticipants = isAlreadyPart ? (updatedData.participants || []) : [...(updatedData.participants || []), { ...charToInvite }];
                     updatedData = { ...updatedData, participants: newParticipants, lastUpdatedTimestamp: Date.now() };
                     changed = true;
+                    options?.onToast?.(`📨 ${action.payload.characterName} arrived.`, 'info');
                 }
                 break;
             }
@@ -1320,11 +1644,20 @@ export function processPendingToolActions(
                     parentMessageId: charLastMsg.id, firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
                 };
                 if (!updatedData.interactionHistories[locId]) updatedData.interactionHistories[locId] = [];
-                updatedData.interactionHistories[locId].push(whisperMsg);
+                updatedData.interactionHistories[locId] = [...updatedData.interactionHistories[locId], whisperMsg];
                 updatedData = { ...updatedData, lastUpdatedTimestamp: Date.now() };
                 changed = true;
                 break;
             }
+            case 'administrator_move_protagonist': options?.onToast?.(`🔧 Transfer to "${action.payload.chatId}" requested.`, 'info'); break;
+            case 'administrator_switch_model': options?.onToast?.(`🔧 Switch to "${action.payload.modelName}" requested.`, 'info'); break;
+            case 'administrator_toggle_account': options?.onToast?.(`🔑 Toggle account "${action.payload.accountId}" requested.`, 'info'); break;
+            case 'administrator_join_session': options?.onToast?.(`👥 Join session "${action.payload.sessionId}" requested.`, 'info'); break;
+            case 'administrator_leave_session': options?.onToast?.(`👥 Leave session requested.`, 'info'); break;
+            case 'administrator_accept_join': options?.onToast?.(`👥 Accept join for "${action.payload.accountId}" requested.`, 'info'); break;
+            case 'administrator_reject_join': options?.onToast?.(`👥 Reject join for "${action.payload.accountId}" requested.`, 'info'); break;
+            case 'creator': options?.onToast?.(`🛠️ ${action.payload.entityType} "${action.payload.entityName}" creation requested.`, 'info'); break;
+            case 'destroyer': options?.onToast?.(`💀 ${action.payload.entityType} "${action.payload.entityName}" deletion requested.`, 'info'); break;
         }
     }
     if (!changed) return data;

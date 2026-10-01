@@ -56,7 +56,7 @@ export interface JoinResponsePayload {
         contexts: Context[];
         locations: Location[];
         audioTracks: AudioTrack[];
-        profile?: profile;
+        profile?: Profile;
     };
     assignedCharacter?: Character | null;
     sessionRules?: {
@@ -79,7 +79,7 @@ export interface StateSyncPayload {
     contexts?: Context[];
     locations?: Location[];
     audioTracks?: AudioTrack[];
-    profile?: profile;
+    profile?: Profile;
     interactionHistory?: HistoryMessage[];
 }
 

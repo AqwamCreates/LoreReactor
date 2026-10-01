@@ -2,7 +2,7 @@
 import type { 
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
   Character, RawCharacter, RawInteractionMessage, RawWhisperMessage, InteractionData, RawInteractionData,
-  BudgetStrategy, RawBudgetStrategy, InterjectableAction, profile, RawProfile,
+  BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
   SummarizationStep, RawSummarizationStep, Webpage, RawWebpage,
   Memory, RawMemory, Location, RawLocation, World,
   BudgetData, RawBudgetData,
@@ -856,7 +856,7 @@ export const deleteRawBudgetStrategy = budgetStrategyRepo.remove;
 // PROFILE REPOSITORY
 // =============================================================================
 
-const profileRepo = createRepository<profile, RawProfile>({
+const profileRepo = createRepository<Profile, RawProfile>({
   entityKey: 'profiles',
   hydrate: (raw, id) => {
     const now = Date.now();
@@ -887,7 +887,7 @@ const profileRepo = createRepository<profile, RawProfile>({
       }))
       : getDefaultSummarizationSteps();
 
-    return hydrateEntity<profile, RawProfile>(raw, id, {
+    return hydrateEntity<Profile, RawProfile>(raw, id, {
         name: 'Unknown profile',
         autonomousMode: false,
         autonomousInteractionIntervalMs: 1000,
@@ -1058,7 +1058,7 @@ async function buildInteractionDataShell(
   charMap: Map<string, Character>, 
   contextMap: Map<string, Context>,
   locationMap: Map<string, Location>,
-  profileMap: Map<string, profile>,
+  profileMap: Map<string, Profile>,
   audioTrackMap?: Map<string, AudioTrack>,
 ): Promise<InteractionData | null> {
   
@@ -1217,7 +1217,7 @@ export async function loadRawInteractionData(
     for (const l of locResults) { if (l) locationMap.set(l.id, l); }
   }
 
-  const profileMap = new Map<string, profile>();
+  const profileMap = new Map<string, Profile>();
   if (rawInteractionData.profileId) {
     const p = await loadRawProfile(rawInteractionData.profileId);
     if (p) profileMap.set(p.id, p);
