@@ -1,13 +1,13 @@
 // src/hooks/useEntitySync.tsx
 import { useEffect, useRef } from 'react';
-import type { Character, Context, profile, InteractionData } from '../types';
+import type { Character, Context, Profile, InteractionData } from '../types';
 import { useSessionStore } from './useSessionStore';
 
 interface UseEntitySyncOptions {
     activeChatRestored: boolean;
     allCharacters: Character[];
     allContexts: Context[];
-    allProfiles: profile[];
+    allProfiles: Profile[];
     currentCharacter: Character | null;
     setInteractionData: (data: InteractionData) => void;
     setSelectedCharacter: (char: Character | null) => void;
@@ -42,7 +42,7 @@ export function useEntitySync(options: UseEntitySyncOptions) {
         const contextMap = new Map<string, Context>();
         for (const c of allContexts) contextMap.set(c.id, c);
 
-        const profileMap = new Map<string, profile>();
+        const profileMap = new Map<string, Profile>();
         for (const p of allProfiles) profileMap.set(p.id, p);
 
         let changed = false;

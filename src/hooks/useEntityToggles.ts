@@ -1,6 +1,6 @@
 // src/hooks/useEntityToggles.ts
 import { useCallback } from 'react';
-import type { Character, Context, Location, AudioTrack, profile, BudgetStrategy, InteractionData, MultiplayerData, HistoryMessage } from '../types';
+import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy, InteractionData, MultiplayerData, HistoryMessage } from '../types';
 import { loadRawContext, loadRawLocation, loadRawAudioTrack, saveRawMultiplayerData } from '../storages/serverStorage';
 import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { useSessionStore } from './useSessionStore';
@@ -11,7 +11,7 @@ interface UseEntityTogglesOptions {
     allCharacters: Character[];
     activeExtensionIds: string[];
     setActiveExtensionIds: (ids: string[]) => void;
-    allProfiles: profile[];
+    allProfiles: Profile[];
     allBudgetStrategies: BudgetStrategy[];
     setInteractionData: (data: InteractionData) => void;
     setSelectedCharacter: (char: Character | null) => void;

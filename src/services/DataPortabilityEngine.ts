@@ -1,7 +1,7 @@
 // src/services/DataPortabilityEngine.ts
 import type {
     Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock,
-    StopPattern, BudgetStrategy, profile, InteractionData, InterjectableAction, Memory,
+    StopPattern, BudgetStrategy, Profile, InteractionData, InterjectableAction, Memory,
     Account, MultiplayerData, SessionData, MultiplayerJoinData, ActionFormatData, BudgetData,
 } from '../types';
 import type { FormatPreferenceData } from './FormatPreferenceEngine';
@@ -44,7 +44,7 @@ export interface LoreReactorExport {
     promptBlocks: PromptBlock[];
     stopPatterns: StopPattern[];
     budgetStrategies: BudgetStrategy[];
-    profiles: profile[];
+    profiles: Profile[];
     memories: Memory[];
     accounts: Account[];
     multiplayerData: MultiplayerData[];

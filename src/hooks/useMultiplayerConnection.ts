@@ -1,7 +1,7 @@
 // src/hooks/useMultiplayerConnection.ts
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Peer, { type DataConnection } from 'peerjs';
-import type { MultiplayerData, InteractionData, HistoryMessage, Character, Context, Location, AudioTrack, profile } from '../types';
+import type { MultiplayerData, InteractionData, HistoryMessage, Character, Context, Location, AudioTrack, Profile } from '../types';
 
 // ─── Unified Multiplayer Protocol & Payloads ──────────────────────────
 export type MessageType =

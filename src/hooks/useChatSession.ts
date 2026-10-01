@@ -38,7 +38,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { 
     Character, Context, Location, AudioTrack, World, 
     PromptBlock, Sampler, StopPattern, BudgetStrategy, 
-    profile, InteractionData, ChatMessage, WhisperMessage, 
+    Profile, InteractionData, ChatMessage, WhisperMessage, 
     HistoryMessage, Memory, Extension, Account, 
     MultiplayerData, LanguageModel, InterjectableAction 
 } from '../types';
@@ -138,7 +138,7 @@ function broadcastToolStateChanges(
 }
 
 function evaluateAutoResumeSignals(
-    profile: profile | undefined, 
+    profile: Profile | undefined, 
     text: string, 
     currentResumeCount: number
 ): { shouldResume: boolean; patternsToInject: string[] } {
@@ -159,7 +159,7 @@ function evaluateAutoResumeSignals(
         const activationTrigger = signal.regularExpressionActivationTrigger?.trim();
         const deactivationTrigger = signal.regularExpressionDeactivationTrigger?.trim();
         const stopPattern = signal.stopPattern?.trim();
-        const minimumLength = signal.minimumLength ? parseInt(signal.minimumLength, 10) : 0;
+        const minimumLength = signal.minimumLength ? Number.parseInt(signal.minimumLength, 10) : 0;
 
         let isActivated = false;
         let activationIndex = 0;
@@ -191,7 +191,7 @@ function evaluateAutoResumeSignals(
         
         if (deactivationTrigger) {
             const textAfterActivation = text.slice(activationIndex);
-            const minLen = isNaN(minimumLength) ? 0 : minimumLength;
+            const minLen = Number.isNaN(minimumLength) ? 0 : minimumLength;
             if (textAfterActivation.length >= minLen) {
                 try {
                     const endsWithRegex = new RegExp(`${deactivationTrigger}$`);
@@ -254,7 +254,7 @@ interface UseChatSessionOptions {
     allSamplers?: Sampler[];
     allStopPatterns?: StopPattern[];
     allBudgetStrategies?: BudgetStrategy[];
-    allProfiles?: profile[];
+    allProfiles?: Profile[];
     allWorlds?: World[];
     allMemories?: Memory[];
     allExtensions?: Extension[];

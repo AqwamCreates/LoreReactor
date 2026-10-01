@@ -1,6 +1,6 @@
 // src/components/DataManagerModal.tsx
 import { useState, useCallback, useMemo } from 'react';
-import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, profile, Memory, RawInteractionData, Account, MultiplayerData } from '../types';
+import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData } from '../types';
 import { useToast } from '../context/ToastContext';
 import { saveRawSessionData, deleteSessionData, deleteMultiplayerJoinData, deleteActionFormatData, clearPreferencesCache, clearSaveQueue, deleteFormatPreferences } from '../storages/serverStorage';
 import '../main.css';
@@ -17,7 +17,7 @@ interface DataManagerModalProps {
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
     allBudgetStrategies: BudgetStrategy[];
-    allProfiles: profile[];
+    allProfiles: Profile[];
     allMemories: Memory[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];

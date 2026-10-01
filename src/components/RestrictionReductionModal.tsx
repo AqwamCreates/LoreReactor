@@ -1,6 +1,6 @@
 // src/components/RestrictionReductionModal.tsx
 import { useState, useRef, useEffect, useMemo } from 'react';
-import type { Character, profile, Sampler, LanguageModel } from '../types';
+import type { Character, Profile, Sampler, LanguageModel } from '../types';
 import { EntitySelect } from './EntitySelect';
 import { EntitySelectList } from './EntitySelectList';
 import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
@@ -46,7 +46,7 @@ interface RestrictionReductionModalProps {
     onClose: () => void;
     onSaveCharacter: (character: Character) => Promise<boolean>;
     allCharacters: Character[];
-    allProfiles: profile[];
+    allProfiles: Profile[];
     allLanguageModels: LanguageModel[];
     allSamplers: Sampler[];
     runningModels: Record<string, { isRunning: boolean; port?: number }>;

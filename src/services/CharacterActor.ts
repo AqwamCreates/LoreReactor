@@ -1,5 +1,5 @@
 // src/services/CharacterActor.ts
-import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, profile } from '../types';
+import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile } from '../types';
 import { saveRawBudgetData } from '../storages/serverStorage';
 import { buildChatRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
 import { detectName } from '../utilities/nameDetection';
@@ -70,7 +70,7 @@ export interface TurnExecutionParams {
 async function processToolInvocations(
     rawText: string,
     character: Character,
-    profile: profile | undefined,
+    profile: Profile | undefined,
     nextMessage: ChatMessage,
     interactionData: InteractionData,
 ): Promise<{ resumeText: string; displayText: string; displayReplacements: { type: string; value: string }[] } | null> {

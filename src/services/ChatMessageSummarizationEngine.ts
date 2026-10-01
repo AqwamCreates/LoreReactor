@@ -1,5 +1,5 @@
 // src/services/ChatMessageSummarizationEngine.ts
-import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock, cacheEfficiencyConfigurationType, profile, SummarizationStep, StopPattern } from '../types';
+import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock, cacheEfficiencyConfigurationType, Profile, SummarizationStep, StopPattern } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
