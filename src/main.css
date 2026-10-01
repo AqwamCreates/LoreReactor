@@ -982,7 +982,6 @@ SHARED UI COMPONENTS (Context Bar, Input, Modals, etc.)
 /* Shared nav button styles for both rows */
 .context-bar .nav-button {
     flex: 1 1 0;
-    min-width: 0;
     background: var(--social-bg);
     border: 1px solid var(--border);
     border-radius: clamp(6px, 1vw, 10px);
