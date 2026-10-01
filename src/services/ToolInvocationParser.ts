@@ -191,7 +191,7 @@ function parseToolContent(content: string): ToolInvocation | null {
 
     const trimmed = content.trim();
 
-    // Try colon-separated first: "search: weather in Tokyo"
+    // 1. Try standard colon or space separation first (safest for args containing brackets)
     const colonIdx = trimmed.indexOf(':');
     if (colonIdx > 0) {
         const toolType = trimmed.slice(0, colonIdx).trim().toLowerCase();
@@ -205,7 +205,6 @@ function parseToolContent(content: string): ToolInvocation | null {
         }
     }
 
-    // Try space-separated: "calculator 2+2*3"
     const spaceIdx = trimmed.indexOf(' ');
     if (spaceIdx > 0) {
         const toolType = trimmed.slice(0, spaceIdx).trim().toLowerCase();
@@ -219,7 +218,24 @@ function parseToolContent(content: string): ToolInvocation | null {
         }
     }
 
-    // Single word with no args (unlikely but handle gracefully)
+    // 2. Fallback: Regex to handle LLM hallucinations like "dice}1d20}" or "dice(1d20)"
+    // Matches: valid_tool_name followed by any non-alphanumeric separator, then the rest
+    const hallucinationMatch = trimmed.match(/^([a-zA-Z_]+)[^a-zA-Z0-9]+(.*)$/);
+    if (hallucinationMatch) {
+        const toolType = hallucinationMatch[1].toLowerCase();
+        // Clean up trailing hallucinated brackets/braces from the args
+        const args = hallucinationMatch[2].replace(/[)}\]]+$/, '').trim();
+        
+        if (isValidToolType(toolType)) {
+            return {
+                rawMatch: `${toolStartSring}${content}${toolEndString}`,
+                toolType,
+                args,
+            };
+        }
+    }
+
+    // 3. Single word with no args (unlikely but handle gracefully)
     const singleWord = trimmed.toLowerCase();
     if (isValidToolType(singleWord)) {
         return {

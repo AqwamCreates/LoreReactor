@@ -598,9 +598,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             releaseLock();
             return;
         }
-
-        console.log(respondingCharacter)
-
+        
         const ctrl = new AbortController();
         abortControllerRef.current = ctrl;
         wasStoppedRef.current = false;
