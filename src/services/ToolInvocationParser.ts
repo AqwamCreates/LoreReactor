@@ -179,7 +179,7 @@ export class ToolInvocationParser {
 }
 
 function isValidToolType(type: string): boolean {
-    return validTools.includes(type);
+    return validTools.includes(type as tool);
 }
 
 /**
