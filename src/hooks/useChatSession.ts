@@ -743,8 +743,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             const interactionDataId = data.id || 'unknown';
             for (const participant of data.participants) {
-                // FIXED: Use local history for character-specific perspective
-                const charHistory = getLocalMessageHistory(data, participant, ['chat', 'whisper']) as (ChatMessage | WhisperMessage)[]
+                const charHistory = getLocalMessageHistory(data, participant, ['chat', 'whisper']) as (ChatMessage | WhisperMessage)[];
                 speculativeMarkovEngine.syncMessages(
                     charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })),
                     participant.id,
@@ -795,17 +794,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                     return;
                 }
 
-                if (!turnResult.isCompleted && !wasStoppedRef.current) {
-                    console.log("DEBUG: Turn marked incomplete by Engine. Triggering Resume.", {
-        isCompleted: turnResult.isCompleted,
-        textLen: hasTextContent(getGlobalMessageHistory(ud)[getGlobalMessageHistory(ud).length - 1]) 
-                 ? (getGlobalMessageHistory(ud).slice(-1)[0] as any).textContent.length 
-                 : 0
-    });
-                    autoResumeOnCutoff(ud, protagonistId, allPromptBlocks);
-                    return;
-                }
-
                 runSummarization({
                     data: ud,
                     character: respondingChar,
@@ -852,16 +840,18 @@ export function useChatSession(options: UseChatSessionOptions) {
                 const { messageId, allPromptBlocks: blocks } = pendingResumeRef.current;
                 pendingResumeRef.current = null;
                 setTimeout(() => resumeGenerationRef.current?.(messageId, blocks), 0);
-            } else if (pendingHostResponseRef.current) {
+            } else if (pendingHostResponseRef.current && isMultiplayerClient) {
                 pendingHostResponseRef.current = false;
                 setTimeout(() => triggerHostResponseRef.current?.(), 0);
+            } else {
+                pendingHostResponseRef.current = false;
             }
         }
     }, [
         acquireLock, getState, isModelReadyForGeneration, addToast, releaseLock, 
         resetStream, setStreamingState, setStats, getRequestsLastHour, chatEngine, 
         applyPendingPartial, setInteractionData, broadcastNewMessages, 
-        autoResumeOnCutoff, ui, generateAmbientNarration
+        autoResumeOnCutoff, ui, generateAmbientNarration, isMultiplayerClient
     ]);
 
     const sendMessage = useCallback(async (
@@ -1037,7 +1027,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                         lastUpdatedTimestamp: chatMessage.firstCreatedTimestamp + 1,
                     };
 
-                    // BROADCAST ARRIVAL INTERACTION FOR MULTIPLAYER SYNC
                     onMessageBroadcastRef.current?.(arrivalInteraction);
 
                     const updatedHistories = { ...td.interactionHistories };
@@ -1237,14 +1226,21 @@ export function useChatSession(options: UseChatSessionOptions) {
             return; 
         }
 
-        if (isLoadingRef.current) { abortControllerRef.current?.abort(); abortControllerRef.current = null; await new Promise(r => setTimeout(r, 100)); }
+        if (isLoadingRef.current) { 
+            abortControllerRef.current?.abort(); 
+            abortControllerRef.current = null; 
+            await new Promise(r => setTimeout(r, 100)); 
+        }
         if (!acquireLock()) { 
             addToast('Already generating...', 'info'); 
-            pendingResumeRef.current = { messageId, allPromptBlocks };
             return; 
         }
         const currentState = getState();
-        if (!currentState.activeStrategy && !isModelReadyForGeneration()) { addToast('Model not ready.', 'error'); releaseLock(); return; }
+        if (!currentState.activeStrategy && !isModelReadyForGeneration()) { 
+            addToast('Model not ready.', 'error'); 
+            releaseLock(); 
+            return; 
+        }
 
         const existingText = msg.textContent;
         const char = msg.character;
@@ -1309,22 +1305,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 return;
             }
 
-            if (!result.isCompleted && !wasStoppedRef.current) {
-                setState({
-                    interactionData: dataToSave,
-                    streamingCharacter: null,
-                    streamingText: '',
-                });
-                setTimeout(() => {
-                    const allProtagonistIds = new Set(dataToSave.protagonists?.map(p => p.id) ?? [char.id]);
-                    const reMarkedId = findLastAIMessageId(dataToSave, allProtagonistIds);
-                    if (reMarkedId) {
-                        resumeGenerationRef.current?.(reMarkedId, allPromptBlocks);
-                    }
-                }, 0);
-                return;
-            }
-
             setState({
                 interactionData: dataToSave,
                 streamingCharacter: null,
@@ -1354,15 +1334,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             });
 
             releaseLock();
-            
-            if (pendingResumeRef.current) {
-                const { messageId, allPromptBlocks: blocks } = pendingResumeRef.current;
-                pendingResumeRef.current = null;
-                setTimeout(() => resumeGenerationRef.current?.(messageId, blocks), 0);
-            } else if (pendingHostResponseRef.current) {
-                pendingHostResponseRef.current = false;
-                setTimeout(() => triggerHostResponseRef.current?.(), 0);
-            }
         }
     }, [
         getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration, 
