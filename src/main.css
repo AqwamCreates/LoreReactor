@@ -2230,6 +2230,52 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 }
 
 /* =============================================================================
+VISUAL NOVEL: DYNAMIC BREATHING PATTERNS
+============================================================================= */
+
+/* 1. Calm (Natural Idle) */
+@keyframes vn-breathe-calm {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+}
+
+/* 2. Fast (Panting / Gasping / Panicked / Excited) */
+@keyframes vn-breathe-fast {
+    0%, 100% { transform: translateY(0) scaleY(1); }
+    50% { transform: translateY(-6px) scaleY(1.012); }
+}
+
+/* 3. Heavy (Exhausted / Deep Sighs / Heavy Chest Heaving) */
+@keyframes vn-breathe-heavy {
+    0%, 100% { transform: translateY(0) scaleY(1); }
+    35% { transform: translateY(-8px) scaleY(1.02); }
+    65% { transform: translateY(-2px) scaleY(0.99); }
+}
+
+/* 4. Subtle (Relaxed / Meditating / Sleeping) */
+@keyframes vn-breathe-subtle {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-2px); }
+}
+
+/* 5. Tremble (Shivering / Freezing / Fear / Sobbing) */
+@keyframes vn-breathe-tremble {
+    0%, 100% { transform: translateY(0) translateX(0); }
+    20% { transform: translateY(-2px) translateX(-1px); }
+    40% { transform: translateY(-3px) translateX(1px); }
+    60% { transform: translateY(-1px) translateX(-0.5px); }
+    80% { transform: translateY(-2px) translateX(0.5px); }
+}
+
+/* Class Bindings */
+.vn-breathe-calm { animation: vn-breathe-calm 4s ease-in-out infinite; }
+.vn-breathe-fast { animation: vn-breathe-fast 1.2s ease-in-out infinite; }
+.vn-breathe-heavy { animation: vn-breathe-heavy 2.5s ease-in-out infinite; }
+.vn-breathe-subtle { animation: vn-breathe-subtle 6s ease-in-out infinite; }
+.vn-breathe-tremble { animation: vn-breathe-tremble 0.6s ease-in-out infinite; }
+.vn-breathe-none { animation: none !important; }
+
+/* =============================================================================
 SHARED UTILITIES & MODALS (Unchanged sections follow)
 ============================================================================= */
 /* ... (Sections 6 through 23 from original file remain here) ... */

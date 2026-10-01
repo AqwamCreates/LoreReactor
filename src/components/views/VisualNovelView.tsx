@@ -104,6 +104,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
             || null;
     }, [viewIndex, displayedMessage, isLoading, streamingCharacter, isStreamingInList, lastMsg, centerAvatar, visibleCharacters, protagonistId]);
 
+    // Compute the resolved display name for the active speaker using the immersion cache (one message behind)
     const activeSpeakerDisplayName = useMemo(() => {
         if (!activeSpeaker || activeSpeaker.id === AMBIENT_NARRATOR_ID) return 'System';
         const msgIdx = displayedMessage ? chatMessages.findIndex(m => m.id === displayedMessage.id) : chatMessages.length - 1;
@@ -304,6 +305,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
                     const isSpeaking = activeSpeaker?.id === characterId;
                     const isJumping = jumpingCharacterIds.has(characterId);
+                    const breatheClass = `vn-breathe-${state.breathingPattern || 'calm'}`;
 
                     const classNames = [
                         'vn-character-layer',
@@ -321,8 +323,12 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                             opacity: state.facingTargetId === null && !isSpeaking ? 0.5 : (isSpeaking ? 1 : 0.7),
                             filter: isSpeaking ? 'none' : 'brightness(0.8)',
                         }}>
-                            <img src={portraitUrl} alt={character.name} className="vn-sprite"
-                                onError={handleImageError} />
+                            <img 
+                                src={portraitUrl} 
+                                alt={character.name} 
+                                className={`vn-sprite ${breatheClass}`}
+                                onError={handleImageError} 
+                            />
                         </div>
                     );
                 })}

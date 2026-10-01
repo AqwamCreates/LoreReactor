@@ -4,12 +4,15 @@ import type { ChatMessage } from '../types';
 
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 
+export type BreathingPattern = 'calm' | 'fast' | 'heavy' | 'subtle' | 'tremble' | 'none';
+
 export interface VisualNovelSpriteState {
     depth: number;
     screenX: number;
     facingTargetId: string | null;
     scale: number;
     verticalOffset: number;
+    breathingPattern: BreathingPattern; // <-- Added
 }
 
 interface VisualNovelMovementEntry {
@@ -29,7 +32,13 @@ interface UseVisualNovelSpriteStatesOptions {
 }
 
 type MovementDirection = 'left' | 'right' | 'closer' | 'away' | 'forward' | 'backward';
-type VerticalAction = 'crouch' | 'stand' | 'jump' | 'stretch' | 'sit' | 'lie' | 'lean_forward' | 'lean_back' | 'tower' | 'shrink' | 'sidestep_left' | 'sidestep_right' | 'center' | 'turn_away' | 'hide_behind' | 'group_up';
+type VerticalAction = 
+    | 'crouch' | 'stand' | 'jump' | 'stretch' | 'sit' | 'lie' 
+    | 'lean_forward' | 'lean_back' | 'tower' | 'shrink' 
+    | 'sidestep_left' | 'sidestep_right' | 'center' | 'turn_away' 
+    | 'hide_behind' | 'group_up'
+    | 'breathe_fast' | 'breathe_heavy' | 'breathe_subtle' | 'breathe_tremble' | 'breathe_none' | 'breathe_calm'; // <-- Added
+
 type InteractionAction = 'push' | 'pull' | 'block' | 'gather';
 
 interface ParsedMovement {
@@ -47,7 +56,7 @@ function cloneState(state: VisualNovelSpriteState): VisualNovelSpriteState {
 
 function getDistributedState(index: number, total: number): VisualNovelSpriteState {
     if (total <= 1) {
-        return { depth: 0.5, screenX: 50, facingTargetId: null, scale: 1.0, verticalOffset: 0 };
+        return { depth: 0.5, screenX: 50, facingTargetId: null, scale: 1.0, verticalOffset: 0, breathingPattern: 'calm' };
     }
     const min = 15;
     const max = 85;
@@ -59,7 +68,8 @@ function getDistributedState(index: number, total: number): VisualNovelSpriteSta
         screenX,
         facingTargetId: null,
         scale: computeScaleFromDepth(depth),
-        verticalOffset: 0
+        verticalOffset: 0,
+        breathingPattern: 'calm',
     };
 }
 
@@ -70,10 +80,6 @@ function computeScaleFromDepth(depth: number): number {
 function clamp(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
 }
-
-// =============================================================================
-// MOVEMENT PARSING
-// =============================================================================
 
 function splitIntoClauses(text: string): string[] {
     const parts = text.split(/\s*(?:;\s*|\.\s+(?=(?:she|he|they|it|i)\s)|\s+then\s+|\s+before\s+|\s+after\s+)/i);
@@ -87,6 +93,24 @@ function parseMovementsFromClause(clause: string, speakerId: string, participant
     const mentionedChars = participantIds.filter(id => id !== speakerId && id !== AMBIENT_NARRATOR_ID);
     const firstMentioned = mentionedChars.length > 0 ? mentionedChars[0] : undefined;
 
+    // --- Dynamic Breathing Control Detection ---
+    if (/\b(pant|panting|panted|gasp|gasping|gasped|out\s+of\s+breath|short\s+of\s+breath|hyperventilat|breathless)/i.test(lowerClause)) {
+        movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'breathe_fast' });
+    }
+    if (/\b(sigh|sighed|sighing|heavy\s+breath|deep\s+breath|breathe\s+deeply|breathed\s+heavily|exhaust|winded)/i.test(lowerClause)) {
+        movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'breathe_heavy' });
+    }
+    if (/\b(shiver|shivering|shivered|trembl|shudder|quiver|teeth\s+chatter)/i.test(lowerClause)) {
+        movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'breathe_tremble' });
+    }
+    if (/\b(calm|steady\s+breath|slow\s+breath|relax|asleep|sleep|peaceful)/i.test(lowerClause)) {
+        movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'breathe_subtle' });
+    }
+    if (/\b(held\s+(her|his|their)\s+breath|hold\s+(her|his|their)\s+breath|freeze|froze|motionless|statue|stopped\s+breathing)/i.test(lowerClause)) {
+        movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'breathe_none' });
+    }
+
+    // --- Standard Actions ---
     if (/\bcrouch|kneel|bow|duck|lower\s+(herself|himself|themselves|down)|bend\s+(her|his|their)\s+knee/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'crouch' });
     }
@@ -180,9 +204,6 @@ function parseMovementFromText(text: string, speakerId: string, participantIds: 
     return allMovements;
 }
 
-// =============================================================================
-// MOVEMENT APPLICATION
-// =============================================================================
 function applyMovement(
     currentState: Map<string, VisualNovelSpriteState>,
     movement: ParsedMovement,
@@ -208,6 +229,12 @@ function applyMovement(
         const updatedState = cloneState(charState);
 
         switch (movement.verticalAction) {
+            case 'breathe_fast': updatedState.breathingPattern = 'fast'; break;
+            case 'breathe_heavy': updatedState.breathingPattern = 'heavy'; break;
+            case 'breathe_subtle': updatedState.breathingPattern = 'subtle'; break;
+            case 'breathe_tremble': updatedState.breathingPattern = 'tremble'; break;
+            case 'breathe_none': updatedState.breathingPattern = 'none'; break;
+            case 'breathe_calm': updatedState.breathingPattern = 'calm'; break;
             case 'crouch': updatedState.verticalOffset = clamp(updatedState.verticalOffset + 25, 0, 60); break;
             case 'stand': updatedState.verticalOffset = clamp(updatedState.verticalOffset - 30, 0, 60); break;
             case 'jump': break;
@@ -378,9 +405,6 @@ function applyMovement(
     return { newState, entries };
 }
 
-// =============================================================================
-// STATE REPLAY
-// =============================================================================
 function computeStatesAtHistoryIndex(
     history: VisualNovelMovementEntry[],
     upToIndex: number,
@@ -398,13 +422,9 @@ function computeStatesAtHistoryIndex(
     return states;
 }
 
-// =============================================================================
-// HOOK (React Compiler compliant: no refs during render, no sync setState in effects)
-// =============================================================================
 export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOptions) {
     const { chatMessages, visibleCharacterIds, viewedMessageIndex } = options;
 
-    // ─── Pure computation via useMemo (no refs, no effects) ───
     const { movementHistory, finalStates, jumpSignature } = useMemo(() => {
         const history: VisualNovelMovementEntry[] = [];
         const states = new Map<string, VisualNovelSpriteState>();
@@ -441,14 +461,12 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
         return { movementHistory: history, finalStates: states, jumpSignature: lastJumpMessageId };
     }, [chatMessages, visibleCharacterIds]);
 
-    // ─── Rollback override (set via event handler, invalidated by reference check) ───
     const [rollbackOverride, setRollbackOverride] = useState<{ index: number; chatRef: ChatMessage[] } | null>(null);
 
     const rollbackToMessage = useCallback((messageIndex: number) => {
         setRollbackOverride({ index: messageIndex, chatRef: chatMessages });
     }, [chatMessages]);
 
-    // ─── Displayed sprite states (pure derivation) ───
     const spriteStates = useMemo(() => {
         let effectiveIndex: number | null = viewedMessageIndex;
         if (rollbackOverride && rollbackOverride.chatRef === chatMessages) {
@@ -456,21 +474,17 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
         }
         
         const isLatest = effectiveIndex === null || effectiveIndex >= chatMessages.length - 1;
-        
-        // Adding `|| effectiveIndex === null` explicitly narrows the type to `number` below this line
         if (isLatest || effectiveIndex === null) return new Map(finalStates);
         
         return computeStatesAtHistoryIndex(movementHistory, effectiveIndex, visibleCharacterIds);
     }, [movementHistory, finalStates, viewedMessageIndex, rollbackOverride, chatMessages, visibleCharacterIds]);
 
-    // ─── Initial load flag (one-time mount effect with rAF callback) ───
     const [isInitialLoad, setIsInitialLoad] = useState(true);
     useEffect(() => {
         const id = requestAnimationFrame(() => setIsInitialLoad(false));
         return () => cancelAnimationFrame(id);
     }, []);
 
-    // ─── Jump animation (async setState via setTimeout subscription) ───
     const [jumpingCharacterIds, setJumpingCharacterIds] = useState<Set<string>>(new Set());
 
     useEffect(() => {
