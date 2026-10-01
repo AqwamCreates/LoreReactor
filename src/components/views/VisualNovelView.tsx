@@ -104,7 +104,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
             || null;
     }, [viewIndex, displayedMessage, isLoading, streamingCharacter, isStreamingInList, lastMsg, centerAvatar, visibleCharacters, protagonistId]);
 
-    // Compute the resolved display name for the active speaker using the immersion cache (one message behind)
     const activeSpeakerDisplayName = useMemo(() => {
         if (!activeSpeaker || activeSpeaker.id === AMBIENT_NARRATOR_ID) return 'System';
         const msgIdx = displayedMessage ? chatMessages.findIndex(m => m.id === displayedMessage.id) : chatMessages.length - 1;
@@ -246,6 +245,18 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         const segments = detectFormatSegments(rawDraftRef.current);
         setConversions(buildCategoryConversionsWithLearning(rawDraftRef.current, segments));
     }, []);
+
+    const canAutoReformat = useMemo(() => {
+        if (!editDraft || conversions.length === 0) return false;
+        const segments = detectFormatSegments(editDraft);
+        if (segments.length === 0) return false;
+
+        const learned = buildCategoryConversionsWithLearning(editDraft, segments);
+        return learned.some(c => {
+            const current = conversions.find(curr => curr.detected === c.detected);
+            return c.target !== c.detected && (!current || current.target !== c.target);
+        });
+    }, [editDraft, conversions]);
 
     const handleCancelEditing = useCallback(() => {
         setConversions([]);
@@ -459,8 +470,10 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                         <button
                                             type="button"
                                             onClick={handleAutoReformat}
+                                            disabled={!canAutoReformat}
                                             className="vn-auto-reformat-button"
-                                            title="Apply learned reformatting preferences to all text"
+                                            title={canAutoReformat ? "Apply learned reformatting preferences to all text" : "No new learned formatting changes available"}
+                                            style={!canAutoReformat ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
                                         >
                                             Auto-Reformat
                                         </button>
