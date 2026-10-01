@@ -787,42 +787,53 @@ export class LanguageModelEngine {
             let token = "";
 
             const finishReason = json.choices?.[0]?.finish_reason;
-            if (finishReason === 'stop' || finishReason === 'eos') {
-              if (json.choices?.[0]?.delta?.content) {
-                token = json.choices[0].delta.content;
-                if (!hasReceivedNonWhitespace && !existingText) {
-                  const trimmed = token.trimStart();
-                  if (trimmed.length > 0) {
-                    token = trimmed;
-                    hasReceivedNonWhitespace = true;
-                    if (newNumberOfTokens === 0) firstTokenTime = performance.now();
-                    newNumberOfTokens++;
-                    fullContent += token;
-                  }
-                } else if (hasReceivedNonWhitespace) {
-                  newNumberOfTokens++;
-                  fullContent += token;
+            
+            // Standard OpenAI & OpenAI-compatible (vLLM, Ollama, llama.cpp) finish reasons
+            if (finishReason) {
+                // 1. Extract any trailing content in this final chunk
+                if (json.choices?.[0]?.delta?.content) {
+                    token = json.choices[0].delta.content;
+                    if (!hasReceivedNonWhitespace && !existingText) {
+                        const trimmed = token.trimStart();
+                        if (trimmed.length > 0) {
+                            token = trimmed;
+                            hasReceivedNonWhitespace = true;
+                            if (newNumberOfTokens === 0) firstTokenTime = performance.now();
+                            newNumberOfTokens++;
+                            fullContent += token;
+                        }
+                    } else if (hasReceivedNonWhitespace) {
+                        newNumberOfTokens++;
+                        fullContent += token;
+                    }
                 }
-              }
 
-              if (callbacks?.onFinish) {
-                callbacks.onFinish({
-                  promptTokens: finalUsage.promptTokens,
-                  completionTokens: finalUsage.completionTokens,
-                  cachedTokens: finalUsage.cachedTokens,
-                });
-              }
-              return {
-                text: fullContent,
-                isCompleted: true,
-                msPerToken: lastMsPerToken || undefined,
-                timeToFirstToken: lastTimeToFirstToken || undefined,
-                completionTokens: finalUsage.completionTokens !== undefined 
-                  ? finalUsage.completionTokens 
-                  : (newNumberOfTokens || undefined),
-                promptTokens: finalUsage.promptTokens,
-                cachedTokens: finalUsage.cachedTokens,
-              };
+                // 2. Determine completion state
+                // "length" means it hit max_tokens (truncated) -> isCompleted: false (triggers auto-resume!)
+                // "stop" / "eos" means natural stop or stop sequence -> isCompleted: true
+                // "content_filter" / "tool_calls" -> isCompleted: true (effectively stopped)
+                const isTruncated = finishReason === 'length';
+                const isCompleted = !isTruncated;
+
+                if (callbacks?.onFinish) {
+                    callbacks.onFinish({
+                        promptTokens: finalUsage.promptTokens,
+                        completionTokens: finalUsage.completionTokens,
+                        cachedTokens: finalUsage.cachedTokens,
+                    });
+                }
+                
+                return {
+                    text: fullContent,
+                    isCompleted,
+                    msPerToken: lastMsPerToken || undefined,
+                    timeToFirstToken: lastTimeToFirstToken || undefined,
+                    completionTokens: finalUsage.completionTokens !== undefined 
+                        ? finalUsage.completionTokens 
+                        : (newNumberOfTokens || undefined),
+                    promptTokens: finalUsage.promptTokens,
+                    cachedTokens: finalUsage.cachedTokens,
+                };
             }
 
             if (json.choices?.[0]?.delta?.content !== undefined) {

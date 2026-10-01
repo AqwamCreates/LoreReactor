@@ -88,11 +88,12 @@ class SentimentAnalysisEngine {
             try { await this.loading; } catch { /* ignore */ }
         }
 
+        if (this.classifier) console.log('[SentimentEngine] Unloaded.');
+
         this.classifier = null;
         this.loading = null;
         this.loadError = null;
         this.usingWebGpu = false;
-        console.log('[SentimentEngine] Unloaded.');
     }
 
     async analyze(text: string): Promise<SentimentResult | null> {

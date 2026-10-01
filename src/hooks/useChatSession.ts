@@ -796,6 +796,12 @@ export function useChatSession(options: UseChatSessionOptions) {
                 }
 
                 if (!turnResult.isCompleted && !wasStoppedRef.current) {
+                    console.log("DEBUG: Turn marked incomplete by Engine. Triggering Resume.", {
+        isCompleted: turnResult.isCompleted,
+        textLen: hasTextContent(getGlobalMessageHistory(ud)[getGlobalMessageHistory(ud).length - 1]) 
+                 ? (getGlobalMessageHistory(ud).slice(-1)[0] as any).textContent.length 
+                 : 0
+    });
                     autoResumeOnCutoff(ud, protagonistId, allPromptBlocks);
                     return;
                 }
