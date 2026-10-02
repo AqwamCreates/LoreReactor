@@ -1205,8 +1205,19 @@ function buildToolInstructionLines(ctx: PromptBuildContext): string[] {
     const enabledToolNames = (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
 
     if (enabledToolNames.length > 0) {
-        const firstTool = enabledToolNames[0];
-        lines.push(`${ctx.delimiters.blockStart('system')}I understand that I can access the tools help page or use it directly by calling the ${toolStartSring} marker followed by the tool name and arguments, then closing with ${toolEndString} like ${toolStartSring}${firstTool}()${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results. Tool invocation markers are completely invisible to the user. Writing a tool name without arguments returns usage instructions for that tool. I also understand that calling some of the tools without an argument will give me the instructions on how to use it. I will also only provide the values that are requested by the tools instead of creating non-existing ones. I will also use the tools to get accurate and precise information. Available tools: ${enabledToolNames.join(', ')}.${ctx.delimiters.blockEnd}`);
+        const exampleTool = enabledToolNames.includes('dice' as tool)
+            ? 'dice(sides: 6, count: 3)'
+            : `${enabledToolNames[0]}()`;
+
+        const toolInstructions = [
+            `I have access to external tools: ${enabledToolNames.join(', ')}.`,
+            `To invoke a tool, I will write ${toolStartSring}tool_name(arguments)${toolEndString} (for example: ${toolStartSring}${exampleTool}${toolEndString}). Calling a tool without arguments returns its usage instructions.`,
+            `When using a tool, I will always complete my preceding sentence first and place the ${toolStartSring}...${toolEndString} invocation on its own clean boundary.`,
+            `The tool invocation will be evaluated immediately and replaced with the tool result. Upon receiving the tool result, I will begin a complete, grammatically sound sentence incorporating the actual result.`,
+            `I will only call tools when a new action or calculation is explicitly needed, and I will never fabricate or guess numbers when a tool result is available.`
+        ].join(' ');
+
+        lines.push(`${ctx.delimiters.blockStart('system')}${toolInstructions}${ctx.delimiters.blockEnd}`);
     }
 
     return lines;

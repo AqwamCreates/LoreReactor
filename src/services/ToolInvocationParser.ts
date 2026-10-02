@@ -1,173 +1,159 @@
 // src/services/ToolInvocationParser.ts
-
-import { toolStartSring, toolEndString } from "../dictionaries/stringList";
-import type { tool } from "../types";
-
-const characterAgnosticTools: tool[] = ['whisper', 'think', 'pick', 'clock', 'calendar', 'coin', 'dice', 'random', 'rng', 'move', 'dialogue', 'knowledge', 'memory', 'lookup', 'map', 'audio', 'clothing', 'note', 'inventory', 'trade'];
-const characterSpecificTools: tool[] = ['timer', 'stopwatch', 'calculator', 'schedule', 'web', 'invite', 'kick', 'teleport' , 'key', 'summon', 'narrate'];
-const metaTools: tool[] = ['inspect', 'administrator', 'creator', 'destroyer'];
-const serverTools: tool[] = ['read_file', 'browser', 'write_file'];
-
-export const validTools: tool[] = [...characterAgnosticTools, ...characterSpecificTools, ...metaTools, ...serverTools];
+import { toolStartSring, toolEndString } from '../dictionaries/stringList';
 
 export interface ToolInvocation {
-    rawMatch: string;
     toolType: string;
     args: string;
+    rawMatch: string;
 }
 
-export interface ParsedStreamResult {
+export interface ParsedChunkResult {
     displayText: string;
-    resumeText: string;
     toolInvocations: ToolInvocation[];
-    isSuppressed: boolean;
 }
 
-type ParserState = 'NORMAL' | 'SUPPRESSING';
-
-export class ToolInvocationParser {
-    private state: ParserState = 'NORMAL';
-    private buffer = '';
-    private suppressedAccumulator = '';
-
-    processChunk(chunk: string): ParsedStreamResult {
-        const input = this.buffer + chunk;
-        this.buffer = '';
-
-        let displayOut = '';
-        let resumeOut = '';
-        const toolInvocations: ToolInvocation[] = [];
-
-        let i = 0;
-        while (i < input.length) {
-            if (this.state === 'NORMAL') {
-                const startIdx = input.indexOf(toolStartSring, i);
-
-                if (startIdx === -1) {
-                    const tail = input.slice(i);
-                    if (this.isPartialMarker(tail, toolStartSring)) {
-                        this.buffer = tail;
-                    } else {
-                        displayOut += tail;
-                        resumeOut += tail;
-                    }
-                    break;
-                }
-
-                // Text before the tool tag is safe for display
-                let before = input.slice(i, startIdx);
-                before = before.replace(/\n\s*\n\s*$/, '\n');
-                
-                displayOut += before;
-                resumeOut += before;
-
-                const afterStart = startIdx + toolStartSring.length;
-                const endIdx = input.indexOf(toolEndString, afterStart);
-
-                if (endIdx === -1) {
-                    this.state = 'SUPPRESSING';
-                    this.suppressedAccumulator = input.slice(afterStart);
-                    break;
-                }
-
-                const exactRaw = input.slice(startIdx, endIdx + toolEndString.length);
-                const toolContent = input.slice(afterStart, endIdx);
-                const invocation = parseToolContent(toolContent);
-                if (invocation) {
-                    invocation.rawMatch = exactRaw;
-                    toolInvocations.push(invocation);
-                }
-
-                i = endIdx + toolEndString.length;
-            } else if (this.state === 'SUPPRESSING') {
-                const combined = this.suppressedAccumulator + input.slice(i);
-                const endIdx = combined.indexOf(toolEndString);
-
-                if (endIdx === -1) {
-                    this.suppressedAccumulator = combined;
-                    break;
-                }
-
-                const exactRaw = `${toolStartSring}${combined.slice(0, endIdx + toolEndString.length)}`;
-                const toolContent = combined.slice(0, endIdx);
-                const invocation = parseToolContent(toolContent);
-                if (invocation) {
-                    invocation.rawMatch = exactRaw;
-                    toolInvocations.push(invocation);
-                }
-
-                const prevSuppressedLen = this.suppressedAccumulator.length;
-                this.state = 'NORMAL';
-                this.suppressedAccumulator = '';
-
-                // Advance pointer past the end marker in input
-                const consumedFromInput = (endIdx + toolEndString.length) - prevSuppressedLen;
-                i += Math.max(0, consumedFromInput);
-            }
-        }
-
-        return { displayText: displayOut, resumeText: resumeOut, toolInvocations, isSuppressed: this.state === 'SUPPRESSING' };
-    }
-
-    reset(): void {
-        this.state = 'NORMAL';
-        this.buffer = '';
-        this.suppressedAccumulator = '';
-    }
-
-    private isPartialMarker(tail: string, marker: string): boolean {
-        return tail.length > 0 && tail.length < marker.length && marker.startsWith(tail);
-    }
-}
-
-function isValidToolType(type: string): boolean {
-    return validTools.includes(type as tool);
-}
+const START_TOKEN = toolStartSring || '<|';
+const END_TOKEN = toolEndString || '|>';
 
 /**
- * Parses Python-style function calls: <|tool_name()|> or <|tool_name(param="val", ...)|>.
- * Passes raw args directly to ToolExecutor's parsePythonArgs to preserve quoted strings and commas.
+ * Extracts toolType and args from the inner text of a tool token:
+ *   - Function style: "dice(sides: 6, count: 5)" -> toolType: "dice", args: "sides: 6, count: 5"
+ *   - CLI style:      "inventory add \"Iron Sword\" 3" -> toolType: "inventory", args: "add \"Iron Sword\" 3"
+ *   - Simple:         "coin" -> toolType: "coin", args: ""
  */
-function parseToolContent(content: string): ToolInvocation | null {
-    const trimmed = content.trim();
-    if (!trimmed) return null;
+function parseInnerToolCall(inner: string): { toolType: string; args: string } {
+    const trimmed = inner.trim();
+    
+    // 1. Function format: name(...)
+    const fnMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*\(([\s\S]*)\)$/);
+    if (fnMatch) {
+        return {
+            toolType: fnMatch[1].toLowerCase(),
+            args: fnMatch[2].trim(),
+        };
+    }
 
-    // Strict regex requiring parentheses: tool_name(...)
-    const fnMatch = trimmed.match(/^([a-zA-Z0-9_]+)\s*\(([\s\S]*)\)$/);
-    if (!fnMatch) return null;
-
-    const toolType = fnMatch[1].toLowerCase();
-    if (!isValidToolType(toolType)) return null;
-
-    const args = fnMatch[2].trim();
+    // 2. Space-separated format: name arg1 arg2...
+    const spaceIdx = trimmed.search(/\s/);
+    if (spaceIdx === -1) {
+        return {
+            toolType: trimmed.toLowerCase(),
+            args: '',
+        };
+    }
 
     return {
-        rawMatch: `${toolStartSring}${content}${toolEndString}`,
-        toolType,
-        args,
+        toolType: trimmed.slice(0, spaceIdx).toLowerCase(),
+        args: trimmed.slice(spaceIdx + 1).trim(),
     };
 }
 
+/**
+ * Parses slash commands typed by the user in chat.
+ */
 export function parseSlashCommand(input: string): ToolInvocation | null {
-    const trimmed = input.trim();
+    let trimmed = input.trim();
     if (!trimmed.startsWith('/')) return null;
-    const withoutSlash = trimmed.slice(1).trim();
-    if (!withoutSlash) return null;
 
-    // Support /tool(key="val", ...)
-    const fnMatch = withoutSlash.match(/^([a-zA-Z0-9_]+)\s*\(([\s\S]*)\)$/);
-    if (fnMatch) {
-        const toolType = fnMatch[1].toLowerCase();
-        if (isValidToolType(toolType)) {
-            return { rawMatch: trimmed, toolType, args: fnMatch[2].trim() };
+    trimmed = trimmed.slice(1).trim();
+    if (!trimmed) return null;
+
+    // Strip explicit <| and |> if present in the command
+    if (trimmed.startsWith(START_TOKEN) && trimmed.endsWith(END_TOKEN)) {
+        trimmed = trimmed.slice(START_TOKEN.length, trimmed.length - END_TOKEN.length).trim();
+    }
+
+    const { toolType, args } = parseInnerToolCall(trimmed);
+    return {
+        toolType,
+        args,
+        rawMatch: input.trim(),
+    };
+}
+
+/**
+ * Streaming parser that buffers incoming token deltas and strictly detects
+ * tool calls enclosed within <| and |>.
+ */
+export class ToolInvocationParser {
+    private buffer = '';
+
+    reset(): void {
+        this.buffer = '';
+    }
+
+    getBuffer(): string {
+        return this.buffer;
+    }
+
+    processChunk(chunk: string): ParsedChunkResult {
+        this.buffer += chunk;
+
+        let displayText = '';
+        const toolInvocations: ToolInvocation[] = [];
+
+        while (this.buffer.length > 0) {
+            const startIdx = this.buffer.indexOf(START_TOKEN);
+
+            // No start token found
+            if (startIdx === -1) {
+                // Check if the buffer ends with a partial start token (e.g. "<")
+                let safeLen = this.buffer.length;
+                for (let len = 1; len < START_TOKEN.length; len++) {
+                    if (this.buffer.endsWith(START_TOKEN.slice(0, len))) {
+                        safeLen = this.buffer.length - len;
+                        break;
+                    }
+                }
+                displayText += this.buffer.slice(0, safeLen);
+                this.buffer = this.buffer.slice(safeLen);
+                break;
+            }
+
+            // Emit any display text before the <| token
+            if (startIdx > 0) {
+                displayText += this.buffer.slice(0, startIdx);
+                this.buffer = this.buffer.slice(startIdx);
+            }
+
+            // Look for matching |> closing token
+            const endIdx = this.buffer.indexOf(END_TOKEN, START_TOKEN.length);
+
+            if (endIdx === -1) {
+                // The tool call is still streaming tokens inside <|...
+                // Hold buffer and wait for the next chunk
+                break;
+            }
+
+            // Full <|...|> match found!
+            const fullEndIdx = endIdx + END_TOKEN.length;
+            const rawMatch = this.buffer.slice(0, fullEndIdx);
+            const innerContent = this.buffer.slice(START_TOKEN.length, endIdx);
+
+            const { toolType, args } = parseInnerToolCall(innerContent);
+
+            toolInvocations.push({
+                toolType,
+                args,
+                rawMatch,
+            });
+
+            // Advance past the tool token
+            this.buffer = this.buffer.slice(fullEndIdx);
         }
+
+        return {
+            displayText,
+            toolInvocations,
+        };
     }
 
-    // Support standard /tool args for manual user typing in the chatbox
-    const parts = withoutSlash.split(/[:\s]/);
-    const toolType = parts[0].toLowerCase();
-    if (isValidToolType(toolType)) {
-        return { rawMatch: trimmed, toolType, args: withoutSlash.slice(toolType.length).replace(/^[:\s]+/, '').trim() };
+    static parseAll(text: string): { displayText: string; toolInvocations: ToolInvocation[] } {
+        const parser = new ToolInvocationParser();
+        const result = parser.processChunk(text);
+        return {
+            displayText: result.displayText + parser.getBuffer(),
+            toolInvocations: result.toolInvocations,
+        };
     }
-    return null;
 }

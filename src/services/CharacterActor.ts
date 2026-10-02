@@ -14,8 +14,6 @@ import { defaultBudgetData } from '../dictionaries/defaults';
 import { executeTools, formatToolDisplay } from './ToolExecutor';
 import { findLatestMessage } from '../utilities/messageLogic';
 
-const MAX_TOOL_ITERATIONS = 5;
-
 // ─── Result Types ───────────────────────────────────────────────────
 
 export interface TurnStats {
@@ -144,15 +142,15 @@ function applyToolReplacements(
             }
         }
 
-        // Format tool result as an unambiguous observation for the model's continuation
-        const formattedResult = ` [Result: ${resultText}] `;
+        // Format tool result on a clean boundary so the model begins a fresh sentence in subsequent passes
+        const formattedResult = `\n[Tool Result: ${resultText}]\n`;
         if (rawIdx !== -1) {
             currentRaw = currentRaw.slice(0, rawIdx) + formattedResult + currentRaw.slice(rawIdx + rawMatch.length);
         } else {
             currentRaw += formattedResult;
         }
 
-        // 2. Clean dangling markdown opening delimiters from the display accumulator as well
+        // 2. Clean dangling markdown opening delimiters from the display accumulator
         const displayIdx = currentDisplay.indexOf(rawMatch);
         if (displayIdx !== -1) {
             const beforeDisplay = currentDisplay.slice(0, displayIdx);
@@ -290,7 +288,7 @@ export class CharacterActor {
             const streamToolParser = new ToolInvocationParser();
             const accState = createAccState(currentExistingText);
 
-            // Stream callbacks that abort active token generation immediately upon encountering a completed tool call
+            // Stream callback factory that aborts active token generation immediately upon encountering a completed tool call
             const createStreamCallbacks = (
                 parser: ToolInvocationParser,
                 getAccumulators: () => { 
@@ -327,7 +325,7 @@ export class CharacterActor {
                         for (const inv of parsed.toolInvocations) {
                             acc.addPendingInvocation(inv);
                         }
-                        // Interrupt active generation pass at the end of the tool invocation
+                        // Stop current stream immediately so tool can execute and return result
                         turnAbortCtrl.abort();
                         return;
                     }
@@ -350,7 +348,7 @@ export class CharacterActor {
                 },
             });
 
-            // ─── Single Stream Execution Handler ────────────────────
+            // ─── Single Stream Pass Execution Handler ───────────────
             const runSingleStreamPass = async (
                 reqBody: Record<string, unknown>,
                 isBudget: boolean,
@@ -414,9 +412,8 @@ export class CharacterActor {
                 this.engine.setContext(borrowedModel);
 
                 const modelId = borrowedModel.id;
-                let iteration = 0;
 
-                while (iteration++ < MAX_TOOL_ITERATIONS) {
+                while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
@@ -450,9 +447,7 @@ export class CharacterActor {
                     saveRawBudgetData(newBd).catch(e => console.warn('Failed to save initial budget data:', e));
                 }
 
-                let iteration = 0;
-
-                while (iteration++ < MAX_TOOL_ITERATIONS) {
+                while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
@@ -514,9 +509,8 @@ export class CharacterActor {
                 this.engine.setContext(selectedModel);
 
                 const modelId = selectedModel.id || '';
-                let iteration = 0;
 
-                while (iteration++ < MAX_TOOL_ITERATIONS) {
+                while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
