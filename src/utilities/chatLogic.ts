@@ -1,5 +1,5 @@
 // src/utilities/chatLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, PromptBlock, RegularExpressionTrigger, TextCharacterInjection } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, PromptBlock, TextCharacterInjection } from '../types';
 import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
 import { getKnownDisplayName, deriveDelimiters } from './promptLogic';
 import type { EntityImageRef } from './promptLogic';
@@ -30,16 +30,6 @@ export const getImageBase64 = async (url: string): Promise<string | null> => {
         return null;
     }
 };
-
-export function compileTriggerRegexes(triggers: RegularExpressionTrigger[] | undefined): RegExp[] {
-    if (!triggers || triggers.length === 0) return [];
-    const regexes: RegExp[] = [];
-    for (const t of triggers) {
-        if (!t.trigger.trim()) continue;
-        try { regexes.push(new RegExp(t.trigger)); } catch { /* skip invalid */ }
-    }
-    return regexes;
-}
 
 function generateInitialCharacterText(character: Character): string {
     const textCharacterInjections = character.textCharacterInjections;

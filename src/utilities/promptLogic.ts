@@ -1346,8 +1346,8 @@ function buildTextInjectionLines(ctx: PromptBuildContext, hasBeenSummarized: boo
 
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${ctx.characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${ctx.characterParticipantTag} requires it.`;
     const characterResponsePriming = `${ctx.delimiters.blockStart('system')}${noRepeatInstructions} ${noRestrictionsInstructions} ${callingOtherCharacterInstructions} ${formatInstructions} I am now responding as ${ctx.characterParticipantTag} with the format I am given and I will follow all the prompts given to me.${ctx.delimiters.blockEnd}`;
-    const characterTextInjection = `${ctx.delimiters.turnStart(ctx.characterParticipantTag)}{{text}}`;
-    //const characterTextInjection = "{{text}}";
+    //const characterTextInjection = `${ctx.delimiters.turnStart(ctx.characterParticipantTag)}{{text}}`;
+    const characterTextInjection = "{{text}}";
 
     lines.push(characterResponsePriming);
     lines.push(characterTextInjection);
