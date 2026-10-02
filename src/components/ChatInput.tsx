@@ -187,6 +187,14 @@ const COMMAND_TREE: SlashCmd[] = [
         { name: 'recall', desc: 'Recall memory', args: [{ name: 'memory', type: 'memory', desc: 'Memory', optional: true }] },
         { name: 'save', desc: 'Save conversation as memory' },
     ]},
+    // ─── NEW OS-LEVEL AGENTIC TOOLS ────────────────────────────────
+    { name: 'browser', desc: 'Open a URL in the browser', args: [{ name: 'url', type: 'text', desc: 'URL to open', example: 'https://example.com' }] },
+    { name: 'read_file', desc: 'Read file contents', args: [{ name: 'path', type: 'text', desc: 'File path to read', example: '~/documents/notes.txt' }] },
+    { name: 'write_file', desc: 'Write content to file', args: [
+        { name: 'path', type: 'text', desc: 'File path to write', example: '~/documents/output.txt' },
+        { name: 'content', type: 'text', desc: 'Content to write', example: 'Hello World' }
+    ]},
+    // ───────────────────────────────────────────────────────────────
     { name: 'administrator', desc: 'Admin controls', subs: [
         { name: 'list_chats', desc: 'List all sessions' },
         { name: 'list_accounts', desc: 'List all accounts' },
@@ -330,7 +338,7 @@ function getEntityOptions(
     if (type === 'item') {
         if (!data || !localChar) return [];
         const localMessageHistory = getLocalMessageHistory(data, localChar, ['chat', 'whisper']);
-        const lastMsg = localMessageHistory[localMessageHistory.length - 1]; // FIXED: Added missing semicolon
+        const lastMsg = localMessageHistory[localMessageHistory.length - 1];
         
         if (lastMsg?.inventory) {
             return Object.entries(lastMsg.inventory)
