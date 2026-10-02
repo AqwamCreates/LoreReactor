@@ -268,6 +268,149 @@ export function AppModals({
 
     const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
 
+    // ─── Active World IDs from Interaction Data ───
+    const currentWorldIds = useMemo(() => {
+        return (interactionData as any)?.worldIds || [];
+    }, [interactionData]);
+
+    // ─── Toggle World in/out of Interaction Data ───
+    const handleToggleWorld = useCallback((worldId: string) => {
+        if (!interactionData) return;
+
+        const targetWorld = allWorlds.find(w => w.id === worldId);
+        if (!targetWorld) return;
+
+        const activeWorldIds: string[] = (interactionData as any)?.worldIds || [];
+        const isAdding = !activeWorldIds.includes(worldId);
+
+        if (isAdding) {
+            // 1. ADD WORLD
+            const nextWorldIds = [...activeWorldIds, worldId];
+
+            // Participants (avoid duplicates)
+            const currentParticipants = interactionData.participants || [];
+            const existingParticipantIds = new Set(currentParticipants.map(p => p.id));
+            const participantsToAdd = (targetWorld.characterIds || [])
+                .map(id => allCharacters.find(c => c.id === id))
+                .filter((c): c is Character => !!c && !existingParticipantIds.has(c.id));
+            const nextParticipants = [...currentParticipants, ...participantsToAdd];
+
+            // Contexts (avoid duplicates)
+            const currentContexts = interactionData.contexts || [];
+            const existingContextIds = new Set(currentContexts.map(c => c.id));
+            const contextsToAdd = (targetWorld.contextIds || [])
+                .map(id => allContexts.find(c => c.id === id))
+                .filter((c): c is Context => !!c && !existingContextIds.has(c.id));
+            const nextContexts = [...currentContexts, ...contextsToAdd];
+
+            // Locations (avoid duplicates)
+            const currentLocations = interactionData.locations || [];
+            const existingLocationIds = new Set(currentLocations.map(l => l.id));
+            const locationsToAdd = (targetWorld.locationIds || [])
+                .map(id => allLocations.find(l => l.id === id))
+                .filter((l): l is Location => !!l && !existingLocationIds.has(l.id));
+            const nextLocations = [...currentLocations, ...locationsToAdd];
+
+            // Audio Tracks (avoid duplicates)
+            const currentAudioTracks = interactionData.audioTracks || [];
+            const existingAudioIds = new Set(currentAudioTracks.map(a => a.id));
+            const audiosToAdd = (targetWorld.audioTrackIds || [])
+                .map(id => allAudioTracks.find(a => a.id === id))
+                .filter((a): a is AudioTrack => !!a && !existingAudioIds.has(a.id));
+            const nextAudioTracks = [...currentAudioTracks, ...audiosToAdd];
+
+            // Profile
+            const nextProfile = interactionData.profile ?? (targetWorld.profileId ? allProfiles.find(p => p.id === targetWorld.profileId) : undefined);
+
+            onUpdateInteractionData({
+                ...interactionData,
+                ...({ worldIds: nextWorldIds } as any),
+                participants: nextParticipants,
+                contexts: nextContexts,
+                locations: nextLocations,
+                audioTracks: nextAudioTracks,
+                profile: nextProfile,
+                lastUpdatedTimestamp: Date.now(),
+            });
+            addToast(`Added world "${targetWorld.name || 'Untitled'}" contents to session.`, 'success');
+        } else {
+            // 2. REMOVE WORLD
+            const nextWorldIds = activeWorldIds.filter(id => id !== worldId);
+            const remainingWorlds = allWorlds.filter(w => nextWorldIds.includes(w.id));
+
+            // Gather all content IDs that are still required by remaining active worlds
+            const retainedCharacterIds = new Set<string>();
+            const retainedContextIds = new Set<string>();
+            const retainedLocationIds = new Set<string>();
+            const retainedAudioIds = new Set<string>();
+            const retainedProfileIds = new Set<string>();
+
+            for (const rw of remainingWorlds) {
+                (rw.characterIds || []).forEach(id => retainedCharacterIds.add(id));
+                (rw.contextIds || []).forEach(id => retainedContextIds.add(id));
+                (rw.locationIds || []).forEach(id => retainedLocationIds.add(id));
+                (rw.audioTrackIds || []).forEach(id => retainedAudioIds.add(id));
+                if (rw.profileId) retainedProfileIds.add(rw.profileId);
+            }
+
+            // Target world's specific content IDs
+            const targetCharIds = new Set(targetWorld.characterIds || []);
+            const targetContextIds = new Set(targetWorld.contextIds || []);
+            const targetLocIds = new Set(targetWorld.locationIds || []);
+            const targetAudioIds = new Set(targetWorld.audioTrackIds || []);
+
+            // Filter out items that belong to targetWorld and are NOT used by other active worlds
+            const nextParticipants = (interactionData.participants || []).filter(p => {
+                if (targetCharIds.has(p.id)) return retainedCharacterIds.has(p.id);
+                return true;
+            });
+
+            const nextContexts = (interactionData.contexts || []).filter(c => {
+                if (targetContextIds.has(c.id)) return retainedContextIds.has(c.id);
+                return true;
+            });
+
+            const nextLocations = (interactionData.locations || []).filter(l => {
+                if (targetLocIds.has(l.id)) return retainedLocationIds.has(l.id);
+                return true;
+            });
+
+            const nextAudioTracks = (interactionData.audioTracks || []).filter(a => {
+                if (targetAudioIds.has(a.id)) return retainedAudioIds.has(a.id);
+                return true;
+            });
+
+            // Protagonists cleanup if participant was removed
+            const nextParticipantIds = new Set(nextParticipants.map(p => p.id));
+            const nextProtagonists = (interactionData.protagonists || []).filter(p => nextParticipantIds.has(p.id));
+
+            // Profile cleanup
+            let nextProfile = interactionData.profile;
+            if (targetWorld.profileId && interactionData.profile?.id === targetWorld.profileId) {
+                if (!retainedProfileIds.has(targetWorld.profileId)) {
+                    const fallbackProfileId = remainingWorlds.find(w => w.profileId)?.profileId;
+                    nextProfile = fallbackProfileId ? allProfiles.find(p => p.id === fallbackProfileId) : undefined;
+                }
+            }
+
+            onUpdateInteractionData({
+                ...interactionData,
+                ...({ worldIds: nextWorldIds } as any),
+                participants: nextParticipants,
+                protagonists: nextProtagonists,
+                contexts: nextContexts,
+                locations: nextLocations,
+                audioTracks: nextAudioTracks,
+                profile: nextProfile,
+                lastUpdatedTimestamp: Date.now(),
+            });
+            addToast(`Removed world "${targetWorld.name || 'Untitled'}" contents from session.`, 'info');
+        }
+    }, [
+        interactionData, allWorlds, allCharacters, allContexts,
+        allLocations, allAudioTracks, allProfiles, onUpdateInteractionData, addToast
+    ]);
+
     // Include the active chat session in the list only if it is saveable according to isChatSaveable
     const chatShellsWithIdentifiers = useMemo(() => {
         const list = rawChatShells.filter((shell): shell is ChatShellWithIdentifier => !!shell.id);
@@ -449,7 +592,7 @@ export function AppModals({
                     onCreateNew={() => locationModalProperties.open()}
                     renderSubtext={renderLocationSubtext} 
                     emptyMessage="No locations found." 
-                    actionLabel="Delete" 
+                    actionLabel="Delete"
                     orderedListMode={true} 
                     currentOrderIds={interactionData?.locations?.map(location => location.id) || []} 
                     onToggleOrder={onToggleLocation} 
@@ -496,7 +639,10 @@ export function AppModals({
                         return parts.join(' • ');
                     }}
                     emptyMessage="No worlds saved yet." 
-                    actionLabel="Delete" 
+                    actionLabel="Delete"
+                    orderedListMode={true}
+                    currentOrderIds={currentWorldIds}
+                    onToggleOrder={handleToggleWorld}
                 />
             )}
 
@@ -955,14 +1101,12 @@ export function AppModals({
                 <WorldEditorModal 
                     onClose={worldModalProperties.close} 
                     onSave={worldModalProperties.save} 
-                    onLoadWorld={onLoadWorld}
                     existingWorld={worldModalProperties.item} 
                     allCharacters={allCharacters} 
                     allContexts={allContexts} 
                     allLocations={allLocations} 
+                    allAudioTracks={allAudioTracks}
                     allProfiles={allProfiles} 
-                    allAudioTracks={allAudioTracks} 
-                    allPromptBlocks={allPromptBlocks}
                     selectedCharacterIds={interactionData?.participants.map(participant => participant.id) || []}
                     currentContextIds={interactionData?.contexts?.map(context => context.id) || []}
                     currentLocationIds={interactionData?.locations?.map(location => location.id) || []}
@@ -1081,6 +1225,7 @@ export function AppModals({
                     }}
                     inspectionStack={inspectionStack}
                     onInspectingParentInteractionData={handleInspectParentInteractionData}
+                    onSaveInteractionData={onUpdateInteractionData}
                 />
             )}
         </>

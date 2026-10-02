@@ -1,6 +1,6 @@
 // src/components/WorldEditorModal.tsx
 import { useState } from 'react';
-import type { World, Character, Context, Location, Profile, AudioTrack, PromptBlock } from '../types';
+import type { World, Character, Context, Location, Profile, AudioTrack } from '../types';
 import { EntitySelectList } from './EntitySelectList';
 import { v4 as uuidv4 } from 'uuid';
 import '../main.css';
@@ -8,26 +8,23 @@ import '../main.css';
 interface WorldEditorModalProps {
     onClose: () => void;
     onSave: (world: World) => void;
-    onLoadWorld?: (world: World) => void;
     existingWorld: World | null;
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
     allProfiles: Profile[];
     allAudioTracks: AudioTrack[];
-    allPromptBlocks: PromptBlock[];
     selectedCharacterIds: string[];
     currentContextIds: string[];
     currentLocationIds: string[];
     currentAudioTrackIds?: string[];
-    currentPromptBlockIds?: string[];
     currentProfileId?: string;
 }
 
 export function WorldEditorModal({
-    existingWorld, onClose, onSave, onLoadWorld,
-    allCharacters, allContexts, allLocations, allProfiles, allAudioTracks, allPromptBlocks,
-    selectedCharacterIds, currentContextIds, currentLocationIds, currentProfileId, currentAudioTrackIds, currentPromptBlockIds,
+    existingWorld, onClose, onSave,
+    allCharacters, allContexts, allLocations, allProfiles, allAudioTracks,
+    selectedCharacterIds, currentContextIds, currentLocationIds, currentProfileId, currentAudioTrackIds,
 }: Omit<WorldEditorModalProps, 'isOpen'>) {
     const [name, setName] = useState(existingWorld?.name ?? '');
     const [description, setDescription] = useState(existingWorld?.description ?? '');
@@ -35,13 +32,11 @@ export function WorldEditorModal({
     const [ctxIds, setCtxIds] = useState<string[]>(existingWorld ? [...existingWorld.contextIds] : []);
     const [locIds, setLocIds] = useState<string[]>(existingWorld ? [...existingWorld.locationIds] : []);
     const [audioTrackIds, setAudioTrackIds] = useState<string[]>(existingWorld ? [...(existingWorld.audioTrackIds || [])] : []);
-    const [promptBlockIds, setPromptBlockIds] = useState<string[]>(existingWorld ? [...(existingWorld.promptBlockIds || [])] : []);
     const [profileId, setProfileId] = useState(existingWorld?.profileId ?? '');
     const [charSearch, setCharSearch] = useState('');
     const [ctxSearch, setCtxSearch] = useState('');
     const [locSearch, setLocSearch] = useState('');
     const [audioSearch, setAudioSearch] = useState('');
-    const [promptBlockSearch, setPromptBlockSearch] = useState('');
     const [isCloned, setIsCloned] = useState(false);
 
     const toggleInList = (_ids: string[], setIds: React.Dispatch<React.SetStateAction<string[]>>, id: string) => {
@@ -59,7 +54,6 @@ export function WorldEditorModal({
             contextIds: ctxIds,
             locationIds: locIds,
             audioTrackIds: audioTrackIds,
-            promptBlockIds: promptBlockIds,
             profileId: profileId || undefined,
             firstCreatedTimestamp: (existingWorld && !isCloned) ? existingWorld.firstCreatedTimestamp : now,
             lastUpdatedTimestamp: now,
@@ -77,31 +71,11 @@ export function WorldEditorModal({
         setIsCloned(true);
     };
 
-    const handleLoad = () => {
-        if (!existingWorld || !onLoadWorld) return;
-        const now = Date.now();
-        const world: World = {
-            ...existingWorld,
-            name: name.trim(),
-            description: description.trim() || undefined,
-            characterIds: charIds,
-            contextIds: ctxIds,
-            locationIds: locIds,
-            audioTrackIds: audioTrackIds,
-            promptBlockIds: promptBlockIds,
-            profileId: profileId || undefined,
-            lastUpdatedTimestamp: now,
-        };
-        onLoadWorld(world);
-        onClose();
-    };
-
     const copyCharsFromChat = () => setCharIds([...selectedCharacterIds]);
     const copyCtxsFromChat = () => setCtxIds([...currentContextIds]);
     const copyLocsFromChat = () => setLocIds([...currentLocationIds]);
     const copyProfileFromChat = () => setProfileId(currentProfileId || '');
     const copyAudioFromChat = () => setAudioTrackIds([...(currentAudioTrackIds || [])]);
-    const copyPromptBlocksFromChat = () => setPromptBlockIds([...(currentPromptBlockIds || [])]);
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -111,12 +85,7 @@ export function WorldEditorModal({
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Cancel</button>
                         {existingWorld && !isCloned && (
-                            <>
-                                {onLoadWorld && (
-                                    <button type="button" className="editor-button editor-button-cancel" onClick={handleLoad} style={{ borderColor: 'var(--accent)' }}>Load</button>
-                                )}
-                                <button type="button" className="editor-button editor-button-cancel" onClick={handleClone}>Clone</button>
-                            </>
+                            <button type="button" className="editor-button editor-button-cancel" onClick={handleClone}>Clone</button>
                         )}
                         <button type="button" className="editor-button editor-button-save" onClick={handleSave} disabled={!name.trim()}>Save</button>
                     </div>
@@ -196,21 +165,6 @@ export function WorldEditorModal({
                         <EntitySelectList label="Audio Tracks" items={allAudioTracks} selectedIds={audioTrackIds}
                             onToggle={id => toggleInList(audioTrackIds, setAudioTrackIds, id)}
                             searchQuery={audioSearch} onSearchChange={setAudioSearch} />
-                    </div>
-
-                    {/* Prompt Blocks */}
-                    <div className="editor-section">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                            <span className="editor-section-title" style={{ margin: 0 }}>Prompt Blocks ({promptBlockIds.length})</span>
-                            {(currentPromptBlockIds?.length ?? 0) > 0 && (
-                                <button type="button" className="budget-button budget-button-active" style={{ fontSize: '0.6rem', padding: '3px 8px', minHeight: '24px' }} onClick={copyPromptBlocksFromChat}>
-                                    Copy From Chat
-                                </button>
-                            )}
-                        </div>
-                        <EntitySelectList label="Prompt Blocks" items={allPromptBlocks} selectedIds={promptBlockIds}
-                            onToggle={id => toggleInList(promptBlockIds, setPromptBlockIds, id)}
-                            searchQuery={promptBlockSearch} onSearchChange={setPromptBlockSearch} />
                     </div>
 
                     {/* profile */}

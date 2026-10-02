@@ -226,9 +226,10 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                     ) : (
                         <ul className="manager-list">
                             {filteredItems.map(item => {
-                                const isActive = selectedId === item.id;
-                                const isSecondaryActive = secondaryActiveIds?.has(item.id) ?? false;
                                 const isInCurrentOrder = currentOrderIds.includes(item.id);
+                                const isSelectable = !!onSelectItem && (!orderedListMode || isInCurrentOrder);
+                                const isActive = (selectedId === item.id) && (!orderedListMode || isInCurrentOrder);
+                                const isSecondaryActive = secondaryActiveIds?.has(item.id) ?? false;
                                 const orderNumber = currentOrderIds.indexOf(item.id) + 1;
                                 const isConfirmingDelete = activeConfirmDeleteId === item.id;
                                 const isConfirmingRemove = activeConfirmRemoveId === item.id;
@@ -236,10 +237,14 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                 return (
                                     <li key={item.id} className={`manager-item ${isActive ? 'selected-item' : ''} ${isSecondaryActive && !isActive ? 'strategy-item' : ''}`}>
                                         
-                                        {/* THE BAR: Triggers onSelectItem (Equip / Activate / Switch) */}
+                                        {/* THE BAR: Triggers onSelectItem (Limited to ordered items if orderedListMode is active) */}
                                         <div
-                                            className={`manager-item-main ${onSelectItem ? 'manager-item-main-clickable' : ''}`}
-                                            onClick={() => onSelectItem?.(item)}
+                                            className={`manager-item-main ${isSelectable ? 'manager-item-main-clickable' : ''}`}
+                                            onClick={() => {
+                                                if (isSelectable) {
+                                                    onSelectItem?.(item);
+                                                }
+                                            }}
                                         >
                                             <div className="manager-item-info">
                                                 <div className="manager-item-title">{item.name || 'Untitled'}</div>

@@ -1,5 +1,5 @@
 // src/components/ChatInspectionModal.tsx
-import { useMemo, useEffect, useState, useCallback } from 'react';
+import React, { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import type { InteractionData, Location, Character } from '../types';
 import { getCharacterImageUrlWithFallBack } from '../storages/serverStorage';
 import { getCurrentLocation } from '../utilities/locationLogic';
@@ -20,6 +20,7 @@ interface ChatInspectionModalProps {
     onClose: () => void;
     inspectionStack: InteractionData[];
     onInspectingParentInteractionData: (parentId: string) => Promise<InteractionData>;
+    onSaveInteractionData?: (data: InteractionData) => Promise<void> | void;
 }
 
 // ─── Custom Location Node ────────────────────────────────────────────
@@ -192,10 +193,21 @@ export function ChatInspectionModal({
     onClose,
     inspectionStack,
     onInspectingParentInteractionData,
+    onSaveInteractionData,
 }: ChatInspectionModalProps) {
     const [initializedFromStack, setInitializedFromStack] = useState<InteractionData[] | null>(null);
     const [userNavStack, setUserNavStack] = useState<InteractionData[]>([]);
     const [sessionIdCopied, setSessionIdCopied] = useState(false);
+
+    // ─── Local Editing States ───
+    const [localChat, setLocalChat] = useState<InteractionData | null>(null);
+    const [isDirty, setIsDirty] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [editedName, setEditedName] = useState('');
+    const [draggedParticipantIndex, setDraggedParticipantIndex] = useState<number | null>(null);
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+    const nameInputRef = useRef<HTMLInputElement>(null);
 
     const internalStack = useMemo(() => {
         if (initializedFromStack !== inspectionStack) {
@@ -210,7 +222,27 @@ export function ChatInspectionModal({
         setUserNavStack([]);
     }
 
-    const chat = internalStack[0] ?? null;
+    const baseChat = internalStack[0] ?? null;
+
+    useEffect(() => {
+        if (baseChat) {
+            setLocalChat(JSON.parse(JSON.stringify(baseChat)));
+            setEditedName(baseChat.name || '');
+            setIsDirty(false);
+            setIsEditingName(false);
+        } else {
+            setLocalChat(null);
+        }
+    }, [baseChat]);
+
+    useEffect(() => {
+        if (isEditingName) {
+            nameInputRef.current?.focus();
+            nameInputRef.current?.select();
+        }
+    }, [isEditingName]);
+
+    const chat = localChat ?? baseChat;
     const canGoBack = internalStack.length > 1;
 
     const protagonists = useMemo(() => chat?.protagonists || [], [chat]);
@@ -224,7 +256,6 @@ export function ChatInspectionModal({
     const hasAudioTracks = audioTracks.length > 0;
     const parentName = canGoBack ? internalStack[1]?.name : undefined;
 
-    // FIX: Replaced flat interactionHistory.length with spatial interactionHistories reduction
     const messageCount = useMemo(() => {
         if (!chat?.interactionHistories) return 0;
         return Object.values(chat.interactionHistories).reduce((sum, msgs) => sum + msgs.length, 0);
@@ -238,6 +269,109 @@ export function ChatInspectionModal({
     }, [protagonists, participants]);
 
     const portraits = useCharacterPortraits(allVisibleCharacters);
+
+    // ─── Save Handlers ───
+    const handleSaveChanges = useCallback(async () => {
+        if (!localChat) return;
+        setIsSaving(true);
+        try {
+            if (onSaveInteractionData) {
+                await onSaveInteractionData(localChat);
+            }
+            setIsDirty(false);
+        } catch (err) {
+            console.error('Failed to save interaction data:', err);
+        } finally {
+            setIsSaving(false);
+        }
+    }, [localChat, onSaveInteractionData]);
+
+    const handleConfirmNameChange = useCallback(() => {
+        if (!editedName.trim() || !localChat) {
+            setIsEditingName(false);
+            return;
+        }
+        setLocalChat(prev => prev ? { ...prev, name: editedName.trim(), lastUpdatedTimestamp: Date.now() } : null);
+        setIsDirty(true);
+        setIsEditingName(false);
+    }, [editedName, localChat]);
+
+    const handleCancelNameChange = useCallback(() => {
+        setEditedName(localChat?.name || '');
+        setIsEditingName(false);
+    }, [localChat]);
+
+    // ─── Participant Reordering & Toggles ───
+    const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', index.toString());
+        setDraggedParticipantIndex(index);
+    }, []);
+
+    const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (dragOverIndex !== index) {
+            setDragOverIndex(index);
+        }
+    }, [dragOverIndex]);
+
+    const handleDrop = useCallback((e: React.DragEvent, targetIndex: number) => {
+        e.preventDefault();
+        setDragOverIndex(null);
+        if (draggedParticipantIndex === null || draggedParticipantIndex === targetIndex || !localChat) {
+            setDraggedParticipantIndex(null);
+            return;
+        }
+
+        const updatedParticipants = [...(localChat.participants || [])];
+        const [moved] = updatedParticipants.splice(draggedParticipantIndex, 1);
+        updatedParticipants.splice(targetIndex, 0, moved);
+
+        setLocalChat({
+            ...localChat,
+            participants: updatedParticipants,
+            lastUpdatedTimestamp: Date.now(),
+        });
+        setIsDirty(true);
+        setDraggedParticipantIndex(null);
+    }, [draggedParticipantIndex, localChat]);
+
+    const handleDragEnd = useCallback(() => {
+        setDraggedParticipantIndex(null);
+        setDragOverIndex(null);
+    }, []);
+
+    const handleToggleProtagonist = useCallback((character: Character) => {
+        if (!localChat) return;
+        const currentProtags = localChat.protagonists || [];
+        const isCurrentlyProtag = currentProtags.some(p => p.id === character.id);
+
+        let newProtags: Character[];
+        if (isCurrentlyProtag) {
+            newProtags = currentProtags.filter(p => p.id !== character.id);
+        } else {
+            newProtags = [...currentProtags, character];
+        }
+
+        setLocalChat({
+            ...localChat,
+            protagonists: newProtags,
+            lastUpdatedTimestamp: Date.now(),
+        });
+        setIsDirty(true);
+    }, [localChat]);
+
+    const handleRemoveParticipant = useCallback((characterId: string) => {
+        if (!localChat) return;
+        setLocalChat({
+            ...localChat,
+            participants: (localChat.participants || []).filter(p => p.id !== characterId),
+            protagonists: (localChat.protagonists || []).filter(p => p.id !== characterId),
+            lastUpdatedTimestamp: Date.now(),
+        });
+        setIsDirty(true);
+    }, [localChat]);
 
     const handleBack = useCallback(() => {
         setUserNavStack(prev => prev.slice(1));
@@ -259,17 +393,15 @@ export function ChatInspectionModal({
         navigator.clipboard.writeText(chat.id).then(() => {
             setSessionIdCopied(true);
             setTimeout(() => setSessionIdCopied(false), 2000);
-        }).catch(() => {
-            // Fallback: select text manually
-        });
+        }).catch(() => {});
     }, [chat?.id]);
 
+    // ─── Flow Graph Computation (Original Read-Only Layout) ───
     const { nodes, edges } = useMemo(() => {
         if (!chat || !chat.locations || chat.locations.length === 0) {
             return { nodes: [] as Node[], edges: [] as Edge[] };
         }
 
-        // FIX: Replaced flat interactionHistory and locationIndex with spatial lookup
         let currentLoc: Location | undefined;
         if (chat.protagonists && chat.protagonists.length > 0) {
             currentLoc = getCurrentLocation(chat, chat.protagonists[0]);
@@ -449,12 +581,66 @@ export function ChatInspectionModal({
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '700px', maxHeight: '90vh' }}>
-                <div className="modal-header">
-                    <h2 style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>
-                        {chat?.name || 'Untitled Chat'}
-                    </h2>
-                    <div className="editor-modal-actions">
+            <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '750px', maxHeight: '92vh' }}>
+                
+                {/* ─── Modal Header ─── */}
+                <div className="modal-header" style={{ alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0, marginRight: '10px' }}>
+                        {isEditingName ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
+                                <input
+                                    ref={nameInputRef}
+                                    type="text"
+                                    value={editedName}
+                                    onChange={e => setEditedName(e.target.value)}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter') handleConfirmNameChange();
+                                        if (e.key === 'Escape') handleCancelNameChange();
+                                    }}
+                                    className="modal-search-input"
+                                    style={{ fontSize: '1.1rem', fontWeight: 'bold', padding: '4px 8px', height: '32px' }}
+                                />
+                                <button type="button" onClick={handleConfirmNameChange} className="toolbar-button" title="Save name">✓</button>
+                                <button type="button" onClick={handleCancelNameChange} className="toolbar-button" title="Cancel">✕</button>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', minWidth: 0 }}>
+                                <h2 style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0, cursor: 'pointer' }} onClick={() => setIsEditingName(true)} title="Click to rename">
+                                    {chat?.name || 'Untitled Chat'}
+                                </h2>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEditingName(true)}
+                                    className="manager-item-button"
+                                    title="Rename chat"
+                                    style={{ padding: '2px 4px', fontSize: '0.8rem', background: 'none', border: 'none', cursor: 'pointer' }}
+                                >
+                                    ✏️
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="editor-modal-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {isDirty && (
+                            <button
+                                type="button"
+                                className="create-new-button"
+                                onClick={handleSaveChanges}
+                                disabled={isSaving}
+                                style={{
+                                    fontSize: '0.75rem',
+                                    padding: '5px 12px',
+                                    background: 'var(--accent, #3b82f6)',
+                                    color: '#fff',
+                                    fontWeight: 'bold',
+                                    borderRadius: '4px',
+                                    boxShadow: '0 0 10px rgba(59, 130, 246, 0.4)',
+                                }}
+                            >
+                                {isSaving ? 'Saving...' : '💾 Save Changes'}
+                            </button>
+                        )}
                         {canGoBack && (
                             <button
                                 type="button"
@@ -469,6 +655,7 @@ export function ChatInspectionModal({
                     </div>
                 </div>
 
+                {/* ─── Modal Body ─── */}
                 <div className="modal-body editor-modal-body" style={{ overflowY: 'auto' }}>
                     {chat && (
                         <>
@@ -512,58 +699,6 @@ export function ChatInspectionModal({
                                 </div>
                             </div>
 
-                            {/* Protagonists */}
-                            {protagonists.length > 0 && (
-                                <div className="editor-section">
-                                    <span className="editor-section-title">Protagonists ({protagonists.length})</span>
-                                    <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0' }}>
-                                        {protagonists.map((p, i) => {
-                                            const pLoc = hasLocations ? getCurrentLocation(chat, p) : undefined;
-                                            const portraitUrl = portraits.get(p.id) ?? null;
-                                            return (
-                                                <div key={p.id} style={{
-                                                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
-                                                    padding: '8px', minWidth: '80px', maxWidth: '100px',
-                                                    background: 'var(--accent-dim, rgba(255,255,255,0.08))',
-                                                    border: '1px solid var(--accent)',
-                                                    borderRadius: '6px', flexShrink: 0,
-                                                }}>
-                                                    {portraitUrl ? (
-                                                        <img
-                                                            src={portraitUrl}
-                                                            alt={p.name}
-                                                            style={{
-                                                                width: '36px', height: '64px',
-                                                                borderRadius: '4px', objectFit: 'cover',
-                                                                aspectRatio: '9 / 16',
-                                                            }}
-                                                            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                                        />
-                                                    ) : (
-                                                        <div className="character-avatar placeholder" style={{ width: '36px', height: '64px', borderRadius: '4px', aspectRatio: '9 / 16' }} />
-                                                    )}
-                                                    <div style={{ fontSize: '0.7rem', fontWeight: 'bold', textAlign: 'center', lineHeight: 1.2 }}>
-                                                        {p.name}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, textAlign: 'center' }}>
-                                                        [Protagonist {i + 1}]
-                                                    </div>
-                                                    {pLoc && (
-                                                        <div style={{
-                                                            fontSize: '0.55rem', opacity: 0.7, textAlign: 'center',
-                                                            padding: '1px 4px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px',
-                                                            marginTop: '2px', maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                                        }}>
-                                                            📍 {pLoc.name}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-
                             {/* Participants */}
                             {participants.length > 0 && (
                                 <div className="editor-section">
@@ -573,34 +708,109 @@ export function ChatInspectionModal({
                                             const isProtag = protagonistIds.has(p.id);
                                             const pLoc = hasLocations ? getCurrentLocation(chat, p) : undefined;
                                             const portraitUrl = portraits.get(p.id) ?? null;
+                                            const isBeingDragged = draggedParticipantIndex === i;
+                                            const isDragOver = dragOverIndex === i;
+
                                             return (
-                                                <div key={p.id} style={{
-                                                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
-                                                    padding: '8px', minWidth: '80px', maxWidth: '100px',
-                                                    background: isProtag ? 'var(--accent-dim, rgba(255,255,255,0.08))' : 'var(--social-bg)',
-                                                    border: isProtag ? '1px solid var(--accent)' : '1px solid var(--border)',
-                                                    borderRadius: '6px', flexShrink: 0,
-                                                }}>
-                                                    {portraitUrl ? (
-                                                        <img
-                                                            src={portraitUrl}
-                                                            alt={p.name}
-                                                            style={{
-                                                                width: '36px', height: '64px',
-                                                                borderRadius: '4px', objectFit: 'cover',
-                                                                aspectRatio: '9 / 16',
-                                                            }}
-                                                            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                                        />
-                                                    ) : (
-                                                        <div className="character-avatar placeholder" style={{ width: '36px', height: '64px', borderRadius: '4px', aspectRatio: '9 / 16' }} />
-                                                    )}
-                                                    <div style={{ fontSize: '0.7rem', fontWeight: 'bold', textAlign: 'center', lineHeight: 1.2 }}>
+                                                <div
+                                                    key={p.id}
+                                                    draggable
+                                                    onDragStart={e => handleDragStart(e, i)}
+                                                    onDragOver={e => handleDragOver(e, i)}
+                                                    onDrop={e => handleDrop(e, i)}
+                                                    onDragEnd={handleDragEnd}
+                                                    style={{
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        padding: '8px',
+                                                        minWidth: '80px',
+                                                        maxWidth: '100px',
+                                                        background: isProtag ? 'var(--accent-dim, rgba(255,255,255,0.08))' : 'var(--social-bg)',
+                                                        border: isDragOver
+                                                            ? '2px dashed var(--accent, #3b82f6)'
+                                                            : isProtag
+                                                            ? '1px solid var(--accent)'
+                                                            : '1px solid var(--border)',
+                                                        borderRadius: '6px',
+                                                        flexShrink: 0,
+                                                        cursor: 'grab',
+                                                        opacity: isBeingDragged ? 0.4 : 1,
+                                                        transition: 'border-color 0.15s ease',
+                                                    }}
+                                                >
+                                                    {/* Standardized Portrait Frame (No emoji, clean placeholder) */}
+                                                    <div style={{
+                                                        width: '36px',
+                                                        height: '64px',
+                                                        borderRadius: '4px',
+                                                        background: 'rgba(255, 255, 255, 0.04)',
+                                                        border: '1px solid var(--border)',
+                                                        boxSizing: 'border-box',
+                                                        overflow: 'hidden',
+                                                        flexShrink: 0,
+                                                    }}>
+                                                        {portraitUrl && (
+                                                            <img
+                                                                src={portraitUrl}
+                                                                alt={p.name}
+                                                                style={{
+                                                                    width: '100%',
+                                                                    height: '100%',
+                                                                    objectFit: 'cover',
+                                                                    display: 'block',
+                                                                    pointerEvents: 'none',
+                                                                }}
+                                                                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                            />
+                                                        )}
+                                                    </div>
+
+                                                    <div style={{ fontSize: '0.7rem', fontWeight: 'bold', textAlign: 'center', lineHeight: 1.2, width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                         {p.name}
                                                     </div>
+
                                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, textAlign: 'center' }}>
                                                         [Character {i + 1}]
                                                     </div>
+
+                                                    {/* Action Buttons */}
+                                                    <div style={{ display: 'flex', gap: '4px', marginTop: '2px' }}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={e => { e.stopPropagation(); handleToggleProtagonist(p); }}
+                                                            title={isProtag ? 'Remove protagonist status' : 'Set as protagonist'}
+                                                            style={{
+                                                                background: isProtag ? 'rgba(250, 204, 21, 0.25)' : 'rgba(255,255,255,0.08)',
+                                                                border: isProtag ? '1px solid rgba(250, 204, 21, 0.6)' : '1px solid var(--border)',
+                                                                borderRadius: '4px',
+                                                                padding: '2px 6px',
+                                                                fontSize: '0.65rem',
+                                                                cursor: 'pointer',
+                                                                color: isProtag ? '#fbbf24' : 'rgba(255,255,255,0.5)',
+                                                            }}
+                                                        >
+                                                            ★
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={e => { e.stopPropagation(); handleRemoveParticipant(p.id); }}
+                                                            title="Remove participant"
+                                                            style={{
+                                                                background: 'rgba(239, 68, 68, 0.15)',
+                                                                border: '1px solid rgba(239, 68, 68, 0.4)',
+                                                                borderRadius: '4px',
+                                                                padding: '2px 6px',
+                                                                fontSize: '0.55rem',
+                                                                cursor: 'pointer',
+                                                                color: '#f87171',
+                                                            }}
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+
                                                     {pLoc && (
                                                         <div style={{
                                                             fontSize: '0.55rem', opacity: 0.7, textAlign: 'center',
@@ -645,20 +855,31 @@ export function ChatInspectionModal({
                                                                 ? '1px solid rgba(74, 222, 128, 0.3)'
                                                                 : '1px solid transparent',
                                                         }}>
-                                                            {pp.portraitUrl ? (
-                                                                <img
-                                                                    src={pp.portraitUrl}
-                                                                    alt={pp.name}
-                                                                    style={{
-                                                                        width: '18px', height: '32px',
-                                                                        borderRadius: '2px', objectFit: 'cover',
-                                                                        aspectRatio: '9 / 16',
-                                                                    }}
-                                                                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                                                />
-                                                            ) : (
-                                                                <div className="character-avatar placeholder" style={{ width: '18px', height: '32px', borderRadius: '2px', aspectRatio: '9 / 16' }} />
-                                                            )}
+                                                            {/* Standardized Location Avatar Frame (No emoji) */}
+                                                            <div style={{
+                                                                width: '18px',
+                                                                height: '32px',
+                                                                borderRadius: '2px',
+                                                                background: 'rgba(255, 255, 255, 0.04)',
+                                                                border: '1px solid var(--border)',
+                                                                boxSizing: 'border-box',
+                                                                overflow: 'hidden',
+                                                                flexShrink: 0,
+                                                            }}>
+                                                                {pp.portraitUrl && (
+                                                                    <img
+                                                                        src={pp.portraitUrl}
+                                                                        alt={pp.name}
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            height: '100%',
+                                                                            objectFit: 'cover',
+                                                                            display: 'block',
+                                                                        }}
+                                                                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                                    />
+                                                                )}
+                                                            </div>
                                                             <span style={{ fontSize: '0.65rem' }}>
                                                                 {pp.name} [{pp.index + 1}]
                                                             </span>
@@ -689,7 +910,7 @@ export function ChatInspectionModal({
                                 </div>
                             )}
 
-                            {/* Location Map */}
+                            {/* Location Map (Original Read-Only Graph) */}
                             {hasLocations && (
                                 <div className="editor-section">
                                     <span className="editor-section-title">Location Map</span>
@@ -743,3 +964,5 @@ export function ChatInspectionModal({
         </div>
     );
 }
+
+export default ChatInspectionModal;
