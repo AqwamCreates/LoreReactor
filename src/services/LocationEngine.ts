@@ -32,7 +32,6 @@ export async function getLocation(): Promise<{ latitude: number; longitude: numb
     }
 }
 
-
 export interface TimeData {
     rawTimestamp: number;
     formattedDate: string;
@@ -44,7 +43,7 @@ export function getTimeDataFromCoordinates(latitude?: number, longitude?: number
     
     let dt: DateTime | undefined;
         
-    if (typeof latitude === 'number' && typeof longitude === 'number') {
+    if (typeof latitude === 'number' && typeof longitude === 'number' && latitude !== 0 && longitude !== 0) {
         if (latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
             const timezone = tzlookup(latitude, longitude);
             dt = DateTime.now().setZone(timezone).reconfigure({ locale: 'en-US' });
