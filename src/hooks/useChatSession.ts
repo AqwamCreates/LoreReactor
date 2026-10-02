@@ -12,255 +12,49 @@ import { consumeChatStaminaForMessage } from '../utilities/characterLogic';
 import { getCurrentLocationId, findReachableLocationByRegularExpression } from '../utilities/locationLogic';
 import { detectName } from '../utilities/nameDetection';
 import { getFilteredChatMessages } from '../utilities/promptLogic';
-import { loadRawBudgetData, deleteRawMessage } from '../storages/serverStorage';
+import { deleteRawMessage } from '../storages/serverStorage';
 import { useThrottledStream } from './useThrottledStream';
 import { useCharacterResponseLock } from './useCharacterResponseLock';
 import { useAmbientNarration } from './useAmbientNarration';
 import { useSessionStore } from './useSessionStore';
-import { localURL } from '../configurations';
-import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { getBudgetStrategyEngine, type RequestMetadata } from '../services/BudgetStrategyEngine';
+import { type RequestMetadata } from '../services/BudgetStrategyEngine';
 import { learnFromUserMessage } from '../services/ActionFormatEngine';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { MultiplayerEvents } from '../services/MultiplayerEvents';
 import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/timelineLogic';
-import { 
-    computeModulatedRegenAmounts, 
-    computeChatStaminaConsumptionCost, 
-    computeMovementCost 
+import {
+    computeModulatedRegenAmounts,
+    computeChatStaminaConsumptionCost,
+    computeMovementCost
 } from '../utilities/dynamicCharacterLogic';
-import { 
-    generateChatStaminaForInteractionData, 
-    generateActionStaminaForInteractionData 
+import {
+    generateChatStaminaForInteractionData,
+    generateActionStaminaForInteractionData
 } from '../utilities/characterLogic';
 import { v4 as uuidv4 } from 'uuid';
-import type { 
-    Character, Context, Location, AudioTrack, World, 
-    PromptBlock, Sampler, StopPattern, BudgetStrategy, 
-    Profile, InteractionData, ChatMessage, WhisperMessage, 
-    HistoryMessage, Memory, Extension, Account, 
-    MultiplayerData, LanguageModel, InterjectableAction 
+
+import {
+    NO_ARG_TOOLS,
+    HOST_ONLY_TOOLS,
+    hasTextContent,
+    finalizeMessageById,
+    findLastAIMessageId,
+    broadcastToolStateChanges,
+    evaluateAutoResumeSignals,
+    injectStopSignals,
+    type GenerationTurnOptions,
+} from '../utilities/chatSessionLogic';
+import { useSpeculativeStreamHandler } from './useSpeculativeStreamHandler';
+import { useChatSessionEffects } from './useChatSessionEffects';
+
+import type {
+    Character, Context, Location, AudioTrack, World,
+    PromptBlock, Sampler, StopPattern, BudgetStrategy,
+    Profile, InteractionData, ChatMessage, WhisperMessage,
+    HistoryMessage, Memory, Extension, Account,
+    MultiplayerData, LanguageModel, InterjectableAction
 } from '../types';
-
-const engine = getLanguageModelEngine();
-
-const NO_ARG_TOOLS = ['coin', 'calendar', 'dice'];
-const HOST_ONLY_TOOLS = ['administrator', 'creator', 'destroyer'];
-
-function hasTextContent(msg: HistoryMessage): msg is ChatMessage | WhisperMessage {
-    return msg.messageType === 'chat' || msg.messageType === 'whisper';
-}
-
-function calculateLatencyFactor(
-    timeSinceLastTokenMs: number, 
-    averageTTFTMs: number,
-    msPerToken: number
-): number {
-    const painPoint = averageTTFTMs * 2;
-    const zValue = timeSinceLastTokenMs - painPoint;
-    const scaledZValue = zValue / msPerToken;
-    return 1 / (1 + Math.exp(scaledZValue));
-}
-
-/**
- * Finalizes a message in history.
- * Supports saving processedTextContent separately from textContent.
- */
-function finalizeMessageById(
-    data: InteractionData,
-    messageId: string,
-    wasAborted: boolean,
-    fallbackRawText?: string,
-    fallbackDisplayText?: string
-): InteractionData {
-    if (wasAborted && !fallbackRawText) return data;
-
-    const newHistories = { ...data.interactionHistories };
-    for (const [locId, msgs] of Object.entries(newHistories) as [string, HistoryMessage[]][]) {
-        const idx = msgs.findIndex(m => m.id === messageId && hasTextContent(m));
-        if (idx !== -1) {
-            const existingMsg = msgs[idx] as ChatMessage | WhisperMessage;
-            
-            // Determine final raw content (for LLM)
-            const finalRawContent = (fallbackRawText && fallbackRawText.length >= existingMsg.textContent.length)
-                ? fallbackRawText
-                : existingMsg.textContent;
-
-            // Determine final display content (for UI)
-            let finalProcessedContent: string | undefined = undefined;
-            if (fallbackDisplayText && fallbackDisplayText !== finalRawContent) {
-                finalProcessedContent = fallbackDisplayText;
-            } else if (existingMsg.processedTextContent && existingMsg.processedTextContent !== finalRawContent) {
-                finalProcessedContent = existingMsg.processedTextContent;
-            }
-
-            newHistories[locId] = [...msgs];
-            newHistories[locId][idx] = {
-                ...existingMsg,
-                textContent: finalRawContent,
-                processedTextContent: finalProcessedContent,
-                lastUpdatedTimestamp: Date.now(),
-            } as ChatMessage | WhisperMessage;
-            break;
-        }
-    }
-    return { ...data, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
-}
-
-function findLastAIMessageId(
-    data: InteractionData,
-    protagonistIds?: string[] | Set<string>,
-): string | null {
-    const protagSet = protagonistIds instanceof Set 
-        ? protagonistIds 
-        : new Set(protagonistIds || (data.protagonists?.map(p => p.id) ?? []));
-    const history = getGlobalMessageHistory(data);
-    for (let i = history.length - 1; i >= 0; i--) {
-        const msg = history[i];
-        if (hasTextContent(msg) && !protagSet.has(msg.character.id)) {
-            return msg.id;
-        }
-    }
-    return null;
-}
-
-function broadcastToolStateChanges(
-    before: InteractionData,
-    after: InteractionData,
-    broadcastFn?: (state: Partial<InteractionData>) => void
-) {
-    if (!broadcastFn) return;
-    const diff: Partial<InteractionData> = {};
-    let hasChanges = false;
-
-    if (before.locations !== after.locations) {
-        diff.locations = after.locations;
-        hasChanges = true;
-    }
-    if (before.participants !== after.participants) {
-        diff.participants = after.participants;
-        hasChanges = true;
-    }
-    if (before.audioTracks !== after.audioTracks) {
-        diff.audioTracks = after.audioTracks;
-        hasChanges = true;
-    }
-    if (before.contexts !== after.contexts) {
-        diff.contexts = after.contexts;
-        hasChanges = true;
-    }
-    if (before.profile !== after.profile) {
-        diff.profile = after.profile;
-        hasChanges = true;
-    }
-
-    if (hasChanges) {
-        broadcastFn(diff);
-    }
-}
-
-function evaluateAutoResumeSignals(
-    profile: Profile | undefined, 
-    text: string, 
-    currentResumeCount: number
-): { shouldResume: boolean; patternsToInject: string[] } {
-    const signals = profile?.autoResumeSignals;
-    if (!signals || signals.length === 0) {
-        return { shouldResume: false, patternsToInject: [] };
-    }
-
-    let shouldResume = false;
-    const patternsToInject = new Set<string>();
-
-    for (const signal of signals) {
-        const maxResumes = signal.maximumNumberOfAutoResumes ?? 10;
-        if (currentResumeCount >= maxResumes) {
-            continue; 
-        }
-
-        const activationTrigger = signal.regularExpressionActivationTrigger?.trim();
-        const deactivationTrigger = signal.regularExpressionDeactivationTrigger?.trim();
-        const stopPattern = signal.stopPattern?.trim();
-        const minimumLength = signal.minimumLength ? Number.parseInt(signal.minimumLength, 10) : 0;
-
-        let isActivated = false;
-        let activationIndex = 0;
-        
-        if (!activationTrigger) {
-            isActivated = true;
-        } else {
-            try {
-                const regex = new RegExp(activationTrigger);
-                const match = regex.exec(text);
-                if (match) {
-                    isActivated = true;
-                    activationIndex = match.index + match[0].length;
-                }
-            } catch (e) {
-                console.warn(`Invalid activation regex: ${activationTrigger}`, e);
-            }
-        }
-
-        if (!isActivated) continue;
-
-        if (stopPattern) {
-            patternsToInject.add(stopPattern);
-        }
-
-        let isDeactivated = false;
-        const trimmedText = text.trimEnd();
-        
-        if (deactivationTrigger) {
-            const textAfterActivation = text.slice(activationIndex);
-            const minLen = Number.isNaN(minimumLength) ? 0 : minimumLength;
-            if (textAfterActivation.length >= minLen) {
-                try {
-                    const endsWithRegex = new RegExp(`${deactivationTrigger}$`);
-                    if (endsWithRegex.test(trimmedText) || trimmedText.endsWith(deactivationTrigger)) {
-                        isDeactivated = true;
-                    }
-                } catch (e) {
-                    if (trimmedText.endsWith(deactivationTrigger)) {
-                        isDeactivated = true;
-                    }
-                }
-            }
-        } else if (stopPattern) {
-            if (trimmedText.endsWith(stopPattern)) {
-                isDeactivated = true;
-            }
-        }
-
-        if (!isDeactivated) {
-            shouldResume = true;
-        }
-    }
-
-    return { shouldResume, patternsToInject: Array.from(patternsToInject) };
-}
-
-function injectStopSignals(data: InteractionData, patterns: string[]): InteractionData {
-    if (patterns.length === 0) return data;
-    
-    const newData = { ...data };
-    const newParticipants = newData.participants.map(p => {
-        const existingPatterns = p.stopPatterns?.filter(sp => !sp.id.startsWith('auto-resume-stop-')) || [];
-        const newPatterns: StopPattern[] = patterns.map((s, i) => ({
-            id: `auto-resume-stop-${i}`,
-            name: `Auto Resume Stop ${i}`,
-            pattern: s,
-            firstCreatedTimestamp: Date.now(),
-            lastUpdatedTimestamp: Date.now(),
-        }));
-        return {
-            ...p,
-            stopPatterns: [...existingPatterns, ...newPatterns],
-        };
-    });
-    newData.participants = newParticipants;
-    return newData;
-}
 
 interface UseChatSessionOptions {
     onMessageBroadcast?: (message: HistoryMessage) => void;
@@ -286,48 +80,15 @@ interface UseChatSessionOptions {
     requestPeerInference?: (peerAccountId: string, modelName: string, promptOrMessages: any, onToken: (token: string) => void, signal?: AbortSignal) => Promise<void>;
 }
 
-interface GenerationTurnOptions {
-    data: InteractionData;
-    protagonistId: string;
-    allPromptBlocks?: PromptBlock[];
-    respondingCharacter?: Character;
-    isProtagonistCharId?: (charId: string) => boolean;
-    errorPrefix?: string;
-    lockAlreadyAcquired?: boolean;
-}
-
 export function useChatSession(options: UseChatSessionOptions) {
     const { addToast } = useToast();
     const onMessageBroadcastRef = useRef(options?.onMessageBroadcast);
     const onStateBroadcastRef = useRef(options?.onStateBroadcast);
     const isMultiplayerClient = options?.isMultiplayerClient ?? false;
     const requestBorrowedModel = options?.requestBorrowedModel;
-    
+
     const requestPeerInferenceRef = useRef(options?.requestPeerInference);
     useEffect(() => { requestPeerInferenceRef.current = options?.requestPeerInference; }, [options?.requestPeerInference]);
-
-    useEffect(() => {
-        const engineInstance = getLanguageModelEngine();
-        if (typeof (engineInstance as any).setPeerInferenceHandler === 'function') {
-            (engineInstance as any).setPeerInferenceHandler(async (modelId: string, prompt: any, onToken: (token: string) => void, signal?: AbortSignal) => {
-                if (modelId.startsWith('borrowed-')) {
-                    const parts = modelId.split('-');
-                    const ownerAccountId = parts[1];
-                    if (ownerAccountId && requestPeerInferenceRef.current) {
-                        await requestPeerInferenceRef.current(ownerAccountId, modelId, prompt, onToken, signal);
-                        return true;
-                    }
-                }
-                return false;
-            });
-        }
-        return () => {
-            if (typeof (engineInstance as any).setPeerInferenceHandler === 'function') {
-                (engineInstance as any).setPeerInferenceHandler(undefined);
-            }
-        };
-    }, []);
-
     useEffect(() => { onMessageBroadcastRef.current = options?.onMessageBroadcast; }, [options?.onMessageBroadcast]);
     useEffect(() => { onStateBroadcastRef.current = options?.onStateBroadcast; }, [options?.onStateBroadcast]);
 
@@ -374,8 +135,8 @@ export function useChatSession(options: UseChatSessionOptions) {
         getState, setState, setActiveStrategy, setSelectedModel, setSelectedCharacter,
     } = state;
 
-    const interactionData = useSessionStore((s: { interactionData: any; }) => s.interactionData);
-    const selectedModel = useSessionStore((s: { selectedModel: any; }) => s.selectedModel);
+    const interactionData = useSessionStore((s: { interactionData: any }) => s.interactionData);
+    const selectedModel = useSessionStore((s: { selectedModel: any }) => s.selectedModel);
     const autonomousMode = interactionData?.profile?.autonomousMode ?? false;
 
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -384,20 +145,18 @@ export function useChatSession(options: UseChatSessionOptions) {
     const resumingExistingTextRef = useRef<string>('');
     const isAtBottomRef = useRef(true);
     const wasStoppedRef = useRef(false);
-    const isSpeculatingRef = useRef(false);
     const autoResumeCountRef = useRef<number>(0);
 
-    const resumeGenerationRef = useRef<(messageId: string, allPromptBlocks?: PromptBlock[]) => Promise<void>>(null);
+    const resumeGenerationRef = useRef<((messageId: string, allPromptBlocks?: PromptBlock[]) => Promise<void>) | null>(null);
     const streamingMessageIdRef = useRef<string | null>(null);
     const streamingCharacterRef = useRef<Character | null>(null);
 
     const pendingHostResponseRef = useRef(false);
-    const triggerHostResponseRef = useRef<() => Promise<void>>(null);
+    const triggerHostResponseRef = useRef<(() => Promise<void>) | null>(null);
     const pendingResumeRef = useRef<{ messageId: string; allPromptBlocks?: PromptBlock[] } | null>(null);
 
     const lastTurnContextRef = useRef<{ modelId: string; prompt: string; metadata: RequestMetadata } | null>(null);
     const requestTimestampsRef = useRef<number[]>([]);
-    const lastTokenTimestampRef = useRef<number>(0);
 
     const getRequestsLastHour = useCallback(() => {
         const now = Date.now();
@@ -424,208 +183,37 @@ export function useChatSession(options: UseChatSessionOptions) {
     const { acquireLock, releaseLock, isLoadingRef } = useCharacterResponseLock();
     const { generateAmbientNarration } = useAmbientNarration(setStreamingState, setStreamingText, streamingTextRef);
 
-    // Let the throttler manage store updates without redundant unthrottled setState
-    const throttledSetStreamingTextWithBroadcast = useCallback((text: string) => {
-        throttledSetStreamingText(text);
-        streamingTextRef.current = text;
+    // ─── Sub-Hook: Speculative Markov & Throttled Stream ──────────
+    const { throttledSetStreamingTextWithBroadcast, isSpeculatingRef } = useSpeculativeStreamHandler({
+        throttledSetStreamingText,
+        streamingTextRef,
+        streamingCharacterRef,
+        streamingMessageIdRef,
+        abortControllerRef,
+        resumeGenerationRef,
+        onMessageBroadcastRef,
+        getState,
+        setInteractionData,
+    });
 
-        const char = streamingCharacterRef.current;
-        const msgId = streamingMessageIdRef.current;
-        
-        const now = Date.now();
-        const timeSinceLastToken = lastTokenTimestampRef.current > 0 ? (now - lastTokenTimestampRef.current) : 25;
-        lastTokenTimestampRef.current = now;
-
-        const profile = getState().interactionData?.profile;
-        if (profile?.enableSpeculativeMarkov && char && msgId && abortControllerRef.current && !isSpeculatingRef.current) {
-            const model = getState().selectedModel;
-            const currentData = getState().interactionData;
-            const currentDataId = currentData?.id || 'unknown';
-            const budgetData = getState().budgetData;
-            
-            const outputCost = model?.outputGenerationCostPerOneMillionOfTokens || 3;
-            const cacheMissCost = model?.cacheMissCostPerOneMillionOfTokens || 0.3;
-
-            const profileTemp = Number(profile.characterSampler?.parameters?.temperature);
-            const charTemp = Number(char.sampler?.parameters?.temperature);
-            
-            let temperature = 1.0;
-            if (!Number.isNaN(profileTemp)) {
-                temperature = profileTemp;
-            } else if (!Number.isNaN(charTemp)) {
-                temperature = charTemp;
-            }
-            temperature = Math.max(0.1, temperature);
-
-            if (text.endsWith(' ') || text.endsWith('\n') || text.match(/[.!?]$/)) {
-                const prediction = speculativeMarkovEngine.predictSequence(
-                    text, outputCost, cacheMissCost, temperature, char.id, currentDataId
-                );
-                
-                if (prediction) {
-                    const estimatedTokens = prediction.trim().split(/\s+/).length;
-                    const costRatio = cacheMissCost / outputCost;
-                    
-                    let minimumTokensThreshold = Number.POSITIVE_INFINITY;
-                    if (costRatio < 1) {
-                        const modelId = model?.id || '';
-                        const TTFT_ms = budgetData?.modelAverageTimeToFirstToken?.[modelId] ?? 500;
-                        const msPerToken = budgetData?.modelAverageLatencyMsPerToken?.[modelId] ?? 25;
-
-                        const latencyFactor = calculateLatencyFactor(timeSinceLastToken, TTFT_ms, msPerToken);
-                        const TTFT_seconds = TTFT_ms / 1000;
-                        const TPS = 1000 / msPerToken;
-                        const baseThreshold = (TTFT_seconds * TPS) / (1 - costRatio);
-                        minimumTokensThreshold = Math.ceil(baseThreshold * latencyFactor);
-                    }
-                    
-                    if (estimatedTokens >= minimumTokensThreshold) {
-                        isSpeculatingRef.current = true;
-                        const completedText = text + prediction;
-                        throttledSetStreamingText(completedText);
-                        streamingTextRef.current = completedText;
-                        abortControllerRef.current?.abort();
-
-                        const freshData = getState().interactionData;
-                        if (freshData && char) {
-                            const history = getGlobalMessageHistory(freshData);
-                            const existingMsg = history.find(m => m.id === msgId);
-                            let updatedData: InteractionData;
-                            
-                            if (!existingMsg) {
-                                const currentLocId = getCurrentLocationId(freshData, char) || 'global';
-                                const speculativeMsg = createChatMessage(freshData, char, completedText);
-                                speculativeMsg.id = msgId;
-                                speculativeMsg.processedTextContent = completedText;
-                                const newHistories = { ...freshData.interactionHistories };
-                                if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
-                                newHistories[currentLocId].push(speculativeMsg);
-                                updatedData = { ...freshData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
-                            } else {
-                                const updatedHistories = { ...freshData.interactionHistories };
-                                for (const [locId, msgs] of Object.entries(updatedHistories) as [string, HistoryMessage[]][]) {
-                                    const idx = msgs.findIndex((m: { id: string; }) => m.id === msgId);
-                                    if (idx !== -1) {
-                                        updatedHistories[locId] = [...msgs];
-                                        updatedHistories[locId][idx] = {
-                                            ...existingMsg,
-                                            processedTextContent: completedText,
-                                            lastUpdatedTimestamp: Date.now(),
-                                        } as ChatMessage | WhisperMessage;
-                                        break;
-                                    }
-                                }
-                                updatedData = { ...freshData, interactionHistories: updatedHistories, lastUpdatedTimestamp: Date.now() };
-                            }
-                            setInteractionData(updatedData);
-
-                            setTimeout(() => {
-                                isSpeculatingRef.current = false;
-                                resumeGenerationRef.current?.(msgId, undefined);
-                            }, 60);
-                        } else {
-                            isSpeculatingRef.current = false;
-                        }
-                        return;
-                    }
-                }
-            }
-        }
-
-        if (char && msgId && onMessageBroadcastRef.current) {
-            const partialMsg: ChatMessage = {
-                id: msgId,
-                messageType: 'chat',
-                character: char,
-                textContent: '',
-                processedTextContent: text,
-                doNotRespond: false,
-                files: [],
-                modelTextContentSummaries: {},
-                modelInteractionTextContentSummaries: {},
-                kvCacheTextContentPaths: {},
-                kvCacheTextContentSummaryPaths: {},
-                kvCacheInteractionTextContentSummaries: {},
-                characterClothingWearingStatuses: {},
-                characterLockedLocations: {},
-                parentMessageId: null,
-                firstCreatedTimestamp: Date.now(),
-                lastUpdatedTimestamp: Date.now(),
-            };
-            onMessageBroadcastRef.current(partialMsg);
-        }
-    }, [throttledSetStreamingText, getState, setInteractionData, streamingTextRef]);
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                const bd = await loadRawBudgetData();
-                if (!cancelled && bd) setBudgetData(bd);
-            } catch (e) { console.warn('Failed to load budget data:', e); }
-        })();
-        return () => { cancelled = true; };
-    }, [setBudgetData]);
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                const response = await fetch(`${localURL}/models/status`);
-                if (!response.ok || cancelled) return;
-                const data = await response.json();
-                const status: Record<string, { isRunning: boolean; port?: number }> = {};
-                for (const m of data.activeModels || []) status[m.id] = { isRunning: true, port: m.port };
-                if (!cancelled) updateRunningModels(status);
-            } catch (e) { if (!cancelled) addToast(`Failed to fetch models status: ${e}`); }
-        })();
-        return () => { cancelled = true; };
-    }, [updateRunningModels, addToast]);
-
-    useEffect(() => {
-        if (selectedModel) engine.setContext(selectedModel);
-    }, [selectedModel]);
-
-    useEffect(() => {
-        if (!interactionData) return;
-        let cancelled = false;
-        (async () => {
-            let total = 0;
-            const history = getGlobalMessageHistory(interactionData);
-            for (const m of history) {
-                if (hasTextContent(m)) total += await engine.countTokens(m.textContent);
-            }
-            if (!cancelled) setNumberOfTokens(total);
-        })();
-        return () => { cancelled = true; };
-    }, [interactionData, setNumberOfTokens]);
-
-    useEffect(() => {
-        if (autonomousMode && interactionData && !isMultiplayerClient) {
-            const checkCanAct = () => !isLoadingRef.current && !abortControllerRef.current;
-            chatEngine.startAutonomousMode(
-                checkCanAct,
-                () => getState().interactionData,
-                (data: InteractionData) => { setState({ interactionData: data }); },
-                resetStream
-            );
-        } else {
-            chatEngine.stopAutonomousMode();
-        }
-        return () => { chatEngine.stopAutonomousMode(); };
-    }, [autonomousMode, interactionData, chatEngine, isLoadingRef, resetStream, getState, setState, isMultiplayerClient]);
-
-    useEffect(() => {
-        const handleBeforeUnload = () => {
-            try {
-                getBudgetStrategyEngine().persistFMs().catch(() => {});
-            } catch (e) {
-                console.warn('Failed to persist FMs on unload:', e);
-            }
-        };
-        window.addEventListener('beforeunload', handleBeforeUnload);
-        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, []);
+    // ─── Sub-Hook: Session Lifecycle & Engine Event Listeners ─────
+    useChatSessionEffects({
+        interactionData,
+        selectedModel,
+        autonomousMode,
+        isMultiplayerClient,
+        requestPeerInferenceRef,
+        isLoadingRef,
+        abortControllerRef,
+        setBudgetData,
+        updateRunningModels,
+        setNumberOfTokens,
+        getState,
+        setState,
+        resetStream,
+        chatEngine,
+        addToast,
+    });
 
     const isModelReadyForGeneration = useCallback((): boolean => {
         const m = getState().selectedModel;
@@ -639,10 +227,10 @@ export function useChatSession(options: UseChatSessionOptions) {
         const p = pendingPartialRef.current;
         if (!p) return base;
         pendingPartialRef.current = null;
-        
+
         const dt = convertIdsToDisplayNames(p.text, base, p.character);
         const history = getGlobalMessageHistory(base);
-        
+
         const allProtagonistIds = new Set(base.protagonists?.map(pr => pr.id) ?? [protagonistId]);
         if (history.length > 0 && !allProtagonistIds.has(history[history.length - 1].character.id)) {
             const lastMsg = history[history.length - 1];
@@ -652,8 +240,8 @@ export function useChatSession(options: UseChatSessionOptions) {
                     const idx = msgs.findIndex(m => m.id === lastMsg.id);
                     if (idx !== -1) {
                         newHistories[locId] = [...msgs];
-                        newHistories[locId][idx] = { 
-                            ...lastMsg, 
+                        newHistories[locId][idx] = {
+                            ...lastMsg,
                             textContent: dt,
                             processedTextContent: dt !== lastMsg.textContent ? dt : undefined
                         } as ChatMessage | WhisperMessage;
@@ -663,15 +251,15 @@ export function useChatSession(options: UseChatSessionOptions) {
                 return { ...base, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
             }
         }
-        
+
         const currentLocId = getCurrentLocationId(base, p.character) || 'global';
         const newHistories = { ...base.interactionHistories };
         if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
-        
+
         const chatMessage = createChatMessage(base, p.character, dt);
         chatMessage.processedTextContent = dt;
         newHistories[currentLocId].push(chatMessage);
-        
+
         return { ...base, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
     }, []);
 
@@ -730,7 +318,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             releaseLock();
             return;
         }
-        
+
         const ctrl = new AbortController();
         abortControllerRef.current = ctrl;
         wasStoppedRef.current = false;
@@ -740,7 +328,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         setStreamingState(null, '');
         setStats({ latency: 0, timeToFirstToken: 0 });
         isAtBottomRef.current = true;
-        lastTokenTimestampRef.current = Date.now();
 
         const preTurnCount = getGlobalMessageHistory(data).length;
 
@@ -825,7 +412,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 const history = getGlobalMessageHistory(ud);
                 const lastMsg = history[history.length - 1];
                 const text = hasTextContent(lastMsg) ? lastMsg.textContent : '';
-                
+
                 const evaluation = evaluateAutoResumeSignals(ud.profile, text, autoResumeCountRef.current);
 
                 if (evaluation.shouldResume && !wasStoppedRef.current) {
@@ -870,7 +457,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
-            resetStream(); // Cancel any queued throttled flush to prevent zombie timer resurrection
+            resetStream();
 
             useSessionStore.setState({
                 isLoading: false,
@@ -892,20 +479,20 @@ export function useChatSession(options: UseChatSessionOptions) {
             }
         }
     }, [
-        acquireLock, getState, isModelReadyForGeneration, addToast, releaseLock, 
-        resetStream, setStreamingState, setStats, getRequestsLastHour, chatEngine, 
-        applyPendingPartial, setInteractionData, broadcastNewMessages, 
-        autoResumeOnCutoff, ui, generateAmbientNarration, isMultiplayerClient
+        acquireLock, getState, isModelReadyForGeneration, addToast, releaseLock,
+        resetStream, setStreamingState, setStats, getRequestsLastHour, chatEngine,
+        applyPendingPartial, setInteractionData, broadcastNewMessages,
+        autoResumeOnCutoff, ui, generateAmbientNarration, isMultiplayerClient, isSpeculatingRef, streamingTextRef
     ]);
 
     const sendMessage = useCallback(async (
-        text: string, 
-        allPromptBlocks: PromptBlock[] | undefined, 
-        files: File[] | undefined, 
+        text: string,
+        allPromptBlocks: PromptBlock[] | undefined,
+        files: File[] | undefined,
         frontCameraImageBase64: string | undefined
     ) => {
         const currentState = getState();
-        const activeCharacter = isMultiplayerClient 
+        const activeCharacter = isMultiplayerClient
             ? (joinProtagonistRef.current || currentState.currentCharacter)
             : currentState.currentCharacter;
 
@@ -920,7 +507,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 const accountId = useSessionStore.getState().currentAccountId;
                 const accountConfig = accountId ? mpData?.multiplayerDataAccountConfigurations[accountId] : undefined;
                 const isAdmin = accountConfig?.isAdministrator;
-                
+
                 if (!isAdmin) {
                     addToast(`/${slashInvocation.toolType} requires administrator privileges.`, 'error');
                     return;
@@ -946,7 +533,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
                 const rawCmd = text;
                 const displayResult = toolResult.displayReplacement || toolResult.content || `[${slashInvocation.toolType}]`;
-                
+
                 slashMessage.textContent = rawCmd;
                 slashMessage.processedTextContent = displayResult !== rawCmd ? displayResult : undefined;
 
@@ -955,10 +542,10 @@ export function useChatSession(options: UseChatSessionOptions) {
                 const newHistories = { ...currentState.interactionData.interactionHistories };
                 if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
                 newHistories[currentLocId].push(slashMessage);
-                
+
                 let updatedData = { ...currentState.interactionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
                 updatedData = processPendingToolActions(updatedData, allCharactersRef.current, { onToast: addToast });
-                
+
                 broadcastToolStateChanges(preSlashData, updatedData, onStateBroadcastRef.current);
                 setInteractionData(updatedData);
 
@@ -1008,8 +595,8 @@ export function useChatSession(options: UseChatSessionOptions) {
             const filteredMessages = getFilteredChatMessages(currentInteractionData, activeCharacter.id, allPromptBlocks || []);
             const knownCharacterNames = detectName(activeCharacter, filteredMessages, text);
 
-            const chatMessage = createChatMessage(currentInteractionData, activeCharacter, text, { 
-                files: encodedFiles, 
+            const chatMessage = createChatMessage(currentInteractionData, activeCharacter, text, {
+                files: encodedFiles,
                 frontCameraImage: frontCameraImageBase64,
                 knownCharacterNames
             });
@@ -1019,12 +606,12 @@ export function useChatSession(options: UseChatSessionOptions) {
             if (chatCost > 0) {
                 consumeChatStaminaForMessage(chatMessage, chatCost);
             }
-            
+
             const currentLocId = getCurrentLocationId(currentInteractionData, activeCharacter) || 'global';
             const newHistories = { ...currentInteractionData.interactionHistories };
             if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
             newHistories[currentLocId].push(chatMessage);
-            
+
             let td = { ...currentInteractionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
 
             onMessageBroadcastRef.current?.(chatMessage);
@@ -1102,16 +689,16 @@ export function useChatSession(options: UseChatSessionOptions) {
             releaseLock();
         }
     }, [
-        getState, isMultiplayerClient, buildToolContext, addToast, 
+        getState, isMultiplayerClient, buildToolContext, addToast,
         acquireLock, releaseLock, executeTurnPipeline, setInteractionData
     ]);
 
     const triggerHostResponse = useCallback(async () => {
         const currentState = getState();
         if (!currentState.interactionData || !currentState.currentCharacter) return;
-        if (!acquireLock()) { 
+        if (!acquireLock()) {
             pendingHostResponseRef.current = true;
-            return; 
+            return;
         }
 
         const allProtagonistIds = new Set(currentState.interactionData.protagonists?.map((p: Character) => p.id) ?? [currentState.currentCharacter.id]);
@@ -1140,29 +727,29 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, [isMultiplayerClient, triggerHostResponse]);
 
     const sendActionAndGetResponse = useCallback(async (
-        actionText: string, 
-        _targetChar: Character, 
+        actionText: string,
+        _targetChar: Character,
         protagonist: Character
     ) => {
         const currentState = getState();
         const currentInteractionData = currentState.interactionData;
         if (!currentInteractionData) return;
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
-        
-        const activeProtagonist = isMultiplayerClient 
-            ? (joinProtagonistRef.current || protagonist) 
+
+        const activeProtagonist = isMultiplayerClient
+            ? (joinProtagonistRef.current || protagonist)
             : protagonist;
 
         const filteredMessages = getFilteredChatMessages(currentInteractionData, activeProtagonist.id, allPromptBlocksRef.current || []);
         const knownCharacterNames = detectName(activeProtagonist, filteredMessages);
 
         const chatMessage = createChatMessage(currentInteractionData, activeProtagonist, actionText, { knownCharacterNames });
-        
+
         const currentLocId = getCurrentLocationId(currentInteractionData, activeProtagonist) || 'global';
         const newHistories = { ...currentInteractionData.interactionHistories };
         if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
         newHistories[currentLocId].push(chatMessage);
-        
+
         const td = { ...currentInteractionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
 
         onMessageBroadcastRef.current?.(chatMessage);
@@ -1203,9 +790,9 @@ export function useChatSession(options: UseChatSessionOptions) {
                     const targetMsg = msgs[idx] as ChatMessage | WhisperMessage;
                     const textContent = streamedText || targetMsg.textContent;
                     const paragraphs = (textContent.match(/\n\n/g) || []).length + 1;
-                    
+
                     const isProcessed = streamedText && streamedText !== targetMsg.textContent;
-                    
+
                     updatedHistories[locId] = [...msgs];
                     updatedHistories[locId][idx] = {
                         ...targetMsg,
@@ -1213,7 +800,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                         processedTextContent: isProcessed ? textContent : targetMsg.processedTextContent,
                         lastUpdatedTimestamp: Date.now()
                     } as ChatMessage | WhisperMessage;
-                    
+
                     if (paragraphs > 0) consumeChatStaminaForMessage(updatedHistories[locId][idx], paragraphs);
                     break;
                 }
@@ -1253,39 +840,39 @@ export function useChatSession(options: UseChatSessionOptions) {
         resetStream();
         streamingCharacterRef.current = null;
         streamingMessageIdRef.current = null;
-    }, [resetStream, getState, setState, streamingTextRef, isLoadingRef]);
+    }, [resetStream, getState, setState, streamingTextRef, isLoadingRef, isSpeculatingRef]);
 
     const resumeGeneration = useCallback(async (messageId: string, allPromptBlocks: PromptBlock[] | undefined) => {
         if (isMultiplayerClient) {
             addToast('Generation is handled by the host.', 'info');
             return;
         }
-        
+
         const currentInteractionData = getState().interactionData;
         if (!currentInteractionData) return;
         if (!currentInteractionData.profile || !currentInteractionData.profile?.enableCharacterExpression) sentimentEngine.unload();
-        
+
         const history = getGlobalMessageHistory(currentInteractionData);
         const msg = history.find(m => m.id === messageId);
-        if (!msg || !hasTextContent(msg)) { 
-            addToast('Message not found or has no text content.', 'error'); 
-            return; 
+        if (!msg || !hasTextContent(msg)) {
+            addToast('Message not found or has no text content.', 'error');
+            return;
         }
 
-        if (isLoadingRef.current) { 
-            abortControllerRef.current?.abort(); 
-            abortControllerRef.current = null; 
-            await new Promise(r => setTimeout(r, 100)); 
+        if (isLoadingRef.current) {
+            abortControllerRef.current?.abort();
+            abortControllerRef.current = null;
+            await new Promise(r => setTimeout(r, 100));
         }
-        if (!acquireLock()) { 
-            addToast('Already generating...', 'info'); 
-            return; 
+        if (!acquireLock()) {
+            addToast('Already generating...', 'info');
+            return;
         }
         const currentState = getState();
-        if (!currentState.activeStrategy && !isModelReadyForGeneration()) { 
-            addToast('Model not ready.', 'error'); 
-            releaseLock(); 
-            return; 
+        if (!currentState.activeStrategy && !isModelReadyForGeneration()) {
+            addToast('Model not ready.', 'error');
+            releaseLock();
+            return;
         }
 
         const existingText = msg.textContent;
@@ -1294,7 +881,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         resumingExistingTextRef.current = existingText;
         wasStoppedRef.current = false;
         isSpeculatingRef.current = false;
-        const ctrl = new AbortController(); 
+        const ctrl = new AbortController();
         abortControllerRef.current = ctrl;
 
         streamingCharacterRef.current = char;
@@ -1311,7 +898,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         setStreamingState(char, existingText);
         setStats({ latency: 0, timeToFirstToken: 0 });
         isAtBottomRef.current = true;
-        lastTokenTimestampRef.current = Date.now();
 
         try {
             const result = await chatEngine.handleServerResponse(
@@ -1321,11 +907,11 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             const liveStreamedText = streamingTextRef.current || existingText;
             const dataToFinalize = result?.interactionData || currentInteractionData;
-            
+
             const finalized = finalizeMessageById(
-                dataToFinalize, 
-                messageId, 
-                wasStoppedRef.current, 
+                dataToFinalize,
+                messageId,
+                wasStoppedRef.current,
                 result?.rawText || liveStreamedText,
                 result?.displayText
             );
@@ -1338,7 +924,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             const finalText = finalizedMsg && hasTextContent(finalizedMsg) ? finalizedMsg.textContent : liveStreamedText;
             const evaluation = evaluateAutoResumeSignals(finalized.profile, finalText, autoResumeCountRef.current);
-            
+
             let dataToSave = finalized;
 
             if (evaluation.shouldResume && !wasStoppedRef.current) {
@@ -1390,9 +976,9 @@ export function useChatSession(options: UseChatSessionOptions) {
             releaseLock();
         }
     }, [
-        getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration, 
-        setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine, 
-        throttledSetStreamingTextWithBroadcast, ui, setStreamingState, setStats, isMultiplayerClient
+        getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration,
+        setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine,
+        throttledSetStreamingTextWithBroadcast, ui, setStreamingState, setStats, isMultiplayerClient, isSpeculatingRef
     ]);
 
     useEffect(() => {
@@ -1400,15 +986,15 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, [resumeGeneration]);
 
     const regenerateFromMessage = useCallback(async (
-        messageId: string, 
-        protagonists: Character[], 
+        messageId: string,
+        protagonists: Character[],
         allPromptBlocks?: PromptBlock[]
     ) => {
         if (isMultiplayerClient) {
             addToast('Generation is handled by the host.', 'info');
             return;
         }
-        
+
         const currentInteractionData = getState().interactionData;
         if (!currentInteractionData) { addToast('Chat data missing.', 'error'); return; }
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
@@ -1417,23 +1003,23 @@ export function useChatSession(options: UseChatSessionOptions) {
         const sortedHistory = getGlobalMessageHistory(currentInteractionData);
         const ti = sortedHistory.findIndex(m => m.id === messageId);
         if (ti === -1) { addToast('Message not found.', 'error'); releaseLock(); return; }
-        
+
         const tm = sortedHistory[ti];
         const isProtagonistMessage = protagonistIds.has(tm.character.id);
         const trimIdx = isProtagonistMessage ? ti + 1 : ti;
         const toDelete = sortedHistory.slice(trimIdx);
-        
+
         if (toDelete.length) {
-            try { 
-                await Promise.all(toDelete.map(m => deleteRawMessage(m.id))); 
-            } catch (e) { 
-                console.error('Delete failed:', e); 
+            try {
+                await Promise.all(toDelete.map(m => deleteRawMessage(m.id)));
+            } catch (e) {
+                console.error('Delete failed:', e);
             }
         }
 
         const updatedHistories: Record<string, HistoryMessage[]> = {};
         for (const [locId, msgs] of Object.entries(currentInteractionData.interactionHistories || {}) as [string, HistoryMessage[]][]) {
-            const keptMsgs = msgs.filter((m: { id: string; }) => {
+            const keptMsgs = msgs.filter((m: { id: string }) => {
                 const globalIdx = sortedHistory.findIndex(hm => hm.id === m.id);
                 return globalIdx !== -1 && globalIdx < trimIdx;
             });
@@ -1442,10 +1028,10 @@ export function useChatSession(options: UseChatSessionOptions) {
             }
         }
 
-        const td: InteractionData = { 
-            ...currentInteractionData, 
-            interactionHistories: updatedHistories, 
-            lastUpdatedTimestamp: Date.now() 
+        const td: InteractionData = {
+            ...currentInteractionData,
+            interactionHistories: updatedHistories,
+            lastUpdatedTimestamp: Date.now()
         };
         setInteractionData(td);
 
@@ -1470,7 +1056,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         setSelectedCharacter(char);
         isAtBottomRef.current = true;
         setState({ sessionStartTimestamp: Date.now() });
-        
+
         speculativeMarkovEngine.clearSession(c.id);
     }, [setInteractionData, setSelectedCharacter, setState]);
 

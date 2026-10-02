@@ -50,11 +50,19 @@ export interface PendingToolAction {
 // ─── Python-Style Argument Parser (*args & **kwargs) ────────────────
 
 export class ArgAccessor {
+    positional: string[];
+    kwargs: Record<string, string>;
+    raw: string;
+
     constructor(
-        public positional: string[],
-        public kwargs: Record<string, string>,
-        public raw: string
-    ) {}
+        positional: string[],
+        kwargs: Record<string, string>,
+        raw: string
+    ) {
+        this.positional = positional;
+        this.kwargs = kwargs;
+        this.raw = raw;
+    }
 
     /**
      * Resolves an argument by keyword name (case-insensitive) or falls back to positional index.
@@ -943,7 +951,7 @@ function executeDialogue(args: string, nextMessage: BaseMessage, interactionData
     }
     if (action === 'recall') {
         const queryId = pArgs.get(1, 'prompt_id', 'id')?.trim();
-        const matched = dialoguePrompts.filter(dp => dp.id === queryId || dp.id.startsWith(queryId));
+        const matched = dialoguePrompts.filter(dp => dp.id === queryId || dp.id.startsWith(queryId || ""));
         if (matched.length === 0) return { toolType: 'dialogue', args, content: `No dialogue prompt matching "${queryId}".`, displayReplacement: '[💬 No match]' };
 
         const textArray = getGlobalMessageHistory(interactionData).filter(m => m.messageType === 'chat').map(m => (m as ChatMessage).textContent);
@@ -970,7 +978,7 @@ function executeKnowledge(args: string, nextMessage: BaseMessage): ToolResult {
     }
     if (action === 'recall') {
         const queryId = pArgs.get(1, 'id', 'knowledge_id')?.trim();
-        const matched = prompts.filter(kp => kp.id === queryId || kp.id.startsWith(queryId));
+        const matched = prompts.filter(kp => kp.id === queryId || kp.id.startsWith(queryId || ""));
         if (matched.length === 0) return { toolType: 'knowledge', args, content: `No knowledge matching "${queryId}".`, displayReplacement: '[🧠 No match]' };
         return { toolType: 'knowledge', args, content: matched.map(k => `[${k.name}]: ${k.content}`).join('\n'), displayReplacement: `[🧠 Recalled ${matched.length} entry(ies)]` };
     }
@@ -1296,7 +1304,7 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
 
 // ─── Teleport ───────────────────────────────────────────────────────
 // Signature: teleport(location_id="...")
-function executeTeleport(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+function executeTeleport(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const targetQuery = pArgs.get(0, 'location_id', 'location', 'destination', 'target')?.trim();
     if (!targetQuery) return helpResult('teleport', 'location_id="..."', 'instantly move character to any location');

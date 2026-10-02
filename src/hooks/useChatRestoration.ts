@@ -13,6 +13,7 @@ interface UseChatRestorationOptions {
     profilesLoading: boolean;
     allCharacters: Character[];
     rawChatShells: RawInteractionData[];
+    sessionLoaded: boolean;
     loadFullCharacter: (id: string) => Promise<Character | null>;
     setInteractionData: (data: InteractionData) => void;
     setSelectedCharacter: (char: Character | null) => void;
@@ -31,7 +32,6 @@ function createEmptyChat(): InteractionData {
         contexts: [],
         locations: [],
         audioTracks: [],
-        // FIX: Replaced non-existent flat interactionHistory array with spatial interactionHistories Record
         interactionHistories: {},
         firstCreatedTimestamp: Date.now(),
         lastUpdatedTimestamp: Date.now(),
