@@ -357,7 +357,6 @@ export function AIRecommendationModal({
                     id: uuidv4(), name: parsedOutput.world.name, description: parsedOutput.world.description || undefined,
                     characterIds: charsToSave.map(c => c.id), contextIds: resolved.contexts.map(c => c.id),
                     locationIds: resolved.locations.map(l => l.id), audioTrackIds: resolved.audioTracks.map(a => a.id),
-                    promptBlockIds: blocksToSave.map(p => p.id),
                     profileId: profileToSave?.id, firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
                 };
                 if (!await onSaveWorld(world)) throw new Error('Failed to save world.');

@@ -40,7 +40,7 @@ export function useWorldManager() {
 
     const snapshotFromChat = useCallback(async (
         name: string, characterIds: string[], contextIds: string[],
-        locationIds: string[], audioTrackIds: string[], promptBlockIds: string[], profileId?: string, 
+        locationIds: string[], audioTrackIds: string[], profileId?: string, 
     ): Promise<World | null> => {
         const now = Date.now();
         const world: World = {

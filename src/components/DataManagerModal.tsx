@@ -296,7 +296,6 @@ export function DataManagerModal({
         const ctxIdSet = new Set(allContexts.map(c => c.id));
         const locIdSet = new Set(allLocations.map(l => l.id));
         const audioIdSet = new Set(allAudioTracks.map(a => a.id));
-        const pbIdSet = new Set(allPromptBlocks.map(b => b.id));
         const modelIdSet = new Set(allLanguageModels.map(m => m.id));
         const samplerIdSet = new Set(allSamplers.map(s => s.id));
         const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));
@@ -438,7 +437,6 @@ export function DataManagerModal({
         const ctxIdSet = new Set(allContexts.map(c => c.id));
         const locIdSet = new Set(allLocations.map(l => l.id));
         const audioIdSet = new Set(allAudioTracks.map(a => a.id));
-        const pbIdSet = new Set(allPromptBlocks.map(b => b.id));
         const modelIdSet = new Set(allLanguageModels.map(m => m.id));
         const samplerIdSet = new Set(allSamplers.map(s => s.id));
         const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));

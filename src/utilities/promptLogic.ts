@@ -1349,7 +1349,7 @@ function buildTextInjectionLines(ctx: PromptBuildContext, hasBeenSummarized: boo
     const characterTextInjection = `${ctx.delimiters.turnStart(ctx.characterParticipantTag)}{{text}}`;
 
     lines.push(characterResponsePriming);
-    lines.push(characterTextInjection);
+    //lines.push(characterTextInjection);
 
     return lines;
 }
