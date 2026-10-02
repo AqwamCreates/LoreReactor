@@ -20,9 +20,11 @@ export async function getLocation(): Promise<{ latitude: number; longitude: numb
             });
         });
 
+        const coords = position.coords
+
         return {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
+            latitude: coords.latitude,
+            longitude: coords.longitude,
         };
     } catch {
         console.warn('Geolocation unavailable or denied.');
@@ -42,7 +44,7 @@ export function getTimeDataFromCoordinates(latitude?: number, longitude?: number
     
     let dt: DateTime | undefined;
         
-    if (typeof latitude === 'number' && typeof longitude === 'number' && latitude !== 0 && longitude !== 0) {
+    if (typeof latitude === 'number' && typeof longitude === 'number') {
         if (latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
             const timezone = tzlookup(latitude, longitude);
             dt = DateTime.now().setZone(timezone).reconfigure({ locale: 'en-US' });
