@@ -31,25 +31,26 @@ export async function getLocation(): Promise<{ latitude: number; longitude: numb
 }
 
 
-/**
- * Returns the current local time in epoch milliseconds for a given coordinate set.
- * Safe for both browser and Node.js environments.
- */
-export function getLocalTimeFromCoordinates(latitude: number, longitude: number): number | null {
-  // Validate coordinates
-    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-        return null;
-    }
+export interface TimeData {
+    rawTimestamp: number;
+    formattedDate: string;
+    formattedTime: string;
+}
+
+export function getTimeDataFromCoordinates(latitude: number, longitude: number): TimeData | null {
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
 
     try {
-        // Returns an IANA timezone string (e.g., "America/New_York")
         const timezone = tzlookup(latitude, longitude);
         const dt = DateTime.now().setZone(timezone);
         if (!dt.isValid) return null;
 
-        return dt.toMillis();
+        return {
+            rawTimestamp: dt.toMillis(),
+            formattedDate: dt.toLocaleString({ weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+            formattedTime: dt.toLocaleString({ hour: 'numeric', minute: '2-digit', hour12: true })
+        };
     } catch {
-        // tz-lookup throws an error if coordinates fall outside defined boundaries (e.g., oceans/Antarctica)
         return null;
     }
 }

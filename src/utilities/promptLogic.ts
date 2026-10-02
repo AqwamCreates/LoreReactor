@@ -6,8 +6,8 @@ import { fetchMultipleContextUrls } from './linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
 import { toolStartSring, toolEndString } from '../dictionaries/stringList';
-import { fetchCurrentWeather, getLocation, getLocalTimeFromCoordinates } from '../services/LocationEngine';
-import { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter, getCurrentLocationId } from './locationLogic';
+import { fetchCurrentWeather, getLocation, getTimeDataFromCoordinates } from '../services/LocationEngine';
+import type TimeData, { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter, getCurrentLocationId, } from './locationLogic';
 import { defaultInputStrategy } from '../dictionaries/defaults';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { generateLocationVisitSummary } from '../services/ChatMessageSummarizationEngine';
@@ -1346,8 +1346,8 @@ function buildTextInjectionLines(ctx: PromptBuildContext, hasBeenSummarized: boo
 
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${ctx.characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${ctx.characterParticipantTag} requires it.`;
     const characterResponsePriming = `${ctx.delimiters.blockStart('system')}${noRepeatInstructions} ${noRestrictionsInstructions} ${callingOtherCharacterInstructions} ${formatInstructions} I am now responding as ${ctx.characterParticipantTag} with the format I am given and I will follow all the prompts given to me.${ctx.delimiters.blockEnd}`;
-    //const characterTextInjection = `${ctx.delimiters.turnStart(ctx.characterParticipantTag)}{{text}}`;
-    const characterTextInjection = "{{text}}";
+    const characterTextInjection = `${ctx.delimiters.turnStart(ctx.characterParticipantTag)}{{text}}`;
+    //const characterTextInjection = '{{text}}';
 
     lines.push(characterResponsePriming);
     lines.push(characterTextInjection);
@@ -1726,7 +1726,7 @@ interface BuilderContext {
     hasBeenSummarized: boolean;
     latitude?: number;
     longitude?: number;
-    localTimestamp: number | null;
+    timeData: TimeData | null;
     locationImages: EntityImageRef[];
 }
 
@@ -1797,32 +1797,21 @@ const PROMPT_BUILDERS: Record<string, (b: BuilderContext) => Promise<string[]>> 
         return [];
     },
     'Date': async (b) => {
-        if (b.localTimestamp) {
-            const dateStr = new Date(b.localTimestamp).toLocaleDateString('en-US', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-            });
-            return [`${b.ctx.delimiters.blockStart('system')}Today's date is ${dateStr}.${b.ctx.delimiters.blockEnd}`];
+        if (b.timeData) {
+            return [`${b.ctx.delimiters.blockStart('system')}Today's date is ${b.timeData.formattedDate}.${b.ctx.delimiters.blockEnd}`];
         }
         return [];
     },
     'Time': async (b) => {
-        if (b.localTimestamp) {
-            const timeStr = new Date(b.localTimestamp).toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true,
-            });
-            return [`${b.ctx.delimiters.blockStart('system')}The current time is ${timeStr}.${b.ctx.delimiters.blockEnd}`];
+        if (b.timeData) {
+            return [`${b.ctx.delimiters.blockStart('system')}The current time is ${b.timeData.formattedTime}.${b.ctx.delimiters.blockEnd}`];
         }
         return [];
     },
     'Time Elapsed': async (b) => {
-        if (b.localTimestamp && b.ctx.localHistory.length > 0) {
+        if (b.timeData && b.ctx.localHistory.length > 0) {
             const lastMsgTimestamp = b.ctx.localHistory[b.ctx.localHistory.length - 1].lastUpdatedTimestamp;
-            const diffMs = Math.max(0, b.localTimestamp - lastMsgTimestamp);
+            const diffMs = Math.max(0, b.timeData.rawTimestamp - lastMsgTimestamp);
             const totalSeconds = Math.floor(diffMs / 1000);
             const numberOfDays = Math.floor(totalSeconds / 86400);
             const numberOfHours = Math.floor((totalSeconds % 86400) / 3600);
@@ -2015,7 +2004,7 @@ export async function buildPrompt(
         if (geoLocation) { latitude = geoLocation.latitude; longitude = geoLocation.longitude; }
     }
 
-    const localTimestamp = (latitude && longitude) ? getLocalTimeFromCoordinates(latitude, longitude) : null;
+    const localTimestamp = (latitude && longitude) ? getTimeDataFromCoordinates(latitude, longitude) : null;
 
     const builderCtx: BuilderContext = {
         ctx, activeContextIds, characterClothingWearingStatuses, contextLines,
