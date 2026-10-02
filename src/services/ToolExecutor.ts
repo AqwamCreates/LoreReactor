@@ -310,7 +310,7 @@ function executeRandomPick(expression: string, _nextMessage: BaseMessage, _inter
 }
 
 // ─── Clock ────────────────────────────────────────────────────────────
-function executeClock(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
+function executeClock(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const dt = getCharacterTimeData(interactionData, interactionData).luxonTimestamp;
     const trimmed = args.trim().toLowerCase();
     let timeStr: string;
@@ -327,7 +327,7 @@ function executeClock(args: string, nextMessage: BaseMessage, interactionData: I
 }
 
 // ─── Date ────────────────────────────────────────────────────────────
-function executeCalendar(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
+function executeCalendar(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
     const dt = getCharacterTimeData(interactionData, interactionData).luxonTimestamp;
     const trimmed = args.trim().toLowerCase();
     let dateStr: string;

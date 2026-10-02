@@ -353,6 +353,7 @@ export interface InteractionMessage extends BaseMessage {
 export interface ChatMessage extends BaseMessage {
   messageType: 'chat';
   textContent: string;
+  processedTextContent?: string;
   files?: string[];
   frontCameraImage?: string;
   doNotRespond: boolean;
@@ -366,6 +367,7 @@ export interface ChatMessage extends BaseMessage {
 export interface WhisperMessage extends BaseMessage {
   messageType: 'whisper';
   textContent: string;
+  processedTextContent?: string;
   targetCharacterIds: string[];
   files?: string[];
   frontCameraImage?: string;
