@@ -2,8 +2,9 @@
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { summarizeWebpageContent, mergeWebpageSummaries, type WebpageImageInfo } from '../services/WebSummarizationEngine';
 import { findWebpageByUrl, saveRawWebpage } from '../storages/serverStorage';
-import type { linkFetchMode, searchEngine, Sampler, StopPattern } from '../types';
+import type { linkFetchMode, Sampler, searchEngine, StopPattern } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { buildSearchUrl } from './searchURLBuilder';
 
 const DEFAULT_CACHE_TIME_TO_LIVE_MS = 5 * 60 * 1000;
 const MAX_FETCH_DEPTH = 3;
@@ -126,23 +127,7 @@ function isWithinSubdirectory(candidateUrl: string, scopePrefix: string): boolea
 /**
  * Constructs a search engine URL from search terms.
  */
-export function buildSearchUrl(terms: string[], engine?: searchEngine): string {
-    const query = encodeURIComponent(terms.join(' '));
-    switch (engine) {
-        case 'Google':
-            return `https://www.google.com/search?q=${query}`;
-        case 'Bing':
-            return `https://www.bing.com/search?q=${query}`;
-        case 'DuckDuckGo':
-            return `https://html.duckduckgo.com/html/?q=${query}`;
-        case 'Yandex':
-            return `https://yandex.com/search/?text=${query}`;
-        case 'Baidu':
-            return `https://www.baidu.com/s?wd=${query}`;
-        default:
-            return `https://www.google.com/search?q=${query}`;
-    }
-}
+
 
 /**
  * Cleans an image URL by stripping everything after the file extension.

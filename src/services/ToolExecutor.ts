@@ -1,6 +1,6 @@
 // src/services/ToolExecutor.ts
 import type { ToolInvocation } from '../services/ToolInvocationParser';
-import { fetchLinkContent, buildSearchUrl } from '../utilities/linkFetcher';
+import { fetchLinkContent } from '../utilities/linkFetcher';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from '../utilities/dialoguePromptLogic';
 import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, WhisperMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension, Account, MultiplayerData, toolUsageDisplayMode, HistoryMessage } from '../types';
 import { findLatestMessage } from '../utilities/messageLogic';
@@ -10,6 +10,8 @@ import { getAudioEngine } from './AudioEngine';
 import { generateCharacterMemory } from './ChatMessageSummarizationEngine';
 import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
+import { writeFile, readFile } from '../utilities/serverTools';
+import { buildSearchUrl } from '../utilities/searchURLBuilder';
 
 export interface ToolResult {
     toolType: string;
@@ -128,6 +130,9 @@ const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, int
     "administrator": executeAdministrator,
     "creator": executeCreator,
     "destroyer": executeDestroyer,
+    "open_browser": executeOpenBrowser,
+    "read_file": executeReadFile,
+    "write_file": executeWriteFile,
 };
 
 export async function executeTool(
@@ -1534,6 +1539,81 @@ function executeDestroyer(args: string, nextMessage: BaseMessage, interactionDat
     appendPendingAction(nextMessage, { type: 'destroyer', payload: { entityType, entityId, entityName: targetName } });
     context?.addToast?.(`Destroyer: ${entityType} "${targetName}" initiated.`, 'info');
     return { toolType: 'destroyer', args, content: `Deletion: ${entityType} "${targetName}" (${entityId}). Irreversible.`, displayReplacement: `[💀 ${entityType}: "${targetName}"]` };
+}
+
+// ─── Open Browser (Web Search / Webpages) ─────────────────────────────
+async function executeOpenBrowser(
+  args: string, 
+  _nextMessage: BaseMessage, 
+  _interactionData: InteractionData, 
+  context?: ToolExecutionContext
+): Promise<ToolResult> {
+    const input = args.trim();
+    if (!input) {
+        return helpResult('open_browser', args, 'open_browser <url_or_search_query> — opens website or executes web search in browser');
+    }
+
+    const isDirectUrl = /^https?:\/\//i.test(input) || /^[\w-]+\.[\w-]+(\S*)/i.test(input);
+    const finalUrl = isDirectUrl 
+      ? (/^https?:\/\//i.test(input) ? input : `https://${input}`)
+      : buildSearchUrl([input], 'Google');
+
+    const res = await readFile(finalUrl);
+    if (!res.success) {
+        return { toolType: 'open_browser', args, content: `[Error: ${res.error || 'Failed to open browser'}]`, displayReplacement: `[❌ Failed: "${finalUrl}"]` };
+    }
+
+    const label = isDirectUrl ? finalUrl : `Search: "${input}"`;
+    context?.addToast?.(`Browser: ${label}`, 'info');
+    return { toolType: 'open_browser', args, content: `Opened browser to: "${finalUrl}".`, displayReplacement: `[🌐 Browser: "${label}"]` };
+}
+
+// ─── Read File (Files, Videos, Direct URLs, Media) ───────────────────
+async function executeReadFile(
+  args: string, 
+  _nextMessage: BaseMessage, 
+  _interactionData: InteractionData, 
+  context?: ToolExecutionContext
+): Promise<ToolResult> {
+    const target = args.trim();
+    if (!target) {
+        return helpResult('read_file', args, 'open_link <path_or_url> — opens a file, video, media, or link with default system app');
+    }
+
+    const res = await readFile(target);
+    if (!res.success) {
+        return { toolType: 'read_file', args, content: `[Error: ${res.error || 'Failed to open target'}]`, displayReplacement: `[❌ Failed: "${target}"]` };
+    }
+
+    context?.addToast?.(`Opened: ${target}`, 'info');
+    return { toolType: 'read_file', args, content: `Opened: "${res.target || target}".`, displayReplacement: `[🔗 Opened: "${target}"]` };
+}
+
+// ─── Write File ──────────────────────────────────────────────────────
+async function executeWriteFile(
+  args: string, 
+  _nextMessage: BaseMessage, 
+  _interactionData: InteractionData, 
+  context?: ToolExecutionContext
+): Promise<ToolResult> {
+    const trimmed = args.trim();
+    if (!trimmed) {
+        return helpResult('write_file', args, 'write_file <file_path> <content> — writes or creates a file on the local file system');
+    }
+    const firstSpace = trimmed.indexOf(' ');
+    if (firstSpace === -1) {
+        return { toolType: 'write_file', args, content: '[Error: Usage: write_file <file_path> <content>]', displayReplacement: '[Error: Missing content]' };
+    }
+    const filePath = trimmed.substring(0, firstSpace).trim();
+    const content = trimmed.substring(firstSpace + 1);
+
+    const res = await writeFile(filePath, content);
+    if (!res.success) {
+        return { toolType: 'write_file', args, content: `[Error: ${res.error || 'Failed to write file'}]`, displayReplacement: `[❌ Failed: "${filePath}"]` };
+    }
+
+    context?.addToast?.(`File written: ${filePath}`, 'success');
+    return { toolType: 'write_file', args, content: `Successfully wrote file to "${res.path || filePath}".`, displayReplacement: `[📁 Saved: "${filePath}"]` };
 }
 
 // ─── Process Pending Tool Actions ───────────────────────────────────

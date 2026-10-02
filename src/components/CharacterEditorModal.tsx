@@ -67,6 +67,9 @@ const TOOL_DESCRIPTIONS: Record<tool, string> = {
     administrator: 'Allow this character to perform high-level administrative actions such as managing chat sessions, models, navigation, and user-data-related controls.',
     creator: 'Allow this character to create user-data-related entities such as characters, contexts, locations, worlds, prompt blocks, profiles, or other supported data.',
     destroyer: 'Allow this character to delete or destroy user-data-related entities. Enable with caution.',
+    open_browser: 'Allow this character to open the browser. Enable with caution.',
+    read_file: 'Allow this character to read files on your computer. Enable with caution.',
+    write_file: 'Allow this character to write files on your computer. Enable with caution.'
 };
 
 const tokenEngine = getLanguageModelEngine();

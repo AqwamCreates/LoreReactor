@@ -6,8 +6,9 @@ import type { tool } from "../types";
 const characterAgnosticTools: tool[] = ['whisper', 'think', 'pick', 'clock', 'calendar', 'coin', 'dice', 'random', 'rng', 'move', 'dialogue', 'knowledge', 'memory', 'lookup', 'map', 'audio', 'clothing', 'note', 'inventory', 'trade'];
 const characterSpecificTools: tool[] = ['timer', 'stopwatch', 'calculator', 'schedule', 'web', 'invite', 'kick', 'teleport' , 'key', 'summon', 'narrate'];
 const metaTools: tool[] = ['inspect', 'administrator', 'creator', 'destroyer'];
+const serverTools: tool[] = ['read_file', 'open_browser', 'write_file']
 
-export const validTools: tool[] = [...characterAgnosticTools, ...characterSpecificTools, ...metaTools];
+export const validTools: tool[] = [...characterAgnosticTools, ...characterSpecificTools, ...metaTools, ...serverTools];
 
 export interface ToolInvocation {
     rawMatch: string;

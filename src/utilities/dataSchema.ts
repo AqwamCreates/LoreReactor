@@ -70,7 +70,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "numberOfMessagesToDisableDialoguePrompt": "number (≥0, default 1)",
     "numberOfMessagesToDisableStarterPrompt": "number (≥0, default 1)",
     "tools": {
-      "whisper": "boolean (default true)", "think": "boolean (default false)", "pick": "boolean (default true)", "calendar": "boolean (default false)", "coin": "boolean (default true)",
+      "whisper": "boolean (default true)", "think": "boolean (default false)", "pick": "boolean (default true)", "clock": "boolean (default false)", "calendar": "boolean (default false)", "coin": "boolean (default true)",
       "dice": "boolean (default true)", "random": "boolean (default true)", "rng": "boolean (default false)",
       "move": "boolean (default true)", "timer": "boolean (default false)", "stopwatch": "boolean (default false)",
       "schedule": "boolean (default false)",
@@ -82,7 +82,8 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
       "invite": "boolean (default false)", "kick": "boolean (default false)",
       "teleport": "boolean (default false)", "key": "boolean (default false)", "clothing": "boolean (default false)",
       "summon": "boolean (default false)", "narrate": "boolean (default false)", "inspect": "boolean (default false)",
-      "administrator": "boolean (default false)", "creator": "boolean (default false)", "destroyer": "boolean (default false)"
+      "administrator": "boolean (default false)", "creator": "boolean (default false)", "destroyer": "boolean (default false)",
+      "open_browser": "boolean (default false)", "read_file": "boolean (default false)", "write_file": "boolean (default false)"
     },
     "clothings": [{
       "id": "string (UUID)",
@@ -264,7 +265,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     },
     "stripThinkTokens": "boolean (default true)",
     "tools": {
-      "whisper": "number (-1, 0, or 1, default 0)", "think": "number (-1, 0, or 1, default 0)", "pick": "number (-1, 0, or 1, default 0)", "calendar": "number (-1, 0, or 1, default 0)", "coin": "number (-1, 0, or 1, default 0)",
+      "whisper": "number (-1, 0, or 1, default 0)", "think": "number (-1, 0, or 1, default 0)", "pick": "number (-1, 0, or 1, default 0)", "clock": "number (-1, 0, or 1, default 0)", "calendar": "number (-1, 0, or 1, default 0)", "coin": "number (-1, 0, or 1, default 0)",
       "dice": "number (-1, 0, or 1, default 0)", "random": "number (-1, 0, or 1, default 0)", "rng": "number (-1, 0, or 1, default 0)",
       "move": "number (-1, 0, or 1, default 0)", "timer": "number (-1, 0, or 1, default 0)", "stopwatch": "number (-1, 0, or 1, default 0)",
       "schedule": "number (-1, 0, or 1, default 0)",
@@ -276,7 +277,8 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
       "invite": "number (-1, 0, or 1, default 0)", "kick": "number (-1, 0, or 1, default 0)",
       "teleport": "number (-1, 0, or 1, default 0)", "key": "number (-1, 0, or 1, default 0)", "clothing": "number (-1, 0, or 1, default 0)",
       "summon": "number (-1, 0, or 1, default 0)", "narrate": "number (-1, 0, or 1, default 0)", "inspect": "number (-1, 0, or 1, default 0)",
-      "administrator": "number (-1, 0, or 1, default 0)", "creator": "number (-1, 0, or 1, default 0)", "destroyer": "number (-1, 0, or 1, default 0)"
+      "administrator": "number (-1, 0, or 1, default 0)", "creator": "number (-1, 0, or 1, default 0)", "destroyer": "number (-1, 0, or 1, default 0)",
+      "open_browser": "number (-1, 0, or 1, default 0)", "read_file": "number (-1, 0, or 1, default 0)", "write_file": "number (-1, 0, or 1, default 0)"
     },
     "inputStrategy": ["array of promptBlockType strings and/or custom prompt block UUIDs. Built-in types: ${defaultInputStrategy.join(', ')}. Custom prompt blocks are referenced by their UUID string."],
     "summarizationSteps": [{

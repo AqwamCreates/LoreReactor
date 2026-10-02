@@ -5,6 +5,7 @@ import path from 'node:path';
 import cors from 'cors';
 import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
+import open from 'open';
 
 // --- Configuration ---
 const app = express();
@@ -1310,6 +1311,59 @@ app.post('/fetch', async (req, response) => {
     log.reqError('FETCH', url, 0);
     log.warn(`Fetch failed for ${url}: ${errorMsg}`);
     response.json({ ok: false, status: 0, contentType: '', error: errorMsg });
+  }
+});
+
+// ─── Tool Endpoints (/tool) ──────────────────────────────────────────
+
+// Single unified endpoint to open files, videos, directories, or URLs
+app.post('/tool/read_file', async (req, response) => {
+  const { target } = req.body;
+  if (!target) {
+    return response.status(400).json({ success: false, error: 'Missing target' });
+  }
+
+  try {
+    const isUrl = /^https?:\/\//i.test(target);
+    const resolvedTarget = isUrl
+      ? target
+      : path.isAbsolute(target)
+      ? target
+      : path.join(ROOT_DIR, target);
+
+    if (!isUrl && !fs.existsSync(resolvedTarget)) {
+      return response.status(404).json({ success: false, error: `File or target not found: ${target}` });
+    }
+
+    await open(resolvedTarget);
+    log.info(`Opened target: ${resolvedTarget}`);
+    response.json({ success: true, target: resolvedTarget });
+  } catch (error) {
+    log.error(`Failed to open target ${target}: ${(error as Error).message}`);
+    response.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+app.post('/tool/write-file', (req, response) => {
+  const { filePath, content } = req.body;
+  if (!filePath || content === undefined) {
+    return response.status(400).json({ success: false, error: 'Missing filePath or content' });
+  }
+
+  try {
+    const resolvedPath = path.isAbsolute(filePath) ? filePath : path.join(ROOT_DIR, filePath);
+    const dir = path.dirname(resolvedPath);
+
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    fs.writeFileSync(resolvedPath, content, 'utf-8');
+    log.success(`File written: ${resolvedPath} (${content.length} bytes)`);
+    response.json({ success: true, path: resolvedPath, bytes: Buffer.byteLength(content, 'utf-8') });
+  } catch (error) {
+    log.error(`Write file failed for ${filePath}: ${(error as Error).message}`);
+    response.status(500).json({ success: false, error: (error as Error).message });
   }
 });
 

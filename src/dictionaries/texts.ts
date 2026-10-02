@@ -10,4 +10,5 @@ export const toolLabels: Record<tool, string> = {
     key: 'Key', summon: 'Summon Character',
     narrate: 'Narrate', inspect: 'Inspect', administrator: 'Administrator',
     creator: 'Creator', destroyer: 'Destroyer',
+    open_browser: 'Open Browser', read_file: 'Read File', write_file: 'Write File'
 };

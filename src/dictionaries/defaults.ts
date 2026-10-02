@@ -41,6 +41,9 @@ export const defaultCharacterTools: Record<tool, boolean> = {
     administrator: false,
     creator: false,
     destroyer: false,
+    open_browser: false,
+    read_file: false,
+    write_file: false,
 };
 
 export const defaultCharacter: Character = {
@@ -148,6 +151,7 @@ export const defaultProfileTools: Record<tool, tristateInteger> = {
     invite: 0, kick: 0, teleport: 0, 
     summon: 0, narrate: 0, inspect: 0,
     administrator: 0, creator: 0, destroyer: 0,
+    open_browser: 0, read_file: 0, write_file: 0,
 };
 
 export const defaultNarrateTexts: Record<textType, boolean> = {
