@@ -1,118 +1,192 @@
 // src/utilities/textDisplayFormatter.tsx
 import type React from 'react';
 
-const LEFT_DOUBLE_QUOTE = '\u201C'; // "
-const RIGHT_DOUBLE_QUOTE = '\u201D'; // "
+const LEFT_DOUBLE_QUOTE = '\u201C'; // “
+const RIGHT_DOUBLE_QUOTE = '\u201D'; // ”
 
-/**
- * Splits text on newlines and returns React nodes with <br /> between lines.
- */
-function renderWithLineBreaks(text: string, className: string, startKey: number): { nodes: React.ReactNode[]; nextKey: number } {
-    const lines = text.split('\n');
-    const nodes: React.ReactNode[] = [];
-    let key = startKey;
-    for (let i = 0; i < lines.length; i++) {
-        if (i > 0) nodes.push(<br key={key++} />);
-        if (lines[i]) nodes.push(<span key={key++} className={className}>{lines[i]}</span>);
-    }
-    return { nodes, nextKey: key };
+interface MatchCandidate {
+    type: 'bold_italic' | 'bold' | 'italic' | 'quote' | 'curly_quote' | 'newline';
+    index: number;
+    length: number;
+    innerContent?: string;
 }
 
 /**
- * Parses RP message text and returns formatted React elements.
- * 
- * Formatting rules:
- * - "quoted dialogue" or "curly quoted" → orange
- * - *italic actions* → accent color, italic
- * - **bold emphasis** → bright white with glow
- * - Normal text → default white
- * - Newlines are always preserved as <br />
+ * Recursively parses formatting tokens so formatting can be nested/merged.
  */
-export function formatDisplayMessageText(text: string): React.ReactNode {
-    if (!text) return null;
+function parseFormattedText(
+    text: string,
+    isTopLevel: boolean,
+    keyGen: { next: () => number }
+): React.ReactNode[] {
+    if (!text) return [];
 
-    const elements: React.ReactNode[] = [];
+    const nodes: React.ReactNode[] = [];
     let remaining = text;
-    let key = 0;
 
     while (remaining.length > 0) {
-        // Try to match bold first (**...**) — dotall flag handles newlines inside
-        const boldMatch = remaining.match(/^\*\*(.+?)\*\*/s);
-        if (boldMatch) {
-            const { nodes, nextKey } = renderWithLineBreaks(boldMatch[1], 'fmt-bold', key);
-            elements.push(...nodes);
-            key = nextKey;
-            remaining = remaining.slice(boldMatch[0].length);
-            continue;
+        const candidates: MatchCandidate[] = [];
+
+        // 1. Newlines
+        const nlMatch = remaining.match(/\r?\n/);
+        if (nlMatch && nlMatch.index !== undefined) {
+            candidates.push({
+                type: 'newline',
+                index: nlMatch.index,
+                length: nlMatch[0].length,
+            });
         }
 
-        // Try to match italic (*...*) — single asterisk, not double
-        // Negative lookahead ensures we don't match ** as italic opener
-        const italicMatch = remaining.match(/^\*(?!\*)(.+?)(?<!\*)\*(?!\*)/s);
-        if (italicMatch) {
-            const { nodes, nextKey } = renderWithLineBreaks(italicMatch[1], 'fmt-italic', key);
-            elements.push(...nodes);
-            key = nextKey;
-            remaining = remaining.slice(italicMatch[0].length);
-            continue;
+        // 2. Bold + Italic (***text***)
+        const biMatch = remaining.match(/\*\*\*(.+?)\*\*\*/s);
+        if (biMatch && biMatch.index !== undefined) {
+            candidates.push({
+                type: 'bold_italic',
+                index: biMatch.index,
+                length: biMatch[0].length,
+                innerContent: biMatch[1],
+            });
         }
 
-        // Try to match straight quoted dialogue ("...")
-        const quoteMatch = remaining.match(/^"([^"]*)"/);
-        if (quoteMatch) {
-            const { nodes, nextKey } = renderWithLineBreaks(quoteMatch[0], 'fmt-quote', key);
-            elements.push(...nodes);
-            key = nextKey;
-            remaining = remaining.slice(quoteMatch[0].length);
-            continue;
+        // 3. Bold (**text**)
+        const boldMatch = remaining.match(/(?<!\*)\*\*(?!\*)(.+?)(?<!\*)\*\*(?!\*)/s);
+        if (boldMatch && boldMatch.index !== undefined) {
+            candidates.push({
+                type: 'bold',
+                index: boldMatch.index,
+                length: boldMatch[0].length,
+                innerContent: boldMatch[1],
+            });
         }
 
-        // Try to match curly/smart quotes ("...")
-        if (remaining.startsWith(LEFT_DOUBLE_QUOTE)) {
-            const endIdx = remaining.indexOf(RIGHT_DOUBLE_QUOTE, 1);
-            if (endIdx !== -1) {
-                const full = remaining.slice(0, endIdx + 1);
-                const { nodes, nextKey } = renderWithLineBreaks(full, 'fmt-quote', key);
-                elements.push(...nodes);
-                key = nextKey;
-                remaining = remaining.slice(full.length);
-                continue;
+        // 4. Italic (*text*)
+        const italicMatch = remaining.match(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/s);
+        if (italicMatch && italicMatch.index !== undefined) {
+            candidates.push({
+                type: 'italic',
+                index: italicMatch.index,
+                length: italicMatch[0].length,
+                innerContent: italicMatch[1],
+            });
+        }
+
+        // 5. Straight Quote ("text")
+        const quoteMatch = remaining.match(/"([^"]*)"/s);
+        if (quoteMatch && quoteMatch.index !== undefined) {
+            candidates.push({
+                type: 'quote',
+                index: quoteMatch.index,
+                length: quoteMatch[0].length,
+                innerContent: quoteMatch[1],
+            });
+        }
+
+        // 6. Curly Quotes (“text”)
+        const curlyMatch = remaining.match(/\u201C([^\u201D]*)\u201D/s);
+        if (curlyMatch && curlyMatch.index !== undefined) {
+            candidates.push({
+                type: 'curly_quote',
+                index: curlyMatch.index,
+                length: curlyMatch[0].length,
+                innerContent: curlyMatch[1],
+            });
+        }
+
+        // If no more formatting matches exist, render remaining text
+        if (candidates.length === 0) {
+            if (isTopLevel) {
+                nodes.push(
+                    <span key={keyGen.next()} className="fmt-normal">
+                        {remaining}
+                    </span>
+                );
+            } else {
+                // In nested mode, plain text inherits parent span's color directly
+                nodes.push(remaining);
+            }
+            break;
+        }
+
+        // Pick earliest match in string
+        candidates.sort((a, b) => a.index - b.index || b.length - a.length);
+        const match = candidates[0];
+
+        // Process any unformatted text before the matched token
+        if (match.index > 0) {
+            const before = remaining.slice(0, match.index);
+            if (isTopLevel) {
+                nodes.push(
+                    <span key={keyGen.next()} className="fmt-normal">
+                        {before}
+                    </span>
+                );
+            } else {
+                nodes.push(before);
             }
         }
 
-        // Handle standalone newlines before normal text batching
-        if (remaining[0] === '\n') {
-            elements.push(<br key={key++} />);
-            remaining = remaining.slice(1);
-            continue;
+        // Process the matched token recursively
+        switch (match.type) {
+            case 'newline':
+                nodes.push(<br key={keyGen.next()} />);
+                break;
+
+            case 'bold_italic':
+                nodes.push(
+                    <span key={keyGen.next()} className="fmt-bold fmt-italic">
+                        {parseFormattedText(match.innerContent ?? '', false, keyGen)}
+                    </span>
+                );
+                break;
+
+            case 'bold':
+                nodes.push(
+                    <span key={keyGen.next()} className="fmt-bold">
+                        {parseFormattedText(match.innerContent ?? '', false, keyGen)}
+                    </span>
+                );
+                break;
+
+            case 'italic':
+                nodes.push(
+                    <span key={keyGen.next()} className="fmt-italic">
+                        {parseFormattedText(match.innerContent ?? '', false, keyGen)}
+                    </span>
+                );
+                break;
+
+            case 'quote':
+                nodes.push(
+                    <span key={keyGen.next()} className="fmt-quote">
+                        "{parseFormattedText(match.innerContent ?? '', false, keyGen)}"
+                    </span>
+                );
+                break;
+
+            case 'curly_quote':
+                nodes.push(
+                    <span key={keyGen.next()} className="fmt-quote">
+                        {LEFT_DOUBLE_QUOTE}
+                        {parseFormattedText(match.innerContent ?? '', false, keyGen)}
+                        {RIGHT_DOUBLE_QUOTE}
+                    </span>
+                );
+                break;
         }
 
-        // No match — batch consecutive normal characters
-        let normalEnd = 0;
-        while (normalEnd < remaining.length) {
-            const ch = remaining[normalEnd];
-            const nextTwo = remaining.slice(normalEnd, normalEnd + 2);
-            if (nextTwo === '**') break;
-            // Single * that isn't part of **
-            if (ch === '*' && remaining[normalEnd + 1] !== '*') break;
-            if (ch === '"') break;
-            if (ch === LEFT_DOUBLE_QUOTE) break;
-            if (ch === '\n') break;
-            normalEnd++;
-        }
-
-        if (normalEnd > 0) {
-            const normalText = remaining.slice(0, normalEnd);
-            const { nodes, nextKey } = renderWithLineBreaks(normalText, 'fmt-normal', key);
-            elements.push(...nodes);
-            key = nextKey;
-            remaining = remaining.slice(normalEnd);
-        } else {
-            // Safety valve: consume one character to prevent infinite loop
-            elements.push(<span key={key++} className="fmt-normal">{remaining[0]}</span>);
-            remaining = remaining.slice(1);
-        }
+        // Advance cursor past the matched token
+        remaining = remaining.slice(match.index + match.length);
     }
 
-    return <>{elements}</>;
+    return nodes;
+}
+
+export function formatDisplayMessageText(text: string): React.ReactNode {
+    if (!text) return null;
+
+    let keyId = 0;
+    const keyGen = { next: () => keyId++ };
+
+    const nodes = parseFormattedText(text, true, keyGen);
+    return <>{nodes}</>;
 }
