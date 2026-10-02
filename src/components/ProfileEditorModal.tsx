@@ -767,7 +767,7 @@ export function ProfileEditorModal({
                                                         
                                                         <div className="editor-row">
                                                             <div>
-                                                                <label className="editor-label editor-label-small">Stop Pattern *</label>
+                                                                <label className="editor-label editor-label-small">Stop Pattern</label>
                                                                 <input
                                                                     type="text"
                                                                     value={signal.stopPattern}
