@@ -39,28 +39,28 @@ interface ChatInputProps {
     onOpenModels: () => void;
 }
 
-// ─── Tree Data Structures ─────────────────────────────────────────
+// ─── Command Tree Data Structures ─────────────────────────────────
 type ArgType = 'text' | 'session_location' | 'global_location' | 'session_character' | 'global_character' | 'clothing' | 'audio' | 'item' | 'context' | 'rng_table' | 'dialogue' | 'knowledge' | 'memory' | 'entity_type' | 'prompt_block' | 'sampler' | 'stop_pattern' | 'profile' | 'world' | 'account' | 'multiplayer_session';
 
 interface SlashArg { name: string; type: ArgType; desc: string; optional?: boolean; example?: string; }
 interface SlashSub { name: string; desc: string; args?: SlashArg[]; }
 interface SlashCmd { name: string; desc: string; subs?: SlashSub[]; args?: SlashArg[]; }
 
-const VALID_ENTITY_TYPES = ['character', 'context', 'location', 'audio_track', 'prompt_block', 'stop_pattern', 'sampler', 'budget_strategy', 'profile', 'world', 'memory', 'account', 'multiplayer_data'];
+const VALID_ENTITY_TYPES = ['character', 'context', 'location', 'audio_track', 'prompt_block', 'stop_pattern', 'sampler', 'budget_strategy', 'profile', 'world', 'memory', 'extension', 'account', 'multiplayer_data'];
 
 const COMMAND_TREE: SlashCmd[] = [
-    { name: 'dice', desc: 'Roll dice', args: [{ name: 'notation', type: 'text', desc: 'Dice notation', example: '2d6+3' }] },
+    { name: 'dice', desc: 'Roll dice', args: [{ name: 'notation', type: 'text', desc: 'Dice notation', example: '2d6+3', optional: true }] },
     { name: 'coin', desc: 'Flip a coin' },
-    { name: 'random', desc: 'Random integer', args: [{ name: 'range', type: 'text', desc: 'Min-Max or just Max', example: '1-100' }] },
+    { name: 'random', desc: 'Random integer', args: [{ name: 'range', type: 'text', desc: 'Min-Max or just Max', example: '1-100', optional: true }] },
     { name: 'pick', desc: 'Pick from list', args: [{ name: 'options', type: 'text', desc: 'Comma-separated choices', example: 'sword, shield, potion' }] },
-    { name: 'clock', desc: 'Current time', args: [{ name: 'format', type: 'text', desc: 'Time format', example: '24h', optional: true }] },
-    { name: 'calendar', desc: 'Current date', args: [{ name: 'format', type: 'text', desc: 'Date format', example: 'iso', optional: true }] },
+    { name: 'clock', desc: 'Current time', args: [{ name: 'format', type: 'text', desc: 'Time format (12h, 24h, unix)', example: '24h', optional: true }] },
+    { name: 'calendar', desc: 'Current date', args: [{ name: 'format', type: 'text', desc: 'Date format (date, time, full, iso, unix)', example: 'iso', optional: true }] },
     { name: 'calculator', desc: 'Evaluate math', args: [{ name: 'expression', type: 'text', desc: 'Math expression', example: '15*7+3' }] },
     { name: 'move', desc: 'Move to adjacent location', args: [{ name: 'location', type: 'session_location', desc: 'Destination location' }] },
     { name: 'teleport', desc: 'Instant movement', args: [{ name: 'location', type: 'session_location', desc: 'Any session location' }] },
     { name: 'map', desc: 'Show distance', args: [
-        { name: 'from', type: 'session_location', desc: 'Start location', optional: true },
-        { name: 'to', type: 'session_location', desc: 'End location' }
+        { name: 'to', type: 'session_location', desc: 'End location' },
+        { name: 'from', type: 'session_location', desc: 'Start location (optional)', optional: true }
     ]},
     { name: 'inspect', desc: 'Examine character', args: [{ name: 'character', type: 'session_character', desc: 'Target character' }] },
     { name: 'invite', desc: 'Bring to current location', args: [{ name: 'character', type: 'session_character', desc: 'Character to invite' }] },
@@ -87,26 +87,32 @@ const COMMAND_TREE: SlashCmd[] = [
         { name: 'list', desc: 'List all items' },
         { name: 'add', desc: 'Add item', args: [
             { name: 'item', type: 'text', desc: 'Item name', example: 'Iron Sword' },
-            { name: 'qty', type: 'text', desc: 'Quantity', example: '3' }
+            { name: 'qty', type: 'text', desc: 'Quantity', example: '1', optional: true }
         ]},
         { name: 'remove', desc: 'Remove item', args: [
             { name: 'item', type: 'item', desc: 'Item from inventory' },
-            { name: 'qty', type: 'text', desc: 'Quantity', example: '1' }
+            { name: 'qty', type: 'text', desc: 'Quantity', example: '1', optional: true }
+        ]},
+        { name: 'set', desc: 'Set item value', args: [
+            { name: 'item', type: 'text', desc: 'Item name' },
+            { name: 'value', type: 'text', desc: 'Value or quantity' }
         ]},
     ]},
     { name: 'trade', desc: 'Trade items', subs: [
         { name: 'give', desc: 'Give item to character', args: [
             { name: 'character', type: 'session_character', desc: 'Recipient' },
-            { name: 'items', type: 'text', desc: 'item:qty,item2:qty2', example: 'Iron Sword:1, Potion:3' }
+            { name: 'item', type: 'item', desc: 'Item to give' },
+            { name: 'qty', type: 'text', desc: 'Quantity', example: '1', optional: true }
         ]},
         { name: 'take', desc: 'Take item from character', args: [
             { name: 'character', type: 'session_character', desc: 'Source character' },
-            { name: 'items', type: 'text', desc: 'item:qty,item2:qty2', example: 'Gold Coin:50' }
+            { name: 'item', type: 'text', desc: 'Item to take' },
+            { name: 'qty', type: 'text', desc: 'Quantity', example: '1', optional: true }
         ]},
-        { name: 'offer', desc: 'Propose trade', args: [
+        { name: 'offer', desc: 'Propose trade offer', args: [
             { name: 'character', type: 'session_character', desc: 'Trade partner' },
-            { name: 'give_items', type: 'text', desc: 'item:qty', example: 'Iron Sword:1' },
-            { name: 'take_items', type: 'text', desc: 'item:qty', example: 'Gold Coin:100' }
+            { name: 'give_items', type: 'text', desc: 'item:qty,item2:qty2', example: 'Iron Sword:1' },
+            { name: 'take_items', type: 'text', desc: 'item:qty,item2:qty2', example: 'Gold Coin:100' }
         ]},
         { name: 'accept', desc: 'Accept trade offer', args: [{ name: 'offer_id', type: 'text', desc: 'Offer ID', example: 'a1b2c3d4' }] },
         { name: 'decline', desc: 'Decline trade offer', args: [{ name: 'offer_id', type: 'text', desc: 'Offer ID', example: 'a1b2c3d4' }] },
@@ -187,14 +193,12 @@ const COMMAND_TREE: SlashCmd[] = [
         { name: 'recall', desc: 'Recall memory', args: [{ name: 'memory', type: 'memory', desc: 'Memory', optional: true }] },
         { name: 'save', desc: 'Save conversation as memory' },
     ]},
-    // ─── NEW OS-LEVEL AGENTIC TOOLS ────────────────────────────────
     { name: 'browser', desc: 'Open URL or search in browser', args: [{ name: 'url_or_query', type: 'text', desc: 'URL or search query', example: 'https://example.com' }] },
     { name: 'read_file', desc: 'Open file/media with system app', args: [{ name: 'path_or_url', type: 'text', desc: 'File path or media URL', example: '~/documents/notes.txt' }] },
     { name: 'write_file', desc: 'Write content to local file', args: [
         { name: 'file_path', type: 'text', desc: 'Destination file path', example: '~/documents/output.txt' },
         { name: 'content', type: 'text', desc: 'Content to write', example: 'Hello World' }
     ]},
-    // ───────────────────────────────────────────────────────────────
     { name: 'administrator', desc: 'Admin controls', subs: [
         { name: 'list_chats', desc: 'List all sessions' },
         { name: 'list_accounts', desc: 'List all accounts' },
@@ -224,14 +228,11 @@ interface EntityOption { value: string; label: string; id: string; extra?: strin
 
 function getEntityDescription(entity: any): string {
     if (!entity) return '';
-    
     const rawDesc = entity.description ?? entity.content;
-
     if (rawDesc && typeof rawDesc === 'string' && rawDesc.trim().length > 0) {
         const trimmed = rawDesc.trim();
         return trimmed.length > 80 ? `${trimmed.substring(0, 80)}…` : trimmed;
     }
-
     return '';
 }
 
@@ -259,7 +260,7 @@ function getEntityOptions(
     if (type === 'session_character') {
         const participants = data?.participants || [];
         return participants.map(c => ({
-            value: c.id,
+            value: c.name.includes(' ') ? `"${c.name}"` : c.name,
             label: c.name,
             id: c.id.substring(0, 8),
             extra: getEntityDescription(c)
@@ -271,7 +272,7 @@ function getEntityOptions(
         return allChars
             .filter(c => !participantIds.has(c.id))
             .map(c => ({
-                value: c.id,
+                value: c.name.includes(' ') ? `"${c.name}"` : c.name,
                 label: c.name,
                 id: c.id.substring(0, 8),
                 extra: getEntityDescription(c)
@@ -283,7 +284,7 @@ function getEntityOptions(
     if (type === 'session_location') {
         const sessionLocs = data?.locations || [];
         return sessionLocs.map(l => ({
-            value: l.id,
+            value: l.name.includes(' ') ? `"${l.name}"` : l.name,
             label: l.name,
             id: l.id.substring(0, 8),
             extra: getEntityDescription(l)
@@ -292,7 +293,7 @@ function getEntityOptions(
 
     if (type === 'global_location') {
         return allLocs.map(l => ({
-            value: l.id,
+            value: l.name.includes(' ') ? `"${l.name}"` : l.name,
             label: l.name,
             id: l.id.substring(0, 8),
             extra: getEntityDescription(l)
@@ -301,7 +302,7 @@ function getEntityOptions(
 
     if (type === 'account') {
         return allAccounts.map(a => ({
-            value: a.id,
+            value: a.username.includes(' ') ? `"${a.username}"` : a.username,
             label: a.username,
             id: a.id.substring(0, 8),
             extra: getEntityDescription(a)
@@ -310,7 +311,7 @@ function getEntityOptions(
 
     if (type === 'multiplayer_session') {
         return allMultiplayerData.map(m => ({
-            value: m.id,
+            value: m.name.includes(' ') ? `"${m.name}"` : m.name,
             label: m.name,
             id: m.id.substring(0, 8),
             extra: getEntityDescription(m)
@@ -319,7 +320,7 @@ function getEntityOptions(
 
     if (type === 'audio') {
         return allAudio.map(t => ({
-            value: t.id,
+            value: t.name.includes(' ') ? `"${t.name}"` : t.name,
             label: t.name,
             id: t.id.substring(0, 8),
             extra: getEntityDescription(t)
@@ -328,7 +329,7 @@ function getEntityOptions(
 
     if (type === 'clothing' && localChar) {
         return (localChar.clothings || []).map(c => ({
-            value: c.id,
+            value: c.name.includes(' ') ? `"${c.name}"` : c.name,
             label: c.name,
             id: c.id.substring(0, 8),
             extra: getEntityDescription(c)
@@ -339,12 +340,11 @@ function getEntityOptions(
         if (!data || !localChar) return [];
         const localMessageHistory = getLocalMessageHistory(data, localChar, ['chat', 'whisper']);
         const lastMsg = localMessageHistory[localMessageHistory.length - 1];
-        
         if (lastMsg?.inventory) {
             return Object.entries(lastMsg.inventory)
                 .filter(([k]) => !k.startsWith('__'))
                 .map(([k, v]) => ({
-                    value: k,
+                    value: k.includes(' ') ? `"${k}"` : k,
                     label: k,
                     id: `×${v}`,
                     extra: ''
@@ -355,7 +355,7 @@ function getEntityOptions(
 
     if (type === 'context') {
         return allCtxs.map(c => ({
-            value: c.id,
+            value: c.name.includes(' ') ? `"${c.name}"` : c.name,
             label: c.name,
             id: c.id.substring(0, 8),
             extra: getEntityDescription(c)
@@ -364,7 +364,7 @@ function getEntityOptions(
 
     if (type === 'prompt_block') {
         return allPrompts.map(p => ({
-            value: p.id,
+            value: p.name.includes(' ') ? `"${p.name}"` : p.name,
             label: p.name,
             id: p.id.substring(0, 8),
             extra: getEntityDescription(p)
@@ -373,7 +373,7 @@ function getEntityOptions(
 
     if (type === 'sampler') {
         return allSamplers.map(s => ({
-            value: s.id,
+            value: s.name.includes(' ') ? `"${s.name}"` : s.name,
             label: s.name,
             id: s.id.substring(0, 8),
             extra: getEntityDescription(s)
@@ -382,7 +382,7 @@ function getEntityOptions(
 
     if (type === 'stop_pattern') {
         return allStops.map(s => ({
-            value: s.id,
+            value: s.name.includes(' ') ? `"${s.name}"` : s.name,
             label: s.name,
             id: s.id.substring(0, 8),
             extra: getEntityDescription(s)
@@ -391,7 +391,7 @@ function getEntityOptions(
 
     if (type === 'profile') {
         return allProfiles.map(p => ({
-            value: p.id,
+            value: p.name.includes(' ') ? `"${p.name}"` : p.name,
             label: p.name,
             id: p.id.substring(0, 8),
             extra: getEntityDescription(p)
@@ -400,7 +400,7 @@ function getEntityOptions(
 
     if (type === 'world') {
         return allWorlds.map(w => ({
-            value: w.id,
+            value: w.name.includes(' ') ? `"${w.name}"` : w.name,
             label: w.name,
             id: w.id.substring(0, 8),
             extra: getEntityDescription(w)
@@ -409,7 +409,7 @@ function getEntityOptions(
 
     if (type === 'memory') {
         return allMems.map(m => ({
-            value: m.id,
+            value: m.name.includes(' ') ? `"${m.name}"` : m.name,
             label: m.name,
             id: m.id.substring(0, 8),
             extra: getEntityDescription(m)
@@ -420,7 +420,7 @@ function getEntityOptions(
         return allCtxs
             .filter(c => c.text && /^\d+[-:]/.test(c.text || ''))
             .map(c => ({
-                value: c.name || c.id,
+                value: (c.name || c.id).includes(' ') ? `"${c.name || c.id}"` : (c.name || c.id),
                 label: c.name || 'Unnamed RNG',
                 id: c.id.substring(0, 8),
                 extra: getEntityDescription(c)
@@ -430,7 +430,7 @@ function getEntityOptions(
     if (type === 'dialogue') {
         const dialogues = localChar?.dialoguePrompts || [];
         return dialogues.map(d => ({
-            value: d.id,
+            value: d.name.includes(' ') ? `"${d.name}"` : d.name,
             label: d.name,
             id: d.id.substring(0, 8),
             extra: getEntityDescription(d)
@@ -440,7 +440,7 @@ function getEntityOptions(
     if (type === 'knowledge') {
         const knowledge = localChar?.knowledgePrompts || [];
         return knowledge.map(k => ({
-            value: k.id,
+            value: k.name.includes(' ') ? `"${k.name}"` : k.name,
             label: k.name,
             id: k.id.substring(0, 8),
             extra: getEntityDescription(k)
@@ -448,6 +448,57 @@ function getEntityOptions(
     }
 
     return [];
+}
+
+/**
+ * Quote-aware parser for CLI input tokens.
+ */
+function parseCommandParts(input: string): { parts: string[]; endsWithSpace: boolean } {
+    const trimmedStart = input.trimStart();
+    if (!trimmedStart.startsWith('/')) return { parts: [], endsWithSpace: false };
+    const text = trimmedStart.slice(1);
+    const parts: string[] = [];
+    let current = '';
+    let inQuote: '"' | "'" | null = null;
+    let escape = false;
+
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (escape) {
+            current += ch;
+            escape = false;
+            continue;
+        }
+        if (ch === '\\') {
+            escape = true;
+            continue;
+        }
+        if (inQuote) {
+            if (ch === inQuote) {
+                inQuote = null;
+            } else {
+                current += ch;
+            }
+            continue;
+        }
+        if (ch === '"' || ch === "'") {
+            inQuote = ch;
+            continue;
+        }
+        if (/\s/.test(ch)) {
+            if (current.length > 0) {
+                parts.push(current);
+                current = '';
+            }
+            continue;
+        }
+        current += ch;
+    }
+    if (current.length > 0) {
+        parts.push(current);
+    }
+    const endsWithSpace = text.length > 0 && /\s$/.test(text) && inQuote === null;
+    return { parts, endsWithSpace };
 }
 
 export function ChatInput({
@@ -463,11 +514,8 @@ export function ChatInput({
     const [lastResetKey, setLastResetKey] = useState('');
     const autocompleteRef = useRef<HTMLDivElement>(null);
 
-    const raw = inputText.trimStart();
-    const isSlash = raw.startsWith('/');
-    const textAfterSlash = raw.slice(1);
-    const parts = textAfterSlash.split(/\s+/).filter(p => p.length > 0);
-    const isTypingNewToken = inputText.endsWith(' ');
+    const isSlash = inputText.trimStart().startsWith('/');
+    const { parts, endsWithSpace: isTypingNewToken } = useMemo(() => parseCommandParts(inputText), [inputText]);
     const activeIndex = isTypingNewToken ? parts.length : Math.max(0, parts.length - 1);
     const currentQuery = (isTypingNewToken ? '' : parts[activeIndex] || '').toLowerCase();
 
@@ -638,23 +686,18 @@ export function ChatInput({
         const rawText = inputText.trimStart();
         if (!rawText.startsWith('/')) return;
 
-        const afterSlash = rawText.slice(1);
-        const currentParts = afterSlash.split(/\s+/).filter(p => p.length > 0);
+        const { parts: currentParts, endsWithSpace } = parseCommandParts(inputText);
 
-        let newValue = opt.value;
-        let isTargetsArg = false;
-
-        if (!isTypingNewToken && activeIndex < currentParts.length) {
-            const currentPart = currentParts[activeIndex];
-            const lastComma = currentPart.lastIndexOf(',');
-            if (lastComma !== -1) {
-                newValue = `${currentPart.substring(0, lastComma + 1)}${opt.value}`;
-            }
+        let formattedValue = opt.value;
+        if (formattedValue.includes(' ') && !formattedValue.startsWith('"') && !formattedValue.startsWith("'")) {
+            formattedValue = `"${formattedValue}"`;
         }
+
+        let isTargetsArg = false;
 
         const cmd = COMMAND_TREE.find(c => c.name === currentParts[0]);
         if (cmd) {
-            const pastCommand = isTypingNewToken || activeIndex > 0;
+            const pastCommand = endsWithSpace || activeIndex > 0;
             const effectiveIndex = pastCommand ? activeIndex : 1;
             const sub = cmd.subs?.find(s => s.name === currentParts[1]);
             const args = sub ? sub.args : cmd.args;
@@ -665,18 +708,34 @@ export function ChatInput({
             }
         }
 
-        if (isTargetsArg) {
-            newValue += ',';
+        if (!endsWithSpace && activeIndex < currentParts.length) {
+            const currentPart = currentParts[activeIndex];
+            const lastComma = currentPart.lastIndexOf(',');
+            if (lastComma !== -1) {
+                formattedValue = `${currentPart.substring(0, lastComma + 1)}${opt.value}`;
+            }
         }
 
-        if (isTypingNewToken || activeIndex >= currentParts.length) {
-            currentParts.push(newValue);
-        } else {
-            currentParts[activeIndex] = newValue;
+        if (isTargetsArg) {
+            formattedValue += ',';
         }
+
+        const newParts = [...currentParts];
+        if (endsWithSpace || activeIndex >= newParts.length) {
+            newParts.push(formattedValue);
+        } else {
+            newParts[activeIndex] = formattedValue;
+        }
+
+        const reconstructed = newParts.map(p => {
+            if (p.includes(' ') && !p.startsWith('"') && !p.startsWith("'")) {
+                return `"${p}"`;
+            }
+            return p;
+        }).join(' ');
 
         const trailingSpace = isTargetsArg ? '' : ' ';
-        setInputText(`/${currentParts.join(' ')}${trailingSpace}`);
+        setInputText(`/${reconstructed}${trailingSpace}`);
         textareaRef.current?.focus();
     };
 
@@ -712,9 +771,9 @@ export function ChatInput({
             }
             if (e.key === 'Backspace' && currentQuery === '' && activeIndex > 0) {
                 e.preventDefault();
-                const currentParts = inputText.trim().split(/\s+/).filter(p => p.length > 0);
-                currentParts.pop();
-                setInputText(currentParts.length > 0 ? `${currentParts.join(' ')} ` : '/');
+                const newParts = [...parts];
+                newParts.pop();
+                setInputText(newParts.length > 0 ? `/${newParts.join(' ')} ` : '/');
                 return;
             }
             return;

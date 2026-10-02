@@ -12,6 +12,9 @@ import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEng
 import { ToolInvocationParser, type ToolInvocation } from './ToolInvocationParser';
 import { defaultBudgetData } from '../dictionaries/defaults';
 import { executeTools, formatToolDisplay } from './ToolExecutor';
+import { findLatestMessage } from '../utilities/messageLogic';
+
+const MAX_TOOL_ITERATIONS = 5;
 
 // ─── Result Types ───────────────────────────────────────────────────
 
@@ -70,16 +73,12 @@ export interface ProcessedReplacements {
 
 // ─── Spacing Sanitizer ──────────────────────────────────────────────
 
-/**
- * Normalizes Windows line breaks, removes trailing whitespace on blank lines,
- * and collapses any gap larger than \n\n down to a single clean paragraph break.
- */
 function cleanSpacing(str: string): string {
     return str
-        .replace(/\r\n/g, '\n')             // 1. Normalize CRLF to LF
-        .replace(/[ \t]+$/gm, '')           // 2. Strip spaces/tabs on empty lines
-        .replace(/\n{3,}/g, '\n\n')         // 3. Collapse 3+ newlines to clean \n\n
-        .replace(/^\n+/, '');               // 4. Trim leading blank lines
+        .replace(/\r\n/g, '\n')
+        .replace(/[ \t]+$/gm, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/^\n+/, '');
 }
 
 // ─── Dual-Text Tool Processing ──────────────────────────────────────
@@ -88,7 +87,7 @@ async function processToolInvocations(
     invocations: ToolInvocation[],
     character: Character,
     profile: Profile | undefined,
-    nextMessage: ChatMessage,
+    targetMessage: ChatMessage,
     interactionData: InteractionData,
 ): Promise<ProcessedReplacements | null> {
     if (!invocations || invocations.length === 0) return null;
@@ -99,7 +98,7 @@ async function processToolInvocations(
     if (enabledInvocations.length === 0) return null;
 
     const displayMode = profile?.toolUsageDisplayMode ?? 'none';
-    const toolResults = await executeTools(enabledInvocations, nextMessage, interactionData, undefined, displayMode);
+    const toolResults = await executeTools(enabledInvocations, targetMessage, interactionData, undefined, displayMode);
 
     const rawReplacements: { rawMatch: string; resultText: string }[] = [];
     const displayReplacements: { rawMatch: string; displayText: string }[] = [];
@@ -108,13 +107,11 @@ async function processToolInvocations(
         const toolResult = toolResults[i];
         const inv = enabledInvocations[i];
 
-        // Raw tool result content for LLM continuation
         rawReplacements.push({
             rawMatch: inv.rawMatch,
             resultText: toolResult.content,
         });
 
-        // Display representation for UI layer (returns '' when mode === 'none')
         displayReplacements.push({
             rawMatch: inv.rawMatch,
             displayText: formatToolDisplay(toolResult, inv.rawMatch, displayMode),
@@ -131,38 +128,43 @@ function applyToolReplacements(
 ): void {
     const acc = accState.get();
     let currentRaw = acc.raw;
-    // Keep currentDisplay based on acc.display so raw LLM numbers never bleed into UI
     let currentDisplay = acc.display;
 
     for (let i = 0; i < replacements.rawReplacements.length; i++) {
         const { rawMatch, resultText } = replacements.rawReplacements[i];
         const { displayText } = replacements.displayReplacements[i];
 
-        // 1. Replace tool invocation in raw text so LLM continuation receives the result
-        const rawIdx = currentRaw.indexOf(rawMatch);
-        const beforeChar = rawIdx > 0 ? currentRaw[rawIdx - 1] : '';
-        const afterChar = currentRaw[rawIdx + rawMatch.length] || '';
-
-        const needsLeadingSpace = beforeChar !== '' && !/\s/.test(beforeChar) && resultText.length > 0;
-        const needsTrailingSpace = afterChar !== '' && !/\s|[.,!?;:]/.test(afterChar) && resultText.length > 0;
-
-        const formattedResult = (needsLeadingSpace ? ' ' : '') + resultText + (needsTrailingSpace ? ' ' : '');
-        currentRaw = currentRaw.replace(rawMatch, () => formattedResult);
-
-        // 2. In display text: if tool has display content (e.g. badges), insert it; if hidden ('none'), do not inject numbers
-        if (displayText !== '') {
-            if (currentDisplay.includes(rawMatch)) {
-                currentDisplay = currentDisplay.replace(rawMatch, () => displayText);
-            } else {
-                currentDisplay += (currentDisplay.endsWith(' ') || displayText.startsWith(' ') ? '' : ' ') + displayText;
+        // 1. Clean dangling markdown opening delimiters (`, *, _, [) right before the tool invocation in raw context
+        let rawIdx = currentRaw.indexOf(rawMatch);
+        if (rawIdx > 0) {
+            const prevChar = currentRaw[rawIdx - 1];
+            if (prevChar === '`' || prevChar === '*' || prevChar === '_' || prevChar === '[') {
+                currentRaw = currentRaw.slice(0, rawIdx - 1) + currentRaw.slice(rawIdx);
+                rawIdx--;
             }
-        } else if (currentDisplay.includes(rawMatch)) {
-            currentDisplay = currentDisplay.replace(rawMatch, '');
+        }
+
+        // Format tool result as an unambiguous observation for the model's continuation
+        const formattedResult = ` [Result: ${resultText}] `;
+        if (rawIdx !== -1) {
+            currentRaw = currentRaw.slice(0, rawIdx) + formattedResult + currentRaw.slice(rawIdx + rawMatch.length);
+        } else {
+            currentRaw += formattedResult;
+        }
+
+        // 2. Clean dangling markdown opening delimiters from the display accumulator as well
+        const displayIdx = currentDisplay.indexOf(rawMatch);
+        if (displayIdx !== -1) {
+            const beforeDisplay = currentDisplay.slice(0, displayIdx);
+            const cleanBefore = beforeDisplay.replace(/[`*_\[\s]+$/, '');
+            currentDisplay = cleanBefore + (displayText !== '' ? ` ${displayText} ` : ' ') + currentDisplay.slice(displayIdx + rawMatch.length);
+        } else {
+            const cleanDisplay = currentDisplay.replace(/[`*_\[\s]+$/, '');
+            currentDisplay = cleanDisplay + (displayText !== '' ? ` ${displayText} ` : ' ');
         }
     }
 
     currentDisplay = cleanSpacing(currentDisplay);
-
     acc.setRaw(currentRaw);
     acc.setDisplay(currentDisplay);
     callbacks?.onDisplayText(acc.display);
@@ -190,7 +192,7 @@ function classifyError(error: unknown, signal: AbortSignal): TurnError {
 function createAccState(initialText: string) {
     let rawAcc = initialText;
     let displayAcc = initialText;
-    let lastRawLen = initialText.length;
+    let lastRawLen = 0;
     let pendingInvs: ToolInvocation[] = [];
 
     return {
@@ -264,13 +266,23 @@ export class CharacterActor {
             }
         }
 
-        const aiMessage = isResuming ? null : createChatMessage(data, character, '', {
-            clothingWearingStatuses: resolvedClothingStatuses,
-            knownCharacterNames,
-        });
+        let targetMessage: ChatMessage;
+        if (isResuming) {
+            const latest = findLatestMessage(data, character);
+            targetMessage = (latest?.message && latest.message.messageType === 'chat'
+                ? latest.message
+                : createChatMessage(data, character, existingCharacterText || '', {
+                    clothingWearingStatuses: resolvedClothingStatuses,
+                    knownCharacterNames,
+                })) as ChatMessage;
+        } else {
+            targetMessage = createChatMessage(data, character, '', {
+                clothingWearingStatuses: resolvedClothingStatuses,
+                knownCharacterNames,
+            });
+        }
 
         try {
-            let rawText = '';
             let currentExistingText = existingCharacterText || '';
             let finalBudgetData: BudgetData | null = null;
             let lastPromptText = '';
@@ -278,7 +290,7 @@ export class CharacterActor {
             const streamToolParser = new ToolInvocationParser();
             const accState = createAccState(currentExistingText);
 
-            // ─── Shared Stream Callback Factory ─────────────────────
+            // Stream callbacks that abort active token generation immediately upon encountering a completed tool call
             const createStreamCallbacks = (
                 parser: ToolInvocationParser,
                 getAccumulators: () => { 
@@ -292,6 +304,7 @@ export class CharacterActor {
                     addPendingInvocation: (inv: ToolInvocation) => void;
                     clearPendingInvocations: () => void;
                 },
+                turnAbortCtrl: AbortController
             ): StreamCallbacks => ({
                 onToken: async (s) => {
                     latestLatency = s.msPerToken;
@@ -304,18 +317,19 @@ export class CharacterActor {
 
                     const acc = getAccumulators();
                     const lastLen = acc.getLastRawLen();
-                    
                     const delta = s.fullText.slice(lastLen);
                     acc.setLastRawLen(s.fullText.length);
 
                     const parsed = parser.processChunk(delta);
-
                     acc.setRaw(acc.raw + delta);
 
                     if (parsed.toolInvocations.length > 0) {
                         for (const inv of parsed.toolInvocations) {
                             acc.addPendingInvocation(inv);
                         }
+                        // Interrupt active generation pass at the end of the tool invocation
+                        turnAbortCtrl.abort();
+                        return;
                     }
 
                     if (parsed.displayText) {
@@ -336,65 +350,91 @@ export class CharacterActor {
                 },
             });
 
+            // ─── Single Stream Execution Handler ────────────────────
+            const runSingleStreamPass = async (
+                reqBody: Record<string, unknown>,
+                isBudget: boolean,
+                activeModelId?: string
+            ): Promise<string> => {
+                const turnAbortCtrl = new AbortController();
+                const onParentAbort = () => turnAbortCtrl.abort();
+                signal.addEventListener('abort', onParentAbort, { once: true });
+
+                const streamCallbacks = createStreamCallbacks(streamToolParser, accState.get, turnAbortCtrl);
+
+                try {
+                    let resultText = '';
+                    if (isBudget) {
+                        const bse = getBudgetStrategyEngine();
+                        const streamResult = await bse.generateStream(
+                            reqBody,
+                            turnAbortCtrl,
+                            streamCallbacks,
+                            metadata,
+                            currentExistingText
+                        );
+                        resultText = streamResult.text;
+                        lastIsCompleted = streamResult.isCompleted;
+
+                        statsDelta.numberOfRequests++;
+                        const cachedTokens = streamResult.cachedTokens ?? 0;
+                        if (cachedTokens === 0) statsDelta.numberOfCacheInvalidations++;
+                    } else {
+                        const streamResult = await this.engine.generateStream(
+                            reqBody,
+                            turnAbortCtrl,
+                            {
+                                ...streamCallbacks,
+                                onFinish: (rs) => {
+                                    const promptTokens = rs.promptTokens || 0;
+                                    const cachedTokens = rs.cachedTokens ?? 0;
+                                    const completionTokens = rs.completionTokens || 0;
+                                    const cr = calculateRequestCost(promptTokens, cachedTokens, completionTokens, pricing);
+                                    statsDelta.numberOfRequests++;
+                                    if (promptTokens > 0 && cachedTokens === 0) statsDelta.numberOfCacheInvalidations++;
+                                    statsDelta.totalCost += cr.totalCost;
+                                    statsDelta.costWithoutCacheMisses += cr.potentialMaxCost;
+                                },
+                            },
+                            undefined,
+                            currentExistingText
+                        );
+                        resultText = streamResult.text;
+                        lastIsCompleted = streamResult.isCompleted;
+                    }
+                    return resultText;
+                } finally {
+                    signal.removeEventListener('abort', onParentAbort);
+                }
+            };
+
             // ─── Borrowed Model Path ────────────────────────────────
             if (borrowedModel) {
                 this.engine.setRunningModels(runningModels);
                 this.engine.setContext(borrowedModel);
 
-                const doStream = async (reqBody: Record<string, unknown>) => {
-                    const result = await this.engine.generateStream(
-                        reqBody, 
-                        { signal } as AbortController, 
-                        {
-                            ...createStreamCallbacks(streamToolParser, accState.get),
-                            onFinish: (rs) => {
-                                const promptTokens = rs.promptTokens || 0;
-                                const cachedTokens = rs.cachedTokens ?? 0;
-                                const completionTokens = rs.completionTokens || 0;
-                                const cr = calculateRequestCost(promptTokens, cachedTokens, completionTokens, pricing);
-                                statsDelta.numberOfRequests++;
-                                if (promptTokens > 0 && cachedTokens === 0) statsDelta.numberOfCacheInvalidations++;
-                                statsDelta.totalCost += cr.totalCost;
-                                statsDelta.costWithoutCacheMisses += cr.potentialMaxCost;
-                            },
-                        },
-                        undefined,
-                        currentExistingText
-                    );
-                    lastIsCompleted = result.isCompleted;
-                    return result.text;
-                };
-
                 const modelId = borrowedModel.id;
+                let iteration = 0;
 
-                while (true) {
+                while (iteration++ < MAX_TOOL_ITERATIONS) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
+                    accState.get().setLastRawLen(0);
                     const { body } = await buildChatRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
-                    rawText = await doStream(body);
-
-                    if (!rawText && !signal.aborted) {
-                        const { body: rb } = await buildChatRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
-                        rawText = await doStream(rb);
-                        if (!rawText) {
-                            return { error: { message: 'Empty response from borrowed model', type: 'inference' } };
-                        }
-                    }
+                    await runSingleStreamPass(body, false);
 
                     const pendingInvs = accState.getPending();
-                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, aiMessage!, data);
-                    
+                    if (pendingInvs.length === 0) break;
+
+                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data);
                     if (!toolResult) break;
 
                     applyToolReplacements(accState, toolResult, callbacks);
 
                     streamToolParser.reset();
                     accState.clearPending();
-                    accState.get().setLastRawLen(0);
                     currentExistingText = accState.getRaw();
                 }
-                
-                rawText = accState.getRaw();
 
             } else if (strat) {
                 // ─── Budget Strategy Path ───────────────────────────
@@ -410,9 +450,12 @@ export class CharacterActor {
                     saveRawBudgetData(newBd).catch(e => console.warn('Failed to save initial budget data:', e));
                 }
 
-                while (true) {
+                let iteration = 0;
+
+                while (iteration++ < MAX_TOOL_ITERATIONS) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
+                    accState.get().setLastRawLen(0);
                     const { body: probeBody } = await buildChatRequestBody(
                         data, character, knownCharacterNames, currentExistingText, allPromptBlocks, ''
                     );
@@ -433,44 +476,27 @@ export class CharacterActor {
                         data, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId
                     );
 
-                    const cb = callbacks ? createStreamCallbacks(streamToolParser, accState.get) : undefined;
-                    const streamResult = await bse.generateStream(
-                        body, 
-                        { signal } as AbortController, 
-                        cb, 
-                        metadata, 
-                        currentExistingText
-                    );
-                    rawText = streamResult.text;
-                    lastIsCompleted = streamResult.isCompleted;
-
-                    statsDelta.numberOfRequests++;
-                    const cachedTokens = streamResult.cachedTokens ?? 0;
-                    if (cachedTokens === 0) statsDelta.numberOfCacheInvalidations++;
+                    await runSingleStreamPass(body, true, activeModelId);
 
                     finalBudgetData = bse.getBudgetData();
                     if (!finalBudgetData) {
                         return { error: { message: 'Failed to get budget data', type: 'budget' } };
                     }
                     await saveRawBudgetData(finalBudgetData);
-
-                    const requestCost = finalBudgetData.budgetSpent - bd.budgetSpent;
-                    statsDelta.totalCost += requestCost;
+                    statsDelta.totalCost += (finalBudgetData.budgetSpent - bd.budgetSpent);
 
                     const pendingInvs = accState.getPending();
-                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, aiMessage!, data);
-                    
+                    if (pendingInvs.length === 0) break;
+
+                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data);
                     if (!toolResult) break;
 
                     applyToolReplacements(accState, toolResult, callbacks);
 
                     streamToolParser.reset();
                     accState.clearPending();
-                    accState.get().setLastRawLen(0);
                     currentExistingText = accState.getRaw();
                 }
-                
-                rawText = accState.getRaw();
 
             } else {
                 // ─── Direct Model Path ──────────────────────────────
@@ -487,67 +513,35 @@ export class CharacterActor {
                 this.engine.setRunningModels(runningModels);
                 this.engine.setContext(selectedModel);
 
-                const doStream = async (reqBody: Record<string, unknown>) => {
-                    const result = await this.engine.generateStream(
-                        reqBody, 
-                        { signal } as AbortController, 
-                        {
-                            ...createStreamCallbacks(streamToolParser, accState.get),
-                            onFinish: (rs) => {
-                                const promptTokens = rs.promptTokens || 0;
-                                const cachedTokens = rs.cachedTokens ?? 0;
-                                const completionTokens = rs.completionTokens || 0;
-                                const cr = calculateRequestCost(promptTokens, cachedTokens, completionTokens, pricing);
-                                statsDelta.numberOfRequests++;
-                                if (promptTokens > 0 && cachedTokens === 0) statsDelta.numberOfCacheInvalidations++;
-                                statsDelta.totalCost += cr.totalCost;
-                                statsDelta.costWithoutCacheMisses += cr.potentialMaxCost;
-                            },
-                        },
-                        undefined,
-                        currentExistingText
-                    );
-                    lastIsCompleted = result.isCompleted;
-                    return result.text;
-                };
-
                 const modelId = selectedModel.id || '';
+                let iteration = 0;
 
-                while (true) {
+                while (iteration++ < MAX_TOOL_ITERATIONS) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
+                    accState.get().setLastRawLen(0);
                     const { body } = await buildChatRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
-                    rawText = await doStream(body);
-
-                    if (!rawText && !signal.aborted) {
-                        const { body: rb } = await buildChatRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
-                        rawText = await doStream(rb);
-                        if (!rawText) {
-                            return { error: { message: 'Empty response from model', type: 'inference' } };
-                        }
-                    }
+                    await runSingleStreamPass(body, false);
 
                     const pendingInvs = accState.getPending();
-                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, aiMessage!, data);
-                    
+                    if (pendingInvs.length === 0) break;
+
+                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data);
                     if (!toolResult) break;
 
                     applyToolReplacements(accState, toolResult, callbacks);
 
                     streamToolParser.reset();
                     accState.clearPending();
-                    accState.get().setLastRawLen(0);
                     currentExistingText = accState.getRaw();
                 }
-                
-                rawText = accState.getRaw();
             }
 
+            const rawText = accState.getRaw();
             if (!rawText) {
                 return { error: { message: 'Empty response from model', type: 'inference' } };
             }
 
-            // Final display text converts display accumulator (guarantees zero tool artifacts or raw numbers in UI)
             const cleanDisplay = cleanSpacing(accState.getDisplay());
             const finalDisplayText = convertIdsToDisplayNames(cleanDisplay, data, character);
 
@@ -556,16 +550,12 @@ export class CharacterActor {
             if (isResuming) {
                 updatedData = data;
             } else {
-                if (aiMessage) {
-                    aiMessage.textContent = rawText;
-                    if (finalDisplayText !== rawText) {
-                        aiMessage.processedTextContent = finalDisplayText;
-                    }
-                    aiMessage.characterExpression = latestExpression ?? undefined;
-                    updatedData = addMessageToInteractionData(data, aiMessage);
-                } else {
-                    updatedData = data;
+                targetMessage.textContent = rawText;
+                if (finalDisplayText !== rawText) {
+                    targetMessage.processedTextContent = finalDisplayText;
                 }
+                targetMessage.characterExpression = latestExpression ?? undefined;
+                updatedData = addMessageToInteractionData(data, targetMessage);
             }
 
             return {
@@ -583,7 +573,7 @@ export class CharacterActor {
                 },
             };
         } catch (error) {
-            console.log(error);
+            console.error('CharacterActor turn execution failed:', error);
             return { error: classifyError(error, signal) };
         }
     }

@@ -47,7 +47,16 @@ export interface PendingToolAction {
     payload: Record<string, string>;
 }
 
-// ─── Python-Style Argument Parser (*args & **kwargs) ────────────────
+export interface TradeOffer {
+    id: string;
+    fromCharacterId: string;
+    toCharacterId: string;
+    giveItems: Record<string, number>;
+    takeItems: Record<string, number>;
+    timestamp: number;
+}
+
+// ─── Universal Python & CLI Argument Parser ─────────────────────────
 
 export class ArgAccessor {
     positional: string[];
@@ -64,9 +73,6 @@ export class ArgAccessor {
         this.raw = raw;
     }
 
-    /**
-     * Resolves an argument by keyword name (case-insensitive) or falls back to positional index.
-     */
     get(index: number, ...names: string[]): string | undefined {
         for (const name of names) {
             const val = this.kwargs[name.toLowerCase()];
@@ -86,12 +92,39 @@ export class ArgAccessor {
 }
 
 /**
- * Parses Python-style arguments: func(val1, key="value", count=10)
- * Supports positional, keyword arguments, mixed arguments, and quoted strings.
+ * Universal argument parser supporting Python function call syntax:
+ *   func(val1, key="value", count=10)
+ * As well as CLI space/quote-delimited syntax:
+ *   set Bomb 5m
+ *   wear "Alice" "Blue Dress"
  */
 export function parsePythonArgs(rawArgs: string): ArgAccessor {
     const trimmed = rawArgs.trim();
     if (!trimmed) return new ArgAccessor([], {}, rawArgs);
+
+    let input = trimmed;
+    const fnMatch = input.match(/^[a-zA-Z_]\w*\s*\(([\s\S]*)\)$/);
+    if (fnMatch) {
+        input = fnMatch[1].trim();
+    }
+
+    // Determine if input uses top-level commas as argument delimiters
+    let hasTopLevelCommas = false;
+    {
+        let q: '"' | "'" | null = null;
+        let esc = false;
+        let d = 0;
+        for (let i = 0; i < input.length; i++) {
+            const ch = input[i];
+            if (esc) { esc = false; continue; }
+            if (ch === '\\') { esc = true; continue; }
+            if (q) { if (ch === q) q = null; continue; }
+            if (ch === '"' || ch === "'") { q = ch; continue; }
+            if (ch === '(' || ch === '[' || ch === '{') { d++; continue; }
+            if (ch === ')' || ch === ']' || ch === '}') { d--; continue; }
+            if (ch === ',' && d === 0) { hasTopLevelCommas = true; break; }
+        }
+    }
 
     const rawTokens: string[] = [];
     let current = '';
@@ -99,8 +132,8 @@ export function parsePythonArgs(rawArgs: string): ArgAccessor {
     let escapeNext = false;
     let depth = 0;
 
-    for (let i = 0; i < trimmed.length; i++) {
-        const char = trimmed[i];
+    for (let i = 0; i < input.length; i++) {
+        const char = input[i];
 
         if (escapeNext) {
             current += char;
@@ -139,7 +172,11 @@ export function parsePythonArgs(rawArgs: string): ArgAccessor {
             continue;
         }
 
-        if (char === ',' && depth === 0) {
+        const isSeparator = hasTopLevelCommas
+            ? (char === ',' && depth === 0)
+            : (/\s/.test(char) && depth === 0);
+
+        if (isSeparator) {
             if (current.trim().length > 0) {
                 rawTokens.push(current.trim());
             }
@@ -166,7 +203,6 @@ export function parsePythonArgs(rawArgs: string): ArgAccessor {
     };
 
     for (const token of rawTokens) {
-        // Keyword argument: key=val or key: val
         const kwMatch = token.match(/^([a-zA-Z_]\w*)\s*[:=]\s*([\s\S]*)$/);
         if (kwMatch) {
             kwargs[kwMatch[1].toLowerCase()] = cleanValue(kwMatch[2]);
@@ -211,8 +247,11 @@ function getSessionLocations(interactionData: InteractionData | null): Location[
 }
 
 function resolveCharacter(idOrName: string, interactionData: InteractionData | null, allCharacters: Character[] = []): Character | undefined {
-    const query = idOrName.trim().toLowerCase();
+    let query = idOrName.trim().toLowerCase();
     if (!query) return undefined;
+    if ((query.startsWith('"') && query.endsWith('"')) || (query.startsWith("'") && query.endsWith("'"))) {
+        query = query.slice(1, -1).trim().toLowerCase();
+    }
     const participants = getSessionCharacters(interactionData);
     let found = participants.find(c => c.id.toLowerCase() === query || c.name.toLowerCase() === query || c.id.startsWith(query));
     if (found) return found;
@@ -221,8 +260,11 @@ function resolveCharacter(idOrName: string, interactionData: InteractionData | n
 }
 
 function resolveLocation(idOrName: string, interactionData: InteractionData | null): Location | undefined {
-    const query = idOrName.trim().toLowerCase();
+    let query = idOrName.trim().toLowerCase();
     if (!query) return undefined;
+    if ((query.startsWith('"') && query.endsWith('"')) || (query.startsWith("'") && query.endsWith("'"))) {
+        query = query.slice(1, -1).trim().toLowerCase();
+    }
     const sessionLocs = getSessionLocations(interactionData);
     return sessionLocs.find(l => l.id.toLowerCase() === query || l.name.toLowerCase() === query || l.id.startsWith(query));
 }
@@ -304,14 +346,10 @@ export async function executeTools(
     return results;
 }
 
-// ─── Help Result Formatter (Python Style) ───────────────────────────
-
 function helpResult(toolType: string, signature: string, description: string): ToolResult {
     const usage = `${toolType}(${signature}) — ${description}`;
     return { toolType, args: '', content: `Usage: ${usage}`, displayReplacement: `[${toolType}: ${description}]` };
 }
-
-// ─── Display Mode Formatter ────────────────────────────────────────
 
 export function formatToolDisplay(
     result: ToolResult,
@@ -333,11 +371,25 @@ export function formatToolDisplay(
 }
 
 // ─── Whisper ────────────────────────────────────────────────────────
-// Signature: whisper(target_char_id="...", text="...")
 function executeWhisper(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetIdsStr = pArgs.get(0, 'target_char_id', 'target', 'target_id', 'to');
-    const text = pArgs.get(1, 'text', 'message', 'content')?.trim();
+    let targetIdsStr = pArgs.get(0, 'target_char_id', 'target', 'target_id', 'to');
+    let text = pArgs.get(1, 'text', 'message', 'content')?.trim();
+
+    // CLI fallback without explicit keyword: /whisper alice,bob hello world
+    if (!pArgs.kwargs['text'] && pArgs.positional.length > 0) {
+        const trimmed = args.trim();
+        const cliMatch = trimmed.match(/^("([^"]+)"|'([^']+)'|([^\s]+))\s+([\s\S]+)$/);
+        if (cliMatch) {
+            targetIdsStr = cliMatch[2] || cliMatch[3] || cliMatch[4];
+            text = cliMatch[5].trim();
+            if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+                text = text.slice(1, -1);
+            }
+        } else if (pArgs.positional.length > 1) {
+            text = pArgs.positional.slice(1).join(' ');
+        }
+    }
 
     if (!targetIdsStr || !text) {
         return helpResult('whisper', 'target_char_id="...", text="..."', 'send private message visible only to target(s)');
@@ -368,10 +420,9 @@ function executeWhisper(args: string, nextMessage: BaseMessage, interactionData:
 }
 
 // ─── Think ──────────────────────────────────────────────────────────
-// Signature: think(reasoning="...")
 function executeThink(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const reasoning = pArgs.get(0, 'reasoning', 'thought', 'text')?.trim();
+    const reasoning = pArgs.get(0, 'reasoning', 'thought', 'text')?.trim() || pArgs.positional.join(' ').trim();
     if (!reasoning) {
         return helpResult('think', 'reasoning="..."', 'evaluate context and plan next move internally');
     }
@@ -417,7 +468,6 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
 }
 
 // ─── Random Pick ────────────────────────────────────────────────────
-// Signature: pick("opt1", "opt2", ...) | pick(options=["opt1", "opt2"])
 function executeRandomPick(args: string): ToolResult {
     const pArgs = parsePythonArgs(args);
     let options = pArgs.positional;
@@ -425,6 +475,8 @@ function executeRandomPick(args: string): ToolResult {
     const optKwarg = pArgs.get(-1, 'options', 'choices');
     if (optKwarg) {
         options = optKwarg.split(',').map(s => s.trim()).filter(Boolean);
+    } else if (options.length === 1 && options[0].includes(',')) {
+        options = options[0].split(',').map(s => s.trim()).filter(Boolean);
     }
 
     if (options.length === 0) {
@@ -435,7 +487,6 @@ function executeRandomPick(args: string): ToolResult {
 }
 
 // ─── Clock ────────────────────────────────────────────────────────────
-// Signature: clock(format="12h") -> format: "12h" | "24h" | "unix"
 function executeClock(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const format = pArgs.get(0, 'format', 'type')?.toLowerCase();
@@ -454,7 +505,6 @@ function executeClock(args: string, _nextMessage: BaseMessage, interactionData: 
 }
 
 // ─── Calendar ────────────────────────────────────────────────────────
-// Signature: calendar(format="date") -> format: "full" | "date" | "time" | "iso" | "unix"
 function executeCalendar(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const format = pArgs.get(0, 'format', 'type')?.toLowerCase();
@@ -477,71 +527,13 @@ function executeCalendar(args: string, _nextMessage: BaseMessage, interactionDat
 }
 
 // ─── Coin Flip ───────────────────────────────────────────────────────
-// Signature: coin()
 function executeCoinFlip(args: string): ToolResult {
     const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
     return { toolType: 'coin', args, content: result, displayReplacement: `[🪙 Coin flip: ${result}]` };
 }
 
 // ─── Roll Dice ──────────────────────────────────────────────────────
-// Signature: dice(sides=6, count=1, modifier=0) | dice("2d6+3") | dice(1000)
 interface RollGroup { count: number; sides: number }
-
-function executeDiceRoll(args: string): ToolResult {
-    const pArgs = parsePythonArgs(args);
-
-    let notation = pArgs.get(-1, 'notation', 'expr', 'expression');
-    const kwSides = pArgs.getNumber(-1, 'sides', 'side', 's', 'max');
-    const kwCount = pArgs.getNumber(-1, 'count', 'num', 'dice_count', 'n');
-    const kwMod = pArgs.getNumber(-1, 'modifier', 'mod', 'plus');
-
-    if (!notation && kwSides !== undefined) {
-        // Keyword call: dice(sides=99999) or dice(count=2, sides=20)
-        const count = kwCount ?? 1;
-        const modifier = kwMod ?? 0;
-        const modSign = modifier > 0 ? `+${modifier}` : modifier < 0 ? `${modifier}` : '';
-        notation = `${count}d${kwSides}${modSign}`;
-    } else if (!notation && pArgs.positional.length === 1) {
-        // Single positional argument: dice(99999) or dice("2d6+3")
-        const p = pArgs.positional[0].trim();
-        if (/^\d+$/.test(p)) {
-            notation = `1d${p}`;
-        } else if (/^d\d+$/i.test(p)) {
-            notation = `1${p}`;
-        } else {
-            notation = p;
-        }
-    } else if (!notation && pArgs.positional.length >= 2) {
-        // Positional count & sides: dice(2, 6) or dice(2, 6, 3)
-        const count = pArgs.getNumber(0) ?? 1;
-        const sides = pArgs.getNumber(1) ?? 6;
-        const modifier = pArgs.getNumber(2) ?? 0;
-        const modSign = modifier > 0 ? `+${modifier}` : modifier < 0 ? `${modifier}` : '';
-        notation = `${count}d${sides}${modSign}`;
-    } else if (!notation) {
-        notation = '1d6';
-    }
-
-    const result = parseRollExpression(notation);
-    if (!result) {
-        return {
-            toolType: 'dice',
-            args,
-            content: `[Error: Invalid dice notation. Usage: dice(sides=6), dice("2d6+3"), or dice(count, sides). Received: "${args}"]`,
-            displayReplacement: '[Error: Invalid dice call]'
-        };
-    }
-
-    const rollsStr = result.rolls.join(', ');
-    const modStr = result.modifier > 0 ? ` + ${result.modifier}` : result.modifier < 0 ? ` - ${Math.abs(result.modifier)}` : '';
-    const label = result.groups.length === 1 ? `${result.groups[0].count}d${result.groups[0].sides}` : result.groups.map(g => `${g.count}d${g.sides}`).join(' + ');
-    return {
-        toolType: 'dice',
-        args,
-        content: `${result.total}`,
-        displayReplacement: `[🎲 ${label}${modStr} → [${rollsStr}] = ${result.total}]`
-    };
-}
 
 function parseRollExpression(expr: string): { groups: RollGroup[]; modifier: number; rolls: number[]; total: number } | null {
     const sanitized = expr.trim().toLowerCase().replace(/\s+/g, '');
@@ -581,14 +573,81 @@ function parseRollExpression(expr: string): { groups: RollGroup[]; modifier: num
     return { groups, modifier, rolls: allRolls, total };
 }
 
+export function executeDiceRoll(args: string): ToolResult {
+    const pArgs = parsePythonArgs(args);
+
+    let notation = pArgs.get(-1, 'notation', 'expr', 'expression');
+    const kwSides = pArgs.getNumber(-1, 'sides', 'side', 's', 'max');
+    const kwCount = pArgs.getNumber(-1, 'count', 'num', 'dice_count', 'n');
+    const kwMod = pArgs.getNumber(-1, 'modifier', 'mod', 'plus');
+
+    if (!notation && kwSides !== undefined) {
+        // Keyword call: dice(sides=20) or dice(count=2, sides=20, modifier=3)
+        const count = kwCount ?? 1;
+        const modifier = kwMod ?? 0;
+        const modSign = modifier > 0 ? `+${modifier}` : modifier < 0 ? `${modifier}` : '';
+        notation = `${count}d${kwSides}${modSign}`;
+    } else if (!notation && pArgs.positional.length === 1) {
+        // Single positional argument: dice(20) or dice("2d6+3") or dice("d20")
+        const p = pArgs.positional[0].trim();
+        if (/^\d+$/.test(p)) {
+            notation = `1d${p}`;
+        } else if (/^d\d+$/i.test(p)) {
+            notation = `1${p}`;
+        } else {
+            notation = p;
+        }
+    } else if (!notation && pArgs.positional.length >= 2) {
+        // Positional count & sides: dice(2, 6) or dice(2, 6, 3)
+        const count = pArgs.getNumber(0) ?? 1;
+        const sides = pArgs.getNumber(1) ?? 6;
+        const modifier = pArgs.getNumber(2) ?? 0;
+        const modSign = modifier > 0 ? `+${modifier}` : modifier < 0 ? `${modifier}` : '';
+        notation = `${count}d${sides}${modSign}`;
+    } else if (!notation) {
+        notation = '1d6';
+    }
+
+    const result = parseRollExpression(notation);
+    if (!result) {
+        return {
+            toolType: 'dice',
+            args,
+            content: `[Error: Invalid dice notation. Usage: dice(sides=6), dice("2d6+3"), or dice(count, sides). Received: "${args}"]`,
+            displayReplacement: '[Error: Invalid dice call]'
+        };
+    }
+
+    const rollsStr = result.rolls.join(', ');
+    const modStr = result.modifier > 0 ? ` + ${result.modifier}` : result.modifier < 0 ? ` - ${Math.abs(result.modifier)}` : '';
+    const label = result.groups.length === 1
+        ? `${result.groups[0].count}d${result.groups[0].sides}`
+        : result.groups.map(g => `${g.count}d${g.sides}`).join(' + ');
+
+    // Provide the complete breakdown in content so multi-dice rolls are visible to the LLM
+    const content = result.rolls.length > 1
+        ? `${result.total} (Rolls: [${rollsStr}])`
+        : `${result.total}`;
+
+    return {
+        toolType: 'dice',
+        args,
+        content,
+        displayReplacement: `[🎲 ${label}${modStr} → [${rollsStr}] = ${result.total}]`
+    };
+}
+
 // ─── Random Number ───────────────────────────────────────────────────
-// Signature: random(max=100, min=1) | random(10, 50)
 function executeRandom(args: string): ToolResult {
     const pArgs = parsePythonArgs(args);
     let min = pArgs.getNumber(0, 'min', 'start') ?? 1;
     let max = pArgs.getNumber(1, 'max', 'end', 'stop');
 
-    if (max === undefined) {
+    if (max === undefined && pArgs.positional.length === 1 && pArgs.positional[0].includes('-')) {
+        const parts = pArgs.positional[0].split('-');
+        min = Number(parts[0]) || 1;
+        max = Number(parts[1]) || 100;
+    } else if (max === undefined) {
         max = pArgs.getNumber(0, 'max', 'end') ?? 100;
         if (pArgs.positional.length === 1 && !pArgs.kwargs['min']) min = 1;
     }
@@ -599,10 +658,9 @@ function executeRandom(args: string): ToolResult {
 }
 
 // ─── RNG Table ────────────────────────────────────────────────────────
-// Signature: rng(table_context_id="...")
 function executeRng(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const tableId = pArgs.get(0, 'table_context_id', 'table', 'context_id', 'name')?.trim();
+    const tableId = pArgs.get(0, 'table_context_id', 'table', 'context_id', 'name')?.trim() || pArgs.positional.join(' ').trim();
     if (!tableId) {
         return helpResult('rng', 'table_context_id="..."', 'roll on a named RNG table defined in contexts');
     }
@@ -646,10 +704,9 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
 }
 
 // ─── Move ───────────────────────────────────────────────────────────
-// Signature: move(location_id="...")
 function executeMove(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetQuery = pArgs.get(0, 'location_id', 'location', 'target', 'destination', 'to')?.trim();
+    const targetQuery = pArgs.get(0, 'location_id', 'location', 'target', 'destination', 'to')?.trim() || pArgs.positional.join(' ').trim();
     if (!targetQuery) {
         return helpResult('move', 'location_id="..."', 'move character to an adjacent location');
     }
@@ -725,7 +782,6 @@ function saveStopwatches(inventory: Inventory, stopwatches: StopwatchEntry[]): v
 }
 
 // ─── Timer ──────────────────────────────────────────────────────────
-// Signature: timer(action="set|check|delete|list", name="...", duration="...")
 function executeTimer(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
@@ -782,7 +838,6 @@ function executeTimer(args: string, nextMessage: BaseMessage, interactionData: I
 }
 
 // ─── Stopwatch ──────────────────────────────────────────────────────
-// Signature: stopwatch(action="start|stop|pause|resume|reset|check|list", name="...")
 function executeStopwatch(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
@@ -806,6 +861,36 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
             nextMessage.inventory = inventory;
             return { toolType: 'stopwatch', args, content: `Stopwatch "${name}" started.`, displayReplacement: `[⏱️ Started "${name}"]` };
         }
+        case 'pause': {
+            const sw = stopwatches.find(s => s.name.toLowerCase() === name?.toLowerCase());
+            if (!sw) return { toolType: 'stopwatch', args, content: `No stopwatch named "${name}".`, displayReplacement: '[⏱️ Not found]' };
+            if (sw.pausedElapsedMs === undefined) {
+                sw.pausedElapsedMs = now - sw.startTimestamp;
+                saveStopwatches(inventory, stopwatches);
+                nextMessage.inventory = inventory;
+            }
+            return { toolType: 'stopwatch', args, content: `Stopwatch "${name}" paused at ${formatDuration(sw.pausedElapsedMs)}.`, displayReplacement: `[⏱️ Paused "${name}"]` };
+        }
+        case 'resume': {
+            const sw = stopwatches.find(s => s.name.toLowerCase() === name?.toLowerCase());
+            if (!sw) return { toolType: 'stopwatch', args, content: `No stopwatch named "${name}".`, displayReplacement: '[⏱️ Not found]' };
+            if (sw.pausedElapsedMs !== undefined) {
+                sw.startTimestamp = now - sw.pausedElapsedMs;
+                delete sw.pausedElapsedMs;
+                saveStopwatches(inventory, stopwatches);
+                nextMessage.inventory = inventory;
+            }
+            return { toolType: 'stopwatch', args, content: `Stopwatch "${name}" resumed.`, displayReplacement: `[⏱️ Resumed "${name}"]` };
+        }
+        case 'reset': {
+            const sw = stopwatches.find(s => s.name.toLowerCase() === name?.toLowerCase());
+            if (!sw) return { toolType: 'stopwatch', args, content: `No stopwatch named "${name}".`, displayReplacement: '[⏱️ Not found]' };
+            sw.startTimestamp = now;
+            delete sw.pausedElapsedMs;
+            saveStopwatches(inventory, stopwatches);
+            nextMessage.inventory = inventory;
+            return { toolType: 'stopwatch', args, content: `Stopwatch "${name}" reset.`, displayReplacement: `[⏱️ Reset "${name}"]` };
+        }
         case 'stop': {
             const idx = stopwatches.findIndex(s => s.name.toLowerCase() === name?.toLowerCase());
             if (idx === -1) return { toolType: 'stopwatch', args, content: `No stopwatch named "${name}".`, displayReplacement: '[⏱️ Not found]' };
@@ -824,7 +909,7 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
                 const elapsed = sw.pausedElapsedMs !== undefined ? sw.pausedElapsedMs : now - sw.startTimestamp;
                 return { toolType: 'stopwatch', args, content: `${sw.name}: ${formatDuration(elapsed)}`, displayReplacement: `[⏱️ ${formatDuration(elapsed)}]` };
             }
-            return { toolType: 'stopwatch', args, content: stopwatches.map(s => `${s.name}: ${formatDuration(now - s.startTimestamp)}`).join('\n') || 'No stopwatches', displayReplacement: `[⏱️ ${stopwatches.length} stopwatch(es)]` };
+            return { toolType: 'stopwatch', args, content: stopwatches.map(s => `${s.name}: ${formatDuration(s.pausedElapsedMs !== undefined ? s.pausedElapsedMs : now - s.startTimestamp)}`).join('\n') || 'No stopwatches', displayReplacement: `[⏱️ ${stopwatches.length} stopwatch(es)]` };
         }
         default:
             return { toolType: 'stopwatch', args, content: `[Error: Unknown stopwatch action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
@@ -832,7 +917,6 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
 }
 
 // ─── Schedule ───────────────────────────────────────────────────────
-// Signature: schedule(action="set|cancel|list", name="...", duration="...", action_desc="...")
 interface ScheduleEntry { name: string; triggerTimestamp: number; action: string; repeatIntervalMs?: number }
 
 function loadSchedules(inventory: Inventory | undefined): ScheduleEntry[] {
@@ -848,7 +932,7 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
     if (!action) {
-        return helpResult('schedule', 'action="set|cancel|list", name="...", duration="...", action_desc="..."', 'schedule automated actions');
+        return helpResult('schedule', 'action="set|set_repeat|cancel|cancel_all|list", name="...", duration="...", action_desc="..."', 'schedule automated actions');
     }
 
     const latest = findLatestMessage(interactionData, nextMessage.character);
@@ -861,7 +945,7 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
             const name = pArgs.get(1, 'name', 'schedule_name');
             const durRaw = pArgs.get(2, 'duration', 'time', 'interval');
             const durationMs = durRaw ? parseDurationToMs(durRaw) : null;
-            const desc = pArgs.get(3, 'action_desc', 'desc', 'do', 'event', 'text');
+            const desc = pArgs.get(3, 'action_desc', 'desc', 'do', 'event', 'text') || pArgs.positional.slice(3).join(' ');
             if (!name || !durationMs || !desc) {
                 return { toolType: 'schedule', args, content: '[Error: schedule(action="set", name="...", duration="...", action_desc="...") requires all parameters]', displayReplacement: '[Error: Usage]' };
             }
@@ -870,6 +954,20 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
             saveSchedules(inventory, filtered);
             nextMessage.inventory = inventory;
             return { toolType: 'schedule', args, content: `Scheduled "${name}" in ${formatDuration(durationMs)}: ${desc}`, displayReplacement: `[📅 Scheduled "${name}"]` };
+        }
+        case 'set_repeat': {
+            const name = pArgs.get(1, 'name', 'schedule_name');
+            const durRaw = pArgs.get(2, 'interval', 'duration', 'time');
+            const intervalMs = durRaw ? parseDurationToMs(durRaw) : null;
+            const desc = pArgs.get(3, 'action_desc', 'desc', 'do', 'event', 'text') || pArgs.positional.slice(3).join(' ');
+            if (!name || !intervalMs || !desc) {
+                return { toolType: 'schedule', args, content: '[Error: schedule(action="set_repeat", name="...", interval="...", action_desc="...") requires all parameters]', displayReplacement: '[Error: Usage]' };
+            }
+            const filtered = schedules.filter(s => s.name.toLowerCase() !== name.toLowerCase());
+            filtered.push({ name, triggerTimestamp: now + intervalMs, action: desc, repeatIntervalMs: intervalMs });
+            saveSchedules(inventory, filtered);
+            nextMessage.inventory = inventory;
+            return { toolType: 'schedule', args, content: `Repeating schedule "${name}" every ${formatDuration(intervalMs)}: ${desc}`, displayReplacement: `[📅 Repeat "${name}"]` };
         }
         case 'cancel': {
             const name = pArgs.get(1, 'name')?.toLowerCase();
@@ -880,8 +978,13 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
             nextMessage.inventory = inventory;
             return { toolType: 'schedule', args, content: `Cancelled "${name}".`, displayReplacement: `[📅 Cancelled "${name}"]` };
         }
+        case 'cancel_all': {
+            saveSchedules(inventory, []);
+            nextMessage.inventory = inventory;
+            return { toolType: 'schedule', args, content: 'Cancelled all schedules.', displayReplacement: '[📅 Cancelled all]' };
+        }
         case 'list': {
-            return { toolType: 'schedule', args, content: schedules.map(s => `${s.name}: ${formatDuration(s.triggerTimestamp - now)} remaining -> ${s.action}`).join('\n') || 'No schedules', displayReplacement: `[📅 ${schedules.length} schedule(s)]` };
+            return { toolType: 'schedule', args, content: schedules.map(s => `${s.name}: ${formatDuration(s.triggerTimestamp - now)} remaining -> ${s.action}${s.repeatIntervalMs ? ` (repeats every ${formatDuration(s.repeatIntervalMs)})` : ''}`).join('\n') || 'No schedules', displayReplacement: `[📅 ${schedules.length} schedule(s)]` };
         }
         default:
             return { toolType: 'schedule', args, content: `[Error: Unknown schedule action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
@@ -889,10 +992,9 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
 }
 
 // ─── Calculator ─────────────────────────────────────────────────────
-// Signature: calculator(expression="...")
 function executeCalculator(args: string): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const expression = pArgs.get(0, 'expression', 'expr', 'math')?.trim();
+    const expression = pArgs.get(0, 'expression', 'expr', 'math')?.trim() || pArgs.positional.join(' ').trim();
     if (!expression) {
         return helpResult('calculator', 'expression="..."', 'evaluate mathematical expression');
     }
@@ -913,10 +1015,9 @@ function executeCalculator(args: string): ToolResult {
 }
 
 // ─── Web ────────────────────────────────────────────────────────────
-// Signature: web(query_or_url="...")
 async function executeWeb(args: string): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const query = pArgs.get(0, 'query_or_url', 'query', 'url', 'search')?.trim();
+    const query = pArgs.get(0, 'query_or_url', 'query', 'url', 'search')?.trim() || pArgs.positional.join(' ').trim();
     if (!query) {
         return helpResult('web', 'query_or_url="..."', 'search the web or fetch a URL');
     }
@@ -935,7 +1036,6 @@ async function executeWeb(args: string): Promise<ToolResult> {
 }
 
 // ─── Dialogue ──────────────────────────────────────────────────────
-// Signature: dialogue(action="list|recall", prompt_id="...")
 function executeDialogue(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
@@ -950,8 +1050,8 @@ function executeDialogue(args: string, nextMessage: BaseMessage, interactionData
         return { toolType: 'dialogue', args, content: entries.join('\n') || 'No dialogue prompts', displayReplacement: `[💬 ${entries.length} prompt(s)]` };
     }
     if (action === 'recall') {
-        const queryId = pArgs.get(1, 'prompt_id', 'id')?.trim();
-        const matched = dialoguePrompts.filter(dp => dp.id === queryId || dp.id.startsWith(queryId || ""));
+        const queryId = pArgs.get(1, 'prompt_id', 'id')?.trim() || pArgs.positional.slice(1).join(' ').trim();
+        const matched = dialoguePrompts.filter(dp => dp.id === queryId || dp.name?.toLowerCase() === queryId?.toLowerCase() || dp.id.startsWith(queryId || ""));
         if (matched.length === 0) return { toolType: 'dialogue', args, content: `No dialogue prompt matching "${queryId}".`, displayReplacement: '[💬 No match]' };
 
         const textArray = getGlobalMessageHistory(interactionData).filter(m => m.messageType === 'chat').map(m => (m as ChatMessage).textContent);
@@ -962,7 +1062,6 @@ function executeDialogue(args: string, nextMessage: BaseMessage, interactionData
 }
 
 // ─── Knowledge ──────────────────────────────────────────────────────
-// Signature: knowledge(action="list|recall", id="...")
 function executeKnowledge(args: string, nextMessage: BaseMessage): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
@@ -977,8 +1076,8 @@ function executeKnowledge(args: string, nextMessage: BaseMessage): ToolResult {
         return { toolType: 'knowledge', args, content: entries.join('\n') || 'No knowledge prompts', displayReplacement: `[🧠 ${entries.length} prompt(s)]` };
     }
     if (action === 'recall') {
-        const queryId = pArgs.get(1, 'id', 'knowledge_id')?.trim();
-        const matched = prompts.filter(kp => kp.id === queryId || kp.id.startsWith(queryId || ""));
+        const queryId = pArgs.get(1, 'id', 'knowledge_id')?.trim() || pArgs.positional.slice(1).join(' ').trim();
+        const matched = prompts.filter(kp => kp.id === queryId || kp.name?.toLowerCase() === queryId?.toLowerCase() || kp.id.startsWith(queryId || ""));
         if (matched.length === 0) return { toolType: 'knowledge', args, content: `No knowledge matching "${queryId}".`, displayReplacement: '[🧠 No match]' };
         return { toolType: 'knowledge', args, content: matched.map(k => `[${k.name}]: ${k.content}`).join('\n'), displayReplacement: `[🧠 Recalled ${matched.length} entry(ies)]` };
     }
@@ -986,7 +1085,6 @@ function executeKnowledge(args: string, nextMessage: BaseMessage): ToolResult {
 }
 
 // ─── Memory ─────────────────────────────────────────────────────────
-// Signature: memory(action="list|recall|save", id="...")
 async function executeMemory(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
@@ -1004,10 +1102,10 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
         return { toolType: 'memory', args, content: entries.join('\n') || 'No memories stored', displayReplacement: `[🧠 ${entries.length} memories]` };
     }
     if (action === 'recall') {
-        const queryId = pArgs.get(1, 'id', 'memory_id')?.trim();
+        const queryId = pArgs.get(1, 'id', 'memory_id')?.trim() || pArgs.positional.slice(1).join(' ').trim();
         if (queryId) {
             for (const [, mems] of Object.entries(character.memories || {})) {
-                const found = mems.find(m => m.id === queryId || m.id.startsWith(queryId));
+                const found = mems.find(m => m.id === queryId || m.name?.toLowerCase() === queryId.toLowerCase() || m.id.startsWith(queryId));
                 if (found) return { toolType: 'memory', args, content: found.content, displayReplacement: `[🧠 Recalled "${found.name}"]` };
             }
             return { toolType: 'memory', args, content: `Memory "${queryId}" not found.`, displayReplacement: '[🧠 Not found]' };
@@ -1035,10 +1133,9 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
 }
 
 // ─── Lookup ─────────────────────────────────────────────────────────
-// Signature: lookup(keyword="...")
 function executeLookup(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const query = pArgs.get(0, 'keyword', 'query', 'search', 'text')?.toLowerCase().trim();
+    const query = pArgs.get(0, 'keyword', 'query', 'search', 'text')?.toLowerCase().trim() || pArgs.positional.join(' ').toLowerCase().trim();
     if (!query) {
         return helpResult('lookup', 'keyword="..."', 'search contexts and world lore for keywords');
     }
@@ -1054,14 +1151,13 @@ function executeLookup(args: string, _nextMessage: BaseMessage, interactionData:
 }
 
 // ─── Map ────────────────────────────────────────────────────────────
-// Signature: map(target_location_id="...", from_location_id="...")
 function executeMap(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const targetQuery = pArgs.get(0, 'target_location_id', 'target', 'to', 'destination');
     const fromQuery = pArgs.get(1, 'from_location_id', 'from', 'source');
 
     if (!targetQuery) {
-        return helpResult('map', 'target_location_id="...", from_location_id="..."', 'calculate distance between locations');
+        return helpResult('map', 'to="...", from="..."', 'calculate distance between locations');
     }
 
     let fromLoc: Location | undefined;
@@ -1093,34 +1189,32 @@ function executeMap(args: string, nextMessage: BaseMessage, interactionData: Int
 }
 
 // ─── Audio ──────────────────────────────────────────────────────────
-// Signature: audio(action="play|stop", track_id="...")
 function executeAudio(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
-    const trackId = pArgs.get(1, 'track_id', 'track', 'name')?.trim();
+    const trackId = pArgs.get(1, 'track_id', 'track', 'name')?.trim() || pArgs.positional.slice(1).join(' ').trim();
 
-    if (!action || !trackId) {
+    if (!action) {
         return helpResult('audio', 'action="play|stop", track_id="..."', 'manage background audio playback');
     }
 
     const tracks = interactionData.audioTracks || context?.allAudioTracks || [];
     const track = tracks.find(t => t.id === trackId || t.name.toLowerCase() === trackId.toLowerCase());
-    if (!track) return { toolType: 'audio', args, content: `[Error: Track "${trackId}" not found]`, displayReplacement: '[Error: Track not found]' };
 
     const audioEngine = getAudioEngine();
     if (action === 'play') {
+        if (!track) return { toolType: 'audio', args, content: `[Error: Track "${trackId}" not found]`, displayReplacement: '[Error: Track not found]' };
         audioEngine.startTrack(track);
         return { toolType: 'audio', args, content: `Playing "${track.name}".`, displayReplacement: `[🔊 Playing "${track.name}"]` };
     }
     if (action === 'stop') {
-        audioEngine.stopTrack(track.id);
-        return { toolType: 'audio', args, content: `Stopped "${track.name}".`, displayReplacement: `[🔇 Stopped "${track.name}"]` };
+        if (track) audioEngine.stopTrack(track.id);
+        return { toolType: 'audio', args, content: track ? `Stopped "${track.name}".` : 'Stopped audio.', displayReplacement: `[🔇 Stopped audio]` };
     }
     return { toolType: 'audio', args, content: `[Error: Unknown audio action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
 }
 
 // ─── Note ──────────────────────────────────────────────────────────
-// Signature: note(action="set|get|delete|list", key="...", text="...")
 function executeNote(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
@@ -1136,7 +1230,7 @@ function executeNote(args: string, nextMessage: BaseMessage, interactionData: In
     switch (action) {
         case 'set': {
             const key = pArgs.get(1, 'key', 'name');
-            const text = pArgs.get(2, 'text', 'content', 'value');
+            const text = pArgs.get(2, 'text', 'content', 'value') || pArgs.positional.slice(2).join(' ');
             if (!key || !text) return { toolType: 'note', args, content: '[Error: note(action="set", key="...", text="...") requires key and text]', displayReplacement: '[Error: Usage]' };
             notes[key] = text;
             inventory['__notes__'] = JSON.stringify(notes);
@@ -1164,7 +1258,6 @@ function executeNote(args: string, nextMessage: BaseMessage, interactionData: In
 }
 
 // ─── Inventory ──────────────────────────────────────────────────────
-// Signature: inventory(action="list|add|remove|set", item="...", qty=1, value=None)
 function executeInventory(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
@@ -1212,29 +1305,53 @@ function executeInventory(args: string, nextMessage: BaseMessage, interactionDat
 }
 
 // ─── Trade ──────────────────────────────────────────────────────────
-// Signature: trade(action="give|take", target_character_id="...", item="...", qty=1)
+function loadTradeOffers(inventory: Inventory | undefined): TradeOffer[] {
+    if (!inventory || typeof inventory['__trade_offers__'] !== 'string') return [];
+    try { return JSON.parse(inventory['__trade_offers__'] as string); } catch { return []; }
+}
+
+function saveTradeOffers(inventory: Inventory, offers: TradeOffer[]): void {
+    if (offers.length === 0) delete inventory['__trade_offers__']; else inventory['__trade_offers__'] = JSON.stringify(offers);
+}
+
+function parseItemList(input: string): Record<string, number> {
+    const res: Record<string, number> = {};
+    const tokens = input.split(',').map(s => s.trim()).filter(Boolean);
+    for (const token of tokens) {
+        const parts = token.split(':');
+        const name = parts[0].trim();
+        const qty = parts[1] ? Number(parts[1].trim()) : 1;
+        if (name) res[name] = Number.isNaN(qty) ? 1 : qty;
+    }
+    return res;
+}
+
 function executeTrade(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
-    const targetQuery = pArgs.get(1, 'target_character_id', 'target', 'character_id', 'character', 'to', 'from');
-    const item = pArgs.get(2, 'item', 'name');
-    const qty = pArgs.getNumber(3, 'qty', 'quantity', 'count') ?? 1;
-
-    if (!action || !targetQuery || !item) {
-        return helpResult('trade', 'action="give|take", target_character_id="...", item="...", qty=1', 'transfer items between characters');
+    if (!action) {
+        return helpResult('trade', 'action="give|take|offer|accept|decline|list_offers", ...', 'transfer items or manage trade offers');
     }
-
-    const targetChar = resolveCharacter(targetQuery, interactionData, context?.allCharacters || []);
-    if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetQuery}" not found]`, displayReplacement: '[Error: Target not found]' };
 
     const myLatest = findLatestMessage(interactionData, nextMessage.character);
     const myInv: Inventory = myLatest?.message?.inventory ? { ...myLatest.message.inventory } : {};
 
-    const targetLatest = findLatestMessage(interactionData, targetChar);
-    if (!targetLatest) return { toolType: 'trade', args, content: `[Error: Target "${targetChar.name}" has no message history]`, displayReplacement: '[Error: Target missing]' };
-    const targetInv: Inventory = targetLatest.message.inventory ? { ...targetLatest.message.inventory } : {};
-
     if (action === 'give') {
+        const targetQuery = pArgs.get(1, 'target_character_id', 'target', 'character_id', 'character', 'to');
+        const item = pArgs.get(2, 'item', 'name');
+        const qty = pArgs.getNumber(3, 'qty', 'quantity', 'count') ?? 1;
+
+        if (!targetQuery || !item) {
+            return { toolType: 'trade', args, content: '[Error: trade(action="give", target="...", item="...", qty=1) requires target and item]', displayReplacement: '[Error: Usage]' };
+        }
+
+        const targetChar = resolveCharacter(targetQuery, interactionData, context?.allCharacters || []);
+        if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetQuery}" not found]`, displayReplacement: '[Error: Target not found]' };
+
+        const targetLatest = findLatestMessage(interactionData, targetChar);
+        if (!targetLatest) return { toolType: 'trade', args, content: `[Error: Target "${targetChar.name}" has no message history]`, displayReplacement: '[Error: Target missing]' };
+        const targetInv: Inventory = targetLatest.message.inventory ? { ...targetLatest.message.inventory } : {};
+
         const myQty = typeof myInv[item] === 'number' ? (myInv[item] as number) : 0;
         if (myQty < qty) return { toolType: 'trade', args, content: `[Error: Not enough "${item}". Have ${myQty}, need ${qty}]`, displayReplacement: '[Error: Lacks items]' };
         if (myQty <= qty) delete myInv[item]; else myInv[item] = myQty - qty;
@@ -1244,6 +1361,21 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
     }
 
     if (action === 'take') {
+        const targetQuery = pArgs.get(1, 'target_character_id', 'target', 'character_id', 'character', 'from');
+        const item = pArgs.get(2, 'item', 'name');
+        const qty = pArgs.getNumber(3, 'qty', 'quantity', 'count') ?? 1;
+
+        if (!targetQuery || !item) {
+            return { toolType: 'trade', args, content: '[Error: trade(action="take", target="...", item="...", qty=1) requires target and item]', displayReplacement: '[Error: Usage]' };
+        }
+
+        const targetChar = resolveCharacter(targetQuery, interactionData, context?.allCharacters || []);
+        if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetQuery}" not found]`, displayReplacement: '[Error: Target not found]' };
+
+        const targetLatest = findLatestMessage(interactionData, targetChar);
+        if (!targetLatest) return { toolType: 'trade', args, content: `[Error: Target "${targetChar.name}" has no message history]`, displayReplacement: '[Error: Target missing]' };
+        const targetInv: Inventory = targetLatest.message.inventory ? { ...targetLatest.message.inventory } : {};
+
         const theirQty = typeof targetInv[item] === 'number' ? (targetInv[item] as number) : 0;
         if (theirQty < qty) return { toolType: 'trade', args, content: `[Error: ${targetChar.name} only has ${theirQty}x "${item}"]`, displayReplacement: '[Error: Target lacks items]' };
         if (theirQty <= qty) delete targetInv[item]; else targetInv[item] = theirQty - qty;
@@ -1252,14 +1384,59 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
         return { toolType: 'trade', args, content: `Took ${qty}x "${item}" from ${targetChar.name}.`, displayReplacement: `[🤝 Took ${qty}x ${item} from ${targetChar.name}]` };
     }
 
+    if (action === 'offer') {
+        const targetQuery = pArgs.get(1, 'character', 'target', 'to');
+        const giveRaw = pArgs.get(2, 'give_items', 'give');
+        const takeRaw = pArgs.get(3, 'take_items', 'take');
+
+        if (!targetQuery || !giveRaw || !takeRaw) {
+            return { toolType: 'trade', args, content: '[Error: trade(action="offer", target="...", give_items="...", take_items="...") requires all parameters]', displayReplacement: '[Error: Usage]' };
+        }
+
+        const targetChar = resolveCharacter(targetQuery, interactionData, context?.allCharacters || []);
+        if (!targetChar) return { toolType: 'trade', args, content: `[Error: Character "${targetQuery}" not found]`, displayReplacement: '[Error: Target not found]' };
+
+        const offers = loadTradeOffers(myInv);
+        const offerId = uuidv4().slice(0, 8);
+        const newOffer: TradeOffer = {
+            id: offerId,
+            fromCharacterId: nextMessage.character.id,
+            toCharacterId: targetChar.id,
+            giveItems: parseItemList(giveRaw),
+            takeItems: parseItemList(takeRaw),
+            timestamp: Date.now(),
+        };
+        offers.push(newOffer);
+        saveTradeOffers(myInv, offers);
+        nextMessage.inventory = myInv;
+        return { toolType: 'trade', args, content: `Offered trade [${offerId}] to ${targetChar.name} (Give: ${giveRaw}, Take: ${takeRaw}).`, displayReplacement: `[🤝 Offered trade to ${targetChar.name}]` };
+    }
+
+    if (action === 'list_offers') {
+        const offers = loadTradeOffers(myInv);
+        if (offers.length === 0) return { toolType: 'trade', args, content: 'No pending trade offers.', displayReplacement: '[🤝 No offers]' };
+        const list = offers.map(o => `Offer [${o.id}] with ${o.toCharacterId}: Give ${JSON.stringify(o.giveItems)}, Take ${JSON.stringify(o.takeItems)}`).join('\n');
+        return { toolType: 'trade', args, content: list, displayReplacement: `[🤝 ${offers.length} offer(s)]` };
+    }
+
+    if (action === 'accept' || action === 'decline') {
+        const offerId = pArgs.get(1, 'offer_id', 'id')?.toLowerCase();
+        const offers = loadTradeOffers(myInv);
+        const idx = offers.findIndex(o => o.id.toLowerCase() === offerId);
+        if (idx === -1) return { toolType: 'trade', args, content: `Offer "${offerId}" not found.`, displayReplacement: '[🤝 Not found]' };
+        offers.splice(idx, 1);
+        saveTradeOffers(myInv, offers);
+        nextMessage.inventory = myInv;
+        return { toolType: 'trade', args, content: `${action === 'accept' ? 'Accepted' : 'Declined'} trade offer [${offerId}].`, displayReplacement: `[🤝 ${action === 'accept' ? 'Accepted' : 'Declined'}]` };
+    }
+
     return { toolType: 'trade', args, content: `[Error: Unknown trade action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
 }
 
 // ─── Invite ─────────────────────────────────────────────────────────
-// Signature: invite(character_id="...")
 function executeInvite(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetQuery = pArgs.get(0, 'character_id', 'character', 'target', 'id')?.trim();
+    const targetQuery = pArgs.get(0, 'character_id', 'character', 'target', 'id')?.trim() || pArgs.positional.join(' ').trim();
     if (!targetQuery) return helpResult('invite', 'character_id="..."', 'bring existing participant to current location');
 
     const targetChar = resolveCharacter(targetQuery, interactionData, context?.allCharacters || []);
@@ -1270,7 +1447,6 @@ function executeInvite(args: string, nextMessage: BaseMessage, interactionData: 
 }
 
 // ─── Kick ───────────────────────────────────────────────────────────
-// Signature: kick(character_id="...", destination_location_id=None) | kick("characters") | kick("locations")
 function executeKick(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const targetQuery = pArgs.get(0, 'character_id', 'character', 'target', 'id')?.trim();
@@ -1303,10 +1479,9 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
 }
 
 // ─── Teleport ───────────────────────────────────────────────────────
-// Signature: teleport(location_id="...")
 function executeTeleport(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetQuery = pArgs.get(0, 'location_id', 'location', 'destination', 'target')?.trim();
+    const targetQuery = pArgs.get(0, 'location_id', 'location', 'destination', 'target')?.trim() || pArgs.positional.join(' ').trim();
     if (!targetQuery) return helpResult('teleport', 'location_id="..."', 'instantly move character to any location');
 
     const targetLocation = resolveLocation(targetQuery, interactionData);
@@ -1316,7 +1491,6 @@ function executeTeleport(args: string, _nextMessage: BaseMessage, interactionDat
 }
 
 // ─── Key ────────────────────────────────────────────────────────────
-// Signature: key(action="lock|unlock", location_id="...", character_id=None)
 function executeKey(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
@@ -1351,15 +1525,23 @@ function executeKey(args: string, nextMessage: BaseMessage, interactionData: Int
 }
 
 // ─── Clothing ───────────────────────────────────────────────────────
-// Signature: clothing(character_id="...", action="wear|remove", clothing_id="...")
 function executeClothing(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const charQuery = pArgs.get(0, 'character_id', 'character')?.trim();
-    const action = pArgs.get(1, 'action', 'command')?.toLowerCase();
-    const clothingQuery = pArgs.get(2, 'clothing_id', 'clothing', 'item')?.trim();
+    let charQuery = pArgs.get(0, 'character_id', 'character')?.trim();
+    let action = pArgs.get(1, 'action', 'command')?.toLowerCase();
+    let clothingQuery = pArgs.get(2, 'clothing_id', 'clothing', 'item')?.trim();
+
+    // Support CLI ordering: /clothing wear Alice "Blue Dress"
+    if (charQuery && (charQuery.toLowerCase() === 'wear' || charQuery.toLowerCase() === 'remove')) {
+        action = charQuery.toLowerCase();
+        charQuery = pArgs.get(1, 'character_id', 'character')?.trim();
+        clothingQuery = pArgs.get(2, 'clothing_id', 'clothing', 'item')?.trim() || pArgs.positional.slice(2).join(' ').trim();
+    } else if (!clothingQuery && pArgs.positional.length > 2) {
+        clothingQuery = pArgs.positional.slice(2).join(' ').trim();
+    }
 
     if (!charQuery || !action || !clothingQuery) {
-        return helpResult('clothing', 'character_id="...", action="wear|remove", clothing_id="..."', 'manage worn clothing items');
+        return helpResult('clothing', 'action="wear|remove", character_id="...", clothing_id="..."', 'manage worn clothing items');
     }
 
     const targetChar = resolveCharacter(charQuery, interactionData, context?.allCharacters || []);
@@ -1384,10 +1566,9 @@ function executeClothing(args: string, nextMessage: BaseMessage, interactionData
 }
 
 // ─── Summon ─────────────────────────────────────────────────────────
-// Signature: summon(character_id="...")
 function executeSummon(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const charQuery = pArgs.get(0, 'character_id', 'character', 'target', 'name')?.trim();
+    const charQuery = pArgs.get(0, 'character_id', 'character', 'target', 'name')?.trim() || pArgs.positional.join(' ').trim();
     if (!charQuery) return helpResult('summon', 'character_id="..."', 'add a non-participant character to current session');
 
     const allChars = context?.allCharacters || [];
@@ -1399,19 +1580,17 @@ function executeSummon(args: string, nextMessage: BaseMessage, interactionData: 
 }
 
 // ─── Narrate ────────────────────────────────────────────────────────
-// Signature: narrate(text="...")
 function executeNarrate(args: string): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const text = pArgs.get(0, 'text', 'narration', 'content')?.trim();
+    const text = pArgs.get(0, 'text', 'narration', 'content')?.trim() || pArgs.positional.join(' ').trim();
     if (!text) return helpResult('narrate', 'text="..."', 'inject ambient narration without consuming chat stamina');
     return { toolType: 'narrate', args, content: text, displayReplacement: `[🎙️ ${text}]` };
 }
 
 // ─── Inspect ────────────────────────────────────────────────────────
-// Signature: inspect(character_id="...")
 function executeInspect(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const charQuery = pArgs.get(0, 'character_id', 'character', 'target')?.trim();
+    const charQuery = pArgs.get(0, 'character_id', 'character', 'target')?.trim() || pArgs.positional.join(' ').trim();
     if (!charQuery) return helpResult('inspect', 'character_id="..."', "examine character's visible state");
 
     const targetChar = resolveCharacter(charQuery, interactionData, context?.allCharacters || []);
@@ -1431,7 +1610,6 @@ function executeInspect(args: string, _nextMessage: BaseMessage, interactionData
 }
 
 // ─── Administrator ──────────────────────────────────────────────────
-// Signature: administrator(action="...", arg1="...", arg2="...")
 function executeAdministrator(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
@@ -1446,14 +1624,30 @@ function executeAdministrator(args: string, nextMessage: BaseMessage, interactio
             const accounts = (context?.allAccounts || []).map(a => `${a.id} | ${a.username}`);
             return { toolType: 'administrator', args, content: accounts.join('\n') || 'No accounts', displayReplacement: `[🔑 ${accounts.length} account(s)]` };
         }
+        case 'list_multiplayer': {
+            const mp = (context?.allMultiplayerData || []).map(m => `${m.id} | ${m.name}`);
+            return { toolType: 'administrator', args, content: mp.join('\n') || 'No multiplayer sessions', displayReplacement: `[👥 ${mp.length} session(s)]` };
+        }
+        case 'move_protagonist': {
+            const chatId = pArgs.get(1, 'chat_id', 'id')?.trim();
+            if (!chatId) return { toolType: 'administrator', args, content: '[Error: administrator(action="move_protagonist", chat_id="...") requires chat ID]', displayReplacement: '[Error: Usage]' };
+            appendPendingAction(nextMessage, { type: 'administrator_move_protagonist', payload: { chatId } });
+            return { toolType: 'administrator', args, content: `Move requested to chat "${chatId}".`, displayReplacement: `[🔧 Move: ${chatId}]` };
+        }
         case 'switch_model': {
-            const modelName = pArgs.get(1, 'model_name', 'name', 'model')?.trim();
+            const modelName = pArgs.get(1, 'model_name', 'name', 'model')?.trim() || pArgs.positional.slice(1).join(' ').trim();
             if (!modelName) return { toolType: 'administrator', args, content: '[Error: administrator(action="switch_model", model_name="...") requires model name]', displayReplacement: '[Error: Usage]' };
             appendPendingAction(nextMessage, { type: 'administrator_switch_model', payload: { modelName } });
             return { toolType: 'administrator', args, content: `Requested switch to model "${modelName}".`, displayReplacement: `[🔧 Switch: ${modelName}]` };
         }
+        case 'toggle_account': {
+            const accountId = pArgs.get(1, 'account_id', 'account', 'id')?.trim();
+            if (!accountId) return { toolType: 'administrator', args, content: '[Error: administrator(action="toggle_account", account_id="...") requires account ID]', displayReplacement: '[Error: Usage]' };
+            appendPendingAction(nextMessage, { type: 'administrator_toggle_account', payload: { accountId } });
+            return { toolType: 'administrator', args, content: `Toggle requested for account "${accountId}".`, displayReplacement: `[🔑 Toggle: ${accountId}]` };
+        }
         case 'join_session': {
-            const sessionId = pArgs.get(1, 'session_id', 'id')?.trim();
+            const sessionId = pArgs.get(1, 'session_id', 'id', 'session')?.trim();
             const password = pArgs.get(2, 'password', 'pwd')?.trim() || '';
             if (!sessionId) return { toolType: 'administrator', args, content: '[Error: administrator(action="join_session", session_id="...", password="") requires session ID]', displayReplacement: '[Error: Usage]' };
             appendPendingAction(nextMessage, { type: 'administrator_join_session', payload: { sessionId, password } });
@@ -1462,19 +1656,30 @@ function executeAdministrator(args: string, nextMessage: BaseMessage, interactio
         case 'leave_session':
             appendPendingAction(nextMessage, { type: 'administrator_leave_session', payload: {} });
             return { toolType: 'administrator', args, content: 'Leave session requested.', displayReplacement: '[👥 Leave session]' };
+        case 'accept_join': {
+            const accountId = pArgs.get(1, 'account_id', 'id')?.trim();
+            if (!accountId) return { toolType: 'administrator', args, content: '[Error: administrator(action="accept_join", account_id="...") requires account ID]', displayReplacement: '[Error: Usage]' };
+            appendPendingAction(nextMessage, { type: 'administrator_accept_join', payload: { accountId } });
+            return { toolType: 'administrator', args, content: `Accepted join for account "${accountId}".`, displayReplacement: `[👥 Accepted: ${accountId}]` };
+        }
+        case 'reject_join': {
+            const accountId = pArgs.get(1, 'account_id', 'id')?.trim();
+            if (!accountId) return { toolType: 'administrator', args, content: '[Error: administrator(action="reject_join", account_id="...") requires account ID]', displayReplacement: '[Error: Usage]' };
+            appendPendingAction(nextMessage, { type: 'administrator_reject_join', payload: { accountId } });
+            return { toolType: 'administrator', args, content: `Rejected join for account "${accountId}".`, displayReplacement: `[👥 Rejected: ${accountId}]` };
+        }
         default:
             return { toolType: 'administrator', args, content: `[Error: Unknown administrator action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
     }
 }
 
 // ─── Creator ────────────────────────────────────────────────────────
-// Signature: creator(entity_type="...", name="...")
 const VALID_ENTITY_TYPES = ['character', 'context', 'location', 'audio_track', 'prompt_block', 'stop_pattern', 'sampler', 'budget_strategy', 'profile', 'world', 'memory', 'extension', 'account', 'multiplayer_data'];
 
 function executeCreator(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const entityType = pArgs.get(0, 'entity_type', 'type')?.toLowerCase();
-    const entityName = pArgs.get(1, 'name', 'entity_name')?.trim();
+    const entityName = pArgs.get(1, 'name', 'entity_name')?.trim() || pArgs.positional.slice(1).join(' ').trim();
 
     if (!entityType || !entityName) {
         return helpResult('creator', 'entity_type="...", name="..."', `valid types: ${VALID_ENTITY_TYPES.join(', ')}`);
@@ -1489,11 +1694,10 @@ function executeCreator(args: string, nextMessage: BaseMessage, _interactionData
 }
 
 // ─── Destroyer ──────────────────────────────────────────────────────
-// Signature: destroyer(entity_type="...", entity_id="...")
 function executeDestroyer(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const entityType = pArgs.get(0, 'entity_type', 'type')?.toLowerCase();
-    const entityId = pArgs.get(1, 'entity_id', 'id', 'name')?.trim();
+    const entityId = pArgs.get(1, 'entity_id', 'id', 'name')?.trim() || pArgs.positional.slice(1).join(' ').trim();
 
     if (!entityType || !entityId) {
         return helpResult('destroyer', 'entity_type="...", entity_id="..."', `valid types: ${VALID_ENTITY_TYPES.join(', ')}`);
@@ -1512,10 +1716,9 @@ function executeDestroyer(args: string, nextMessage: BaseMessage, interactionDat
 }
 
 // ─── Open Browser ───────────────────────────────────────────────────
-// Signature: browser(url_or_search_query="...")
 async function executeOpenBrowser(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const input = pArgs.get(0, 'url_or_search_query', 'url', 'query', 'search')?.trim();
+    const input = pArgs.get(0, 'url_or_search_query', 'url', 'query', 'search')?.trim() || pArgs.positional.join(' ').trim();
     if (!input) return helpResult('browser', 'url_or_search_query="..."', 'open webpage or web search in browser');
 
     const isDirectUrl = /^https?:\/\//i.test(input) || /^[\w-]+\.[\w-]+(\S*)/i.test(input);
@@ -1531,10 +1734,9 @@ async function executeOpenBrowser(args: string, _nextMessage: BaseMessage, _inte
 }
 
 // ─── Read File ──────────────────────────────────────────────────────
-// Signature: read_file(path_or_url="...")
 async function executeReadFile(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const target = pArgs.get(0, 'path_or_url', 'path', 'file_path', 'url')?.trim();
+    const target = pArgs.get(0, 'path_or_url', 'path', 'file_path', 'url')?.trim() || pArgs.positional.join(' ').trim();
     if (!target) return helpResult('read_file', 'path_or_url="..."', 'open local file, video, or link in default app');
 
     const res = await readFile(target);
@@ -1547,11 +1749,13 @@ async function executeReadFile(args: string, _nextMessage: BaseMessage, _interac
 }
 
 // ─── Write File ─────────────────────────────────────────────────────
-// Signature: write_file(file_path="...", content="...")
 async function executeWriteFile(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const filePath = pArgs.get(0, 'file_path', 'path', 'filename')?.trim();
-    const content = pArgs.get(1, 'content', 'text', 'data');
+    let content = pArgs.get(1, 'content', 'text', 'data');
+    if (content === undefined && pArgs.positional.length > 1) {
+        content = pArgs.positional.slice(1).join(' ');
+    }
 
     if (!filePath || content === undefined) {
         return helpResult('write_file', 'file_path="...", content="..."', 'write or create a file on local filesystem');
