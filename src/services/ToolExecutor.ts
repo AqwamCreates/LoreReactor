@@ -547,7 +547,7 @@ function parseRollExpression(expr: string): { groups: RollGroup[]; modifier: num
     while ((match = rollGroupRegex.exec(sanitized)) !== null) {
         const count = match[1] ? Number.parseInt(match[1], 10) : 1;
         const sides = Number.parseInt(match[2], 10);
-        if (count < 1 || count > 100 || sides < 1 || sides > 1_000_000_000) return null;
+        if (count < 1 || sides < 1) return null;
         groups.push({ count, sides });
         lastIndex = match.index + match[0].length;
     }
