@@ -778,7 +778,7 @@ async function executeWeb(query: string, _nextMessage: BaseMessage, _interaction
     try {
         const trimmedQuery = query.trim();
         const isDirectUrl = /^https?:\/\//i.test(trimmedQuery);
-        const urlToFetch = isDirectUrl ? trimmedQuery : buildSearchUrl([trimmedQuery], 'DuckDuckGo');
+        const urlToFetch = isDirectUrl ? trimmedQuery : buildSearchUrl([trimmedQuery]);
         const results = await fetchLinkContent(urlToFetch, { maxDepth: 0, cacheTimeToLiveMs: 5 * 60 * 1000, fetchMode: 'full', includeImages: false });
         const validResults = results.filter(r => !r.error && r.content.length > 0);
         if (validResults.length === 0) {

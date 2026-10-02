@@ -188,10 +188,10 @@ const COMMAND_TREE: SlashCmd[] = [
         { name: 'save', desc: 'Save conversation as memory' },
     ]},
     // ─── NEW OS-LEVEL AGENTIC TOOLS ────────────────────────────────
-    { name: 'browser', desc: 'Open a URL in the browser', args: [{ name: 'url', type: 'text', desc: 'URL to open', example: 'https://example.com' }] },
-    { name: 'read_file', desc: 'Read file contents', args: [{ name: 'path', type: 'text', desc: 'File path to read', example: '~/documents/notes.txt' }] },
-    { name: 'write_file', desc: 'Write content to file', args: [
-        { name: 'path', type: 'text', desc: 'File path to write', example: '~/documents/output.txt' },
+    { name: 'browser', desc: 'Open URL or search in browser', args: [{ name: 'url_or_query', type: 'text', desc: 'URL or search query', example: 'https://example.com' }] },
+    { name: 'read_file', desc: 'Open file/media with system app', args: [{ name: 'path_or_url', type: 'text', desc: 'File path or media URL', example: '~/documents/notes.txt' }] },
+    { name: 'write_file', desc: 'Write content to local file', args: [
+        { name: 'file_path', type: 'text', desc: 'Destination file path', example: '~/documents/output.txt' },
         { name: 'content', type: 'text', desc: 'Content to write', example: 'Hello World' }
     ]},
     // ───────────────────────────────────────────────────────────────
