@@ -81,7 +81,6 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
                 const updatedProtagonists = (interactionData.protagonists || []).filter(p => p.id !== charId);
                 const newActiveProtagonist = updatedProtagonists[0];
                 
-                // FIX: Replaced flat interactionHistory array with spatial interactionHistories Record reduction
                 const { histories: updatedHistories } = checkAndCleanHistories(interactionData.interactionHistories, charId);
                 
                 const np = interactionData.participants.filter(p => p.id !== charId);
@@ -101,7 +100,6 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             } else {
                 const np = interactionData.participants.filter(p => p.id !== charId);
                 
-                // FIX: Replaced flat interactionHistory array with spatial interactionHistories Record reduction
                 const { histories: cleanedHistories } = checkAndCleanHistories(interactionData.interactionHistories, charId);
 
                 const updatedData: InteractionData = {
@@ -215,14 +213,35 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         }
         if (!ch) return;
 
-        const updatedProtagonists = interactionData.protagonists ? [...interactionData.protagonists] : [];
-        const existingIdx = updatedProtagonists.findIndex(p => p.id === charId);
-        if (existingIdx === -1) {
-            updatedProtagonists.unshift(ch);
-        } else if (existingIdx > 0) {
-            const [moved] = updatedProtagonists.splice(existingIdx, 1);
-            updatedProtagonists.unshift(moved);
+        // 1. Identify which protagonist character currently represents this user/account
+        const previousProtagonistId = currentAccountId && multiplayerData
+            ? multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.protagonistCharacterId
+            : interactionData.protagonists?.[0]?.id;
+
+        // 2. Identify protagonist IDs still actively claimed by OTHER peer accounts (if in multiplayer)
+        const otherAccountProtagonistIds = new Set<string>();
+        if (multiplayerData?.multiplayerDataAccountConfigurations) {
+            for (const [accId, config] of Object.entries(multiplayerData.multiplayerDataAccountConfigurations)) {
+                if (accId !== currentAccountId && config?.protagonistCharacterId) {
+                    otherAccountProtagonistIds.add(config.protagonistCharacterId);
+                }
+            }
         }
+
+        // 3. Keep only protagonists belonging to other peers; replace the previous protagonist for this user
+        const existingProtagonists = interactionData.protagonists || [];
+        const filteredProtagonists = existingProtagonists.filter(p => {
+            if (p.id === charId) return false;
+            if (p.id === previousProtagonistId && !otherAccountProtagonistIds.has(p.id)) {
+                return false;
+            }
+            if (!currentAccountId || otherAccountProtagonistIds.size === 0) {
+                return false; // Solo session: never retain previous protagonists
+            }
+            return otherAccountProtagonistIds.has(p.id);
+        });
+
+        const updatedProtagonists = [ch, ...filteredProtagonists];
 
         // Update and persist room configuration for the active account
         let updatedMultiplayerData: MultiplayerData | undefined = multiplayerData ? { ...multiplayerData } : undefined;
@@ -231,7 +250,6 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
                 updatedMultiplayerData = createDefaultMultiplayerData();
             }
             
-            // FIX: Corrected the fallback object to strictly match the MultiplayerDataAccountConfiguration interface
             const existingCfg = updatedMultiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId] || {
                 isWhitelisted: true, isBlacklisted: false, isAdministrator: false,
                 canUseJoinerCharacterIds: true,
