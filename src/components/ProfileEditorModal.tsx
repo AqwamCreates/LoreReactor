@@ -210,6 +210,7 @@ export function ProfileEditorModal({
     
     // ─── Auto-Resume Signals State ─────────────────────────────────────
     const [autoResumeSignals, setAutoResumeSignals] = useState<AutoResumeSignal[]>(ep?.autoResumeSignals ?? []);
+    const [expandedSignalIndex, setExpandedSignalIndex] = useState<number | null>(null);
 
     const handleAddAutoResumeSignal = useCallback(() => {
         setAutoResumeSignals(prev => [...prev, { stopPattern: '', minimumLength: '0', maximumNumberOfAutoResumes: 10 }]);
@@ -230,7 +231,8 @@ export function ProfileEditorModal({
 
     const handleRemoveAutoResumeSignal = useCallback((index: number) => {
         setAutoResumeSignals(prev => prev.filter((_, i) => i !== index));
-    }, []);
+        if (expandedSignalIndex === index) setExpandedSignalIndex(null);
+    }, [expandedSignalIndex]);
     // ───────────────────────────────────────────────────────────────────
 
     const [characterSamplerId, setCharacterSamplerId] = useState<string>(ep?.characterSampler?.id ?? '');
@@ -686,86 +688,132 @@ export function ProfileEditorModal({
 
                             {/* ─── AUTO-RESUME SIGNALS SECTION ─── */}
                             <div className="editor-section">
-                                <span className="editor-section-title">Auto-Resume Signals</span>
-                                <div style={CHECKBOX_HINT_STYLE}>
-                                    When partially-generated text doesn't end with these signals, it will auto-resume until the signal is hit.
+                                <div className="sampler-section-header">
+                                    <span className="editor-section-title" style={{ marginBottom: 0 }}>Auto-Resume Signals</span>
+                                    <button 
+                                        type="button" 
+                                        className="editor-button editor-button-save" 
+                                        onClick={handleAddAutoResumeSignal} 
+                                        style={{ fontSize: '0.65rem', padding: '4px 12px', minHeight: '28px', height: '28px' }}
+                                    >
+                                        + Add Signal
+                                    </button>
                                 </div>
-                                
-                                <button type="button" className="toolbar-button" onClick={handleAddAutoResumeSignal} style={{ fontSize: '0.7rem', padding: '4px 8px', marginBottom: '8px' }}>
-                                    + Add Signal
-                                </button>
+                                <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '8px' }}>
+                                    Forces the model to continue generating if the output stops prematurely. Injects the stop pattern dynamically to steer the completion.
+                                </div>
 
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    {autoResumeSignals.map((signal, index) => (
-                                        <div key={index} style={{ padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px' }}>
-                                                <button type="button" onClick={() => handleRemoveAutoResumeSignal(index)} className="toolbar-button" style={{ fontSize: '0.7rem', color: '#ff4444', padding: '2px 6px' }}>
-                                                    Remove
-                                                </button>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }}>
+                                    {autoResumeSignals.map((signal, index) => {
+                                        const isExpanded = expandedSignalIndex === index;
+                                        const signalName = signal.stopPattern || '(No Stop Pattern Set)';
+                                        
+                                        return (
+                                            <div key={index}>
+                                                <div 
+                                                    className="sampler-param-row" 
+                                                    style={{ padding: '6px 8px', cursor: 'pointer' }} 
+                                                    onClick={() => setExpandedSignalIndex(isExpanded ? null : index)}
+                                                >
+                                                    <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={STEP_NAME_STYLE}>
+                                                            {index + 1}. {signalName}
+                                                        </span>
+                                                        {signal.regularExpressionActivationTrigger && (
+                                                            <span style={{ fontSize: '0.6rem', opacity: 0.6, background: 'var(--code-bg)', padding: '1px 4px', borderRadius: '3px' }}>Regex</span>
+                                                        )}
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                                                        <span style={{ fontSize: '0.65rem', opacity: 0.6, marginRight: '4px' }}>
+                                                            Maximum Auto-Resumes: {signal.maximumNumberOfAutoResumes ?? 10}
+                                                        </span>
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => handleRemoveAutoResumeSignal(index)} 
+                                                            className="toolbar-button" 
+                                                            title="Remove signal" 
+                                                            style={TOOLBAR_BTN_DELETE_STYLE}
+                                                        >×</button>
+                                                        <span style={{ fontSize: '0.7rem', opacity: 0.5, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+                                                    </div>
+                                                </div>
+                                                
+                                                {isExpanded && (
+                                                    <div style={STEP_EXPANDED_STYLE}>
+                                                        <div className="editor-row">
+                                                            <div>
+                                                                <label className="editor-label editor-label-small">Activation Trigger (Regex)</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={signal.regularExpressionActivationTrigger || ''}
+                                                                    onChange={(e) => handleUpdateAutoResumeSignal(index, 'regularExpressionActivationTrigger', e.target.value)}
+                                                                    className="editor-input"
+                                                                    placeholder="e.g., \[Thinking\]"
+                                                                />
+                                                                <div style={FIELD_HINT_STYLE}>Optional. Activates auto-resume if matched.</div>
+                                                            </div>
+                                                            <div>
+                                                                <label className="editor-label editor-label-small">Deactivation Trigger (Regex)</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={signal.regularExpressionDeactivationTrigger || ''}
+                                                                    onChange={(e) => handleUpdateAutoResumeSignal(index, 'regularExpressionDeactivationTrigger', e.target.value)}
+                                                                    className="editor-input"
+                                                                    placeholder="e.g., \[End\]"
+                                                                />
+                                                                <div style={FIELD_HINT_STYLE}>Optional. Deactivates auto-resume if matched.</div>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div className="editor-row">
+                                                            <div>
+                                                                <label className="editor-label editor-label-small">Stop Pattern *</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={signal.stopPattern}
+                                                                    onChange={(e) => handleUpdateAutoResumeSignal(index, 'stopPattern', e.target.value)}
+                                                                    className="editor-input"
+                                                                    placeholder="e.g., \n\n"
+                                                                />
+                                                                <div style={FIELD_HINT_STYLE}>Appended to sampler stop patterns if activated.</div>
+                                                            </div>
+                                                            <div>
+                                                                <label className="editor-label editor-label-small">Minimum Length</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={signal.minimumLength || '0'}
+                                                                    onChange={(e) => handleUpdateAutoResumeSignal(index, 'minimumLength', e.target.value)}
+                                                                    className="editor-input"
+                                                                    placeholder="0"
+                                                                />
+                                                                <div style={FIELD_HINT_STYLE}>Min characters after activation before deactivation.</div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="editor-row">
+                                                            <div>
+                                                                <label className="editor-label editor-label-small">Maximum Number Of Auto-Resumes</label>
+                                                                <input
+                                                                    type="number"
+                                                                    value={signal.maximumNumberOfAutoResumes ?? 10}
+                                                                    onChange={(e) => handleUpdateAutoResumeSignal(index, 'maximumNumberOfAutoResumes', e.target.value)}
+                                                                    className="editor-input"
+                                                                    placeholder="10"
+                                                                    min="0"
+                                                                />
+                                                                <div style={FIELD_HINT_STYLE}>0 = disabled. Default is 10.</div>
+                                                            </div>
+                                                            <div></div>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
-                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px' }}>
-                                                <div>
-                                                    <label className="editor-label editor-label-small">Activation Trigger (Regex)</label>
-                                                    <input
-                                                        type="text"
-                                                        value={signal.regularExpressionActivationTrigger || ''}
-                                                        onChange={(e) => handleUpdateAutoResumeSignal(index, 'regularExpressionActivationTrigger', e.target.value)}
-                                                        className="editor-input"
-                                                        placeholder="e.g., \[Thinking\]"
-                                                    />
-                                                    <div style={FIELD_HINT_STYLE}>Optional. Activates auto-resume if matched.</div>
-                                                </div>
-                                                <div>
-                                                    <label className="editor-label editor-label-small">Deactivation Trigger (Regex)</label>
-                                                    <input
-                                                        type="text"
-                                                        value={signal.regularExpressionDeactivationTrigger || ''}
-                                                        onChange={(e) => handleUpdateAutoResumeSignal(index, 'regularExpressionDeactivationTrigger', e.target.value)}
-                                                        className="editor-input"
-                                                        placeholder="e.g., \[End\]"
-                                                    />
-                                                    <div style={FIELD_HINT_STYLE}>Optional. Deactivates auto-resume if matched.</div>
-                                                </div>
-                                                <div>
-                                                    <label className="editor-label editor-label-small">Stop Pattern *</label>
-                                                    <input
-                                                        type="text"
-                                                        value={signal.stopPattern}
-                                                        onChange={(e) => handleUpdateAutoResumeSignal(index, 'stopPattern', e.target.value)}
-                                                        className="editor-input"
-                                                        placeholder="e.g., \n\n"
-                                                    />
-                                                    <div style={FIELD_HINT_STYLE}>Appended to stop patterns if activation signal is met.</div>
-                                                </div>
-                                                <div>
-                                                    <label className="editor-label editor-label-small">Minimum Length</label>
-                                                    <input
-                                                        type="text"
-                                                        value={signal.minimumLength || '0'}
-                                                        onChange={(e) => handleUpdateAutoResumeSignal(index, 'minimumLength', e.target.value)}
-                                                        className="editor-input"
-                                                        placeholder="0"
-                                                    />
-                                                    <div style={FIELD_HINT_STYLE}>Min characters after activation before deactivation can occur.</div>
-                                                </div>
-                                                <div>
-                                                    <label className="editor-label editor-label-small">Max Auto-Resumes</label>
-                                                    <input
-                                                        type="number"
-                                                        value={signal.maximumNumberOfAutoResumes ?? 10}
-                                                        onChange={(e) => handleUpdateAutoResumeSignal(index, 'maximumNumberOfAutoResumes', e.target.value)}
-                                                        className="editor-input"
-                                                        placeholder="10"
-                                                        min="0"
-                                                    />
-                                                    <div style={FIELD_HINT_STYLE}>0 = disabled. Default is 10.</div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
+                                    
                                     {autoResumeSignals.length === 0 && (
-                                        <div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic', padding: '8px 0' }}>
-                                            No auto-resume signals configured.
+                                        <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '12px 0' }}>
+                                            No auto-resume signals configured. The model will rely entirely on natural stop sequences.
                                         </div>
                                     )}
                                 </div>
