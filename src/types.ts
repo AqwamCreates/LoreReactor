@@ -812,7 +812,6 @@ export interface World extends ObjectData {
     contextIds: string[];
     locationIds: string[];
     audioTrackIds: string[];
-    promptBlockIds: string[]
     profileId?: string;
 }
 
