@@ -2,7 +2,7 @@
 import { useRef, useCallback } from 'react';
 import { useSessionStore } from './useSessionStore';
 
-const THROTTLE_MS = 50;
+const THROTTLE_MS = 60;
 
 export function useThrottledStream() {
     const streamingTextRef = useRef('');
