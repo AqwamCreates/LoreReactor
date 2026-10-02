@@ -83,7 +83,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
       "teleport": "boolean (default false)", "key": "boolean (default false)", "clothing": "boolean (default false)",
       "summon": "boolean (default false)", "narrate": "boolean (default false)", "inspect": "boolean (default false)",
       "administrator": "boolean (default false)", "creator": "boolean (default false)", "destroyer": "boolean (default false)",
-      "open_browser": "boolean (default false)", "read_file": "boolean (default false)", "write_file": "boolean (default false)"
+      "browser": "boolean (default false)", "read_file": "boolean (default false)", "write_file": "boolean (default false)"
     },
     "clothings": [{
       "id": "string (UUID)",
@@ -278,7 +278,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
       "teleport": "number (-1, 0, or 1, default 0)", "key": "number (-1, 0, or 1, default 0)", "clothing": "number (-1, 0, or 1, default 0)",
       "summon": "number (-1, 0, or 1, default 0)", "narrate": "number (-1, 0, or 1, default 0)", "inspect": "number (-1, 0, or 1, default 0)",
       "administrator": "number (-1, 0, or 1, default 0)", "creator": "number (-1, 0, or 1, default 0)", "destroyer": "number (-1, 0, or 1, default 0)",
-      "open_browser": "number (-1, 0, or 1, default 0)", "read_file": "number (-1, 0, or 1, default 0)", "write_file": "number (-1, 0, or 1, default 0)"
+      "browser": "number (-1, 0, or 1, default 0)", "read_file": "number (-1, 0, or 1, default 0)", "write_file": "number (-1, 0, or 1, default 0)"
     },
     "inputStrategy": ["array of promptBlockType strings and/or custom prompt block UUIDs. Built-in types: ${defaultInputStrategy.join(', ')}. Custom prompt blocks are referenced by their UUID string."],
     "summarizationSteps": [{

@@ -130,7 +130,7 @@ const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, int
     "administrator": executeAdministrator,
     "creator": executeCreator,
     "destroyer": executeDestroyer,
-    "open_browser": executeOpenBrowser,
+    "browser": executeOpenBrowser,
     "read_file": executeReadFile,
     "write_file": executeWriteFile,
 };
@@ -1550,7 +1550,7 @@ async function executeOpenBrowser(
 ): Promise<ToolResult> {
     const input = args.trim();
     if (!input) {
-        return helpResult('open_browser', args, 'open_browser <url_or_search_query> — opens website or executes web search in browser');
+        return helpResult('browser', args, 'browser <url_or_search_query> — opens website or executes web search in browser');
     }
 
     const isDirectUrl = /^https?:\/\//i.test(input) || /^[\w-]+\.[\w-]+(\S*)/i.test(input);
@@ -1560,12 +1560,12 @@ async function executeOpenBrowser(
 
     const res = await readFile(finalUrl);
     if (!res.success) {
-        return { toolType: 'open_browser', args, content: `[Error: ${res.error || 'Failed to open browser'}]`, displayReplacement: `[❌ Failed: "${finalUrl}"]` };
+        return { toolType: 'browser', args, content: `[Error: ${res.error || 'Failed to open browser'}]`, displayReplacement: `[❌ Failed: "${finalUrl}"]` };
     }
 
     const label = isDirectUrl ? finalUrl : `Search: "${input}"`;
     context?.addToast?.(`Browser: ${label}`, 'info');
-    return { toolType: 'open_browser', args, content: `Opened browser to: "${finalUrl}".`, displayReplacement: `[🌐 Browser: "${label}"]` };
+    return { toolType: 'browser', args, content: `Opened browser to: "${finalUrl}".`, displayReplacement: `[🌐 Browser: "${label}"]` };
 }
 
 // ─── Read File (Files, Videos, Direct URLs, Media) ───────────────────
