@@ -42,20 +42,23 @@ export function getTimeDataFromCoordinates(latitude?: number, longitude?: number
     
     let dt: DateTime | undefined;
         
-    if (typeof latitude === 'number' && typeof longitude === 'number') {
+    if (typeof latitude === 'number' && typeof longitude === 'number' && latitude !== 0 && longitude !== 0) {
         if (latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
             const timezone = tzlookup(latitude, longitude);
             dt = DateTime.now().setZone(timezone).reconfigure({ locale: 'en-US' });
         }
     }
 
-    dt = dt || DateTime.now().reconfigure({ locale: 'en-US' });
+    if (!dt) {
+        const systemZone = Intl.DateTimeFormat().resolvedOptions().timeZone; // Gets "Asia/Kuala_Lumpur", etc.
+        dt = DateTime.now().setZone(systemZone).reconfigure({ locale: 'en-US' });
+    }
 
     return {
         rawTimestamp: dt.toMillis(),
         formattedDate: dt.toLocaleString({ weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
         formattedTime: dt.toLocaleString({ hour: 'numeric', minute: '2-digit', hour12: true }),
-        luxonTimestamp: dt // <--- ADD THIS
+        luxonTimestamp: dt
     };
 }
 
