@@ -786,7 +786,7 @@ export function ProfileEditorModal({
                                                                     className="editor-input"
                                                                     placeholder="0"
                                                                 />
-                                                                <div style={FIELD_HINT_STYLE}>Minimum characters after activation before deactivation.</div>
+                                                                <div style={FIELD_HINT_STYLE}>Minimum number of characters after activation before deactivation.</div>
                                                             </div>
                                                         </div>
 
