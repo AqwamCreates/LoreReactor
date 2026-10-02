@@ -1,5 +1,6 @@
 // src/components/ChatInspectionModal.tsx
-import React, { useMemo, useEffect, useState, useCallback, useRef } from 'react';
+import type React from 'react';
+import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import type { InteractionData, Location, Character } from '../types';
 import { getCharacterImageUrlWithFallBack } from '../storages/serverStorage';
 import { getCurrentLocation } from '../utilities/locationLogic';
