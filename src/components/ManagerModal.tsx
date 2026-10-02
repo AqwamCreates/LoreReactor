@@ -17,10 +17,9 @@ interface ManagerModalProps<T> {
     orderedListMode?: boolean;
     currentOrderIds?: string[];
     onToggleOrder?: (id: string) => void;
-    specialActionIcon?: string;
-    onSpecialAction?: (item: T) => void;
+    onSelectItem?: (item: T) => void;
     specialActionTooltip?: (item: T) => string;
-    activeSpecialActionId?: string;
+    selectedId?: string;
     secondaryActiveIds?: Set<string>;
 }
 
@@ -44,7 +43,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     title, localLibraryItems, hosterOwnedItems, isAdministrator, onClose, onSelect, onDelete, onCreateNew,
     renderSubtext, emptyMessage = "No items found.", actionLabel = "Delete",
     orderedListMode = false, currentOrderIds = [], onToggleOrder,
-    specialActionIcon, onSpecialAction, specialActionTooltip, activeSpecialActionId,
+    onSelectItem, specialActionTooltip, selectedId,
     secondaryActiveIds,
 }: Omit<ManagerModalProps<T>, 'isOpen'>) {
     const [searchQuery, setSearchQuery] = useState('');
@@ -73,14 +72,8 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     );
     const isHosterOwnedTab = activeTab === 'hosterOwned';
 
-    // Hoster-Owned tab: NEVER allow deletion. Items belong to the host's permanent library.
-    // Local Library tab: Allow deletion if onDelete is provided.
     const canDelete = isHosterOwnedTab ? false : !!onDelete;
 
-    // Toggle Order Logic:
-    // 1. Hoster-Owned tab: Only administrators can toggle hoster items in/out of the active session.
-    // 2. Local Library tab (Joiner): Joiners CANNOT toggle local items because they aren't synced to the host.
-    // 3. Local Library tab (Host/Solo): Can toggle local items.
     const canToggleOrder = (() => {
         if (!orderedListMode || !onToggleOrder) return false;
         if (hasHosterOwnedTab) {
@@ -103,11 +96,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
 
     const sortedItems = useMemo(() => {
         const sorted = [...currentItems].sort((a, b) => {
-            if (activeSpecialActionId) {
-                if (a.id === activeSpecialActionId) return -1;
-                if (b.id === activeSpecialActionId) return 1;
-            }
-
             if (orderedListMode && currentOrderIds.length > 0) {
                 const aIndex = currentOrderIds.indexOf(a.id);
                 const bIndex = currentOrderIds.indexOf(b.id);
@@ -126,7 +114,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
             return bCreated - aCreated;
         });
         return sorted;
-    }, [currentItems, orderedListMode, currentOrderIds, activeSpecialActionId]);
+    }, [currentItems, orderedListMode, currentOrderIds]);
 
     const filteredItems = useMemo(() => {
         if (!searchQuery.trim()) return sortedItems;
@@ -238,7 +226,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                     ) : (
                         <ul className="manager-list">
                             {filteredItems.map(item => {
-                                const isActive = activeSpecialActionId === item.id;
+                                const isActive = selectedId === item.id;
                                 const isSecondaryActive = secondaryActiveIds?.has(item.id) ?? false;
                                 const isInCurrentOrder = currentOrderIds.includes(item.id);
                                 const orderNumber = currentOrderIds.indexOf(item.id) + 1;
@@ -247,9 +235,11 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
 
                                 return (
                                     <li key={item.id} className={`manager-item ${isActive ? 'selected-item' : ''} ${isSecondaryActive && !isActive ? 'strategy-item' : ''}`}>
+                                        
+                                        {/* THE BAR: Triggers onSelectItem (Equip / Activate / Switch) */}
                                         <div
-                                            className={`manager-item-main ${onSelect ? 'manager-item-main-clickable' : ''}`}
-                                            onClick={() => onSelect?.(item, isHosterOwnedTab)}
+                                            className={`manager-item-main ${onSelectItem ? 'manager-item-main-clickable' : ''}`}
+                                            onClick={() => onSelectItem?.(item)}
                                         >
                                             <div className="manager-item-info">
                                                 <div className="manager-item-title">{item.name || 'Untitled'}</div>
@@ -274,15 +264,17 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                                 )
                                             )}
 
-                                            {specialActionIcon && onSpecialAction && (
+                                            {/* THE PENCIL: Triggers onSelect (Open Editor) */}
+                                            {onSelect && (
                                                 <button
                                                     type="button"
-                                                    onClick={e => { e.stopPropagation(); onSpecialAction(item); }}
-                                                    className="toolbar-button special-action-button"
-                                                    title={specialActionTooltip?.(item) || "Action"}
-                                                >{isActive ? '⭐' : isSecondaryActive ? '★' : '☆'}</button>
+                                                    onClick={e => { e.stopPropagation(); onSelect(item, isHosterOwnedTab); }}
+                                                    className="manager-item-button"
+                                                    title={specialActionTooltip?.(item) || "Edit"}
+                                                >✏️</button>
                                             )}
 
+                                            {/* DELETE BUTTON */}
                                             {canDelete && (
                                                 isConfirmingDelete ? (
                                                     <div className="delete-confirm-group">
@@ -290,7 +282,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                                         <button type="button" onClick={handleCancelDelete} className="toolbar-button delete-cancel-button" title="Cancel">✕</button>
                                                     </div>
                                                 ) : (
-                                                    <button type="button" onClick={e => handleDeleteClick(e, item.id)} className="delete-item-button" title={actionLabel}>🗑️</button>
+                                                    <button type="button" onClick={e => handleDeleteClick(e, item.id)} className="manager-item-button" title={actionLabel}>🗑️</button>
                                                 )
                                             )}
                                         </div>

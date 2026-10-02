@@ -2681,6 +2681,27 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
     flex-shrink: 0;
 }
 
+/* Replaces .delete-item-button to avoid confusion and unify manager actions */
+.manager-item-button {
+    background: transparent;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+    padding: 4px;
+    min-width: 40px;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.manager-item-button:hover { 
+    opacity: 1; 
+    color: #ff4444; 
+}
+
 .order-toggle-button {
     width: 32px;
     height: 32px;
@@ -2693,21 +2714,13 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
     background: transparent;
     color: var(--text-h);
     border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-right: 10px;
 }
 
 .order-toggle-button-active {
     background: var(--accent-bg);
     color: var(--accent);
-}
-
-.special-action-button {
-    width: 32px;
-    height: 32px;
-    font-size: 0.85rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
 }
 
 .delete-confirm-group {
@@ -2745,23 +2758,6 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
     justify-content: center;
     flex-shrink: 0;
 }
-
-.delete-item-button {
-    background: transparent;
-    border: none;
-    font-size: 1.2rem;
-    cursor: pointer;
-    opacity: 0.5;
-    transition: opacity 0.2s;
-    padding: 4px;
-    min-width: 40px;
-    min-height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.delete-item-button:hover { opacity: 1; color: #ff4444; }
 
 .empty-state { text-align: center; color: var(--text-h); opacity: 0.6; padding: 20px; }
 

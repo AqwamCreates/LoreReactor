@@ -138,16 +138,23 @@ function deriveLocalProtagonist(
     multiplayerData: MultiplayerData | null,
     currentAccountId: string | null,
 ): Character | null {
-    if (!interactionData?.participants?.length) return null;
-    if (!multiplayerData || !currentAccountId) {
-        return interactionData.participants[0] ?? null;
+    if (!interactionData) return null;
+
+    if (multiplayerData && currentAccountId) {
+        const protagonistCharacterIdentifier = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.protagonistCharacterId;
+        if (protagonistCharacterIdentifier) {
+            const foundCharacter = 
+                interactionData.protagonists?.find(participant => participant.id === protagonistCharacterIdentifier) ||
+                interactionData.participants?.find(participant => participant.id === protagonistCharacterIdentifier);
+            if (foundCharacter) return foundCharacter;
+        }
     }
-    const protagonistCharacterIdentifier = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.protagonistCharacterId;
-    if (protagonistCharacterIdentifier) {
-        const foundCharacter = interactionData.participants.find(participant => participant.id === protagonistCharacterIdentifier);
-        if (foundCharacter) return foundCharacter;
+
+    if (interactionData.protagonists && interactionData.protagonists.length > 0) {
+        return interactionData.protagonists[0];
     }
-    return interactionData.participants[0] ?? null;
+
+    return interactionData.participants?.[0] ?? null;
 }
 
 export function AppModals({
@@ -284,7 +291,7 @@ export function AppModals({
             } as unknown as ChatShellWithIdentifier);
         }
         return list;
-    }, [rawChatShells, interactionData]);;
+    }, [rawChatShells, interactionData]);
 
     const activeChatId = interactionData?.id;
     const activeChatName = interactionData?.name;
@@ -379,10 +386,9 @@ export function AppModals({
                     onCreateNew={onNewChat}
                     renderSubtext={renderChatSubtext}
                     emptyMessage="No saved chat sessions found."
-                    specialActionIcon="★"
-                    onSpecialAction={(item) => onSwitchChat(item.id)}
+                    onSelectItem={(item) => onSwitchChat(item.id)}
                     specialActionTooltip={(item) => interactionData?.id === item.id ? `✓ Active — "${item.name}"` : `Activate "${item.name}"`}
-                    activeSpecialActionId={interactionData?.id}
+                    selectedId={interactionData?.id}
                 />
             )}
 
@@ -406,10 +412,9 @@ export function AppModals({
                     orderedListMode={true}
                     currentOrderIds={interactionData?.participants.map(participant => participant.id) || []}
                     onToggleOrder={onToggleParticipant}
-                    specialActionIcon="★"
-                    onSpecialAction={(character: Character) => onSetProtagonist(character.id)}
+                    onSelectItem={(character: Character) => onSetProtagonist(character.id)}
                     specialActionTooltip={(character: Character) => `set ${character.name} as the protagonist`}
-                    activeSpecialActionId={localProtagonist?.id}
+                    selectedId={localProtagonist?.id}
                 />
             )}
 
@@ -444,7 +449,7 @@ export function AppModals({
                     onCreateNew={() => locationModalProperties.open()}
                     renderSubtext={renderLocationSubtext} 
                     emptyMessage="No locations found." 
-                    actionLabel="Delete"
+                    actionLabel="Delete" 
                     orderedListMode={true} 
                     currentOrderIds={interactionData?.locations?.map(location => location.id) || []} 
                     onToggleOrder={onToggleLocation} 
@@ -521,10 +526,9 @@ export function AppModals({
                     emptyMessage="No models available." 
                     actionLabel="Delete" 
                     orderedListMode={false}
-                    activeSpecialActionId={selectedModelId || undefined} 
+                    selectedId={selectedModelId || undefined} 
                     secondaryActiveIds={strategyModelIds}
-                    specialActionIcon="★" 
-                    onSpecialAction={(model: LanguageModel) => onToggleModelLoad(model.id)}
+                    onSelectItem={(model: LanguageModel) => onToggleModelLoad(model.id)}
                     specialActionTooltip={(model: LanguageModel) => {
                         const modelStatus = runningModels[model.id];
                         const isCloud = !!model.apiKey && !!model.backend && cloudBackends.includes(model.backend as cloudBackend);
@@ -585,9 +589,8 @@ export function AppModals({
                     emptyMessage="No budget strategies found." 
                     actionLabel="Delete" 
                     orderedListMode={false}
-                    activeSpecialActionId={selectedBudgetStrategyId || undefined} 
-                    specialActionIcon="★"
-                    onSpecialAction={(budgetStrategy: BudgetStrategy) => onActivateBudgetStrategy(budgetStrategy.id)}
+                    selectedId={selectedBudgetStrategyId || undefined} 
+                    onSelectItem={(budgetStrategy: BudgetStrategy) => onActivateBudgetStrategy(budgetStrategy.id)}
                     specialActionTooltip={(budgetStrategy: BudgetStrategy) => selectedBudgetStrategyId === budgetStrategy.id ? `Deactivate ${budgetStrategy.name}` : `Activate ${budgetStrategy.name}`} 
                 />
             )}
@@ -604,9 +607,8 @@ export function AppModals({
                     emptyMessage="No profiles found." 
                     actionLabel="Delete" 
                     orderedListMode={false}
-                    activeSpecialActionId={interactionData?.profile?.id || undefined} 
-                    specialActionIcon="★"
-                    onSpecialAction={(profile: Profile) => onActivateProfile(profile.id)}
+                    selectedId={interactionData?.profile?.id || undefined} 
+                    onSelectItem={(profile: Profile) => onActivateProfile(profile.id)}
                     specialActionTooltip={(profile: Profile) => interactionData?.profile?.id === profile.id ? `Deactivate ${profile.name}` : `Activate ${profile.name}`} 
                 />
             )}
@@ -678,10 +680,9 @@ export function AppModals({
                     renderSubtext={(account: Account) => `👤 ${account.username}${account.url ? ` • 🔗 ${account.url}` : ''}`}
                     emptyMessage="No accounts found." 
                     actionLabel="Delete"
-                    specialActionIcon="★"
-                    onSpecialAction={(account: Account) => onToggleAccount(account.id)}
+                    onSelectItem={(account: Account) => onToggleAccount(account.id)}
                     specialActionTooltip={(account: Account) => currentAccountId === account.id ? `Deactivate ${account.name}` : `Activate ${account.name}`}
-                    activeSpecialActionId={currentAccountId || undefined} 
+                    selectedId={currentAccountId || undefined} 
                 />
             )}
 
