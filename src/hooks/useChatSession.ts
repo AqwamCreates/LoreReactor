@@ -443,8 +443,8 @@ export function useChatSession(options: UseChatSessionOptions) {
             const currentDataId = currentData?.id || 'unknown';
             const budgetData = getState().budgetData;
             
-            const outputCost = model?.outputGenerationCostPerOneMillionOfTokens || 15;
-            const cacheMissCost = model?.cacheMissCostPerOneMillionOfTokens || 3;
+            const outputCost = model?.outputGenerationCostPerOneMillionOfTokens || 3;
+            const cacheMissCost = model?.cacheMissCostPerOneMillionOfTokens || 0.3;
 
             const profileTemp = Number(profile.characterSampler?.parameters?.temperature);
             const charTemp = Number(char.sampler?.parameters?.temperature);
