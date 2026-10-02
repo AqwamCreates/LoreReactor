@@ -145,31 +145,19 @@ function isFreeModel(model: LanguageModel): boolean {
 
 // ─── Sliding Window Rate Limiter ─────────────────────────────────────
 
-/** Cooldown duration after a 429 before retrying a model */
 const RATE_LIMIT_COOLDOWN_MS = 30_000;
-
-/** Window size for counting recent requests per model */
 const SLIDING_WINDOW_MS = 60_000;
-
-/** Maximum requests per model within the sliding window before soft-throttling */
 const MAX_REQUESTS_PER_WINDOW = 30;
 
 interface RateLimitState {
-    /** Timestamps of recent requests (pruned to window) */
     requestTimestamps: number[];
-    /** Timestamp of last 429 received; model is on cooldown until + RATE_LIMIT_COOLDOWN_MS */
     lastRateLimitTimestamp: number;
 }
 
 // ─── Engine ──────────────────────────────────────────────────────────
 
-/** Number of uses at which quality score confidence saturates to 1.0 */
 const QUALITY_CONFIDENCE_THRESHOLD = 20;
-
-/** Weight of the FM signal in the final rank score (0 = pure tier, 1 = pure FM) */
 const FM_BLEND_WEIGHT = 0.4;
-
-/** Minimum total samples before FM signal is trusted (below this, falls back to aggregate) */
 const FM_MIN_SAMPLES_FOR_CONFIDENCE = 5;
 
 export class BudgetStrategyEngine {
@@ -181,20 +169,15 @@ export class BudgetStrategyEngine {
     private engine = getLanguageModelEngine();
     private _selectedModelId: string | null = null;
 
-    // ── Factorization Machines (online-learned, per-outcome) ──
     private censorshipFM: FactorizationMachine;
     private acceptanceFM: FactorizationMachine;
     private featureExtractor: FeatureExtractor;
     private factorizationMachineSampleCounter = 0;
 
-    /** Promise that resolves once FMs have been loaded from server storage */
     private factorizationMachineLoadPromise: Promise<void> | null = null;
-
-    /** Debounce save so we don't hammer the server on every sample */
     private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     private readonly SAVE_DEBOUNCE_MS = 5000;
 
-    // ── Sliding Window Rate Limiting (replaces rateLimitFM) ──
     private rateLimitStates: Map<string, RateLimitState> = new Map();
 
     constructor(
@@ -216,7 +199,6 @@ export class BudgetStrategyEngine {
 
         applyResetIfDue(this.budgetData);
 
-        // Initialize FMs: 8 latent factors, Adam optimizer
         const factorizationMachineConfig = {
             numFactors: 8,
             regBias: 0.0001,
@@ -236,13 +218,8 @@ export class BudgetStrategyEngine {
         this.acceptanceFM = new FactorizationMachine({ ...factorizationMachineConfig, task: 'classification' });
         this.featureExtractor = new FeatureExtractor();
 
-        // Fire-and-forget async load. First predictions may use fresh FMs
-        // (predicting ~0.5), which is harmless since ranking falls back to
-        // tiers + aggregate when FM confidence is low.
         this.factorizationMachineLoadPromise = this.loadFactorizationMachinesFromStorage();
     }
-
-    // ── Setters ───────────────────────────────────────────────────────
 
     setStrategy(strategy: BudgetStrategy): void { this.strategy = strategy; }
 
@@ -270,12 +247,6 @@ export class BudgetStrategyEngine {
     getBudgetData(): BudgetData { return this.budgetData; }
     getLastSelectedModelId(): string | null { return this._selectedModelId; }
 
-    // ── FM Persistence (server-backed) ────────────────────────────────
-
-    /**
-     * Await this if you need FMs loaded before proceeding.
-     * Subsequent calls resolve immediately once loading completes.
-     */
     async ensureFMsLoaded(): Promise<void> {
         if (this.factorizationMachineLoadPromise) {
             await this.factorizationMachineLoadPromise;
@@ -307,10 +278,6 @@ export class BudgetStrategyEngine {
         }
     }
 
-    /**
-     * Debounced save: coalesces rapid successive calls (e.g., many trainOne calls
-     * in quick succession) into a single server write every SAVE_DEBOUNCE_MS.
-     */
     private scheduleSave(): void {
         if (this.saveDebounceTimer !== null) {
             clearTimeout(this.saveDebounceTimer);
@@ -323,7 +290,7 @@ export class BudgetStrategyEngine {
         }, this.SAVE_DEBOUNCE_MS);
     }
 
-    // ── Sliding Window Rate Limit Logic ───────────────────────────────
+    // ── Rate Limit Logic ─────────────────────────────────────────────
 
     private getRateLimitState(modelId: string): RateLimitState {
         let state = this.rateLimitStates.get(modelId);
@@ -338,7 +305,6 @@ export class BudgetStrategyEngine {
         const state = this.getRateLimitState(modelId);
         const now = Date.now();
         state.requestTimestamps.push(now);
-        // Prune old entries outside the window
         const cutoff = now - SLIDING_WINDOW_MS;
         while (state.requestTimestamps.length > 0 && state.requestTimestamps[0] < cutoff) {
             state.requestTimestamps.shift();
@@ -364,7 +330,7 @@ export class BudgetStrategyEngine {
         return recentCount >= MAX_REQUESTS_PER_WINDOW;
     }
 
-    // ── Model resolution ──────────────────────────────────────────────
+    // ── Model Resolution ──────────────────────────────────────────────
 
     private getSelectedModels(): LanguageModel[] {
         const models: LanguageModel[] = [];
@@ -388,8 +354,6 @@ export class BudgetStrategyEngine {
         });
     }
 
-    // ── Feature extraction ────────────────────────────────────────────
-
     private buildFeaturesForModel(
         model: LanguageModel,
         prompt: string,
@@ -398,8 +362,6 @@ export class BudgetStrategyEngine {
         const baseFeatures = this.featureExtractor.extract(model, prompt, metadata);
         return this.censorshipFM.buildSparseVector(baseFeatures);
     }
-
-    // ── FM prediction ─────────────────────────────────────────────────
 
     private predictFMScore(
         model: LanguageModel,
@@ -417,23 +379,18 @@ export class BudgetStrategyEngine {
         return Math.min(1, uses / FM_MIN_SAMPLES_FOR_CONFIDENCE);
     }
 
-    // ── Online learning ───────────────────────────────────────────────
-
     recordOutcome(outcome: RequestOutcome): void {
         const model = this.allLanguageModelsById.get(outcome.modelId);
         if (!model) return;
 
         const x = this.buildFeaturesForModel(model, outcome.prompt, outcome.metadata);
 
-        this.censorshipFM.trainOne(x, outcome.censored    ? 1 : 0);
-        this.acceptanceFM.trainOne(x, outcome.accepted    ? 1 : 0);
+        this.censorshipFM.trainOne(x, outcome.censored ? 1 : 0);
+        this.acceptanceFM.trainOne(x, outcome.accepted ? 1 : 0);
 
         this.factorizationMachineSampleCounter++;
-        // Debounced save instead of every-10-samples to reduce server writes
         this.scheduleSave();
     }
-
-    // ── Candidate selection ───────────────────────────────────────────
 
     async selectModelForRequest(
         requestBody: Record<string, unknown>,
@@ -477,21 +434,15 @@ export class BudgetStrategyEngine {
             if (failedIds.has(model.id)) return false;
             if (budgetExceeded && !isFreeModel(model)) return false;
 
-            // Hard-block: context length exceeded
             const contextLength = model.contextLength ?? 0;
             if (contextLength > 0 && currentTokens > contextLength) return false;
 
-            // Hard-block: model is on rate-limit cooldown
             if (this.isModelOnCooldown(model.id)) return false;
-
-            // Soft-throttle: too many requests in the sliding window
             if (this.isModelThrottled(model.id)) return false;
 
             return true;
         });
     }
-
-    // ── Quality scores ────────────────────────────────────────────────
 
     getModelQualityScore(modelId: string): number {
         const used = this.budgetData.modelUsedCount?.[modelId] ?? 0;
@@ -533,8 +484,6 @@ export class BudgetStrategyEngine {
             this.scheduleSave();
         }
     }
-
-    // ── Ranking ───────────────────────────────────────────────────────
 
     private rankCandidates(
         candidates: LanguageModel[],
@@ -587,13 +536,12 @@ export class BudgetStrategyEngine {
         return sorted;
     }
 
-    // ── Streaming generation ──────────────────────────────────────────
-
     async generateStream(
         requestBody: Record<string, unknown>,
         abortController: AbortController,
         callbacks?: StreamCallbacks,
         metadata: RequestMetadata = {},
+        existingText?: string,
     ): Promise<StreamResult> {
         const failedIds = new Set<string>();
 
@@ -650,7 +598,13 @@ export class BudgetStrategyEngine {
                     let result: StreamResult;
 
                     try {
-                        result = await this.engine.generateStream(requestBody, abortController, wrappedCallbacks);
+                        result = await this.engine.generateStream(
+                            requestBody, 
+                            abortController, 
+                            wrappedCallbacks,
+                            undefined,
+                            existingText
+                        );
                     } catch (e) {
                         if (abortController.signal.aborted) throw e;
 
@@ -676,7 +630,8 @@ export class BudgetStrategyEngine {
                     const cost = calculateRequestCost(promptTokens, cachedTokens, completionTokens, pricing);
                     this.recordSuccess(selectedModel.id, cost.totalCost);
 
-                    const fullOutput = accumulatedPartialText + result.text;
+                    // Output text is result.text, preventing duplicated responses
+                    const fullOutput = result.text || accumulatedPartialText;
 
                     if (!fullOutput) {
                         this.recordBroken(selectedModel.id);
@@ -716,7 +671,6 @@ export class BudgetStrategyEngine {
                     const sessionDuration = Date.now() - sessionStart;
                     this.recordSessionDuration(selectedModel.id, sessionDuration);
 
-                    // Network errors: propagate immediately, do NOT penalize the model
                     if (isNetworkError(e)) {
                         throw e;
                     }
@@ -827,7 +781,6 @@ export class BudgetStrategyEngine {
                         continue;
                     }
 
-                    // Network errors: propagate immediately, do NOT penalize the model
                     if (isNetworkError(e)) {
                         throw e;
                     }
@@ -848,8 +801,6 @@ export class BudgetStrategyEngine {
         console.warn('[BudgetEngine] All models exhausted for completion. Returning empty result.');
         return { text: '', modelId: '' };
     }
-
-    // ── Observed Performance Metrics ────────────────────────────────
 
     private getModelSpeed(modelId: string): number { return this.budgetData.modelAverageLatencyMsPerToken?.[modelId] ?? Number.POSITIVE_INFINITY; }
     private getModelTTFT(modelId: string): number { return this.budgetData.modelAverageTimeToFirstToken?.[modelId] ?? Number.POSITIVE_INFINITY; }
@@ -890,12 +841,9 @@ export class BudgetStrategyEngine {
         const freeModels = selectedModels.filter(m => {
             if (!isFreeModel(m)) return false;
             if (failedIds.has(m.id)) return false;
-            // Hard-block: context length exceeded
             const contextLength = m.contextLength ?? 0;
             if (contextLength > 0 && (requiredContextTokens ?? 0) > contextLength) return false;
-            // Hard-block: rate-limit cooldown
             if (this.isModelOnCooldown(m.id)) return false;
-            // Soft-throttle: sliding window
             if (this.isModelThrottled(m.id)) return false;
             return true;
         });
@@ -910,8 +858,6 @@ export class BudgetStrategyEngine {
 
         return ranked[0] ?? null;
     }
-
-    // ── Recording ───────────────────────────────────────────────────
 
     private recordSuccess(modelId: string, cost: number): void {
         this.budgetData.budgetSpent += cost;
@@ -965,8 +911,6 @@ export class BudgetStrategyEngine {
         this.budgetData.modelTotalSessionDuration[modelId] = (this.budgetData.modelTotalSessionDuration[modelId] ?? 0) + durationMs;
     }
 
-    // ── Model Loading ───────────────────────────────────────────────
-
     private isModelReady(model: LanguageModel): boolean {
         const isCloud = !!model.apiKey && !!model.backend;
         if (isCloud) return true;
@@ -990,8 +934,6 @@ export class BudgetStrategyEngine {
         return false;
     }
 
-    // ── Introspection ─────────────────────────────────────────────────
-
     getCensorshipFeatureImportance(): Map<string, number> {
         return this.censorshipFM.featureImportance();
     }
@@ -999,12 +941,6 @@ export class BudgetStrategyEngine {
     getCensorshipFM(): FactorizationMachine { return this.censorshipFM; }
     getAcceptanceFM(): FactorizationMachine { return this.acceptanceFM; }
 
-    /**
-     * Force-persist FM models to server immediately.
-     * Useful for graceful shutdown hooks (e.g., beforeunload).
-     * Note: beforeunload cannot reliably await async work — use this
-     * as best-effort alongside the periodic debounced saves.
-     */
     async persistFMs(): Promise<void> {
         if (this.saveDebounceTimer !== null) {
             clearTimeout(this.saveDebounceTimer);

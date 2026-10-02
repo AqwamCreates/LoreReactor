@@ -286,7 +286,7 @@ export class LanguageModelEngine {
       bodyObj.stop = params.stop;
     }
 
-    // ─── Apply Provider Caching Strategy ────────────────────────────
+    // Apply Provider Caching Strategy
     const cacheStrategy = getCachingStrategy(backendName);
     const cacheResult = cacheStrategy.apply({
       backendName,
@@ -298,7 +298,6 @@ export class LanguageModelEngine {
     if (cacheResult.headers) Object.assign(headers, cacheResult.headers);
     if (cacheResult.bodyPatch) Object.assign(bodyObj, cacheResult.bodyPatch);
     if (cacheResult.messages) bodyObj.messages = cacheResult.messages;
-    // ─────────────────────────────────────────────────────────────────
 
     const body = JSON.stringify(bodyObj);
 
@@ -491,7 +490,7 @@ export class LanguageModelEngine {
 
     const modelPath = this.model?.model;
 
-    // ─── Local Tokenization ──────────────────────────────────────────
+    // Local Tokenization
     if (this.runtimePort) {
       const localKey = `local:${this.runtimePort}`;
 
@@ -524,7 +523,7 @@ export class LanguageModelEngine {
       return count;
     }
 
-    // ─── Cloud Tokenization ──────────────────────────────────────────
+    // Cloud Tokenization
     if (backendName && apiKey && cloudTokenizeEndpoints[backendName]) {
       const cloudKey = `${backendName}:${modelPath ?? ''}`;
 
@@ -673,6 +672,7 @@ export class LanguageModelEngine {
     maxParagraphs?: number,
     existingText?: string,
   ): Promise<StreamResult> {
+    const isContinuation = !!(existingText && existingText.length > 0);
     const paragraphLimit = (maxParagraphs && maxParagraphs > 0) ? maxParagraphs : 0;
     const { prompt, temperature, top_p, maxTokens, stop, extraParams, sessionId, messages } = this.extractFromRequestBody(requestBody);
 
@@ -709,19 +709,17 @@ export class LanguageModelEngine {
     if (!reader) throw new Error('No response body');
 
     const decoder = new TextDecoder("utf-8");
-    let fullContent = existingText || "";
+    // Streams always accumulate ONLY the new tokens of the current pass to prevent infinite loops
+    let fullContent = "";
     let firstTokenTime = 0;
     let newNumberOfTokens = 0;
     let paragraphCount = 0;
-    let hasReceivedNonWhitespace = false;
+    // If continuing from existing text, do NOT strip leading whitespace
+    let hasReceivedNonWhitespace = isContinuation;
     let ttftReported = false;
     let lastMsPerToken = 0;
     let lastTimeToFirstToken = 0;
     let finalUsage: { promptTokens?: number; completionTokens?: number; cachedTokens?: number } = {};
-
-    if (existingText && existingText.length > 0) {
-      paragraphCount = (existingText.match(/\n\n/g) || []).length;
-    }
 
     try {
       while (true) {
@@ -788,13 +786,11 @@ export class LanguageModelEngine {
 
             const finishReason = json.choices?.[0]?.finish_reason;
             
-            // Standard OpenAI & OpenAI-compatible (vLLM, Ollama, llama.cpp) finish reasons
             if (finishReason) {
-                // 1. Extract any trailing content in this final chunk
                 if (json.choices?.[0]?.delta?.content) {
                     token = json.choices[0].delta.content;
-                    if (!hasReceivedNonWhitespace && !existingText) {
-                        const trimmed = token.trimStart();
+                    if (!hasReceivedNonWhitespace && !isContinuation && fullContent.length === 0) {
+                        const trimmed = token.replace(/^[\r\n\t]+/, '');
                         if (trimmed.length > 0) {
                             token = trimmed;
                             hasReceivedNonWhitespace = true;
@@ -802,16 +798,13 @@ export class LanguageModelEngine {
                             newNumberOfTokens++;
                             fullContent += token;
                         }
-                    } else if (hasReceivedNonWhitespace) {
+                    } else {
+                        hasReceivedNonWhitespace = true;
                         newNumberOfTokens++;
                         fullContent += token;
                     }
                 }
 
-                // 2. Determine completion state
-                // "length" means it hit max_tokens (truncated) -> isCompleted: false (triggers auto-resume!)
-                // "stop" / "eos" means natural stop or stop sequence -> isCompleted: true
-                // "content_filter" / "tool_calls" -> isCompleted: true (effectively stopped)
                 const isTruncated = finishReason === 'length';
                 const isCompleted = !isTruncated;
 
@@ -846,8 +839,9 @@ export class LanguageModelEngine {
 
             if (!token) continue;
 
-            if (!hasReceivedNonWhitespace && !existingText) {
-              const trimmed = token.trimStart();
+            // Only strip initial carriage returns/newlines at the start of a completely fresh response
+            if (!hasReceivedNonWhitespace && !isContinuation && fullContent.length === 0) {
+              const trimmed = token.replace(/^[\r\n\t]+/, '');
               if (trimmed.length === 0) continue;
               token = trimmed;
             }

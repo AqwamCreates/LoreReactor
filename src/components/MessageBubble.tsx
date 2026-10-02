@@ -199,6 +199,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     }, [onCancelEditing]);
 
     const handleSaveEdit = React.useCallback(() => {
+        // Learns from raw textContent to raw editDraft
         learnFromManualEdits(message.textContent, editDraft);
         onSaveEdit();
     }, [message.textContent, editDraft, onSaveEdit]);
@@ -220,6 +221,8 @@ export const MessageBubble = React.memo(function MessageBubble({
         isStem ? 'bubble-stem' : '',
         activeToolbarId === message.id ? 'toolbar-active' : '',
     ].filter(Boolean).join(' ');
+
+    const displayedTextContent = message.processedTextContent ?? message.textContent;
 
     return (
         <React.Fragment>
@@ -383,7 +386,8 @@ export const MessageBubble = React.memo(function MessageBubble({
                         </div>
                     ) : (
                         <>
-                            <MemoizedMessageText text={message.textContent} />
+                            {/* DISPLAY LAYER: Uses processedTextContent if available, falls back to raw textContent */}
+                            <MemoizedMessageText text={displayedTextContent} />
 
                             {message.files && message.files.length > 0 && (
                                 <div className="message-attachment-indicator" title={`${message.files.length} attached file${message.files.length !== 1 ? 's' : ''}`}>
@@ -411,7 +415,7 @@ export const MessageBubble = React.memo(function MessageBubble({
 
                                         <button
                                             type="button"
-                                            onClick={() => onCopyText(message.textContent)}
+                                            onClick={() => onCopyText(displayedTextContent)}
                                             className="toolbar-button"
                                             title="Copy text to clipboard"
                                         >
@@ -420,6 +424,7 @@ export const MessageBubble = React.memo(function MessageBubble({
 
                                         <button
                                             type="button"
+                                            // EDIT LAYER: Always passes raw textContent to the editor
                                             onClick={() => onStartEditing(message.id, message.textContent)}
                                             disabled={isLoading}
                                             className="toolbar-button"

@@ -3,7 +3,7 @@ import { useCallback } from 'react';
 import type { Character, InteractionData, PromptBlock, BudgetStrategy, BudgetData, LanguageModel } from '../types';
 import { CharacterActor } from '../services/CharacterActor';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
-import { CharacterSoul } from '../services/CharacterSoul'; // <-- UPDATED
+import { CharacterSoul } from '../services/CharacterSoul';
 import { getBudgetStrategyEngine, type RequestMetadata } from '../services/BudgetStrategyEngine';
 import { updatePartialMessageInInteractionData } from '../utilities/chatLogic';
 
@@ -14,7 +14,10 @@ export interface HandleServerResponseResult {
     interactionData: InteractionData;
     isCompleted: boolean;
     promptText?: string;
+    rawText?: string;
+    displayText?: string;
 }
+
 interface EngineDependencies {
     getState: () => any;
     setInteractionData: (d: InteractionData) => void;
@@ -127,6 +130,8 @@ export function useChatEngine(deps: EngineDependencies) {
             interactionData: effectiveData,
             isCompleted: result.isCompleted,
             promptText: result.promptText,
+            rawText: result.rawText,
+            displayText: result.displayText,
         };
     }, [getState, setStreamingState, setStats, setSelectedCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast, requestBorrowedModel]);
 
@@ -180,7 +185,6 @@ export function useChatEngine(deps: EngineDependencies) {
             return handleServerResponse(d, c, s, undefined, undefined, '', undefined, {});
         };
         
-        // Start the CharacterSoul, which delegates to runTurnSequence
         characterSoul.start(
             executor, 
             checkCanAct, 

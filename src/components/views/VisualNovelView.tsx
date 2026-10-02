@@ -74,8 +74,9 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const lastMsg = displayMessages[displayMessages.length - 1];
     const isStreamingInList = isLoading && streamingCharacter !== null && lastMsg?.character?.id === streamingCharacter.id;
 
+    // STREAMING LAYER: Uses processedTextContent if the stream has updated the message object directly
     const activeStreamingText: string | null = isStreamingInList
-        ? lastMsg.textContent
+        ? (lastMsg.processedTextContent ?? lastMsg.textContent)
         : (isLoading && formattedStreamingText ? String(formattedStreamingText) : null);
 
     const visibleCharacters = useMemo(() => {
@@ -267,6 +268,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     const handleSaveEdit = useCallback(() => {
         if (displayedMessage) {
+            // Learns from raw textContent to raw editDraft
             learnFromManualEdits(displayedMessage.textContent, editDraft);
         }
         onSaveEdit();
@@ -282,13 +284,19 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         e.currentTarget.style.display = 'none';
     }, []);
 
+    // DISPLAY LAYER: Uses processedTextContent if available, falls back to raw textContent
+    const displayedTextContent = useMemo(() => {
+        if (!displayedMessage) return null;
+        return displayedMessage.processedTextContent ?? displayedMessage.textContent;
+    }, [displayedMessage]);
+
     const displayText = useMemo(() => {
         if (isEditingLastSpeaker) return null;
-        if (viewIndex !== null && displayedMessage) return displayedMessage.textContent;
+        if (viewIndex !== null && displayedTextContent) return displayedTextContent;
         if (activeStreamingText) return activeStreamingText;
-        if (displayedMessage) return displayedMessage.textContent;
+        if (displayedTextContent) return displayedTextContent;
         return null;
-    }, [isEditingLastSpeaker, viewIndex, displayedMessage, activeStreamingText]);
+    }, [isEditingLastSpeaker, viewIndex, displayedTextContent, activeStreamingText]);
 
     return (
         <div className="vn-stage-container" style={bgStyle}>
@@ -411,12 +419,13 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                 )}
                                 {displayedMessage && (
                                     <>
-                                        <button type="button" className="vn-toolbar-btn" onClick={() => onCopyText(displayedMessage.textContent)} title="Copy Text">📋</button>
+                                        <button type="button" className="vn-toolbar-btn" onClick={() => onCopyText(displayedTextContent || '')} title="Copy Text">📋</button>
                                         <button type="button" className="vn-toolbar-btn" onClick={() => onResumeGeneration(displayedMessage.id)} title="Continue Generation">▶</button>
                                         <button type="button" className="vn-toolbar-btn" onClick={() => handleRegenerateFromMessageWithRollback(displayedMessage.id, interactionData.protagonists)} title="Regenerate">↻</button>
                                         <button
                                             type="button"
                                             className="vn-toolbar-btn"
+                                            // EDIT LAYER: Always passes raw textContent to the editor
                                             onClick={() => onStartEditing(displayedMessage.id, displayedMessage.textContent)}
                                             disabled={isLoading}
                                             title={isLoading ? 'Generation in progress...' : 'Edit Message'}
@@ -461,6 +470,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                     </div>
                                 )
                             ) : displayText ? (
+                                // DISPLAY LAYER: Renders the processed text
                                 <MemoizedMessageText text={displayText} />
                             ) : (
                                 <span style={{ opacity: 0.5, fontStyle: 'italic' }}>Waiting for an interaction...</span>

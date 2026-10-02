@@ -45,7 +45,7 @@ import type {
 
 const engine = getLanguageModelEngine();
 
-const NO_ARG_TOOLS = ['coin', 'calendar'];
+const NO_ARG_TOOLS = ['coin', 'calendar', 'dice'];
 const HOST_ONLY_TOOLS = ['administrator', 'creator', 'destroyer'];
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage | WhisperMessage {
@@ -63,27 +63,43 @@ function calculateLatencyFactor(
     return 1 / (1 + Math.exp(scaledZValue));
 }
 
+/**
+ * Finalizes a message in history.
+ * Supports saving processedTextContent separately from textContent.
+ */
 function finalizeMessageById(
     data: InteractionData,
     messageId: string,
     wasAborted: boolean,
-    fallbackText?: string
+    fallbackRawText?: string,
+    fallbackDisplayText?: string
 ): InteractionData {
-    if (wasAborted) return data;
+    if (wasAborted && !fallbackRawText) return data;
 
     const newHistories = { ...data.interactionHistories };
     for (const [locId, msgs] of Object.entries(newHistories) as [string, HistoryMessage[]][]) {
         const idx = msgs.findIndex(m => m.id === messageId && hasTextContent(m));
         if (idx !== -1) {
             const existingMsg = msgs[idx] as ChatMessage | WhisperMessage;
-            const finalContent = (fallbackText && fallbackText.length >= existingMsg.textContent.length)
-                ? fallbackText
+            
+            // Determine final raw content (for LLM)
+            const finalRawContent = (fallbackRawText && fallbackRawText.length >= existingMsg.textContent.length)
+                ? fallbackRawText
                 : existingMsg.textContent;
+
+            // Determine final display content (for UI)
+            let finalProcessedContent: string | undefined = undefined;
+            if (fallbackDisplayText && fallbackDisplayText !== finalRawContent) {
+                finalProcessedContent = fallbackDisplayText;
+            } else if (existingMsg.processedTextContent && existingMsg.processedTextContent !== finalRawContent) {
+                finalProcessedContent = existingMsg.processedTextContent;
+            }
 
             newHistories[locId] = [...msgs];
             newHistories[locId][idx] = {
                 ...existingMsg,
-                textContent: finalContent,
+                textContent: finalRawContent,
+                processedTextContent: finalProcessedContent,
                 lastUpdatedTimestamp: Date.now(),
             } as ChatMessage | WhisperMessage;
             break;
@@ -160,7 +176,7 @@ function evaluateAutoResumeSignals(
     for (const signal of signals) {
         const maxResumes = signal.maximumNumberOfAutoResumes ?? 10;
         if (currentResumeCount >= maxResumes) {
-            continue; // This signal has exhausted its resume quota
+            continue; 
         }
 
         const activationTrigger = signal.regularExpressionActivationTrigger?.trim();
@@ -172,7 +188,6 @@ function evaluateAutoResumeSignals(
         let activationIndex = 0;
         
         if (!activationTrigger) {
-            // Empty activation trigger means it activates on any partial text or abortion
             isActivated = true;
         } else {
             try {
@@ -212,7 +227,6 @@ function evaluateAutoResumeSignals(
                 }
             }
         } else if (stopPattern) {
-            // If no explicit deactivation trigger, check if it ends with the injected stop pattern
             if (trimmedText.endsWith(stopPattern)) {
                 isDeactivated = true;
             }
@@ -410,10 +424,10 @@ export function useChatSession(options: UseChatSessionOptions) {
     const { acquireLock, releaseLock, isLoadingRef } = useCharacterResponseLock();
     const { generateAmbientNarration } = useAmbientNarration(setStreamingState, setStreamingText, streamingTextRef);
 
+    // Let the throttler manage store updates without redundant unthrottled setState
     const throttledSetStreamingTextWithBroadcast = useCallback((text: string) => {
         throttledSetStreamingText(text);
         streamingTextRef.current = text;
-        useSessionStore.setState({ streamingText: text });
 
         const char = streamingCharacterRef.current;
         const msgId = streamingMessageIdRef.current;
@@ -470,7 +484,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                         const completedText = text + prediction;
                         throttledSetStreamingText(completedText);
                         streamingTextRef.current = completedText;
-                        useSessionStore.setState({ streamingText: completedText });
                         abortControllerRef.current?.abort();
 
                         const freshData = getState().interactionData;
@@ -483,6 +496,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                                 const currentLocId = getCurrentLocationId(freshData, char) || 'global';
                                 const speculativeMsg = createChatMessage(freshData, char, completedText);
                                 speculativeMsg.id = msgId;
+                                speculativeMsg.processedTextContent = completedText;
                                 const newHistories = { ...freshData.interactionHistories };
                                 if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
                                 newHistories[currentLocId].push(speculativeMsg);
@@ -495,7 +509,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                                         updatedHistories[locId] = [...msgs];
                                         updatedHistories[locId][idx] = {
                                             ...existingMsg,
-                                            textContent: completedText,
+                                            processedTextContent: completedText,
                                             lastUpdatedTimestamp: Date.now(),
                                         } as ChatMessage | WhisperMessage;
                                         break;
@@ -523,7 +537,8 @@ export function useChatSession(options: UseChatSessionOptions) {
                 id: msgId,
                 messageType: 'chat',
                 character: char,
-                textContent: text,
+                textContent: '',
+                processedTextContent: text,
                 doNotRespond: false,
                 files: [],
                 modelTextContentSummaries: {},
@@ -637,7 +652,11 @@ export function useChatSession(options: UseChatSessionOptions) {
                     const idx = msgs.findIndex(m => m.id === lastMsg.id);
                     if (idx !== -1) {
                         newHistories[locId] = [...msgs];
-                        newHistories[locId][idx] = { ...lastMsg, textContent: dt } as ChatMessage | WhisperMessage;
+                        newHistories[locId][idx] = { 
+                            ...lastMsg, 
+                            textContent: dt,
+                            processedTextContent: dt !== lastMsg.textContent ? dt : undefined
+                        } as ChatMessage | WhisperMessage;
                         break;
                     }
                 }
@@ -650,6 +669,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
         
         const chatMessage = createChatMessage(base, p.character, dt);
+        chatMessage.processedTextContent = dt;
         newHistories[currentLocId].push(chatMessage);
         
         return { ...base, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
@@ -779,13 +799,14 @@ export function useChatSession(options: UseChatSessionOptions) {
                 return;
             }
 
-            // If a tool abort caused turnResult to have no new message, commit live streaming text fallback
+            // Fallback: If a tool abort caused turnResult to have no new message, commit live streaming text
             if (getGlobalMessageHistory(ud).length <= preTurnCount) {
                 const liveText = streamingTextRef.current?.trim();
                 if (liveText && respondingChar) {
                     const currentLocId = getCurrentLocationId(ud, respondingChar) || 'global';
                     const fallbackMsg = createChatMessage(ud, respondingChar, liveText);
                     if (streamingMessageIdRef.current) fallbackMsg.id = streamingMessageIdRef.current;
+                    fallbackMsg.processedTextContent = liveText;
                     const newHistories = { ...ud.interactionHistories };
                     if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
                     newHistories[currentLocId].push(fallbackMsg);
@@ -848,6 +869,8 @@ export function useChatSession(options: UseChatSessionOptions) {
             isSpeculatingRef.current = false;
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
+
+            resetStream(); // Cancel any queued throttled flush to prevent zombie timer resurrection
 
             useSessionStore.setState({
                 isLoading: false,
@@ -921,7 +944,11 @@ export function useChatSession(options: UseChatSessionOptions) {
                     currentState.interactionData.profile?.toolUsageDisplayMode
                 );
 
-                slashMessage.textContent = toolResult.displayReplacement || toolResult.content || `[${slashInvocation.toolType}]`;
+                const rawCmd = text;
+                const displayResult = toolResult.displayReplacement || toolResult.content || `[${slashInvocation.toolType}]`;
+                
+                slashMessage.textContent = rawCmd;
+                slashMessage.processedTextContent = displayResult !== rawCmd ? displayResult : undefined;
 
                 const preSlashData = currentState.interactionData;
                 const currentLocId = getCurrentLocationId(currentState.interactionData, activeCharacter) || 'global';
@@ -1176,10 +1203,14 @@ export function useChatSession(options: UseChatSessionOptions) {
                     const targetMsg = msgs[idx] as ChatMessage | WhisperMessage;
                     const textContent = streamedText || targetMsg.textContent;
                     const paragraphs = (textContent.match(/\n\n/g) || []).length + 1;
+                    
+                    const isProcessed = streamedText && streamedText !== targetMsg.textContent;
+                    
                     updatedHistories[locId] = [...msgs];
                     updatedHistories[locId][idx] = {
                         ...targetMsg,
-                        textContent,
+                        textContent: targetMsg.textContent || textContent,
+                        processedTextContent: isProcessed ? textContent : targetMsg.processedTextContent,
                         lastUpdatedTimestamp: Date.now()
                     } as ChatMessage | WhisperMessage;
                     
@@ -1288,10 +1319,16 @@ export function useChatSession(options: UseChatSessionOptions) {
                 throttledSetStreamingTextWithBroadcast, undefined, existingText, allPromptBlocks
             );
 
-            // Fallback: If result is null (e.g. tool execution aborted sub-stream), save streamed text into history so it is not lost
             const liveStreamedText = streamingTextRef.current || existingText;
             const dataToFinalize = result?.interactionData || currentInteractionData;
-            const finalized = finalizeMessageById(dataToFinalize, messageId, wasStoppedRef.current, liveStreamedText);
+            
+            const finalized = finalizeMessageById(
+                dataToFinalize, 
+                messageId, 
+                wasStoppedRef.current, 
+                result?.rawText || liveStreamedText,
+                result?.displayText
+            );
 
             const finalizedMsg = getGlobalMessageHistory(finalized).find(m => m.id === messageId);
             if (finalizedMsg) onMessageBroadcastRef.current?.(finalizedMsg);

@@ -6,7 +6,7 @@ import type { tool } from "../types";
 const characterAgnosticTools: tool[] = ['whisper', 'think', 'pick', 'clock', 'calendar', 'coin', 'dice', 'random', 'rng', 'move', 'dialogue', 'knowledge', 'memory', 'lookup', 'map', 'audio', 'clothing', 'note', 'inventory', 'trade'];
 const characterSpecificTools: tool[] = ['timer', 'stopwatch', 'calculator', 'schedule', 'web', 'invite', 'kick', 'teleport' , 'key', 'summon', 'narrate'];
 const metaTools: tool[] = ['inspect', 'administrator', 'creator', 'destroyer'];
-const serverTools: tool[] = ['read_file', 'browser', 'write_file']
+const serverTools: tool[] = ['read_file', 'browser', 'write_file'];
 
 export const validTools: tool[] = [...characterAgnosticTools, ...characterSpecificTools, ...metaTools, ...serverTools];
 
@@ -54,9 +54,8 @@ export class ToolInvocationParser {
                     break;
                 }
 
-                // 1. Process text before the tool tag
+                // Text before the tool tag is safe for display
                 let before = input.slice(i, startIdx);
-                // Collapse trailing double-newlines before a tool into a single newline
                 before = before.replace(/\n\s*\n\s*$/, '\n');
                 
                 displayOut += before;
@@ -71,26 +70,15 @@ export class ToolInvocationParser {
                     break;
                 }
 
-                const toolContent = input.slice(afterStart, endIdx).trim();
+                const exactRaw = input.slice(startIdx, endIdx + toolEndString.length);
+                const toolContent = input.slice(afterStart, endIdx);
                 const invocation = parseToolContent(toolContent);
-                if (invocation) toolInvocations.push(invocation);
-
-                // 2. Process text after the tool tag
-                let nextPos = endIdx + toolEndString.length;
-                // Collapse leading double-newlines after a tool into a single newline
-                let after = input.slice(nextPos);
-                if (/^\n\s*\n/.test(after)) {
-                    after = after.replace(/^\n\s*\n/, '\n');
+                if (invocation) {
+                    invocation.rawMatch = exactRaw;
+                    toolInvocations.push(invocation);
                 }
-                
-                // If we consumed the start of the next text block, we adjust the pointer
-                // but for simplicity in streaming, we just push the cleaned 'after'
-                // to the buffers if there's no start marker immediately following.
-                input.slice(nextPos); // consumed
-                i = nextPos; 
-                // We don't advance 'i' further here, the loop will process the cleaned 'after' 
-                // via displayOut in the next iteration or break.
-                
+
+                i = endIdx + toolEndString.length;
             } else if (this.state === 'SUPPRESSING') {
                 const combined = this.suppressedAccumulator + input.slice(i);
                 const endIdx = combined.indexOf(toolEndString);
@@ -100,13 +88,21 @@ export class ToolInvocationParser {
                     break;
                 }
 
-                const toolContent = combined.slice(0, endIdx).trim();
+                const exactRaw = `${toolStartSring}${combined.slice(0, endIdx + toolEndString.length)}`;
+                const toolContent = combined.slice(0, endIdx);
                 const invocation = parseToolContent(toolContent);
-                if (invocation) toolInvocations.push(invocation);
+                if (invocation) {
+                    invocation.rawMatch = exactRaw;
+                    toolInvocations.push(invocation);
+                }
 
+                const prevSuppressedLen = this.suppressedAccumulator.length;
                 this.state = 'NORMAL';
                 this.suppressedAccumulator = '';
-                i = endIdx + toolEndString.length;
+
+                // Advance pointer past the end marker in input
+                const consumedFromInput = (endIdx + toolEndString.length) - prevSuppressedLen;
+                i += Math.max(0, consumedFromInput);
             }
         }
 
@@ -128,24 +124,28 @@ function isValidToolType(type: string): boolean {
     return validTools.includes(type as tool);
 }
 
+/**
+ * Parses Python-style function calls: <|tool_name()|> or <|tool_name(param="val", ...)|>.
+ * Passes raw args directly to ToolExecutor's parsePythonArgs to preserve quoted strings and commas.
+ */
 function parseToolContent(content: string): ToolInvocation | null {
     const trimmed = content.trim();
     if (!trimmed) return null;
 
-    const separatorIdx = trimmed.search(/[:\s]/);
-    if (separatorIdx > 0) {
-        const toolType = trimmed.slice(0, separatorIdx).toLowerCase();
-        const args = trimmed.slice(separatorIdx + 1).trim();
-        if (isValidToolType(toolType)) {
-            return { rawMatch: `${toolStartSring}${content}${toolEndString}`, toolType, args };
-        }
-    }
-    
-    const singleWord = trimmed.toLowerCase();
-    if (isValidToolType(singleWord)) {
-        return { rawMatch: `${toolStartSring}${content}${toolEndString}`, toolType: singleWord, args: '' };
-    }
-    return null;
+    // Strict regex requiring parentheses: tool_name(...)
+    const fnMatch = trimmed.match(/^([a-zA-Z0-9_]+)\s*\(([\s\S]*)\)$/);
+    if (!fnMatch) return null;
+
+    const toolType = fnMatch[1].toLowerCase();
+    if (!isValidToolType(toolType)) return null;
+
+    const args = fnMatch[2].trim();
+
+    return {
+        rawMatch: `${toolStartSring}${content}${toolEndString}`,
+        toolType,
+        args,
+    };
 }
 
 export function parseSlashCommand(input: string): ToolInvocation | null {
@@ -154,6 +154,16 @@ export function parseSlashCommand(input: string): ToolInvocation | null {
     const withoutSlash = trimmed.slice(1).trim();
     if (!withoutSlash) return null;
 
+    // Support /tool(key="val", ...)
+    const fnMatch = withoutSlash.match(/^([a-zA-Z0-9_]+)\s*\(([\s\S]*)\)$/);
+    if (fnMatch) {
+        const toolType = fnMatch[1].toLowerCase();
+        if (isValidToolType(toolType)) {
+            return { rawMatch: trimmed, toolType, args: fnMatch[2].trim() };
+        }
+    }
+
+    // Support standard /tool args for manual user typing in the chatbox
     const parts = withoutSlash.split(/[:\s]/);
     const toolType = parts[0].toLowerCase();
     if (isValidToolType(toolType)) {
