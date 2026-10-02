@@ -194,7 +194,7 @@ function App() {
 
     // ─── Chat Restoration ────────────────────────────────────
     const { activeChatRestored } = useChatRestoration({
-        sessionLoaded, // Gated: waits for session_data.json before restoring
+        sessionLoaded,
         charsLoading: characters.isLoading,
         chatsLoading: chatList.isLoading,
         contextsLoading: contexts.isLoading,
@@ -798,76 +798,128 @@ function App() {
         await chatOps.handleSwitchChat(parentInteractionDataId);
     }, [parentInteractionDataId, chatOps]);
 
-    const handleLoadWorld = useCallback((world: World) => {
+    // ─── Worlds Management: Rebuild Session from Active Worlds Array ─────
+    const handleLoadWorlds = useCallback((activeWorlds: World[]) => {
         if (!interactionData) return;
 
-        // 1. Resolve World entities from manager libraries
-        const resolvedChars = (world.characterIds || []).map(id => characters.characters.find(c => c.id === id)).filter((c): c is Character => !!c);
-        const resolvedCtxs = (world.contextIds || []).map(id => contexts.contexts.find(c => c.id === id)).filter((c): c is Context => !!c);
-        const resolvedLocs = (world.locationIds || []).map(id => locations.locations.find(l => l.id === id)).filter((l): l is Location => !!l);
-        const resolvedAudio = (world.audioTrackIds || []).map(id => audioTracks.audioTracks.find(t => t.id === id)).filter((t): t is AudioTrack => !!t);
-        const resolvedProfile = world.profileId ? profiles.profiles.find(p => p.id === world.profileId) : interactionData.profile;
+        const prevWorldIds: string[] = (interactionData as any)?.worldIds || [];
+        const prevWorlds = worlds.worlds.filter((w: World) => prevWorldIds.includes(w.id));
 
-        // 2. Merge alongside existing entities (deduplicated by ID)
-        const existingParticipantIds = new Set((interactionData.participants || []).map(p => p.id));
-        const mergedParticipants = [
-            ...(interactionData.participants || []),
-            ...resolvedChars.filter(c => !existingParticipantIds.has(c.id)),
-        ];
+        const prevWorldCharIds = new Set(prevWorlds.flatMap(w => w.characterIds || []));
+        const prevWorldCtxIds = new Set(prevWorlds.flatMap(w => w.contextIds || []));
+        const prevWorldLocIds = new Set(prevWorlds.flatMap(w => w.locationIds || []));
+        const prevWorldAudioIds = new Set(prevWorlds.flatMap(w => w.audioTrackIds || []));
 
-        const existingContextIds = new Set((interactionData.contexts || []).map(c => c.id));
-        const mergedContexts = [
-            ...(interactionData.contexts || []),
-            ...resolvedCtxs.filter(c => !existingContextIds.has(c.id)),
-        ];
+        const nextWorldIds = activeWorlds.map(w => w.id);
+        const nextWorldCharIds = new Set(activeWorlds.flatMap(w => w.characterIds || []));
+        const nextWorldCtxIds = new Set(activeWorlds.flatMap(w => w.contextIds || []));
+        const nextWorldLocIds = new Set(activeWorlds.flatMap(w => w.locationIds || []));
+        const nextWorldAudioIds = new Set(activeWorlds.flatMap(w => w.audioTrackIds || []));
 
-        const existingLocationIds = new Set((interactionData.locations || []).map(l => l.id));
-        const mergedLocations = [
-            ...(interactionData.locations || []),
-            ...resolvedLocs.filter(l => !existingLocationIds.has(l.id)),
-        ];
+        // 1. Resolve Participants: Keep manual + currently active world characters
+        const retainedParticipants = (interactionData.participants || []).filter(p => {
+            if (prevWorldCharIds.has(p.id)) {
+                return nextWorldCharIds.has(p.id);
+            }
+            return true;
+        });
+        const existingParticipantIds = new Set(retainedParticipants.map(p => p.id));
+        const newCharsToAdd = Array.from(nextWorldCharIds)
+            .filter(id => !existingParticipantIds.has(id))
+            .map(id => characters.characters.find(c => c.id === id))
+            .filter((c): c is Character => !!c);
+        const mergedParticipants = [...retainedParticipants, ...newCharsToAdd];
 
-        const existingAudioTrackIds = new Set((interactionData.audioTracks || []).map(t => t.id));
-        const mergedAudioTracks = [
-            ...(interactionData.audioTracks || []),
-            ...resolvedAudio.filter(t => !existingAudioTrackIds.has(t.id)),
-        ];
+        // 2. Resolve Contexts: Keep manual + currently active world contexts
+        const retainedContexts = (interactionData.contexts || []).filter(c => {
+            if (prevWorldCtxIds.has(c.id)) {
+                return nextWorldCtxIds.has(c.id);
+            }
+            return true;
+        });
+        const existingContextIds = new Set(retainedContexts.map(c => c.id));
+        const newContextsToAdd = Array.from(nextWorldCtxIds)
+            .filter(id => !existingContextIds.has(id))
+            .map(id => contexts.contexts.find(c => c.id === id))
+            .filter((c): c is Context => !!c);
+        const mergedContexts = [...retainedContexts, ...newContextsToAdd];
 
-        // 3. Assemble updated interaction data
+        // 3. Resolve Locations: Keep manual + currently active world locations
+        const retainedLocations = (interactionData.locations || []).filter(l => {
+            if (prevWorldLocIds.has(l.id)) {
+                return nextWorldLocIds.has(l.id);
+            }
+            return true;
+        });
+        const existingLocationIds = new Set(retainedLocations.map(l => l.id));
+        const newLocsToAdd = Array.from(nextWorldLocIds)
+            .filter(id => !existingLocationIds.has(id))
+            .map(id => locations.locations.find(l => l.id === id))
+            .filter((l): l is Location => !!l);
+        const mergedLocations = [...retainedLocations, ...newLocsToAdd];
+
+        // 4. Resolve Audio Tracks: Keep manual + currently active world audio tracks
+        const retainedAudio = (interactionData.audioTracks || []).filter(t => {
+            if (prevWorldAudioIds.has(t.id)) {
+                return nextWorldAudioIds.has(t.id);
+            }
+            return true;
+        });
+        const existingAudioIds = new Set(retainedAudio.map(t => t.id));
+        const newAudiosToAdd = Array.from(nextWorldAudioIds)
+            .filter(id => !existingAudioIds.has(id))
+            .map(id => audioTracks.audioTracks.find(t => t.id === id))
+            .filter((t): t is AudioTrack => !!t);
+        const mergedAudioTracks = [...retainedAudio, ...newAudiosToAdd];
+
+        // 5. Resolve Profile: Prefer first active world with profile, or clean up if detached
+        let mergedProfile = interactionData.profile;
+        const activeProfileId = activeWorlds.find(w => w.profileId)?.profileId;
+        if (activeProfileId) {
+            mergedProfile = profiles.profiles.find(p => p.id === activeProfileId) || mergedProfile;
+        } else if (prevWorlds.some(w => w.profileId && w.profileId === interactionData.profile?.id)) {
+            mergedProfile = undefined;
+        }
+
+        // 6. Ensure Protagonists remain in valid participants
+        let mergedProtagonists = interactionData.protagonists || [];
+        const participantIdSet = new Set(mergedParticipants.map(p => p.id));
+        mergedProtagonists = mergedProtagonists.filter(p => participantIdSet.has(p.id));
+        if (mergedProtagonists.length === 0 && mergedParticipants.length > 0) {
+            mergedProtagonists = [mergedParticipants[0]];
+        }
+
         let updated: InteractionData = {
             ...interactionData,
+            ...({ worldIds: nextWorldIds } as any),
             participants: mergedParticipants,
+            protagonists: mergedProtagonists,
             contexts: mergedContexts,
             locations: mergedLocations,
             audioTracks: mergedAudioTracks,
-            profile: resolvedProfile,
+            profile: mergedProfile,
             lastUpdatedTimestamp: Date.now(),
         };
 
-        // 4. Ensure existing protagonists remain in participants
-        if (updated.protagonists) {
-            for (const p of updated.protagonists) {
-                if (!updated.participants.some(x => x.id === p.id)) {
-                    updated.participants = [p, ...updated.participants];
-                }
-            }
-        }
-
         updated = assignInitialLocationsIfNeeded(updated);
         setInteractionData(updated);
-        addToast(`Loaded world "${world.name}" alongside existing entities`, 'success');
 
-        // 5. Broadcast merged state to multiplayer peers
+        // 7. Broadcast merged state to multiplayer peers
         if (canBroadcastState) {
             (mp.multiplayerSync as any).broadcastStateSync?.({
                 participants: updated.participants,
+                protagonists: updated.protagonists,
                 contexts: updated.contexts,
                 locations: updated.locations,
                 audioTracks: updated.audioTracks,
                 profile: updated.profile,
             });
         }
-    }, [interactionData, characters.characters, contexts.contexts, locations.locations, audioTracks.audioTracks, profiles.profiles, setInteractionData, addToast, canBroadcastState, mp.multiplayerSync]);
+    }, [
+        interactionData, worlds.worlds, characters.characters, contexts.contexts,
+        locations.locations, audioTracks.audioTracks, profiles.profiles,
+        setInteractionData, canBroadcastState, mp.multiplayerSync
+    ]);
 
     // ─── Base View Props (Stable, contains only committed messages) ───
     const baseViewProps: ViewModeProps = {
@@ -1032,7 +1084,7 @@ function App() {
                     onToggleAudioTrack={handleToggleAudioTrackAndBroadcast} 
                     onSaveAudioTrack={audioTracks.saveAudioTrack}
                     onSaveWorld={worlds.saveWorld} 
-                    onLoadWorld={handleLoadWorld} 
+                    onToggleWorlds={handleLoadWorlds} 
                     onDeleteWorld={entityModals.getModalProperties('world').delete}
                     onDeleteModel={entityModals.getModalProperties('model').delete} 
                     onToggleModelLoad={models.toggleModelLoad}

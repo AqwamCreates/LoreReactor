@@ -980,7 +980,6 @@ const worldRepo = createRepository<World, World>({
     contextIds: [],
     locationIds: [],
     audioTrackIds: [],
-    promptBlockIds: [],
   }),
   serialize: (world) => world,
 });

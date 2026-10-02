@@ -150,7 +150,7 @@ function isEntityHollow(
         }
         case 'world': {
             const w = entity as World;
-            return !w.characterIds?.length && !w.contextIds?.length && !w.locationIds?.length && !w.audioTrackIds?.length && !w.promptBlockIds?.length;
+            return !w.characterIds?.length && !w.contextIds?.length && !w.locationIds?.length && !w.audioTrackIds?.length
         }
         case 'promptBlock': {
             const p = entity as PromptBlock;
@@ -323,7 +323,6 @@ export function DataManagerModal({
             for (const id of world.contextIds) if (ctxIdSet.has(id)) referencedCtxIds.add(id);
             for (const id of world.locationIds) if (locIdSet.has(id)) referencedLocIds.add(id);
             for (const id of world.audioTrackIds) if (audioIdSet.has(id)) referencedAudioIds.add(id);
-            for (const id of world.promptBlockIds) if (pbIdSet.has(id)) referencedPbIds.add(id);
             if (world.profileId && profileIdSet.has(world.profileId)) referencedProfileIds.add(world.profileId);
         }
 
@@ -505,7 +504,6 @@ export function DataManagerModal({
             for (const ctxId of world.contextIds) { if (!ctxIdSet.has(ctxId)) issues.push({ entityType: 'World', entityName: world.name, issue: 'References missing context', refType: 'Context', refId: ctxId }); }
             for (const locId of world.locationIds) { if (!locIdSet.has(locId)) issues.push({ entityType: 'World', entityName: world.name, issue: 'References missing location', refType: 'Location', refId: locId }); }
             for (const audioId of world.audioTrackIds) { if (!audioIdSet.has(audioId)) issues.push({ entityType: 'World', entityName: world.name, issue: 'References missing audio track', refType: 'Audio Track', refId: audioId }); }
-            for (const pbId of world.promptBlockIds) { if (!pbIdSet.has(pbId)) issues.push({ entityType: 'World', entityName: world.name, issue: 'References missing prompt block', refType: 'Prompt Block', refId: pbId }); }
             if (world.profileId && !profileIdSet.has(world.profileId)) issues.push({ entityType: 'World', entityName: world.name, issue: 'References missing profile', refType: 'profile', refId: world.profileId });
         }
         for (const c of allCharacters) {

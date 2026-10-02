@@ -33,7 +33,6 @@ export function useWorldManager() {
         const world: World = {
             id: uuidv4(), name, description: '',
             characterIds: [], contextIds: [], locationIds: [], audioTrackIds: [],
-            promptBlockIds: [],
             firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
         };
         return await saveWorld(world) ? world : null;
@@ -48,7 +47,6 @@ export function useWorldManager() {
             id: uuidv4(), name, description: 'Snapshot from chat',
             characterIds: [...characterIds], contextIds: [...contextIds],
             locationIds: [...locationIds], audioTrackIds: [...audioTrackIds],
-            promptBlockIds: [...promptBlockIds],
             profileId,
             firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
         };
