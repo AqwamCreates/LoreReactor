@@ -6,8 +6,8 @@ import { fetchMultipleContextUrls } from './linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
 import { toolStartSring, toolEndString } from '../dictionaries/stringList';
-import { fetchCurrentWeather, getLocation, getTimeDataFromCoordinates } from '../services/LocationEngine';
-import type TimeData, { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter, getCurrentLocationId, } from './locationLogic';
+import { type TimeData, fetchCurrentWeather, getLocation, getTimeDataFromCoordinates } from '../services/LocationEngine';
+import { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter, getCurrentLocationId, } from './locationLogic';
 import { defaultInputStrategy } from '../dictionaries/defaults';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { generateLocationVisitSummary } from '../services/ChatMessageSummarizationEngine';
@@ -1999,16 +1999,19 @@ export async function buildPrompt(
     let latitude: number | undefined = ctx.currentLocation?.latitude;
     let longitude: number | undefined = ctx.currentLocation?.longitude;
 
-    if (!latitude || !longitude) {
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
         const geoLocation = await getLocation();
-        if (geoLocation) { latitude = geoLocation.latitude; longitude = geoLocation.longitude; }
+        if (geoLocation) { 
+            latitude = geoLocation.latitude; 
+            longitude = geoLocation.longitude; 
+        }
     }
 
-    const localTimestamp = (latitude && longitude) ? getTimeDataFromCoordinates(latitude, longitude) : null;
+    const timeData = getTimeDataFromCoordinates(latitude, longitude)
 
     const builderCtx: BuilderContext = {
         ctx, activeContextIds, characterClothingWearingStatuses, contextLines,
-        hasBeenSummarized: false, latitude, longitude, localTimestamp, locationImages: []
+        hasBeenSummarized: false, latitude, longitude, timeData, locationImages: []
     };
 
     // 5. Build blocks on-demand using registry (Lazy Evaluation)

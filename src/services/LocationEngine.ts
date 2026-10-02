@@ -37,12 +37,21 @@ export interface TimeData {
     formattedTime: string;
 }
 
-export function getTimeDataFromCoordinates(latitude: number, longitude: number): TimeData | null {
-    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
-
+export function getTimeDataFromCoordinates(latitude?: number, longitude?: number): TimeData | null {
     try {
-        const timezone = tzlookup(latitude, longitude);
-        const dt = DateTime.now().setZone(timezone);
+        let dt: DateTime | undefined;
+        
+        // 1. Strict coordinate validation (using && instead of ||)
+        if (typeof latitude === 'number' && typeof longitude === 'number') {
+            if (latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
+                const timezone = tzlookup(latitude, longitude);
+                dt = DateTime.now().setZone(timezone);
+            }
+        }
+
+        // 2. Fallback to system local time if coordinates are missing or invalid
+        dt = dt || DateTime.now();
+
         if (!dt.isValid) return null;
 
         return {
@@ -50,7 +59,9 @@ export function getTimeDataFromCoordinates(latitude: number, longitude: number):
             formattedDate: dt.toLocaleString({ weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
             formattedTime: dt.toLocaleString({ hour: 'numeric', minute: '2-digit', hour12: true })
         };
-    } catch {
+    } catch (e) {
+        // Catches tzlookup errors (e.g., middle of the ocean) and invalid DateTime errors
+        console.warn('Failed to get time data:', e);
         return null;
     }
 }
