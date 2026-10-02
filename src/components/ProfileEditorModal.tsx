@@ -202,7 +202,7 @@ export function ProfileEditorModal({
     const [tools, setTools] = useState<Record<tool, tristateInteger>>(mergeToolsWithDefaults(ep?.tools));
     const [toolSearchQuery, setToolSearchQuery] = useState('');
     const [narrateTexts, setNarrateTexts] = useState<Record<textType, boolean>>(ep ? migrateNarrateTexts(ep) : { ...DEFAULT_NARRATE_TEXTS });
-    const [inputStrategy, setInputStrategy] = useState<(promptBlockType | string)[]>(ep?.inputStrategy?.length ? ep.inputStrategy : []);
+    const [inputStrategy, setInputStrategy] = useState<(promptBlockType | string)[]>(ep?.inputStrategy?.length ? ep.inputStrategy : [...defaultInputStrategy]);
     const [summarizationSteps, setSummarizationSteps] = useState<SummarizationStep[]>(
         ep?.summarizationSteps != null ? [...ep.summarizationSteps].sort((a, b) => a.order - b.order) : getDefaultSummarizationSteps()
     );
