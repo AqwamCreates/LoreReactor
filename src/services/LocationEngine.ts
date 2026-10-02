@@ -35,35 +35,28 @@ export interface TimeData {
     rawTimestamp: number;
     formattedDate: string;
     formattedTime: string;
+    luxonTimestamp: DateTime; // <--- ADD THIS
 }
 
-export function getTimeDataFromCoordinates(latitude?: number, longitude?: number): TimeData | null {
-    try {
-        let dt: DateTime | undefined;
+export function getTimeDataFromCoordinates(latitude?: number, longitude?: number): TimeData {
+    
+    let dt: DateTime | undefined;
         
-        // 1. Strict coordinate validation (using && instead of ||)
-        if (typeof latitude === 'number' && typeof longitude === 'number') {
-            if (latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
-                const timezone = tzlookup(latitude, longitude);
-                dt = DateTime.now().setZone(timezone);
-            }
+    if (typeof latitude === 'number' && typeof longitude === 'number') {
+        if (latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
+            const timezone = tzlookup(latitude, longitude);
+            dt = DateTime.now().setZone(timezone).reconfigure({ locale: 'en-US' });
         }
-
-        // 2. Fallback to system local time if coordinates are missing or invalid
-        dt = dt || DateTime.now();
-
-        if (!dt.isValid) return null;
-
-        return {
-            rawTimestamp: dt.toMillis(),
-            formattedDate: dt.toLocaleString({ weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
-            formattedTime: dt.toLocaleString({ hour: 'numeric', minute: '2-digit', hour12: true })
-        };
-    } catch (e) {
-        // Catches tzlookup errors (e.g., middle of the ocean) and invalid DateTime errors
-        console.warn('Failed to get time data:', e);
-        return null;
     }
+
+    dt = dt || DateTime.now().reconfigure({ locale: 'en-US' });
+
+    return {
+        rawTimestamp: dt.toMillis(),
+        formattedDate: dt.toLocaleString({ weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+        formattedTime: dt.toLocaleString({ hour: 'numeric', minute: '2-digit', hour12: true }),
+        luxonTimestamp: dt // <--- ADD THIS
+    };
 }
 
 export async function fetchCurrentWeather(latitude: number, longitude: number, apiKey: string): Promise<string | null> {

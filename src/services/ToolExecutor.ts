@@ -12,6 +12,7 @@ import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { writeFile, readFile } from '../utilities/serverTools';
 import { buildSearchUrl } from '../utilities/searchURLBuilder';
+import { getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
 
 export interface ToolResult {
     toolType: string;
@@ -92,6 +93,12 @@ function resolveLocation(idOrName: string, interactionData: InteractionData | nu
     if (!query) return undefined;
     const sessionLocs = getSessionLocations(interactionData);
     return sessionLocs.find(l => l.id.toLowerCase() === query || l.name.toLowerCase() === query || l.id.startsWith(query));
+}
+
+function getCharacterTimeData(interactionData: InteractionData, character: any): TimeData {
+    const location = getCurrentLocation(interactionData, character);
+    const timeData = getTimeDataFromCoordinates(location?.latitude, location?.longitude)
+    return timeData;
 }
 
 const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, displayMode?: toolUsageDisplayMode) => ToolResult | Promise<ToolResult>> = {
@@ -303,36 +310,40 @@ function executeRandomPick(expression: string, _nextMessage: BaseMessage, _inter
 }
 
 // ─── Clock ────────────────────────────────────────────────────────────
-function executeClock(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
-    const now = new Date();
+function executeClock(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
+    const dt = getCharacterTimeData(interactionData, interactionData).luxonTimestamp;
     const trimmed = args.trim().toLowerCase();
     let timeStr: string;
+
     if (trimmed === '24h' || trimmed === '24') {
-        timeStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        timeStr = dt.toLocaleString({ hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
     } else if (trimmed === 'unix' || trimmed === 'timestamp') {
-        timeStr = Math.floor(now.getTime() / 1000).toString();
+        timeStr = Math.floor(dt.toMillis() / 1000).toString();
     } else {
-        timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+        timeStr = dt.toLocaleString({ hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
     }
+
     return { toolType: 'clock', args, content: timeStr, displayReplacement: `[🕰️ ${timeStr}]` };
 }
 
 // ─── Date ────────────────────────────────────────────────────────────
-function executeCalendar(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
-    const now = new Date();
+function executeCalendar(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context?: ToolExecutionContext, _displayMode?: toolUsageDisplayMode): ToolResult {
+    const dt = getCharacterTimeData(interactionData, interactionData).luxonTimestamp;
     const trimmed = args.trim().toLowerCase();
     let dateStr: string;
+
     if (trimmed === 'iso') {
-        dateStr = now.toISOString();
+        dateStr = dt.toISO() || new Date(dt.toMillis()).toISOString();
     } else if (trimmed === 'unix' || trimmed === 'timestamp') {
-        dateStr = Math.floor(now.getTime() / 1000).toString();
+        dateStr = Math.floor(dt.toMillis() / 1000).toString();
     } else if (trimmed === 'time') {
-        dateStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        dateStr = dt.toLocaleString({ hour: 'numeric', minute: '2-digit', hour12: true });
     } else if (trimmed === 'date') {
-        dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        dateStr = dt.toLocaleString({ weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     } else {
-        dateStr = now.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+        dateStr = dt.toLocaleString({ weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
     }
+
     return { toolType: 'date', args, content: dateStr, displayReplacement: `[📅 ${dateStr}]` };
 }
 
