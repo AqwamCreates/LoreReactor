@@ -379,7 +379,7 @@ function resolveLocation(idOrName: string, interactionData: InteractionData | nu
     return sessionLocs.find(l => l.id.toLowerCase() === query || l.name.toLowerCase() === query || l.id.startsWith(query));
 }
 
-function getCharacterTimeData(interactionData: InteractionData, character: any): TimeData {
+function getCharacterTimeData(interactionData: InteractionData, character: Character): TimeData {
     const location = getCurrentLocation(interactionData, character);
     return getTimeDataFromCoordinates(location?.latitude, location?.longitude);
 }
@@ -710,10 +710,10 @@ function executeRandomPick(args: string): ToolResult {
 }
 
 // ─── Clock ────────────────────────────────────────────────────────────
-function executeClock(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+function executeClock(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const format = pArgs.get(0, 'format', 'type')?.toLowerCase();
-    const dt = getCharacterTimeData(interactionData, interactionData).luxonTimestamp;
+    const dt = getCharacterTimeData(interactionData, nextMessage.character).luxonTimestamp;
 
     let timeStr: string;
     if (format === '24h' || format === '24') {
@@ -728,10 +728,10 @@ function executeClock(args: string, _nextMessage: BaseMessage, interactionData: 
 }
 
 // ─── Calendar ────────────────────────────────────────────────────────
-function executeCalendar(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+function executeCalendar(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const format = pArgs.get(0, 'format', 'type')?.toLowerCase();
-    const dt = getCharacterTimeData(interactionData, interactionData).luxonTimestamp;
+    const dt = getCharacterTimeData(interactionData, nextMessage.character).luxonTimestamp;
 
     let dateStr: string;
     if (format === 'iso') {
