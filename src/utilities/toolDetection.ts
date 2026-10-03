@@ -44,6 +44,20 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
         riskDescription: 'Locks your desktop and drops you back to your OS login screen.' 
     },
     { 
+        tool: 'sleep', 
+        label: 'Host System Sleep / Hibernate', 
+        keywords: ['sleep', 'hibernate', 'suspend', 'bedtime', 'rest mode', 'standby', 'nap', 'sleep mode'], 
+        tier: 'os_privileged', 
+        riskDescription: 'Puts the host computer into sleep, standby, or hibernation mode.' 
+    },
+    { 
+        tool: 'shut_down', 
+        label: 'Host System Power Off', 
+        keywords: ['shut down', 'power off', 'turn off pc', 'shutdown', 'kill power', 'goodnight', 'turn off computer', 'shut off'], 
+        tier: 'os_privileged', 
+        riskDescription: 'Initiates a full shutdown sequence of the host operating system and hardware.' 
+    },
+    { 
         tool: 'write_file', 
         label: 'Write / Create Local Files', 
         keywords: ['file writer', 'save file', 'write document', 'editor', 'code writer', 'generator'], 
@@ -108,6 +122,7 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
     { tool: 'text_to_speech', label: 'Voice Text-to-Speech Output', keywords: ['voice', 'speak aloud', 'talking', 'speech', 'vocal', 'audible'], tier: 'ambient', riskDescription: 'Speaks dialogue out loud through your computer speakers.' },
     { tool: 'volume_control', label: 'Master Volume Control', keywords: ['dj', 'sound engineer', 'loud', 'music', 'sound', 'audio volume', 'speaker'], tier: 'ambient', riskDescription: 'Can adjust your computer master audio volume or toggle mute.' },
     { tool: 'notify', label: 'Native OS Desktop Notifications', keywords: ['alarm', 'reminder', 'assistant', 'secretary', 'butler', 'alert', 'notifier'], tier: 'ambient', riskDescription: 'Fires desktop pop-up notifications to your OS notification center.' },
+    { tool: 'schedule_response', label: 'Autonomous Follow-up Scheduler', keywords: ['check in later', 'remind me', 'follow up', 'wake me up', 'autonomous', 'ping me later', 'check back', 'schedule response'], tier: 'ambient', riskDescription: 'Schedules the AI to autonomously generate a follow-up response after a specified delay.' },
     { tool: 'web', label: 'Web Search & Link Fetcher', keywords: ['researcher', 'search', 'investigator', 'journalist', 'curious', 'internet', 'google', 'web'], tier: 'ambient', riskDescription: 'Fetches content from the live web and searches the internet.' },
     { tool: 'browser', label: 'Open Webpage in Default Browser', keywords: ['browse', 'web surfer', 'open links', 'researcher', 'explorer'], tier: 'ambient', riskDescription: 'Launches your default web browser to visit specific URLs.' },
     { tool: 'read_file', label: 'Read / Open Local Target', keywords: ['file viewer', 'reader', 'document viewer', 'file reader'], tier: 'ambient', riskDescription: 'Opens local files, videos, or directories in their default OS apps.' },

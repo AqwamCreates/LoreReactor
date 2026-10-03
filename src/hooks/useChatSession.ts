@@ -300,6 +300,72 @@ export function useChatSession(options: UseChatSessionOptions) {
         addToast,
     }), [addToast]);
 
+    // ─── Scheduled Responses Logic ─────────────────────────────────
+    const formatDelay = (ms: number): string => {
+        const totalSeconds = Math.floor(ms / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const parts: string[] = [];
+        if (hours > 0) parts.push(`${hours}h`);
+        if (minutes > 0) parts.push(`${minutes}m`);
+        if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+        return parts.join(' ');
+    };
+
+    const triggerDelayedResponseRef = useRef<(characterId: string, thought: string) => Promise<void>>(null);
+
+    const extractAndScheduleResponses = useCallback((data: InteractionData) => {
+        const history = getGlobalMessageHistory(data);
+        const protagonistIds = new Set(data.protagonists?.map(p => p.id) ?? []);
+        
+        for (let i = history.length - 1; i >= 0; i--) {
+            const msg = history[i];
+            if (hasTextContent(msg) && !protagonistIds.has(msg.character.id)) {
+                const chatMsg = msg as ChatMessage;
+                if (chatMsg.inventory?.__scheduled_responses__) {
+                    try {
+                        const tasks = JSON.parse(chatMsg.inventory.__scheduled_responses__ as string);
+                        for (const task of tasks) {
+                            const delay = task.durationMs;
+                            const charId = task.characterId;
+                            const charName = task.characterName;
+                            const thought = task.thought;
+                            
+                            setTimeout(() => {
+                                triggerDelayedResponseRef.current?.(charId, thought);
+                            }, delay);
+                            
+                            addToast(`⏰ ${charName} scheduled a follow-up in ${formatDelay(delay)}`, 'info');
+                        }
+                    } catch (e) {
+                        console.warn('Failed to parse scheduled responses', e);
+                    }
+                    
+                    // Clean up the inventory so it doesn't trigger again
+                    const updatedHistories = { ...data.interactionHistories };
+                    for (const [locId, msgs] of Object.entries(updatedHistories) as [string, HistoryMessage[]][]) {
+                        const idx = msgs.findIndex(m => m.id === chatMsg.id);
+                        if (idx !== -1) {
+                            const cleanMsg = { ...msgs[idx] } as ChatMessage;
+                            const cleanInv = cleanMsg.inventory ? { ...cleanMsg.inventory } : {};
+                            delete cleanInv['__scheduled_responses__'];
+                            if (Object.keys(cleanInv).length === 0) delete cleanMsg.inventory;
+                            else cleanMsg.inventory = cleanInv;
+                            
+                            updatedHistories[locId] = [...msgs];
+                            updatedHistories[locId][idx] = cleanMsg;
+                        }
+                    }
+                    
+                    const cleanedData = { ...data, interactionHistories: updatedHistories };
+                    setInteractionData(cleanedData);
+                }
+                break; 
+            }
+        }
+    }, [addToast, setInteractionData]);
+
     const executeTurnPipeline = useCallback(async ({
         data,
         protagonistId,
@@ -409,6 +475,9 @@ export function useChatSession(options: UseChatSessionOptions) {
                 setInteractionData(ud);
                 broadcastNewMessages(preTurnCount, ud);
 
+                // Extract and trigger scheduled follow-ups
+                extractAndScheduleResponses(ud);
+
                 const history = getGlobalMessageHistory(ud);
                 const lastMsg = history[history.length - 1];
                 const text = hasTextContent(lastMsg) ? lastMsg.textContent : '';
@@ -482,8 +551,35 @@ export function useChatSession(options: UseChatSessionOptions) {
         acquireLock, getState, isModelReadyForGeneration, addToast, releaseLock,
         resetStream, setStreamingState, setStats, getRequestsLastHour, chatEngine,
         applyPendingPartial, setInteractionData, broadcastNewMessages,
-        autoResumeOnCutoff, ui, generateAmbientNarration, isMultiplayerClient, isSpeculatingRef, streamingTextRef
+        autoResumeOnCutoff, ui, generateAmbientNarration, isMultiplayerClient, isSpeculatingRef, streamingTextRef, extractAndScheduleResponses
     ]);
+
+    const triggerDelayedResponse = useCallback(async (characterId: string, _thought: string) => {
+        const currentState = getState();
+        if (!currentState.interactionData || isLoadingRef.current) return;
+        
+        const character = currentState.interactionData.participants.find(p => p.id === characterId);
+        if (!character) return;
+
+        if (!acquireLock()) return;
+        
+        try {
+            await executeTurnPipeline({
+                data: currentState.interactionData,
+                protagonistId: currentState.interactionData.protagonists[0]?.id || '',
+                respondingCharacter: character,
+                isProtagonistCharId: (id) => currentState.interactionData.protagonists.some(p => p.id === id),
+                errorPrefix: 'Delayed response failed',
+                lockAlreadyAcquired: true,
+            });
+        } catch (e) {
+            console.error('Delayed response error:', e);
+        }
+    }, [getState, acquireLock, executeTurnPipeline]);
+
+    useEffect(() => {
+        triggerDelayedResponseRef.current = triggerDelayedResponse;
+    }, [triggerDelayedResponse]);
 
     const sendMessage = useCallback(async (
         text: string,
@@ -1044,7 +1140,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             allPromptBlocks,
             respondingCharacter: respondingChar,
             isProtagonistCharId: (id: string) => protagonistIds.has(id),
-            errorPrefix: 'Regen failed',
+            errorPrefix: 'Regeneration failed',
             lockAlreadyAcquired: true,
         });
     }, [getState, isMultiplayerClient, addToast, acquireLock, releaseLock, setInteractionData, executeTurnPipeline]);

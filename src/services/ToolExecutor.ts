@@ -320,7 +320,7 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
     notify: executeNotify,
     volume_control: executeVolumeControl,
     lock_screen: executeLockScreen,
-    sleep: "s"
+    sleep: "s",
     shutdown: "s",
     clipboard: executeClipboard,
     screenshot: executeScreenshot,
