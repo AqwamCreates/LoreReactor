@@ -10,7 +10,7 @@ import { getAudioEngine } from './AudioEngine';
 import { generateCharacterMemory } from './ChatMessageSummarizationEngine';
 import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
-import { getSystemInfo, sendDesktopNotification, clipboardAction, captureScreenshot, writeFile, readFile, runShellCommand } from '../utilities/serverTools';
+import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, clipboardAction, captureScreenshot, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, writeFile, readFile, runShellCommand, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
 import { buildSearchUrl } from '../utilities/searchURLBuilder';
 import { getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
 import { getLocationMessageHistory } from '../utilities/timelineLogic';
@@ -313,15 +313,20 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
     administrator: executeAdministrator,
     creator: executeCreator,
     destroyer: executeDestroyer,
+    text_to_speech: executeTextToSpeech,
     gpu: executeGpu,
-    system_info: executeSysInfo,
+    system_info: executeSystemInfo,
     notify: executeNotify,
     clipboard: executeClipboard,
     screenshot: executeScreenshot,
+    file_watcher: executeFileWatcher,
+    window_monitor: executeWindowMonitor,
+    process_monitor: executeProcessMonitor,
     browser: executeBrowser,
     read_file: executeReadFile,
     write_file: executeWriteFile,
     shell: executeShell,
+    hardware_control: executeHardwareControl,
 };
 
 export async function executeTool(
@@ -1795,6 +1800,22 @@ interface GpuStatusResponse {
     timestamp: number;
 }
 
+// ── Text to Speech ───────────────────────────────────────────────
+async function executeTextToSpeech(args: string): Promise<ToolResult> {
+    const pArgs = parsePythonArgs(args);
+    const text = pArgs.get(0, 'text', 'message') || pArgs.positional.join(' ');
+    const voice = pArgs.get(1, 'voice');
+
+    if (!text || text.toLowerCase() === 'stop') {
+        await stopSpeech();
+        return { toolType: 'text_to_speech', args, content: 'Speech playback stopped.', displayReplacement: '[🔇 Stopped speaking]' };
+    }
+
+    await speakText(text, voice);
+    return { toolType: 'text_to_speech', args, content: `Speaking: "${text}"`, displayReplacement: `[🔊 Speaking aloud]` };
+}
+
+
 async function executeGpu(args: string): Promise<ToolResult> {
     try {
         const response = await fetch(`${localURL}/gpu/status`);
@@ -1846,21 +1867,21 @@ async function executeGpu(args: string): Promise<ToolResult> {
 }
 
 // ─── System Info / Telemetry ────────────────────────────────────────
-async function executeSysInfo(args: string): Promise<ToolResult> {
+async function executeSystemInfo(args: string): Promise<ToolResult> {
     const res = await getSystemInfo();
     if (!res.success || !res.data) {
         return { 
-            toolType: 'sysinfo', 
+            toolType: 'system-info', 
             args, 
             content: `[Error: ${res.error || 'Failed to fetch system info'}]`, 
-            displayReplacement: '[❌ SysInfo failed]' 
+            displayReplacement: '[❌ system-info failed]' 
         };
     }
 
     const d = res.data;
     const content = `CPU: ${d.cpuManufacturer} ${d.cpuBrand} (${d.cores} cores), Load: ${d.loadPercent}%, RAM: ${d.memoryUsedMB}MB / ${d.memoryTotalMB}MB`;
     return {
-        toolType: 'sysinfo',
+        toolType: 'system-info',
         args,
         content,
         displayReplacement: `[🖥️ CPU: ${d.loadPercent}% | RAM: ${Math.round(d.memoryUsedMB / 1024)}/${Math.round(d.memoryTotalMB / 1024)}GB]`
@@ -1970,6 +1991,66 @@ async function executeScreenshot(
     };
 }
 
+// ── File Watcher ─────────────────────────────────────────────────
+async function executeFileWatcher(args: string): Promise<ToolResult> {
+    const pArgs = parsePythonArgs(args);
+    const action = pArgs.get(0, 'action', 'command')?.toLowerCase() || 'check';
+    const targetPath = pArgs.get(1, 'path', 'dir') || '.';
+
+    if (action === 'start') {
+        const res = await startFileWatcher(targetPath);
+        if (!res.success) return { toolType: 'file_watcher', args, content: `[Error: ${res.error}]`, displayReplacement: '[❌ Watcher failed]' };
+        return { toolType: 'file_watcher', args, content: `Now watching folder: ${res.path}`, displayReplacement: `[📂 Watching: ${targetPath}]` };
+    }
+
+    if (action === 'check') {
+        const res = await getFileWatcherEvents();
+        if (!res.events || res.events.length === 0) {
+            return { toolType: 'file_watcher', args, content: 'No new file events detected.', displayReplacement: '[📂 No file changes]' };
+        }
+        const summary = res.events.map((e: any) => `[${e.event.toUpperCase()}] ${e.path}`).join('\n');
+        return { toolType: 'file_watcher', args, content: summary, displayReplacement: `[📂 ${res.events.length} file change(s)]` };
+    }
+
+    return helpResult('file_watcher', 'action="start|check", path="..."', 'monitor workspace folders for changes');
+}
+
+// ── Process Monitor ──────────────────────────────────────────────
+async function executeProcessMonitor(args: string): Promise<ToolResult> {
+    const pArgs = parsePythonArgs(args);
+    const query = pArgs.get(0, 'query', 'name') || '';
+    const limit = pArgs.getNumber(1, 'limit') ?? 5;
+
+    const res = await getRunningProcesses(query, limit);
+    if (!res.success || !res.processes) {
+        return { toolType: 'process_monitor', args, content: '[Error: Failed to query processes]', displayReplacement: '[❌ Process error]' };
+    }
+
+    const summary = res.processes.map((p: any) => `${p.name} (PID: ${p.pid}, CPU: ${p.cpu}%, Mem: ${p.memPercent}%)`).join('\n');
+    return {
+        toolType: 'process_monitor',
+        args,
+        content: `Running (${res.runningCount}/${res.totalCount} active):\n${summary}`,
+        displayReplacement: `[⚙️ ${res.processes.length} process(es)]`
+    };
+}
+
+// ── Active Window Monitor ────────────────────────────────────────
+async function executeWindowMonitor(args: string): Promise<ToolResult> {
+    const res = await getActiveWindowInfo();
+    if (!res.success || !res.window) {
+        return { toolType: 'window_monitor', args, content: res.message || 'No active window detected', displayReplacement: '[🖥️ Window: none]' };
+    }
+
+    const { title, appName } = res.window;
+    return {
+        toolType: 'window_monitor',
+        args,
+        content: `Active Window: "${title}" (App: ${appName})`,
+        displayReplacement: `[🖥️ App: ${appName}]`
+    };
+}
+
 // ─── Open Browser ───────────────────────────────────────────────────
 async function executeBrowser(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
@@ -2051,6 +2132,30 @@ async function executeShell(
     context?.addToast?.(`Shell executed: ${command}`, 'success');
     const output = res.stdout || res.stderr || '[Command executed with no output]';
     return { toolType: 'shell', args, content: output, displayReplacement: `[💻 Shell: "${command}"]` };
+}
+
+// ── Hardware Control ─────────────────────────────────────────────
+async function executeHardwareControl(args: string): Promise<ToolResult> {
+    const pArgs = parsePythonArgs(args);
+    const action = pArgs.get(0, 'action', 'command')?.toLowerCase() || 'list';
+    const port = pArgs.get(1, 'port', 'path');
+    const command = pArgs.get(2, 'command', 'cmd') || pArgs.positional.slice(2).join(' ');
+
+    if (action === 'list') {
+        const res = await getHardwarePorts();
+        if (!res.ports || res.ports.length === 0) return { toolType: 'hardware_control', args, content: 'No connected serial ports found.', displayReplacement: '[🔌 No ports]' };
+        const list = res.ports.map((p: any) => `${p.path} (${p.manufacturer || 'Generic'})`).join(', ');
+        return { toolType: 'hardware_control', args, content: `Available Ports: ${list}`, displayReplacement: `[🔌 ${res.ports.length} port(s)]` };
+    }
+
+    if (action === 'send') {
+        if (!port || !command) return { toolType: 'hardware_control', args, content: '[Error: port and command required]', displayReplacement: '[Error: Missing args]' };
+        const res = await sendHardwareCommand(port, command);
+        if (!res.success) return { toolType: 'hardware_control', args, content: `[Error: ${res.error}]`, displayReplacement: '[❌ Hardware error]' };
+        return { toolType: 'hardware_control', args, content: `Sent "${command}" to ${port}`, displayReplacement: `[🔌 Sent to ${port}]` };
+    }
+
+    return helpResult('hardware_control', 'action="list|send", port="...", command="..."', 'communicate with external USB/serial hardware');
 }
 
 // ─── Process Pending Tool Actions ───────────────────────────────────

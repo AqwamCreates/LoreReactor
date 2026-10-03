@@ -68,15 +68,20 @@ const toolDescriptions: Record<tool, string> = {
     administrator: 'Allow this character to perform high-level administrative actions such as managing chat sessions, models, navigation, and user-data-related controls.',
     creator: 'Allow this character to create user-data-related entities such as characters, contexts, locations, worlds, prompt blocks, profiles, or other supported data.',
     destroyer: 'Allow this character to delete or destroy user-data-related entities. Enable with caution.',
+    text_to_speech: 'Allow this character to use text-to-speech.',
     gpu: 'Allow this character to view GPU status.',
     system_info: 'Allow this character to view system info of your device.',
     notify: 'Allow this character to give you OS-level notifications.',
     clipboard: 'Allow this character to use clipboard. Enable with caution.',
-    screenshot: 'Allow this character to take screenshot of the whole screen.',
+    screenshot: 'Allow this character to take screenshot of the whole screen. Enable with caution.',
+    file_watcher: 'Allow this character to watch files. Enable with caution.',
+    window_monitor: 'Allow this character to watch your windows. Enable with caution.',
+    process_monitor: 'Allow this character to watch your processes. Enable with caution.',
     browser: 'Allow this character to open the browser. Enable with caution.',
-    read_file: 'Allow this character to read files on your computer. Enable with caution.',
-    write_file: 'Allow this character to write files on your computer. Enable with caution.',
-    shell: 'Allow this character to use shell on your computer. Enable with caution.',
+    read_file: 'Allow this character to read files on your device. Enable with caution.',
+    write_file: 'Allow this character to write files on your device. Enable with caution.',
+    shell: 'Allow this character to use shell on your device. Enable with caution.',
+    hardware_control: 'Allow this character to control your devices. Enable with caution.'
 };
 
 const tokenEngine = getLanguageModelEngine();

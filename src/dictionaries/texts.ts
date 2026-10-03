@@ -11,6 +11,7 @@ export const toolLabels: Record<tool, string> = {
     key: 'Key', summon: 'Summon Character',
     narrate: 'Narrate', inspect: 'Inspect', administrator: 'Administrator',
     creator: 'Creator', destroyer: 'Destroyer',
-    gpu: 'GPU', system_info: 'System Info', notify: 'Notify', clipboard: 'Clipboard', screenshot: 'Screenshot',
-    browser: 'Open Browser', read_file: 'Read File', write_file: 'Write File', shell: "Shell",
+    text_to_speech: "Text-To-Speech", gpu: 'GPU', system_info: 'System Info', notify: 'Notify', clipboard: 'Clipboard', screenshot: 'Screenshot',
+    file_watcher: "File Watcher", window_monitor: "Window Monitor", process_monitor: "Process Monitor",
+    browser: 'Open Browser', read_file: 'Read File', write_file: 'Write File', shell: "Shell", hardware_control: "Hardware Control"
 };

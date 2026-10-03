@@ -12,6 +12,10 @@ import si from 'systeminformation';
 import screenshot from 'screenshot-desktop';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
+import chokidar from 'chokidar';
+import { SerialPort } from 'serialport';
+import say from 'say';
+import activeWindow from 'active-win';
 
 // --- Configuration ---
 const app = express();
@@ -1322,7 +1326,22 @@ app.post('/fetch', async (req, response) => {
 
 // ─── Tool Endpoints (/tool) ──────────────────────────────────────────
 
-app.get('/tool/sysinfo', async (_req, res) => {
+app.post('/tool/text', (req, res) => {
+  const { text, voice, speed = 1.0 } = req.body;
+  if (!text) return res.status(400).json({ error: 'Missing text' });
+
+  say.speak(text, voice || undefined, speed, (err) => {
+    if (err) return log.error(`TTS failed: ${err.message}`);
+  });
+  res.json({ success: true, message: 'Speech queued' });
+});
+
+app.post('/tool/text_to_speech/stop', (_req, res) => {
+  say.stop();
+  res.json({ success: true, message: 'Speech stopped' });
+});
+
+app.get('/tool/system-info', async (_req, res) => {
   try {
     const [cpu, mem, currentLoad, fsSize] = await Promise.all([
       si.cpu(),
@@ -1409,6 +1428,91 @@ app.post('/tool/screenshot', async (_req, res) => {
   }
 });
 
+const activeWatchers = new Map<string, chokidar.FSWatcher>();
+const fileChangeEvents: Array<{ event: string; path: string; timestamp: number }> = [];
+
+app.post('/tool/file-watcher/start', (req, res) => {
+  const { dirPath } = req.body;
+  const targetDir = path.isAbsolute(dirPath) ? dirPath : path.join(ROOT_DIR, dirPath);
+
+  if (activeWatchers.has(targetDir)) {
+    return res.json({ success: true, message: `Already watching ${targetDir}` });
+  }
+
+  try {
+    const watcher = chokidar.watch(targetDir, { ignoreInitial: true });
+    watcher.on('all', (event, filePath) => {
+      fileChangeEvents.push({ event, path: filePath, timestamp: Date.now() });
+      if (fileChangeEvents.length > 50) fileChangeEvents.shift(); // keep last 50 events
+    });
+
+    activeWatchers.set(targetDir, watcher);
+    log.info(`File watcher started on: ${targetDir}`);
+    res.json({ success: true, path: targetDir });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+app.get('/tool/file-watcher/events', (_req, res) => {
+  // Return the queued events and clear buffer
+  const events = [...fileChangeEvents];
+  fileChangeEvents.length = 0;
+  res.json({ success: true, events });
+});
+
+app.get('/tool/window-monitor', async (_req, res) => {
+  try {
+    const currentWindow = await activeWindow();
+    if (!currentWindow) {
+      return res.json({ success: true, window: null, message: 'No active window detected' });
+    }
+
+    res.json({
+      success: true,
+      window: {
+        title: currentWindow.title,
+        appName: currentWindow.owner?.name,
+        processId: currentWindow.owner?.processId,
+        url: currentWindow.url || undefined,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+app.get('/tool/process-monitor', async (req, res) => {
+  const filter = typeof req.query.q === 'string' ? req.query.q.toLowerCase() : '';
+  const limit = Math.min(Number.parseInt(String(req.query.limit || '10'), 10), 50);
+
+  try {
+    const procData = await si.processes();
+    let list = procData.list;
+
+    if (filter) {
+      list = list.filter(p => p.name.toLowerCase().includes(filter));
+    }
+
+    // Sort by CPU usage descending
+    list = list.sort((a, b) => b.cpu - a.cpu).slice(0, limit);
+
+    res.json({
+      success: true,
+      totalCount: procData.all,
+      runningCount: procData.running,
+      processes: list.map(p => ({
+        pid: p.pid,
+        name: p.name,
+        cpu: p.cpu,
+        memPercent: p.mem,
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
 // Single unified endpoint to open files, videos, directories, or URLs
 app.post('/tool/read-file', async (req, response) => {
   const { target } = req.body;
@@ -1486,6 +1590,31 @@ app.post('/tool/shell', async (req, res) => {
       stdout: err.stdout?.trim() || '', 
       stderr: err.stderr?.trim() || '' 
     });
+  }
+});
+
+app.get('/tool/hardware/list', async (_req, res) => {
+  try {
+    const ports = await SerialPort.list();
+    res.json({ success: true, ports });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+app.post('/tool/hardware/send', async (req, res) => {
+  const { portPath, command, baudRate = 9600 } = req.body;
+  if (!portPath || !command) return res.status(400).json({ error: 'Missing portPath or command' });
+
+  try {
+    const port = new SerialPort({ path: portPath, baudRate });
+    port.write(`${command}\n`, (err) => {
+      port.close();
+      if (err) return res.status(500).json({ success: false, error: err.message });
+      res.json({ success: true, sent: command });
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
   }
 });
 

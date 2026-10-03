@@ -17,6 +17,8 @@
     "@photostructure/tz-lookup": "^11.7.0",
     "@types/tz-lookup": "^6.1.2",
     "@xyflow/react": "^12.11.6",
+    "active-win": "^8.2.1",
+    "chokidar": "^5.0.0",
     "clipboardy": "^5.3.2",
     "idb": "^8.0.3",
     "luxon": "^3.7.2",
@@ -26,7 +28,9 @@
     "peerjs": "^1.5.5",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "say": "^0.16.0",
     "screenshot-desktop": "^1.15.6",
+    "serialport": "^13.0.0",
     "systeminformation": "^5.33.15",
     "tz-lookup": "^6.1.25",
     "zustand": "^5.0.15"

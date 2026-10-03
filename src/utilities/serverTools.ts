@@ -1,21 +1,7 @@
 // src/utilities/serverTools.ts
 import { localURL } from '../configurations';
 
-export interface SysInfoResult {
-  success: boolean;
-  data?: {
-    cpuManufacturer: string;
-    cpuBrand: string;
-    cores: number;
-    loadPercent: number;
-    memoryTotalMB: number;
-    memoryUsedMB: number;
-    disks: Array<{ fs: string; type: string; sizeGB: number; usedGB: number; usePercent: number }>;
-  };
-  error?: string;
-}
-
-export interface SysInfoResult {
+export interface SystemInfoResult {
   success: boolean;
   data?: {
     cpuManufacturer: string;
@@ -57,9 +43,23 @@ export interface ShellResult {
   error?: string;
 }
 
-export async function getSystemInfo(): Promise<SysInfoResult> {
+export async function speakText(text: string, voice?: string, speed = 1.0) {
+  const res = await fetch(`${localURL}/tool/text_to_speech`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice, speed }),
+  });
+  return res.json();
+}
+
+export async function stopSpeech() {
+  const res = await fetch(`${localURL}/tool/text_to_speech/stop`, { method: 'POST' });
+  return res.json();
+}
+
+export async function getSystemInfo(): Promise<SystemInfoResult> {
   try {
-    const response = await fetch(`${localURL}/tool/sysinfo`);
+    const response = await fetch(`${localURL}/tool/system-info`);
     return await response.json();
   } catch (e) {
     return { success: false, error: (e as Error).message };
@@ -109,6 +109,33 @@ export async function captureScreenshot(): Promise<ScreenshotResult> {
   }
 }
 
+export async function startFileWatcher(dirPath: string) {
+  const res = await fetch(`${localURL}/tool/file-watcher/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dirPath }),
+  });
+  return res.json();
+}
+
+export async function getFileWatcherEvents() {
+  const res = await fetch(`${localURL}/tool/file-watcher/events`);
+  return res.json();
+}
+
+export async function getActiveWindowInfo() {
+  const res = await fetch(`${localURL}/tool/window-monitor`);
+  return res.json();
+}
+
+export async function getRunningProcesses(query?: string, limit = 5) {
+  const params = new URLSearchParams();
+  if (query) params.append('q', query);
+  params.append('limit', limit.toString());
+  const res = await fetch(`${localURL}/tool/process-monitor?${params.toString()}`);
+  return res.json();
+}
+
 /**
  * Universal opener for files, videos, directories, and URLs.
  */
@@ -149,4 +176,18 @@ export async function runShellCommand(command: string): Promise<ShellResult> {
   } catch (e) {
     return { success: false, error: (e as Error).message };
   }
+}
+
+export async function getHardwarePorts() {
+  const res = await fetch(`${localURL}/tool/hardware/list`);
+  return res.json();
+}
+
+export async function sendHardwareCommand(portPath: string, command: string, baudRate = 9600) {
+  const res = await fetch(`${localURL}/tool/hardware/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ portPath, command, baudRate }),
+  });
+  return res.json();
 }
