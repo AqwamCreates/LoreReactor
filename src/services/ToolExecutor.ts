@@ -2006,67 +2006,69 @@ async function executeClipboard(
 
 // ─── Desktop Screenshot Capture ─────────────────────────────────────
 async function executeScreenshot(
-    args: string, 
-    nextMessage: BaseMessage, 
-    _interactionData: InteractionData, 
+    args: string,
+    nextMessage: BaseMessage,
+    _interactionData: InteractionData,
     context?: ToolExecutionContext
 ): Promise<ToolResult> {
     const res = await captureScreenshot();
     if (!res.success || !res.base64) {
-        return { 
-            toolType: 'screenshot', 
-            args, 
-            content: `[Error: ${res.error || 'Failed to capture screenshot'}]`, 
-            displayReplacement: '[❌ Screenshot failed]' 
+        return {
+            toolType: 'screenshot',
+            args,
+            content: `[Error: ${res.error || 'Failed to capture screenshot'}]`,
+            displayReplacement: '[❌ Screenshot failed]'
         };
     }
-
+    
     // Attach real image payload to the message's file array for vision ingestion
     const dataUrl = `data:${res.contentType || 'image/jpeg'};base64,${res.base64}`;
     if ('files' in nextMessage) {
-        if (!nextMessage.files) nextMessage.files = [];
-        nextMessage.files.push(dataUrl);
+        const msg = nextMessage as ChatMessage | WhisperMessage;
+        if (!msg.files) msg.files = [];
+        msg.files.push(dataUrl);
     }
-
+    
     context?.addToast?.('Screenshot captured and sent to vision model', 'success');
-    return {
-        toolType: 'screenshot',
-        args,
-        content: `Desktop screenshot captured and attached to visual input. Analyze the image to answer.`,
-        displayReplacement: `[📸 Screenshot captured]`
+    return { 
+        toolType: 'screenshot', 
+        args, 
+        content: `Desktop screenshot captured and attached to visual input. Analyze the image to answer.`, 
+        displayReplacement: `[📸 Screenshot captured]` 
     };
 }
 
 // ─── Webcam Tool ────────────────────────────────────────────────────
 async function executeWebcam(
-    args: string, 
-    nextMessage: BaseMessage, 
-    _interactionData: InteractionData, 
+    args: string,
+    nextMessage: BaseMessage,
+    _interactionData: InteractionData,
     context?: ToolExecutionContext
 ): Promise<ToolResult> {
     const res = await captureWebcam();
     if (!res.success || !res.base64) {
-        return { 
-            toolType: 'webcam', 
-            args, 
-            content: `[Error: ${res.error || 'Failed to capture webcam snapshot'}]`, 
-            displayReplacement: '[❌ Webcam error]' 
+        return {
+            toolType: 'webcam',
+            args,
+            content: `[Error: ${res.error || 'Failed to capture webcam snapshot'}]`,
+            displayReplacement: '[❌ Webcam error]'
         };
     }
-
+    
     // Attach real image payload to the message's file array for vision ingestion
     const dataUrl = `data:image/jpeg;base64,${res.base64}`;
     if ('files' in nextMessage) {
-        if (!nextMessage.files) nextMessage.files = [];
-        nextMessage.files.push(dataUrl);
+        const msg = nextMessage as ChatMessage | WhisperMessage;
+        if (!msg.files) msg.files = [];
+        msg.files.push(dataUrl);
     }
-
+    
     context?.addToast?.('Webcam snapshot captured and sent to vision model', 'success');
-    return {
-        toolType: 'webcam',
-        args,
-        content: `Webcam snapshot captured and attached to visual input. Analyze the image to answer.`,
-        displayReplacement: '[📷 Webcam Snapshot]'
+    return { 
+        toolType: 'webcam', 
+        args, 
+        content: `Webcam snapshot captured and attached to visual input. Analyze the image to answer.`, 
+        displayReplacement: '[📷 Webcam Snapshot]' 
     };
 }
 
