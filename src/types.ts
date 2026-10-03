@@ -215,7 +215,7 @@ export interface RawMemory extends RawData {
   interactionDataId: string;
 }
 
-export type tool = "whisper" | "think" | "pick" | "clock" | "calendar" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "oracle" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer" | 'gpu' | 'browser' | 'read_file' | 'write_file'
+export type tool = "whisper" | "think" | "pick" | "clock" | "calendar" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "oracle" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer" | 'gpu' | 'systemInfo' | 'notify' | 'clipboard' | 'screenshot' | 'browser' | 'read_file' | 'write_file' | 'shell'
 
 export interface DialoguePrompt extends ObjectData {
   content: string;

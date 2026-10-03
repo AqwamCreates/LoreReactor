@@ -10,7 +10,7 @@ import { getAudioEngine } from './AudioEngine';
 import { generateCharacterMemory } from './ChatMessageSummarizationEngine';
 import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
-import { writeFile, readFile } from '../utilities/serverTools';
+import { getSystemInfo, sendDesktopNotification, clipboardAction, captureScreenshot, writeFile, readFile, runShellCommand } from '../utilities/serverTools';
 import { buildSearchUrl } from '../utilities/searchURLBuilder';
 import { getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
 import { getLocationMessageHistory } from '../utilities/timelineLogic';
@@ -1840,6 +1840,131 @@ async function executeGpu(args: string): Promise<ToolResult> {
     }
 }
 
+// ─── System Info / Telemetry ────────────────────────────────────────
+async function executeSysInfo(args: string): Promise<ToolResult> {
+    const res = await getSystemInfo();
+    if (!res.success || !res.data) {
+        return { 
+            toolType: 'sysinfo', 
+            args, 
+            content: `[Error: ${res.error || 'Failed to fetch system info'}]`, 
+            displayReplacement: '[❌ SysInfo failed]' 
+        };
+    }
+
+    const d = res.data;
+    const content = `CPU: ${d.cpuManufacturer} ${d.cpuBrand} (${d.cores} cores), Load: ${d.loadPercent}%, RAM: ${d.memoryUsedMB}MB / ${d.memoryTotalMB}MB`;
+    return {
+        toolType: 'sysinfo',
+        args,
+        content,
+        displayReplacement: `[🖥️ CPU: ${d.loadPercent}% | RAM: ${Math.round(d.memoryUsedMB / 1024)}/${Math.round(d.memoryTotalMB / 1024)}GB]`
+    };
+}
+
+// ─── Native OS Desktop Notifications ────────────────────────────────
+async function executeNotify(
+    args: string, 
+    _nextMessage: BaseMessage, 
+    _interactionData: InteractionData, 
+    context?: ToolExecutionContext
+): Promise<ToolResult> {
+    const pArgs = parsePythonArgs(args);
+    const title = pArgs.get(0, 'title', 'heading') || 'AI Assistant';
+    const message = pArgs.get(1, 'message', 'text', 'content') || pArgs.positional.slice(1).join(' ').trim();
+
+    if (!message) {
+        return helpResult('notify', 'title="...", message="..."', 'send a native OS desktop notification');
+    }
+
+    const res = await sendDesktopNotification(title, message);
+    if (!res.success) {
+        return { 
+            toolType: 'notify', 
+            args, 
+            content: `[Error: ${res.error || 'Failed to send notification'}]`, 
+            displayReplacement: '[❌ Notification failed]' 
+        };
+    }
+
+    context?.addToast?.(`Notification sent: ${title}`, 'success');
+    return { 
+        toolType: 'notify', 
+        args, 
+        content: `Sent OS notification "${title}": ${message}`, 
+        displayReplacement: `[🔔 Notification sent]` 
+    };
+}
+
+// ─── Clipboard Management ───────────────────────────────────────────
+async function executeClipboard(
+    args: string, 
+    _nextMessage: BaseMessage, 
+    _interactionData: InteractionData, 
+    context?: ToolExecutionContext
+): Promise<ToolResult> {
+    const pArgs = parsePythonArgs(args);
+    const action = pArgs.get(0, 'action', 'command')?.toLowerCase() || 'read';
+    const text = pArgs.get(1, 'text', 'content') || pArgs.positional.slice(1).join(' ').trim();
+
+    if (action !== 'read' && action !== 'write') {
+        return helpResult('clipboard', 'action="read|write", text="..."', 'read or write to the host OS clipboard');
+    }
+
+    const res = await clipboardAction(action, text);
+    if (!res.success) {
+        return { 
+            toolType: 'clipboard', 
+            args, 
+            content: `[Error: ${res.error || 'Clipboard action failed'}]`, 
+            displayReplacement: '[❌ Clipboard failed]' 
+        };
+    }
+
+    if (action === 'read') {
+        return { 
+            toolType: 'clipboard', 
+            args, 
+            content: res.content || '', 
+            displayReplacement: `[📋 Clipboard read]` 
+        };
+    } else {
+        context?.addToast?.('Text copied to clipboard', 'success');
+        return { 
+            toolType: 'clipboard', 
+            args, 
+            content: `Successfully wrote text to host clipboard.`, 
+            displayReplacement: `[📋 Copied to clipboard]` 
+        };
+    }
+}
+
+// ─── Desktop Screenshot Capture ─────────────────────────────────────
+async function executeScreenshot(
+    args: string, 
+    _nextMessage: BaseMessage, 
+    _interactionData: InteractionData, 
+    context?: ToolExecutionContext
+): Promise<ToolResult> {
+    const res = await captureScreenshot();
+    if (!res.success || !res.base64) {
+        return { 
+            toolType: 'screenshot', 
+            args, 
+            content: `[Error: ${res.error || 'Failed to capture screenshot'}]`, 
+            displayReplacement: '[❌ Screenshot failed]' 
+        };
+    }
+
+    context?.addToast?.('Screenshot captured', 'success');
+    return {
+        toolType: 'screenshot',
+        args,
+        content: `[Screenshot Captured successfully - Base64 image payload generated]`,
+        displayReplacement: `[📸 Screenshot captured]`
+    };
+}
+
 // ─── Open Browser ───────────────────────────────────────────────────
 async function executeBrowser(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
@@ -1893,6 +2018,34 @@ async function executeWriteFile(args: string, _nextMessage: BaseMessage, _intera
 
     context?.addToast?.(`File written: ${filePath}`, 'success');
     return { toolType: 'write_file', args, content: `Successfully wrote file to "${res.path || filePath}".`, displayReplacement: `[📁 Saved: "${filePath}"]` };
+}
+
+// ─── Shell ─────────────────────────────────────
+async function executeShell(
+    args: string, 
+    _nextMessage: BaseMessage, 
+    _interactionData: InteractionData, 
+    context?: ToolExecutionContext
+): Promise<ToolResult> {
+    const pArgs = parsePythonArgs(args);
+    const command = pArgs.get(0, 'command', 'cmd') || pArgs.positional.join(' ').trim();
+    if (!command) {
+        return helpResult('shell', 'command="..."', 'execute a terminal/shell command on the host OS');
+    }
+
+    const res = await runShellCommand(command);
+    if (!res.success) {
+        return { 
+            toolType: 'shell', 
+            args, 
+            content: `[Error: ${res.error || res.stderr || 'Command failed'}]`, 
+            displayReplacement: '[❌ Shell failed]' 
+        };
+    }
+
+    context?.addToast?.(`Shell executed: ${command}`, 'success');
+    const output = res.stdout || res.stderr || '[Command executed with no output]';
+    return { toolType: 'shell', args, content: output, displayReplacement: `[💻 Shell: "${command}"]` };
 }
 
 // ─── Process Pending Tool Actions ───────────────────────────────────

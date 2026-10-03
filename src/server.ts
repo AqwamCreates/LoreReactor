@@ -6,6 +6,12 @@ import cors from 'cors';
 import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
 import open from 'open';
+import clipboardy from 'clipboardy';
+import notifier from 'node-notifier';
+import si from 'systeminformation';
+import screenshot from 'screenshot-desktop';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 
 // --- Configuration ---
 const app = express();
@@ -1316,8 +1322,95 @@ app.post('/fetch', async (req, response) => {
 
 // ─── Tool Endpoints (/tool) ──────────────────────────────────────────
 
+app.get('/tool/sysinfo', async (_req, res) => {
+  try {
+    const [cpu, mem, currentLoad, fsSize] = await Promise.all([
+      si.cpu(),
+      si.mem(),
+      si.currentLoad(),
+      si.fsSize()
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        cpuManufacturer: cpu.manufacturer,
+        cpuBrand: cpu.brand,
+        cores: cpu.cores,
+        loadPercent: Math.round(currentLoad.currentLoad),
+        memoryTotalMB: Math.round(mem.total / (1024 * 1024)),
+        memoryUsedMB: Math.round(mem.used / (1024 * 1024)),
+        disks: fsSize.map(d => ({
+          fs: d.fs,
+          type: d.type,
+          sizeGB: Math.round(d.size / (1024 * 1024 * 1024)),
+          usedGB: Math.round(d.used / (1024 * 1024 * 1024)),
+          usePercent: d.use
+        }))
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+app.post('/tool/notify', (req, res) => {
+  const { title, message } = req.body;
+  if (!message) return res.status(400).json({ success: false, error: 'Missing message' });
+
+  notifier.notify(
+    {
+      title: title || 'LoreReactor Agent',
+      message: message,
+      sound: true, // Only plays if OS allows
+      wait: false
+    },
+    (err) => {
+      if (err) return res.status(500).json({ success: false, error: err.message });
+      res.json({ success: true, message: 'Notification sent' });
+    }
+  );
+});
+
+app.post('/tool/clipboard', async (req, res) => {
+  const { action, text } = req.body; // action: 'read' | 'write'
+
+  try {
+    if (action === 'read') {
+      const content = await clipboardy.read();
+      return res.json({ success: true, content });
+    }
+    
+    if (action === 'write') {
+      if (typeof text !== 'string') return res.status(400).json({ success: false, error: 'Missing text parameter' });
+      await clipboardy.write(text);
+      return res.json({ success: true, message: 'Successfully copied to clipboard' });
+    }
+
+    res.status(400).json({ success: false, error: 'Invalid action. Use "read" or "write".' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+app.post('/tool/screenshot', async (_req, res) => {
+  try {
+    // Captures primary display buffer as a base64 JPEG string
+    const imgBuffer = await screenshot({ format: 'jpeg' });
+    const base64Image = imgBuffer.toString('base64');
+
+    res.json({
+      success: true,
+      contentType: 'image/jpeg',
+      base64: base64Image
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
 // Single unified endpoint to open files, videos, directories, or URLs
-app.post('/tool/read_file', async (req, response) => {
+app.post('/tool/read-file', async (req, response) => {
   const { target } = req.body;
   if (!target) {
     return response.status(400).json({ success: false, error: 'Missing target' });
@@ -1364,6 +1457,35 @@ app.post('/tool/write-file', (req, response) => {
   } catch (error) {
     log.error(`Write file failed for ${filePath}: ${(error as Error).message}`);
     response.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+const execAsync = promisify(exec);
+
+app.post('/tool/shell', async (req, res) => {
+  const { command } = req.body;
+  if (!command || typeof command !== 'string') {
+    return res.status(400).json({ success: false, error: 'Missing command' });
+  }
+
+  // Safety filter example: block catastrophic commands if exposed to autonomous agents
+  const dangerousPatterns = [/rm\s+-rf\s+\//i, /mkfs/i, />\s*\/dev\/sd/i];
+  if (dangerousPatterns.some(pattern => pattern.test(command))) {
+    return res.status(403).json({ success: false, error: 'Command blocked by security policy' });
+  }
+
+  try {
+    log.info(`Executing shell command: ${command}`);
+    const { stdout, stderr } = await execAsync(command, { timeout: 10000, cwd: ROOT_DIR });
+    res.json({ success: true, stdout: stdout.trim(), stderr: stderr.trim() });
+  } catch (error: unknown) {
+    const err = error as Error & { stdout?: string; stderr?: string };
+    res.status(500).json({ 
+      success: false, 
+      error: err.message, 
+      stdout: err.stdout?.trim() || '', 
+      stderr: err.stderr?.trim() || '' 
+    });
   }
 });
 

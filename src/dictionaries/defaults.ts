@@ -43,9 +43,14 @@ export const defaultCharacterTools: Record<tool, boolean> = {
     creator: false,
     destroyer: false,
     gpu: false,
+    systemInfo: false,
+    notify: false,
+    clipboard: false,
+    screenshot: false,
     browser: false,
     read_file: false,
     write_file: false,
+    shell: false,
 };
 
 export const defaultCharacter: Character = {
