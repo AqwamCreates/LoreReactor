@@ -51,11 +51,18 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
         riskDescription: 'Puts the host computer into sleep, standby, or hibernation mode.' 
     },
     { 
-        tool: 'shut_down', 
+        tool: 'shutdown', 
         label: 'Host System Power Off', 
         keywords: ['shut down', 'power off', 'turn off pc', 'shutdown', 'kill power', 'goodnight', 'turn off computer', 'shut off'], 
         tier: 'os_privileged', 
         riskDescription: 'Initiates a full shutdown sequence of the host operating system and hardware.' 
+    },
+    { 
+        tool: 'restart', 
+        label: 'Host System Restart / Reboot', 
+        keywords: ['restart', 'reboot', 'restart pc', 'reboot pc', 'restart computer', 'reboot computer', 'restart system', 'reboot system'], 
+        tier: 'os_privileged', 
+        riskDescription: 'Initiates a full restart/reboot sequence of the host operating system and hardware.' 
     },
     { 
         tool: 'write_file', 

@@ -322,6 +322,7 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
     lock_screen: executeLockScreen,
     sleep: "s",
     shutdown: "s",
+    restart: "s",
     clipboard: executeClipboard,
     screenshot: executeScreenshot,
     webcam: executeWebcam,

@@ -49,6 +49,7 @@ export const defaultCharacterTools: Record<tool, boolean> = {
     notify: false,
     volume_control: false,
     lock_screen: false,
+    restart: false,
     sleep: false,
     shutdown: false,
     clipboard: false,

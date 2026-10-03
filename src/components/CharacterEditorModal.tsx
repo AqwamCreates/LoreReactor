@@ -89,6 +89,7 @@ const toolDescriptions: Record<tool, string> = {
     lock_screen: 'Allow this character to lock your screen.',
     sleep: 'Allow this character to put your device to sleep.',
     shutdown: 'Allow this character to shut down your device. Enable with caution.',
+    restart: 'Allow this character to restart your device. Enable with caution.',
     clipboard: 'Allow this character to use clipboard. Enable with caution.',
     screenshot: 'Allow this character to take screenshot of the whole screen. Enable with caution.',
     webcam: 'Allow this character to use the webcam of your device.',
