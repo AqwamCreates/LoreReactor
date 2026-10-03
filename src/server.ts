@@ -1485,7 +1485,7 @@ const webcamInstance = NodeWebcam.create({
 });
 
 app.post('/tool/webcam', (_req, res) => {
-  webcamInstance.capture('webcam_snapshot', (err, data) => {
+  webcamInstance.capture('/user_data/webcam_snapshots/snapshot', (err, data) => {
     if (err) {
       const errorMsg = (err as Error)?.message || String(err);
       log.error(`Webcam capture failed: ${errorMsg}`);
