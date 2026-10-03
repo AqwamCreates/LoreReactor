@@ -1206,7 +1206,7 @@ function buildToolInstructionLines(ctx: PromptBuildContext): string[] {
 
     if (enabledToolNames.length > 0) {
         const firstTool = enabledToolNames[0];
-        lines.push(`${ctx.delimiters.blockStart('system')}I understand that I can access the tools help page or use it directly by calling the ${toolStartSring} marker followed by the tool name and arguments, then closing with ${toolEndString} like ${toolStartSring}${firstTool}()${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results. Tool invocation markers are completely invisible to the user. Writing a tool name without arguments returns usage instructions for that tool. I also understand that calling some of the tools without an argument will give me the instructions on how to use it. I will also only provide the values that are requested by the tools instead of creating non-existing ones. I will also use the tools to get accurate and precise information before even writing a sentence. Available tools: ${enabledToolNames.join(', ')}.${ctx.delimiters.blockEnd}`);
+        lines.push(`${ctx.delimiters.blockStart('system')}Before I write a sentence, I must use the tools to get accurate and precise information. I can call the tool like ${toolStartSring}${firstTool}()${toolEndString} to get direct result or access the help page. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results. Tool invocation markers are completely invisible to the user. Available tools: ${enabledToolNames.join(', ')}.${ctx.delimiters.blockEnd}`);
     }
 
     return lines;
