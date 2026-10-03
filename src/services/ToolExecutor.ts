@@ -2111,12 +2111,12 @@ async function executeFrontCamera(
         msg.files.push(dataUrl);
     }
 
-    context?.addToast?.('front_camera snapshot captured and sent to vision model', 'success');
+    context?.addToast?.('Front camera snapshot captured and sent to vision model', 'success');
     
     return {
         toolType: 'front_camera',
         args,
-        content: 'front_camera snapshot captured and attached to visual input. Analyze the image to answer.',
+        content: 'Front camera snapshot captured and attached to visual input. Analyze the image to answer.',
         displayReplacement: '[📷 front_camera Snapshot]'
     };
 }

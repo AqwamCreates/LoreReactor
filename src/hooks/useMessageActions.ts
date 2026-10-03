@@ -1,6 +1,6 @@
 // src/hooks/useMessageActions.ts
 import { useState, useCallback } from 'react';
-import type { Character, InteractionData } from '../types';
+import type { Character, InteractionData, HistoryMessage } from '../types';
 import { 
     deleteMessage, 
     massDeleteMessages, 
@@ -34,11 +34,40 @@ export function useMessageActions(options: UseMessageActionsOptions) {
     const [editDraft, setEditDraft] = useState('');
     const [massDeleteId, setMassDeleteId] = useState<string | null>(null);
 
+    // FIX: Helper to strip the stale processedTextContent so the UI renders the new textContent
+    const clearProcessedTextContent = (data: InteractionData, messageId: string): InteractionData => {
+        const newHistories = { ...data.interactionHistories };
+        let changed = false;
+        
+        for (const [locId, msgs] of Object.entries(newHistories) as [string, HistoryMessage[]][]) {
+            const idx = msgs.findIndex(m => m.id === messageId);
+            if (idx !== -1) {
+                const msg = msgs[idx];
+                // If it's a chat/whisper message with a processedTextContent field, clear it
+                if ('processedTextContent' in msg && msg.processedTextContent !== undefined) {
+                    const updatedMsg = { ...msg, processedTextContent: undefined };
+                    newHistories[locId] = [...msgs];
+                    newHistories[locId][idx] = updatedMsg;
+                    changed = true;
+                }
+                break;
+            }
+        }
+        
+        return changed 
+            ? { ...data, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() }
+            : data;
+    };
+
     const handleSaveEdit = useCallback(async () => {
         if (!interactionData || !editingId) return;
         try {
             const updated = await editMessage(interactionData, editingId, editDraft);
-            setInteractionData(updated);
+            
+            // Apply the fix: Clear the stale processed text
+            const finalUpdated = clearProcessedTextContent(updated, editingId);
+
+            setInteractionData(finalUpdated);
             setEditingId(null);
             setEditDraft('');
             addToast('Message edited.', 'success');
@@ -53,12 +82,15 @@ export function useMessageActions(options: UseMessageActionsOptions) {
         try {
             const targetId = editingId;
             const updatedData = await editMessage(interactionData, targetId, editDraft);
+            
+            // Apply the fix: Clear the stale processed text before regenerating
+            const finalUpdated = clearProcessedTextContent(updatedData, targetId);
 
-            setInteractionData(updatedData);
+            setInteractionData(finalUpdated);
             setEditingId(null);
             setEditDraft('');
 
-            await regenerateFromMessage(targetId, updatedData.protagonists ?? []);
+            await regenerateFromMessage(targetId, finalUpdated.protagonists ?? []);
         } catch (e) {
             addToast((e as Error).message, 'error');
         }
@@ -80,7 +112,6 @@ export function useMessageActions(options: UseMessageActionsOptions) {
         const targetId = massDeleteId;
         
         try {
-            // FIXED: Just pass the messageId. massDeleteMessages resolves the location internally.
             const updated = await massDeleteMessages(interactionData, targetId);
             setInteractionData(updated);
             addToast('Messages deleted.', 'info');
@@ -94,7 +125,6 @@ export function useMessageActions(options: UseMessageActionsOptions) {
     const handleBranch = useCallback(async (id: string) => {
         if (!interactionData) return;
         try {
-            // FIXED: Just pass the messageId. branchMessage resolves the location internally.
             const branchedChat = await branchMessage(interactionData, id);
             await saveRawInteractionData(branchedChat);
             await saveRawSessionData({ activeChatId: branchedChat.id });
@@ -117,7 +147,6 @@ export function useMessageActions(options: UseMessageActionsOptions) {
     const handleClone = useCallback(async (id: string) => {
         if (!interactionData) return;
         try {
-            // FIXED: Just pass the messageId. cloneChatUpToMessage resolves the location internally.
             const clonedChat = await cloneChatUpToMessage(interactionData, id);
             await saveRawInteractionData(clonedChat);
             await saveRawSessionData({ activeChatId: clonedChat.id });
