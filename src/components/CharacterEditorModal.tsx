@@ -72,15 +72,21 @@ const toolDescriptions: Record<tool, string> = {
     gpu: 'Allow this character to view GPU status.',
     system_info: 'Allow this character to view system info of your device.',
     notify: 'Allow this character to give you OS-level notifications.',
+    volume_control: 'Allow this character to control the volume of your device.',
+    lock_screen: 'Allow this character to lock your screen.',
     clipboard: 'Allow this character to use clipboard. Enable with caution.',
     screenshot: 'Allow this character to take screenshot of the whole screen. Enable with caution.',
+    webcam: 'Allow this character to use the webcam of your device.',
+    network_scanner: 'Allow this character to scan your network.',
     file_watcher: 'Allow this character to watch files. Enable with caution.',
     window_monitor: 'Allow this character to watch your windows. Enable with caution.',
     process_monitor: 'Allow this character to watch your processes. Enable with caution.',
+    trash: 'Allow this character to throw files into trash. Enable with caution.',
     browser: 'Allow this character to open the browser. Enable with caution.',
     read_file: 'Allow this character to read files on your device. Enable with caution.',
     write_file: 'Allow this character to write files on your device. Enable with caution.',
     shell: 'Allow this character to use shell on your device. Enable with caution.',
+    virtual_input: 'Allow this character to take control inputs of your device. Enable with caution.',
     hardware_control: 'Allow this character to control your devices. Enable with caution.'
 };
 

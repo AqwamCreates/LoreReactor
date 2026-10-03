@@ -43,6 +43,18 @@ export interface ShellResult {
   error?: string;
 }
 
+export interface VirtualInputParams {
+  action: 'move' | 'click' | 'type' | 'press' | 'scroll' | 'screen_size' | 'get_position';
+  x?: number;
+  y?: number;
+  button?: 'left' | 'right' | 'middle';
+  double?: boolean;
+  text?: string;
+  key?: string;
+  modifier?: string;
+  smooth?: boolean;
+}
+
 export async function speakText(text: string, voice?: string, speed = 1.0) {
   const res = await fetch(`${localURL}/tool/text_to_speech`, {
     method: 'POST',
@@ -231,6 +243,27 @@ export async function runShellCommand(command: string): Promise<ShellResult> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ command }),
+    });
+    return await response.json();
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+}
+
+export async function sendVirtualInput(params: VirtualInputParams): Promise<{
+  success: boolean;
+  message?: string;
+  width?: number;
+  height?: number;
+  x?: number;
+  y?: number;
+  error?: string;
+}> {
+  try {
+    const response = await fetch(`${localURL}/tool/virtual-input`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
     });
     return await response.json();
   } catch (e) {

@@ -60,6 +60,7 @@ export const defaultCharacterTools: Record<tool, boolean> = {
     read_file: false,
     write_file: false,
     shell: false,
+    virtual_input: false,
     hardware_control: false,
 };
 

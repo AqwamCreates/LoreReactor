@@ -10,7 +10,7 @@ import { getAudioEngine } from './AudioEngine';
 import { generateCharacterMemory } from './ChatMessageSummarizationEngine';
 import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
-import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, clipboardAction, captureScreenshot, captureWebcam, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
+import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, clipboardAction, captureScreenshot, captureWebcam, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, sendVirtualInput, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
 import { buildSearchUrl } from '../utilities/searchURLBuilder';
 import { getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
 import { getLocationMessageHistory } from '../utilities/timelineLogic';
@@ -331,6 +331,7 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
     read_file: executeReadFile,
     write_file: executeWriteFile,
     shell: executeShell,
+    virtual_input: executeVirtualInput,
     hardware_control: executeHardwareControl,
 };
 
@@ -2219,6 +2220,75 @@ async function executeShell(
     context?.addToast?.(`Shell executed: ${command}`, 'success');
     const output = res.stdout || res.stderr || '[Command executed with no output]';
     return { toolType: 'shell', args, content: output, displayReplacement: `[💻 Shell: "${command}"]` };
+}
+
+// ─── Virtual Input Tool (Mouse & Keyboard) ──────────────────────────
+async function executeVirtualInput(
+    args: string, 
+    _nextMessage: BaseMessage, 
+    _interactionData: InteractionData, 
+    context?: ToolExecutionContext
+): Promise<ToolResult> {
+    const pArgs = parsePythonArgs(args);
+    const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
+
+    if (!action) {
+        return helpResult('virtual_input', 'action="move|click|type|press|scroll|screen_size", x=0, y=0, text="...", key="..."', 'control host mouse and keyboard');
+    }
+
+    const x = pArgs.getNumber(1, 'x');
+    const y = pArgs.getNumber(2, 'y');
+    const text = pArgs.get(1, 'text', 'content');
+    const key = pArgs.get(1, 'key', 'button_name');
+    const button = (pArgs.get(1, 'button')?.toLowerCase() || 'left') as 'left' | 'right' | 'middle';
+    const modifier = pArgs.get(2, 'modifier', 'mod');
+    const double = pArgs.get(2, 'double')?.toLowerCase() === 'true';
+
+    const res = await sendVirtualInput({
+        action: action as any,
+        x,
+        y,
+        text,
+        key,
+        button,
+        modifier,
+        double,
+    });
+
+    if (!res.success) {
+        return { 
+            toolType: 'virtual_input', 
+            args, 
+            content: `[Error: ${res.error || 'Input simulation failed'}]`, 
+            displayReplacement: '[❌ Input failed]' 
+        };
+    }
+
+    if (action === 'screen_size') {
+        return {
+            toolType: 'virtual_input',
+            args,
+            content: `Screen Resolution: ${res.width}x${res.height}`,
+            displayReplacement: `[🖥️ Display: ${res.width}x${res.height}]`
+        };
+    }
+
+    if (action === 'get_position') {
+        return {
+            toolType: 'virtual_input',
+            args,
+            content: `Current Mouse Position: (${res.x}, ${res.y})`,
+            displayReplacement: `[🖱️ Cursor: (${res.x}, ${res.y})]`
+        };
+    }
+
+    context?.addToast?.(`Input executed: ${res.message}`, 'info');
+    return { 
+        toolType: 'virtual_input', 
+        args, 
+        content: res.message || 'Action executed successfully.', 
+        displayReplacement: `[🖱️ ${action.toUpperCase()}]` 
+    };
 }
 
 // ── Hardware Control ─────────────────────────────────────────────

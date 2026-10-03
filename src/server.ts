@@ -20,7 +20,7 @@ import NodeWebcam from 'node-webcam';
 import loudness from 'loudness';
 import findDevices from 'local-devices';
 import trash from 'trash';
-
+import robot from 'robotjs';
 
 // --- Configuration ---
 const app = express();
@@ -1485,12 +1485,21 @@ const webcamInstance = NodeWebcam.create({
 });
 
 app.post('/tool/webcam', (_req, res) => {
-  webcamInstance.capture('webcam_snapshot', (err: Error | null, data: string) => {
+  webcamInstance.capture('webcam_snapshot', (err, data) => {
     if (err) {
-      log.error(`Webcam capture failed: ${err.message || err}`);
-      return res.status(500).json({ success: false, error: err.message || String(err) });
+      const errorMsg = (err as Error)?.message || String(err);
+      log.error(`Webcam capture failed: ${errorMsg}`);
+      return res.status(500).json({ success: false, error: errorMsg });
     }
-    const cleanBase64 = typeof data === 'string' ? data.replace(/^data:image\/\w+;base64,/, '') : '';
+
+    // Handle both string (base64/path) and Buffer cleanly:
+    let cleanBase64 = '';
+    if (typeof data === 'string') {
+      cleanBase64 = data.replace(/^data:image\/\w+;base64,/, '');
+    } else if (Buffer.isBuffer(data)) {
+      cleanBase64 = data.toString('base64');
+    }
+
     res.json({ success: true, contentType: 'image/jpeg', base64: cleanBase64 });
   });
 });
@@ -1682,6 +1691,78 @@ app.post('/tool/shell', async (req, res) => {
       stdout: err.stdout?.trim() || '', 
       stderr: err.stderr?.trim() || '' 
     });
+  }
+});
+
+app.post('/tool/virtual-input', (req, res) => {
+  const { action, x, y, button = 'left', double = false, text, key, modifier, smooth = true } = req.body;
+
+  try {
+    // 1. Move Mouse Cursor
+    if (action === 'move') {
+      if (typeof x !== 'number' || typeof y !== 'number') {
+        return res.status(400).json({ success: false, error: 'Coordinates x and y are required numbers' });
+      }
+      if (smooth) {
+        robot.moveMouseSmooth(x, y);
+      } else {
+        robot.moveMouse(x, y);
+      }
+      return res.json({ success: true, message: `Moved cursor to (${x}, ${y})` });
+    }
+
+    // 2. Mouse Click
+    if (action === 'click') {
+      const clickButton = button === 'right' || button === 'middle' ? button : 'left';
+      robot.mouseClick(clickButton, Boolean(double));
+      return res.json({ success: true, message: `Clicked ${clickButton} button (double=${double})` });
+    }
+
+    // 3. Type Text Strings
+    if (action === 'type') {
+      if (typeof text !== 'string') {
+        return res.status(400).json({ success: false, error: 'Text string is required for typing' });
+      }
+      robot.typeString(text);
+      return res.json({ success: true, message: `Typed "${text}"` });
+    }
+
+    // 4. Press Specific Key / Shortcuts (e.g., "enter", "escape", or key="s", modifier="control")
+    if (action === 'press') {
+      if (!key || typeof key !== 'string') {
+        return res.status(400).json({ success: false, error: 'Key name is required' });
+      }
+      if (modifier) {
+        robot.keyTap(key.toLowerCase(), modifier.toLowerCase());
+      } else {
+        robot.keyTap(key.toLowerCase());
+      }
+      return res.json({ success: true, message: `Tapped key "${key}" ${modifier ? `with ${modifier}` : ''}` });
+    }
+
+    // 5. Scroll Mouse Wheel
+    if (action === 'scroll') {
+      const scrollY = typeof y === 'number' ? y : 0;
+      const scrollX = typeof x === 'number' ? x : 0;
+      robot.scrollMouse(scrollX, scrollY);
+      return res.json({ success: true, message: `Scrolled mouse by (${scrollX}, ${scrollY})` });
+    }
+
+    // 6. Get Display Screen Resolution Dimensions
+    if (action === 'screen_size') {
+      const size = robot.getScreenSize();
+      return res.json({ success: true, width: size.width, height: size.height });
+    }
+
+    // 7. Get Current Cursor Position
+    if (action === 'get_position') {
+      const pos = robot.getMousePos();
+      return res.json({ success: true, x: pos.x, y: pos.y });
+    }
+
+    res.status(400).json({ success: false, error: `Unknown virtual_input action: "${action}"` });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
   }
 });
 
