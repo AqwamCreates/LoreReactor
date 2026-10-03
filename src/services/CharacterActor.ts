@@ -125,36 +125,24 @@ function applyToolReplacements(
     callbacks?: TurnStreamCallbacks,
 ): void {
     const acc = accState.get();
-    let currentRaw = acc.raw;
-    let currentDisplay = acc.display;
+
+    // Clean replacement: tool execution becomes the clean anchor of the turn
+    let currentRaw = '';
+    let currentDisplay = '';
 
     for (let i = 0; i < replacements.rawReplacements.length; i++) {
         const { rawMatch, resultText } = replacements.rawReplacements[i];
         const { displayText } = replacements.displayReplacements[i];
 
-        // 1. Raw prompt context: strictly inline with a trailing space
-        const rawReplacement = `${rawMatch} -> ${resultText} `;
-        if (currentRaw.includes(rawMatch)) {
-            currentRaw = currentRaw.replace(rawMatch, rawReplacement);
-        } else {
-            const trimmedRaw = currentRaw.trimEnd();
-            currentRaw = (trimmedRaw ? `${trimmedRaw} ` : '') + rawReplacement;
-        }
+        // 1. Raw prompt context: bounded observation tag
+        currentRaw += `${rawMatch}[Output: ${resultText}] `;
 
-        // 2. UI Display representation: guarantees exactly one trailing space after non-empty badges/icons
+        // 2. UI Display representation: badge/icon with single space
         if (displayText !== '') {
-            if (currentDisplay.includes(rawMatch)) {
-                currentDisplay = currentDisplay.replace(rawMatch, `${displayText} `);
-            } else {
-                const trimmedDisplay = currentDisplay.trimEnd();
-                currentDisplay = (trimmedDisplay ? `${trimmedDisplay} ` : '') + `${displayText} `;
-            }
-        } else if (currentDisplay.includes(rawMatch)) {
-            currentDisplay = currentDisplay.replace(rawMatch, '');
+            currentDisplay += `${displayText} `;
         }
     }
 
-    currentDisplay = cleanSpacing(currentDisplay);
     acc.setRaw(currentRaw);
     acc.setDisplay(currentDisplay);
     callbacks?.onDisplayText(acc.display);
@@ -281,7 +269,6 @@ export class CharacterActor {
             const streamToolParser = new ToolInvocationParser();
             const accState = createAccState(currentExistingText);
 
-            // Stream callback factory that aborts active token generation immediately upon encountering a completed tool call
             const createStreamCallbacks = (
                 parser: ToolInvocationParser,
                 getAccumulators: () => { 
@@ -314,19 +301,19 @@ export class CharacterActor {
                     const parsed = parser.processChunk(delta);
                     acc.setRaw(acc.raw + delta);
 
+                    // 1. Tool call detected: abort pass immediately to execute tool
                     if (parsed.toolInvocations.length > 0) {
                         for (const inv of parsed.toolInvocations) {
                             acc.addPendingInvocation(inv);
                         }
-                        // Stop current stream immediately so tool can execute and return result
                         turnAbortCtrl.abort();
                         return;
                     }
 
+                    // 2. Normal text output
                     if (parsed.displayText) {
                         let incoming = parsed.displayText;
 
-                        // Strip ONLY leading newlines, leaving single spacing intact
                         if (isFirstChunkAfterTool) {
                             incoming = incoming.replace(/^[\r\n]+/, '');
                             if (incoming.length > 0) {
@@ -356,8 +343,7 @@ export class CharacterActor {
             // ─── Single Stream Pass Execution Handler ───────────────
             const runSingleStreamPass = async (
                 reqBody: Record<string, unknown>,
-                isBudget: boolean,
-                activeModelId?: string
+                isBudget: boolean
             ): Promise<string> => {
                 const turnAbortCtrl = new AbortController();
                 const onParentAbort = () => turnAbortCtrl.abort();
@@ -477,7 +463,7 @@ export class CharacterActor {
                         data, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId
                     );
 
-                    await runSingleStreamPass(body, true, activeModelId);
+                    await runSingleStreamPass(body, true);
 
                     finalBudgetData = bse.getBudgetData();
                     if (!finalBudgetData) {

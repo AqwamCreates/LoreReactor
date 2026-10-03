@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { writeFile, readFile } from '../utilities/serverTools';
 import { buildSearchUrl } from '../utilities/searchURLBuilder';
 import { getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
+import { localURL } from '../configurations';
 
 export interface ToolResult {
     toolType: string;

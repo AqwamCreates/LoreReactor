@@ -1213,7 +1213,7 @@ function buildToolInstructionLines(ctx: PromptBuildContext): string[] {
             `I have access to external tools: ${enabledToolNames.join(', ')}.`,
             `To invoke a tool, I must write ${toolStartSring}tool_name(arguments)${toolEndString} (for example: ${toolStartSring}${exampleTool}${toolEndString}). Calling a tool without arguments returns its usage instructions.`,
             `ACTION-FIRST PROTOCOL: Whenever an action, calculation, or external data is needed, I must output the ${toolStartSring}...${toolEndString} invocation FIRST at the very start of my turn before speaking.`,
-            `The tool will execute immediately and return its value inline as -> <result>. I will then continue my dialogue directly on the same line incorporating the real result. I will never output raw tool result labels or add unnecessary blank lines.`
+            `The tool will execute immediately and return its value inline as  <result>. I will then continue my dialogue directly on the same line incorporating the real result. I will never output raw tool result labels or add unnecessary blank lines.`
         ].join(' ');
 
         lines.push(`${ctx.delimiters.blockStart('system')}${toolInstructions}${ctx.delimiters.blockEnd}`);
