@@ -69,7 +69,7 @@ const toolDescriptions: Record<tool, string> = {
     creator: 'Allow this character to create user-data-related entities such as characters, contexts, locations, worlds, prompt blocks, profiles, or other supported data.',
     destroyer: 'Allow this character to delete or destroy user-data-related entities. Enable with caution.',
     gpu: 'Allow this character to view GPU status.',
-    systemInfo: 'Allow this character to view system info of your device.',
+    system_info: 'Allow this character to view system info of your device.',
     notify: 'Allow this character to give you OS-level notifications.',
     clipboard: 'Allow this character to use clipboard. Enable with caution.',
     screenshot: 'Allow this character to take screenshot of the whole screen.',

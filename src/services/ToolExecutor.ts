@@ -314,7 +314,7 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
     creator: executeCreator,
     destroyer: executeDestroyer,
     gpu: executeGpu,
-    systemInfo: executeSysInfo,
+    system_info: executeSysInfo,
     notify: executeNotify,
     clipboard: executeClipboard,
     screenshot: executeScreenshot,
@@ -333,7 +333,7 @@ export async function executeTool(
 ): Promise<ToolResult> {
     const toolType = invocation.toolType;
     const args = invocation.args;
-    const executeFunction = toolFunctions[toolType as string];
+    const executeFunction = toolFunctions[toolType as tool];
     if (executeFunction) return executeFunction(args, nextMessage, interactionData, context, displayMode);
     console.warn(`Unknown tool type: ${toolType}`);
     const errorContent = `[Error: Unknown tool "${toolType}"]`;

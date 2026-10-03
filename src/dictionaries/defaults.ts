@@ -43,7 +43,7 @@ export const defaultCharacterTools: Record<tool, boolean> = {
     creator: false,
     destroyer: false,
     gpu: false,
-    systemInfo: false,
+    system_info: false,
     notify: false,
     clipboard: false,
     screenshot: false,
