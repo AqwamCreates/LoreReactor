@@ -5,7 +5,7 @@ import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
 import { fetchMultipleContextUrls } from './linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
-import { toolStartString, toolEndString } from '../dictionaries/stringList';
+import { toolStartSring, toolEndString } from '../dictionaries/stringList';
 import { type TimeData, fetchCurrentWeather, getLocation, getTimeDataFromCoordinates } from '../services/LocationEngine';
 import { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter, getCurrentLocationId, } from './locationLogic';
 import { defaultInputStrategy } from '../dictionaries/defaults';
@@ -1205,22 +1205,8 @@ function buildToolInstructionLines(ctx: PromptBuildContext): string[] {
     const enabledToolNames = (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
 
     if (enabledToolNames.length > 0) {
-        const exampleTool = enabledToolNames.includes('dice' as tool)
-            ? 'dice(sides: 6, count: 1)'
-            : enabledToolNames.includes('clock' as tool)
-                ? 'clock()'
-                : `${enabledToolNames[0]}()`;
-
-        const toolInstructions = [
-            `I have access to external tools: ${enabledToolNames.join(', ')}.`,
-            `To invoke a tool, I will write ${toolStartString}tool_name(arguments)${toolEndString} (for example: ${toolStartString}${exampleTool}${toolEndString}). Calling a tool without arguments returns its usage instructions.`,
-            `MANDATORY SEQUENCE (EXECUTE FIRST, SPEAK SECOND): Whenever a query or action requires real-time data or calculations (such as rolling dice, checking time, date, hardware, web, or memory), I MUST output the ${toolStartString}...${toolEndString} invocation as the VERY FIRST TOKENS of my response.`,
-            `I am strictly forbidden from greeting, speaking, guessing, or generating any narrative dialogue before invoking the tool.`,
-            `The tool invocation will be evaluated immediately and replaced with its real output in-place. Only after the tool has returned its real output will I begin writing my in-character dialogue incorporating the verified result.`,
-            `I will never fabricate data, guess numbers, or mention function syntax in my spoken dialogue.`
-        ].join(' ');
-
-        lines.push(`${ctx.delimiters.blockStart('system')}${toolInstructions}${ctx.delimiters.blockEnd}`);
+        const firstTool = enabledToolNames[0];
+        lines.push(`${ctx.delimiters.blockStart('system')}I understand that I can access the tools help page or use it directly by calling the ${toolStartSring} marker followed by the tool name and arguments, then closing with ${toolEndString} like ${toolStartSring}${firstTool}()${toolEndString}. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results. Tool invocation markers are completely invisible to the user. Writing a tool name without arguments returns usage instructions for that tool. I also understand that calling some of the tools without an argument will give me the instructions on how to use it. I will also only provide the values that are requested by the tools instead of creating non-existing ones. I will also use the tools to get accurate and precise information before even writing a sentence. Available tools: ${enabledToolNames.join(', ')}.${ctx.delimiters.blockEnd}`);
     }
 
     return lines;

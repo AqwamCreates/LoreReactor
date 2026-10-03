@@ -1,4 +1,4 @@
 // src/dictionaries/stringList.ts
 
-export const toolStartString = "<|"
+export const toolStartSring = "<|"
 export const toolEndString = "|>"

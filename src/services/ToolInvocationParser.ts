@@ -1,5 +1,5 @@
 // src/services/ToolInvocationParser.ts
-import { toolStartString, toolEndString } from '../dictionaries/stringList';
+import { toolStartSring, toolEndString } from '../dictionaries/stringList';
 
 export interface ToolInvocation {
     toolType: string;
@@ -56,8 +56,8 @@ export function parseSlashCommand(input: string): ToolInvocation | null {
     if (!trimmed) return null;
 
     // Strip explicit <| and |> if present in the command
-    if (trimmed.startsWith(toolStartString) && trimmed.endsWith(toolEndString)) {
-        trimmed = trimmed.slice(toolStartString.length, trimmed.length - toolEndString.length).trim();
+    if (trimmed.startsWith(toolStartSring) && trimmed.endsWith(toolEndString)) {
+        trimmed = trimmed.slice(toolStartSring.length, trimmed.length - toolEndString.length).trim();
     }
 
     const { toolType, args } = parseInnerToolCall(trimmed);
@@ -90,14 +90,14 @@ export class ToolInvocationParser {
         const toolInvocations: ToolInvocation[] = [];
 
         while (this.buffer.length > 0) {
-            const startIdx = this.buffer.indexOf(toolStartString);
+            const startIdx = this.buffer.indexOf(toolStartSring);
 
             // No start token found
             if (startIdx === -1) {
                 // Check if the buffer ends with a partial start token (e.g. "<")
                 let safeLen = this.buffer.length;
-                for (let len = 1; len < toolStartString.length; len++) {
-                    if (this.buffer.endsWith(toolStartString.slice(0, len))) {
+                for (let len = 1; len < toolStartSring.length; len++) {
+                    if (this.buffer.endsWith(toolStartSring.slice(0, len))) {
                         safeLen = this.buffer.length - len;
                         break;
                     }
@@ -114,7 +114,7 @@ export class ToolInvocationParser {
             }
 
             // Look for matching |> closing token
-            const endIdx = this.buffer.indexOf(toolEndString, toolStartString.length);
+            const endIdx = this.buffer.indexOf(toolEndString, toolStartSring.length);
 
             if (endIdx === -1) {
                 // The tool call is still streaming tokens inside <|...
@@ -125,7 +125,7 @@ export class ToolInvocationParser {
             // Full <|...|> match found!
             const fullEndIdx = endIdx + toolEndString.length;
             const rawMatch = this.buffer.slice(0, fullEndIdx);
-            const innerContent = this.buffer.slice(toolStartString.length, endIdx);
+            const innerContent = this.buffer.slice(toolStartSring.length, endIdx);
 
             const { toolType, args } = parseInnerToolCall(innerContent);
 
