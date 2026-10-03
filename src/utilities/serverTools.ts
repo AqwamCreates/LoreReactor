@@ -143,13 +143,13 @@ export async function captureWebcam(): Promise<{ success: boolean; base64?: stri
   }
 }
 
-export async function moveToTrash(targetPath: string): Promise<{ success: boolean; path?: string; error?: string }> {
+export async function scanLocalNetwork(): Promise<{
+  success: boolean;
+  devices?: Array<{ name: string; ip: string; mac: string }>;
+  error?: string;
+}> {
   try {
-    const response = await fetch(`${localURL}/tool/trash`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targetPath }),
-    });
+    const response = await fetch(`${localURL}/tool/network`);
     return await response.json();
   } catch (e) {
     return { success: false, error: (e as Error).message };
@@ -181,6 +181,19 @@ export async function getRunningProcesses(query?: string, limit = 5) {
   params.append('limit', limit.toString());
   const res = await fetch(`${localURL}/tool/process-monitor?${params.toString()}`);
   return res.json();
+}
+
+export async function moveToTrash(targetPath: string): Promise<{ success: boolean; path?: string; error?: string }> {
+  try {
+    const response = await fetch(`${localURL}/tool/trash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetPath }),
+    });
+    return await response.json();
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
 }
 
 /**

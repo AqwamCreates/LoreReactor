@@ -10,7 +10,7 @@ import { getAudioEngine } from './AudioEngine';
 import { generateCharacterMemory } from './ChatMessageSummarizationEngine';
 import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
-import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, clipboardAction, captureScreenshot, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, writeFile, readFile, runShellCommand, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
+import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, clipboardAction, captureScreenshot, captureWebcam, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
 import { buildSearchUrl } from '../utilities/searchURLBuilder';
 import { getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
 import { getLocationMessageHistory } from '../utilities/timelineLogic';
@@ -317,11 +317,16 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
     gpu: executeGpu,
     system_info: executeSystemInfo,
     notify: executeNotify,
+    volume_control: executeVolumeControl,
+    lock_screen: executeLockScreen,
     clipboard: executeClipboard,
     screenshot: executeScreenshot,
+    webcam: executeWebcam,
+    network_scanner: executeNetworkScanner,
     file_watcher: executeFileWatcher,
     window_monitor: executeWindowMonitor,
     process_monitor: executeProcessMonitor,
+    trash: executeTrash,
     browser: executeBrowser,
     read_file: executeReadFile,
     write_file: executeWriteFile,
@@ -1922,6 +1927,39 @@ async function executeNotify(
     };
 }
 
+// ─── Volume Control Tool ────────────────────────────────────────────
+async function executeVolumeControl(args: string): Promise<ToolResult> {
+    const pArgs = parsePythonArgs(args);
+    const action = (pArgs.get(0, 'action', 'command')?.toLowerCase() || 'get') as 'get' | 'set' | 'mute' | 'unmute';
+    const level = pArgs.getNumber(1, 'level', 'volume', 'val');
+
+    const res = await controlVolume(action, level);
+    if (!res.success) {
+        return { toolType: 'volume_control', args, content: `[Error: ${res.error}]`, displayReplacement: '[❌ Volume error]' };
+    }
+
+    if (action === 'get') {
+        return { toolType: 'volume_control', args, content: `Master Volume: ${res.volume}% (Muted: ${res.muted})`, displayReplacement: `[🔊 Volume: ${res.volume}%]` };
+    }
+    if (action === 'set') {
+        return { toolType: 'volume_control', args, content: `Master Volume set to ${res.volume}%`, displayReplacement: `[🔊 Set: ${res.volume}%]` };
+    }
+    if (action === 'mute' || action === 'unmute') {
+        return { toolType: 'volume_control', args, content: `Audio ${action}d successfully.`, displayReplacement: action === 'mute' ? '[🔇 Muted]' : '[🔊 Unmuted]' };
+    }
+    return helpResult('volume_control', 'action="get|set|mute|unmute", level=50', 'adjust host system master volume');
+}
+
+// ─── Workstation Lock Screen Tool ───────────────────────────────────
+async function executeLockScreen(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): Promise<ToolResult> {
+    const res = await lockScreen();
+    if (!res.success) {
+        return { toolType: 'lock_screen', args, content: `[Error: ${res.error}]`, displayReplacement: '[❌ Lock failed]' };
+    }
+    context?.addToast?.('Screen locked', 'info');
+    return { toolType: 'lock_screen', args, content: 'Host workstation locked successfully.', displayReplacement: '[🔒 Screen Locked]' };
+}
+
 // ─── Clipboard Management ───────────────────────────────────────────
 async function executeClipboard(
     args: string, 
@@ -1989,6 +2027,55 @@ async function executeScreenshot(
         content: `[Screenshot Captured successfully - Base64 image payload generated]`,
         displayReplacement: `[📸 Screenshot captured]`
     };
+}
+
+// ─── Webcam Tool ────────────────────────────────────────────────────
+async function executeWebcam(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): Promise<ToolResult> {
+    const res = await captureWebcam();
+    if (!res.success || !res.base64) {
+        return { toolType: 'webcam', args, content: `[Error: ${res.error || 'Failed to capture webcam snapshot'}]`, displayReplacement: '[❌ Webcam error]' };
+    }
+    context?.addToast?.('Webcam snapshot captured', 'success');
+    return {
+        toolType: 'webcam',
+        args,
+        content: `[Webcam Snapshot Captured - Base64 Payload Length: ${res.base64.length} bytes]`,
+        displayReplacement: '[📷 Webcam Snapshot]'
+    };
+}
+
+// ─── Local Network Scanner Tool ─────────────────────────────────────
+async function executeNetworkScanner(args: string): Promise<ToolResult> {
+    const res = await scanLocalNetwork();
+    if (!res.success || !res.devices) {
+        return { toolType: 'network_scanner', args, content: `[Error: ${res.error || 'Failed to scan network'}]`, displayReplacement: '[❌ Network error]' };
+    }
+
+    const deviceList = res.devices.map(d => `${d.name || 'Unknown'} (${d.ip}) - MAC: ${d.mac}`).join('\n');
+    return {
+        toolType: 'network_scanner',
+        args,
+        content: `Discovered ${res.devices.length} device(s) on local network:\n${deviceList}`,
+        displayReplacement: `[🌐 ${res.devices.length} device(s) on LAN]`
+    };
+}
+
+// ─── Safe Trash / Recycle Bin Tool ──────────────────────────────────
+async function executeTrash(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): Promise<ToolResult> {
+    const pArgs = parsePythonArgs(args);
+    const targetPath = pArgs.get(0, 'path', 'file_path', 'target') || pArgs.positional.join(' ').trim();
+
+    if (!targetPath) {
+        return helpResult('trash', 'path="..."', 'safely move a file or folder to OS recycle bin / trash');
+    }
+
+    const res = await moveToTrash(targetPath);
+    if (!res.success) {
+        return { toolType: 'trash', args, content: `[Error: ${res.error}]`, displayReplacement: '[❌ Trash error]' };
+    }
+
+    context?.addToast?.(`Moved to Recycle Bin: ${targetPath}`, 'info');
+    return { toolType: 'trash', args, content: `Moved "${res.path || targetPath}" to the operating system recycle bin.`, displayReplacement: `[🗑️ Trashed: "${targetPath}"]` };
 }
 
 // ── File Watcher ─────────────────────────────────────────────────
