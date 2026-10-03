@@ -101,13 +101,13 @@ export function CharacterCardImportModal({
             const traitText = `${fields.name} ${fields.description} ${fields.systemPrompt}`;
             const initiativeWeight = getInitiativeWeightValueFromText(traitText);
             const chatProbability = getChatProbabilityValue(traitText);
-            const maximumChatStamina = Math.round(getMaximumChatStaminaValueFromText(traitText));
+            const maximumChatStamina = getMaximumChatStaminaValueFromText(traitText);
             const nameSensitivity = getNameSensitivityValueFromText(traitText);
             const skipProbability = getSkipProbabilityValueFromText(traitText);
             const chatImpatienceSensitivity = getChatImpatienceSensitivityValueFromText(traitText);
             const memoryRetentionWeight = getMemoryRetentionWeightValueFromText(traitText);
             const contextSensitivity = getContextSensitivityValueFromText(traitText);
-            const maximumActionStamina = Math.round(getMaximumActionStaminaValueFromText(traitText));
+            const maximumActionStamina = getMaximumActionStaminaValueFromText(traitText);
 
             // Assign default sampler if available
             const defaultSampler = allSamplers.length > 0 ? allSamplers[0] : undefined;

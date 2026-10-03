@@ -254,7 +254,7 @@ export function getChatProbabilityValue(text: string) {
 }
 
 export function getMaximumChatStaminaValueFromText(text: string) {
-    return detectValue(text, MAXIMUM_CHAT_STAMINA_RULES, DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE, false);
+    return Math.round(detectValue(text, MAXIMUM_CHAT_STAMINA_RULES, DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE, false));
 }
 
 export function getNameSensitivityValueFromText(text: string) {
@@ -278,5 +278,5 @@ export function getContextSensitivityValueFromText(text: string) {
 }
 
 export function getMaximumActionStaminaValueFromText(text: string) {
-    return detectValue(text, MAXIMUM_ACTION_STAMINA_RULES, DEFAULT_MAXIMUM_ACTION_STAMINA_VALUE, false);
+    return Math.round(detectValue(text, MAXIMUM_ACTION_STAMINA_RULES, DEFAULT_MAXIMUM_ACTION_STAMINA_VALUE, false));
 }

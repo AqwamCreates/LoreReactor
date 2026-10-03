@@ -359,13 +359,13 @@ function CharacterEditorModalInner({
 
         const iw = getInitiativeWeightValueFromText(combinedText);
         const cp = getChatProbabilityValue(combinedText);
-        const ms = Math.round(getMaximumChatStaminaValueFromText(combinedText));
+        const ms = getMaximumChatStaminaValueFromText(combinedText);
         const ns = getNameSensitivityValueFromText(combinedText);
         const cis = getChatImpatienceSensitivityValueFromText(combinedText);
         const sp = getSkipProbabilityValueFromText(combinedText);
         const mrw = getMemoryRetentionWeightValueFromText(combinedText);
         const crs = getContextSensitivityValueFromText(combinedText);
-        const mas = Math.round(getMaximumActionStaminaValueFromText(combinedText));
+        const mas = getMaximumActionStaminaValueFromText(combinedText);
 
         setInitiativeWeightStr(String(iw)); newDetected.iw = iw;
         setChatProbabilityStr(String(cp)); newDetected.cp = cp;
