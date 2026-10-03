@@ -1,4 +1,4 @@
-// src/utilities/chatTraitsDetection.ts
+// src/utilities/traitsDetection.ts
 
 // --- Modifier System ---
 
