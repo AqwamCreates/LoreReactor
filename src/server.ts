@@ -487,7 +487,9 @@ const MEDIA_DIR_PREFIXES = [
   'location_images/',
   'audio_track_audio/',
   'prompt_block_images/',
-  'factorization_machine_data/'
+  'factorization_machine_data/',
+  'screenshots/',
+  'webcam_snapshots/'
 ];
 
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
@@ -1461,14 +1463,26 @@ app.post('/tool/clipboard', async (req, res) => {
 
 app.post('/tool/screenshot', async (_req, res) => {
   try {
-    // Captures primary display buffer as a base64 JPEG string
+    const screenshotDir = path.join(ROOT_DIR, 'user_data', 'screenshots');
+    if (!fs.existsSync(screenshotDir)) {
+      fs.mkdirSync(screenshotDir, { recursive: true });
+    }
+
+    // Capture primary display buffer as a JPEG buffer
     const imgBuffer = await screenshot({ format: 'jpg' });
+    
+    // Optionally save a permanent copy to disk
+    const filename = `screenshot_${Date.now()}.jpg`;
+    const filePath = path.join(screenshotDir, filename);
+    fs.writeFileSync(filePath, imgBuffer);
+
     const base64Image = imgBuffer.toString('base64');
 
     res.json({
       success: true,
       contentType: 'image/jpeg',
-      base64: base64Image
+      base64: base64Image,
+      path: filePath
     });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
@@ -1485,14 +1499,23 @@ const webcamInstance = NodeWebcam.create({
 });
 
 app.post('/tool/webcam', (_req, res) => {
-  webcamInstance.capture('/user_data/webcam_snapshots/snapshot', (err, data) => {
+  const snapshotDir = path.join(ROOT_DIR, 'user_data', 'webcam_snapshots');
+  if (!fs.existsSync(snapshotDir)) {
+    try {
+      fs.mkdirSync(snapshotDir, { recursive: true });
+    } catch (e) {
+      return res.status(500).json({ success: false, error: (e as Error).message });
+    }
+  }
+  const snapshotPath = path.join(snapshotDir, 'snapshot');
+
+  webcamInstance.capture(snapshotPath, (err, data) => {
     if (err) {
       const errorMsg = (err as Error)?.message || String(err);
       log.error(`Webcam capture failed: ${errorMsg}`);
       return res.status(500).json({ success: false, error: errorMsg });
     }
 
-    // Handle both string (base64/path) and Buffer cleanly:
     let cleanBase64 = '';
     if (typeof data === 'string') {
       cleanBase64 = data.replace(/^data:image\/\w+;base64,/, '');
