@@ -128,7 +128,7 @@ export function CharacterCardImportModal({
             const detectedTools = detectToolsFromText(traitText);
 
             // By default, enable safe in-world tools that matched persona, plus baseline defaults.
-            // Privileged tools (shell, webcam, etc.) remain false until explicitly reviewed/allowed.
+            // Privileged tools (shell, front_camera, etc.) remain false until explicitly reviewed/allowed.
             const initialTools: Record<tool, boolean> = { ...defaultCharacterTools };
             for (const rule of detectedTools.inWorldReadonly) {
                 initialTools[rule.tool] = true;

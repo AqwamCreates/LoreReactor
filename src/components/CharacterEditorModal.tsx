@@ -92,7 +92,7 @@ const toolDescriptions: Record<tool, string> = {
     restart: 'Allow this character to restart your device. Enable with caution.',
     clipboard: 'Allow this character to use clipboard. Enable with caution.',
     screenshot: 'Allow this character to take screenshot of the whole screen. Enable with caution.',
-    webcam: 'Allow this character to use the webcam of your device.',
+    front_camera: 'Allow this character to use the front_camera of your device.',
     network_scanner: 'Allow this character to scan your network.',
     file_watcher: 'Allow this character to watch files. Enable with caution.',
     window_monitor: 'Allow this character to watch your windows. Enable with caution.',

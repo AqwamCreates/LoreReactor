@@ -30,11 +30,11 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
         riskDescription: 'Physically moves your mouse cursor, clicks buttons, and types keystrokes.' 
     },
     { 
-        tool: 'webcam', 
-        label: 'Live Webcam Snapshot', 
-        keywords: ['look at you', 'see your face', 'roommate', 'camera', 'photo of you', 'webcam', 'photographer'], 
+        tool: 'front_camera', 
+        label: 'Live front_camera Snapshot', 
+        keywords: ['look at you', 'see your face', 'roommate', 'camera', 'photo of you', 'front_camera', 'photographer'], 
         tier: 'os_privileged', 
-        riskDescription: 'Takes live photographic snapshots through your physical webcam.' 
+        riskDescription: 'Takes live photographic snapshots through your physical front_camera.' 
     },
     { 
         tool: 'lock_screen', 

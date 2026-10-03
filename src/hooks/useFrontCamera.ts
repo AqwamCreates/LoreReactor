@@ -1,3 +1,4 @@
+// src/hooks/useFrontCamera.ts
 import { useRef, useCallback, useEffect } from 'react';
 
 const CAMERA_IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
@@ -30,7 +31,7 @@ export function useFrontCamera(
         }, CAMERA_IDLE_TIMEOUT_MS);
     }, []);
 
-    const captureImage = useCallback(async (): Promise<string | null> => {
+    const captureFrontCameraImage = useCallback(async (): Promise<string | null> => {
         try {
             if (!streamRef.current || !streamRef.current.active) {
                 if (videoRef.current) {
@@ -38,15 +39,23 @@ export function useFrontCamera(
                     videoRef.current.remove();
                     videoRef.current = null;
                 }
+                
+                // Request HD (or native max) without forcing a square aspect ratio crop
                 streamRef.current = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'user', width: { ideal: 512 }, height: { ideal: 512 } },
+                    video: { 
+                        facingMode: 'user', 
+                        width: { ideal: 1920 }, 
+                        height: { ideal: 1080 } 
+                    },
                     audio: false,
                 });
+                
                 videoRef.current = document.createElement('video');
                 videoRef.current.srcObject = streamRef.current;
                 videoRef.current.setAttribute('playsinline', '');
                 videoRef.current.muted = true;
                 await videoRef.current.play();
+                
                 await new Promise<void>(resolve => {
                     const check = () => {
                         if (videoRef.current && videoRef.current.readyState >= 2) resolve();
@@ -61,12 +70,16 @@ export function useFrontCamera(
             if (!videoRef.current || videoRef.current.readyState < 2) return null;
 
             const canvas = document.createElement('canvas');
-            canvas.width = videoRef.current.videoWidth || 512;
-            canvas.height = videoRef.current.videoHeight || 512;
+            // Use the actual video stream dimensions (native uncropped aspect ratio)
+            canvas.width = videoRef.current.videoWidth || 1920;
+            canvas.height = videoRef.current.videoHeight || 1080;
+            
             const ctx = canvas.getContext('2d');
             if (!ctx) return null;
+            
             ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-            return canvas.toDataURL('image/jpeg', 0.8);
+            
+            return canvas.toDataURL('image/jpeg', 1);
         } catch (e) {
             console.error('Front camera capture failed:', e);
             addToast('Failed to capture camera image. Check camera permissions.', 'error');
@@ -92,5 +105,5 @@ export function useFrontCamera(
         };
     }, []);
 
-    return { captureImage };
+    return { captureFrontCameraImage };
 }

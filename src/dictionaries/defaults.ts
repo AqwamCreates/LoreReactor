@@ -54,7 +54,7 @@ export const defaultCharacterTools: Record<tool, boolean> = {
     shutdown: false,
     clipboard: false,
     screenshot: false,
-    webcam: false,
+    front_camera: false,
     network_scanner: false,
     file_watcher: false,
     window_monitor: false,

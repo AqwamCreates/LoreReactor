@@ -16,7 +16,6 @@ import chokidar, { type FSWatcher } from 'chokidar';
 import { SerialPort } from 'serialport';
 import say from 'say';
 import activeWindow from 'active-win';
-import NodeWebcam from 'node-webcam';
 import loudness from 'loudness';
 import findDevices from 'local-devices';
 import trash from 'trash';
@@ -489,7 +488,6 @@ const MEDIA_DIR_PREFIXES = [
   'prompt_block_images/',
   'factorization_machine_data/',
   'screenshots/',
-  'webcam_snapshots/'
 ];
 
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
@@ -1487,44 +1485,6 @@ app.post('/tool/screenshot', async (_req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
   }
-});
-
-const webcamInstance = NodeWebcam.create({
-  width: 1280,
-  height: 720,
-  quality: 85,
-  output: 'jpeg',
-  callbackReturn: 'base64',
-  verbose: false,
-});
-
-app.post('/tool/webcam', (_req, res) => {
-  const snapshotDir = path.join(ROOT_DIR, 'user_data', 'webcam_snapshots');
-  if (!fs.existsSync(snapshotDir)) {
-    try {
-      fs.mkdirSync(snapshotDir, { recursive: true });
-    } catch (e) {
-      return res.status(500).json({ success: false, error: (e as Error).message });
-    }
-  }
-  const snapshotPath = path.join(snapshotDir, 'snapshot');
-
-  webcamInstance.capture(snapshotPath, (err, data) => {
-    if (err) {
-      const errorMsg = (err as Error)?.message || String(err);
-      log.error(`Webcam capture failed: ${errorMsg}`);
-      return res.status(500).json({ success: false, error: errorMsg });
-    }
-
-    let cleanBase64 = '';
-    if (typeof data === 'string') {
-      cleanBase64 = data.replace(/^data:image\/\w+;base64,/, '');
-    } else if (Buffer.isBuffer(data)) {
-      cleanBase64 = data.toString('base64');
-    }
-
-    res.json({ success: true, contentType: 'image/jpeg', base64: cleanBase64 });
-  });
 });
 
 app.get('/tool/network', async (_req, res) => {

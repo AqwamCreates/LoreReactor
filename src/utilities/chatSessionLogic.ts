@@ -231,6 +231,7 @@ export interface GenerationTurnOptions {
     protagonistId: string;
     allPromptBlocks?: PromptBlock[];
     respondingCharacter?: Character;
+    existingCharacterText?: string,
     isProtagonistCharId?: (charId: string) => boolean;
     errorPrefix?: string;
     lockAlreadyAcquired?: boolean;

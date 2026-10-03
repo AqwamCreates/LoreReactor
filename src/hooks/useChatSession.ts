@@ -55,6 +55,7 @@ import type {
     HistoryMessage, Memory, Extension, Account,
     MultiplayerData, LanguageModel, InterjectableAction
 } from '../types';
+import { useFrontCamera } from './useFrontCamera';
 
 interface UseChatSessionOptions {
     onMessageBroadcast?: (message: HistoryMessage) => void;
@@ -183,7 +184,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     const { acquireLock, releaseLock, isLoadingRef } = useCharacterResponseLock();
     const { generateAmbientNarration } = useAmbientNarration(setStreamingState, setStreamingText, streamingTextRef);
 
-    // ─── Sub-Hook: Speculative Markov & Throttled Stream ──────────
     const { throttledSetStreamingTextWithBroadcast, isSpeculatingRef } = useSpeculativeStreamHandler({
         throttledSetStreamingText,
         streamingTextRef,
@@ -196,7 +196,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         setInteractionData,
     });
 
-    // ─── Sub-Hook: Session Lifecycle & Engine Event Listeners ─────
     useChatSessionEffects({
         interactionData,
         selectedModel,
@@ -282,6 +281,8 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
     }, []);
 
+    const { captureFrontCameraImage } = useFrontCamera(addToast);
+
     const buildToolContext = useCallback((): ToolExecutionContext => ({
         allCharacters: allCharactersRef.current,
         allContexts: allContextsRef.current,
@@ -297,10 +298,10 @@ export function useChatSession(options: UseChatSessionOptions) {
         allAccounts: allAccountsRef.current,
         allMultiplayerData: allMultiplayerDataRef.current,
         allExtensions: allExtensionsRef.current,
+        captureFrontCameraImage,
         addToast,
-    }), [addToast]);
+    }), [captureFrontCameraImage, addToast]);
 
-    // ─── Scheduled Responses Logic ─────────────────────────────────
     const formatDelay = (ms: number): string => {
         const totalSeconds = Math.floor(ms / 1000);
         const hours = Math.floor(totalSeconds / 3600);
@@ -313,7 +314,8 @@ export function useChatSession(options: UseChatSessionOptions) {
         return parts.join(' ');
     };
 
-    const triggerDelayedResponseRef = useRef<(characterId: string, thought: string) => Promise<void>>(null);
+    // UPDATED: Ref now accepts the `thought` parameter
+    const triggerDelayedResponseRef = useRef<(characterId: string, thought?: string) => Promise<void>>(null);
 
     const extractAndScheduleResponses = useCallback((data: InteractionData) => {
         const history = getGlobalMessageHistory(data);
@@ -330,9 +332,10 @@ export function useChatSession(options: UseChatSessionOptions) {
                             const delay = task.durationMs;
                             const charId = task.characterId;
                             const charName = task.characterName;
-                            const thought = task.thought;
+                            const thought = task.thought; // Captured here
                             
                             setTimeout(() => {
+                                // Passed down to the trigger
                                 triggerDelayedResponseRef.current?.(charId, thought);
                             }, delay);
                             
@@ -342,7 +345,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                         console.warn('Failed to parse scheduled responses', e);
                     }
                     
-                    // Clean up the inventory so it doesn't trigger again
                     const updatedHistories = { ...data.interactionHistories };
                     for (const [locId, msgs] of Object.entries(updatedHistories) as [string, HistoryMessage[]][]) {
                         const idx = msgs.findIndex(m => m.id === chatMsg.id);
@@ -369,6 +371,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     const executeTurnPipeline = useCallback(async ({
         data,
         protagonistId,
+        existingCharacterText = '', // Added to accept the injected thought
         allPromptBlocks,
         respondingCharacter,
         isProtagonistCharId,
@@ -431,7 +434,8 @@ export function useChatSession(options: UseChatSessionOptions) {
                 );
             }
 
-            const turnResult = await chatEngine.runTurn(data, ctrl, allPromptBlocks, metadata);
+            // Passed down to the chat engine
+            const turnResult = await chatEngine.runTurn(data, ctrl, allPromptBlocks, metadata, existingCharacterText);
             let ud = turnResult.interactionData;
 
             if (turnResult.promptText) {
@@ -452,7 +456,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 return;
             }
 
-            // Fallback: If a tool abort caused turnResult to have no new message, commit live streaming text
             if (getGlobalMessageHistory(ud).length <= preTurnCount) {
                 const liveText = streamingTextRef.current?.trim();
                 if (liveText && respondingChar) {
@@ -475,7 +478,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 setInteractionData(ud);
                 broadcastNewMessages(preTurnCount, ud);
 
-                // Extract and trigger scheduled follow-ups
                 extractAndScheduleResponses(ud);
 
                 const history = getGlobalMessageHistory(ud);
@@ -554,21 +556,27 @@ export function useChatSession(options: UseChatSessionOptions) {
         autoResumeOnCutoff, ui, generateAmbientNarration, isMultiplayerClient, isSpeculatingRef, streamingTextRef, extractAndScheduleResponses
     ]);
 
-    const triggerDelayedResponse = useCallback(async (characterId: string, _thought: string) => {
+    // UPDATED: Accepts `thought` and injects it as a system prefill via existingCharacterText
+    const triggerDelayedResponse = useCallback(async (characterId: string, thought?: string) => {
         const currentState = getState();
-        if (!currentState.interactionData || isLoadingRef.current) return;
+        const currentData = currentState.interactionData;
+        if (!currentData || isLoadingRef.current) return;
         
-        const character = currentState.interactionData.participants.find(p => p.id === characterId);
+        const character = currentData.participants.find(p => p.id === characterId);
         if (!character) return;
 
         if (!acquireLock()) return;
         
+        // Inject the thought as a hidden system nudge so the AI knows why it's speaking
+        const prefillText = thought ? `[System Note: You scheduled this follow-up earlier. Your internal thought was: "${thought}". Continue naturally from this premise.]\n\n` : '';
+
         try {
             await executeTurnPipeline({
-                data: currentState.interactionData,
-                protagonistId: currentState.interactionData.protagonists[0]?.id || '',
+                data: currentData,
+                protagonistId: currentData.protagonists[0]?.id || '',
                 respondingCharacter: character,
-                isProtagonistCharId: (id) => currentState.interactionData.protagonists.some(p => p.id === id),
+                existingCharacterText: prefillText, 
+                isProtagonistCharId: (id) => currentData.protagonists.some(p => p.id === id),
                 errorPrefix: 'Delayed response failed',
                 lockAlreadyAcquired: true,
             });

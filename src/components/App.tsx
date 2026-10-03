@@ -93,7 +93,7 @@ function deriveCurrentProtagonist(
 
 function App() {
     const { addToast } = useToast();
-    const { captureImage: captureFrontCameraImage } = useFrontCamera(addToast);
+    const { captureFrontCameraImage } = useFrontCamera(addToast);
 
     // ─── Manager Hooks ───────────────────────────────────────────────
     const chatList = useChatListManager();

@@ -10,7 +10,7 @@ import { getAudioEngine } from './AudioEngine';
 import { generateCharacterMemory } from './ChatMessageSummarizationEngine';
 import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
-import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, clipboardAction, captureScreenshot, captureWebcam, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, sendVirtualInput, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
+import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, clipboardAction, captureScreenshot, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, sendVirtualInput, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
 import { buildSearchUrl } from '../utilities/searchURLBuilder';
 import { getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
 import { getLocationMessageHistory } from '../utilities/timelineLogic';
@@ -38,6 +38,7 @@ export interface ToolExecutionContext {
     allExtensions?: Extension[];
     allAccounts?: Account[];
     allMultiplayerData?: MultiplayerData[];
+    captureFrontCameraImage?: () => Promise<string | null>; // <--- ADD THIS
     addToast?: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -325,7 +326,7 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
     restart: "s",
     clipboard: executeClipboard,
     screenshot: executeScreenshot,
-    webcam: executeWebcam,
+    front_camera: executeFrontCamera,
     network_scanner: executeNetworkScanner,
     file_watcher: executeFileWatcher,
     window_monitor: executeWindowMonitor,
@@ -2076,37 +2077,47 @@ async function executeScreenshot(
     };
 }
 
-// ─── Webcam Tool ────────────────────────────────────────────────────
-async function executeWebcam(
+// ─── front_camera Tool ────────────────────────────────────────────────────
+async function executeFrontCamera(
     args: string,
     nextMessage: BaseMessage,
     _interactionData: InteractionData,
     context?: ToolExecutionContext
 ): Promise<ToolResult> {
-    const res = await captureWebcam();
-    if (!res.success || !res.base64) {
+    if (!context?.captureFrontCameraImage) {
         return {
-            toolType: 'webcam',
+            toolType: 'front_camera',
             args,
-            content: `[Error: ${res.error || 'Failed to capture webcam snapshot'}]`,
-            displayReplacement: '[❌ Webcam error]'
+            content: '[Error: Front camera capture is not available in this context.]',
+            displayReplacement: '[❌ front_camera unavailable]'
         };
     }
+
+    const dataUrl = await context.captureFrontCameraImage();
     
+    if (!dataUrl) {
+        return {
+            toolType: 'front_camera',
+            args,
+            content: '[Error: Failed to capture front_camera snapshot. Permission denied or hardware error.]',
+            displayReplacement: '[❌ front_camera error]'
+        };
+    }
+
     // Attach real image payload to the message's file array for vision ingestion
-    const dataUrl = `data:image/jpeg;base64,${res.base64}`;
     if ('files' in nextMessage) {
         const msg = nextMessage as ChatMessage | WhisperMessage;
         if (!msg.files) msg.files = [];
         msg.files.push(dataUrl);
     }
+
+    context?.addToast?.('front_camera snapshot captured and sent to vision model', 'success');
     
-    context?.addToast?.('Webcam snapshot captured and sent to vision model', 'success');
-    return { 
-        toolType: 'webcam', 
-        args, 
-        content: `Webcam snapshot captured and attached to visual input. Analyze the image to answer.`, 
-        displayReplacement: '[📷 Webcam Snapshot]' 
+    return {
+        toolType: 'front_camera',
+        args,
+        content: 'front_camera snapshot captured and attached to visual input. Analyze the image to answer.',
+        displayReplacement: '[📷 front_camera Snapshot]'
     };
 }
 

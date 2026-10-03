@@ -162,7 +162,7 @@ export function ToolPermissionModal({
                             <div className="model-status-text" style={{ textAlign: 'left' }}>
                                 <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#ff6b6b' }}>Host OS Takeover Tools Detected</div>
                                 <div style={{ fontSize: '0.65rem', opacity: 0.9, marginTop: '2px', lineHeight: 1.4 }}>
-                                    This character card matched tools capable of executing terminal scripts, taking physical mouse/keyboard control, or capturing webcam images. Unchecked by default for your safety.
+                                    This character card matched tools capable of executing terminal scripts, taking physical mouse/keyboard control, or capturing front_camera images. Unchecked by default for your safety.
                                 </div>
                             </div>
                         </div>

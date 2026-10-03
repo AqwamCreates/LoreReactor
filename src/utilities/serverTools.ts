@@ -146,15 +146,6 @@ export async function captureScreenshot(): Promise<ScreenshotResult> {
   }
 }
 
-export async function captureWebcam(): Promise<{ success: boolean; base64?: string; error?: string }> {
-  try {
-    const response = await fetch(`${localURL}/tool/webcam`, { method: 'POST' });
-    return await response.json();
-  } catch (e) {
-    return { success: false, error: (e as Error).message };
-  }
-}
-
 export async function scanLocalNetwork(): Promise<{
   success: boolean;
   devices?: Array<{ name: string; ip: string; mac: string }>;
