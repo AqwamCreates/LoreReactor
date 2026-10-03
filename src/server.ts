@@ -1415,7 +1415,7 @@ app.post('/tool/clipboard', async (req, res) => {
 app.post('/tool/screenshot', async (_req, res) => {
   try {
     // Captures primary display buffer as a base64 JPEG string
-    const imgBuffer = await screenshot({ format: 'jpeg' });
+    const imgBuffer = await screenshot({ format: 'jpg' });
     const base64Image = imgBuffer.toString('base64');
 
     res.json({
