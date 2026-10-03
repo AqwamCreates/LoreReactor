@@ -591,7 +591,7 @@ function sanitizeManifestDir(dirName: string): number {
 
 /**
  * Scan interaction_messages/ for .json files not referenced by any chat's
- * interactionIdHistory. Deletes orphans and rewrites the messages manifest.
+ * interactionHistories. Deletes orphans and rewrites the messages manifest.
  */
 function sanitizeOrphanedMessages(): number {
   const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
@@ -607,27 +607,19 @@ function sanitizeOrphanedMessages(): number {
       try {
         const raw = fs.readFileSync(path.join(chatsDir, file), 'utf-8');
         const chat = JSON.parse(raw);
-        if (Array.isArray(chat.interactionIdHistory)) {
-          for (const msgId of chat.interactionIdHistory) {
-            if (typeof msgId === 'string') referencedMessageIds.add(msgId);
+        
+        // ✅ FIX: Parse the new spatial Record<string, string[]> structure
+        if (chat.interactionHistories && typeof chat.interactionHistories === 'object') {
+          for (const locId in chat.interactionHistories) {
+            const msgIds = chat.interactionHistories[locId];
+            if (Array.isArray(msgIds)) {
+              for (const msgId of msgIds) {
+                if (typeof msgId === 'string') referencedMessageIds.add(msgId);
+              }
+            }
           }
         }
       } catch { /* skip corrupt chat files */ }
-    }
-  }
-
-  if (fs.existsSync(chatsDir)) {
-    const chatFiles = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
-    for (const file of chatFiles) {
-      try {
-        const raw = fs.readFileSync(path.join(chatsDir, file), 'utf-8');
-        const chat = JSON.parse(raw);
-        if (Array.isArray(chat.interactionHistory)) {
-          for (const msg of chat.interactionHistory) {
-            if (msg && typeof msg.id === 'string') referencedMessageIds.add(msg.id);
-          }
-        }
-      } catch { /* skip */ }
     }
   }
 
@@ -696,7 +688,7 @@ function sanitizeHollowMessages(): number {
 }
 
 /**
- * Remove stale IDs from chat interactionIdHistory arrays that point to
+ * Remove stale IDs from chat interactionHistories arrays that point to
  * message files that no longer exist on disk.
  */
 function sanitizeChatHistories(): number {
@@ -722,13 +714,24 @@ function sanitizeChatHistories(): number {
       const raw = fs.readFileSync(filePath, 'utf-8');
       const chat = JSON.parse(raw);
 
-      if (Array.isArray(chat.interactionIdHistory)) {
-        const originalLength = chat.interactionIdHistory.length;
-        chat.interactionIdHistory = chat.interactionIdHistory.filter(
-          (id: unknown) => typeof id === 'string' && existingMessageIds.has(id)
-        );
-        const pruned = originalLength - chat.interactionIdHistory.length;
-        if (pruned > 0) {
+      // ✅ FIX: Prune dangling references from the spatial Record
+      if (chat.interactionHistories && typeof chat.interactionHistories === 'object') {
+        let pruned = 0;
+        let changed = false;
+        for (const locId in chat.interactionHistories) {
+          if (Array.isArray(chat.interactionHistories[locId])) {
+            const originalLength = chat.interactionHistories[locId].length;
+            chat.interactionHistories[locId] = chat.interactionHistories[locId].filter(
+              (id: unknown) => typeof id === 'string' && existingMessageIds.has(id)
+            );
+            const diff = originalLength - chat.interactionHistories[locId].length;
+            if (diff > 0) {
+              pruned += diff;
+              changed = true;
+            }
+          }
+        }
+        if (changed) {
           fs.writeFileSync(filePath, JSON.stringify(chat, null, 2), 'utf-8');
           totalPruned += pruned;
         }
@@ -818,17 +821,22 @@ app.get('/search', async (req, response) => {
           chatResults.push({ type: 'chat', id: chatId, name: chatName });
         }
 
-        // Map every message in history to this chat
-        if (Array.isArray(chat.interactionIdHistory)) {
-          for (const msgId of chat.interactionIdHistory) {
-            if (typeof msgId === 'string') {
-              let list = messageToChatsMap.get(msgId);
-              if (!list) {
-                list = [];
-                messageToChatsMap.set(msgId, list);
-              }
-              if (!list.some(c => c.chatId === chatId)) {
-                list.push({ chatId, chatName });
+        // ✅ FIX: Map messages to chats using the spatial Record
+        if (chat.interactionHistories && typeof chat.interactionHistories === 'object') {
+          for (const locId in chat.interactionHistories) {
+            const msgIds = chat.interactionHistories[locId];
+            if (Array.isArray(msgIds)) {
+              for (const msgId of msgIds) {
+                if (typeof msgId === 'string') {
+                  let list = messageToChatsMap.get(msgId);
+                  if (!list) {
+                    list = [];
+                    messageToChatsMap.set(msgId, list);
+                  }
+                  if (!list.some(c => c.chatId === chatId)) {
+                    list.push({ chatId, chatName });
+                  }
+                }
               }
             }
           }
@@ -1158,7 +1166,7 @@ app.post('/models/load', async (req, response) => {
     if (isError && !isFalsePositive) {
       log.error(`[${config.logLabel}:${id}] ${str}`);
     } else {
-      log.backend(config.logLabel, `[${id}] ${str}`);
+      log.backend(config.logLabel, `[id] ${str}`);
     }
   });
 
