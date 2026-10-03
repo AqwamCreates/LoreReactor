@@ -12,7 +12,9 @@ export const toolLabels: Record<tool, string> = {
     key: 'Key', summon: 'Summon Character',
     narrate: 'Narrate', inspect: 'Inspect', administrator: 'Administrator',
     creator: 'Creator', destroyer: 'Destroyer',
-    text_to_speech: 'Text-To-Speech', gpu: 'GPU', system_info: 'System Info', notify: 'Notify', volume_control: 'Volume Control', lock_screen: 'Lock Screen',
+    schedule_response: 'Schedule Response',
+    text_to_speech: 'Text-To-Speech', gpu: 'GPU', system_info: 'System Info', notify: 'Notify', volume_control: 'Volume Control', 
+    lock_screen: 'Lock Screen', sleep: "Sleep", shutdown: 'Shutdown',
     clipboard: 'Clipboard', screenshot: 'Screenshot', webcam: 'Webcam',
     network_scanner: 'Network Scanner', file_watcher: 'File Watcher', window_monitor: 'Window Monitor', process_monitor: 'Process Monitor',
     trash: 'Trash', browser: 'Open Browser', read_file: 'Read File', write_file: 'Write File', shell: 'Shell', virtual_input: 'Virtual Input', hardware_control: 'Hardware Control'

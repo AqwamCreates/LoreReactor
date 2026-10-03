@@ -86,6 +86,8 @@ const toolDescriptions: Record<tool, string> = {
     notify: 'Allow this character to give you OS-level notifications.',
     volume_control: 'Allow this character to control the volume of your device.',
     lock_screen: 'Allow this character to lock your screen.',
+    sleep: 'Allow this to put your device to sleep.',
+    shutdown: 'Allow this character to shut down your device. Enable with caution.',
     clipboard: 'Allow this character to use clipboard. Enable with caution.',
     screenshot: 'Allow this character to take screenshot of the whole screen. Enable with caution.',
     webcam: 'Allow this character to use the webcam of your device.',

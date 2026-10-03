@@ -313,12 +313,15 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
     administrator: executeAdministrator,
     creator: executeCreator,
     destroyer: executeDestroyer,
+    schedule_response: executeScheduleResponse,
     text_to_speech: executeTextToSpeech,
     gpu: executeGpu,
     system_info: executeSystemInfo,
     notify: executeNotify,
     volume_control: executeVolumeControl,
     lock_screen: executeLockScreen,
+    sleep: "s"
+    shutdown: "s",
     clipboard: executeClipboard,
     screenshot: executeScreenshot,
     webcam: executeWebcam,
@@ -1793,6 +1796,40 @@ function executeDestroyer(args: string, nextMessage: BaseMessage, interactionDat
     appendPendingAction(nextMessage, { type: 'destroyer', payload: { entityType, entityId, entityName: entityId } });
     context?.addToast?.(`Destroyer: ${entityType} "${entityId}" initiated.`, 'info');
     return { toolType: 'destroyer', args, content: `Destroyed ${entityType} "${entityId}".`, displayReplacement: `[💀 Destroyed: "${entityId}"]` };
+}
+
+// ─── Schedule Response ──────────────────────────────────────────────────────
+function executeScheduleResponse(args: string, nextMessage: BaseMessage): ToolResult {
+    const pArgs = parsePythonArgs(args);
+    const durationRaw = pArgs.get(0, 'duration', 'time', 'delay');
+    const thought = pArgs.get(1, 'thought', 'reason', 'prompt') || pArgs.positional.slice(1).join(' ') || 'Checking in later';
+    
+    const durationMs = durationRaw ? parseDurationToMs(durationRaw) : null;
+    if (!durationMs) {
+        return helpResult('schedule_response', 'duration="2h", thought="Check if Sensei is awake"', 'schedule a delayed follow-up response from this character');
+    }
+
+    const inventory = nextMessage.inventory ? { ...nextMessage.inventory } : {};
+    let scheduled: any[] = [];
+    try { scheduled = JSON.parse(inventory['__scheduled_responses__'] as string || '[]'); } catch {}
+    
+    scheduled.push({
+        characterId: nextMessage.character.id,
+        characterName: nextMessage.character.name,
+        durationMs,
+        thought,
+        createdAt: Date.now()
+    });
+    
+    inventory['__scheduled_responses__'] = JSON.stringify(scheduled);
+    nextMessage.inventory = inventory;
+
+    return {
+        toolType: 'schedule_response',
+        args,
+        content: `Scheduled follow-up in ${formatDuration(durationMs)}: "${thought}"`,
+        displayReplacement: `[⏰ Follow-up in ${formatDuration(durationMs)}]`
+    };
 }
 
 interface GpuStatusResponse {

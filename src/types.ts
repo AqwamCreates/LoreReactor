@@ -215,7 +215,7 @@ export interface RawMemory extends RawData {
   interactionDataId: string;
 }
 
-export type tool = "whisper" | "think" | "pick" | "clock" | "calendar" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "oracle" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer" | 'text_to_speech' | 'gpu' | 'system_info' | 'notify' | 'volume_control' | 'lock_screen' | 'clipboard' | 'webcam' | 'screenshot' | 'network_scanner' | 'file_watcher' | 'window_monitor' | 'process_monitor' | 'trash' | 'browser' | 'read_file' | 'write_file' | 'shell' | 'virtual_input' | 'hardware_control'
+export type tool = "whisper" | "think" | "pick" | "clock" | "calendar" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "oracle" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer" | 'schedule_response' | 'text_to_speech' | 'gpu' | 'system_info' | 'notify' | 'volume_control' | 'lock_screen' | 'sleep' | 'shutdown' | 'clipboard' | 'webcam' | 'screenshot' | 'network_scanner' | 'file_watcher' | 'window_monitor' | 'process_monitor' | 'trash' | 'browser' | 'read_file' | 'write_file' | 'shell' | 'virtual_input' | 'hardware_control'
 
 export interface DialoguePrompt extends ObjectData {
   content: string;
