@@ -5,7 +5,7 @@ import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
 import { fetchMultipleContextUrls } from './linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
-import { toolStartSring, toolEndString } from '../dictionaries/stringList';
+import { toolStartString, toolEndString } from '../dictionaries/stringList';
 import { type TimeData, fetchCurrentWeather, getLocation, getTimeDataFromCoordinates } from '../services/LocationEngine';
 import { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter, getCurrentLocationId, } from './locationLogic';
 import { defaultInputStrategy } from '../dictionaries/defaults';
@@ -1211,8 +1211,8 @@ function buildToolInstructionLines(ctx: PromptBuildContext): string[] {
 
         const toolInstructions = [
             `I have access to external tools: ${enabledToolNames.join(', ')}.`,
-            `To invoke a tool, I must write ${toolStartSring}tool_name(arguments)${toolEndString} (for example: ${toolStartSring}${exampleTool}${toolEndString}). Calling a tool without arguments returns its usage instructions.`,
-            `ACTION-FIRST PROTOCOL: Whenever an action, calculation, or external data is needed, I must output the ${toolStartSring}...${toolEndString} invocation FIRST at the very start of my turn before speaking.`,
+            `To invoke a tool, I must write ${toolStartString}tool_name(arguments)${toolEndString} (for example: ${toolStartString}${exampleTool}${toolEndString}). Calling a tool without arguments returns its usage instructions.`,
+            `ACTION-FIRST PROTOCOL: Whenever an action, calculation, or external data is needed, I must output the ${toolStartString}...${toolEndString} invocation FIRST at the very start of my turn before speaking.`,
             `The tool will execute immediately and return its value inline as  <result>. I will then continue my dialogue directly on the same line incorporating the real result. I will never output raw tool result labels or add unnecessary blank lines.`
         ].join(' ');
 

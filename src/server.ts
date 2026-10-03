@@ -1,4 +1,4 @@
-// server.ts
+// src/server.ts
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,7 +12,7 @@ import si from 'systeminformation';
 import screenshot from 'screenshot-desktop';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
-import chokidar from 'chokidar';
+import chokidar, { type FSWatcher } from 'chokidar';
 import { SerialPort } from 'serialport';
 import say from 'say';
 import activeWindow from 'active-win';
@@ -1331,7 +1331,7 @@ app.post('/tool/text', (req, res) => {
   if (!text) return res.status(400).json({ error: 'Missing text' });
 
   say.speak(text, voice || undefined, speed, (err) => {
-    if (err) return log.error(`TTS failed: ${err.message}`);
+    if (err) return log.error(`TTS failed: ${err}`);
   });
   res.json({ success: true, message: 'Speech queued' });
 });
@@ -1428,7 +1428,7 @@ app.post('/tool/screenshot', async (_req, res) => {
   }
 });
 
-const activeWatchers = new Map<string, chokidar.FSWatcher>();
+const activeWatchers = new Map<string, FSWatcher>();
 const fileChangeEvents: Array<{ event: string; path: string; timestamp: number }> = [];
 
 app.post('/tool/file-watcher/start', (req, res) => {
@@ -1474,7 +1474,7 @@ app.get('/tool/window-monitor', async (_req, res) => {
         title: currentWindow.title,
         appName: currentWindow.owner?.name,
         processId: currentWindow.owner?.processId,
-        url: currentWindow.url || undefined,
+        url: ('url' in currentWindow && currentWindow.url) ? currentWindow.url : undefined,
       },
     });
   } catch (error) {
