@@ -16,6 +16,11 @@ import chokidar, { type FSWatcher } from 'chokidar';
 import { SerialPort } from 'serialport';
 import say from 'say';
 import activeWindow from 'active-win';
+import NodeWebcam from 'node-webcam';
+import loudness from 'loudness';
+import findDevices from 'local-devices';
+import trash from 'trash';
+
 
 // --- Configuration ---
 const app = express();
@@ -1391,6 +1396,48 @@ app.post('/tool/notify', (req, res) => {
   );
 });
 
+app.post('/tool/volume', async (req, res) => {
+  const { action, level } = req.body; // action: 'get' | 'set' | 'mute' | 'unmute'
+  try {
+    if (action === 'get') {
+      const vol = await loudness.getVolume();
+      const muted = await loudness.getMuted();
+      return res.json({ success: true, volume: vol, muted });
+    }
+    if (action === 'set') {
+      const num = Math.max(0, Math.min(100, Number(level) || 0));
+      await loudness.setVolume(num);
+      return res.json({ success: true, volume: num });
+    }
+    if (action === 'mute') {
+      await loudness.setMuted(true);
+      return res.json({ success: true, muted: true });
+    }
+    if (action === 'unmute') {
+      await loudness.setMuted(false);
+      return res.json({ success: true, muted: false });
+    }
+    res.status(400).json({ success: false, error: 'Invalid action. Use get, set, mute, or unmute.' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
+app.post('/tool/lock-screen', (_req, res) => {
+  try {
+    if (IS_WINDOWS) {
+      execSync('rundll32.exe user32.dll,LockWorkStation');
+    } else if (IS_MACOS) {
+      execSync('pmset displaysleepnow');
+    } else {
+      execSync('xdg-screensaver lock || loginctl lock-session');
+    }
+    res.json({ success: true, message: 'Workstation locked' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
 app.post('/tool/clipboard', async (req, res) => {
   const { action, text } = req.body; // action: 'read' | 'write'
 
@@ -1425,6 +1472,35 @@ app.post('/tool/screenshot', async (_req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+const webcamInstance = NodeWebcam.create({
+  width: 1280,
+  height: 720,
+  quality: 85,
+  output: 'jpeg',
+  callbackReturn: 'base64',
+  verbose: false,
+});
+
+app.post('/tool/webcam', (_req, res) => {
+  webcamInstance.capture('webcam_snapshot', (err: Error | null, data: string) => {
+    if (err) {
+      log.error(`Webcam capture failed: ${err.message || err}`);
+      return res.status(500).json({ success: false, error: err.message || String(err) });
+    }
+    const cleanBase64 = typeof data === 'string' ? data.replace(/^data:image\/\w+;base64,/, '') : '';
+    res.json({ success: true, contentType: 'image/jpeg', base64: cleanBase64 });
+  });
+});
+
+app.get('/tool/network', async (_req, res) => {
+  try {
+    const devices = await findDevices();
+    res.json({ success: true, devices });
+  } catch (e) {
+    res.status(500).json({ success: false, error: (e as Error).message });
   }
 });
 
@@ -1512,6 +1588,22 @@ app.get('/tool/process-monitor', async (req, res) => {
     res.status(500).json({ success: false, error: (error as Error).message });
   }
 });
+
+app.post('/tool/trash', async (req, res) => {
+  const { targetPath } = req.body;
+  if (!targetPath) return res.status(400).json({ success: false, error: 'Missing targetPath' });
+
+  try {
+    const resolved = path.isAbsolute(targetPath) ? targetPath : path.join(ROOT_DIR, targetPath);
+    if (!fs.existsSync(resolved)) {
+      return res.status(404).json({ success: false, error: `Path does not exist: ${resolved}` });
+    }
+    await trash([resolved]);
+    res.json({ success: true, path: resolved, message: 'Item moved to recycle bin/trash' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+})
 
 // Single unified endpoint to open files, videos, directories, or URLs
 app.post('/tool/read-file', async (req, response) => {

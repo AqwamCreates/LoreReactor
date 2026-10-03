@@ -82,6 +82,31 @@ export async function sendDesktopNotification(
   }
 }
 
+export async function controlVolume(
+  action: 'get' | 'set' | 'mute' | 'unmute',
+  level?: number
+): Promise<{ success: boolean; volume?: number; muted?: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${localURL}/tool/volume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, level }),
+    });
+    return await response.json();
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+}
+
+export async function lockScreen(): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const response = await fetch(`${localURL}/tool/lock-screen`, { method: 'POST' });
+    return await response.json();
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+}
+
 export async function clipboardAction(
   action: 'read' | 'write', 
   text?: string
@@ -102,6 +127,28 @@ export async function captureScreenshot(): Promise<ScreenshotResult> {
   try {
     const response = await fetch(`${localURL}/tool/screenshot`, {
       method: 'POST',
+    });
+    return await response.json();
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+}
+
+export async function captureWebcam(): Promise<{ success: boolean; base64?: string; error?: string }> {
+  try {
+    const response = await fetch(`${localURL}/tool/webcam`, { method: 'POST' });
+    return await response.json();
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+}
+
+export async function moveToTrash(targetPath: string): Promise<{ success: boolean; path?: string; error?: string }> {
+  try {
+    const response = await fetch(`${localURL}/tool/trash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetPath }),
     });
     return await response.json();
   } catch (e) {
