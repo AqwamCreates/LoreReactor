@@ -1,4 +1,4 @@
-// src/utilities/traitsDetection.ts
+// src/utilities/traitDetection.ts
 
 // --- Modifier System ---
 

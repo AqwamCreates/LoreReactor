@@ -49,78 +49,19 @@ interface SlashCmd { name: string; desc: string; subs?: SlashSub[]; args?: Slash
 const VALID_ENTITY_TYPES = ['character', 'context', 'location', 'audio_track', 'prompt_block', 'stop_pattern', 'sampler', 'budget_strategy', 'profile', 'world', 'memory', 'account', 'multiplayer_data'];
 
 const COMMAND_TREE: SlashCmd[] = [
-    { name: 'dice', desc: 'Roll dice', args: [{ name: 'notation', type: 'text', desc: 'Dice notation', example: '2d6+3' }] },
-    { name: 'coin', desc: 'Flip a coin' },
-    { name: 'random', desc: 'Random integer', args: [{ name: 'range', type: 'text', desc: 'Min-Max or just Max', example: '1-100' }] },
+    { name: 'whisper', desc: 'Send a private message', args: [
+        { name: 'targets', type: 'session_character', desc: 'Target character(s), comma-separated', example: 'char1,char2' },
+        { name: 'text', type: 'text', desc: 'Whisper content', example: 'Meet me at the inn' }
+    ]},
+    { name: 'think', desc: 'Reasoning step', args: [{ name: 'reasoning', type: 'text', desc: 'Your thought process', example: 'Should I trust this stranger?' }] },
     { name: 'pick', desc: 'Pick from list', args: [{ name: 'options', type: 'text', desc: 'Comma-separated choices', example: 'sword, shield, potion' }] },
     { name: 'clock', desc: 'Current time', args: [{ name: 'format', type: 'text', desc: 'Time format', example: '24h', optional: true }] },
     { name: 'calendar', desc: 'Current date', args: [{ name: 'format', type: 'text', desc: 'Date format', example: 'iso', optional: true }] },
-    { name: 'calculator', desc: 'Evaluate math', args: [{ name: 'expression', type: 'text', desc: 'Math expression', example: '15*7+3' }] },
+    { name: 'coin', desc: 'Flip a coin' },
+    { name: 'dice', desc: 'Roll dice', args: [{ name: 'notation', type: 'text', desc: 'Dice notation', example: '2d6+3' }] },
+    { name: 'random', desc: 'Random integer', args: [{ name: 'range', type: 'text', desc: 'Min-Max or just Max', example: '1-100' }] },
+    { name: 'rng', desc: 'Roll on RNG table', args: [{ name: 'table', type: 'rng_table', desc: 'RNG table from context' }] },
     { name: 'move', desc: 'Move to adjacent location', args: [{ name: 'location', type: 'session_location', desc: 'Destination location' }] },
-    { name: 'teleport', desc: 'Instant movement', args: [{ name: 'location', type: 'session_location', desc: 'Any session location' }] },
-    { name: 'map', desc: 'Show distance', args: [
-        { name: 'from', type: 'session_location', desc: 'Start location', optional: true },
-        { name: 'to', type: 'session_location', desc: 'End location' }
-    ]},
-    { name: 'inspect', desc: 'Examine character', args: [{ name: 'character', type: 'session_character', desc: 'Target character' }] },
-    { name: 'invite', desc: 'Bring to current location', args: [{ name: 'character', type: 'session_character', desc: 'Character to invite' }] },
-    { name: 'kick', desc: 'Kick to location', args: [
-        { name: 'character', type: 'session_character', desc: 'Character to kick' },
-        { name: 'location', type: 'session_location', desc: 'Destination (optional)', optional: true }
-    ]},
-    { name: 'summon', desc: 'Add character to session', args: [{ name: 'character', type: 'global_character', desc: 'Character' }] },
-    { name: 'audio', desc: 'Play/stop audio', subs: [
-        { name: 'play', desc: 'Play audio track', args: [{ name: 'track', type: 'audio', desc: 'Audio track to play' }] },
-        { name: 'stop', desc: 'Stop audio track', args: [{ name: 'track', type: 'audio', desc: 'Audio track to stop', optional: true }] },
-    ]},
-    { name: 'clothing', desc: 'Equip/remove clothing', subs: [
-        { name: 'wear', desc: 'Equip clothing', args: [
-            { name: 'character', type: 'session_character', desc: 'Character' },
-            { name: 'clothing', type: 'clothing', desc: 'Clothing item' }
-        ]},
-        { name: 'remove', desc: 'Remove clothing', args: [
-            { name: 'character', type: 'session_character', desc: 'Character' },
-            { name: 'clothing', type: 'clothing', desc: 'Clothing item' }
-        ]},
-    ]},
-    { name: 'inventory', desc: 'Manage items', subs: [
-        { name: 'list', desc: 'List all items' },
-        { name: 'add', desc: 'Add item', args: [
-            { name: 'item', type: 'text', desc: 'Item name', example: 'Iron Sword' },
-            { name: 'qty', type: 'text', desc: 'Quantity', example: '3' }
-        ]},
-        { name: 'remove', desc: 'Remove item', args: [
-            { name: 'item', type: 'item', desc: 'Item from inventory' },
-            { name: 'qty', type: 'text', desc: 'Quantity', example: '1' }
-        ]},
-    ]},
-    { name: 'trade', desc: 'Trade items', subs: [
-        { name: 'give', desc: 'Give item to character', args: [
-            { name: 'character', type: 'session_character', desc: 'Recipient' },
-            { name: 'items', type: 'text', desc: 'item:qty,item2:qty2', example: 'Iron Sword:1, Potion:3' }
-        ]},
-        { name: 'take', desc: 'Take item from character', args: [
-            { name: 'character', type: 'session_character', desc: 'Source character' },
-            { name: 'items', type: 'text', desc: 'item:qty,item2:qty2', example: 'Gold Coin:50' }
-        ]},
-        { name: 'offer', desc: 'Propose trade', args: [
-            { name: 'character', type: 'session_character', desc: 'Trade partner' },
-            { name: 'give_items', type: 'text', desc: 'item:qty', example: 'Iron Sword:1' },
-            { name: 'take_items', type: 'text', desc: 'item:qty', example: 'Gold Coin:100' }
-        ]},
-        { name: 'accept', desc: 'Accept trade offer', args: [{ name: 'offer_id', type: 'text', desc: 'Offer ID', example: 'a1b2c3d4' }] },
-        { name: 'decline', desc: 'Decline trade offer', args: [{ name: 'offer_id', type: 'text', desc: 'Offer ID', example: 'a1b2c3d4' }] },
-        { name: 'list_offers', desc: 'List pending offers' },
-    ]},
-    { name: 'note', desc: 'Manage notes', subs: [
-        { name: 'list', desc: 'List all notes' },
-        { name: 'set', desc: 'Save note', args: [
-            { name: 'key', type: 'text', desc: 'Note label', example: 'key_location' },
-            { name: 'text', type: 'text', desc: 'Note content', example: 'The key is under the mat' }
-        ]},
-        { name: 'get', desc: 'Retrieve note', args: [{ name: 'key', type: 'text', desc: 'Note label', example: 'key_location' }] },
-        { name: 'delete', desc: 'Delete note', args: [{ name: 'key', type: 'text', desc: 'Note label', example: 'key_location' }] },
-    ]},
     { name: 'timer', desc: 'Countdown timers', subs: [
         { name: 'set', desc: 'Set timer', args: [
             { name: 'name', type: 'text', desc: 'Timer name', example: 'Bomb' },
@@ -155,25 +96,8 @@ const COMMAND_TREE: SlashCmd[] = [
         { name: 'cancel_all', desc: 'Cancel all schedules' },
         { name: 'list', desc: 'List all schedules' },
     ]},
-    { name: 'key', desc: 'Lock/unlock locations', subs: [
-        { name: 'lock', desc: 'Lock location', args: [
-            { name: 'location', type: 'session_location', desc: 'Location to lock' },
-            { name: 'character', type: 'session_character', desc: 'Character (all if omitted)', optional: true }
-        ]},
-        { name: 'unlock', desc: 'Unlock location', args: [
-            { name: 'location', type: 'session_location', desc: 'Location to unlock' },
-            { name: 'character', type: 'session_character', desc: 'Character (all if omitted)', optional: true }
-        ]},
-    ]},
-    { name: 'whisper', desc: 'Send a private message', args: [
-        { name: 'targets', type: 'session_character', desc: 'Target character(s), comma-separated', example: 'char1,char2' },
-        { name: 'text', type: 'text', desc: 'Whisper content', example: 'Meet me at the inn' }
-    ]},
-    { name: 'think', desc: 'Reasoning step', args: [{ name: 'reasoning', type: 'text', desc: 'Your thought process', example: 'Should I trust this stranger?' }] },
-    { name: 'narrate', desc: 'Inject narration', args: [{ name: 'text', type: 'text', desc: 'Narration text', example: 'The wind howls through the trees.' }] },
+    { name: 'calculator', desc: 'Evaluate math', args: [{ name: 'expression', type: 'text', desc: 'Math expression', example: '15*7+3' }] },
     { name: 'web', desc: 'Search or fetch', args: [{ name: 'query', type: 'text', desc: 'Search query or URL', example: 'medieval sword types' }] },
-    { name: 'lookup', desc: 'Search lore', args: [{ name: 'keyword', type: 'text', desc: 'Search keyword', example: 'dragon' }] },
-    { name: 'rng', desc: 'Roll on RNG table', args: [{ name: 'table', type: 'rng_table', desc: 'RNG table from context' }] },
     { name: 'dialogue', desc: 'Dialogue prompts', subs: [
         { name: 'list', desc: 'List dialogue prompts' },
         { name: 'recall', desc: 'Recall dialogue', args: [{ name: 'dialogue', type: 'dialogue', desc: 'Dialogue prompt' }] },
@@ -187,14 +111,83 @@ const COMMAND_TREE: SlashCmd[] = [
         { name: 'recall', desc: 'Recall memory', args: [{ name: 'memory', type: 'memory', desc: 'Memory', optional: true }] },
         { name: 'save', desc: 'Save conversation as memory' },
     ]},
-    // ─── NEW OS-LEVEL AGENTIC TOOLS ────────────────────────────────
-    { name: 'browser', desc: 'Open URL or search in browser', args: [{ name: 'url_or_query', type: 'text', desc: 'URL or search query', example: 'https://example.com' }] },
-    { name: 'read_file', desc: 'Open file/media with system app', args: [{ name: 'path_or_url', type: 'text', desc: 'File path or media URL', example: '~/documents/notes.txt' }] },
-    { name: 'write_file', desc: 'Write content to local file', args: [
-        { name: 'file_path', type: 'text', desc: 'Destination file path', example: '~/documents/output.txt' },
-        { name: 'content', type: 'text', desc: 'Content to write', example: 'Hello World' }
+    { name: 'lookup', desc: 'Search lore', args: [{ name: 'keyword', type: 'text', desc: 'Search keyword', example: 'dragon' }] },
+    { name: 'map', desc: 'Show distance', args: [
+        { name: 'from', type: 'session_location', desc: 'Start location', optional: true },
+        { name: 'to', type: 'session_location', desc: 'End location' }
     ]},
-    // ───────────────────────────────────────────────────────────────
+    { name: 'audio', desc: 'Play/stop audio', subs: [
+        { name: 'play', desc: 'Play audio track', args: [{ name: 'track', type: 'audio', desc: 'Audio track to play' }] },
+        { name: 'stop', desc: 'Stop audio track', args: [{ name: 'track', type: 'audio', desc: 'Audio track to stop', optional: true }] },
+    ]},
+    { name: 'clothing', desc: 'Equip/remove clothing', subs: [
+        { name: 'wear', desc: 'Equip clothing', args: [
+            { name: 'character', type: 'session_character', desc: 'Character' },
+            { name: 'clothing', type: 'clothing', desc: 'Clothing item' }
+        ]},
+        { name: 'remove', desc: 'Remove clothing', args: [
+            { name: 'character', type: 'session_character', desc: 'Character' },
+            { name: 'clothing', type: 'clothing', desc: 'Clothing item' }
+        ]},
+    ]},
+    { name: 'note', desc: 'Manage notes', subs: [
+        { name: 'list', desc: 'List all notes' },
+        { name: 'set', desc: 'Save note', args: [
+            { name: 'key', type: 'text', desc: 'Note label', example: 'key_location' },
+            { name: 'text', type: 'text', desc: 'Note content', example: 'The key is under the mat' }
+        ]},
+        { name: 'get', desc: 'Retrieve note', args: [{ name: 'key', type: 'text', desc: 'Note label', example: 'key_location' }] },
+        { name: 'delete', desc: 'Delete note', args: [{ name: 'key', type: 'text', desc: 'Note label', example: 'key_location' }] },
+    ]},
+    { name: 'inventory', desc: 'Manage items', subs: [
+        { name: 'list', desc: 'List all items' },
+        { name: 'add', desc: 'Add item', args: [
+            { name: 'item', type: 'text', desc: 'Item name', example: 'Iron Sword' },
+            { name: 'qty', type: 'text', desc: 'Quantity', example: '3' }
+        ]},
+        { name: 'remove', desc: 'Remove item', args: [
+            { name: 'item', type: 'item', desc: 'Item from inventory' },
+            { name: 'qty', type: 'text', desc: 'Quantity', example: '1' }
+        ]},
+    ]},
+    { name: 'trade', desc: 'Trade items', subs: [
+        { name: 'give', desc: 'Give item to character', args: [
+            { name: 'character', type: 'session_character', desc: 'Recipient' },
+            { name: 'items', type: 'text', desc: 'item:qty,item2:qty2', example: 'Iron Sword:1, Potion:3' }
+        ]},
+        { name: 'take', desc: 'Take item from character', args: [
+            { name: 'character', type: 'session_character', desc: 'Source character' },
+            { name: 'items', type: 'text', desc: 'item:qty,item2:qty2', example: 'Gold Coin:50' }
+        ]},
+        { name: 'offer', desc: 'Propose trade', args: [
+            { name: 'character', type: 'session_character', desc: 'Trade partner' },
+            { name: 'give_items', type: 'text', desc: 'item:qty', example: 'Iron Sword:1' },
+            { name: 'take_items', type: 'text', desc: 'item:qty', example: 'Gold Coin:100' }
+        ]},
+        { name: 'accept', desc: 'Accept trade offer', args: [{ name: 'offer_id', type: 'text', desc: 'Offer ID', example: 'a1b2c3d4' }] },
+        { name: 'decline', desc: 'Decline trade offer', args: [{ name: 'offer_id', type: 'text', desc: 'Offer ID', example: 'a1b2c3d4' }] },
+        { name: 'list_offers', desc: 'List pending offers' },
+    ]},
+    { name: 'invite', desc: 'Bring to current location', args: [{ name: 'character', type: 'session_character', desc: 'Character to invite' }] },
+    { name: 'kick', desc: 'Kick to location', args: [
+        { name: 'character', type: 'session_character', desc: 'Character to kick' },
+        { name: 'location', type: 'session_location', desc: 'Destination (optional)', optional: true }
+    ]},
+    { name: 'oracle', desc: 'Scry remote locations', args: [{ name: 'location', type: 'session_location', desc: 'Target location to peer into' }] },
+    { name: 'teleport', desc: 'Instant movement', args: [{ name: 'location', type: 'session_location', desc: 'Any session location' }] },
+    { name: 'key', desc: 'Lock/unlock locations', subs: [
+        { name: 'lock', desc: 'Lock location', args: [
+            { name: 'location', type: 'session_location', desc: 'Location to lock' },
+            { name: 'character', type: 'session_character', desc: 'Character (all if omitted)', optional: true }
+        ]},
+        { name: 'unlock', desc: 'Unlock location', args: [
+            { name: 'location', type: 'session_location', desc: 'Location to unlock' },
+            { name: 'character', type: 'session_character', desc: 'Character (all if omitted)', optional: true }
+        ]},
+    ]},
+    { name: 'summon', desc: 'Add character to session', args: [{ name: 'character', type: 'global_character', desc: 'Character' }] },
+    { name: 'narrate', desc: 'Inject narration', args: [{ name: 'text', type: 'text', desc: 'Narration text', example: 'The wind howls through the trees.' }] },
+    { name: 'inspect', desc: 'Examine character', args: [{ name: 'character', type: 'session_character', desc: 'Target character' }] },
     { name: 'administrator', desc: 'Admin controls', subs: [
         { name: 'list_chats', desc: 'List all sessions' },
         { name: 'list_accounts', desc: 'List all accounts' },
@@ -217,6 +210,55 @@ const COMMAND_TREE: SlashCmd[] = [
     { name: 'destroyer', desc: 'Delete entity permanently', args: [
         { name: 'entity_type', type: 'entity_type', desc: 'Type of entity to delete' },
         { name: 'entity', type: 'text', desc: 'Entity to delete (type-specific)' }
+    ]},
+    // ─── NEW OS-LEVEL & HARDWARE COMMANDS ──────────────────────────
+    { name: 'text_to_speech', desc: 'Convert text to speech', args: [{ name: 'text', type: 'text', desc: 'Text to speak or "stop"', example: 'Hello world' }] },
+    { name: 'gpu', desc: 'Check GPU telemetry status' },
+    { name: 'system_info', desc: 'Check system CPU & RAM info' },
+    { name: 'notify', desc: 'Send OS notification', args: [
+        { name: 'title', type: 'text', desc: 'Notification title', example: 'Alert' },
+        { name: 'message', type: 'text', desc: 'Message body', example: 'Task complete' }
+    ]},
+    { name: 'volume_control', desc: 'Control system volume', subs: [
+        { name: 'get', desc: 'Get volume' },
+        { name: 'set', desc: 'Set volume level', args: [{ name: 'level', type: 'text', desc: 'Volume 0-100', example: '50' }] },
+        { name: 'mute', desc: 'Mute audio' },
+        { name: 'unmute', desc: 'Unmute audio' },
+    ]},
+    { name: 'lock_screen', desc: 'Lock host workstation screen' },
+    { name: 'clipboard', desc: 'Manage clipboard', subs: [
+        { name: 'read', desc: 'Read clipboard' },
+        { name: 'write', desc: 'Write text to clipboard', args: [{ name: 'text', type: 'text', desc: 'Text to copy', example: 'Copied text' }] },
+    ]},
+    { name: 'screenshot', desc: 'Capture desktop screenshot' },
+    { name: 'webcam', desc: 'Capture webcam snapshot' },
+    { name: 'network_scanner', desc: 'Scan local network devices' },
+    { name: 'file_watcher', desc: 'Watch workspace folders', subs: [
+        { name: 'start', desc: 'Start watching path', args: [{ name: 'path', type: 'text', desc: 'Directory path', example: './src' }] },
+        { name: 'check', desc: 'Check file changes' },
+        { name: 'stop', desc: 'Stop watcher', args: [{ name: 'path', type: 'text', desc: 'Directory path or all', example: 'all', optional: true }] },
+    ]},
+    { name: 'window_monitor', desc: 'Check active foreground window' },
+    { name: 'process_monitor', desc: 'Check running OS processes', args: [{ name: 'query', type: 'text', desc: 'Filter query (optional)', example: 'node', optional: true }] },
+    { name: 'trash', desc: 'Move file to recycle bin/trash', args: [{ name: 'path', type: 'text', desc: 'File or folder path', example: 'temp.txt' }] },
+    { name: 'browser', desc: 'Open URL or search in browser', args: [{ name: 'url_or_query', type: 'text', desc: 'URL or search query', example: 'https://example.com' }] },
+    { name: 'read_file', desc: 'Open file/media with system app', args: [{ name: 'path_or_url', type: 'text', desc: 'File path or media URL', example: '~/documents/notes.txt' }] },
+    { name: 'write_file', desc: 'Write content to local file', args: [
+        { name: 'file_path', type: 'text', desc: 'Destination file path', example: '~/documents/output.txt' },
+        { name: 'content', type: 'text', desc: 'Content to write', example: 'Hello World' }
+    ]},
+    { name: 'shell', desc: 'Execute terminal shell command', args: [{ name: 'command', type: 'text', desc: 'Shell command', example: 'git status' }] },
+    { name: 'virtual_input', desc: 'Simulate mouse & keyboard input', subs: [
+        { name: 'move', desc: 'Move mouse cursor', args: [{ name: 'x', type: 'text', desc: 'X coordinate', example: '500' }, { name: 'y', type: 'text', desc: 'Y coordinate', example: '300' }] },
+        { name: 'click', desc: 'Click mouse', args: [{ name: 'button', type: 'text', desc: 'left, right, middle', example: 'left', optional: true }] },
+        { name: 'type', desc: 'Type string', args: [{ name: 'text', type: 'text', desc: 'Text to type', example: 'Hello' }] },
+        { name: 'press', desc: 'Press key/shortcut', args: [{ name: 'key', type: 'text', desc: 'Key name', example: 'enter' }] },
+        { name: 'screen_size', desc: 'Get screen resolution' },
+        { name: 'get_position', desc: 'Get cursor position' }
+    ]},
+    { name: 'hardware_control', desc: 'Control USB/serial hardware', subs: [
+        { name: 'list', desc: 'List serial ports' },
+        { name: 'send', desc: 'Send command to port', args: [{ name: 'port', type: 'text', desc: 'Port path', example: 'COM3' }, { name: 'command', type: 'text', desc: 'Command string', example: 'LED_ON' }] },
     ]},
 ];
 

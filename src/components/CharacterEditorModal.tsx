@@ -4,7 +4,19 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, tool, InteractionData } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from '../storages/serverStorage';
-import { getInitiativeWeightValueFromText, getChatProbabilityValue, getMaximumChatStaminaValueFromText, getNameSensitivityValueFromText, getChatImpatienceSensitivityValueFromText, getSkipProbabilityValueFromText, getMemoryRetentionWeightValueFromText, getContextSensitivityValueFromText, getMaximumActionStaminaValueFromText } from '../utilities/traitsDetection';
+import { 
+    getInitiativeWeightValueFromText, 
+    getChatProbabilityValue, 
+    getMaximumChatStaminaValueFromText, 
+    getNameSensitivityValueFromText, 
+    getChatImpatienceSensitivityValueFromText, 
+    getSkipProbabilityValueFromText, 
+    getMemoryRetentionWeightValueFromText, 
+    getContextSensitivityValueFromText, 
+    getMaximumActionStaminaValueFromText 
+} from '../utilities/traitDetection';
+import { detectToolsFromText, type DetectedToolsResult } from '../utilities/toolDetection';
+import { ToolPermissionModal } from './ToolPermissionModal';
 import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExtended } from '../utilities/characterCardParser';
 import { v4 as uuidv4 } from 'uuid';
 import { CharacterMemoryEditorModal } from './CharacterMemoryEditorModal';
@@ -148,7 +160,7 @@ function CharacterEditorModalInner({
     selectedModel, runningModels,
     chatNameMap, interactionData, localProtagonist,
     isReadOnly = false,
-}: Omit<CharacterEditorModalProps, 'isOpen'>) {
+}: CharacterEditorModalProps) {
     const [activeTab, setActiveTab] = useState<EditorTabId>('general');
 
     const [name, setName] = useState(existingCharacter?.name || '');
@@ -203,6 +215,10 @@ function CharacterEditorModalInner({
     }
     const [tools, setTools] = useState<Record<tool, boolean>>(initialTools);
     const [toolSearchQuery, setToolSearchQuery] = useState('');
+
+    // Tool Detection & Permission Modal State
+    const [detectedToolsForModal, setDetectedToolsForModal] = useState<DetectedToolsResult | null>(null);
+    const [showToolPermissionModal, setShowToolPermissionModal] = useState(false);
 
     const [memories, setMemories] = useState<Record<string, Memory[]>>(existingCharacter?.memories ?? {});
     const [clothings, setClothings] = useState<Clothing[]>(existingCharacter?.clothings ?? []);
@@ -269,6 +285,25 @@ function CharacterEditorModalInner({
             return next;
         });
     }, [isReadOnly]);
+
+    const handleAutoDetectTools = useCallback(() => {
+        if (isReadOnly) return;
+        const combinedText = `${name} ${description} ${systemPrompt}`;
+        const detected = detectToolsFromText(combinedText);
+
+        // Auto-enable safe tools immediately
+        setTools(prev => {
+            const next = { ...prev };
+            for (const r of detected.safe) {
+                next[r.tool] = true;
+            }
+            return next;
+        });
+
+        // Open permission modal to let user inspect/grant privileged or ambient tools
+        setDetectedToolsForModal(detected);
+        setShowToolPermissionModal(true);
+    }, [name, description, systemPrompt, isReadOnly]);
 
     // ─── Quick Config Helpers ──────────────────────────────────────
     const effectiveCharacterIdForConfig = existingCharacter?.id || pendingCharacterId || '';
@@ -564,7 +599,22 @@ function CharacterEditorModalInner({
         setNumberOfMessagesToDisableMetaThinkInstructionsStr('0');
         setNumberOfMessagesToDisableDialoguePromptStr('0');
         setNumberOfMessagesToDisableStarterPromptStr('0');
-        setTools({ ...defaultCharacterTools });
+
+        // Auto-detect tools from card description/system prompt
+        const fullCardText = `${fields.name} ${fields.description} ${fields.systemPrompt}`;
+        const detectedTools = detectToolsFromText(fullCardText);
+        const nextTools: Record<tool, boolean> = { ...defaultCharacterTools };
+        for (const rule of detectedTools.safe) {
+            nextTools[rule.tool] = true;
+        }
+        setTools(nextTools);
+
+        // If privileged or ambient tools are detected, show permission modal
+        if (detectedTools.privileged.length > 0 || detectedTools.ambient.length > 0) {
+            setDetectedToolsForModal(detectedTools);
+            setShowToolPermissionModal(true);
+        }
+
         setMemories({});
         setMemoryPrompts({});
         setClothings([]);
@@ -999,7 +1049,7 @@ function CharacterEditorModalInner({
                                         {hasVoice ? (
                                             <div className="editor-voice-chip"><span className="editor-voice-chip-name">🎙️ {voiceFile ? voiceFile.name : existingVoiceName}</span>{!isReadOnly && <button type="button" onClick={handleRemoveVoice} disabled={isUploading} className="editor-voice-remove-button" title="Remove voice">×</button>}</div>
                                         ) : (
-                                            !isReadOnly && <button type="button" onClick={() => !isUploading && voiceInputRef.current?.click()} disabled={isUploading} className={`toolbar-button editor-voice-upload-button ${isUploading ? 'uploading' : ''}`}>{isUploading ? 'Uploading...' : '🎙️ Upload Voice Sample'}</button>
+                                            !isReadOnly && <button type="button" onClick={() => !isUploading && voiceInputRef.current?.click()} disabled={isUploading} className={`toolbar-button editor-voice-upload-button ${isUploading ? 'uploading' : ''}`}>{isUploading ? '⏳ Uploading...' : '🎙️ Upload Voice Sample'}</button>
                                         )}
                                         <input ref={voiceInputRef} type="file" accept="audio/*,.wav,.mp3,.flac,.ogg" hidden onChange={handleVoiceChange} disabled={isUploading || isReadOnly} />
                                     </div>
@@ -1298,6 +1348,7 @@ function CharacterEditorModalInner({
                                     <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
                                         <button type="button" className="toolbar-button" onClick={handleSelectAllTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✓ Select All</button>
                                         <button type="button" className="toolbar-button" onClick={handleDeselectAllTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✗ Deselect All</button>
+                                        <button type="button" className="toolbar-button" onClick={handleAutoDetectTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }} title="Scan character name, description, and system prompt for tool keywords">🔍 Auto-Detect</button>
                                     </div>
                                 )}
 
@@ -1427,9 +1478,10 @@ function CharacterEditorModalInner({
                                 </div>
 
                                 <div className="editor-section" style={{ margin: 0 }}>
-                                    <span className="editor-section-title">Stat Utilities</span>
+                                    <span className="editor-section-title">Automated Utilities</span>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                         <button type="button" className="editor-button editor-button-cancel" onClick={handleAutoDetectStats} disabled={isUploading || isReadOnly} title="Re-run auto-detection on name + description + system prompt" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🔍 Auto-Detect Stats from Prompts</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleAutoDetectTools} disabled={isUploading || isReadOnly} title="Auto-detect tools and configure permissions based on character prompts" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🛡️ Auto-Detect Tools & Permissions</button>
                                         <button type="button" className="editor-button editor-button-cancel" onClick={handleResetStatsToDefaults} disabled={isUploading || isReadOnly} title="Reset all stats to their default values" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>↩️ Reset Stats to Defaults</button>
                                     </div>
                                 </div>
@@ -1440,6 +1492,21 @@ function CharacterEditorModalInner({
             </div>
 
             {/* ─── Sub-Editors (Conditionally Rendered) ─── */}
+            {showToolPermissionModal && detectedToolsForModal && (
+                <ToolPermissionModal
+                    characterName={name || 'This Character'}
+                    detectedTools={detectedToolsForModal}
+                    onClose={() => setShowToolPermissionModal(false)}
+                    onConfirm={(grantedTools) => {
+                        setTools(prev => ({
+                            ...prev,
+                            ...grantedTools,
+                        }));
+                        setShowToolPermissionModal(false);
+                    }}
+                />
+            )}
+
             {showImageEditor && (
                 <CharacterImageEditorModal
                     onClose={() => setShowImageEditor(false)}
