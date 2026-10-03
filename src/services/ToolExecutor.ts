@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { writeFile, readFile } from '../utilities/serverTools';
 import { buildSearchUrl } from '../utilities/searchURLBuilder';
 import { getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
+import { getLocationMessageHistory } from '../utilities/timelineLogic';
 import { localURL } from '../configurations';
 
 export interface ToolResult {
@@ -302,6 +303,7 @@ const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, int
     "trade": executeTrade,
     "invite": executeInvite,
     "kick": executeKick,
+    "oracle": executeOracle,
     "teleport": executeTeleport,
     "key": executeKey,
     "clothing": executeClothing,
@@ -1478,6 +1480,66 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
         }
     });
     return { toolType: 'kick', args, content: `Kicked ${targetChar.name}.`, displayReplacement: `[👢 Kicked ${targetChar.name}]` };
+}
+
+// ─── Oracle ───────────────────────────────────────────────────────
+function executeOracle(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+    const pArgs = parsePythonArgs(args);
+    const targetLocQuery = pArgs.get(0, 'location', 'target', 'place', 'to')?.trim();
+    const limit = pArgs.getNumber(1, 'limit', 'count') ?? 5;
+
+    const locations = interactionData.locations || [];
+
+    // If no location is provided, list all available locations so the AI knows where it can look
+    if (!targetLocQuery) {
+        const locList = locations.map(l => `"${l.name}" (${l.id})`).join(', ');
+        return {
+            toolType: 'oracle',
+            args,
+            content: `The scrying glass is unfocused. Available locations in this world: ${locList}. Specify a location to peer into it.`,
+            displayReplacement: '[🔮 Oracle: Unfocused]'
+        };
+    }
+
+    // Resolve the location by ID or name
+    const targetLoc = locations.find(l => 
+        l.id.toLowerCase() === targetLocQuery.toLowerCase() || 
+        l.name.toLowerCase().includes(targetLocQuery.toLowerCase()) ||
+        l.id.startsWith(targetLocQuery.toLowerCase())
+    );
+
+    if (!targetLoc) {
+        return {
+            toolType: 'oracle',
+            args,
+            content: `[Error: Location "${targetLocQuery}" does not exist in the world map]`,
+            displayReplacement: '[🔮 Oracle: Unknown location]'
+        };
+    }
+
+    // Pull the message history for THAT specific location using timelineLogic!
+    const remoteMessages = getLocationMessageHistory(interactionData, targetLoc.id, ['chat', 'whisper'], limit);
+
+    if (remoteMessages.length === 0) {
+        return {
+            toolType: 'oracle',
+            args,
+            content: `The scrying vision clears over ${targetLoc.name}, but the area is completely empty and silent right now.`,
+            displayReplacement: `[🔮 Scried: ${targetLoc.name} (Empty)]`
+        };
+    }
+
+    // Format the vision for the AI's context
+    const visionTranscript = remoteMessages
+        .map(m => `[${m.character.name}]: ${(m as ChatMessage).textContent}`)
+        .join('\n');
+
+    return {
+        toolType: 'oracle',
+        args,
+        content: `[Scrying Vision of ${targetLoc.name}]:\n${visionTranscript}`,
+        displayReplacement: `[🔮 Scried upon "${targetLoc.name}"]`
+    };
 }
 
 // ─── Teleport ───────────────────────────────────────────────────────

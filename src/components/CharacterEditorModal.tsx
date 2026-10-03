@@ -31,7 +31,7 @@ const DEFAULT_CONTEXT_SENSITIVITY = 1;
 const DEFAULT_MAXIMUM_ACTION_STAMINA = 5;
 const MAX_VOICE_FILE_SIZE = 5 * 1024 * 1024;
 
-const TOOL_DESCRIPTIONS: Record<tool, string> = {
+const toolDescriptions: Record<tool, string> = {
     whisper: 'Allow this character to give private messages',
     think: 'Allow this character to think before committing to an output.',
     pick: 'Allow this character to randomly pick from a list of options.',
@@ -59,6 +59,7 @@ const TOOL_DESCRIPTIONS: Record<tool, string> = {
     trade: 'Allows this character to trade with other characters.',
     invite: 'Allow this character to bring an existing participant, except the protagonist, to the current location.',
     kick: 'Allow this character to move an existing participant, including the protagonist, out of the current location to another one.',
+    oracle: 'Allow this character to see chat and whisper messages of other locations.', 
     teleport: 'Allow this character to instantly move self or a target to any location regardless of adjacency, bypassing normal movement cost.',
     key: 'Allow this character to lock or unlock a location.',
     summon: 'Allow this character to add a non-participant character into the current interaction session.',
@@ -892,7 +893,7 @@ function CharacterEditorModalInner({
         if (!q) return allToolNames;
         return allToolNames.filter(toolName => {
             const label = (toolLabels[toolName] ?? toolName).toLowerCase();
-            const desc = (TOOL_DESCRIPTIONS[toolName] ?? '').toLowerCase();
+            const desc = (toolDescriptions[toolName] ?? '').toLowerCase();
             return label.includes(q) || desc.includes(q) || toolName.toLowerCase().includes(q);
         });
     }, [tools, toolSearchQuery]);
@@ -1297,7 +1298,7 @@ function CharacterEditorModalInner({
                                             <span>{toolLabels[toolName] ?? toolName}</span>
                                         </label>
                                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                                            {TOOL_DESCRIPTIONS[toolName] ?? 'Allow this character to use this tool.'}
+                                            {toolDescriptions[toolName] ?? 'Allow this character to use this tool.'}
                                         </div>
                                     </div>
                                 ))}
