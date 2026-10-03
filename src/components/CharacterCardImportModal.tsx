@@ -130,7 +130,10 @@ export function CharacterCardImportModal({
             // By default, enable safe in-world tools that matched persona, plus baseline defaults.
             // Privileged tools (shell, webcam, etc.) remain false until explicitly reviewed/allowed.
             const initialTools: Record<tool, boolean> = { ...defaultCharacterTools };
-            for (const rule of detectedTools.safe) {
+            for (const rule of detectedTools.inWorldReadonly) {
+                initialTools[rule.tool] = true;
+            }
+            for (const rule of detectedTools.inWorldMutating) {
                 initialTools[rule.tool] = true;
             }
 
@@ -237,7 +240,7 @@ export function CharacterCardImportModal({
             });
 
             // Automatically open permission review if high-privilege OS tools are detected
-            if (detectedTools.privileged.length > 0) {
+            if (detectedTools.osPrivileged.length > 0 || detectedTools.entityAdmin.length > 0) {
                 setShowToolPermissionModal(true);
             }
         } catch (error) {
@@ -380,7 +383,7 @@ export function CharacterCardImportModal({
                                     </div>
 
                                     {/* Warning for High-Privilege Tools */}
-                                    {preview.detectedTools.privileged.length > 0 && (
+                                    {(preview.detectedTools.osPrivileged.length > 0 || preview.detectedTools.entityAdmin.length > 0) && (
                                         <div 
                                             className="model-status-banner model-status-warning" 
                                             style={{ margin: '8px 0 0 0', padding: '6px 10px', fontSize: '0.7rem', borderRadius: '6px', cursor: 'pointer' }}
@@ -388,14 +391,14 @@ export function CharacterCardImportModal({
                                         >
                                             <span className="model-status-icon">⚠️</span>
                                             <div className="model-status-text" style={{ textAlign: 'left' }}>
-                                                <strong>{preview.detectedTools.privileged.length} Privileged OS Tool(s) Detected</strong>: {preview.detectedTools.privileged.map(p => p.tool).join(', ')}. Click to review permissions.
+                                                <strong>{preview.detectedTools.osPrivileged.length + preview.detectedTools.entityAdmin.length} Privileged Tool(s) Detected</strong>: {[...preview.detectedTools.osPrivileged, ...preview.detectedTools.entityAdmin].map(p => p.tool).join(', ')}. Click to review permissions.
                                             </div>
                                         </div>
                                     )}
 
-                                    {preview.detectedTools.privileged.length === 0 && preview.detectedTools.safe.length > 0 && (
+                                    {(preview.detectedTools.osPrivileged.length + preview.detectedTools.entityAdmin.length) === 0 && (preview.detectedTools.inWorldReadonly.length + preview.detectedTools.inWorldMutating.length) > 0 && (
                                         <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px' }}>
-                                            Roleplay tools enabled from persona: {preview.detectedTools.safe.map(s => s.tool).join(', ')}
+                                            Roleplay tools enabled from persona: {[...preview.detectedTools.inWorldReadonly, ...preview.detectedTools.inWorldMutating].map(s => s.tool).join(', ')}
                                         </div>
                                     )}
                                 </div>

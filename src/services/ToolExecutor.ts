@@ -711,9 +711,31 @@ function executeRandomPick(args: string): ToolResult {
 
 // ─── Clock ────────────────────────────────────────────────────────────
 function executeClock(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+    const location = getCurrentLocation(interactionData, nextMessage.character);
+
+    // In-universe handling when the character is not in any location
+    if (!location) {
+        return {
+            toolType: 'clock',
+            args,
+            content: 'The clock is broken. There is no local reference frame because you are not currently in any location.',
+            displayReplacement: '[🕰️ Broken Clock: Hands spinning aimlessly]'
+        };
+    }
+
     const pArgs = parsePythonArgs(args);
     const format = pArgs.get(0, 'format', 'type')?.toLowerCase();
-    const dt = getCharacterTimeData(interactionData, nextMessage.character).luxonTimestamp;
+    const timeData = getCharacterTimeData(interactionData, nextMessage.character);
+    const dt = timeData?.luxonTimestamp;
+
+    if (!dt) {
+        return {
+            toolType: 'clock',
+            args,
+            content: `The clock at "${location.name}" has stopped ticking—no temporal coordinates could be established for this location.`,
+            displayReplacement: `[🕰️ Clock stopped at ${location.name}]`
+        };
+    }
 
     let timeStr: string;
     if (format === '24h' || format === '24') {
@@ -729,9 +751,31 @@ function executeClock(args: string, nextMessage: BaseMessage, interactionData: I
 
 // ─── Calendar ────────────────────────────────────────────────────────
 function executeCalendar(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+    const location = getCurrentLocation(interactionData, nextMessage.character);
+
+    // In-universe handling when the character is not in any location
+    if (!location) {
+        return {
+            toolType: 'calendar',
+            args,
+            content: 'The calendar pages are frayed, blank, and weathered—time has no anchor here. You are not currently in any physical location.',
+            displayReplacement: '[📅 Timeless: Blank Calendar]'
+        };
+    }
+
     const pArgs = parsePythonArgs(args);
     const format = pArgs.get(0, 'format', 'type')?.toLowerCase();
-    const dt = getCharacterTimeData(interactionData, nextMessage.character).luxonTimestamp;
+    const timeData = getCharacterTimeData(interactionData, nextMessage.character);
+    const dt = timeData?.luxonTimestamp;
+
+    if (!dt) {
+        return {
+            toolType: 'calendar',
+            args,
+            content: `The calendar at "${location.name}" is unreadable—no solar cycle is registered for this location.`,
+            displayReplacement: `[📅 Unreadable at ${location.name}]`
+        };
+    }
 
     let dateStr: string;
     if (format === 'iso') {

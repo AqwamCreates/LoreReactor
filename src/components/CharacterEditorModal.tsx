@@ -295,7 +295,10 @@ function CharacterEditorModalInner({
         // Auto-enable safe tools immediately
         setTools(prev => {
             const next = { ...prev };
-            for (const r of detected.safe) {
+            for (const r of detected.inWorldReadonly) {
+                next[r.tool] = true;
+            }
+            for (const r of detected.inWorldMutating) {
                 next[r.tool] = true;
             }
             return next;
@@ -605,13 +608,16 @@ function CharacterEditorModalInner({
         const fullCardText = `${fields.name} ${fields.description} ${fields.systemPrompt}`;
         const detectedTools = detectToolsFromText(fullCardText);
         const nextTools: Record<tool, boolean> = { ...defaultCharacterTools };
-        for (const rule of detectedTools.safe) {
+        for (const rule of detectedTools.inWorldReadonly) {
+            nextTools[rule.tool] = true;
+        }
+        for (const rule of detectedTools.inWorldMutating) {
             nextTools[rule.tool] = true;
         }
         setTools(nextTools);
 
         // If privileged or ambient tools are detected, show permission modal
-        if (detectedTools.privileged.length > 0 || detectedTools.ambient.length > 0) {
+        if (detectedTools.osPrivileged.length > 0 || detectedTools.entityAdmin.length > 0 || detectedTools.ambient.length > 0) {
             setDetectedToolsForModal(detectedTools);
             setShowToolPermissionModal(true);
         }
