@@ -168,18 +168,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     const ui = useChatUI(state.interactionData, isAtBottomRef);
 
-    const chatEngine = useChatEngine({
-        getState,
-        setInteractionData,
-        setStreamingState,
-        setBudgetData,
-        setStats,
-        setSelectedCharacterExpression,
-        setLastSelectedModelId,
-        addToast,
-        requestBorrowedModel,
-    });
-
     const { throttledSetStreamingText, setStreamingText, streamingTextRef, resetStream } = useThrottledStream();
     const { acquireLock, releaseLock, isLoadingRef } = useCharacterResponseLock();
     const { generateAmbientNarration } = useAmbientNarration(setStreamingState, setStreamingText, streamingTextRef);
@@ -194,6 +182,42 @@ export function useChatSession(options: UseChatSessionOptions) {
         onMessageBroadcastRef,
         getState,
         setInteractionData,
+    });
+
+    // ✅ MOVED UP: Initialize Front Camera & Tool Context before Chat Engine
+    const { captureFrontCameraImage } = useFrontCamera(addToast);
+
+    const buildToolContext = useCallback((): ToolExecutionContext => ({
+        allCharacters: allCharactersRef.current,
+        allContexts: allContextsRef.current,
+        allLocations: allLocationsRef.current,
+        allAudioTracks: allAudioTracksRef.current,
+        allPromptBlocks: allPromptBlocksRef.current,
+        allSamplers: allSamplersRef.current,
+        allStopPatterns: allStopPatternsRef.current,
+        allBudgetStrategies: allBudgetStrategiesRef.current,
+        allProfiles: allProfilesRef.current,
+        allWorlds: allWorldsRef.current,
+        allMemories: allMemoriesRef.current,
+        allAccounts: allAccountsRef.current,
+        allMultiplayerData: allMultiplayerDataRef.current,
+        allExtensions: allExtensionsRef.current,
+        captureFrontCameraImage,
+        addToast,
+    }), [captureFrontCameraImage, addToast]);
+
+    // ✅ MOVED UP: Initialize Chat Engine before Session Effects
+    const chatEngine = useChatEngine({
+        getState,
+        setInteractionData,
+        setStreamingState,
+        setBudgetData,
+        setStats,
+        setSelectedCharacterExpression,
+        setLastSelectedModelId,
+        addToast,
+        requestBorrowedModel,
+        getToolContext: buildToolContext,
     });
 
     useChatSessionEffects({
@@ -280,27 +304,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             onMessageBroadcastRef.current(msg);
         }
     }, []);
-
-    const { captureFrontCameraImage } = useFrontCamera(addToast);
-
-    const buildToolContext = useCallback((): ToolExecutionContext => ({
-        allCharacters: allCharactersRef.current,
-        allContexts: allContextsRef.current,
-        allLocations: allLocationsRef.current,
-        allAudioTracks: allAudioTracksRef.current,
-        allPromptBlocks: allPromptBlocksRef.current,
-        allSamplers: allSamplersRef.current,
-        allStopPatterns: allStopPatternsRef.current,
-        allBudgetStrategies: allBudgetStrategiesRef.current,
-        allProfiles: allProfilesRef.current,
-        allWorlds: allWorldsRef.current,
-        allMemories: allMemoriesRef.current,
-        allAccounts: allAccountsRef.current,
-        allMultiplayerData: allMultiplayerDataRef.current,
-        allExtensions: allExtensionsRef.current,
-        captureFrontCameraImage,
-        addToast,
-    }), [captureFrontCameraImage, addToast]);
 
     const formatDelay = (ms: number): string => {
         const totalSeconds = Math.floor(ms / 1000);

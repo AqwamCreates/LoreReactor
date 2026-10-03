@@ -11,7 +11,7 @@ import { sentimentEngine } from './SentimentAnalysisEngine';
 import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEngine';
 import { ToolInvocationParser, type ToolInvocation } from './ToolInvocationParser';
 import { defaultBudgetData } from '../dictionaries/defaults';
-import { executeTools, formatToolDisplay } from './ToolExecutor';
+import { executeTools, formatToolDisplay, type ToolExecutionContext } from './ToolExecutor';
 import { findLatestMessage } from '../utilities/messageLogic';
 
 // ─── Result Types ───────────────────────────────────────────────────
@@ -62,6 +62,7 @@ export interface TurnExecutionParams {
     isMultiplayerClient?: boolean;
     borrowedModel?: LanguageModel | null;
     metadata?: RequestMetadata;
+    toolContext?: ToolExecutionContext; // ✅ WIRED
 }
 
 export interface ProcessedReplacements {
@@ -86,6 +87,7 @@ async function processToolInvocations(
     profile: Profile | undefined,
     targetMessage: ChatMessage,
     interactionData: InteractionData,
+    context?: ToolExecutionContext, // ✅ WIRED
 ): Promise<ProcessedReplacements | null> {
     if (!invocations || invocations.length === 0) return null;
 
@@ -95,7 +97,8 @@ async function processToolInvocations(
     if (enabledInvocations.length === 0) return null;
 
     const displayMode = profile?.toolUsageDisplayMode ?? 'none';
-    const toolResults = await executeTools(enabledInvocations, targetMessage, interactionData, undefined, displayMode);
+    // ✅ PASS context INSTEAD OF undefined
+    const toolResults = await executeTools(enabledInvocations, targetMessage, interactionData, context, displayMode);
 
     const rawReplacements: { rawMatch: string; resultText: string }[] = [];
     const displayReplacements: { rawMatch: string; displayText: string }[] = [];
@@ -214,6 +217,7 @@ export class CharacterActor {
             selectedModel, runningModels, activeStrategy,
             strategyOverride, existingCharacterText, allPromptBlocks, callbacks,
             isMultiplayerClient, borrowedModel, metadata,
+            toolContext, // ✅ WIRED
         } = params;
 
         if (isMultiplayerClient) {
@@ -429,7 +433,8 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data);
+                    // ✅ PASS toolContext
+                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data, toolContext);
                     if (!toolResult) break;
 
                     applyToolReplacements(accState, toolResult, callbacks);
@@ -490,7 +495,8 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data);
+                    // ✅ PASS toolContext
+                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data, toolContext);
                     if (!toolResult) break;
 
                     applyToolReplacements(accState, toolResult, callbacks);
@@ -528,7 +534,8 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data);
+                    // ✅ PASS toolContext
+                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data, toolContext);
                     if (!toolResult) break;
 
                     applyToolReplacements(accState, toolResult, callbacks);

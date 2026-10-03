@@ -6,6 +6,7 @@ import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { CharacterSoul } from '../services/CharacterSoul';
 import { getBudgetStrategyEngine, type RequestMetadata } from '../services/BudgetStrategyEngine';
 import { updatePartialMessageInInteractionData } from '../utilities/chatLogic';
+import type { ToolExecutionContext } from '../services/ToolExecutor';
 
 const characterActor = new CharacterActor();
 const characterSoul = new CharacterSoul();
@@ -28,6 +29,7 @@ interface EngineDependencies {
     setLastSelectedModelId: (id: string | null) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
+    getToolContext?: () => ToolExecutionContext; // ✅ ADD THIS
 }
 
 export function useChatEngine(deps: EngineDependencies) {
@@ -91,6 +93,7 @@ export function useChatEngine(deps: EngineDependencies) {
             callbacks,
             borrowedModel,
             metadata,
+            toolContext: deps.getToolContext?.(),
         });
 
         if ('error' in outcome) {
