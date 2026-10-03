@@ -1206,15 +1206,14 @@ function buildToolInstructionLines(ctx: PromptBuildContext): string[] {
 
     if (enabledToolNames.length > 0) {
         const exampleTool = enabledToolNames.includes('dice' as tool)
-            ? 'dice(sides: 6, count: 3)'
+            ? 'dice(sides: 6, count: 1)'
             : `${enabledToolNames[0]}()`;
 
         const toolInstructions = [
             `I have access to external tools: ${enabledToolNames.join(', ')}.`,
-            `To invoke a tool, I will write ${toolStartSring}tool_name(arguments)${toolEndString} (for example: ${toolStartSring}${exampleTool}${toolEndString}). Calling a tool without arguments returns its usage instructions.`,
-            `When using a tool, I will always complete my preceding sentence first and place the ${toolStartSring}...${toolEndString} invocation on its own clean boundary.`,
-            `The tool invocation will be evaluated immediately and replaced with the tool result. Upon receiving the tool result, I will begin a complete, grammatically sound sentence incorporating the actual result.`,
-            `I will only call tools when a new action or calculation is explicitly needed, and I will never fabricate or guess numbers when a tool result is available.`
+            `To invoke a tool, I must write ${toolStartSring}tool_name(arguments)${toolEndString} (for example: ${toolStartSring}${exampleTool}${toolEndString}). Calling a tool without arguments returns its usage instructions.`,
+            `ACTION-FIRST PROTOCOL: Whenever an action, calculation, or external data is needed, I must output the ${toolStartSring}...${toolEndString} invocation FIRST at the very start of my turn before speaking.`,
+            `The tool will execute immediately and return its value inline as -> <result>. I will then continue my dialogue directly on the same line incorporating the real result. I will never output raw tool result labels or add unnecessary blank lines.`
         ].join(' ');
 
         lines.push(`${ctx.delimiters.blockStart('system')}${toolInstructions}${ctx.delimiters.blockEnd}`);

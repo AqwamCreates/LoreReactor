@@ -132,33 +132,25 @@ function applyToolReplacements(
         const { rawMatch, resultText } = replacements.rawReplacements[i];
         const { displayText } = replacements.displayReplacements[i];
 
-        // 1. Clean dangling markdown opening delimiters (`, *, _, [) right before the tool invocation in raw context
-        let rawIdx = currentRaw.indexOf(rawMatch);
-        if (rawIdx > 0) {
-            const prevChar = currentRaw[rawIdx - 1];
-            if (prevChar === '`' || prevChar === '*' || prevChar === '_' || prevChar === '[') {
-                currentRaw = currentRaw.slice(0, rawIdx - 1) + currentRaw.slice(rawIdx);
-                rawIdx--;
+        // 1. Raw prompt context: strictly inline with a trailing space
+        const rawReplacement = `${rawMatch} -> ${resultText} `;
+        if (currentRaw.includes(rawMatch)) {
+            currentRaw = currentRaw.replace(rawMatch, rawReplacement);
+        } else {
+            const trimmedRaw = currentRaw.trimEnd();
+            currentRaw = (trimmedRaw ? `${trimmedRaw} ` : '') + rawReplacement;
+        }
+
+        // 2. UI Display representation: guarantees exactly one trailing space after non-empty badges/icons
+        if (displayText !== '') {
+            if (currentDisplay.includes(rawMatch)) {
+                currentDisplay = currentDisplay.replace(rawMatch, `${displayText} `);
+            } else {
+                const trimmedDisplay = currentDisplay.trimEnd();
+                currentDisplay = (trimmedDisplay ? `${trimmedDisplay} ` : '') + `${displayText} `;
             }
-        }
-
-        // Format tool result on a clean boundary so the model begins a fresh sentence in subsequent passes
-        const formattedResult = `\n[Tool Result: ${resultText}]\n`;
-        if (rawIdx !== -1) {
-            currentRaw = currentRaw.slice(0, rawIdx) + formattedResult + currentRaw.slice(rawIdx + rawMatch.length);
-        } else {
-            currentRaw += formattedResult;
-        }
-
-        // 2. Clean dangling markdown opening delimiters from the display accumulator
-        const displayIdx = currentDisplay.indexOf(rawMatch);
-        if (displayIdx !== -1) {
-            const beforeDisplay = currentDisplay.slice(0, displayIdx);
-            const cleanBefore = beforeDisplay.replace(/[`*_\[\s]+$/, '');
-            currentDisplay = cleanBefore + (displayText !== '' ? ` ${displayText} ` : ' ') + currentDisplay.slice(displayIdx + rawMatch.length);
-        } else {
-            const cleanDisplay = currentDisplay.replace(/[`*_\[\s]+$/, '');
-            currentDisplay = cleanDisplay + (displayText !== '' ? ` ${displayText} ` : ' ');
+        } else if (currentDisplay.includes(rawMatch)) {
+            currentDisplay = currentDisplay.replace(rawMatch, '');
         }
     }
 
@@ -284,6 +276,7 @@ export class CharacterActor {
             let currentExistingText = existingCharacterText || '';
             let finalBudgetData: BudgetData | null = null;
             let lastPromptText = '';
+            let isFirstChunkAfterTool = false;
 
             const streamToolParser = new ToolInvocationParser();
             const accState = createAccState(currentExistingText);
@@ -331,9 +324,21 @@ export class CharacterActor {
                     }
 
                     if (parsed.displayText) {
-                        const cleaned = cleanSpacing(acc.display + parsed.displayText);
-                        acc.setDisplay(cleaned);
-                        callbacks?.onDisplayText(cleaned);
+                        let incoming = parsed.displayText;
+
+                        // Strip ONLY leading newlines, leaving single spacing intact
+                        if (isFirstChunkAfterTool) {
+                            incoming = incoming.replace(/^[\r\n]+/, '');
+                            if (incoming.length > 0) {
+                                isFirstChunkAfterTool = false;
+                            }
+                        }
+
+                        if (incoming.length > 0) {
+                            const cleaned = cleanSpacing(acc.display + incoming);
+                            acc.setDisplay(cleaned);
+                            callbacks?.onDisplayText(cleaned);
+                        }
                     }
 
                     const enableExpression = data.profile?.enableCharacterExpression ?? false;
@@ -427,6 +432,7 @@ export class CharacterActor {
                     if (!toolResult) break;
 
                     applyToolReplacements(accState, toolResult, callbacks);
+                    isFirstChunkAfterTool = true;
 
                     streamToolParser.reset();
                     accState.clearPending();
@@ -487,6 +493,7 @@ export class CharacterActor {
                     if (!toolResult) break;
 
                     applyToolReplacements(accState, toolResult, callbacks);
+                    isFirstChunkAfterTool = true;
 
                     streamToolParser.reset();
                     accState.clearPending();
@@ -524,6 +531,7 @@ export class CharacterActor {
                     if (!toolResult) break;
 
                     applyToolReplacements(accState, toolResult, callbacks);
+                    isFirstChunkAfterTool = true;
 
                     streamToolParser.reset();
                     accState.clearPending();

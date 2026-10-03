@@ -310,7 +310,8 @@ const toolFunctions: Record<string, (args: string, nextMessage: BaseMessage, int
     "administrator": executeAdministrator,
     "creator": executeCreator,
     "destroyer": executeDestroyer,
-    "browser": executeOpenBrowser,
+    "gpu": executeGpu,
+    "browser": executeBrowser,
     "read_file": executeReadFile,
     "write_file": executeWriteFile,
 };
@@ -1715,8 +1716,69 @@ function executeDestroyer(args: string, nextMessage: BaseMessage, interactionDat
     return { toolType: 'destroyer', args, content: `Destroyed ${entityType} "${entityId}".`, displayReplacement: `[💀 Destroyed: "${entityId}"]` };
 }
 
+interface GpuStatusResponse {
+    vendor: string;
+    utilizationPercent: number;
+    memoryUsedMB: number;
+    memoryTotalMB: number;
+    temperatureC: number | null;
+    powerWatts: number | null;
+    name: string;
+    timestamp: number;
+}
+
+async function executeGpu(args: string): Promise<ToolResult> {
+    try {
+        const response = await fetch(`${localURL}/gpu/status`);
+        if (!response.ok) {
+            return {
+                toolType: 'gpu',
+                args,
+                content: `[Error: Failed to fetch GPU status (${response.status})]`,
+                displayReplacement: '[❌ GPU Unavailable]'
+            };
+        }
+
+        const data = await response.json() as GpuStatusResponse;
+
+        const tempStr = data.temperatureC !== null ? `${data.temperatureC}°C` : null;
+        const powerStr = data.powerWatts !== null ? `${data.powerWatts}W` : null;
+        const vramPercent = data.memoryTotalMB > 0 
+            ? ((data.memoryUsedMB / data.memoryTotalMB) * 100).toFixed(1)
+            : '0.0';
+
+        // Rich telemetry fed back into LLM context
+        const telemetryParts = [
+            `Model: ${data.name} (${data.vendor.toUpperCase()})`,
+            `Utilization: ${data.utilizationPercent}%`,
+            `VRAM: ${data.memoryUsedMB}MB / ${data.memoryTotalMB}MB (${vramPercent}%)`,
+            tempStr ? `Temperature: ${tempStr}` : null,
+            powerStr ? `Power Draw: ${powerStr}` : null,
+        ].filter(Boolean);
+
+        // UI badge
+        const vramUsedGB = (data.memoryUsedMB / 1024).toFixed(1);
+        const vramTotalGB = (data.memoryTotalMB / 1024).toFixed(1);
+        const tempBadge = data.temperatureC !== null ? ` | ${data.temperatureC}°C` : '';
+
+        return {
+            toolType: 'gpu',
+            args,
+            content: telemetryParts.join(', '),
+            displayReplacement: `[📟 GPU: ${data.utilizationPercent}% | ${vramUsedGB}/${vramTotalGB}GB${tempBadge}]`
+        };
+    } catch (e) {
+        return {
+            toolType: 'gpu',
+            args,
+            content: `[Error: ${(e as Error).message}]`,
+            displayReplacement: '[❌ GPU Unavailable]'
+        };
+    }
+}
+
 // ─── Open Browser ───────────────────────────────────────────────────
-async function executeOpenBrowser(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): Promise<ToolResult> {
+async function executeBrowser(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const input = pArgs.get(0, 'url_or_search_query', 'url', 'query', 'search')?.trim() || pArgs.positional.join(' ').trim();
     if (!input) return helpResult('browser', 'url_or_search_query="..."', 'open webpage or web search in browser');

@@ -83,7 +83,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
       "teleport": "boolean (default false)", "key": "boolean (default false)", "clothing": "boolean (default false)",
       "summon": "boolean (default false)", "narrate": "boolean (default false)", "inspect": "boolean (default false)",
       "administrator": "boolean (default false)", "creator": "boolean (default false)", "destroyer": "boolean (default false)",
-      "browser": "boolean (default false)", "read_file": "boolean (default false)", "write_file": "boolean (default false)"
+      "gpu": "boolean (default false)", "browser": "boolean (default false)", "read_file": "boolean (default false)", "write_file": "boolean (default false)"
     },
     "clothings": [{
       "id": "string (UUID)",
