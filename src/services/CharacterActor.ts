@@ -125,24 +125,43 @@ function applyToolReplacements(
     callbacks?: TurnStreamCallbacks,
 ): void {
     const acc = accState.get();
-
-    // Clean replacement: tool execution becomes the clean anchor of the turn
-    let currentRaw = '';
-    let currentDisplay = '';
+    let currentRaw = acc.raw;
+    let currentDisplay = acc.display;
 
     for (let i = 0; i < replacements.rawReplacements.length; i++) {
         const { rawMatch, resultText } = replacements.rawReplacements[i];
         const { displayText } = replacements.displayReplacements[i];
 
-        // 1. Raw prompt context: bounded observation tag
-        currentRaw += `${rawMatch}[Output: ${resultText}] `;
+        // 1. Raw prompt context: in-place replacement with clean spacing
+        const rawIdx = currentRaw.indexOf(rawMatch);
+        const beforeChar = rawIdx > 0 ? currentRaw[rawIdx - 1] : '';
+        const afterChar = currentRaw[rawIdx + rawMatch.length] || '';
 
-        // 2. UI Display representation: badge/icon with single space
+        const needsLeadingSpace = beforeChar !== '' && !/\s/.test(beforeChar) && resultText.length > 0;
+        const needsTrailingSpace = afterChar !== '' && !/\s|[.,!?;:]/.test(afterChar) && resultText.length > 0;
+
+        const formattedResult = (needsLeadingSpace ? ' ' : '') + resultText + (needsTrailingSpace ? ' ' : '');
+        if (currentRaw.includes(rawMatch)) {
+            currentRaw = currentRaw.replace(rawMatch, formattedResult);
+        } else {
+            const trimmed = currentRaw.trimEnd();
+            currentRaw = (trimmed ? `${trimmed} ` : '') + formattedResult;
+        }
+
+        // 2. UI Display representation: replace rawMatch or append badge with clean single space
         if (displayText !== '') {
-            currentDisplay += `${displayText} `;
+            if (currentDisplay.includes(rawMatch)) {
+                currentDisplay = currentDisplay.replace(rawMatch, `${displayText} `);
+            } else {
+                const trimmed = currentDisplay.trimEnd();
+                currentDisplay = (trimmed ? `${trimmed} ` : '') + `${displayText} `;
+            }
+        } else if (currentDisplay.includes(rawMatch)) {
+            currentDisplay = currentDisplay.replace(rawMatch, '');
         }
     }
 
+    currentDisplay = cleanSpacing(currentDisplay);
     acc.setRaw(currentRaw);
     acc.setDisplay(currentDisplay);
     callbacks?.onDisplayText(acc.display);
@@ -301,16 +320,7 @@ export class CharacterActor {
                     const parsed = parser.processChunk(delta);
                     acc.setRaw(acc.raw + delta);
 
-                    // 1. Tool call detected: abort pass immediately to execute tool
-                    if (parsed.toolInvocations.length > 0) {
-                        for (const inv of parsed.toolInvocations) {
-                            acc.addPendingInvocation(inv);
-                        }
-                        turnAbortCtrl.abort();
-                        return;
-                    }
-
-                    // 2. Normal text output
+                    // 1. ALWAYS flush pre-tool dialogue to display
                     if (parsed.displayText) {
                         let incoming = parsed.displayText;
 
@@ -326,6 +336,15 @@ export class CharacterActor {
                             acc.setDisplay(cleaned);
                             callbacks?.onDisplayText(cleaned);
                         }
+                    }
+
+                    // 2. Stop stream immediately upon complete tool call
+                    if (parsed.toolInvocations.length > 0) {
+                        for (const inv of parsed.toolInvocations) {
+                            acc.addPendingInvocation(inv);
+                        }
+                        turnAbortCtrl.abort();
+                        return;
                     }
 
                     const enableExpression = data.profile?.enableCharacterExpression ?? false;
@@ -487,7 +506,7 @@ export class CharacterActor {
                 }
 
             } else {
-                // ─── Direct Model Path ──────────────────────────────
+                // ─── Direct Model Path ──────────────────────
                 if (!selectedModel) {
                     return { error: { message: 'No model selected', type: 'no_model' } };
                 }

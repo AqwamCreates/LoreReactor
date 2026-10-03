@@ -44,6 +44,7 @@ const DEFAULT_MAXIMUM_ACTION_STAMINA = 5;
 const MAX_VOICE_FILE_SIZE = 5 * 1024 * 1024;
 
 const toolDescriptions: Record<tool, string> = {
+    help: 'Allow this character to read up the tool manual.',
     whisper: 'Allow this character to give private messages',
     think: 'Allow this character to think before committing to an output.',
     pick: 'Allow this character to randomly pick from a list of options.',
@@ -1347,8 +1348,8 @@ function CharacterEditorModalInner({
                                 {!isReadOnly && (
                                     <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
                                         <button type="button" className="toolbar-button" onClick={handleSelectAllTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✓ Select All</button>
-                                        <button type="button" className="toolbar-button" onClick={handleDeselectAllTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✗ Deselect All</button>
                                         <button type="button" className="toolbar-button" onClick={handleAutoDetectTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }} title="Scan character name, description, and system prompt for tool keywords">🔍 Auto-Detect</button>
+                                        <button type="button" className="toolbar-button" onClick={handleDeselectAllTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✗ Deselect All</button>
                                     </div>
                                 )}
 

@@ -1205,15 +1205,12 @@ function buildToolInstructionLines(ctx: PromptBuildContext): string[] {
     const enabledToolNames = (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
 
     if (enabledToolNames.length > 0) {
-        const exampleTool = enabledToolNames.includes('dice' as tool)
-            ? 'dice(sides: 6, count: 1)'
-            : `${enabledToolNames[0]}()`;
-
         const toolInstructions = [
-            `I have access to external tools: ${enabledToolNames.join(', ')}.`,
-            `To invoke a tool, I must write ${toolStartString}tool_name(arguments)${toolEndString} (for example: ${toolStartString}${exampleTool}${toolEndString}). Calling a tool without arguments returns its usage instructions.`,
-            `ACTION-FIRST PROTOCOL: Whenever an action, calculation, or external data is needed, I must output the ${toolStartString}...${toolEndString} invocation FIRST at the very start of my turn before speaking.`,
-            `The tool will execute immediately and return its value inline as  <result>. I will then continue my dialogue directly on the same line incorporating the real result. I will never output raw tool result labels or add unnecessary blank lines.`
+            `You have access to an external tool library organized into categories: roleplay, navigation, utility, knowledge, os, desktop, filesystem, and admin.`,
+            `To invoke a tool, write ${toolStartString}tool_name(arguments)${toolEndString}.`,
+            `MANDATORY SEQUENCE: If you need to perform an action or query real-time data, invoke the ${toolStartString}...${toolEndString} call as the VERY FIRST TOKENS of your turn before speaking.`,
+            `To explore available tools, call ${toolStartString}help()${toolEndString}. To explore a category, call ${toolStartString}help("os")${toolEndString}. To inspect any specific tool's exact arguments, call ${toolStartString}help("tool_name")${toolEndString} or call ${toolStartString}tool_name()${toolEndString} without arguments.`,
+            `The tool will execute immediately and return its output inline as -> <result>. You will then continue with your character response incorporating the real result.`
         ].join(' ');
 
         lines.push(`${ctx.delimiters.blockStart('system')}${toolInstructions}${ctx.delimiters.blockEnd}`);
