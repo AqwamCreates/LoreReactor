@@ -73,10 +73,9 @@ export interface ProcessedReplacements {
 
 function cleanSpacing(str: string): string {
     return str
-        .replace(/\r\n/g, '\n')
-        .replace(/[ \t]+$/gm, '')
-        .replace(/\n{3,}/g, '\n\n')
-        .replace(/^\n+/, '');
+        .replace(/\r\n/g, '\n')       // 1. Normalize Windows line breaks
+        .replace(/\n{3,}/g, '\n\n')   // 2. Collapse 3+ newlines to clean double newlines
+        .replace(/^\n+/, '');         // 3. Trim leading blank lines only
 }
 
 // ─── Dual-Text Tool Processing ──────────────────────────────────────
@@ -132,29 +131,22 @@ function applyToolReplacements(
         const { rawMatch, resultText } = replacements.rawReplacements[i];
         const { displayText } = replacements.displayReplacements[i];
 
-        // 1. Raw prompt context: in-place replacement with clean spacing
-        const rawIdx = currentRaw.indexOf(rawMatch);
-        const beforeChar = rawIdx > 0 ? currentRaw[rawIdx - 1] : '';
-        const afterChar = currentRaw[rawIdx + rawMatch.length] || '';
-
-        const needsLeadingSpace = beforeChar !== '' && !/\s/.test(beforeChar) && resultText.length > 0;
-        const needsTrailingSpace = afterChar !== '' && !/\s|[.,!?;:]/.test(afterChar) && resultText.length > 0;
-
-        const formattedResult = (needsLeadingSpace ? ' ' : '') + resultText + (needsTrailingSpace ? ' ' : '');
+        // 1. Raw prompt context: delimited observation boundary (<|tool()|><|result: ...|>)
+        const rawReplacement = `${rawMatch}<|result: ${resultText}|> `;
         if (currentRaw.includes(rawMatch)) {
-            currentRaw = currentRaw.replace(rawMatch, formattedResult);
+            currentRaw = currentRaw.replace(rawMatch, rawReplacement);
         } else {
-            const trimmed = currentRaw.trimEnd();
-            currentRaw = (trimmed ? `${trimmed} ` : '') + formattedResult;
+            const trimmedRaw = currentRaw.trimEnd();
+            currentRaw = (trimmedRaw ? `${trimmedRaw} ` : '') + rawReplacement;
         }
 
-        // 2. UI Display representation: replace rawMatch or append badge with clean single space
+        // 2. UI Display representation: insert badge cleanly with a single trailing space
         if (displayText !== '') {
             if (currentDisplay.includes(rawMatch)) {
                 currentDisplay = currentDisplay.replace(rawMatch, `${displayText} `);
             } else {
-                const trimmed = currentDisplay.trimEnd();
-                currentDisplay = (trimmed ? `${trimmed} ` : '') + `${displayText} `;
+                const trimmedDisplay = currentDisplay.trimEnd();
+                currentDisplay = (trimmedDisplay ? `${trimmedDisplay} ` : '') + `${displayText} `;
             }
         } else if (currentDisplay.includes(rawMatch)) {
             currentDisplay = currentDisplay.replace(rawMatch, '');
@@ -320,7 +312,7 @@ export class CharacterActor {
                     const parsed = parser.processChunk(delta);
                     acc.setRaw(acc.raw + delta);
 
-                    // 1. ALWAYS flush pre-tool dialogue to display
+                    // 1. Flush any text that occurred before the tool call
                     if (parsed.displayText) {
                         let incoming = parsed.displayText;
 
@@ -332,6 +324,10 @@ export class CharacterActor {
                         }
 
                         if (incoming.length > 0) {
+                            // Prevent double spaces between badge and incoming text
+                            if (acc.display.endsWith(' ') && incoming.startsWith(' ')) {
+                                incoming = incoming.trimStart();
+                            }
                             const cleaned = cleanSpacing(acc.display + incoming);
                             acc.setDisplay(cleaned);
                             callbacks?.onDisplayText(cleaned);
@@ -506,7 +502,7 @@ export class CharacterActor {
                 }
 
             } else {
-                // ─── Direct Model Path ──────────────────────
+                // ─── Direct Model Path ──────────────────────────────
                 if (!selectedModel) {
                     return { error: { message: 'No model selected', type: 'no_model' } };
                 }
@@ -527,25 +523,13 @@ export class CharacterActor {
 
                     accState.get().setLastRawLen(0);
                     const { body } = await buildChatRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
-                    
-                    console.log('[DEBUG 1] Starting stream pass. currentExistingText:', currentExistingText);
                     await runSingleStreamPass(body, false);
 
                     const pendingInvs = accState.getPending();
-                    console.log('[DEBUG 2] Pass completed. Detected tools:', pendingInvs);
-
-                    if (pendingInvs.length === 0) {
-                        console.log('[DEBUG 3] No tools detected. Loop ended naturally.');
-                        break;
-                    }
+                    if (pendingInvs.length === 0) break;
 
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data);
-                    console.log('[DEBUG 4] Tool execution result:', toolResult);
-
-                    if (!toolResult) {
-                        console.log('[DEBUG 5] toolResult is null/empty. Loop aborted prematurely!');
-                        break;
-                    }
+                    if (!toolResult) break;
 
                     applyToolReplacements(accState, toolResult, callbacks);
                     isFirstChunkAfterTool = true;
