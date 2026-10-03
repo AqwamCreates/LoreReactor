@@ -129,11 +129,23 @@ export async function buildChatRequestBody(
     existingCharacterText: string,
     allPromptBlocks: PromptBlock[],
     modelId: string,
-): Promise<{ body: Record<string, unknown>; knownCharacterNames: Record<string, Record<string, boolean>>; fetchErrors: string[]; characterClothingWearingStatuses: Record<string, boolean> }> {
-
+): Promise<{ 
+    body: Record<string, unknown>; 
+    knownCharacterNames: Record<string, Record<string, boolean>>; 
+    fetchErrors: string[]; 
+    characterClothingWearingStatuses: Record<string, boolean> 
+}> {
     const profile = interactionData.profile;
 
-    const { messages, stops, contextImages, locationImages, promptBlockImages, characterClothingWearingStatuses, fetchErrors } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId);
+    const { 
+        messages, 
+        stops, 
+        contextImages, 
+        locationImages, 
+        promptBlockImages, 
+        characterClothingWearingStatuses, 
+        fetchErrors 
+    } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId);
 
     const sampler = character.sampler;
     const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection;
@@ -148,6 +160,7 @@ export async function buildChatRequestBody(
     const delimiters = deriveDelimiters(resolvedChatTemplate);
 
     if (!forceNoCharacterImageInjection) {
+        // 1. Current Character Appearance Image Injection
         if (!character.doNotInjectCharacterImage) {
             const characterMessage = findLatestMessage(interactionData, character);
             const characterExpression = characterMessage?.message.characterExpression;
@@ -170,6 +183,7 @@ export async function buildChatRequestBody(
         const protagonistIds = new Set(interactionData.protagonists?.map(p => p.id) ?? []);
         const effectiveUseFrontCameraImage = getEffectiveUseFrontCameraImage(character, profile);
 
+        // 2. Co-Located Other Participants' Appearance Images
         for (const participant of colocatedParticipants) {
             if (participant.id === character.id) continue;
             if (participant.doNotInjectCharacterImage) continue;
@@ -178,9 +192,9 @@ export async function buildChatRequestBody(
             const participantExpression = participantMessage?.message.characterExpression;
             let participantImageBase64: string | null = null;
 
-            const chatMsg = participantMessage?.message as ChatMessage | null;
-            if (protagonistIds.has(participant.id) && effectiveUseFrontCameraImage && chatMsg?.frontCameraImage) {
-                participantImageBase64 = chatMsg.frontCameraImage;
+            const textMsg = participantMessage?.message as (ChatMessage | WhisperMessage) | null;
+            if (protagonistIds.has(participant.id) && effectiveUseFrontCameraImage && (textMsg as ChatMessage)?.frontCameraImage) {
+                participantImageBase64 = (textMsg as ChatMessage).frontCameraImage || null;
             } else {
                 const participantImagePath = await getCharacterImageUrlWithFallBack(participant.id, participantExpression);
                 if (participantImagePath) {
@@ -202,13 +216,15 @@ export async function buildChatRequestBody(
             });
         }
 
+        // 3. Collect Message Files / Tool Screenshots from ALL Co-Located Participants (Chat & Whisper)
         for (const participant of colocatedParticipants) {
-            if (!protagonistIds.has(participant.id)) continue;
             const lastMsg = findLatestMessage(interactionData, participant)?.message;
-            if (!lastMsg || lastMsg.messageType !== 'chat') continue;
-            const lastChatMsg = lastMsg as ChatMessage;
-            if (lastChatMsg.files?.length) {
-                for (const fileBase64 of lastChatMsg.files) {
+            if (!lastMsg || (lastMsg.messageType !== 'chat' && lastMsg.messageType !== 'whisper')) continue;
+            
+            const textMsg = lastMsg as ChatMessage | WhisperMessage;
+            if (textMsg.files && textMsg.files.length > 0) {
+                for (const fileBase64 of textMsg.files) {
+                    if (!fileBase64) continue;
                     const rawData = fileBase64.includes(',') ? fileBase64.split(',')[1] : fileBase64;
                     filesBase64.push({ data: rawData, id: imageIdCounter++ });
                 }
@@ -216,6 +232,7 @@ export async function buildChatRequestBody(
         }
     }
 
+    // 4. Context Images
     if (!profile?.forceNoContextImageInjection && contextImages.length > 0) {
         const contextImagePromises = contextImages.map(async (imgRef: EntityImageRef) => {
             try {
@@ -237,6 +254,7 @@ export async function buildChatRequestBody(
         filesBase64.push(...resolvedContextImages);
     }
 
+    // 5. Location Images
     if (!profile?.forceNoContextImageInjection && locationImages.length > 0) {
         const locationImagePromises = locationImages.map(async (imgRef: EntityImageRef) => {
             try {
@@ -258,6 +276,7 @@ export async function buildChatRequestBody(
         filesBase64.push(...resolvedLocationImages);
     }
 
+    // 6. Prompt Block Images
     if (!profile?.forceNoContextImageInjection && promptBlockImages.length > 0) {
         const promptBlockImagePromises = promptBlockImages.map(async (imgRef: EntityImageRef) => {
             try {
@@ -318,7 +337,9 @@ export async function buildChatRequestBody(
         }
     }
 
-    if (filesBase64.length > 0) body.image_data = filesBase64;
+    if (filesBase64.length > 0) {
+        body.image_data = filesBase64;
+    }
     body.session_id = interactionData.id;
 
     return { body, knownCharacterNames, fetchErrors, characterClothingWearingStatuses };

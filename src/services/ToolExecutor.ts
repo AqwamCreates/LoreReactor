@@ -2007,7 +2007,7 @@ async function executeClipboard(
 // ─── Desktop Screenshot Capture ─────────────────────────────────────
 async function executeScreenshot(
     args: string, 
-    _nextMessage: BaseMessage, 
+    nextMessage: BaseMessage, 
     _interactionData: InteractionData, 
     context?: ToolExecutionContext
 ): Promise<ToolResult> {
@@ -2021,26 +2021,51 @@ async function executeScreenshot(
         };
     }
 
-    context?.addToast?.('Screenshot captured', 'success');
+    // Attach real image payload to the message's file array for vision ingestion
+    const dataUrl = `data:${res.contentType || 'image/jpeg'};base64,${res.base64}`;
+    if ('files' in nextMessage) {
+        if (!nextMessage.files) nextMessage.files = [];
+        nextMessage.files.push(dataUrl);
+    }
+
+    context?.addToast?.('Screenshot captured and sent to vision model', 'success');
     return {
         toolType: 'screenshot',
         args,
-        content: `[Screenshot Captured successfully - Base64 image payload generated]`,
+        content: `Desktop screenshot captured and attached to visual input. Analyze the image to answer.`,
         displayReplacement: `[📸 Screenshot captured]`
     };
 }
 
 // ─── Webcam Tool ────────────────────────────────────────────────────
-async function executeWebcam(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context?: ToolExecutionContext): Promise<ToolResult> {
+async function executeWebcam(
+    args: string, 
+    nextMessage: BaseMessage, 
+    _interactionData: InteractionData, 
+    context?: ToolExecutionContext
+): Promise<ToolResult> {
     const res = await captureWebcam();
     if (!res.success || !res.base64) {
-        return { toolType: 'webcam', args, content: `[Error: ${res.error || 'Failed to capture webcam snapshot'}]`, displayReplacement: '[❌ Webcam error]' };
+        return { 
+            toolType: 'webcam', 
+            args, 
+            content: `[Error: ${res.error || 'Failed to capture webcam snapshot'}]`, 
+            displayReplacement: '[❌ Webcam error]' 
+        };
     }
-    context?.addToast?.('Webcam snapshot captured', 'success');
+
+    // Attach real image payload to the message's file array for vision ingestion
+    const dataUrl = `data:image/jpeg;base64,${res.base64}`;
+    if ('files' in nextMessage) {
+        if (!nextMessage.files) nextMessage.files = [];
+        nextMessage.files.push(dataUrl);
+    }
+
+    context?.addToast?.('Webcam snapshot captured and sent to vision model', 'success');
     return {
         toolType: 'webcam',
         args,
-        content: `[Webcam Snapshot Captured - Base64 Payload Length: ${res.base64.length} bytes]`,
+        content: `Webcam snapshot captured and attached to visual input. Analyze the image to answer.`,
         displayReplacement: '[📷 Webcam Snapshot]'
     };
 }
