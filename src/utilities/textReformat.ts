@@ -1,4 +1,5 @@
 import { getFormatPreferenceEngine } from '../services/FormatPreferenceEngine';
+import { toolStartSring, toolEndString } from '../dictionaries/stringList';
 
 export type FormatCategory = 'plain' | 'italics' | 'bold' | 'strikethrough' | 'quotes' | 'parentheses' | 'brackets';
 
@@ -199,8 +200,29 @@ export function applyConversions(
     text: string,
     conversions: Record<FormatCategory, FormatCategory>,
 ): string {
-    const segments = detectFormatSegments(text);
-    if (segments.length === 0) return text;
+    // Protect tool invocations from being mangled by format conversion
+    const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const toolRegex = new RegExp(
+        `${escapeRegex(toolStartSring)}[\\s\\S]*?${escapeRegex(toolEndString)}`,
+        'g'
+    );
+
+    const toolPlaceholders: string[] = [];
+    const protectedText = text.replace(toolRegex, (match) => {
+        toolPlaceholders.push(match);
+        return `\u0000TOOL_${toolPlaceholders.length - 1}\u0000`;
+    });
+
+    // Run normal conversion on the protected text
+    const segments = detectFormatSegments(protectedText);
+    if (segments.length === 0) {
+        // Restore tools and return
+        let result = protectedText;
+        for (let i = 0; i < toolPlaceholders.length; i++) {
+            result = result.replace(`\u0000TOOL_${i}\u0000`, toolPlaceholders[i]);
+        }
+        return result;
+    }
 
     const replacements: { start: number; end: number; replacement: string }[] = [];
 
@@ -217,12 +239,23 @@ export function applyConversions(
         }
     }
 
-    if (replacements.length === 0) return text;
+    if (replacements.length === 0) {
+        let result = protectedText;
+        for (let i = 0; i < toolPlaceholders.length; i++) {
+            result = result.replace(`\u0000TOOL_${i}\u0000`, toolPlaceholders[i]);
+        }
+        return result;
+    }
 
-    let output = text;
+    let output = protectedText;
     for (let i = replacements.length - 1; i >= 0; i--) {
         const r = replacements[i];
         output = output.slice(0, r.start) + r.replacement + output.slice(r.end);
+    }
+
+    // Restore tool invocations
+    for (let i = 0; i < toolPlaceholders.length; i++) {
+        output = output.replace(`\u0000TOOL_${i}\u0000`, toolPlaceholders[i]);
     }
 
     return output;

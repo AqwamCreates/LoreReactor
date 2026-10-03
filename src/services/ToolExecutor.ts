@@ -2072,7 +2072,7 @@ async function executeScreenshot(
     return { 
         toolType: 'screenshot', 
         args, 
-        content: `Desktop screenshot captured and attached to visual input. Analyze the image to answer.`, 
+        content: `Desktop screenshot captured and attached to visual input. View the image to answer.`, 
         displayReplacement: `[📸 Screenshot captured]` 
     };
 }
@@ -2116,8 +2116,8 @@ async function executeFrontCamera(
     return {
         toolType: 'front_camera',
         args,
-        content: 'Front camera snapshot captured and attached to visual input. Analyze the image to answer.',
-        displayReplacement: '[📷 front_camera Snapshot]'
+        content: 'Front camera snapshot captured and attached to visual input. View the image to answer.',
+        displayReplacement: '[📷 Front Camera Snapshot]'
     };
 }
 

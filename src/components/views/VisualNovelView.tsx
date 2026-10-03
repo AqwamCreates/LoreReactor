@@ -43,9 +43,11 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     const protagonistId = localProtagonist?.id;
 
+    // FIX: Use state instead of ref so UI updates trigger re-renders properly
+    const [rawDraft, setRawDraft] = useState('');
     const [conversions, setConversions] = useState<CategoryConversion[]>([]);
     const [isRawEditing, setIsRawEditing] = useState(false);
-    const rawDraftRef = useRef<string>('');
+    const prevIsEditingRef = useRef(false);
 
     const chatMessages = useMemo(() => {
         const all = displayMessages.filter((m): m is ChatMessage => m.messageType === 'chat' || m.messageType === 'whisper');
@@ -179,17 +181,17 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         onBranch(id);
     }, [chatMessages, rollbackToMessage, onBranch, setFocusedMessageId]);
 
-    const prevIsEditingRef = useRef(false);
     useEffect(() => {
         const justStarted = isEditingLastSpeaker && !prevIsEditingRef.current;
         prevIsEditingRef.current = isEditingLastSpeaker;
 
         if (justStarted) {
+            setRawDraft(editDraft);
             const segments = detectFormatSegments(editDraft);
             setConversions(buildCategoryConversions(segments));
             setIsRawEditing(false);
-            rawDraftRef.current = editDraft;
         } else if (!isEditingLastSpeaker) {
+            setRawDraft('');
             setConversions([]);
             setIsRawEditing(false);
         }
@@ -202,16 +204,19 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     }, [conversions]);
 
     const displayEditText = useMemo(() => {
-        if (isRawEditing) return rawDraftRef.current;
-        return applyConversions(rawDraftRef.current, conversionMap);
-    }, [isRawEditing, conversionMap]);
+        if (isRawEditing) return rawDraft;
+        return editDraft;
+    }, [isRawEditing, rawDraft, editDraft]);
 
+    // FIX: Sync the parent's editDraft whenever rawDraft or conversions change
     useEffect(() => {
-        if (!isRawEditing && isEditingLastSpeaker) {
-            const converted = applyConversions(rawDraftRef.current, conversionMap);
-            setEditDraft(converted);
+        if (isEditingLastSpeaker) {
+            const converted = applyConversions(rawDraft, conversionMap);
+            if (converted !== editDraft) {
+                setEditDraft(converted);
+            }
         }
-    }, [isRawEditing, conversionMap, isEditingLastSpeaker, setEditDraft]);
+    }, [rawDraft, conversionMap, isEditingLastSpeaker, editDraft, setEditDraft]);
 
     useEffect(() => {
         if (isRawEditing && editTextAreaRef.current) {
@@ -220,45 +225,40 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     }, [isRawEditing, editTextAreaRef]);
 
     const handleEnterRawEdit = useCallback(() => {
-        rawDraftRef.current = editDraft;
         setIsRawEditing(true);
-    }, [editDraft]);
+    }, []);
 
     const handleExitRawEdit = useCallback(() => {
-        const converted = applyConversions(rawDraftRef.current, conversionMap);
-        setEditDraft(converted);
-        rawDraftRef.current = converted;
         setIsRawEditing(false);
-        const segments = detectFormatSegments(converted);
-        setConversions(buildCategoryConversions(segments));
-    }, [conversionMap, setEditDraft]);
+    }, []);
 
     const handleRawChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        rawDraftRef.current = e.target.value;
-        setEditDraft(e.target.value);
-    }, [setEditDraft]);
+        setRawDraft(e.target.value);
+    }, []);
 
     const updateConversionTarget = useCallback((category: FormatCategory, target: FormatCategory) => {
         setConversions(prev => prev.map(c => c.detected === category ? { ...c, target } : c));
-        recordCategoryCorrection(rawDraftRef.current, category, target);
-    }, []);
+        recordCategoryCorrection(rawDraft, category, target);
+    }, [rawDraft]);
 
     const handleAutoReformat = useCallback(() => {
-        const segments = detectFormatSegments(rawDraftRef.current);
-        setConversions(buildCategoryConversionsWithLearning(rawDraftRef.current, segments));
-    }, []);
+        const segments = detectFormatSegments(rawDraft);
+        setConversions(buildCategoryConversionsWithLearning(rawDraft, segments));
+    }, [rawDraft]);
 
     const canAutoReformat = useMemo(() => {
-        if (!editDraft || conversions.length === 0) return false;
-        const segments = detectFormatSegments(editDraft);
+        if (conversions.length === 0) return false;
+        if (!rawDraft) return false;
+
+        const segments = detectFormatSegments(rawDraft);
         if (segments.length === 0) return false;
 
-        const learned = buildCategoryConversionsWithLearning(editDraft, segments);
+        const learned = buildCategoryConversionsWithLearning(rawDraft, segments);
         return learned.some(c => {
             const current = conversions.find(curr => curr.detected === c.detected);
             return c.target !== c.detected && (!current || current.target !== c.target);
         });
-    }, [editDraft, conversions]);
+    }, [rawDraft, conversions]);
 
     const handleCancelEditing = useCallback(() => {
         setConversions([]);
@@ -268,11 +268,11 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     const handleSaveEdit = useCallback(() => {
         if (displayedMessage) {
-            // Learns from raw textContent to raw editDraft
-            learnFromManualEdits(displayedMessage.textContent, editDraft);
+            // Learns from raw textContent to raw edited text
+            learnFromManualEdits(displayedMessage.textContent, rawDraft);
         }
         onSaveEdit();
-    }, [displayedMessage, editDraft, onSaveEdit]);
+    }, [displayedMessage, rawDraft, onSaveEdit]);
 
     const bgStyle: React.CSSProperties = locationBackgroundUrl
         ? { backgroundImage: `url(${locationBackgroundUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
@@ -460,7 +460,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                         <div className="vn-dialogue-text">
                             {isEditingLastSpeaker ? (
                                 isRawEditing ? (
-                                    <textarea ref={editTextAreaRef} value={rawDraftRef.current} onChange={handleRawChange}
+                                    <textarea ref={editTextAreaRef} value={rawDraft} onChange={handleRawChange}
                                         onBlur={handleExitRawEdit}
                                         onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); handleExitRawEdit(); } }}
                                         className="vn-edit-textarea" />
