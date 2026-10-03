@@ -6,7 +6,6 @@ export const DEFAULT_BUDGET_RESET_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 const now = Date.now()
 
 export const defaultCharacterTools: Record<tool, boolean> = {
-    help: true,
     whisper: true,
     think: false,
     pick: true,

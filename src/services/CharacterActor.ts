@@ -527,13 +527,25 @@ export class CharacterActor {
 
                     accState.get().setLastRawLen(0);
                     const { body } = await buildChatRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
+                    
+                    console.log('[DEBUG 1] Starting stream pass. currentExistingText:', currentExistingText);
                     await runSingleStreamPass(body, false);
 
                     const pendingInvs = accState.getPending();
-                    if (pendingInvs.length === 0) break;
+                    console.log('[DEBUG 2] Pass completed. Detected tools:', pendingInvs);
+
+                    if (pendingInvs.length === 0) {
+                        console.log('[DEBUG 3] No tools detected. Loop ended naturally.');
+                        break;
+                    }
 
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data);
-                    if (!toolResult) break;
+                    console.log('[DEBUG 4] Tool execution result:', toolResult);
+
+                    if (!toolResult) {
+                        console.log('[DEBUG 5] toolResult is null/empty. Loop aborted prematurely!');
+                        break;
+                    }
 
                     applyToolReplacements(accState, toolResult, callbacks);
                     isFirstChunkAfterTool = true;

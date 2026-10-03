@@ -1205,12 +1205,19 @@ function buildToolInstructionLines(ctx: PromptBuildContext): string[] {
     const enabledToolNames = (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
 
     if (enabledToolNames.length > 0) {
+        const exampleTool = enabledToolNames.includes('dice' as tool)
+            ? 'dice(sides: 6, count: 1)'
+            : enabledToolNames.includes('clock' as tool)
+                ? 'clock()'
+                : `${enabledToolNames[0]}()`;
+
         const toolInstructions = [
-            `You have access to an external tool library organized into categories: roleplay, navigation, utility, knowledge, os, desktop, filesystem, and admin.`,
-            `To invoke a tool, write ${toolStartString}tool_name(arguments)${toolEndString}.`,
-            `MANDATORY SEQUENCE: If you need to perform an action or query real-time data, invoke the ${toolStartString}...${toolEndString} call as the VERY FIRST TOKENS of your turn before speaking.`,
-            `To explore available tools, call ${toolStartString}help()${toolEndString}. To explore a category, call ${toolStartString}help("os")${toolEndString}. To inspect any specific tool's exact arguments, call ${toolStartString}help("tool_name")${toolEndString} or call ${toolStartString}tool_name()${toolEndString} without arguments.`,
-            `The tool will execute immediately and return its output inline as -> <result>. You will then continue with your character response incorporating the real result.`
+            `I have access to external tools: ${enabledToolNames.join(', ')}.`,
+            `To invoke a tool, I will write ${toolStartString}tool_name(arguments)${toolEndString} (for example: ${toolStartString}${exampleTool}${toolEndString}). Calling a tool without arguments returns its usage instructions.`,
+            `MANDATORY SEQUENCE (EXECUTE FIRST, SPEAK SECOND): Whenever a query or action requires real-time data or calculations (such as rolling dice, checking time, date, hardware, web, or memory), I MUST output the ${toolStartString}...${toolEndString} invocation as the VERY FIRST TOKENS of my response.`,
+            `I am strictly forbidden from greeting, speaking, guessing, or generating any narrative dialogue before invoking the tool.`,
+            `The tool invocation will be evaluated immediately and replaced with its real output in-place. Only after the tool has returned its real output will I begin writing my in-character dialogue incorporating the verified result.`,
+            `I will never fabricate data, guess numbers, or mention function syntax in my spoken dialogue.`
         ].join(' ');
 
         lines.push(`${ctx.delimiters.blockStart('system')}${toolInstructions}${ctx.delimiters.blockEnd}`);

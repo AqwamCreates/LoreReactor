@@ -16,114 +16,6 @@ import { getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
 import { getLocationMessageHistory } from '../utilities/timelineLogic';
 import { localURL } from '../configurations';
 
-// ─── Tool Documentation Registry ────────────────────────────────────
-
-export type ToolCategory = 
-    | 'roleplay' 
-    | 'navigation' 
-    | 'utility' 
-    | 'knowledge' 
-    | 'os' 
-    | 'desktop' 
-    | 'filesystem' 
-    | 'admin';
-
-export interface ToolDoc {
-    name: string;
-    category: ToolCategory;
-    signature: string;
-    description: string;
-    example?: string;
-}
-
-export const CATEGORY_DESCRIPTIONS: Record<ToolCategory, string> = {
-    roleplay: 'In-character dialogue, private whispers, inner thoughts, clothing & inventory',
-    navigation: 'Location movement, world map, scrying oracle, room locking & teleportation',
-    utility: 'Dice rolling, coin flips, random generators, math calculator, clocks & timers',
-    knowledge: 'World lore search, dialogue/knowledge prompts, memories & web search',
-    os: 'Hardware GPU/CPU telemetry, network scanning, window & process monitoring',
-    desktop: 'Volume control, workstation lock, clipboard, webcam, screenshot & TTS speech',
-    filesystem: 'File read/write, file watcher, OS recycle bin & shell terminal execution',
-    admin: 'Multiplayer session orchestration, account management & entity creation/deletion',
-};
-
-export const TOOL_REGISTRY: Record<string, ToolDoc> = {
-    // ── Roleplay
-    whisper: { name: 'whisper', category: 'roleplay', signature: 'target_char_id="...", text="..."', description: 'Send a private message visible only to specific characters', example: 'whisper(target_char_id="Alice", text="Meet me at midnight.")' },
-    think: { name: 'think', category: 'roleplay', signature: 'reasoning="..."', description: 'Internal character reasoning step before taking action', example: 'think(reasoning="Sensei seems exhausted. I should suggest a break.")' },
-    narrate: { name: 'narrate', category: 'roleplay', signature: 'text="..."', description: 'Inject atmospheric or ambient narration without consuming chat stamina', example: 'narrate(text="Rain taps gently against the window pane.")' },
-    inspect: { name: 'inspect', category: 'roleplay', signature: 'character_id="..."', description: 'Examine visible state, location, items, and mood of a character', example: 'inspect(character_id="Alice")' },
-    clothing: { name: 'clothing', category: 'roleplay', signature: 'character_id="...", action="wear|remove", clothing_id="..."', description: 'Equip or remove clothing items on a character', example: 'clothing(character_id="Alice", action="wear", clothing_id="Jacket")' },
-    inventory: { name: 'inventory', category: 'roleplay', signature: 'action="list|add|remove|set", item="...", qty=1', description: 'Inspect or manipulate character inventory items', example: 'inventory(action="add", item="Iron Key", qty=1)' },
-    trade: { name: 'trade', category: 'roleplay', signature: 'action="give|take|offer|accept|decline|list_offers", ...', description: 'Transfer items between characters or manage trade offers', example: 'trade(action="give", target="Alice", item="Potion", qty=1)' },
-    note: { name: 'note', category: 'roleplay', signature: 'action="set|get|delete|list", key="...", text="..."', description: 'Manage persistent key-value notes in character inventory', example: 'note(action="set", key="passcode", text="1234")' },
-
-    // ── Navigation
-    move: { name: 'move', category: 'navigation', signature: 'location_id="..."', description: 'Travel to an adjacent reachable location on the map', example: 'move(location_id="Library")' },
-    teleport: { name: 'teleport', category: 'navigation', signature: 'location_id="..."', description: 'Instantly warp to any location in the session', example: 'teleport(location_id="Rooftop")' },
-    map: { name: 'map', category: 'navigation', signature: 'to="...", from="..."', description: 'Calculate distance and route between two world locations', example: 'map(to="Grand Hall", from="Dormitory")' },
-    oracle: { name: 'oracle', category: 'navigation', signature: 'location="...", limit=5', description: 'Scry upon a remote location to view recent chat history there', example: 'oracle(location="Courtyard", limit=3)' },
-    key: { name: 'key', category: 'navigation', signature: 'action="lock|unlock", location_id="...", character_id=None', description: 'Lock or unlock access to a location', example: 'key(action="lock", location_id="Armory")' },
-    invite: { name: 'invite', category: 'navigation', signature: 'character_id="..."', description: 'Call an existing session character to your current location', example: 'invite(character_id="Alice")' },
-    kick: { name: 'kick', category: 'navigation', signature: 'character_id="...", destination_location_id=None', description: 'Eject a character from your location to another area', example: 'kick(character_id="Bob", destination_location_id="Hallway")' },
-    summon: { name: 'summon', category: 'navigation', signature: 'character_id="..."', description: 'Bring an external non-participant character into the session', example: 'summon(character_id="Yuuka")' },
-
-    // ── Utility
-    dice: { name: 'dice', category: 'utility', signature: 'sides=6, count=1, modifier=0 | "2d6+3"', description: 'Roll tabletop dice with count, sides, and optional modifiers', example: 'dice(sides=20, count=1)' },
-    coin: { name: 'coin', category: 'utility', signature: '()', description: 'Flip a standard two-sided coin (Heads/Tails)', example: 'coin()' },
-    random: { name: 'random', category: 'utility', signature: 'min=1, max=100', description: 'Generate a random integer between min and max bounds', example: 'random(min=1, max=1000)' },
-    rng: { name: 'rng', category: 'utility', signature: 'table_context_id="..."', description: 'Roll on a custom RNG loot/encounter table defined in Contexts', example: 'rng(table_context_id="LootTable")' },
-    pick: { name: 'pick', category: 'utility', signature: '"opt1", "opt2", ... | options=["..."]', description: 'Randomly choose one item from a list of options', example: 'pick(options=["Sword", "Shield", "Staff"])' },
-    calculator: { name: 'calculator', category: 'utility', signature: 'expression="..."', description: 'Safely evaluate mathematical expressions and formulas', example: 'calculator(expression="15 * 4.2 + (100 / 3)")' },
-    clock: { name: 'clock', category: 'utility', signature: 'format="12h|24h|unix"', description: 'Get the current local world time', example: 'clock(format="12h")' },
-    calendar: { name: 'calendar', category: 'utility', signature: 'format="date|time|full|iso|unix"', description: 'Get the current calendar date', example: 'calendar(format="date")' },
-    timer: { name: 'timer', category: 'utility', signature: 'action="set|check|delete|list", name="...", duration="..."', description: 'Manage countdown timers (e.g. "5m", "1h")', example: 'timer(action="set", name="StaminaRegen", duration="15m")' },
-    stopwatch: { name: 'stopwatch', category: 'utility', signature: 'action="start|stop|pause|resume|reset|check|list", name="..."', description: 'Track elapsed time counters', example: 'stopwatch(action="start", name="TrialDuration")' },
-    schedule: { name: 'schedule', category: 'utility', signature: 'action="set|set_repeat|cancel|cancel_all|list", name="...", duration="...", action_desc="..."', description: 'Schedule automated actions triggered after a duration', example: 'schedule(action="set", name="Patrol", duration="30m", action_desc="Guard returns")' },
-
-    // ── Knowledge
-    knowledge: { name: 'knowledge', category: 'knowledge', signature: 'action="list|recall", id="..."', description: 'Inspect character knowledge base prompt blocks', example: 'knowledge(action="recall", id="LoreEntry")' },
-    dialogue: { name: 'dialogue', category: 'knowledge', signature: 'action="list|recall", prompt_id="..."', description: 'Inspect dialogue prompt blocks for phrasing guidelines', example: 'dialogue(action="list")' },
-    memory: { name: 'memory', category: 'knowledge', signature: 'action="list|recall|save", id="..."', description: 'Recall or save persistent episodic character memories', example: 'memory(action="recall")' },
-    lookup: { name: 'lookup', category: 'knowledge', signature: 'keyword="..."', description: 'Fast keyword search across all session Context lore blocks', example: 'lookup(keyword="Dragon")' },
-    web: { name: 'web', category: 'knowledge', signature: 'query_or_url="..."', description: 'Search the live web or fetch content from an HTTP URL', example: 'web(query_or_url="https://example.com")' },
-    browser: { name: 'browser', category: 'knowledge', signature: 'url_or_search_query="..."', description: 'Open a URL or web search query directly in the host OS default browser', example: 'browser(url_or_search_query="https://github.com")' },
-
-    // ── OS
-    gpu: { name: 'gpu', category: 'os', signature: '()', description: 'Query real-time GPU load, VRAM allocation, temperature, and power', example: 'gpu()' },
-    system_info: { name: 'system_info', category: 'os', signature: '()', description: 'Query CPU manufacturer, load %, core count, and RAM utilization', example: 'system_info()' },
-    process_monitor: { name: 'process_monitor', category: 'os', signature: 'query="...", limit=5', description: 'List running processes or search by name with CPU/memory usage', example: 'process_monitor(query="node", limit=5)' },
-    window_monitor: { name: 'window_monitor', category: 'os', signature: '()', description: 'Get title and process name of the currently active desktop window', example: 'window_monitor()' },
-    network_scanner: { name: 'network_scanner', category: 'os', signature: '()', description: 'Scan the local LAN for active connected devices and IP/MAC addresses', example: 'network_scanner()' },
-    file_watcher: { name: 'file_watcher', category: 'os', signature: 'action="start|check", path="..."', description: 'Monitor workspace folders for file create/modify/delete events', example: 'file_watcher(action="check")' },
-
-    // ── Desktop
-    volume_control: { name: 'volume_control', category: 'desktop', signature: 'action="get|set|mute|unmute", level=50', description: 'Read or adjust the host workstation master volume', example: 'volume_control(action="set", level=60)' },
-    lock_screen: { name: 'lock_screen', category: 'desktop', signature: '()', description: 'Instantly lock the host operating system screen', example: 'lock_screen()' },
-    clipboard: { name: 'clipboard', category: 'desktop', signature: 'action="read|write", text="..."', description: 'Read from or write text to the host OS clipboard', example: 'clipboard(action="read")' },
-    screenshot: { name: 'screenshot', category: 'desktop', signature: '()', description: 'Capture a full desktop screenshot and return as base64 image', example: 'screenshot()' },
-    webcam: { name: 'webcam', category: 'desktop', signature: '()', description: 'Capture a still snapshot from connected webcam', example: 'webcam()' },
-    notify: { name: 'notify', category: 'desktop', signature: 'title="...", message="..."', description: 'Send a native host OS desktop notification bubble', example: 'notify(title="Task Done", message="Build finished successfully.")' },
-    text_to_speech: { name: 'text_to_speech', category: 'desktop', signature: 'text="...", voice="..."', description: 'Speak text aloud through host audio speakers or stop speech ("stop")', example: 'text_to_speech(text="Hello Sensei!", voice="default")' },
-    virtual_input: { name: 'virtual_input', category: 'desktop', signature: 'action="move|click|type|press|scroll|screen_size", x=0, y=0, text="...", key="..."', description: 'Simulate hardware mouse clicks, movement, and keyboard strokes', example: 'virtual_input(action="screen_size")' },
-    hardware_control: { name: 'hardware_control', category: 'desktop', signature: 'action="list|send", port="...", command="..."', description: 'List serial USB ports or send hex/ASCII commands to hardware', example: 'hardware_control(action="list")' },
-
-    // ── Filesystem
-    read_file: { name: 'read_file', category: 'filesystem', signature: 'path_or_url="..."', description: 'Open or inspect local text file, video, or link in default system app', example: 'read_file(path_or_url="~/notes.txt")' },
-    write_file: { name: 'write_file', category: 'filesystem', signature: 'file_path="...", content="..."', description: 'Create or overwrite files on the host filesystem', example: 'write_file(file_path="~/log.txt", content="Hello world")' },
-    trash: { name: 'trash', category: 'filesystem', signature: 'path="..."', description: 'Safely move a local file or folder to the OS recycle bin / trash', example: 'trash(path="~/temp.log")' },
-    shell: { name: 'shell', category: 'filesystem', signature: 'command="..."', description: 'Execute a bash/zsh/cmd command on the host OS terminal and return stdout', example: 'shell(command="ls -lah")' },
-
-    // ── Admin
-    administrator: { name: 'administrator', category: 'admin', signature: 'action="list_chats|switch_model|join_session|...", arg1="..."', description: 'Manage multiplayer sessions, active accounts, and model switching', example: 'administrator(action="list_chats")' },
-    creator: { name: 'creator', category: 'admin', signature: 'entity_type="character|location|...", name="..."', description: 'Create new world entities, locations, or characters', example: 'creator(entity_type="character", name="Alice")' },
-    destroyer: { name: 'destroyer', category: 'admin', signature: 'entity_type="...", entity_id="..."', description: 'Permanently delete an existing world entity by ID', example: 'destroyer(entity_type="location", entity_id="OldRoom")' },
-    audio: { name: 'audio', category: 'admin', signature: 'action="play|stop", track_id="..."', description: 'Play or stop background ambient audio tracks in the session', example: 'audio(action="play", track_id="BGM_Track_1")' },
-    help: { name: 'help', category: 'admin', signature: 'category_or_tool="..."', description: 'Browse the tool directory or inspect detailed tool manuals', example: 'help("os")' },
-};
-
-
-
 export interface ToolResult {
     toolType: string;
     args: string;
@@ -385,7 +277,6 @@ function getCharacterTimeData(interactionData: InteractionData, character: Chara
 }
 
 const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, displayMode?: toolUsageDisplayMode) => ToolResult | Promise<ToolResult>> = {
-    help: executeHelp,
     whisper: executeWhisper,
     think: executeThink,
     pick: executeRandomPick,
@@ -475,19 +366,9 @@ export async function executeTools(
     return results;
 }
 
-function helpResult(toolType: string, signature?: string, description?: string): ToolResult {
-    const registered = TOOL_REGISTRY[toolType];
-    const sig = registered?.signature || signature || '...';
-    const desc = registered?.description || description || 'no description available';
-    const example = registered?.example ? `\nExample: <|${registered.example}|>` : '';
-
-    const content = `Usage: ${toolType}(${sig}) — ${desc}${example}`;
-    return { 
-        toolType, 
-        args: '', 
-        content, 
-        displayReplacement: `[📖 ${toolType}: ${desc}]` 
-    };
+function helpResult(toolType: string, signature: string, description: string): ToolResult {
+    const usage = `${toolType}(${signature}) — ${description}`;
+    return { toolType, args: '', content: `Usage: ${usage}`, displayReplacement: `[${toolType}: ${description}]` };
 }
 
 export function formatToolDisplay(
@@ -507,90 +388,6 @@ export function formatToolDisplay(
         case 'raw': return rawMatch;
         default: return result.displayReplacement;
     }
-}
-
-// ─── Help / Tool Documentation Directory ───────────────────────────
-// Signature: help(category_or_tool=None)
-
-function executeHelp(args: string): ToolResult {
-    const pArgs = parsePythonArgs(args);
-    const query = (pArgs.get(0, 'query', 'category', 'tool', 'name') || pArgs.positional.join(' ')).trim().toLowerCase();
-
-    // 1. Root Directory: list all categories
-    if (!query || query === 'all' || query === 'list' || query === 'directory') {
-        const categories = Object.keys(CATEGORY_DESCRIPTIONS) as ToolCategory[];
-        const categoryLines = categories.map(cat => {
-            const count = Object.values(TOOL_REGISTRY).filter(t => t.category === cat).length;
-            return `📁 ${cat.toUpperCase()} (${count} tools) — ${CATEGORY_DESCRIPTIONS[cat]}`;
-        });
-
-        const helpText = [
-            `=== LoreReactor Tool Index (${Object.keys(TOOL_REGISTRY).length} Tools Available) ===`,
-            '',
-            'Subdirectories:',
-            ...categoryLines,
-            '',
-            'Usage:',
-            '• help("category_name") -> List all tools and signatures in that category (e.g. help("os")).',
-            '• help("tool_name")     -> View parameter manual and examples for a specific tool (e.g. help("shell")).',
-            '• <|tool_name()|>       -> Calling any tool without arguments returns its manual page.'
-        ].join('\n');
-
-        return {
-            toolType: 'help',
-            args,
-            content: helpText,
-            displayReplacement: '[📖 Tool Directory]'
-        };
-    }
-
-    // 2. Category Inspection: list all tools in that category
-    const matchedCategory = (Object.keys(CATEGORY_DESCRIPTIONS) as ToolCategory[]).find(c => c === query);
-    if (matchedCategory) {
-        const toolsInCat = Object.values(TOOL_REGISTRY).filter(t => t.category === matchedCategory);
-        const toolList = toolsInCat.map(t => `• ${t.name}(${t.signature})\n  ${t.description}${t.example ? `\n  Example: <|${t.example}|>` : ''}`).join('\n\n');
-
-        const catText = [
-            `=== 📁 ${matchedCategory.toUpperCase()} TOOLS (${toolsInCat.length}) ===`,
-            CATEGORY_DESCRIPTIONS[matchedCategory],
-            '',
-            toolList
-        ].join('\n');
-
-        return {
-            toolType: 'help',
-            args,
-            content: catText,
-            displayReplacement: `[📖 Category: ${matchedCategory}]`
-        };
-    }
-
-    // 3. Specific Tool Inspection: show full manual page
-    const matchedTool = TOOL_REGISTRY[query] || Object.values(TOOL_REGISTRY).find(t => t.name.toLowerCase() === query);
-    if (matchedTool) {
-        const docText = [
-            `=== TOOL MANUAL: ${matchedTool.name.toUpperCase()} ===`,
-            `Category:    📁 ${matchedTool.category.toUpperCase()}`,
-            `Signature:   ${matchedTool.name}(${matchedTool.signature})`,
-            `Description: ${matchedTool.description}`,
-            matchedTool.example ? `Example:     <|${matchedTool.example}|>` : '',
-        ].filter(Boolean).join('\n');
-
-        return {
-            toolType: 'help',
-            args,
-            content: docText,
-            displayReplacement: `[📖 Manual: ${matchedTool.name}]`
-        };
-    }
-
-    // 4. Not found fallback: suggestions
-    return {
-        toolType: 'help',
-        args,
-        content: `[Error: Unknown tool or category "${query}". Call help() to view available categories.]`,
-        displayReplacement: '[❌ Unknown help topic]'
-    };
 }
 
 // ─── Whisper ────────────────────────────────────────────────────────
@@ -711,31 +508,9 @@ function executeRandomPick(args: string): ToolResult {
 
 // ─── Clock ────────────────────────────────────────────────────────────
 function executeClock(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
-    const location = getCurrentLocation(interactionData, nextMessage.character);
-
-    // In-universe handling when the character is not in any location
-    if (!location) {
-        return {
-            toolType: 'clock',
-            args,
-            content: 'The clock is broken. There is no local reference frame because you are not currently in any location.',
-            displayReplacement: '[🕰️ Broken Clock: Hands spinning aimlessly]'
-        };
-    }
-
     const pArgs = parsePythonArgs(args);
     const format = pArgs.get(0, 'format', 'type')?.toLowerCase();
-    const timeData = getCharacterTimeData(interactionData, nextMessage.character);
-    const dt = timeData?.luxonTimestamp;
-
-    if (!dt) {
-        return {
-            toolType: 'clock',
-            args,
-            content: `The clock at "${location.name}" has stopped ticking—no temporal coordinates could be established for this location.`,
-            displayReplacement: `[🕰️ Clock stopped at ${location.name}]`
-        };
-    }
+    const dt = getCharacterTimeData(interactionData, nextMessage.character).luxonTimestamp;
 
     let timeStr: string;
     if (format === '24h' || format === '24') {
@@ -751,31 +526,9 @@ function executeClock(args: string, nextMessage: BaseMessage, interactionData: I
 
 // ─── Calendar ────────────────────────────────────────────────────────
 function executeCalendar(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
-    const location = getCurrentLocation(interactionData, nextMessage.character);
-
-    // In-universe handling when the character is not in any location
-    if (!location) {
-        return {
-            toolType: 'calendar',
-            args,
-            content: 'The calendar pages are frayed, blank, and weathered—time has no anchor here. You are not currently in any physical location.',
-            displayReplacement: '[📅 Timeless: Blank Calendar]'
-        };
-    }
-
     const pArgs = parsePythonArgs(args);
     const format = pArgs.get(0, 'format', 'type')?.toLowerCase();
-    const timeData = getCharacterTimeData(interactionData, nextMessage.character);
-    const dt = timeData?.luxonTimestamp;
-
-    if (!dt) {
-        return {
-            toolType: 'calendar',
-            args,
-            content: `The calendar at "${location.name}" is unreadable—no solar cycle is registered for this location.`,
-            displayReplacement: `[📅 Unreadable at ${location.name}]`
-        };
-    }
+    const dt = getCharacterTimeData(interactionData, nextMessage.character).luxonTimestamp;
 
     let dateStr: string;
     if (format === 'iso') {
