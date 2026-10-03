@@ -4,6 +4,11 @@ import type { InteractionData, ChatMessage, RawInteractionData, WhisperMessage }
 import { saveRawInteractionData } from '../storages/serverStorage';
 import { isChatSaveable } from '../utilities/chatSaveHelper';
 
+// ✅ Helper to deeply clone state, protecting the baseline from in-place mutations
+function deepClone<T>(obj: T): T {
+    return JSON.parse(JSON.stringify(obj));
+}
+
 function haveEntitiesChanged<T extends { id: string; lastUpdatedTimestamp?: number }>(
     prev: T[] | undefined, 
     curr: T[] | undefined
@@ -94,7 +99,8 @@ export function useChatAutoSave(options: UseChatAutoSaveOptions) {
         // On initial hydration, set baseline
         if (isFirstRun.current) {
             isFirstRun.current = false;
-            prevDataRef.current = syncedData;
+            // ✅ Deep clone the initial baseline
+            prevDataRef.current = deepClone(syncedData);
             return;
         }
 
@@ -102,8 +108,18 @@ export function useChatAutoSave(options: UseChatAutoSaveOptions) {
 
         // If user switched to an entirely different chat, reset baseline without auto-saving
         if (prev && prev.id !== syncedData.id) {
-            prevDataRef.current = syncedData;
+            // ✅ Deep clone the new baseline
+            prevDataRef.current = deepClone(syncedData);
             return;
+        }
+
+        // 🛡️ SAFEGUARD: If we had messages and now have 0, DO NOT auto-save. 
+        const prevMessageCount = prev ? Object.values(prev.interactionHistories || {}).reduce((acc, curr) => acc + curr.length, 0) : 0;
+        const currMessageCount = totalMessages;
+
+        if (prevMessageCount > 0 && currMessageCount === 0) {
+            console.warn('[useChatAutoSave] Blocked save: Message count dropped to 0. Possible load failure.');
+            return; 
         }
 
         const hasActualChange = !prev
@@ -118,7 +134,10 @@ export function useChatAutoSave(options: UseChatAutoSaveOptions) {
             || haveMessagesChanged(prev, syncedData);
 
         if (hasActualChange) {
-            prevDataRef.current = syncedData;
+            // ✅ CRITICAL FIX: Deep clone the state before storing it in the ref.
+            // This ensures that if the original object is mutated later by another part of the app, 
+            // our 'prev' reference remains untouched and will correctly detect the change.
+            prevDataRef.current = deepClone(syncedData);
 
             if (saveTimerRef.current) {
                 clearTimeout(saveTimerRef.current);
