@@ -371,6 +371,7 @@ export interface WhisperMessage extends BaseMessage {
   targetCharacterIds: string[];
   files?: string[];
   frontCameraImage?: string;
+  doNotRespond: boolean;
   modelTextContentSummaries: Record<string, string>;
   modelInteractionTextContentSummaries: Record<string, string>;
   kvCacheTextContentPaths: Record<string, string>;
@@ -403,6 +404,7 @@ export interface RawChatMessage extends RawBaseMessage {
   textContent: string;
   files?: string[];
   frontCameraImage?: string;
+  doNotRespond: boolean;
   modelTextContentSummaries: Record<string, string>;
   modelInteractionTextContentSummaries: Record<string, string>;
   kvCacheTextContentPaths: Record<string, string>;
@@ -416,6 +418,7 @@ export interface RawWhisperMessage extends RawBaseMessage {
   targetCharacterIds: string[];
   files?: string[];
   frontCameraImage?: string;
+  doNotRespond: boolean;
   modelTextContentSummaries: Record<string, string>;
   modelInteractionTextContentSummaries: Record<string, string>;
   kvCacheTextContentPaths: Record<string, string>;

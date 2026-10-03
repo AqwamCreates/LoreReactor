@@ -31,7 +31,7 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
     },
     { 
         tool: 'front_camera', 
-        label: 'Live front_camera Snapshot', 
+        label: 'Live Front Camera Snapshot', 
         keywords: ['look at you', 'see your face', 'roommate', 'camera', 'photo of you', 'front_camera', 'photographer'], 
         tier: 'os_privileged', 
         riskDescription: 'Takes live photographic snapshots through your physical front_camera.' 
