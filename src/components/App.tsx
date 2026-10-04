@@ -422,7 +422,6 @@ function App() {
     });
 
     // ─── Local UI State ──────────────────────────────────────────────
-    // ✅ FIX: Read editing state directly from Zustand since it was removed from useMessageActions
     const editingId = useSessionStore(s => s.editingId);
     const editDraft = useSessionStore(s => s.editDraft);
 
@@ -591,7 +590,6 @@ function App() {
         } 
     }, [isInitializing, activeChatRestored, ensureChatsLoaded]);
 
-    // ✅ FIX: Use Zustand state directly instead of messageActions
     const wrappedSaveEdit = useCallback(async () => {
         await messageActions.handleSaveEdit();
         if (isMultiplayerChat && editingId) mp.multiplayerSync.broadcastMessageEdit(editingId, editDraft);
@@ -604,25 +602,67 @@ function App() {
         requestAnimationFrame(() => { if (fileInputRef.current) fileInputRef.current.value = ''; });
     };
 
-    const handleToggleMic = useCallback(async () => {
-        if (isRecording) { await speechToTextEngine.stopRecording(); setIsRecording(false); }
-        else {
-            const started = await speechToTextEngine.startRecording((text: string) => setInputText(prev => prev + (prev ? ' ' : '') + text));
-            if (!started) { addToast('Failed to start voice input.', 'error'); return; }
-            setIsRecording(true);
-        }
-    }, [isRecording, addToast]);
-
-    const handleSend = useCallback(async () => {
-        if (!inputText.trim() && !pendingFiles.length) return;
+    const handleSend = useCallback(async (overrideText?: string) => {
+        const textToSend = overrideText !== undefined ? overrideText : inputText;
+        if (!textToSend.trim() && !pendingFiles.length) return;
         let frontCam: string | undefined;
         const profileCam = interactionData?.profile?.useFrontCameraImage;
         if (profileCam === 1) { const img = await captureFrontCameraImage(); if (img) frontCam = img; }
         else if (profileCam === 0 && currentCharacter?.useFrontCameraImage) { const img = await captureFrontCameraImage(); if (img) frontCam = img; }
-        sendMessage(inputText, promptBlocks.promptBlocks, pendingFiles, frontCam);
+        sendMessage(textToSend, promptBlocks.promptBlocks, pendingFiles, frontCam);
         setInputText(''); setPendingFiles([]);
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
     }, [inputText, pendingFiles, sendMessage, promptBlocks, captureFrontCameraImage, interactionData, currentCharacter]);
+
+    const handleToggleMic = useCallback(async () => {
+        if (isRecording) { 
+            await speechToTextEngine.stopRecording(); 
+            setIsRecording(false); 
+        } else {
+            const profile = interactionData?.profile;
+            const isAuto = profile?.enableAutoSpeechDetection ?? false;
+
+            if (isAuto) {
+                const actThreshold = profile?.speechVolumeActivationThreshold ?? 15;
+                const silThreshold = profile?.speechSilenceVolumeActivationThreshold ?? 8;
+                const silenceMs = profile?.speechSilenceThresholdMs ?? 1500;
+
+                const started = await speechToTextEngine.startAutoListening(
+                    (partialText: string) => {
+                        setInputText(prev => prev + (prev ? ' ' : '') + partialText);
+                    },
+                    (finalText: string) => {
+                        setIsRecording(false);
+                        setInputText('');
+                        if (finalText && finalText.trim().length > 0) {
+                            handleSend(finalText.trim());
+                        }
+                    },
+                    { 
+                        volumeActivationThresholdPercent: actThreshold,
+                        silenceVolumeActivationThresholdPercent: silThreshold,
+                        silenceThresholdMs: silenceMs 
+                    }
+                );
+
+                if (!started) { 
+                    addToast('Failed to start voice activity detection.', 'error'); 
+                    return; 
+                }
+                setIsRecording(true);
+                addToast('🎙️ Hands-free listening active...', 'info');
+            } else {
+                const started = await speechToTextEngine.startRecording(
+                    (text: string) => setInputText(prev => prev + (prev ? ' ' : '') + text)
+                );
+                if (!started) { 
+                    addToast('Failed to start voice input.', 'error'); 
+                    return; 
+                }
+                setIsRecording(true);
+            }
+        }
+    }, [isRecording, interactionData?.profile, handleSend, addToast]);
 
     const toggleViewMode = () => {
         setViewMode(prev => prev === 'ladder' ? 'cinematic' : prev === 'cinematic' ? 'visual novel' : 'ladder');
@@ -974,7 +1014,7 @@ function App() {
                             allSamplers={samplers.Samplers} allStopPatterns={stopPatterns.stopPatterns} allProfiles={profiles.profiles}
                             allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDataManager.multiplayerData}
                             fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected}
-                            onToggleMicrophone={handleToggleMic} onSend={handleSend}
+                            onToggleMicrophone={handleToggleMic} onSend={() => handleSend()}
                             onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open}
                         />
                     </>

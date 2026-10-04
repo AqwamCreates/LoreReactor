@@ -15,6 +15,19 @@ async function isWebGpuAvailable(): Promise<boolean> {
     }
 }
 
+/**
+ * Converts a 1–100 sensitivity slider value to a linear RMS energy threshold.
+ * Uses logarithmic dBFS mapping (-60 dBFS quiet floor to -10 dBFS loud speech)
+ * matching human auditory perception and digital mic response curves.
+ */
+function sliderToRms(sliderValue: number): number {
+    const clamped = Math.max(1, Math.min(100, sliderValue));
+    const minDb = -60; // Quiet room noise floor
+    const maxDb = -10; // Loud vocal ceiling
+    const db = minDb + (clamped / 100) * (maxDb - minDb);
+    return Math.pow(10, db / 20);
+}
+
 class SpeechToTextEngine {
     private pipeline: AutomaticSpeechRecognitionPipeline | null = null;
     private loading: Promise<void> | null = null;
@@ -32,10 +45,15 @@ class SpeechToTextEngine {
     private onPartialTranscription: ((text: string) => void) | null = null;
     private transcriptionInterval: ReturnType<typeof setInterval> | null = null;
 
-    /**
-     * Load the model. Called automatically on first startRecording().
-     * Safe to call multiple times.
-     */
+    // ─── Dual-Threshold Hysteresis & VAD State ──────────────────────
+    private isAutoListening = false;
+    private silenceTimer: ReturnType<typeof setTimeout> | null = null;
+    private hasDetectedSpeech = false;
+    private onAutoSend: ((text: string) => void) | null = null;
+    private silenceThresholdMs = 1400;
+    private activationRmsThreshold = sliderToRms(18); // ~ -51 dBFS (Conversational entry)
+    private silenceRmsThreshold = sliderToRms(8);     // ~ -56 dBFS (Silence floor cutoff)
+
     private async ensureLoaded(): Promise<boolean> {
         if (this.pipeline) {
             this.resetIdleTimer();
@@ -48,7 +66,6 @@ class SpeechToTextEngine {
 
         this.loading = (async () => {
             const { pipeline } = await import('@huggingface/transformers');
-
             const webGpuAvailable = await isWebGpuAvailable();
 
             if (webGpuAvailable) {
@@ -89,22 +106,16 @@ class SpeechToTextEngine {
         return this.pipeline !== null;
     }
 
-    /**
-     * Reset the idle unload timer. Called on every meaningful interaction.
-     */
     private resetIdleTimer(): void {
         if (this.idleTimer) clearTimeout(this.idleTimer);
         this.idleTimer = setTimeout(() => {
-            if (!this.isRecording) {
+            if (!this.isRecording && !this.isAutoListening) {
                 console.log('[STTEngine] Idle for 3 minutes, unloading.');
                 this.unload();
             }
         }, IDLE_UNLOAD_MS);
     }
 
-    /**
-     * Clear the idle timer without triggering unload.
-     */
     private clearIdleTimer(): void {
         if (this.idleTimer) {
             clearTimeout(this.idleTimer);
@@ -112,9 +123,6 @@ class SpeechToTextEngine {
         }
     }
 
-    /**
-     * Unload the model and stop any active recording.
-     */
     async unload(): Promise<void> {
         this.clearIdleTimer();
         this.stopRecordingSync();
@@ -131,24 +139,63 @@ class SpeechToTextEngine {
     }
 
     /**
-     * Start recording. Loads the model on first call if not already loaded.
-     * @param onPartialTranscription Callback invoked periodically with partial results
-     * @param transcriptionIntervalMs How often to transcribe accumulated audio (default 2000ms)
-     * @returns true if recording started successfully, false otherwise
+     * Start continuous auto-listening mode with Logarithmic Hysteresis Noise Gate.
+     * @param onPartial Callback receiving real-time transcription fragments
+     * @param onAutoSend Callback invoked when speech finishes and is ready to send
+     * @param options Configuration for activation, silence cutoffs, and pause duration
      */
+    async startAutoListening(
+        onPartial: (text: string) => void,
+        onAutoSend: (text: string) => void,
+        options?: { 
+            volumeActivationThresholdPercent?: number; 
+            silenceVolumeActivationThresholdPercent?: number;
+            silenceThresholdMs?: number;
+        }
+    ): Promise<boolean> {
+        const loaded = await this.ensureLoaded();
+        if (!loaded) return false;
+
+        if (this.isRecording) {
+            this.stopRecordingSync();
+        }
+
+        // Acoustic defaults: 18% activation gate, 8% silence cutoff, 1400ms duration
+        const actPct = options?.volumeActivationThresholdPercent ?? 18;
+        const silPct = options?.silenceVolumeActivationThresholdPercent ?? 8;
+
+        this.activationRmsThreshold = sliderToRms(actPct);
+        const targetSilRms = sliderToRms(silPct);
+
+        // Enforce acoustic hysteresis: silence threshold is guaranteed below activation
+        this.silenceRmsThreshold = Math.min(targetSilRms, this.activationRmsThreshold * 0.7);
+        this.silenceThresholdMs = options?.silenceThresholdMs ?? 1400;
+
+        this.isAutoListening = true;
+        this.hasDetectedSpeech = false;
+        this.onAutoSend = onAutoSend;
+
+        return this.initAudioStream(onPartial);
+    }
+
     async startRecording(
         onPartialTranscription: (text: string) => void,
         transcriptionIntervalMs = 2000,
     ): Promise<boolean> {
-        // Load model on demand
         const loaded = await this.ensureLoaded();
-        if (!loaded) {
-            console.warn('[STTEngine] Model failed to load.');
-            return false;
-        }
+        if (!loaded) return false;
 
         if (this.isRecording) return true;
 
+        this.isAutoListening = false;
+        this.onAutoSend = null;
+        return this.initAudioStream(onPartialTranscription, transcriptionIntervalMs);
+    }
+
+    private async initAudioStream(
+        onPartial: (text: string) => void,
+        transcriptionIntervalMs = 2000
+    ): Promise<boolean> {
         try {
             this.mediaStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
@@ -167,39 +214,87 @@ class SpeechToTextEngine {
                 if (!this.isRecording) return;
                 const inputData = event.inputBuffer.getChannelData(0);
                 this.audioChunks.push(new Float32Array(inputData));
+
+                // ─── Dual-Threshold Hysteresis (Schmitt Trigger) ─────────
+                if (this.isAutoListening) {
+                    let sumSquares = 0;
+                    for (let i = 0; i < inputData.length; i++) {
+                        sumSquares += inputData[i] * inputData[i];
+                    }
+                    const rms = Math.sqrt(sumSquares / inputData.length);
+
+                    // 1. High Gate: Crossed activation volume -> Speaking started
+                    if (rms >= this.activationRmsThreshold) {
+                        this.hasDetectedSpeech = true;
+                        if (this.silenceTimer) {
+                            clearTimeout(this.silenceTimer);
+                            this.silenceTimer = null;
+                        }
+                    } else if (this.hasDetectedSpeech) {
+                        // 2. Low Gate: Sound dropped below silence cutoff -> Start countdown
+                        if (rms < this.silenceRmsThreshold) {
+                            if (!this.silenceTimer) {
+                                this.silenceTimer = setTimeout(() => {
+                                    this.triggerAutoSend();
+                                }, this.silenceThresholdMs);
+                            }
+                        } else {
+                            // 3. Deadband / Hysteresis: Between Low and High gates
+                            // Keeps the turn active and cancels timer to prevent cutting off trailing consonants
+                            if (this.silenceTimer) {
+                                clearTimeout(this.silenceTimer);
+                                this.silenceTimer = null;
+                            }
+                        }
+                    }
+                }
             };
 
             this.sourceNode.connect(this.processorNode);
             this.processorNode.connect(this.audioContext.destination);
 
             this.isRecording = true;
-            this.onPartialTranscription = onPartialTranscription;
+            this.onPartialTranscription = onPartial;
             this.audioChunks = [];
-
-            // Pause idle timer while recording
             this.clearIdleTimer();
 
-            this.transcriptionInterval = setInterval(() => {
-                this.transcribeAccumulated();
-            }, transcriptionIntervalMs);
+            if (!this.isAutoListening) {
+                this.transcriptionInterval = setInterval(() => {
+                    this.transcribeAccumulated();
+                }, transcriptionIntervalMs);
+            }
 
-            console.log('[STTEngine] Recording started.');
+            console.log(`[STTEngine] Audio capture started (AutoVAD=${this.isAutoListening}).`);
             return true;
         } catch (e) {
-            console.error('[STTEngine] Failed to start recording:', e);
+            console.error('[STTEngine] Failed to start audio:', e);
             this.cleanupAudio();
             return false;
         }
     }
 
-    /**
-     * Stop recording asynchronously. Transcribes remaining audio before cleaning up.
-     * Restarts the idle timer so the model unloads after 3 minutes of inactivity.
-     */
+    private async triggerAutoSend(): Promise<void> {
+        if (!this.isAutoListening) return;
+
+        // User paused below silence threshold for silenceThresholdMs -> Finalize and send
+        const text = await this.stopRecording();
+        if (text && text.trim().length > 0 && this.onAutoSend) {
+            console.log('[STTEngine] Turn completed. Auto-sending:', text);
+            this.onAutoSend(text.trim());
+        }
+    }
+
     async stopRecording(): Promise<string | null> {
         if (!this.isRecording) return null;
 
         this.isRecording = false;
+        this.isAutoListening = false;
+        this.hasDetectedSpeech = false;
+
+        if (this.silenceTimer) {
+            clearTimeout(this.silenceTimer);
+            this.silenceTimer = null;
+        }
 
         if (this.transcriptionInterval) {
             clearInterval(this.transcriptionInterval);
@@ -209,21 +304,23 @@ class SpeechToTextEngine {
         const finalText = await this.transcribeAccumulated();
         this.cleanupAudio();
         this.onPartialTranscription = null;
-
-        // Restart idle timer — model stays loaded for 3 minutes in case user records again
         this.resetIdleTimer();
 
         console.log('[STTEngine] Recording stopped.');
         return finalText;
     }
 
-    /**
-     * Synchronous stop for unload() — skips final transcription.
-     */
     private stopRecordingSync(): void {
         if (!this.isRecording) return;
 
         this.isRecording = false;
+        this.isAutoListening = false;
+        this.hasDetectedSpeech = false;
+
+        if (this.silenceTimer) {
+            clearTimeout(this.silenceTimer);
+            this.silenceTimer = null;
+        }
 
         if (this.transcriptionInterval) {
             clearInterval(this.transcriptionInterval);
@@ -293,6 +390,10 @@ class SpeechToTextEngine {
 
     getIsRecording(): boolean {
         return this.isRecording;
+    }
+
+    getIsAutoListening(): boolean {
+        return this.isAutoListening;
     }
 
     isUsingWebGpu(): boolean {

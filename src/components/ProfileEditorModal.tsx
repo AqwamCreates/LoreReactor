@@ -3,7 +3,10 @@ import { useState, useMemo, useCallback, type CSSProperties } from 'react';
 import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal } from '../types';
 import { SliderInput } from './SliderInput';
 import '../main.css';
-import { defaultInputStrategy, defaultProfileTools } from '../dictionaries/defaults';
+import { 
+    defaultInputStrategy, 
+    defaultProfileTools, 
+} from '../dictionaries/defaults';
 import { toolLabels } from '../dictionaries/texts';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -107,6 +110,12 @@ function migrateNarrateTexts(profile: Profile): Record<textType, boolean> {
     };
 }
 
+/** Converts a 1-100 slider value into an acoustic decibel (dBFS) representation */
+function sliderToDb(sliderValue: number): number {
+    const clamped = Math.max(1, Math.min(100, sliderValue));
+    return Math.round(-60 + (clamped / 100) * 50);
+}
+
 const CHECKBOX_HINT_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' };
 const SLIDER_HEADER_STYLE: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' };
 const SLIDER_LABEL_STYLE: CSSProperties = { margin: 0 };
@@ -169,6 +178,19 @@ export function ProfileEditorModal({
     const [description, setDescription] = useState(ep?.description || '');
     const [autonomousMode, setAutonomousMode] = useState(ep?.autonomousMode ?? false);
     const [autonomousInteractionIntervalMs, setAutonomousInteractionIntervalMs] = useState<number>(ep?.autonomousInteractionIntervalMs ?? 10000);
+
+    // ─── Voice Activity Detection & Auto-Send State ──────────────────
+    const [enableAutoSpeechDetection, setEnableAutoSpeechDetection] = useState<boolean>(ep?.enableAutoSpeechDetection ?? false);
+    const [speechVolumeActivationThreshold, setSpeechVolumeActivationThreshold] = useState<number>(
+        ep?.speechVolumeActivationThreshold ?? 18
+    );
+    const [speechSilenceVolumeActivationThreshold, setSpeechSilenceVolumeActivationThreshold] = useState<number>(
+        ep?.speechSilenceVolumeActivationThreshold ?? 8
+    );
+    const [speechSilenceThresholdMs, setSpeechSilenceThresholdMs] = useState<number>(
+        ep?.speechSilenceThresholdMs ?? 1400
+    );
+
     const [forceNameReveal, setForceNameReveal] = useState(ep?.forceNameReveal ?? false);
     const [enableAmbientNarration, setEnableAmbientNarration] = useState(ep?.enableAmbientNarration ?? false);
     const [toolUsageDisplayMode, setToolUsageDisplayMode] = useState<toolUsageDisplayMode>(ep?.toolUsageDisplayMode ?? 'none');
@@ -233,7 +255,6 @@ export function ProfileEditorModal({
         setAutoResumeSignals(prev => prev.filter((_, i) => i !== index));
         if (expandedSignalIndex === index) setExpandedSignalIndex(null);
     }, [expandedSignalIndex]);
-    // ───────────────────────────────────────────────────────────────────
 
     const [characterSamplerId, setCharacterSamplerId] = useState<string>(ep?.characterSampler?.id ?? '');
     const [webSummarizationSamplerId, setWebSummarizationSamplerId] = useState<string>(ep?.webSummarizationSampler?.id ?? '');
@@ -308,6 +329,10 @@ export function ProfileEditorModal({
         return {
             id, name: profileName, description: description.trim() || undefined,
             autonomousMode, autonomousInteractionIntervalMs,
+            enableAutoSpeechDetection,
+            speechVolumeActivationThreshold,
+            speechSilenceVolumeActivationThreshold,
+            speechSilenceThresholdMs,
             forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, enableCharacterExpression,
             randomizeTextCharacterInjection,
             randomizeTextCharacterInjectionOnRetry,
@@ -447,7 +472,92 @@ export function ProfileEditorModal({
                             <div style={{ marginBottom: '16px' }}><label className="editor-label">Name <span style={{ color: '#ff4444' }}>*</span></label><input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Default RP, No Cache Mode, Strict Names" />{errors.name && <div className="editor-error-message">{errors.name}</div>}</div>
                             <div style={{ marginBottom: '16px' }}><label className="editor-label">Description</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Describe when to use this profile" rows={2} /></div>
 
-                            <div className="editor-section"><span className="editor-section-title">Agentic Roleplay</span><ProfileCheckbox checked={autonomousMode} onChange={setAutonomousMode} label="Autonomous Mode" hint="When enabled, characters act independently in the background using weighted sampling based on initiative, stamina ratios, and skip probability." />{autonomousMode && (<div style={{ marginTop: '12px' }}><div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Interaction Interval</label><span style={SLIDER_VALUE_STYLE}>{(autonomousInteractionIntervalMs / 1000).toFixed(1)}s</span></div><SliderInput label="" value={autonomousInteractionIntervalMs} minimumValue={1000} maximumValue={60000} stepValue={1000} decimals={0} onChange={(val) => setAutonomousInteractionIntervalMs(Math.round(val))} description="How often the engine evaluates characters for autonomous actions. Lower = more frequent activity, higher token usage." /></div>)}</div>
+                            {/* Agentic Roleplay */}
+                            <div className="editor-section">
+                                <span className="editor-section-title">Agentic Roleplay</span>
+                                <ProfileCheckbox checked={autonomousMode} onChange={setAutonomousMode} label="Autonomous Mode" hint="When enabled, characters act independently in the background using weighted sampling based on initiative, stamina ratios, and skip probability." />
+                                {autonomousMode && (
+                                    <div style={{ marginTop: '12px' }}>
+                                        <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Interaction Interval</label><span style={SLIDER_VALUE_STYLE}>{(autonomousInteractionIntervalMs / 1000).toFixed(1)}s</span></div>
+                                        <SliderInput label="" value={autonomousInteractionIntervalMs} minimumValue={1000} maximumValue={60000} stepValue={1000} decimals={0} onChange={(val) => setAutonomousInteractionIntervalMs(Math.round(val))} description="How often the engine evaluates characters for autonomous actions. Lower = more frequent activity, higher token usage." />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Voice Activity Detection & Auto-Send */}
+                            <div className="editor-section">
+                                <span className="editor-section-title">Voice Activity Detection & Auto-Send</span>
+                                <ProfileCheckbox 
+                                    checked={enableAutoSpeechDetection} 
+                                    onChange={setEnableAutoSpeechDetection} 
+                                    label="Auto-Send Voice Input (Hands-Free VAD)" 
+                                    hint="Automatically detect when you start and stop speaking, transcribe your voice, and send the message without pressing stop or send." 
+                                />
+                                {enableAutoSpeechDetection && (
+                                    <>
+                                        <div style={{ marginTop: '12px' }}>
+                                            <div style={SLIDER_HEADER_STYLE}>
+                                                <label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>
+                                                    Speech Activation Threshold (Start Speaking)
+                                                </label>
+                                                <span style={SLIDER_VALUE_STYLE}>
+                                                    {speechVolumeActivationThreshold}% ({sliderToDb(speechVolumeActivationThreshold)} dBFS)
+                                                </span>
+                                            </div>
+                                            <SliderInput 
+                                                label="" 
+                                                value={speechVolumeActivationThreshold} 
+                                                minimumValue={1} 
+                                                maximumValue={100} 
+                                                stepValue={1} 
+                                                decimals={0} 
+                                                onChange={(val) => setSpeechVolumeActivationThreshold(Math.round(val))} 
+                                                description="How loud you must speak to wake up the engine and begin recording." 
+                                            />
+                                        </div>
+
+                                        <div style={{ marginTop: '12px' }}>
+                                            <div style={SLIDER_HEADER_STYLE}>
+                                                <label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>
+                                                    Silence Deactivation Threshold (Stop Speaking)
+                                                </label>
+                                                <span style={SLIDER_VALUE_STYLE}>
+                                                    {speechSilenceVolumeActivationThreshold}% ({sliderToDb(speechSilenceVolumeActivationThreshold)} dBFS)
+                                                </span>
+                                            </div>
+                                            <SliderInput 
+                                                label="" 
+                                                value={speechSilenceVolumeActivationThreshold} 
+                                                minimumValue={1} 
+                                                maximumValue={100} 
+                                                stepValue={1} 
+                                                decimals={0} 
+                                                onChange={(val) => setSpeechSilenceVolumeActivationThreshold(Math.round(val))} 
+                                                description="The lower volume cutoff that triggers the silence countdown. Sits below the activation threshold to prevent syllable cutoffs." 
+                                            />
+                                        </div>
+
+                                        <div style={{ marginTop: '12px' }}>
+                                            <div style={SLIDER_HEADER_STYLE}>
+                                                <label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>
+                                                    Silence Pause Duration
+                                                </label>
+                                                <span style={SLIDER_VALUE_STYLE}>{(speechSilenceThresholdMs / 1000).toFixed(1)}s</span>
+                                            </div>
+                                            <SliderInput 
+                                                label="" 
+                                                value={speechSilenceThresholdMs} 
+                                                minimumValue={500} 
+                                                maximumValue={5000} 
+                                                stepValue={100} 
+                                                decimals={0} 
+                                                onChange={(val) => setSpeechSilenceThresholdMs(Math.round(val))} 
+                                                description="Duration of silence below the cutoff before final transcription is fired." 
+                                            />
+                                        </div>
+                                    </>
+                                )}
+                            </div>
 
                             <div className="editor-section">
                                 <span className="editor-section-title">Volume</span>

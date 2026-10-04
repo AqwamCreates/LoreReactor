@@ -896,6 +896,14 @@ const profileRepo = createRepository<Profile, RawProfile>({
         enableAmbientNarration: false,
         toolUsageDisplayMode: 'none',
         enableCharacterExpression: false,
+        
+        // ─── ADD THESE DEFAULTS FOR VAD AUTO-SEND ────────────────────
+        enableAutoSpeechDetection: false,
+        speechVolumeActivationThreshold: 18,
+        speechSilenceVolumeActivationThreshold: 8,
+        speechSilenceThresholdMs: 1400,
+        // ─────────────────────────────────────────────────────────────
+
         randomizeTextCharacterInjection: false,
         randomizeTextCharacterInjectionOnRetry: true,
         maximumNumberOfTextCharacterRandomizationPerModel: 1,

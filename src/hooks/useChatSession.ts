@@ -14,11 +14,10 @@ import { useThrottledStream } from './useThrottledStream';
 import { useCharacterResponseLock } from './useCharacterResponseLock';
 import { useAmbientNarration } from './useAmbientNarration';
 import { useSessionStore } from './useSessionStore';
-import { type RequestMetadata } from '../services/BudgetStrategyEngine';
+import type { RequestMetadata } from '../services/BudgetStrategyEngine';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { MultiplayerEvents } from '../services/MultiplayerEvents';
-import { v4 as uuidv4 } from 'uuid'; // Kept just in case, but mostly unused now
 
 import {
     hasTextContent,

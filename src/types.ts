@@ -717,6 +717,10 @@ export interface Profile extends ObjectData {
   enableAmbientNarration: boolean; // Default is false.
   toolUsageDisplayMode: toolUsageDisplayMode;
   enableCharacterExpression: boolean;
+  enableAutoSpeechDetection?: boolean;
+  speechVolumeActivationThreshold?: number; // Volume Gate: 1 to 100 (Default: 15)
+  speechSilenceVolumeActivationThreshold?: number;
+  speechSilenceThresholdMs?: number; // Default ~1500ms of silence to trigger send
   randomizeTextCharacterInjection: boolean;
   randomizeTextCharacterInjectionOnRetry: boolean; // Only randomize if the initial randomization fails. Default is true. This setting get revealed when randomizeTextCharacterInjection is true.
   maximumNumberOfTextCharacterRandomizationPerModel: number; // Number of retries to get the text generated per model. Default is 1. This setting get revealed when randomizeTextCharacterInjection is true.
@@ -767,6 +771,10 @@ export interface RawProfile extends RawData {
   enableAmbientNarration: boolean; // Default is false.
   toolUsageDisplayMode: toolUsageDisplayMode;
   enableCharacterExpression: boolean;
+  enableAutoSpeechDetection?: boolean;
+  speechVolumeActivationThreshold?: number; // Volume Gate: 1 to 100 (Default: 15)
+  speechSilenceVolumeActivationThreshold?: number;
+  speechSilenceThresholdMs?: number; // Default ~1500ms of silence to trigger send
   randomizeTextCharacterInjection: boolean;
   randomizeTextCharacterInjectionOnRetry: boolean; // Only randomize if the initial randomization fails. Default is true. This setting get revealed when randomizeTextCharacterInjection is true.
   maximumNumberOfTextCharacterRandomizationPerModel: number; // Number of retries to get the text generated per model. Default is 1. This setting get revealed when randomizeTextCharacterInjection is true.
