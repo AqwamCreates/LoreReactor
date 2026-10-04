@@ -390,7 +390,7 @@ export function ProfileEditorModal({
     const allToolKeys = Object.keys(toolLabels) as tool[];
     const narrateTextKeys = Object.keys(NARRATE_TEXT_LABELS) as textType[];
 
-    const selectedToolDisplayMode = TOOL_USAGE_DISPLAY_MODES.find(m => m.value === toolUsageDisplayMode) ?? TOOL_USAGE_DISPLAY_MODES[0];
+    const selectedToolUsageDisplayMode = TOOL_USAGE_DISPLAY_MODES.find(m => m.value === toolUsageDisplayMode) ?? TOOL_USAGE_DISPLAY_MODES[0];
 
     // Filtered tools based on search query
     const filteredToolKeys = useMemo(() => {
@@ -467,7 +467,7 @@ export function ProfileEditorModal({
                                     <select value={toolUsageDisplayMode} onChange={(e) => setToolUsageDisplayMode(e.target.value as toolUsageDisplayMode)} className="editor-select" style={{ width: '100%' }}>
                                         {TOOL_USAGE_DISPLAY_MODES.map(mode => (<option key={mode.value} value={mode.value}>{mode.label}</option>))}
                                     </select>
-                                    <div style={FIELD_HINT_STYLE}>{selectedToolDisplayMode.description}</div>
+                                    <div style={FIELD_HINT_STYLE}>{selectedToolUsageDisplayMode.description}</div>
                                 </div>
                                 <ProfileCheckbox checked={enableCharacterExpression} onChange={setEnableCharacterExpression} label="Enable Character Expression" hint="Use sentiment analysis to swap character images based on emotional tone. Disable to always use the neutral character images." />
                             </div>
