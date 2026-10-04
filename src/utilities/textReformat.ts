@@ -76,23 +76,15 @@ function findToolRanges(text: string): Array<{ start: number; end: number }> {
     );
     
     const ranges: Array<{ start: number; end: number }> = [];
-    let match: RegExpExecArray | null;
     
-    while ((match = toolRegex.exec(text)) !== null) {
+    // ✅ FIX: Separated assignment from condition
+    let match: RegExpExecArray | null = toolRegex.exec(text);
+    while (match !== null) {
         ranges.push({ start: match.index, end: match.index + match[0].length });
+        match = toolRegex.exec(text);
     }
     
     return ranges;
-}
-
-// ✅ NEW: Helper to check if a position is inside a tool invocation
-function isInsideToolRange(pos: number, toolRanges: Array<{ start: number; end: number }>): boolean {
-    for (const range of toolRanges) {
-        if (pos >= range.start && pos < range.end) {
-            return true;
-        }
-    }
-    return false;
 }
 
 export function detectFormatSegments(text: string): DetectedSegment[] {
@@ -102,11 +94,13 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
     const allMatches: RawMatch[] = [];
 
     for (const { regex, category, innerGroup } of PATTERNS) {
-        let match: RegExpExecArray | null;
+        // ✅ FIX: Separated assignment from condition
+        let match: RegExpExecArray | null = regex.exec(text);
 
-        while ((match = regex.exec(text)) !== null) {
+        while (match !== null) {
             if (match[0].length === 0) {
                 regex.lastIndex++;
+                match = regex.exec(text);
                 continue;
             }
 
@@ -122,17 +116,17 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
                 }
             }
             
-            if (overlapsWithTool) {
-                continue; // Skip this match entirely
+            if (!overlapsWithTool) {
+                allMatches.push({
+                    start: match.index,
+                    end: match.index + match[0].length,
+                    category,
+                    innerText: match[innerGroup] || '',
+                    rawMatch: match[0],
+                });
             }
-
-            allMatches.push({
-                start: match.index,
-                end: match.index + match[0].length,
-                category,
-                innerText: match[innerGroup] || '',
-                rawMatch: match[0],
-            });
+            
+            match = regex.exec(text);
         }
     }
 
