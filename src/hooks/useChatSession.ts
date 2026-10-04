@@ -3,11 +3,11 @@ import { useRef, useCallback, useEffect } from 'react';
 import { useChatEngine } from './useChatEngine';
 import { useChatUI } from './useChatUI';
 import { useToast } from '../context/ToastContext';
-import { createChatMessage, convertIdsToDisplayNames, createNewInteractionData } from '../utilities/chatLogic';
-import { processPendingToolActions, type ToolExecutionContext } from '../services/ToolExecutor'; // Removed executeTool
+import { createChatMessage, convertIdsToDisplayNames, createNewInteractionData, addMessageToInteractionData } from '../utilities/chatLogic';
+import { processPendingToolActions, type ToolExecutionContext } from '../services/ToolExecutor';
 import { runSummarization } from '../services/SummarizationEngine';
 import { consumeChatStaminaForMessage } from '../utilities/characterLogic';
-import { getCurrentLocationId } from '../utilities/locationLogic'; // Removed findReachableLocationByRegularExpression
+import { getCurrentLocationId } from '../utilities/locationLogic';
 import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/timelineLogic';
 import { deleteRawMessage } from '../storages/serverStorage';
 import { useThrottledStream } from './useThrottledStream';
@@ -30,7 +30,7 @@ import {
 } from '../utilities/chatSessionLogic';
 import { useSpeculativeStreamHandler } from './useSpeculativeStreamHandler';
 import { useChatSessionEffects } from './useChatSessionEffects';
-import { useChatSender } from './useChatSender'; // ✅ NEW
+import { useChatSender } from './useChatSender';
 
 import type {
     Character, PromptBlock,
@@ -324,9 +324,9 @@ export function useChatSession(options: UseChatSessionOptions) {
             const msg = history[i];
             if (hasTextContent(msg) && !protagonistIds.has(msg.character.id)) {
                 const chatMsg = msg as ChatMessage;
-                if (chatMsg.inventory?.__scheduled_responses__) {
+                if (chatMsg.inventory?.___scheduled_responses___) {
                     try {
-                        const tasks = JSON.parse(chatMsg.inventory.__scheduled_responses__ as string);
+                        const tasks = JSON.parse(chatMsg.inventory.___scheduled_responses___ as string);
                         for (const task of tasks) {
                             const delay = task.durationMs;
                             const charId = task.characterId;
@@ -349,8 +349,8 @@ export function useChatSession(options: UseChatSessionOptions) {
                         if (idx !== -1) {
                             const cleanMsg = { ...msgs[idx] } as ChatMessage;
                             const cleanInv = cleanMsg.inventory ? { ...cleanMsg.inventory } : {};
-                            delete cleanInv['__scheduled_responses__'];
-                            if (Object.keys(cleanInv).length === 0) delete cleanMsg.inventory;
+                            delete cleanInv['___scheduled_responses___'];
+                            if (Object.keys(cleanInv).length === 0) cleanMsg.inventory = undefined;
                             else cleanMsg.inventory = cleanInv;
                             
                             updatedHistories[locId] = [...msgs];
@@ -561,7 +561,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         autoResumeOnCutoff, ui, generateAmbientNarration, isMultiplayerClient, isSpeculatingRef, streamingTextRef, extractAndScheduleResponses
     ]);
 
-        const triggerDelayedResponse = useCallback(async (characterId: string, thought?: string) => {
+    const triggerDelayedResponse = useCallback(async (characterId: string, thought?: string) => {
         const currentState = getState();
         const currentData = currentState.interactionData;
         if (!currentData || isLoadingRef.current) return;
@@ -579,7 +579,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 abortControllerRef.current || new AbortController(),
                 allPromptBlocksRef.current,
                 undefined,
-                prefillText // ✅ Pass existingCharacterText as 5th argument
+                prefillText
             );
         } catch (e) {
             console.error('Delayed response error:', e);

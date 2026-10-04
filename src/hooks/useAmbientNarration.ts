@@ -45,14 +45,14 @@ export function useAmbientNarration(
         const visibleChatMessages = allChatMessages.filter((_, i) => !filterFlags[i]);
 
         const recentMessages = visibleChatMessages
-            .filter(m => m.character.id !== '__ambient_narrator__')
+            .filter(m => m.character.id !== '___ambient_narrator___')
             .slice(-messageWindow);
 
         const recentText = recentMessages.map(m => m.textContent).join('\n');
         const { tags, dominantMood } = detectContext(recentText);
 
         const recentAmbient = visibleChatMessages
-            .filter(m => m.character.id === '__ambient_narrator__')
+            .filter(m => m.character.id === '___ambient_narrator___')
             .slice(-5)
             .map(m => m.textContent);
 

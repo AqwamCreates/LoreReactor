@@ -18,7 +18,7 @@ export const toolLabels: Record<tool, string> = {
     clipboard: 'Clipboard', screenshot: 'Screenshot', front_camera: 'Front Camera',
     network_scanner: 'Network Scanner', file_watcher: 'File Watcher', window_monitor: 'Window Monitor', process_monitor: 'Process Monitor',
     trash: 'Trash', browser: 'Open Browser', read_file: 'Read File', write_file: 'Write File', shell: 'Shell', 
-    virtual_vision: 'Virtual Vision', virtual_input: 'Virtual Input', virtual_controller: "Virtual Controller", hardware_control: 'Hardware Control'
+    virtual_hearing: 'Virtual Hearing', virtual_vision: 'Virtual Vision', virtual_input: 'Virtual Input', virtual_controller: "Virtual Controller", hardware_control: 'Hardware Control'
 };
 
 export const characterToolDescriptions: Record<tool, string> = {
@@ -80,7 +80,8 @@ export const characterToolDescriptions: Record<tool, string> = {
     read_file: 'Allow this character to read files on your device. Enable with caution.',
     write_file: 'Allow this character to write files on your device. Enable with caution.',
     shell: 'Allow this character to use shell on your device. Enable with caution.',
-    virtual_vision: 'Allow this character to see what window you are looking at, including several other information related to the watching window.',
+    virtual_hearing: 'Allow this character to hear your device. Enable with caution.',
+    virtual_vision: 'Allow this character to see what window you are looking at, including several other information related to the watching window. Enable with caution.',
     virtual_input: 'Allow this character to take control inputs of your device. Enable with caution.',
     virtual_controller: 'Allow this character to use controller inputs for your device. Enable with caution.',
     hardware_control: 'Allow this character to control your devices. Enable with caution.'

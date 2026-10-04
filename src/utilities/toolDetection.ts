@@ -58,7 +58,7 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
         riskDescription: 'Puts the host computer into sleep, standby, or hibernation mode.' 
     },
     { 
-        tool: 'shutdown',
+        tool: 'shutdown', 
         label: 'Host System Power Off', 
         keywords: ['shut down', 'power off', 'turn off pc', 'shutdown', 'kill power', 'goodnight', 'turn off computer', 'shut off'], 
         tier: 'os_privileged', 
@@ -128,21 +128,118 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
     // ═════════════════════════════════════════════════════════════════
     // TIER 3: AMBIENT SENSORS & WEB (Read-Only Telemetry & Audio)
     // ═════════════════════════════════════════════════════════════════
-    { tool: 'virtual_vision', label: 'Targeted Window & Region Vision', keywords: ['watch game', 'watch app', 'look at window', 'look at game', 'look at app','targeted vision', 'see app', 'see game', 'stream spectator', 'crop screen'], tier: 'ambient', riskDescription: 'Captures and crops the active application or specific window on your screen.'},
-    { tool: 'window_monitor', label: 'Active Window Focus Monitor', keywords: ['assistant', 'companion', 'roommate', 'secretary', 'overseer', 'hacker', 'ai', 'monitor'], tier: 'ambient', riskDescription: 'Detects the title of the software or browser tab you currently have focused.' },
-    { tool: 'process_monitor', label: 'Task & Process Monitor', keywords: ['technician', 'sysadmin', 'debugger', 'engineer', 'diagnostics', 'task manager'], tier: 'ambient', riskDescription: 'Inspects running background applications and CPU/RAM usage.' },
-    { tool: 'file_watcher', label: 'Real-Time Filesystem Watcher', keywords: ['watch folder', 'workspace', 'project monitor', 'code assistant', 'folder watcher'], tier: 'ambient', riskDescription: 'Monitors directories for file additions, edits, or removals in real-time.' },
-    { tool: 'network_scanner', label: 'Local Wi-Fi Network Discovery', keywords: ['network', 'scanner', 'detect devices', 'iot', 'security', 'lan', 'wifi'], tier: 'ambient', riskDescription: 'Scans the local router for connected phones and computers.' },
-    { tool: 'screenshot', label: 'Desktop Screen Capture', keywords: ['screen', 'see screen', 'display', 'visual assistant', 'screenshot', 'monitor'], tier: 'ambient', riskDescription: 'Captures full screenshots of your desktop monitor.' },
-    { tool: 'text_to_speech', label: 'Voice Text-to-Speech Output', keywords: ['voice', 'speak aloud', 'talking', 'speech', 'vocal', 'audible'], tier: 'ambient', riskDescription: 'Speaks dialogue out loud through your computer speakers.' },
-    { tool: 'volume_control', label: 'Master Volume Control', keywords: ['dj', 'sound engineer', 'loud', 'music', 'sound', 'audio volume', 'speaker'], tier: 'ambient', riskDescription: 'Can adjust your computer master audio volume or toggle mute.' },
-    { tool: 'notify', label: 'Native OS Desktop Notifications', keywords: ['alarm', 'reminder', 'assistant', 'secretary', 'butler', 'alert', 'notifier'], tier: 'ambient', riskDescription: 'Fires desktop pop-up notifications to your OS notification center.' },
-    { tool: 'schedule_response', label: 'Autonomous Follow-up Scheduler', keywords: ['check in later', 'remind me', 'follow up', 'wake me up', 'autonomous', 'ping me later', 'check back', 'schedule response'], tier: 'ambient', riskDescription: 'Schedules the AI to autonomously generate a follow-up response after a specified delay.' },
-    { tool: 'web', label: 'Web Search & Link Fetcher', keywords: ['researcher', 'search', 'investigator', 'journalist', 'curious', 'internet', 'google', 'web'], tier: 'ambient', riskDescription: 'Fetches content from the live web and searches the internet.' },
-    { tool: 'browser', label: 'Open Webpage in Default Browser', keywords: ['browse', 'web surfer', 'open links', 'researcher', 'explorer'], tier: 'ambient', riskDescription: 'Launches your default web browser to visit specific URLs.' },
-    { tool: 'read_file', label: 'Read / Open Local Target', keywords: ['file viewer', 'reader', 'document viewer', 'file reader'], tier: 'ambient', riskDescription: 'Opens local files, videos, or directories in their default OS apps.' },
-    { tool: 'system_info', label: 'CPU & RAM Telemetry', keywords: ['hardware', 'specs', 'cpu', 'ram', 'system stats', 'pc builder'], tier: 'ambient', riskDescription: 'Queries CPU load, available RAM, and hardware specs.' },
-    { tool: 'gpu', label: 'GPU VRAM & Temperature Telemetry', keywords: ['gpu', 'vram', 'graphics card', 'nvidia', 'amd', 'temperature', 'benchmark'], tier: 'ambient', riskDescription: 'Queries local GPU utilization, VRAM usage, and temperatures.' },
+    { 
+        tool: 'virtual_vision', 
+        label: 'Targeted Window & Region Vision', 
+        keywords: ['watch game', 'watch app', 'look at window', 'look at game', 'look at app', 'targeted vision', 'see app', 'see game', 'stream spectator', 'crop screen'], 
+        tier: 'ambient', 
+        riskDescription: 'Captures and crops the active application or specific window on your screen.' 
+    },
+    { 
+        tool: 'virtual_hearing', 
+        label: 'System Audio & Melody Perception', 
+        keywords: ['listen to game', 'listen to music', 'listen to app', 'hear game', 'hear sound', 'hear audio', 'audio spectator', 'sound detector', 'music listener', 'melody', 'gamer companion', 'eavesdrop'], 
+        tier: 'ambient', 
+        riskDescription: 'Perceives desktop and application audio to detect speech, musical melodies, and sound cues.' 
+    },
+    { 
+        tool: 'window_monitor', 
+        label: 'Active Window Focus Monitor', 
+        keywords: ['assistant', 'companion', 'roommate', 'secretary', 'overseer', 'hacker', 'ai', 'monitor'], 
+        tier: 'ambient', 
+        riskDescription: 'Detects the title of the software or browser tab you currently have focused.' 
+    },
+    { 
+        tool: 'process_monitor', 
+        label: 'Task & Process Monitor', 
+        keywords: ['technician', 'sysadmin', 'debugger', 'engineer', 'diagnostics', 'task manager'], 
+        tier: 'ambient', 
+        riskDescription: 'Inspects running background applications and CPU/RAM usage.' 
+    },
+    { 
+        tool: 'file_watcher', 
+        label: 'Real-Time Filesystem Watcher', 
+        keywords: ['watch folder', 'workspace', 'project monitor', 'code assistant', 'folder watcher'], 
+        tier: 'ambient', 
+        riskDescription: 'Monitors directories for file additions, edits, or removals in real-time.' 
+    },
+    { 
+        tool: 'network_scanner', 
+        label: 'Local Wi-Fi Network Discovery', 
+        keywords: ['network', 'scanner', 'detect devices', 'iot', 'security', 'lan', 'wifi'], 
+        tier: 'ambient', 
+        riskDescription: 'Scans the local router for connected phones and computers.' 
+    },
+    { 
+        tool: 'screenshot', 
+        label: 'Desktop Screen Capture', 
+        keywords: ['screen', 'see screen', 'display', 'visual assistant', 'screenshot', 'monitor'], 
+        tier: 'ambient', 
+        riskDescription: 'Captures full screenshots of your desktop monitor.' 
+    },
+    { 
+        tool: 'text_to_speech', 
+        label: 'Voice Text-to-Speech Output', 
+        keywords: ['voice', 'speak aloud', 'talking', 'speech', 'vocal', 'audible'], 
+        tier: 'ambient', 
+        riskDescription: 'Speaks dialogue out loud through your computer speakers.' 
+    },
+    { 
+        tool: 'volume_control', 
+        label: 'Master Volume Control', 
+        keywords: ['dj', 'sound engineer', 'loud', 'music', 'sound', 'audio volume', 'speaker'], 
+        tier: 'ambient', 
+        riskDescription: 'Can adjust your computer master audio volume or toggle mute.' 
+    },
+    { 
+        tool: 'notify', 
+        label: 'Native OS Desktop Notifications', 
+        keywords: ['alarm', 'reminder', 'assistant', 'secretary', 'butler', 'alert', 'notifier'], 
+        tier: 'ambient', 
+        riskDescription: 'Fires desktop pop-up notifications to your OS notification center.' 
+    },
+    { 
+        tool: 'schedule_response', 
+        label: 'Autonomous Follow-up Scheduler', 
+        keywords: ['check in later', 'remind me', 'follow up', 'wake me up', 'autonomous', 'ping me later', 'check back', 'schedule response'], 
+        tier: 'ambient', 
+        riskDescription: 'Schedules the AI to autonomously generate a follow-up response after a specified delay.' 
+    },
+    { 
+        tool: 'web', 
+        label: 'Web Search & Link Fetcher', 
+        keywords: ['researcher', 'search', 'investigator', 'journalist', 'curious', 'internet', 'google', 'web'], 
+        tier: 'ambient', 
+        riskDescription: 'Fetches content from the live web and searches the internet.' 
+    },
+    { 
+        tool: 'browser', 
+        label: 'Open Webpage in Default Browser', 
+        keywords: ['browse', 'web surfer', 'open links', 'researcher', 'explorer'], 
+        tier: 'ambient', 
+        riskDescription: 'Launches your default web browser to visit specific URLs.' 
+    },
+    { 
+        tool: 'read_file', 
+        label: 'Read / Open Local Target', 
+        keywords: ['file viewer', 'reader', 'document viewer', 'file reader'], 
+        tier: 'ambient', 
+        riskDescription: 'Opens local files, videos, or directories in their default OS apps.' 
+    },
+    { 
+        tool: 'system_info', 
+        label: 'CPU & RAM Telemetry', 
+        keywords: ['hardware', 'specs', 'cpu', 'ram', 'system stats', 'pc builder'], 
+        tier: 'ambient', 
+        riskDescription: 'Queries CPU load, available RAM, and hardware specs.' 
+    },
+    { 
+        tool: 'gpu', 
+        label: 'GPU VRAM & Temperature Telemetry', 
+        keywords: ['gpu', 'vram', 'graphics card', 'nvidia', 'amd', 'temperature', 'benchmark'], 
+        tier: 'ambient', 
+        riskDescription: 'Queries local GPU utilization, VRAM usage, and temperatures.' 
+    },
 
     // ═════════════════════════════════════════════════════════════════
     // TIER 4: IN-WORLD STATE MUTATORS (Alters Inventories, State, & Locks)

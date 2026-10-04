@@ -133,7 +133,7 @@ export interface MediaResponsePayload {
 const CHUNK_SIZE = 32 * 1024;
 
 interface ChunkPacket {
-    __isChunk: true;
+    ___isChunk: true;
     transferId: string;
     index: number;
     total: number;
@@ -144,7 +144,7 @@ function isChunkPacket(data: unknown): data is ChunkPacket {
     return (
         typeof data === 'object' &&
         data !== null &&
-        (data as any).__isChunk &&
+        (data as any).___isChunk &&
         typeof (data as any).transferId === 'string' &&
         typeof (data as any).index === 'number' &&
         typeof (data as any).total === 'number' &&
@@ -177,7 +177,7 @@ function sendPayloadWithChunking(conn: DataConnection, fullMsg: MultiplayerMessa
 
     for (let i = 0; i < total; i++) {
         const chunk: ChunkPacket = {
-            __isChunk: true,
+            ___isChunk: true,
             transferId,
             index: i,
             total,

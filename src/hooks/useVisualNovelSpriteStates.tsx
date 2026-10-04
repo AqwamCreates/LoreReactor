@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import type { ChatMessage } from '../types';
 
-const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
+const AMBIENT_NARRATOR_ID = '___ambient_narrator___';
 
 export type BreathingPattern = 'calm' | 'fast' | 'heavy' | 'subtle' | 'tremble' | 'none';
 

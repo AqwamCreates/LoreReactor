@@ -4,7 +4,7 @@ import type { Character } from '../types';
 import { getDelayedDisplayName } from '../utilities/immersionLogic';
 import { useSessionStore } from '../hooks/useSessionStore';
 
-const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
+const AMBIENT_NARRATOR_ID = '___ambient_narrator___';
 
 interface StreamingIndicatorsProps {
     formattedStreamingText: React.ReactNode;

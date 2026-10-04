@@ -248,6 +248,30 @@ const COMMAND_TREE: SlashCmd[] = [
         { name: 'content', type: 'text', desc: 'Content to write', example: 'Hello World' }
     ]},
     { name: 'shell', desc: 'Execute terminal shell command', args: [{ name: 'command', type: 'text', desc: 'Shell command', example: 'git status' }] },
+    { name: 'virtual_hearing', desc: 'Perceive desktop audio & melody', subs: [
+        { name: 'start', desc: 'Start active listening', args: [{ name: 'duration', type: 'text', desc: 'Duration in seconds', example: '30', optional: true }] },
+        { name: 'stop', desc: 'Stop active listening' },
+        { name: 'status', desc: 'Check hearing status' },
+    ]},
+    { name: 'virtual_vision', desc: 'Targeted window & region vision', args: [
+        { name: 'target', type: 'text', desc: 'active, fullscreen, or region', example: 'active', optional: true }
+    ]},
+    { name: 'virtual_controller', desc: 'Simulate Xbox 360 gamepad', subs: [
+        { name: 'tap', desc: 'Tap button', args: [{ name: 'button', type: 'text', desc: 'Button name (A, B, X, Y, LB, RB, LT, RT, START, BACK)', example: 'A' }] },
+        { name: 'press', desc: 'Hold button down', args: [{ name: 'button', type: 'text', desc: 'Button name', example: 'RB' }] },
+        { name: 'release', desc: 'Release button', args: [{ name: 'button', type: 'text', desc: 'Button name', example: 'RB' }] },
+        { name: 'stick', desc: 'Move analog stick (-1.0 to 1.0)', args: [
+            { name: 'stick', type: 'text', desc: 'left or right', example: 'left' },
+            { name: 'x', type: 'text', desc: 'X coordinate (-1.0 to 1.0)', example: '0.0' },
+            { name: 'y', type: 'text', desc: 'Y coordinate (-1.0 to 1.0)', example: '1.0' }
+        ]},
+        { name: 'trigger', desc: 'Press analog trigger (0.0 to 1.0)', args: [
+            { name: 'trigger', type: 'text', desc: 'left or right', example: 'right' },
+            { name: 'value', type: 'text', desc: 'Pressure (0.0 to 1.0)', example: '1.0' }
+        ]},
+        { name: 'reset', desc: 'Reset all controller inputs to neutral' },
+        { name: 'status', desc: 'Check virtual controller status' },
+    ]},
     { name: 'virtual_input', desc: 'Simulate mouse & keyboard input', subs: [
         { name: 'move', desc: 'Move mouse cursor', args: [{ name: 'x', type: 'text', desc: 'X coordinate', example: '500' }, { name: 'y', type: 'text', desc: 'Y coordinate', example: '300' }] },
         { name: 'click', desc: 'Click mouse', args: [{ name: 'button', type: 'text', desc: 'left, right, middle', example: 'left', optional: true }] },
@@ -384,7 +408,7 @@ function getEntityOptions(
         
         if (lastMsg?.inventory) {
             return Object.entries(lastMsg.inventory)
-                .filter(([k]) => !k.startsWith('__'))
+                .filter(([k]) => !k.startsWith('___'))
                 .map(([k, v]) => ({
                     value: k,
                     label: k,

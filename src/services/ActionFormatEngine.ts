@@ -57,7 +57,7 @@ class ActionFormatEngine {
     }
 
     private getFallbackContextKey(prevWrap: ActionWrap | 'unknown'): string {
-        return `__ANY__|${prevWrap}`;
+        return `___ANY___|${prevWrap}`;
     }
 
     record(label: string, prevWrap: ActionWrap | 'unknown', format: ActionFormatPrediction): void {

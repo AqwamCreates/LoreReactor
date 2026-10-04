@@ -139,6 +139,24 @@ class SpeechToTextEngine {
     }
 
     /**
+     * Shared transcription entry point so other engines (like AudioPerceptionEngine)
+     * can transcribe buffers directly using the single shared Whisper pipeline in memory.
+     */
+    async transcribeBuffer(buffer: Float32Array): Promise<string | null> {
+        const loaded = await this.ensureLoaded();
+        if (!loaded || !this.pipeline) return null;
+
+        try {
+            this.resetIdleTimer();
+            const result = await this.pipeline(buffer);
+            return result.text?.trim() || null;
+        } catch (e) {
+            console.warn('[STTEngine] Buffer transcription failed:', e);
+            return null;
+        }
+    }
+
+    /**
      * Start continuous auto-listening mode with Logarithmic Hysteresis Noise Gate.
      * @param onPartial Callback receiving real-time transcription fragments
      * @param onAutoSend Callback invoked when speech finishes and is ready to send

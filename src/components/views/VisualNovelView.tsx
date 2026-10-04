@@ -20,7 +20,7 @@ import {
     type FormatCategory,
 } from '../../utilities/textReformat';
 
-const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
+const AMBIENT_NARRATOR_ID = '___ambient_narrator___';
 
 export const VisualNovelView = React.memo(function VisualNovelView(props: ViewModeProps) {
     const {

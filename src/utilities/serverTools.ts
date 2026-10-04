@@ -42,6 +42,10 @@ export interface ShellResult {
   error?: string;
 }
 
+export interface VirtualHearingParams {
+  action?: 'start' | 'stop' | 'end' | 'status';
+  duration?: number;
+}
 export interface VirtualVisionParams {
   target?: 'active' | 'fullscreen' | 'region';
   appName?: string;
@@ -76,6 +80,16 @@ export interface VirtualControllerParams {
   trigger?: 'left' | 'right';
   value?: number;
   durationMs?: number;
+}
+
+export interface VirtualHearingResult {
+  success: boolean;
+  active?: boolean;
+  message?: string;
+  melody?: string[];
+  events?: string[];
+  rawObservation?: string;
+  error?: string;
 }
 
 export async function speakText(text: string, voice?: string, speed = 1.0) {
@@ -171,10 +185,12 @@ export async function clipboardAction(
   }
 }
 
-export async function captureScreenshot(): Promise<ScreenshotResult> {
+export async function captureScreenshot(characterId?: string): Promise<ScreenshotResult> {
   try {
     const response = await fetch(`${localURL}/tool/screenshot`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ characterId }),
     });
     return await response.json();
   } catch (e) {
@@ -267,6 +283,19 @@ export async function runShellCommand(command: string): Promise<ShellResult> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ command }),
+    });
+    return await response.json();
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+}
+
+export async function captureVirtualHearing(params: VirtualHearingParams = {}): Promise<VirtualHearingResult> {
+  try {
+    const response = await fetch(`${localURL}/tool/virtual-hearing`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
     });
     return await response.json();
   } catch (e) {

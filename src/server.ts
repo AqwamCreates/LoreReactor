@@ -1545,15 +1545,20 @@ app.post('/tool/clipboard', async (req, res) => {
   }
 });
 
-app.post('/tool/screenshot', async (_req, res) => {
+app.post('/tool/screenshot', async (req, res) => {
   try {
+    const { characterId } = req.body;
     const screenshotDir = path.join(ROOT_DIR, 'user_data', 'screenshots');
     if (!fs.existsSync(screenshotDir)) {
       fs.mkdirSync(screenshotDir, { recursive: true });
     }
 
+    // Capture primary display buffer as a JPEG buffer
     const imgBuffer = await screenshot({ format: 'jpg' });
-    const filename = `screenshot_${Date.now()}.jpg`;
+    
+    // Sanitize character ID to prevent invalid filename characters
+    const cleanCharId = characterId ? `${String(characterId).replace(/[^a-zA-Z0-9_-]/g, '')}_` : '';
+    const filename = `screenshot_${cleanCharId}${Date.now()}.jpg`;
     const filePath = path.join(screenshotDir, filename);
     fs.writeFileSync(filePath, imgBuffer);
 
@@ -1756,7 +1761,252 @@ app.post('/tool/shell', async (req, res) => {
   }
 });
 
-// ── Virtual Vision (Targeted Window & Region Cropping) ──────────────
+const PITCH_CLASSES = [
+  { sharp: 'C',  flat: 'C',  dual: 'C',       solfege: 'Do' },
+  { sharp: 'C#', flat: 'Db', dual: 'C#/Db',   solfege: 'Do#' },
+  { sharp: 'D',  flat: 'D',  dual: 'D',       solfege: 'Re' },
+  { sharp: 'D#', flat: 'Eb', dual: 'D#/Eb',   solfege: 'Re#' },
+  { sharp: 'E',  flat: 'E',  dual: 'E',       solfege: 'Mi' },
+  { sharp: 'F',  flat: 'F',  dual: 'F',       solfege: 'Fa' },
+  { sharp: 'F#', flat: 'Gb', dual: 'F#/Gb',   solfege: 'Fa#' },
+  { sharp: 'G',  flat: 'G',  dual: 'G',       solfege: 'Sol' },
+  { sharp: 'G#', flat: 'Ab', dual: 'G#/Ab',   solfege: 'Sol#' },
+  { sharp: 'A',  flat: 'A',  dual: 'A',       solfege: 'La' },
+  { sharp: 'A#', flat: 'Bb', dual: 'A#/Bb',   solfege: 'La#' },
+  { sharp: 'B',  flat: 'B',  dual: 'B',       solfege: 'Ti' },
+] as const;
+
+let serverHearingProcess: ChildProcess | null = null;
+let serverHearingChunks: Buffer[] = [];
+let serverHearingTimer: NodeJS.Timeout | null = null;
+let isServerHearingActive = false;
+
+function serverDetectPitch(buffer: Float32Array, sampleRate: number): { pitch: number; clarity: number } | null {
+  const size = buffer.length;
+  let sumOfSquares = 0;
+  for (let i = 0; i < size; i++) sumOfSquares += buffer[i] * buffer[i];
+  const rms = Math.sqrt(sumOfSquares / size);
+  if (rms < 0.015) return null;
+
+  const windowSize = Math.floor(size / 2);
+  const minLag = Math.max(2, Math.floor(sampleRate / 8000));
+  const maxLag = Math.min(windowSize - 1, Math.ceil(sampleRate / 16));
+  if (minLag >= maxLag) return null;
+
+  const nsdf = new Float32Array(maxLag + 1);
+  let m0 = 0;
+  for (let j = 0; j < windowSize; j++) m0 += buffer[j] * buffer[j] + buffer[j] * buffer[j];
+
+  let runningM = m0;
+  for (let tau = 1; tau <= maxLag; tau++) {
+    const prevSample = buffer[tau - 1];
+    const nextSample = buffer[tau + windowSize - 1];
+    runningM = runningM - (prevSample * prevSample) + (nextSample * nextSample);
+
+    if (tau >= minLag) {
+      let r = 0;
+      for (let j = 0; j < windowSize; j++) r += buffer[j] * buffer[j + tau];
+      nsdf[tau] = runningM > 0 ? (2 * r) / runningM : 0;
+    }
+  }
+
+  const localPeaks: number[] = [];
+  let globalMaxVal = 0;
+  for (let tau = minLag; tau < maxLag; tau++) {
+    if (nsdf[tau] > 0) {
+      if (nsdf[tau] > nsdf[tau - 1] && nsdf[tau] >= nsdf[tau + 1]) {
+        localPeaks.push(tau);
+        if (nsdf[tau] > globalMaxVal) globalMaxVal = nsdf[tau];
+      }
+    }
+  }
+
+  if (globalMaxVal < 0.65 || localPeaks.length === 0) return null;
+
+  const peakThreshold = globalMaxVal * 0.85;
+  let chosenPeak = localPeaks[0];
+  for (const peak of localPeaks) {
+    if (nsdf[peak] >= peakThreshold) {
+      chosenPeak = peak;
+      break;
+    }
+  }
+
+  const y0 = nsdf[chosenPeak - 1];
+  const y1 = nsdf[chosenPeak];
+  const y2 = nsdf[chosenPeak + 1];
+  const denom = y0 - 2 * y1 + y2;
+  const delta = denom !== 0 ? (y0 - y2) / (2 * denom) : 0;
+  const refinedLag = chosenPeak + delta;
+  if (refinedLag <= 0) return null;
+
+  const fundamentalFreq = sampleRate / refinedLag;
+  if (fundamentalFreq < 16 || fundamentalFreq > 8000) return null;
+
+  return { pitch: fundamentalFreq, clarity: Math.max(0, Math.min(1, y1 - 0.25 * (y0 - y2) * delta)) };
+}
+
+function serverFrequencyToRichNote(freq: number): string | null {
+  if (freq < 16 || freq > 8000) return null;
+  const exactMidi = 12 * Math.log2(freq / 440) + 69;
+  const roundedMidi = Math.round(exactMidi);
+  const cents = Math.round((exactMidi - roundedMidi) * 100);
+  if (Math.abs(cents) > 35) return null;
+
+  const pitchClass = ((roundedMidi % 12) + 12) % 12;
+  const octave = Math.floor(roundedMidi / 12) - 1;
+  const info = PITCH_CLASSES[pitchClass];
+  const centsTag = Math.abs(cents) >= 5 ? `(${cents > 0 ? '+' : ''}${cents}¢)` : '';
+  return `${info.dual}${octave}${centsTag}`;
+}
+
+function stopServerHearingStream(): void {
+  if (serverHearingTimer) {
+    clearTimeout(serverHearingTimer);
+    serverHearingTimer = null;
+  }
+  if (serverHearingProcess) {
+    try {
+      serverHearingProcess.kill('SIGTERM');
+    } catch {}
+    serverHearingProcess = null;
+  }
+  isServerHearingActive = false;
+}
+
+app.post('/tool/virtual-hearing', (req, res) => {
+  const { action = 'start', duration = 30 } = req.body;
+  const normalizedAction = String(action).toLowerCase();
+
+  // 1. START LISTENING SESSION
+  if (normalizedAction === 'start') {
+    stopServerHearingStream();
+
+    serverHearingChunks = [];
+    isServerHearingActive = true;
+
+    const durationSec = Math.max(5, Math.min(120, Number(duration) || 30));
+
+    const audioArgs = IS_WINDOWS 
+      ? ['-y', '-f', 'wasapi', '-i', 'default', '-t', durationSec.toString(), '-ar', '16000', '-ac', '1', '-f', 'f32le', 'pipe:1']
+      : IS_MACOS
+      ? ['-y', '-f', 'avfoundation', '-i', ':default', '-t', durationSec.toString(), '-ar', '16000', '-ac', '1', '-f', 'f32le', 'pipe:1']
+      : ['-y', '-f', 'pulse', '-i', 'default', '-t', durationSec.toString(), '-ar', '16000', '-ac', '1', '-f', 'f32le', 'pipe:1'];
+
+    try {
+      serverHearingProcess = spawn('ffmpeg', audioArgs, { stdio: ['ignore', 'pipe', 'ignore'] });
+      
+      serverHearingProcess.stdout?.on('data', (data: Buffer) => {
+        if (isServerHearingActive) {
+          serverHearingChunks.push(data);
+        }
+      });
+
+      serverHearingProcess.on('error', (err) => {
+        log.warn(`[VirtualHearing] FFmpeg loopback error: ${err.message}`);
+        stopServerHearingStream();
+      });
+
+      // Auto-stop safety timer
+      serverHearingTimer = setTimeout(() => {
+        stopServerHearingStream();
+      }, durationSec * 1000);
+
+      return res.json({
+        success: true,
+        active: true,
+        message: `Ears opened on host server. Actively recording desktop audio for up to ${durationSec}s. Call action="stop" or action="end" when finished.`,
+      });
+    } catch (err: any) {
+      stopServerHearingStream();
+      return res.status(500).json({ success: false, error: `Failed to start server audio capture: ${err.message}` });
+    }
+  }
+
+  // 2. STOP / END LISTENING SESSION & PROCESS CAPTURED BUFFER
+  if (normalizedAction === 'stop' || normalizedAction === 'end') {
+    const wasActive = isServerHearingActive;
+    const capturedChunks = [...serverHearingChunks];
+    stopServerHearingStream();
+
+    if (!wasActive && capturedChunks.length === 0) {
+      return res.json({
+        success: true,
+        active: false,
+        rawObservation: '[Virtual Hearing: Session already idle (no audio captured)].',
+        melody: [],
+        events: []
+      });
+    }
+
+    const combinedBuffer = Buffer.concat(capturedChunks);
+    const floatCount = Math.floor(combinedBuffer.length / 4);
+    const pcmData = new Float32Array(floatCount);
+    for (let i = 0; i < floatCount; i++) {
+      pcmData[i] = combinedBuffer.readFloatLE(i * 4);
+    }
+
+    if (pcmData.length === 0) {
+      return res.json({
+        success: true,
+        active: false,
+        rawObservation: '[Virtual Hearing Perception]\n- Ambient silence (no audio output detected during session).',
+        melody: [],
+        events: []
+      });
+    }
+
+    // Process Monophonic Melody Notes across the entire captured buffer
+    const detectedNotes: string[] = [];
+    const chunkSize = 2048;
+    for (let offset = 0; offset + chunkSize < pcmData.length; offset += chunkSize) {
+      const chunk = pcmData.subarray(offset, offset + chunkSize);
+      const pitchRes = serverDetectPitch(chunk, 16000);
+      if (pitchRes) {
+        const noteStr = serverFrequencyToRichNote(pitchRes.pitch);
+        if (noteStr && (!detectedNotes.length || detectedNotes[detectedNotes.length - 1] !== noteStr)) {
+          detectedNotes.push(noteStr);
+        }
+      }
+    }
+
+    // Process Physical RMS Energy & Acoustic Events
+    let sumSquares = 0;
+    for (let i = 0; i < pcmData.length; i++) sumSquares += pcmData[i] * pcmData[i];
+    const rms = Math.sqrt(sumSquares / pcmData.length);
+    const events: string[] = [];
+    if (rms > 0.15) events.push('Heavy Bass/Impact');
+    else if (rms > 0.05) events.push('Notification Sound');
+
+    // Space-free compact note sequence: "C4-Eb4-G4"
+    const melodyCompact = detectedNotes.slice(0, 12).join('-');
+    const lines: string[] = ['[Virtual Hearing Perception]'];
+    if (melodyCompact) lines.push(`- Melody:${melodyCompact}`);
+    if (events.length > 0) lines.push(`- Sounds:[${events.join(',')}]`);
+
+    const rawObservation = lines.length > 1 ? lines.join('\n') : '[Virtual Hearing Perception]\n- Ambient silence.';
+
+    return res.json({
+      success: true,
+      active: false,
+      rawObservation,
+      melody: melodyCompact ? [melodyCompact] : [],
+      events,
+    });
+  }
+
+  // 3. STATUS QUERY
+  if (normalizedAction === 'status') {
+    return res.json({
+      success: true,
+      active: isServerHearingActive,
+      message: isServerHearingActive ? 'Virtual hearing is currently ACTIVE and recording.' : 'Virtual hearing is currently IDLE (off).'
+    });
+  }
+
+  return res.status(400).json({ success: false, error: `Invalid action "${action}". Use "start", "stop", "end", or "status".` });
+});
+
 app.post('/tool/virtual-vision', async (req, res) => {
   const { target = 'active', appName, title, x, y, width, height } = req.body;
 

@@ -343,7 +343,7 @@ function filterArrayBasedOnTarget(
         }
     } else if (targetType === "narrator") {
         for (let i = 0; i < length; i++) {
-            if (characterIdArray[i] === '__ambient_narrator__') {
+            if (characterIdArray[i] === '___ambient_narrator___') {
                 extractedCharacterIdArray.push(characterIdArray[i]);
                 extractedTextContentArray.push(textContentArray[i]);
             }
@@ -1157,11 +1157,11 @@ function buildInventoryLines(ctx: PromptBuildContext): string[] {
         let stopwatches: { name: string; startTimestamp: number; pausedElapsedMs?: number }[] = [];
 
         for (const [key, value] of Object.entries(latestInventory)) {
-            if (key === '__notes__') {
+            if (key === '___notes___') {
                 try { notes = JSON.parse(value as string); } catch { }
-            } else if (key === '__timers__') {
+            } else if (key === '___timers___') {
                 try { timers = JSON.parse(value as string); } catch { }
-            } else if (key === '__stopwatches__') {
+            } else if (key === '___stopwatches___') {
                 try { stopwatches = JSON.parse(value as string); } catch { }
             } else {
                 userInventoryEntries.push(`${key}: ${value}`);

@@ -54,7 +54,7 @@ interface MessageBubbleProps {
     canDelete: boolean;
 }
 
-const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
+const AMBIENT_NARRATOR_ID = '___ambient_narrator___';
 
 export const MessageBubble = React.memo(function MessageBubble({
     message, index, viewMode, protagonistIds, localProtagonistId,

@@ -10,7 +10,7 @@ import { getAudioEngine } from './AudioEngine';
 import { generateCharacterMemory } from './ChatMessageSummarizationEngine';
 import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
-import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, setSystemPower, clipboardAction, captureScreenshot, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, captureVirtualVision, sendVirtualInput, sendVirtualController, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
+import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, setSystemPower, clipboardAction, captureScreenshot, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, captureVirtualHearing, captureVirtualVision, sendVirtualInput, sendVirtualController, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
 import { buildSearchUrl } from '../utilities/searchURLBuilder';
 import { getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
 import { getLocationMessageHistory } from '../utilities/timelineLogic';
@@ -208,12 +208,12 @@ export function parsePythonArgs(rawArgs: string): ArgAccessor {
 }
 
 export function loadPendingToolActions(inventory: Inventory | undefined): PendingToolAction[] {
-  if (!inventory || typeof inventory['__pending_tool_actions__'] !== 'string') return [];
-  try { return JSON.parse(inventory['__pending_tool_actions__'] as string); } catch { return []; }
+  if (!inventory || typeof inventory['___pending_tool_actions___'] !== 'string') return [];
+  try { return JSON.parse(inventory['___pending_tool_actions___'] as string); } catch { return []; }
 }
 
 export function savePendingToolActions(inventory: Inventory, actions: PendingToolAction[]): void {
-  if (actions.length === 0) { delete inventory['__pending_tool_actions__']; } else { inventory['__pending_tool_actions__'] = JSON.stringify(actions); }
+  if (actions.length === 0) { delete inventory['___pending_tool_actions___']; } else { inventory['___pending_tool_actions___'] = JSON.stringify(actions); }
 }
 
 function appendPendingAction(nextMessage: BaseMessage, action: PendingToolAction): void {
@@ -280,11 +280,10 @@ export const TOOL_EMOJI_MAP: Record<tool, string> = {
     lock_screen: '🔒', sleep: '⚡', shutdown: '⚡', restart: '⚡', 
     clipboard: '📋', screenshot: '📸', front_camera: '📷', network_scanner: '🌐',
     file_watcher: '📂', process_monitor: '⚙️', window_monitor: '🖥️',
-    trash: '🗑️', browser: '🌐', read_file: '🔗', write_file: '📁',
-    shell: '💻', virtual_vision: '👁️', virtual_input: '🖱️', virtual_controller: '🎮',
+    trash: '🗑️', browser: '🌐', read_file: '🔗', write_file: '📁', shell: '💻',
+    virtual_hearing: '🎧', virtual_vision: '👁️', virtual_input: '🖱️', virtual_controller: '🎮',
     hardware_control: '🔌',
 };
-
 
 const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, displayMode?: toolUsageDisplayMode) => ToolResult | Promise<ToolResult>> = {
   whisper: executeWhisper,
@@ -345,6 +344,7 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
   read_file: executeReadFile,
   write_file: executeWriteFile,
   shell: executeShell,
+  virtual_hearing: executeVirtualHearing,
   virtual_vision: executeVirtualVision,
   virtual_input: executeVirtualInput,
   virtual_controller: executeVirtualController,
@@ -814,21 +814,21 @@ function formatDuration(ms: number): string {
 }
 
 function loadTimers(inventory: Inventory | undefined): TimerEntry[] {
-  if (!inventory || typeof inventory['__timers__'] !== 'string') return [];
-  try { return JSON.parse(inventory['__timers__'] as string); } catch { return []; }
+  if (!inventory || typeof inventory['___timers___'] !== 'string') return [];
+  try { return JSON.parse(inventory['___timers___'] as string); } catch { return []; }
 }
 
 function saveTimers(inventory: Inventory, timers: TimerEntry[]): void {
-  if (timers.length === 0) delete inventory['__timers__']; else inventory['__timers__'] = JSON.stringify(timers);
+  if (timers.length === 0) delete inventory['___timers___']; else inventory['___timers___'] = JSON.stringify(timers);
 }
 
 function loadStopwatches(inventory: Inventory | undefined): StopwatchEntry[] {
-  if (!inventory || typeof inventory['__stopwatches__'] !== 'string') return [];
-  try { return JSON.parse(inventory['__stopwatches__'] as string); } catch { return []; }
+  if (!inventory || typeof inventory['___stopwatches___'] !== 'string') return [];
+  try { return JSON.parse(inventory['___stopwatches___'] as string); } catch { return []; }
 }
 
 function saveStopwatches(inventory: Inventory, stopwatches: StopwatchEntry[]): void {
-  if (stopwatches.length === 0) delete inventory['__stopwatches__']; else inventory['__stopwatches__'] = JSON.stringify(stopwatches);
+  if (stopwatches.length === 0) delete inventory['___stopwatches___']; else inventory['___stopwatches___'] = JSON.stringify(stopwatches);
 }
 
 // ─── Timer ──────────────────────────────────────────────────────────
@@ -969,12 +969,12 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
 interface ScheduleEntry { name: string; triggerTimestamp: number; action: string; repeatIntervalMs?: number }
 
 function loadSchedules(inventory: Inventory | undefined): ScheduleEntry[] {
-  if (!inventory || typeof inventory['__schedules__'] !== 'string') return [];
-  try { return JSON.parse(inventory['__schedules__'] as string); } catch { return []; }
+  if (!inventory || typeof inventory['___schedules___'] !== 'string') return [];
+  try { return JSON.parse(inventory['___schedules___'] as string); } catch { return []; }
 }
 
 function saveSchedules(inventory: Inventory, schedules: ScheduleEntry[]): void {
-  if (schedules.length === 0) delete inventory['__schedules__']; else inventory['__schedules__'] = JSON.stringify(schedules);
+  if (schedules.length === 0) delete inventory['___schedules___']; else inventory['___schedules___'] = JSON.stringify(schedules);
 }
 
 function executeSchedule(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
@@ -1260,7 +1260,7 @@ function executeNote(args: string, nextMessage: BaseMessage, interactionData: In
   const latest = findLatestMessage(interactionData, nextMessage.character);
   const inventory = latest?.message?.inventory ? { ...latest.message.inventory } : {};
   let notes: Record<string, string> = {};
-  try { notes = JSON.parse((inventory['__notes__'] as string) || '{}'); } catch { notes = {}; }
+  try { notes = JSON.parse((inventory['___notes___'] as string) || '{}'); } catch { notes = {}; }
 
   switch (action) {
     case 'set': {
@@ -1268,7 +1268,7 @@ function executeNote(args: string, nextMessage: BaseMessage, interactionData: In
       const text = pArgs.get(2, 'text', 'content', 'value') || pArgs.positional.slice(2).join(' ');
       if (!key || !text) return { toolType: 'note', args, content: '[Error: note(action="set", key="...", text="...") requires key and text]', displayReplacement: '[Error: Usage]' };
       notes[key] = text;
-      inventory['__notes__'] = JSON.stringify(notes);
+      inventory['___notes___'] = JSON.stringify(notes);
       nextMessage.inventory = inventory;
       return { toolType: 'note', args, content: `Saved note "${key}".`, displayReplacement: `[📝 Note: "${key}"]` };
     }
@@ -1279,7 +1279,7 @@ function executeNote(args: string, nextMessage: BaseMessage, interactionData: In
     case 'delete': {
       const key = pArgs.get(1, 'key', 'name');
       if (key) delete notes[key];
-      inventory['__notes__'] = JSON.stringify(notes);
+      inventory['___notes___'] = JSON.stringify(notes);
       nextMessage.inventory = inventory;
       return { toolType: 'note', args, content: `Deleted note "${key}".`, displayReplacement: `[📝 Deleted "${key}"]` };
     }
@@ -1305,7 +1305,7 @@ function executeInventory(args: string, nextMessage: BaseMessage, interactionDat
 
   switch (action) {
     case 'list': {
-      const items = Object.entries(inventory).filter(([k]) => !k.startsWith('__')).map(([k, v]) => `${k}: ${v}`);
+      const items = Object.entries(inventory).filter(([k]) => !k.startsWith('___')).map(([k, v]) => `${k}: ${v}`);
       return { toolType: 'inventory', args, content: items.join('\n') || 'Empty inventory', displayReplacement: `[📦 ${items.length} item(s)]` };
     }
     case 'add': {
@@ -1341,12 +1341,12 @@ function executeInventory(args: string, nextMessage: BaseMessage, interactionDat
 
 // ─── Trade ──────────────────────────────────────────────────────────
 function loadTradeOffers(inventory: Inventory | undefined): TradeOffer[] {
-  if (!inventory || typeof inventory['__trade_offers__'] !== 'string') return [];
-  try { return JSON.parse(inventory['__trade_offers__'] as string); } catch { return []; }
+  if (!inventory || typeof inventory['___trade_offers___'] !== 'string') return [];
+  try { return JSON.parse(inventory['___trade_offers___'] as string); } catch { return []; }
 }
 
 function saveTradeOffers(inventory: Inventory, offers: TradeOffer[]): void {
-  if (offers.length === 0) delete inventory['__trade_offers__']; else inventory['__trade_offers__'] = JSON.stringify(offers);
+  if (offers.length === 0) delete inventory['___trade_offers___']; else inventory['___trade_offers___'] = JSON.stringify(offers);
 }
 
 function parseItemList(input: string): Record<string, number> {
@@ -1689,7 +1689,7 @@ function executeInspect(args: string, _nextMessage: BaseMessage, interactionData
   const latest = findLatestMessage(interactionData, targetChar);
   const loc = latest ? interactionData.locations?.find(l => l.id === latest.locationId)?.name || 'unknown' : 'unknown';
   const expr = latest?.message.characterExpression || 'neutral';
-  const items = Object.keys(latest?.message.inventory || {}).filter(k => !k.startsWith('__')).length;
+  const items = Object.keys(latest?.message.inventory || {}).filter(k => !k.startsWith('___')).length;
 
   return {
     toolType: 'inspect',
@@ -1818,7 +1818,7 @@ function executeScheduleResponse(args: string, nextMessage: BaseMessage): ToolRe
 
   const inventory = nextMessage.inventory ? { ...nextMessage.inventory } : {};
   let scheduled: any[] = [];
-  try { scheduled = JSON.parse(inventory['__scheduled_responses__'] as string || '[]'); } catch {}
+  try { scheduled = JSON.parse(inventory['___scheduled_responses___'] as string || '[]'); } catch {}
 
   scheduled.push({
     characterId: nextMessage.character.id,
@@ -1827,7 +1827,7 @@ function executeScheduleResponse(args: string, nextMessage: BaseMessage): ToolRe
     thought,
     createdAt: Date.now()
   });
-  inventory['__scheduled_responses__'] = JSON.stringify(scheduled);
+  inventory['___scheduled_responses___'] = JSON.stringify(scheduled);
   nextMessage.inventory = inventory;
 
   return {
@@ -2078,7 +2078,7 @@ async function executeScreenshot(
   _interactionData: InteractionData,
   context?: ToolExecutionContext
 ): Promise<ToolResult> {
-  const res = await captureScreenshot();
+  const res = await captureScreenshot(nextMessage.character?.id);
   if (!res.success || !res.base64) {
     return {
       toolType: 'screenshot',
@@ -2104,7 +2104,6 @@ async function executeScreenshot(
     displayReplacement: `[📸 Screenshot captured]`
   };
 }
-
 // ─── front_camera Tool ────────────────────────────────────────────────────
 async function executeFrontCamera(
   args: string,
@@ -2318,6 +2317,60 @@ async function executeShell(
   context?.addToast?.(`Shell executed: ${command}`, 'success');
   const output = res.stdout || res.stderr || '[Command executed with no output]';
   return { toolType: 'shell', args, content: output, displayReplacement: `[💻 Shell: "${command}"]` };
+}
+
+// ─── Virtual Hearing Tool ───────────────────────────────────────────
+async function executeVirtualHearing(
+  args: string,
+  _nextMessage: BaseMessage,
+  _interactionData: InteractionData,
+  context?: ToolExecutionContext
+): Promise<ToolResult> {
+  const pArgs = parsePythonArgs(args);
+  const rawAction = pArgs.get(0, 'action', 'command')?.toLowerCase();
+  let action: string = rawAction || 'start';
+  if (action === 'end') action = 'stop';
+
+  const duration = pArgs.getNumber(1, 'duration', 'timeout', 'time') ?? 30;
+
+  const res = await captureVirtualHearing({ action: action as any, duration });
+
+  if (!res.success) {
+    return {
+      toolType: 'virtual_hearing',
+      args,
+      content: `[Error: ${res.error || 'Server audio perception failed'}]`,
+      displayReplacement: '[❌ Hearing failed]'
+    };
+  }
+
+  if (action === 'start') {
+    context?.addToast?.('🎧 Virtual hearing: Ears opened on server', 'info');
+    return {
+      toolType: 'virtual_hearing',
+      args,
+      content: res.message || `Virtual hearing started on host server (${duration}s).`,
+      displayReplacement: `[🎧 Hearing Started (${duration}s)]`,
+    };
+  }
+
+  if (action === 'stop') {
+    context?.addToast?.('🎧 Virtual hearing: Ears closed & audio analyzed', 'info');
+    const badgeText = res.melody?.length ? `🎵 ${res.melody[0]}` : res.events?.length ? res.events[0] : 'Analyzed';
+    return {
+      toolType: 'virtual_hearing',
+      args,
+      content: res.rawObservation || '[Virtual Hearing Perception]\n- Ambient silence.',
+      displayReplacement: `[🎧 ${badgeText}]`,
+    };
+  }
+
+  return {
+    toolType: 'virtual_hearing',
+    args,
+    content: res.message || (res.active ? 'Hearing is ACTIVE.' : 'Hearing is IDLE.'),
+    displayReplacement: res.active ? '[🎧 Hearing: Active]' : '[🎧 Hearing: Idle]',
+  };
 }
 
 // ─── Virtual Vision Tool ────────────────────────────────────────────
@@ -2678,7 +2731,7 @@ export function processPendingToolActions(
   if (targetMsgIdx !== -1) {
     const cleanedMsg = { ...locMsgs[targetMsgIdx] } as ChatMessage;
     const cleanedInventory = cleanedMsg.inventory ? { ...cleanedMsg.inventory } : {};
-    delete cleanedInventory['__pending_tool_actions__'];
+    delete cleanedInventory['___pending_tool_actions___'];
     if (Object.keys(cleanedInventory).length === 0) delete cleanedMsg.inventory; else cleanedMsg.inventory = cleanedInventory;
 
     updatedData.interactionHistories[locId] = [...locMsgs];

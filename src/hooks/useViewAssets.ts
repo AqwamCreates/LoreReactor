@@ -6,7 +6,7 @@ import { getCurrentLocationId } from '../utilities/locationLogic';
 import { getLocalMessageHistory } from '../utilities/timelineLogic';
 import type { viewMode } from '../components/views/types';
 
-const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
+const AMBIENT_NARRATOR_ID = '___ambient_narrator___';
 
 interface UseViewAssetsOptions {
     viewMode: viewMode;

@@ -58,7 +58,7 @@ interface RawMatch {
 
 const PATTERNS: { regex: RegExp; category: FormatCategory; innerGroup: number }[] = [
     { regex: /\*\*(.+?)\*\*/gs, category: 'bold', innerGroup: 1 },
-    { regex: /__(.+?)__/gs, category: 'bold', innerGroup: 1 },
+    { regex: /___(.+?)___/gs, category: 'bold', innerGroup: 1 },
     { regex: /~~(.+?)~~/gs, category: 'strikethrough', innerGroup: 1 },
     { regex: /\*(.+?)\*/gs, category: 'italics', innerGroup: 1 },
     { regex: /_(.+?)_/gs, category: 'italics', innerGroup: 1 },

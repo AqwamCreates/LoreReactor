@@ -4,7 +4,7 @@ import type { Character } from '../types';
 const now = Date.now();
 
 export const AMBIENT_NARRATOR: Character = {
-    id: '__ambient_narrator__', name: '', description: 'Ambient environment narration',
+    id: '___ambient_narrator___', name: '', description: 'Ambient environment narration',
     systemPrompt: '', initiativeWeight: 0, chatProbability: 1, maximumChatStamina: 1,
     memories: {},
     numberOfMessagesToDisableThinkPrompt: 0,
