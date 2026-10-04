@@ -4,38 +4,23 @@ import { useChatEngine } from './useChatEngine';
 import { useChatUI } from './useChatUI';
 import { useToast } from '../context/ToastContext';
 import { createChatMessage, convertIdsToDisplayNames, createNewInteractionData } from '../utilities/chatLogic';
-import { processPendingToolActions, executeTool, type ToolExecutionContext } from '../services/ToolExecutor';
-import { parseSlashCommand } from '../services/ToolInvocationParser';
+import { processPendingToolActions, type ToolExecutionContext } from '../services/ToolExecutor'; // Removed executeTool
 import { runSummarization } from '../services/SummarizationEngine';
 import { consumeChatStaminaForMessage } from '../utilities/characterLogic';
-import { getCurrentLocationId, findReachableLocationByRegularExpression } from '../utilities/locationLogic';
-import { detectName } from '../utilities/nameDetection';
-import { getFilteredChatMessages } from '../utilities/promptLogic';
+import { getCurrentLocationId } from '../utilities/locationLogic'; // Removed findReachableLocationByRegularExpression
+import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/timelineLogic';
 import { deleteRawMessage } from '../storages/serverStorage';
 import { useThrottledStream } from './useThrottledStream';
 import { useCharacterResponseLock } from './useCharacterResponseLock';
 import { useAmbientNarration } from './useAmbientNarration';
 import { useSessionStore } from './useSessionStore';
-import type { RequestMetadata } from '../services/BudgetStrategyEngine';
-import { learnFromUserMessage } from '../services/ActionFormatEngine';
+import { type RequestMetadata } from '../services/BudgetStrategyEngine';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { MultiplayerEvents } from '../services/MultiplayerEvents';
-import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/timelineLogic';
-import {
-    computeModulatedRegenAmounts,
-    computeChatStaminaConsumptionCost,
-    computeMovementCost
-} from '../utilities/dynamicCharacterLogic';
-import {
-    generateChatStaminaForInteractionData,
-    generateActionStaminaForInteractionData
-} from '../utilities/characterLogic';
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from 'uuid'; // Kept just in case, but mostly unused now
 
 import {
-    NO_ARG_TOOLS,
-    HOST_ONLY_TOOLS,
     hasTextContent,
     finalizeMessageById,
     findLastAIMessageId,
@@ -46,13 +31,12 @@ import {
 } from '../utilities/chatSessionLogic';
 import { useSpeculativeStreamHandler } from './useSpeculativeStreamHandler';
 import { useChatSessionEffects } from './useChatSessionEffects';
+import { useChatSender } from './useChatSender'; // ✅ NEW
 
 import type {
-    Character, Context, Location, AudioTrack, World,
-    PromptBlock, Sampler, StopPattern, BudgetStrategy,
+    Character, PromptBlock,
     Profile, InteractionData, ChatMessage, WhisperMessage,
-    HistoryMessage, Memory, Extension, Account,
-    MultiplayerData, LanguageModel, InterjectableAction
+    HistoryMessage, LanguageModel
 } from '../types';
 import { useFrontCamera } from './useFrontCamera';
 
@@ -62,20 +46,20 @@ interface UseChatSessionOptions {
     isMultiplayerClient?: boolean;
     joinProtagonist?: Character | null;
     allCharacters?: Character[];
-    allContexts?: Context[];
-    allLocations?: Location[];
-    allAudioTracks?: AudioTrack[];
+    allContexts?: any[];
+    allLocations?: any[];
+    allAudioTracks?: any[];
     allPromptBlocks?: PromptBlock[];
-    allSamplers?: Sampler[];
-    allStopPatterns?: StopPattern[];
-    allBudgetStrategies?: BudgetStrategy[];
+    allSamplers?: any[];
+    allStopPatterns?: any[];
+    allBudgetStrategies?: any[];
     allProfiles?: Profile[];
-    allWorlds?: World[];
-    allMemories?: Memory[];
-    allExtensions?: Extension[];
-    allAccounts?: Account[];
-    allMultiplayerData?: MultiplayerData[];
-    allActions?: InterjectableAction[];
+    allWorlds?: any[];
+    allMemories?: any[];
+    allExtensions?: any[];
+    allAccounts?: any[];
+    allMultiplayerData?: any[];
+    allActions?: any[];
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
     requestPeerInference?: (peerAccountId: string, modelName: string, promptOrMessages: any, onToken: (token: string) => void, signal?: AbortSignal) => Promise<void>;
 }
@@ -127,7 +111,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     useEffect(() => { allMultiplayerDataRef.current = options?.allMultiplayerData ?? []; }, [options?.allMultiplayerData]);
     useEffect(() => { allActionsRef.current = options?.allActions ?? []; }, [options?.allActions]);
 
-    // ─── Zustand Selectors (Replaces useChatState) ───────────────────
+    // ─── Zustand Selectors ───────────────────────────────────────────
     const interactionData = useSessionStore(s => s.interactionData);
     const localProtagonist = useSessionStore(s => s.localProtagonist);
     const activeStrategy = useSessionStore(s => s.activeStrategy);
@@ -452,9 +436,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             const turnResult = await chatEngine.runTurn(data, ctrl, allPromptBlocks, metadata, existingCharacterText);
             let ud = turnResult.interactionData;
 
-            // 🛡️ CRITICAL FIX: Force a new reference if the orchestrator returned the exact same object reference.
-            // In-place mutations by the CharacterActor/Orchestrator will cause Zustand to ignore the update,
-            // preventing useChatAutoSave from firing and leaving AI messages unsaved on disk.
             if (ud === data) {
                 ud = { 
                     ...ud, 
@@ -533,7 +514,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             } else {
                 const enableAmbientNarration = ud?.profile?.enableAmbientNarration ?? false;
                 if (enableAmbientNarration) {
-                    // ✅ FIX: Use the protagonistId passed directly into the pipeline instead of reaching for state
                     const ad = await generateAmbientNarration(ud, ctrl.signal, protagonistId);
                     const sd = ad || ud;
                     setInteractionData(sd);
@@ -613,213 +593,23 @@ export function useChatSession(options: UseChatSessionOptions) {
         triggerDelayedResponseRef.current = triggerDelayedResponse;
     }, [triggerDelayedResponse]);
 
-    const sendMessage = useCallback(async (
-        text: string,
-        allPromptBlocks: PromptBlock[] | undefined,
-        files: File[] | undefined,
-        frontCameraImageBase64: string | undefined
-    ) => {
-        const currentState = getState();
-        const activeCharacter = isMultiplayerClient
-            ? (joinProtagonistRef.current || currentState.localProtagonist)
-            : currentState.localProtagonist;
-
-        if (!currentState.interactionData || !activeCharacter || (!text && (!files || !files.length))) return;
-
-        const slashInvocation = parseSlashCommand(text);
-        const isSlashCommand = !!(slashInvocation && !files?.length && !frontCameraImageBase64);
-
-        if (isSlashCommand && slashInvocation) {
-            if (isMultiplayerClient && HOST_ONLY_TOOLS.includes(slashInvocation.toolType)) {
-                const mpData = useSessionStore.getState().multiplayerData;
-                const accountId = useSessionStore.getState().currentAccountId;
-                const accountConfig = accountId ? mpData?.multiplayerDataAccountConfigurations[accountId] : undefined;
-                const isAdmin = accountConfig?.isAdministrator;
-
-                if (!isAdmin) {
-                    addToast(`/${slashInvocation.toolType} requires administrator privileges.`, 'error');
-                    return;
-                }
-            }
-
-            if (!slashInvocation.args && !NO_ARG_TOOLS.includes(slashInvocation.toolType)) {
-                addToast(`/${slashInvocation.toolType} requires arguments.`, 'error');
-                return;
-            }
-
-            if (!acquireLock()) { addToast('Already processing...', 'info'); return; }
-            try {
-                const slashMessage = createChatMessage(currentState.interactionData, activeCharacter, '', {});
-                const toolContext = buildToolContext();
-                const toolResult = await executeTool(
-                    slashInvocation,
-                    slashMessage,
-                    currentState.interactionData,
-                    toolContext,
-                    currentState.interactionData.profile?.toolUsageDisplayMode
-                );
-
-                const rawCmd = text;
-                const displayResult = toolResult.displayReplacement || toolResult.content || `[${slashInvocation.toolType}]`;
-
-                slashMessage.textContent = rawCmd;
-                slashMessage.processedTextContent = displayResult !== rawCmd ? displayResult : undefined;
-
-                const preSlashData = currentState.interactionData;
-                const currentLocId = getCurrentLocationId(currentState.interactionData, activeCharacter) || 'global';
-                const newHistories = { ...currentState.interactionData.interactionHistories };
-                if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
-                newHistories[currentLocId].push(slashMessage);
-
-                let updatedData = { ...currentState.interactionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
-                updatedData = processPendingToolActions(updatedData, allCharactersRef.current, { onToast: addToast });
-
-                broadcastToolStateChanges(preSlashData, updatedData, onStateBroadcastRef.current);
-                setInteractionData(updatedData);
-
-                if (isMultiplayerClient) {
-                    onMessageBroadcastRef.current?.(slashMessage);
-                    releaseLock();
-                    return;
-                }
-
-                await executeTurnPipeline({
-                    data: updatedData,
-                    protagonistId: activeCharacter.id,
-                    allPromptBlocks,
-                    errorPrefix: 'Send failed',
-                    lockAlreadyAcquired: true,
-                });
-                return;
-            } catch (e) {
-                console.error('Slash command failed:', e);
-                addToast(`Command failed: ${(e as Error).message}`, 'error');
-                releaseLock();
-                return;
-            }
-        }
-
-        if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
-
-        try {
-            const currentInteractionData = currentState.interactionData;
-
-            const { chatRegen, actionRegen } = computeModulatedRegenAmounts(activeCharacter, currentInteractionData);
-            if (chatRegen > 0) {
-                generateChatStaminaForInteractionData(currentInteractionData, chatRegen, activeCharacter);
-            }
-            if (actionRegen > 0) {
-                generateActionStaminaForInteractionData(currentInteractionData, actionRegen, activeCharacter);
-            }
-
-            const convertFileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = () => resolve(reader.result as string);
-                reader.onerror = error => reject(error);
-            });
-            const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
-
-            const filteredMessages = getFilteredChatMessages(currentInteractionData, activeCharacter.id, allPromptBlocks || []);
-            const knownCharacterNames = detectName(activeCharacter, filteredMessages, text);
-
-            const chatMessage = createChatMessage(currentInteractionData, activeCharacter, text, {
-                files: encodedFiles,
-                frontCameraImage: frontCameraImageBase64,
-                knownCharacterNames
-            });
-
-            const paragraphs = (text.match(/\n\n/g) || []).length + 1;
-            const chatCost = computeChatStaminaConsumptionCost(activeCharacter, currentInteractionData, paragraphs);
-            if (chatCost > 0) {
-                consumeChatStaminaForMessage(chatMessage, chatCost);
-            }
-
-            const currentLocId = getCurrentLocationId(currentInteractionData, activeCharacter) || 'global';
-            const newHistories = { ...currentInteractionData.interactionHistories };
-            if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
-            newHistories[currentLocId].push(chatMessage);
-
-            let td = { ...currentInteractionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
-
-            onMessageBroadcastRef.current?.(chatMessage);
-
-            if (allActionsRef.current.length > 0) {
-                let prevWrap: '*' | '()' | 'none' | 'unknown' = 'unknown';
-                const localHistory = getLocalMessageHistory(td, activeCharacter);
-                for (let i = localHistory.length - 2; i >= 0; i--) {
-                    const prevMsg = localHistory[i];
-                    if (hasTextContent(prevMsg)) {
-                        const prevText = prevMsg.textContent;
-                        if (prevText.includes('*')) prevWrap = '*';
-                        else if (prevText.includes('(') && prevText.includes(')')) prevWrap = '()';
-                        else prevWrap = 'none';
-                        break;
-                    }
-                }
-                learnFromUserMessage(text, allActionsRef.current.map(a => a.label), prevWrap);
-            }
-
-            const hasLocations = td.locations && td.locations.length > 0;
-            if (hasLocations) {
-                const currentLocId = getCurrentLocationId(td, activeCharacter);
-                const regexLoc = findReachableLocationByRegularExpression(td, chatMessage.textContent, activeCharacter);
-                const finalLocId = regexLoc?.id ?? currentLocId;
-
-                if (currentLocId && finalLocId && finalLocId !== currentLocId) {
-                    let currentActionStamina = chatMessage.remainingActionStamina;
-                    const movementCost = computeMovementCost(currentLocId, finalLocId, td.locations);
-                    if (movementCost > 0 && currentActionStamina !== undefined) {
-                        currentActionStamina = Math.max(0, currentActionStamina - movementCost);
-                    }
-
-                    const arrivalInteraction: HistoryMessage = {
-                        messageType: 'interaction',
-                        id: uuidv4(),
-                        character: { ...activeCharacter },
-                        isPresent: true,
-                        remainingChatStamina: chatMessage.remainingChatStamina,
-                        remainingActionStamina: currentActionStamina,
-                        characterClothingWearingStatuses: chatMessage.characterClothingWearingStatuses,
-                        characterLockedLocations: chatMessage.characterLockedLocations,
-                        parentMessageId: chatMessage.id,
-                        firstCreatedTimestamp: chatMessage.firstCreatedTimestamp + 1,
-                        lastUpdatedTimestamp: chatMessage.firstCreatedTimestamp + 1,
-                    };
-
-                    onMessageBroadcastRef.current?.(arrivalInteraction);
-
-                    const updatedHistories = { ...td.interactionHistories };
-                    if (!updatedHistories[finalLocId]) {
-                        updatedHistories[finalLocId] = [];
-                    }
-                    updatedHistories[finalLocId].push(arrivalInteraction);
-                    td = { ...td, interactionHistories: updatedHistories, lastUpdatedTimestamp: Date.now() };
-                }
-            }
-
-            setInteractionData(td);
-
-            if (isMultiplayerClient) {
-                releaseLock();
-                return;
-            }
-
-            await executeTurnPipeline({
-                data: td,
-                protagonistId: activeCharacter.id,
-                allPromptBlocks,
-                errorPrefix: 'Send failed',
-                lockAlreadyAcquired: true,
-            });
-        } catch (e) {
-            console.error('Send error:', e);
-            releaseLock();
-        }
-    }, [
-        getState, isMultiplayerClient, buildToolContext, addToast,
-        acquireLock, releaseLock, executeTurnPipeline, setInteractionData
-    ]);
+    // ─── Message Input Sender (Extracted) ────────────────────────────
+    const { sendMessage, sendActionAndGetResponse } = useChatSender({
+        isMultiplayerClient,
+        joinProtagonistRef,
+        allCharactersRef,
+        allActionsRef,
+        allPromptBlocksRef,
+        onMessageBroadcastRef,
+        onStateBroadcastRef,
+        buildToolContext,
+        executeTurnPipeline,
+        acquireLock,
+        releaseLock,
+        addToast,
+        setInteractionData,
+        getState,
+    });
 
     const triggerHostResponse = useCallback(async () => {
         const currentState = getState();
@@ -853,51 +643,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         return unsubscribe;
     }, [isMultiplayerClient, triggerHostResponse]);
-
-    const sendActionAndGetResponse = useCallback(async (
-        actionText: string,
-        _targetChar: Character,
-        protagonist: Character
-    ) => {
-        const currentState = getState();
-        const currentInteractionData = currentState.interactionData;
-        if (!currentInteractionData) return;
-        if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
-
-        const activeProtagonist = isMultiplayerClient
-            ? (joinProtagonistRef.current || protagonist)
-            : protagonist;
-
-        const filteredMessages = getFilteredChatMessages(currentInteractionData, activeProtagonist.id, allPromptBlocksRef.current || []);
-        const knownCharacterNames = detectName(activeProtagonist, filteredMessages);
-
-        const chatMessage = createChatMessage(currentInteractionData, activeProtagonist, actionText, { knownCharacterNames });
-
-        const currentLocId = getCurrentLocationId(currentInteractionData, activeProtagonist) || 'global';
-        const newHistories = { ...currentInteractionData.interactionHistories };
-        if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
-        newHistories[currentLocId].push(chatMessage);
-
-        const td = { ...currentInteractionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
-
-        onMessageBroadcastRef.current?.(chatMessage);
-        setInteractionData(td);
-
-        if (isMultiplayerClient) {
-            releaseLock();
-            return;
-        }
-
-        const allProtagonistIds = new Set(td.protagonistIds || [protagonist.id]);
-
-        await executeTurnPipeline({
-            data: td,
-            protagonistId: protagonist.id,
-            isProtagonistCharId: (id: string) => allProtagonistIds.has(id),
-            errorPrefix: 'Action failed',
-            lockAlreadyAcquired: true,
-        });
-    }, [getState, acquireLock, addToast, isMultiplayerClient, setInteractionData, executeTurnPipeline, releaseLock]);
 
     const stopGeneration = useCallback(() => {
         wasStoppedRef.current = true;
@@ -1113,8 +858,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         resumeGenerationRef.current = resumeGeneration;
     }, [resumeGeneration]);
 
-    // ✅ FIX: Changed signature to accept protagonistIds (string[]) instead of protagonists (Character[])
-    // to match the updated MessageBubble and ViewModeProps interfaces.
     const regenerateFromMessage = useCallback(async (
         messageId: string,
         protagonistIds: string[],
@@ -1193,7 +936,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, [setInteractionData, setSelectedCharacter, setState]);
 
     return {
-        // Explicit State (Replaces ...state)
         interactionData,
         localProtagonist,
         activeStrategy,
@@ -1205,14 +947,12 @@ export function useChatSession(options: UseChatSessionOptions) {
         currentCharacterExpression,
         streamingCharacter,
 
-        // Explicit Actions
         setInteractionData,
         setSelectedCharacter,
         setActiveBudgetStrategy: setActiveStrategy,
         setSelectedGlobalModel: setSelectedModel,
         updateRunningModels,
 
-        // UI & Session Hooks
         ...ui,
         sendMessage,
         stopGeneration,

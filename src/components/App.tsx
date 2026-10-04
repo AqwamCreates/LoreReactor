@@ -43,7 +43,7 @@ import { useMultiplayerSession } from '../hooks/useMultiplayerSession';
 import { useSessionEffects } from '../hooks/useSessionEffects';
 import { useChatAutoSave } from '../hooks/useChatAutoSave';
 import { useTokenCounter } from '../hooks/useTokenCounter';
-import { useMultiplayerBroadcast } from '../hooks/useMultiplayerBroadcast'; // ✅ NEW
+import { useMultiplayerBroadcast } from '../hooks/useMultiplayerBroadcast';
 
 // ─── Feature Hooks ───────────────────────────────────────────────────
 import { useChatSession } from '../hooks/useChatSession';
@@ -55,6 +55,7 @@ import { useEntityToggles } from '../hooks/useEntityToggles';
 import { useViewAssets } from '../hooks/useViewAssets';
 import { useMessageToolbar } from '../hooks/useMessageToolbar';
 import { useAppModals } from '../hooks/useAppModals';
+import { useMessageActions } from '../hooks/useMessageActions';
 
 // ─── Components ──────────────────────────────────────────────────────
 import { ActionMenu } from './ActionMenu';
@@ -68,7 +69,6 @@ import { ChatViewArea } from './views/ChatViewArea';
 import type { ViewModeProps, viewMode } from './views/types';
 import { defaultContextLength } from '../dictionaries/defaults';
 import '../main.css';
-import { useMessageActions } from '../hooks/useMessageActions';
 
 // ─── Types & Helpers ─────────────────────────────────────────────────
 
@@ -422,6 +422,10 @@ function App() {
     });
 
     // ─── Local UI State ──────────────────────────────────────────────
+    // ✅ FIX: Read editing state directly from Zustand since it was removed from useMessageActions
+    const editingId = useSessionStore(s => s.editingId);
+    const editDraft = useSessionStore(s => s.editDraft);
+
     const [viewMode, setViewMode] = useState<viewMode>('ladder');
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -476,11 +480,10 @@ function App() {
 
     // Auto-resize edit textarea when opened and as user types
     useEffect(() => { 
-        const { editingId } = useSessionStore.getState();
         if (!editTextAreaRef.current || !editingId) return; 
         editTextAreaRef.current.style.height = 'auto'; 
         editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`; 
-    }); // Subscribe to editingId
+    }, [editingId]);
 
     // ─── Derived Display Values ──────────────────────────────────────
     const canDelete = (!isMultiplayerChat || mp.multiplayerSync.isHost || mp.multiplayerSync.isAdministrator) && !isLoading;
@@ -588,10 +591,11 @@ function App() {
         } 
     }, [isInitializing, activeChatRestored, ensureChatsLoaded]);
 
+    // ✅ FIX: Use Zustand state directly instead of messageActions
     const wrappedSaveEdit = useCallback(async () => {
         await messageActions.handleSaveEdit();
-        if (isMultiplayerChat && messageActions.editingId) mp.multiplayerSync.broadcastMessageEdit(messageActions.editingId, messageActions.editDraft);
-    }, [messageActions, isMultiplayerChat, mp.multiplayerSync]);
+        if (isMultiplayerChat && editingId) mp.multiplayerSync.broadcastMessageEdit(editingId, editDraft);
+    }, [messageActions, isMultiplayerChat, mp.multiplayerSync, editingId, editDraft]);
 
     // ─── Input Handlers ──────────────────────────────────────────────
     const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
