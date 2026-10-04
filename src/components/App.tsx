@@ -656,16 +656,6 @@ function App() {
         if (isMultiplayerChat && messageActions.editingId) mp.multiplayerSync.broadcastMessageEdit(messageActions.editingId, messageActions.editDraft);
     }, [messageActions, isMultiplayerChat, mp.multiplayerSync]);
 
-    const wrappedDelete = useCallback(async (id: string) => {
-        await messageActions.handleDelete(id);
-        if (isMultiplayerChat) mp.multiplayerSync.broadcastMessageDelete(id);
-    }, [messageActions, isMultiplayerChat, mp.multiplayerSync]);
-
-    const wrappedBranch = useCallback((id: string) => {
-        if (isMultiplayerChat) mp.multiplayerSync.initiateBranch();
-        else messageActions.handleBranch(id);
-    }, [messageActions, isMultiplayerChat, mp.multiplayerSync]);
-
     // ─── Input Handlers ──────────────────────────────────────────────
     const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files ? Array.from(e.target.files) : [];
@@ -929,38 +919,22 @@ function App() {
 
     // ─── Base View Props (Stable, contains only committed messages) ───
     const baseViewProps: ViewModeProps = {
-        interactionData: interactionData!,
-        localProtagonistId,
         displayMessages: committedMessages as ChatMessage[],
-        selectedCharacterId: currentCharacter?.id,
-        editingId: messageActions.editingId, editDraft: messageActions.editDraft,
-        massDeleteId: messageActions.massDeleteId, isMassActive: messageActions.massDeleteId !== null,
-        massStartIndex, activeToolbarId: messageToolbar.activeToolbarId,
         portraitUrlCache: viewAssets.portraitUrlCache, displayNameCache,
-        characterScales: new Map(), centerAvatar: viewAssets.centerAvatar,
-        streamingPortraitUrl: viewAssets.streamingPortraitUrl,
         formattedStreamingText: null,
-        locationBackgroundUrl: viewAssets.locationBackgroundUrl, isLoading,
-        isEditingTitle: chatOps.isEditingTitle, editTitleValue: chatOps.editTitleValue,
         parentMessageId: interactionData?.parentMessageId ?? null,
         parentInteractionDataName: parentChatName,
-        streamingCharacter: null,
         chatHistoryRef, messageEndRef,
         editTextAreaRef, focusedMessageId, setFocusedMessageId,
         onAvatarClick: actionMenu.handleAvatarClick,
-        onStartEditing: messageActions.startEditing, onCancelEditing: messageActions.cancelEditing,
-        onSaveEdit: wrappedSaveEdit, onRegenerateFromEdit: messageActions.handleRegenerateFromEdit,
-        onResumeGeneration: (id: string) => resumeGeneration(id, promptBlocks.promptBlocks),
-        onCopyText: messageActions.handleCopyText, onRegenerateFromMessage: regenerateFromMessage,
-        onBranch: wrappedBranch, onClone: messageActions.handleClone, onDelete: wrappedDelete,
-        onSetMassDelete: messageActions.setMassDeleteId,
-        onMassDeleteConfirm: messageActions.handleMassDeleteConfirm,
-        onCancelMassDelete: () => messageActions.setMassDeleteId(null),
+        onSaveEdit: wrappedSaveEdit,
+        onResumeGeneration: (id: string) => resumeGeneration(id, promptBlocks.promptBlocks), onRegenerateFromMessage: regenerateFromMessage,
+        onCancelMassDelete: () => useSessionStore.getState().setMassDeleteId(null),
         onTouchStart: messageToolbar.handleBubbleTouchStart,
         onTouchEnd: messageToolbar.handleBubbleTouchEnd,
         onTouchMove: messageToolbar.handleBubbleTouchMove,
         suppressNextClickRef: messageToolbar.suppressNextClickRef,
-        setEditDraft: messageActions.setEditDraft,
+        setEditDraft: (draft: string) => useSessionStore.getState().setEditDraft(draft),
         onNavigateToBranchSource: handleNavigateToBranchSource,
         onStartEditTitle: chatOps.handleStartEditTitle, onSaveTitle: chatOps.handleSaveTitle,
         onCancelEditTitle: chatOps.cancelEditTitle, setEditTitleValue: chatOps.setEditTitleValue,
@@ -1033,7 +1007,6 @@ function App() {
                             safeMessages={committedMessages}
                             displayNameCache={displayNameCache}
                             isMultiplayerChat={isMultiplayerChat}
-                            localProtagonistId={localProtagonistId}
                         />
 
                         <ContextBar

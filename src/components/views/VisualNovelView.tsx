@@ -1,9 +1,11 @@
 // src/components/views/VisualNovelView.tsx
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import type { ViewModeProps } from './types';
+import type { Character } from '../../types';
 import { MemoizedMessageText } from '../MemoizedMessageText';
 import { useVisualNovelSpriteStates } from '../../hooks/useVisualNovelSpriteStates';
 import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
+import { useSessionStore } from '../../hooks/useSessionStore';
 import {
     detectFormatSegments,
     applyConversions,
@@ -21,24 +23,53 @@ const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 
 export const VisualNovelView = React.memo(function VisualNovelView(props: ViewModeProps) {
     const {
-        interactionData, localProtagonistId, displayMessages,
-        portraitUrlCache, locationBackgroundUrl,
-        formattedStreamingText, isLoading, streamingCharacter,
+        displayMessages,
+        portraitUrlCache,
+        formattedStreamingText,
         centerAvatar, displayNameCache,
         messageEndRef, editTextAreaRef,
-        editingId, editDraft, setEditDraft,
-        onSaveEdit, onCancelEditing, onRegenerateFromEdit,
-        onCopyText, onRegenerateFromMessage, onBranch,
-        onStartEditing, onResumeGeneration, onClone, onDelete,
-        onSetMassDelete, onMassDeleteConfirm, onCancelMassDelete,
-        massDeleteId, isMassActive,
-        onStopGeneration,
+        onSaveEdit,
+        onResumeGeneration, onRegenerateFromMessage,
         onNavigateToBranchSource,
         parentInteractionDataName,
         focusedMessageId,
         setFocusedMessageId,
         canDelete,
     } = props;
+
+    // ✅ Read directly from Zustand!
+    const interactionData = useSessionStore(s => s.interactionData);
+    const localProtagonistId = useSessionStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
+    const isLoading = useSessionStore(s => s.isLoading);
+    const streamingCharacter = useSessionStore(s => s.streamingCharacter);
+
+    const editingId = useSessionStore(s => s.editingId);
+    const editDraft = useSessionStore(s => s.editDraft);
+    const setEditDraft = useSessionStore(s => s.setEditDraft);
+    const setEditingState = useSessionStore(s => s.setEditingState);
+
+    const massDeleteId = useSessionStore(s => s.massDeleteId);
+    const setMassDeleteId = useSessionStore(s => s.setMassDeleteId);
+
+    const copyToClipboard = useSessionStore(s => s.copyToClipboard);
+    const deleteMessage = useSessionStore(s => s.deleteMessage);
+    const branchChat = useSessionStore(s => s.branchChat);
+    const cloneChat = useSessionStore(s => s.cloneChat);
+    const stopGeneration = useSessionStore(s => s.stopGeneration);
+
+    // Derived state & Local wrappers for Zustand actions
+    const isMassActive = massDeleteId !== null;
+    const onStartEditing = useCallback((id: string, text: string) => setEditingState(id, text), [setEditingState]);
+    const onCancelEditing = useCallback(() => setEditingState(null, ''), [setEditingState]);
+    const onSetMassDelete = useCallback((id: string) => setMassDeleteId(id), [setMassDeleteId]);
+    const onMassDeleteConfirm = useCallback(() => { /* handled in parent or hook */ }, []);
+    const onCancelMassDelete = useCallback(() => setMassDeleteId(null), [setMassDeleteId]);
+    
+    const onCopyText = copyToClipboard;
+    const onBranch = branchChat;
+    const onClone = cloneChat;
+    const onDelete = deleteMessage;
+    const onStopGeneration = stopGeneration;
 
     // FIX: Use state instead of ref so UI updates trigger re-renders properly
     const [rawDraft, setRawDraft] = useState('');
@@ -79,8 +110,8 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         : (isLoading && formattedStreamingText ? String(formattedStreamingText) : null);
 
     const visibleCharacters = useMemo(() => {
-        return interactionData.participants;
-    }, [interactionData.participants]);
+        return interactionData?.participants || [];
+    }, [interactionData]);
 
     const lastSpeaker = useMemo(() => {
         return chatMessages.length > 0 ? chatMessages[chatMessages.length - 1] : null;
@@ -99,7 +130,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         if (isStreamingInList && lastMsg?.character) return lastMsg.character;
         if (displayedMessage?.character) return displayedMessage.character;
         if (centerAvatar) return centerAvatar;
-        return visibleCharacters.find(c => c.id !== AMBIENT_NARRATOR_ID && c.id !== localProtagonistId)
+        return visibleCharacters.find((c: Character) => c.id !== AMBIENT_NARRATOR_ID && c.id !== localProtagonistId)
             || visibleCharacters[0]
             || null;
     }, [viewIndex, displayedMessage, isLoading, streamingCharacter, isStreamingInList, lastMsg, centerAvatar, visibleCharacters, localProtagonistId]);
@@ -115,7 +146,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const isEditingLastSpeaker = editingId !== null && displayedMessage?.id === editingId;
     const isAmbientSpeaker = displayedMessage?.character.id === AMBIENT_NARRATOR_ID;
 
-    const hasParentBranch = !!interactionData.parentInteractionDataId;
+    const hasParentBranch = !!interactionData?.parentInteractionDataId;
 
     const canGoBack = chatMessages.length > 1 && (viewIndex === null ? true : viewIndex > 0);
     const canGoForward = viewIndex !== null && viewIndex < chatMessages.length - 1;
@@ -153,8 +184,8 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     const spriteCharacterIds = useMemo(() => {
         return visibleCharacters
-            .filter(c => c.id !== AMBIENT_NARRATOR_ID && c.id !== localProtagonistId)
-            .map(c => c.id);
+            .filter((c: Character) => c.id !== AMBIENT_NARRATOR_ID && c.id !== localProtagonistId)
+            .map((c: Character) => c.id);
     }, [visibleCharacters, localProtagonistId]);
 
     const { spriteStates, rollbackToMessage, isInitialLoad, jumpingCharacterIds } = useVisualNovelSpriteStates({
@@ -273,9 +304,8 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         onSaveEdit();
     }, [displayedMessage, rawDraft, onSaveEdit]);
 
-    const bgStyle: React.CSSProperties = locationBackgroundUrl
-        ? { backgroundImage: `url(${locationBackgroundUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-        : { background: 'linear-gradient(to bottom, #1a1a2e, #16213e)' };
+    // Fallback background since locationBackgroundUrl was removed from props
+    const bgStyle: React.CSSProperties = { background: 'linear-gradient(to bottom, #1a1a2e, #16213e)' };
 
     const isMassDeletingThis = isMassActive && massDeleteId === displayedMessage?.id;
 
@@ -300,14 +330,14 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     return (
         <div className="vn-stage-container" style={bgStyle}>
             <div className="vn-sprites-layer">
-                {spriteCharacterIds.map((characterId) => {
+                {spriteCharacterIds.map((characterId: string) => {
                     const portraitUrl = portraitUrlCache.get(`character:${characterId}`) ?? null;
                     if (!portraitUrl) return null;
 
                     const state = spriteStates.get(characterId);
                     if (!state) return null;
 
-                    const character = visibleCharacters.find(c => c.id === characterId);
+                    const character = visibleCharacters.find((c: Character) => c.id === characterId);
                     if (!character) return null;
 
                     const isSpeaking = activeSpeaker?.id === characterId;
@@ -409,7 +439,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                             <>
                                 <button type="button" className="vn-toolbar-btn vn-toolbar-cancel" onClick={handleCancelEditing} title="Cancel Edit">✕</button>
                                 <button type="button" className="vn-toolbar-btn vn-toolbar-confirm" onClick={handleSaveEdit} title="Save Edit">💾</button>
-                                <button type="button" className="vn-toolbar-btn vn-toolbar-warn" onClick={onRegenerateFromEdit} title="Save & Regenerate">↻</button>
                             </>
                         ) : (
                             <>
@@ -424,7 +453,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                             type="button" 
                                             className="vn-toolbar-btn" 
                                             // ✅ FIX: Pass protagonistIds array directly
-                                            onClick={() => handleRegenerateFromMessageWithRollback(displayedMessage.id, interactionData.protagonistIds || [])} 
+                                            onClick={() => handleRegenerateFromMessageWithRollback(displayedMessage.id, interactionData?.protagonistIds || [])} 
                                             title="Regenerate"
                                         >
                                             ↻

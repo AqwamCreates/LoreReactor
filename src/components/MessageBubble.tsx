@@ -39,11 +39,7 @@ interface MessageBubbleProps {
     onSaveEdit: () => void;
     onRegenerateFromEdit: () => void;
     onResumeGeneration: (id: string) => void;
-    onCopyText: (text: string) => void;
     onRegenerateFromMessage: (id: string, protagonistIds: string[]) => void;
-    onBranch: (id: string) => void;
-    onClone: (id: string) => void;
-    onDelete: (id: string) => void;
     onSetMassDelete: (id: string) => void;
     onMassDeleteConfirm: () => void;
     onCancelMassDelete: () => void;
@@ -65,8 +61,8 @@ export const MessageBubble = React.memo(function MessageBubble({
     activeToolbarId, portraitUrl, displayName, isStem, beforeBranch,
     parentInteractionDataName,
     onAvatarClick, onStartEditing, onCancelEditing, onSaveEdit, onRegenerateFromEdit,
-    onResumeGeneration, onCopyText, onRegenerateFromMessage,
-    onBranch, onClone, onDelete, onSetMassDelete,
+    onResumeGeneration, onRegenerateFromMessage,
+    onSetMassDelete,
     onMassDeleteConfirm, onCancelMassDelete,
     onTouchStart, onTouchEnd, onTouchMove,
     suppressNextClickRef, editTextAreaRef, setEditDraft,
@@ -83,6 +79,12 @@ export const MessageBubble = React.memo(function MessageBubble({
     });
 
     const isLoading = useSessionStore(s => s.isLoading);
+    
+    // ✅ Pulled directly from Zustand to eliminate prop drilling
+    const copyToClipboard = useSessionStore(s => s.copyToClipboard);
+    const deleteMessage = useSessionStore(s => s.deleteMessage);
+    const branchChat = useSessionStore(s => s.branchChat);
+    const cloneChat = useSessionStore(s => s.cloneChat);
 
     const [conversions, setConversions] = React.useState<CategoryConversion[]>([]);
     const [isRawEditing, setIsRawEditing] = React.useState(false);
@@ -416,7 +418,7 @@ export const MessageBubble = React.memo(function MessageBubble({
 
                                         <button
                                             type="button"
-                                            onClick={() => onCopyText(displayedTextContent)}
+                                            onClick={() => copyToClipboard(displayedTextContent)}
                                             className="toolbar-button"
                                             title="Copy text to clipboard"
                                         >
@@ -463,7 +465,7 @@ export const MessageBubble = React.memo(function MessageBubble({
 
                                         <button
                                             type="button"
-                                            onClick={() => onBranch(message.id)}
+                                            onClick={() => branchChat(message.id)}
                                             className="toolbar-button"
                                             title="Branch from here"
                                         >
@@ -472,7 +474,7 @@ export const MessageBubble = React.memo(function MessageBubble({
 
                                         <button
                                             type="button"
-                                            onClick={() => onClone(message.id)}
+                                            onClick={() => cloneChat(message.id)}
                                             className="toolbar-button"
                                             title="Clone chat up to here"
                                         >
@@ -483,7 +485,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                             <>
                                                 <button
                                                     type="button"
-                                                    onClick={() => onDelete(message.id)}
+                                                    onClick={() => deleteMessage(message.id)}
                                                     className="toolbar-button delete-button"
                                                     style={{ color: '#ff4444' }}
                                                 >

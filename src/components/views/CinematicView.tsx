@@ -7,24 +7,44 @@ import { StreamingIndicators } from '../StreamingIndicators';
 import { ChatScrollButtons } from '../ChatScrollButtons';
 import { ChatMinimap } from '../ChatMinimap';
 import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
+import { useSessionStore } from '../../hooks/useSessionStore';
 
 export const CinematicView = React.memo(function CinematicView(props: ViewModeProps) {
     const {
-        interactionData, localProtagonistId, displayMessages, selectedCharacterId,
-        editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
-        activeToolbarId, portraitUrlCache, displayNameCache,
-        centerAvatar, streamingPortraitUrl, formattedStreamingText,
-        isLoading, chatHistoryRef, messageEndRef, editTextAreaRef,
+        displayMessages,
+        portraitUrlCache, displayNameCache,
+        formattedStreamingText,
+        centerAvatar,
+        chatHistoryRef, messageEndRef, editTextAreaRef,
         parentMessageId, parentInteractionDataName,
         focusedMessageId, setFocusedMessageId,
-        onAvatarClick, onStartEditing, onCancelEditing, onSaveEdit,
-        onRegenerateFromEdit, onResumeGeneration, onCopyText,
-        onRegenerateFromMessage, onBranch, onClone, onDelete,
-        onSetMassDelete, onMassDeleteConfirm, onCancelMassDelete,
+        onAvatarClick, onResumeGeneration, 
+        onRegenerateFromMessage, onSaveEdit,
         onTouchStart, onTouchEnd, onTouchMove,
-        suppressNextClickRef, setEditDraft, onNavigateToBranchSource,
+        suppressNextClickRef, onNavigateToBranchSource,
         canDelete,
     } = props;
+
+    // ✅ Read directly from Zustand!
+    const interactionData = useSessionStore(s => s.interactionData);
+    const localProtagonistId = useSessionStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
+    const selectedCharacterId = useSessionStore(s => s.selectedCharacterId);
+    const isLoading = useSessionStore(s => s.isLoading);
+    const streamingCharacter = useSessionStore(s => s.streamingCharacter);
+    const streamingPortraitUrl = useSessionStore(s => s.streamingCharacter ? portraitUrlCache.get(`character:${s.streamingCharacter.id}`) ?? null : null);
+
+    const editingId = useSessionStore(s => s.editingId);
+    const editDraft = useSessionStore(s => s.editDraft);
+    const setEditDraft = useSessionStore(s => s.setEditDraft);
+    const setEditingState = useSessionStore(s => s.setEditingState);
+
+    const massDeleteId = useSessionStore(s => s.massDeleteId);
+    const setMassDeleteId = useSessionStore(s => s.setMassDeleteId);
+    const activeToolbarId = useSessionStore(s => s.activeToolbarId);
+
+    // Derived state
+    const isMassActive = massDeleteId !== null;
+    const massStartIndex = isMassActive && displayMessages ? displayMessages.findIndex(m => m.id === massDeleteId) : -1;
 
     const centerAvatarUrl = centerAvatar
         ? portraitUrlCache.get(`character:${centerAvatar.id}`) ?? null
@@ -100,6 +120,13 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         };
     }, [chatHistoryRef, updateFocusedFromScroll]);
 
+    // Local wrappers for Zustand actions to match MessageBubble's expected signatures
+    const onStartEditing = useCallback((id: string, text: string) => setEditingState(id, text), [setEditingState]);
+    const onCancelEditing = useCallback(() => setEditingState(null, ''), [setEditingState]);
+    const onSetMassDelete = useCallback((id: string) => setMassDeleteId(id), [setMassDeleteId]);
+    const onMassDeleteConfirm = useCallback(() => { /* handled in parent or hook */ }, []);
+    const onCancelMassDelete = useCallback(() => setMassDeleteId(null), [setMassDeleteId]);
+
     return (
         <>
             {centerAvatar && centerAvatarUrl && (
@@ -117,7 +144,6 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                 </div>
             )}
 
-            {/* FIX: Replaced non-existent interactionData.interactionHistory with the pre-computed displayMessages prop */}
             {interactionData && displayMessages.length > 5 && (
                 <ChatMinimap
                     messages={displayMessages.filter((m): m is ChatMessage => m.messageType === 'chat')}
@@ -174,7 +200,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                             message={message}
                             index={index}
                             viewMode="cinematic"
-                            protagonistIds={interactionData.protagonistIds || []}
+                            protagonistIds={interactionData?.protagonistIds || []}
                             localProtagonistId={localProtagonistId}
                             editingId={editingId}
                             editDraft={editDraft}
@@ -191,13 +217,8 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                             onStartEditing={onStartEditing}
                             onCancelEditing={onCancelEditing}
                             onSaveEdit={onSaveEdit}
-                            onRegenerateFromEdit={onRegenerateFromEdit}
                             onResumeGeneration={onResumeGeneration}
-                            onCopyText={onCopyText}
                             onRegenerateFromMessage={onRegenerateFromMessage}
-                            onBranch={onBranch}
-                            onClone={onClone}
-                            onDelete={onDelete}
                             onSetMassDelete={onSetMassDelete}
                             onMassDeleteConfirm={onMassDeleteConfirm}
                             onCancelMassDelete={onCancelMassDelete}

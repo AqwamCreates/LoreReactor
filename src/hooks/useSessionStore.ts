@@ -1,15 +1,17 @@
 // src/hooks/useSessionStore.ts
 import { create } from 'zustand';
 import type { Character, InteractionData, BudgetStrategy, LanguageModel, BudgetData, MultiplayerData } from '../types';
-import { loadRawSessionData, saveRawSessionData } from '../storages/serverStorage';
+import { loadRawSessionData, saveRawSessionData, deleteRawMessage, saveRawInteractionData } from '../storages/serverStorage';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+import { deleteMessage, branchMessage, cloneChatUpToMessage } from '../utilities/messageLogic';
+import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 
 const engine = getLanguageModelEngine();
 
 interface SessionState {
     // ── Core chat state ──────────────────────────────────────────────
     interactionData: InteractionData | null;
-    localProtagonist: Character | null; // ✅ RENAMED from currentCharacter
+    localProtagonist: Character | null;
 
     // ── Generation state ─────────────────────────────────────────────
     isLoading: boolean;
@@ -17,6 +19,13 @@ interface SessionState {
     streamingCharacter: Character | null;
     currentCharacterExpression: string;
     loadingLocations: Record<string, boolean>;
+    abortController: AbortController | null;
+
+    // ── Local UI State (Moved from props to eliminate drilling) ───────
+    editingId: string | null;
+    editDraft: string;
+    massDeleteId: string | null;
+    activeToolbarId: string | null;
 
     // ── Model state ──────────────────────────────────────────────────
     selectedModel: LanguageModel | null;
@@ -54,7 +63,7 @@ interface SessionState {
     setInteractionData: (
         data: InteractionData | null | ((prev: InteractionData | null) => InteractionData | null)
     ) => void;
-    setLocalProtagonist: (character: Character | null) => void; // ✅ RENAMED
+    setLocalProtagonist: (character: Character | null) => void;
     setActiveStrategy: (strategy: BudgetStrategy | null) => void;
     setSelectedModel: (model: LanguageModel | null) => void;
     updateRunningModels: (models: Record<string, any>) => void;
@@ -64,12 +73,26 @@ interface SessionState {
     setNumberOfTokens: (count: number) => void;
     setSelectedCharacterExpression: (expr: string) => void;
 
+    // ── Local UI State Actions ───────────────────────────────────────
+    setEditingState: (id: string | null, draft?: string) => void;
+    setEditDraft: (draft: string) => void;
+    setMassDeleteId: (id: string | null) => void;
+    setActiveToolbarId: (id: string | null) => void;
+
     // ── Streaming Actions ────────────────────────────────────────────
     setStreamingState: (char: Character | null, text: string) => void;
     setStreamingText: (text: string) => void;
     setStreamingCharacter: (character: Character | null) => void;
     setIsLoading: (isLoading: boolean) => void;
     resetStreaming: () => void;
+    setAbortController: (ctrl: AbortController | null) => void;
+    stopGeneration: () => void;
+
+    // ── Message & Chat Actions (Eliminates Prop Drilling) ────────────
+    copyToClipboard: (text: string) => Promise<void>;
+    deleteMessage: (id: string) => Promise<void>;
+    branchChat: (messageId: string) => Promise<void>;
+    cloneChat: (messageId: string) => Promise<void>;
 
     // ── Preference Actions (Server-Persisted) ─────────────────────────
     setSelectedCharacterId: (id: string | null) => void;
@@ -81,7 +104,7 @@ interface SessionState {
     setActiveExtensionIds: (ids: string[]) => void;
 }
 
-export const useSessionStore = create<SessionState>()((set) => {
+export const useSessionStore = create<SessionState>()((set, get) => {
     loadRawSessionData()
         .then((session) => {
             const updates: Partial<SessionState> = { sessionLoaded: true };
@@ -98,13 +121,19 @@ export const useSessionStore = create<SessionState>()((set) => {
 
     return {
         interactionData: null,
-        localProtagonist: null, // ✅ RENAMED
+        localProtagonist: null,
 
         isLoading: false,
         streamingText: '',
         streamingCharacter: null,
         currentCharacterExpression: 'neutral',
         loadingLocations: {},
+        abortController: null,
+
+        editingId: null,
+        editDraft: '',
+        massDeleteId: null,
+        activeToolbarId: null,
 
         selectedModel: null,
         runningModels: {},
@@ -143,7 +172,7 @@ export const useSessionStore = create<SessionState>()((set) => {
             });
         },
 
-        setLocalProtagonist: (character) => { // ✅ RENAMED
+        setLocalProtagonist: (character) => {
             set({ localProtagonist: character });
         },
 
@@ -191,6 +220,19 @@ export const useSessionStore = create<SessionState>()((set) => {
             set({ currentCharacterExpression: expr });
         },
 
+        // ── Local UI State Actions ───────────────────────────────────────
+        setEditingState: (id, draft = '') => {
+            set({ 
+                editingId: id, 
+                editDraft: draft,
+                // Close the active toolbar if we are opening the edit mode
+                activeToolbarId: id ? null : get().activeToolbarId 
+            });
+        },
+        setEditDraft: (draft) => set({ editDraft: draft }),
+        setMassDeleteId: (id) => set({ massDeleteId: id }),
+        setActiveToolbarId: (id) => set({ activeToolbarId: id }),
+
         // ── Streaming Actions ────────────────────────────────────────
         setStreamingState: (char, text) => {
             set({ 
@@ -204,6 +246,71 @@ export const useSessionStore = create<SessionState>()((set) => {
         setStreamingCharacter: (character) => set({ streamingCharacter: character }),
         setIsLoading: (isLoading) => set({ isLoading }),
         resetStreaming: () => set({ streamingText: '', streamingCharacter: null, isLoading: false }),
+        
+        setAbortController: (ctrl) => set({ abortController: ctrl }),
+        
+        stopGeneration: () => {
+            const { abortController } = get();
+            if (abortController) {
+                abortController.abort();
+            }
+            set({ 
+                streamingText: '', 
+                streamingCharacter: null, 
+                isLoading: false,
+                abortController: null 
+            });
+        },
+
+        // ── Message & Chat Actions (Eliminates Prop Drilling) ────────────
+        copyToClipboard: async (text: string) => {
+            try {
+                await navigator.clipboard.writeText(text);
+            } catch (e) {
+                console.error('Failed to copy text', e);
+            }
+        },
+
+        deleteMessage: async (id: string) => {
+            const { interactionData } = get();
+            if (!interactionData) return;
+            try {
+                await deleteRawMessage(id);
+                // ✅ FIX: Added await since deleteMessage returns a Promise<InteractionData>
+                const updated = await deleteMessage(interactionData, id);
+                set({ interactionData: updated });
+            } catch (e) {
+                console.error('Failed to delete message', e);
+            }
+        },
+
+        branchChat: async (messageId: string) => {
+            const { interactionData } = get();
+            if (!interactionData) return;
+            try {
+                const branchedChat = await branchMessage(interactionData, messageId);
+                await saveRawInteractionData(branchedChat);
+                await saveRawSessionData({ activeChatId: branchedChat.id });
+                set({ interactionData: branchedChat });
+                speculativeMarkovEngine.clearSession(branchedChat.id);
+            } catch (e) {
+                console.error('Failed to branch chat', e);
+            }
+        },
+
+        cloneChat: async (messageId: string) => {
+            const { interactionData } = get();
+            if (!interactionData) return;
+            try {
+                const clonedChat = await cloneChatUpToMessage(interactionData, messageId);
+                await saveRawInteractionData(clonedChat);
+                await saveRawSessionData({ activeChatId: clonedChat.id });
+                set({ interactionData: clonedChat });
+                speculativeMarkovEngine.clearSession(clonedChat.id);
+            } catch (e) {
+                console.error('Failed to clone chat', e);
+            }
+        },
 
         // ── Preference Actions ───────────────────────────────────────
         setSelectedCharacterId: (id) => {

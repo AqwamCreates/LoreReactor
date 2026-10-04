@@ -15,7 +15,6 @@ interface ChatViewAreaProps {
     safeMessages: (ChatMessage | WhisperMessage)[];
     displayNameCache: any;
     isMultiplayerChat: boolean;
-    localProtagonistId?: string | null;
 }
 
 export function ChatViewArea({
@@ -24,9 +23,10 @@ export function ChatViewArea({
     safeMessages,
     displayNameCache,
     isMultiplayerChat,
-    localProtagonistId,
 }: ChatViewAreaProps) {
-    // Isolated subscriptions: ONLY this component re-renders during token streaming
+    // Read directly from Zustand instead of receiving as props
+    const localProtagonistId = useSessionStore((s) => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
+
     const streamingText = useSessionStore((s) => s.streamingText);
     const streamingCharacter = useSessionStore((s) => s.streamingCharacter);
     const isLoading = useSessionStore((s) => s.isLoading);
@@ -66,8 +66,6 @@ export function ChatViewArea({
                 const name = resolveDelayedDisplayNameFromCache(displayNameCache, base.length, streamingCharacter.id);
                 const now = Date.now();
                 
-                // ✅ FIX: Fully type the streaming message to match ChatMessage interface 
-                // and remove obsolete `locationIndex` property.
                 base.push({
                     id: `streaming-${streamingCharacter.id}`,
                     messageType: 'chat',
@@ -98,8 +96,6 @@ export function ChatViewArea({
         ...baseProps,
         displayMessages,
         formattedStreamingText,
-        streamingCharacter,
-        isLoading,
     };
 
     return (

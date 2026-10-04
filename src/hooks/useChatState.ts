@@ -4,7 +4,7 @@ import { useSessionStore } from './useSessionStore';
 export function useChatState() {
     // --- Stable Structural Selectors (Does NOT subscribe to streaming text or live stats) ---
     const interactionData = useSessionStore(s => s.interactionData);
-    const currentCharacter = useSessionStore(s => s.currentCharacter);
+    const localProtagonist = useSessionStore(s => s.localProtagonist); // ✅ FIXED
     const activeStrategy = useSessionStore(s => s.activeStrategy);
     const selectedModel = useSessionStore(s => s.selectedModel);
     const runningModels = useSessionStore(s => s.runningModels);
@@ -17,7 +17,7 @@ export function useChatState() {
 
     // --- Direct Store Actions (Identity stable, zero re-renders) ---
     const setInteractionData = useSessionStore(s => s.setInteractionData);
-    const setSelectedCharacter = useSessionStore(s => s.setCurrentCharacter);
+    const setSelectedCharacter = useSessionStore(s => s.setLocalProtagonist); // ✅ FIXED
     const setStreamingState = useSessionStore(s => s.setStreamingState);
     const updateRunningModels = useSessionStore(s => s.updateRunningModels);
     const setActiveStrategy = useSessionStore(s => s.setActiveStrategy);
@@ -31,7 +31,7 @@ export function useChatState() {
     return {
         // State
         interactionData,
-        currentCharacter,
+        localProtagonist, // ✅ FIXED
         activeStrategy,
         selectedModel,
         runningModels,
