@@ -561,7 +561,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         autoResumeOnCutoff, ui, generateAmbientNarration, isMultiplayerClient, isSpeculatingRef, streamingTextRef, extractAndScheduleResponses
     ]);
 
-    const triggerDelayedResponse = useCallback(async (characterId: string, thought?: string) => {
+        const triggerDelayedResponse = useCallback(async (characterId: string, thought?: string) => {
         const currentState = getState();
         const currentData = currentState.interactionData;
         if (!currentData || isLoadingRef.current) return;
@@ -574,19 +574,19 @@ export function useChatSession(options: UseChatSessionOptions) {
         const prefillText = thought ? `[System Note: You scheduled this follow-up earlier. Your internal thought was: "${thought}". Continue naturally from this premise.]\n\n` : '';
 
         try {
-            await executeTurnPipeline({
-                data: currentData,
-                protagonistId: currentData.protagonistIds?.[0] || '',
-                respondingCharacter: character,
-                existingCharacterText: prefillText, 
-                isProtagonistCharId: (id) => (currentData.protagonistIds || []).includes(id),
-                errorPrefix: 'Delayed response failed',
-                lockAlreadyAcquired: true,
-            });
+            await chatEngine.runTurn(
+                currentData,
+                abortControllerRef.current || new AbortController(),
+                allPromptBlocksRef.current,
+                undefined,
+                prefillText // ✅ Pass existingCharacterText as 5th argument
+            );
         } catch (e) {
             console.error('Delayed response error:', e);
+        } finally {
+            releaseLock();
         }
-    }, [getState, acquireLock, executeTurnPipeline, isLoadingRef]);
+    }, [getState, acquireLock, releaseLock, chatEngine, isLoadingRef]);
 
     useEffect(() => {
         triggerDelayedResponseRef.current = triggerDelayedResponse;

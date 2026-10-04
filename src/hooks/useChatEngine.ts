@@ -143,12 +143,14 @@ export function useChatEngine(deps: EngineDependencies) {
         signal: AbortController,
         promptBlocks?: PromptBlock[],
         metadata?: RequestMetadata,
+        existingCharacterText?: string, // ✅ ADD THIS
     ): Promise<{ interactionData: InteractionData; isCompleted: boolean; promptText?: string }> => {
         let lastPromptText: string | undefined = undefined;
 
         const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken?: (t: string) => void) => {
             setStreamingState(c, '');
-            const result = await handleServerResponse(d, c, s, onToken, undefined, '', promptBlocks, metadata);
+            // ✅ Forward existingCharacterText here
+            const result = await handleServerResponse(d, c, s, onToken, undefined, existingCharacterText || '', promptBlocks, metadata);
             
             if (result?.promptText) {
                 lastPromptText = result.promptText;
@@ -174,7 +176,7 @@ export function useChatEngine(deps: EngineDependencies) {
             };
         }
         return { interactionData: initialData, isCompleted: true };
-    }, [handleServerResponse, setStreamingState, setInteractionData]);
+    }, [handleServerResponse, setStreamingState, setInteractionData]);;
 
     const startAutonomousMode = useCallback((
         checkCanAct: () => boolean,
