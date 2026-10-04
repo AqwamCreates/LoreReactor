@@ -122,11 +122,15 @@ export function useChatAutoSave(options: UseChatAutoSaveOptions) {
             return; 
         }
 
+        // protagonistIds is now string[], so we use a simple array equality check instead of haveEntitiesChanged
+        const protagsChanged = (prev?.protagonistIds?.length ?? 0) !== (syncedData.protagonistIds?.length ?? 0) ||
+                               (prev?.protagonistIds || []).some((id, i) => id !== (syncedData.protagonistIds || [])[i]);
+
         const hasActualChange = !prev
             || prev.name !== syncedData.name
             || prev.profile?.id !== syncedData.profile?.id
             || prev.profile?.lastUpdatedTimestamp !== syncedData.profile?.lastUpdatedTimestamp
-            || haveEntitiesChanged(prev.protagonists, syncedData.protagonists)
+            || protagsChanged
             || haveEntitiesChanged(prev.participants, syncedData.participants)
             || haveEntitiesChanged(prev.contexts, syncedData.contexts)
             || haveEntitiesChanged(prev.locations, syncedData.locations)

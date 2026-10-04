@@ -47,7 +47,7 @@ export class CharacterSoul {
             }
 
             try {
-                const protagonistIds = new Set(data.protagonists.map(p => p.id));
+                const protagonistIds = new Set(data.protagonistIds || []);
                 const aiParticipants = data.participants.filter(p => !protagonistIds.has(p.id));
                 
                 if (aiParticipants.length === 0) {

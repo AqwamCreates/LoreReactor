@@ -78,7 +78,7 @@ export function findLastAIMessageId(
 ): string | null {
     const protagSet = protagonistIds instanceof Set
         ? protagonistIds
-        : new Set(protagonistIds || (data.protagonists?.map(p => p.id) ?? []));
+        : new Set(protagonistIds || data.protagonistIds || []);
     const history = getGlobalMessageHistory(data);
     for (let i = history.length - 1; i >= 0; i--) {
         const msg = history[i];

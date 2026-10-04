@@ -1,3 +1,4 @@
+// src/components/MessageBubble.tsx
 import React from 'react';
 import type { Character, ChatMessage, WhisperMessage } from '../types';
 import { MemoizedMessageText } from './MemoizedMessageText';
@@ -19,8 +20,8 @@ interface MessageBubbleProps {
     message: ChatMessage | WhisperMessage;
     index: number;
     viewMode: 'ladder' | 'cinematic' | 'vn';
-    protagonists: Character[];
-    localProtagonist: Character | null;
+    protagonistIds: string[];
+    localProtagonistId: string | null;
     editingId: string | null;
     editDraft: string;
     massDeleteId: string | null;
@@ -39,7 +40,7 @@ interface MessageBubbleProps {
     onRegenerateFromEdit: () => void;
     onResumeGeneration: (id: string) => void;
     onCopyText: (text: string) => void;
-    onRegenerateFromMessage: (id: string, protagonists: Character[]) => void;
+    onRegenerateFromMessage: (id: string, protagonistIds: string[]) => void;
     onBranch: (id: string) => void;
     onClone: (id: string) => void;
     onDelete: (id: string) => void;
@@ -59,7 +60,7 @@ interface MessageBubbleProps {
 const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 
 export const MessageBubble = React.memo(function MessageBubble({
-    message, index, viewMode, protagonists, localProtagonist,
+    message, index, viewMode, protagonistIds, localProtagonistId,
     editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
     activeToolbarId, portraitUrl, displayName, isStem, beforeBranch,
     parentInteractionDataName,
@@ -91,7 +92,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     const prevIsEditingRef = React.useRef(false);
 
     const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
-    const isLocalProtagonist = localProtagonist ? message.character.id === localProtagonist.id : false;
+    const isLocalProtagonist = localProtagonistId ? message.character.id === localProtagonistId : false;
     const isEditing = editingId === message.id;
     const inDelRange = isMassActive && massStartIndex !== null && massStartIndex !== -1 && index >= massStartIndex;
     const showAvatar = viewMode === 'ladder' && !isLocalProtagonist && !isAmbient;
@@ -437,7 +438,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         {!isLocalProtagonist && (
                                             <button
                                                 type="button"
-                                                onClick={() => onRegenerateFromMessage(message.id, protagonists)}
+                                                onClick={() => onRegenerateFromMessage(message.id, protagonistIds)}
                                                 disabled={!isModelReady || isLoading}
                                                 className="toolbar-button"
                                                 title={isLoading ? 'Regeneration in progress...' : 'Regenerate this Response'}
@@ -450,7 +451,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         {isLocalProtagonist && (
                                             <button
                                                 type="button"
-                                                onClick={() => onRegenerateFromMessage(message.id, protagonists)}
+                                                onClick={() => onRegenerateFromMessage(message.id, protagonistIds)}
                                                 disabled={!isModelReady || isLoading}
                                                 className="toolbar-button"
                                                 title={isLoading ? 'Regeneration in progress...' : 'Regenerate Your Input'}

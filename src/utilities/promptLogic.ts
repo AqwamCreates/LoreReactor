@@ -813,8 +813,8 @@ export function detectUnsummarizedLocationDepartures(
     modelId: string,
 ): LocationVisitSegment[] {
     const histories = interactionData.interactionHistories || {};
-    const protagonistIds = new Set(interactionData.protagonists?.map(p => p.id) ?? []);
-    if (protagonistIds.has(character.id)) return [];
+    const protagonistIds = interactionData.protagonistIds;
+    if (protagonistIds.includes(character.id)) return [];
 
     const latest = findLatestMessage(interactionData, character);
     const currentLocationId = latest?.locationId;

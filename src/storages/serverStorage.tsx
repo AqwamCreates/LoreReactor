@@ -1061,15 +1061,15 @@ async function buildInteractionDataShell(
   audioTrackMap?: Map<string, AudioTrack>,
 ): Promise<InteractionData | null> {
   
-  const protagonists: Character[] = (rawInteractionData.protagonistIds || [])
-    .map(pid => charMap.get(pid) ?? createDeletedCharacterStub(pid));
+  const protagonistIds = rawInteractionData.protagonistIds || [];
 
   const participants = (rawInteractionData.participantIds || [])
     .map(pid => charMap.get(pid) ?? createDeletedCharacterStub(pid));
     
-  for (const protag of protagonists) {
-    if (!participants.find(p => p.id === protag.id)) {
-      participants.push(protag);
+  // Ensure protagonists are also present in the participants array
+  for (const pid of protagonistIds) {
+    if (!participants.find(p => p.id === pid)) {
+      participants.push(charMap.get(pid) ?? createDeletedCharacterStub(pid));
     }
   }
 
@@ -1096,7 +1096,7 @@ async function buildInteractionDataShell(
   return {
     id, 
     name: rawInteractionData.name || "Untitled Chat", 
-    protagonists, 
+    protagonistIds, 
     participants, 
     contexts,
     locations,
@@ -1108,6 +1108,7 @@ async function buildInteractionDataShell(
     parentInteractionDataId: rawInteractionData.parentInteractionDataId || null, 
     parentMessageId: rawInteractionData.parentMessageId || null,
     profile: profile,
+    worldIds: rawInteractionData.worldIds || [], // ✅ ADD THIS
   };
 }
 
@@ -1121,7 +1122,7 @@ export async function loadInteractionMessages(interactionData: InteractionData):
     }
 
     const charMap = new Map<string, Character>();
-    for (const p of interactionData.protagonists) charMap.set(p.id, p);
+    // Protagonists are now just IDs and are guaranteed to be in the participants array.
     for (const p of interactionData.participants) {
         charMap.set(p.id, p);
     }
@@ -1286,7 +1287,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     await Promise.all(saveMessagePromises.slice(i, i + BATCH_SIZE));
   }
 
-  const { id, protagonists, participants, contexts, locations, audioTracks, interactionHistories, parentInteractionDataId, parentMessageId, profile, ...rawInteractionData } = interactionData;
+  const { id, protagonistIds, participants, contexts, locations, audioTracks, interactionHistories, parentInteractionDataId, parentMessageId, profile, ...rawInteractionData } = interactionData;
   
   const rawHistories: Record<string, string[]> = {};
   for (const [locId, messages] of Object.entries(interactionHistories)) {
@@ -1295,7 +1296,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
 
   const payload: RawInteractionData = {
     ...rawInteractionData, 
-    protagonistIds: protagonists.map(p => p.id),
+    protagonistIds: protagonistIds || [],
     participantIds: participants.map(p => p.id),
     contextIds: contexts?.map(i => i.id) || [],
     locationIds: locations?.map(l => l.id) || [],
@@ -1304,6 +1305,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     parentInteractionDataId: parentInteractionDataId || null, 
     parentMessageId: parentMessageId || null,
     profileId: profile?.id,
+    worldIds: interactionData.worldIds || [], // ✅ ADD THIS
     lastUpdatedTimestamp: Date.now(),
   };
   await putJson(`${PATHS.interactionData}/${id}.json`, payload);
@@ -1341,7 +1343,7 @@ export async function branchRawInteractionData(parentInteractionDataId: string, 
 
   const newPayload: RawInteractionData = {
     name: `${sourceChat.name} (Branch)`, 
-    protagonistIds: sourceChat.protagonists.map(p => p.id),
+    protagonistIds: sourceChat.protagonistIds || [],
     participantIds: sourceChat.participants.map(p => p.id), 
     contextIds: sourceChat.contexts?.map(i => i.id) || [],
     locationIds: sourceChat.locations?.map(l => l.id) || [],
@@ -1352,6 +1354,7 @@ export async function branchRawInteractionData(parentInteractionDataId: string, 
     parentInteractionDataId, 
     parentMessageId,
     profileId: sourceChat.profile?.id,
+    worldIds: sourceChat.worldIds || [], // ✅ ADD THIS
   };
   await putJson(`${PATHS.interactionData}/${newChatId}.json`, newPayload);
   await updateManifest('interactionData', newChatId, 'add');

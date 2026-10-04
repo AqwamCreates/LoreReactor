@@ -128,13 +128,13 @@ interface CharacterEditorModalProps {
     runningModels?: Record<string, any>;
     chatNameMap?: Map<string, string>;
     interactionData?: InteractionData | null;
-    localProtagonist?: Character | null;
+    localProtagonistId?: string | null; // ✅ Changed from Character to string ID
 }
 
 export function CharacterEditorModal({ isReadOnly = false, onClose, onSave, existingCharacter,
     allSamplers, allCharacters, isLoadingSamplers = false,
     selectedModel, runningModels,
-    chatNameMap, interactionData, localProtagonist,
+    chatNameMap, interactionData, localProtagonistId,
 }: CharacterEditorModalProps) {
 
     const modalKey = `char-${existingCharacter?.id ?? 'new'}`;
@@ -152,7 +152,7 @@ export function CharacterEditorModal({ isReadOnly = false, onClose, onSave, exis
             runningModels={runningModels}
             chatNameMap={chatNameMap}
             interactionData={interactionData}
-            localProtagonist={localProtagonist}
+            localProtagonistId={localProtagonistId}
             isReadOnly={isReadOnly}
         />
     );
@@ -162,7 +162,7 @@ function CharacterEditorModalInner({
     onClose, onSave, existingCharacter,
     allSamplers, allCharacters, isLoadingSamplers = false,
     selectedModel, runningModels,
-    chatNameMap, interactionData, localProtagonist,
+    chatNameMap, interactionData, localProtagonistId,
     isReadOnly = false,
 }: CharacterEditorModalProps) {
     const [activeTab, setActiveTab] = useState<EditorTabId>('general');
@@ -209,8 +209,6 @@ function CharacterEditorModalInner({
     const [numberOfMessagesToDisableDialoguePromptStr, setNumberOfMessagesToDisableDialoguePromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableDialoguePrompt ?? 0));
     const [numberOfMessagesToDisableStarterPromptStr, setNumberOfMessagesToDisableStarterPromptStr] = useState<string>(String(existingCharacter?.numberOfMessagesToDisableStarterPrompt ?? 0));
 
-    // FIXED: Merge default tools with existing character tools to ensure new tools are added 
-    // and deprecated tools are dropped, while preserving existing preferences.
     const initialTools: Record<tool, boolean> = {} as Record<tool, boolean>;
     for (const key of Object.keys(defaultCharacterTools) as tool[]) {
         initialTools[key] = existingCharacter?.tools?.[key] !== undefined 
@@ -220,7 +218,6 @@ function CharacterEditorModalInner({
     const [tools, setTools] = useState<Record<tool, boolean>>(initialTools);
     const [toolSearchQuery, setToolSearchQuery] = useState('');
 
-    // Tool Detection & Permission Modal State
     const [detectedToolsForModal, setDetectedToolsForModal] = useState<DetectedToolsResult | null>(null);
     const [showToolPermissionModal, setShowToolPermissionModal] = useState(false);
 
@@ -232,11 +229,9 @@ function CharacterEditorModalInner({
     const [starterPrompts, setStarterPrompts] = useState<Record<string, number>>(existingCharacter?.starterPrompts ?? {});
     const [memoryPrompts, setMemoryPrompts] = useState<Record<string, string>>(existingCharacter?.memoryPrompts ?? {});
 
-    // Aliases
     const [aliases, setAliases] = useState<string[]>(existingCharacter?.aliases ?? []);
     const [newAliasInput, setNewAliasInput] = useState('');
 
-    // Known character names
     const [knownCharacterNames, setKnownCharacterNames] = useState<Record<string, string[]>>(existingCharacter?.knownCharacterNames ?? {});
     const initialKnownCharacterNamesRef = useRef<Record<string, string[]>>(existingCharacter?.knownCharacterNames ?? {});
     const [selectedCharForKnownName, setSelectedCharForKnownName] = useState('');
@@ -266,7 +261,6 @@ function CharacterEditorModalInner({
     const voiceInputRef = useRef<HTMLInputElement>(null);
     const tokenCountTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-    // ─── Tool Helpers ──────────────────────────────────────────────
     const handleToolToggle = useCallback((toolName: tool) => {
         if (isReadOnly) return;
         setTools(prev => ({ ...prev, [toolName]: !prev[toolName] }));
@@ -295,7 +289,6 @@ function CharacterEditorModalInner({
         const combinedText = `${name} ${description} ${systemPrompt}`;
         const detected = detectToolsFromText(combinedText);
 
-        // Auto-enable safe tools immediately
         setTools(prev => {
             const next = { ...prev };
             for (const r of detected.inWorldReadonly) {
@@ -307,12 +300,10 @@ function CharacterEditorModalInner({
             return next;
         });
 
-        // Open permission modal to let user inspect/grant privileged or ambient tools
         setDetectedToolsForModal(detected);
         setShowToolPermissionModal(true);
     }, [name, description, systemPrompt, isReadOnly]);
 
-    // ─── Quick Config Helpers ──────────────────────────────────────
     const effectiveCharacterIdForConfig = existingCharacter?.id || pendingCharacterId || '';
 
     const [quickConfigFeedback, setQuickConfigFeedback] = useState<{
@@ -357,9 +348,12 @@ function CharacterEditorModalInner({
     }, [effectiveCharacterIdForConfig, isReadOnly]);
 
     const handleKnowCurrentProtagonist = useCallback(() => {
-        if (!localProtagonist) return;
-        mergeKnownNames([localProtagonist]);
-    }, [localProtagonist, mergeKnownNames]);
+        if (!localProtagonistId) return;
+        // ✅ Resolve the character object using the ID
+        const protagChar = allCharacters.find(c => c.id === localProtagonistId) 
+            || interactionData?.participants.find(p => p.id === localProtagonistId);
+        if (protagChar) mergeKnownNames([protagChar]);
+    }, [localProtagonistId, allCharacters, interactionData, mergeKnownNames]);
 
     const handleKnowCoLocatedProtagonists = useCallback(() => {
         if (!interactionData || !existingCharacter) return;
@@ -368,8 +362,11 @@ function CharacterEditorModalInner({
     }, [interactionData, existingCharacter, mergeKnownNames]);
 
     const handleKnowAllProtagonists = useCallback(() => {
-        if (!interactionData?.protagonists?.length) return;
-        mergeKnownNames(interactionData.protagonists);
+        if (!interactionData?.protagonistIds?.length) return;
+        const protagChars = interactionData.protagonistIds
+            .map(id => interactionData.participants.find(p => p.id === id))
+            .filter((c): c is Character => !!c);
+        if (protagChars.length > 0) mergeKnownNames(protagChars);
     }, [interactionData, mergeKnownNames]);
 
     const handleKnowCoLocatedParticipants = useCallback(() => {
@@ -437,8 +434,8 @@ function CharacterEditorModalInner({
     }, [isReadOnly]);
 
     const hasSession = !!interactionData;
-    const hasLocalProtagonist = !!localProtagonist;
-    const hasProtagonists = (interactionData?.protagonists?.length ?? 0) > 0;
+    const hasLocalProtagonist = !!localProtagonistId;
+    const hasProtagonists = (interactionData?.protagonistIds?.length ?? 0) > 0;
     const hasParticipants = (interactionData?.participants?.length ?? 0) > 0;
 
     const coLocatedProtagonistCount = useMemo(() => {
@@ -607,7 +604,6 @@ function CharacterEditorModalInner({
         setNumberOfMessagesToDisableDialoguePromptStr('0');
         setNumberOfMessagesToDisableStarterPromptStr('0');
 
-        // Auto-detect tools from card description/system prompt
         const fullCardText = `${fields.name} ${fields.description} ${fields.systemPrompt}`;
         const detectedTools = detectToolsFromText(fullCardText);
         const nextTools: Record<tool, boolean> = { ...defaultCharacterTools };
@@ -619,7 +615,6 @@ function CharacterEditorModalInner({
         }
         setTools(nextTools);
 
-        // If privileged or ambient tools are detected, show permission modal
         if (detectedTools.osPrivileged.length > 0 || detectedTools.entityAdmin.length > 0 || detectedTools.ambient.length > 0) {
             setDetectedToolsForModal(detectedTools);
             setShowToolPermissionModal(true);
@@ -657,7 +652,6 @@ function CharacterEditorModalInner({
         setSelectedStopPatternIds(prev => prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]);
     };
 
-    // ─── Alias helpers ──────────────────────────────────────────────
     const handleAddAlias = useCallback(() => {
         if (isReadOnly) return;
         const val = newAliasInput.trim();
@@ -671,7 +665,6 @@ function CharacterEditorModalInner({
         setAliases(prev => prev.filter(a => a !== alias));
     }, [isReadOnly]);
 
-    // ─── Known character names helpers ──────────────────────────────
     const handleAddKnownName = useCallback((targetCharId: string, nameVariant: string) => {
         if (isReadOnly) return;
         if (!nameVariant.trim()) return;
@@ -877,7 +870,6 @@ function CharacterEditorModalInner({
     const effectiveCharacterId = existingCharacter?.id || pendingCharacterId || '';
     const memoryCount = Object.values(memories).reduce((sum, arr) => sum + arr.length, 0);
 
-    // Starter prompts helper
     const [newStarterPromptText, setNewStarterPromptText] = useState('');
     const [newStarterPromptWeight, setNewStarterPromptWeight] = useState<string>('1');
 
@@ -908,7 +900,6 @@ function CharacterEditorModalInner({
         setStarterPrompts(prev => ({ ...prev, [text]: finalWeight }));
     }, [isReadOnly]);
 
-    // Memory prompts helper (Expression -> Template string)
     const [newMemoryPromptExpression, setNewMemoryPromptExpression] = useState<string>(emotions[0]);
     const [newMemoryPromptTemplate, setNewMemoryPromptTemplate] = useState('');
 
@@ -1002,7 +993,6 @@ function CharacterEditorModalInner({
                         </div>
                     </div>
 
-                    {/* Tab Bar */}
                     <div className="entity-tab-bar" style={{ padding: '0 20px', marginBottom: 0, borderBottom: '1px solid var(--border)', background: 'var(--social-bg)' }}>
                         {editorTabs.map(tab => (
                             <button
@@ -1019,7 +1009,6 @@ function CharacterEditorModalInner({
                     <div className="modal-body editor-modal-body">
                         {submitError && <div className="editor-error-message editor-error-centered">{submitError}</div>}
 
-                        {/* ─── GENERAL TAB ─── */}
                         {activeTab === 'general' && (
                             <div className="editor-modal-columns">
                                 <div className="editor-left-column">
@@ -1080,10 +1069,8 @@ function CharacterEditorModalInner({
                             </div>
                         )}
 
-                        {/* ─── BEHAVIOUR TAB ─── */}
                         {activeTab === 'behaviour' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                {/* Starter Prompts */}
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <div className="editor-section-title">Starter Prompts ({Object.keys(starterPrompts).length})</div>
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Weighted starter messages. Higher weight = more likely to be selected.</div>
@@ -1108,7 +1095,6 @@ function CharacterEditorModalInner({
                                     </div>
                                 </div>
 
-                                {/* Memory Prompts (Expression -> Template) */}
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <div className="editor-section-title">Memory Prompts ({Object.keys(memoryPrompts).length})</div>
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Expression to memory template mapping. If the expression is not found, falls back to neutral, then system default.</div>
@@ -1148,7 +1134,6 @@ function CharacterEditorModalInner({
                                     </div>
                                 </div>
 
-                                {/* Aliases */}
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <div className="editor-section-title">Aliases ({aliases.length})</div>
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Alternative names this character is also known by.</div>
@@ -1171,7 +1156,6 @@ function CharacterEditorModalInner({
                                     </div>
                                 </div>
 
-                                {/* Known Character Names */}
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <div className="editor-section-title">Known Character Names ({Object.keys(knownCharacterNames).length})</div>
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Which other characters' names/aliases this character knows.{!isReadOnly && ' Select a character, then choose the name variant they know.'}</div>
@@ -1236,7 +1220,6 @@ function CharacterEditorModalInner({
                                     )}
                                 </div>
 
-                                {/* Behaviour buttons */}
                                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                     <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowDialoguePromptEditor(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Dialogue ({dialoguePrompts.length})</button>
                                     <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowKnowledgePromptEditor(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Knowledge ({knowledgePrompts.length})</button>
@@ -1250,7 +1233,6 @@ function CharacterEditorModalInner({
                                     <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Memory ({memoryCount})</button>
                                 </div>
 
-                                {/* Prompt Decay */}
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <span className="editor-section-title">Prompt Decay</span>
                                     <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '12px' }}>
@@ -1278,7 +1260,6 @@ function CharacterEditorModalInner({
                             </div>
                         )}
 
-                        {/* ─── STATS TAB ─── */}
                         {activeTab === 'stats' && (
                             <>
                                 <div className="editor-section">
@@ -1346,7 +1327,6 @@ function CharacterEditorModalInner({
                             </>
                         )}
 
-                        {/* ─── TOOLS TAB ─── */}
                         {activeTab === 'tools' && (
                             <div className="editor-section">
                                 <span className="editor-section-title">Character Tools</span>
@@ -1382,7 +1362,6 @@ function CharacterEditorModalInner({
                             </div>
                         )}
 
-                        {/* ─── MODEL TAB ─── */}
                         {activeTab === 'model' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                 <div className="editor-section">
@@ -1432,7 +1411,6 @@ function CharacterEditorModalInner({
                             </div>
                         )}
 
-                        {/* ─── QUICK CONFIG TAB ─── */}
                         {activeTab === 'quick-config' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                 <div className="editor-section" style={{ margin: 0 }}>
@@ -1457,7 +1435,6 @@ function CharacterEditorModalInner({
                                         </div>
                                     )}
 
-                                    {/* Inline Feedback Indicator */}
                                     {quickConfigFeedback && (
                                         <div style={{ padding: '8px 10px', background: quickConfigFeedback.addedNames.length > 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255, 255, 255, 0.05)', border: `1px solid ${quickConfigFeedback.addedNames.length > 0 ? 'rgba(34, 197, 94, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`, borderRadius: '6px', marginBottom: '8px' }}>
                                             <div style={{ fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '4px', color: quickConfigFeedback.addedNames.length > 0 ? '#22c55e' : 'var(--text-h)' }}>
@@ -1501,7 +1478,6 @@ function CharacterEditorModalInner({
                 </div>
             </div>
 
-            {/* ─── Sub-Editors (Conditionally Rendered) ─── */}
             {showToolPermissionModal && detectedToolsForModal && (
                 <ToolPermissionModal
                     characterName={name || 'This Character'}
@@ -1578,7 +1554,7 @@ function CharacterEditorModalInner({
                     character={existingCharacter || null}
                     onSaveMemories={setMemories}
                     chatNameMap={chatNameMap}
-                    localProtagonist={localProtagonist}
+                    localProtagonistId={localProtagonistId}
                 />
             )}
         </>

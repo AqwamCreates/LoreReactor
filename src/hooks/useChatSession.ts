@@ -252,7 +252,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         const dt = convertIdsToDisplayNames(p.text, base, p.character);
         const history = getGlobalMessageHistory(base);
 
-        const allProtagonistIds = new Set(base.protagonists?.map(pr => pr.id) ?? [protagonistId]);
+        const allProtagonistIds = new Set(base.protagonistIds || [protagonistId]);
         if (history.length > 0 && !allProtagonistIds.has(history[history.length - 1].character.id)) {
             const lastMsg = history[history.length - 1];
             if (hasTextContent(lastMsg)) {
@@ -285,7 +285,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, []);
 
     const autoResumeOnCutoff = useCallback((data: InteractionData, protagonistId: string, allPromptBlocks?: PromptBlock[]) => {
-        const allProtagonistIds = new Set(data.protagonists?.map(p => p.id) ?? [protagonistId]);
+        const allProtagonistIds = new Set(data.protagonistIds || [protagonistId]);
         const messageId = findLastAIMessageId(data, allProtagonistIds);
         if (!messageId) return;
 
@@ -319,7 +319,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     const extractAndScheduleResponses = useCallback((data: InteractionData) => {
         const history = getGlobalMessageHistory(data);
-        const protagonistIds = new Set(data.protagonists?.map(p => p.id) ?? []);
+        const protagonistIds = new Set(data.protagonistIds || []);
         
         for (let i = history.length - 1; i >= 0; i--) {
             const msg = history[i];
@@ -399,7 +399,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         const preTurnCount = getGlobalMessageHistory(data).length;
 
-        const allProtagonistIds = new Set(data.protagonists?.map(p => p.id) ?? [protagonistId]);
+        const allProtagonistIds = new Set(data.protagonistIds || [protagonistId]);
         const isProtagonist = isProtagonistCharId || ((id: string) => allProtagonistIds.has(id));
 
         const respondingChar = respondingCharacter
@@ -517,7 +517,8 @@ export function useChatSession(options: UseChatSessionOptions) {
             } else {
                 const enableAmbientNarration = ud?.profile?.enableAmbientNarration ?? false;
                 if (enableAmbientNarration) {
-                    const ad = await generateAmbientNarration(ud, ctrl.signal);
+                    // ✅ FIX: Use the protagonistId passed directly into the pipeline instead of reaching for state
+                    const ad = await generateAmbientNarration(ud, ctrl.signal, protagonistId);
                     const sd = ad || ud;
                     setInteractionData(sd);
                     broadcastNewMessages(preTurnCount, sd);
@@ -580,17 +581,17 @@ export function useChatSession(options: UseChatSessionOptions) {
         try {
             await executeTurnPipeline({
                 data: currentData,
-                protagonistId: currentData.protagonists[0]?.id || '',
+                protagonistId: currentData.protagonistIds?.[0] || '',
                 respondingCharacter: character,
                 existingCharacterText: prefillText, 
-                isProtagonistCharId: (id) => currentData.protagonists.some(p => p.id === id),
+                isProtagonistCharId: (id) => (currentData.protagonistIds || []).includes(id),
                 errorPrefix: 'Delayed response failed',
                 lockAlreadyAcquired: true,
             });
         } catch (e) {
             console.error('Delayed response error:', e);
         }
-    }, [getState, acquireLock, executeTurnPipeline]);
+    }, [getState, acquireLock, executeTurnPipeline, isLoadingRef]);
 
     useEffect(() => {
         triggerDelayedResponseRef.current = triggerDelayedResponse;
@@ -812,7 +813,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             return;
         }
 
-        const allProtagonistIds = new Set(currentState.interactionData.protagonists?.map((p: Character) => p.id) ?? [currentState.currentCharacter.id]);
+        const allProtagonistIds = new Set(currentState.interactionData.protagonistIds || [currentState.currentCharacter.id]);
 
         await executeTurnPipeline({
             data: currentState.interactionData,
@@ -871,7 +872,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             return;
         }
 
-        const allProtagonistIds = new Set(td.protagonists?.map((p: Character) => p.id) ?? [protagonist.id]);
+        const allProtagonistIds = new Set(td.protagonistIds || [protagonist.id]);
 
         await executeTurnPipeline({
             data: td,
@@ -1047,7 +1048,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                     streamingText: '',
                 });
                 setTimeout(() => {
-                    const allProtagonistIds = new Set(dataToSave.protagonists?.map(p => p.id) ?? [char.id]);
+                    const allProtagonistIds = new Set(dataToSave.protagonistIds || [char.id]);
                     const reMarkedId = findLastAIMessageId(dataToSave, allProtagonistIds);
                     if (reMarkedId) {
                         resumeGenerationRef.current?.(reMarkedId, allPromptBlocks);
@@ -1062,7 +1063,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 streamingText: '',
             });
 
-            const protagonistIds = new Set(currentInteractionData.protagonists?.map((p: Character) => p.id) ?? []);
+            const protagonistIds = new Set(currentInteractionData.protagonistIds || []);
             if (!protagonistIds.has(char.id)) ui.playVoice(finalText, char);
         } catch (e) {
             if ((e as Error).name !== 'AbortError') {
@@ -1096,9 +1097,11 @@ export function useChatSession(options: UseChatSessionOptions) {
         resumeGenerationRef.current = resumeGeneration;
     }, [resumeGeneration]);
 
+    // ✅ FIX: Changed signature to accept protagonistIds (string[]) instead of protagonists (Character[])
+    // to match the updated MessageBubble and ViewModeProps interfaces.
     const regenerateFromMessage = useCallback(async (
         messageId: string,
-        protagonists: Character[],
+        protagonistIds: string[],
         allPromptBlocks?: PromptBlock[]
     ) => {
         if (isMultiplayerClient) {
@@ -1110,13 +1113,13 @@ export function useChatSession(options: UseChatSessionOptions) {
         if (!currentInteractionData) { addToast('Chat data missing.', 'error'); return; }
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
 
-        const protagonistIds = new Set(protagonists.map(p => p.id));
+        const protagonistIdSet = new Set(protagonistIds);
         const sortedHistory = getGlobalMessageHistory(currentInteractionData);
         const ti = sortedHistory.findIndex(m => m.id === messageId);
         if (ti === -1) { addToast('Message not found.', 'error'); releaseLock(); return; }
 
         const tm = sortedHistory[ti];
-        const isProtagonistMessage = protagonistIds.has(tm.character.id);
+        const isProtagonistMessage = protagonistIdSet.has(tm.character.id);
         const trimIdx = isProtagonistMessage ? ti + 1 : ti;
         const toDelete = sortedHistory.slice(trimIdx);
 
@@ -1146,15 +1149,17 @@ export function useChatSession(options: UseChatSessionOptions) {
         };
         setInteractionData(td);
 
-        const primaryProtagonistId = protagonists[0]?.id ?? '';
-        const respondingChar = td.participants.find(p => !protagonistIds.has(p.id)) || protagonists[0];
+        const primaryProtagonistId = protagonistIds[0] ?? '';
+        const respondingChar = td.participants.find(p => !protagonistIdSet.has(p.id)) 
+            || td.participants.find(p => p.id === primaryProtagonistId) 
+            || td.participants[0];
 
         await executeTurnPipeline({
             data: td,
             protagonistId: primaryProtagonistId,
             allPromptBlocks,
             respondingCharacter: respondingChar,
-            isProtagonistCharId: (id: string) => protagonistIds.has(id),
+            isProtagonistCharId: (id: string) => protagonistIdSet.has(id),
             errorPrefix: 'Regeneration failed',
             lockAlreadyAcquired: true,
         });

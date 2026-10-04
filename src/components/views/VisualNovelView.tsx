@@ -1,7 +1,6 @@
 // src/components/views/VisualNovelView.tsx
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import type { ViewModeProps } from './types';
-import type { Character, ChatMessage } from '../../types';
 import { MemoizedMessageText } from '../MemoizedMessageText';
 import { useVisualNovelSpriteStates } from '../../hooks/useVisualNovelSpriteStates';
 import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
@@ -22,7 +21,7 @@ const AMBIENT_NARRATOR_ID = '__ambient_narrator__';
 
 export const VisualNovelView = React.memo(function VisualNovelView(props: ViewModeProps) {
     const {
-        interactionData, localProtagonist, displayMessages,
+        interactionData, localProtagonistId, displayMessages,
         portraitUrlCache, locationBackgroundUrl,
         formattedStreamingText, isLoading, streamingCharacter,
         centerAvatar, displayNameCache,
@@ -41,8 +40,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         canDelete,
     } = props;
 
-    const protagonistId = localProtagonist?.id;
-
     // FIX: Use state instead of ref so UI updates trigger re-renders properly
     const [rawDraft, setRawDraft] = useState('');
     const [conversions, setConversions] = useState<CategoryConversion[]>([]);
@@ -50,7 +47,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const prevIsEditingRef = useRef(false);
 
     const chatMessages = useMemo(() => {
-        const all = displayMessages.filter((m): m is ChatMessage => m.messageType === 'chat' || m.messageType === 'whisper');
+        const all = displayMessages.filter((m) => m.messageType === 'chat' || m.messageType === 'whisper');
         const seen = new Set<string>();
         return all.filter(m => {
             if (seen.has(m.id)) return false;
@@ -74,7 +71,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     }, [chatMessages.length, focusedMessageId, setFocusedMessageId]);
 
     const lastMsg = displayMessages[displayMessages.length - 1];
-    const isStreamingInList = isLoading && streamingCharacter !== null && lastMsg?.character?.id === streamingCharacter.id;
+    const isStreamingInList = isLoading && streamingCharacter !== null && lastMsg?.character.id === streamingCharacter.id;
 
     // STREAMING LAYER: Uses processedTextContent if the stream has updated the message object directly
     const activeStreamingText: string | null = isStreamingInList
@@ -102,10 +99,10 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         if (isStreamingInList && lastMsg?.character) return lastMsg.character;
         if (displayedMessage?.character) return displayedMessage.character;
         if (centerAvatar) return centerAvatar;
-        return visibleCharacters.find(c => c.id !== AMBIENT_NARRATOR_ID && c.id !== protagonistId)
+        return visibleCharacters.find(c => c.id !== AMBIENT_NARRATOR_ID && c.id !== localProtagonistId)
             || visibleCharacters[0]
             || null;
-    }, [viewIndex, displayedMessage, isLoading, streamingCharacter, isStreamingInList, lastMsg, centerAvatar, visibleCharacters, protagonistId]);
+    }, [viewIndex, displayedMessage, isLoading, streamingCharacter, isStreamingInList, lastMsg, centerAvatar, visibleCharacters, localProtagonistId]);
 
     // Compute the resolved display name for the active speaker using the immersion cache (one message behind)
     const activeSpeakerDisplayName = useMemo(() => {
@@ -156,22 +153,24 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     const spriteCharacterIds = useMemo(() => {
         return visibleCharacters
-            .filter(c => c.id !== AMBIENT_NARRATOR_ID && c.id !== protagonistId)
+            .filter(c => c.id !== AMBIENT_NARRATOR_ID && c.id !== localProtagonistId)
             .map(c => c.id);
-    }, [visibleCharacters, protagonistId]);
+    }, [visibleCharacters, localProtagonistId]);
 
     const { spriteStates, rollbackToMessage, isInitialLoad, jumpingCharacterIds } = useVisualNovelSpriteStates({
         chatMessages,
         visibleCharacterIds: spriteCharacterIds,
-        protagonistId,
+        // ✅ FIX: Coerce null to undefined to satisfy the hook's type signature
+        protagonistId: localProtagonistId ?? undefined,
         viewedMessageIndex: viewIndex,
     });
 
-    const handleRegenerateFromMessageWithRollback = useCallback((id: string, protagonists: Character[]) => {
+    // ✅ FIX: Updated to accept protagonistIds (string[]) instead of Character[]
+    const handleRegenerateFromMessageWithRollback = useCallback((id: string, protagonistIds: string[]) => {
         const msgIndex = chatMessages.findIndex(m => m.id === id);
         if (msgIndex !== -1) rollbackToMessage(msgIndex);
         setFocusedMessageId(null);
-        onRegenerateFromMessage(id, protagonists);
+        onRegenerateFromMessage(id, protagonistIds);
     }, [chatMessages, rollbackToMessage, onRegenerateFromMessage, setFocusedMessageId]);
 
     const handleBranchWithRollback = useCallback((id: string) => {
@@ -421,7 +420,15 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                     <>
                                         <button type="button" className="vn-toolbar-btn" onClick={() => onCopyText(displayedTextContent || '')} title="Copy Text">📋</button>
                                         <button type="button" className="vn-toolbar-btn" onClick={() => onResumeGeneration(displayedMessage.id)} title="Continue Generation">▶</button>
-                                        <button type="button" className="vn-toolbar-btn" onClick={() => handleRegenerateFromMessageWithRollback(displayedMessage.id, interactionData.protagonists)} title="Regenerate">↻</button>
+                                        <button 
+                                            type="button" 
+                                            className="vn-toolbar-btn" 
+                                            // ✅ FIX: Pass protagonistIds array directly
+                                            onClick={() => handleRegenerateFromMessageWithRollback(displayedMessage.id, interactionData.protagonistIds || [])} 
+                                            title="Regenerate"
+                                        >
+                                            ↻
+                                        </button>
                                         <button
                                             type="button"
                                             className="vn-toolbar-btn"

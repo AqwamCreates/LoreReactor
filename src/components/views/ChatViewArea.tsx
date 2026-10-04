@@ -15,7 +15,7 @@ interface ChatViewAreaProps {
     safeMessages: (ChatMessage | WhisperMessage)[];
     displayNameCache: any;
     isMultiplayerChat: boolean;
-    localProtagonistId?: string;
+    localProtagonistId?: string | null;
 }
 
 export function ChatViewArea({
@@ -58,24 +58,36 @@ export function ChatViewArea({
                 const name = resolveDelayedDisplayNameFromCache(displayNameCache, idx, streamingCharacter.id);
 
                 base[idx] = {
-                    ...last!,
+                    ...last,
                     textContent: streamingText,
-                    character: { ...last!.character, name },
-                } as any;
+                    character: { ...last.character, name },
+                } as ChatMessage | WhisperMessage;
             } else if (!last || last.character.id !== streamingCharacter.id) {
                 const name = resolveDelayedDisplayNameFromCache(displayNameCache, base.length, streamingCharacter.id);
+                const now = Date.now();
+                
+                // ✅ FIX: Fully type the streaming message to match ChatMessage interface 
+                // and remove obsolete `locationIndex` property.
                 base.push({
                     id: `streaming-${streamingCharacter.id}`,
                     messageType: 'chat',
                     character: { ...streamingCharacter, name },
                     textContent: streamingText,
                     files: [],
-                    firstCreatedTimestamp: 0,
-                    lastUpdatedTimestamp: 0,
-                    locationIndex: undefined,
+                    frontCameraImage: undefined,
+                    doNotRespond: false,
+                    modelTextContentSummaries: {},
+                    modelInteractionTextContentSummaries: {},
+                    kvCacheTextContentPaths: {},
+                    kvCacheTextContentSummaryPaths: {},
+                    kvCacheInteractionTextContentSummaries: {},
+                    characterClothingWearingStatuses: {},
                     characterLockedLocations: {},
+                    isPresent: true,
                     parentMessageId: null,
-                } as any);
+                    firstCreatedTimestamp: now,
+                    lastUpdatedTimestamp: now,
+                } as ChatMessage);
             }
         }
 

@@ -203,12 +203,17 @@ export class AudioEngine {
         }, fadeDuration * 1000 + 50);
     }
 
-    evaluate(interactionData: InteractionData, allPromptBlocks: PromptBlock[] = []): void {
+    // ✅ FIX: Added localProtagonistId parameter to evaluate audio from the local user's perspective
+    evaluate(interactionData: InteractionData, allPromptBlocks: PromptBlock[] = [], localProtagonistId?: string | null): void {
         const tracks = interactionData.audioTracks || [];
         const locations = interactionData.locations || [];
         
-        // FIXED: Use the protagonist to evaluate perspective-specific audio triggers
-        const protagonist = interactionData.protagonists?.[0];
+        // Use the explicitly passed localProtagonistId for perspective-specific audio triggers,
+        // falling back to the session's primary protagonist if not provided.
+        const activeProtagonistId = localProtagonistId ?? interactionData.protagonistIds?.[0];
+        const protagonist = activeProtagonistId 
+            ? interactionData.participants?.find(p => p.id === activeProtagonistId) 
+            : undefined;
 
         this.checkLocationEnterTriggers(interactionData, tracks, locations);
 
@@ -219,11 +224,11 @@ export class AudioEngine {
             return;
         }
 
-        // FIXED: Pass character to get character-specific location
+        // Pass character to get character-specific location
         const currentLocationId = protagonist ? this.getCurrentLocationId(interactionData, protagonist) : undefined;
         const currentContextIds = new Set((interactionData.contexts || []).map(c => c.id));
 
-        // FIXED: Pass character to get character-specific visible message text
+        // Pass character to get character-specific visible message text (respects whispers)
         const latestMessageText = protagonist ? this.getLatestVisibleMessageText(interactionData, protagonist, allPromptBlocks) : '';
 
         const shouldBeActive = new Set<string>();
@@ -291,7 +296,7 @@ export class AudioEngine {
         const participants = interactionData.participants || [];
 
         for (const participant of participants) {
-            // FIXED: Uses findLatestMessage (character-scoped) to get the specific character's current locationId
+            // Uses findLatestMessage (character-scoped) to get the specific character's current locationId
             const latest = findLatestMessage(interactionData, participant);
             const currentLocId = latest?.locationId;
             const previousLocId = this.previousLocationIds.get(participant.id);
@@ -332,13 +337,11 @@ export class AudioEngine {
         return entries[entries.length - 1][0];
     }
 
-    // FIXED: Now takes a character parameter to ensure character-specific location resolution
     private getCurrentLocationId(interactionData: InteractionData, character: Character): string | undefined {
         const latest = findLatestMessage(interactionData, character);
         return latest?.locationId;
     }
 
-    // FIXED: Now takes a character parameter and uses LOCAL history to respect character-specific visibility (e.g., whispers)
     private getLatestVisibleMessageText(
         interactionData: InteractionData,
         character: Character,

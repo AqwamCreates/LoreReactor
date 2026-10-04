@@ -133,28 +133,27 @@ interface ApplicationModalsProperties {
 
 type ChatShellWithIdentifier = RawInteractionData & { id: string };
 
-function deriveLocalProtagonist(
+function deriveLocalProtagonistId(
     interactionData: InteractionData | null,
     multiplayerData: MultiplayerData | null,
     currentAccountId: string | null,
-): Character | null {
+): string | null {
     if (!interactionData) return null;
 
     if (multiplayerData && currentAccountId) {
         const protagonistCharacterIdentifier = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.protagonistCharacterId;
         if (protagonistCharacterIdentifier) {
-            const foundCharacter = 
-                interactionData.protagonists?.find(participant => participant.id === protagonistCharacterIdentifier) ||
-                interactionData.participants?.find(participant => participant.id === protagonistCharacterIdentifier);
-            if (foundCharacter) return foundCharacter;
+            const isProtagonist = interactionData.protagonistIds?.includes(protagonistCharacterIdentifier);
+            const isParticipant = interactionData.participants?.some(p => p.id === protagonistCharacterIdentifier);
+            if (isProtagonist || isParticipant) return protagonistCharacterIdentifier;
         }
     }
 
-    if (interactionData.protagonists && interactionData.protagonists.length > 0) {
-        return interactionData.protagonists[0];
+    if (interactionData.protagonistIds && interactionData.protagonistIds.length > 0) {
+        return interactionData.protagonistIds[0];
     }
 
-    return interactionData.participants?.[0] ?? null;
+    return interactionData.participants?.[0]?.id ?? null;
 }
 
 export function AppModals({
@@ -249,8 +248,8 @@ export function AppModals({
     const accountModalProperties = entityModals.getModalProperties('account');
     const multiplayerDataModalProperties = entityModals.getModalProperties('multiplayerData');
 
-    const localProtagonist = useMemo(
-        () => deriveLocalProtagonist(interactionData, multiplayerData, currentAccountId),
+    const localProtagonistId = useMemo(
+        () => deriveLocalProtagonistId(interactionData, multiplayerData, currentAccountId),
         [interactionData, multiplayerData, currentAccountId],
     );
 
@@ -270,7 +269,9 @@ export function AppModals({
 
     // ─── Active World IDs from Interaction Data ───
     const currentWorldIds = useMemo(() => {
-        return (interactionData as any)?.worldIds || [];
+        // ✅ FIX: Cast to `any` because `worldIds` is dynamically injected into InteractionData 
+        // by the Worlds Management system but not formally declared in the base InteractionData interface.
+        return interactionData?.worldIds || [];
     }, [interactionData]);
 
     // ─── Toggle World in/out of Interaction Data ───
@@ -305,7 +306,7 @@ export function AppModals({
                 numberOfMessages: interactionData.numberOfMessages ?? 0,
                 parentInteractionDataId: interactionData.parentInteractionDataId ?? null,
                 parentMessageId: interactionData.parentMessageId ?? null,
-                protagonistIds: interactionData.protagonists?.map(p => p.id) ?? [],
+                protagonistIds: interactionData.protagonistIds ?? [],
                 participantIds: interactionData.participants?.map(p => p.id) ?? [],
                 contextIds: interactionData.contexts?.map(c => c.id) ?? [],
                 locationIds: interactionData.locations?.map(l => l.id) ?? [],
@@ -437,7 +438,7 @@ export function AppModals({
                     onToggleOrder={onToggleParticipant}
                     onSelectItem={(character: Character) => onSetProtagonist(character.id)}
                     specialActionTooltip={(character: Character) => `set ${character.name} as the protagonist`}
-                    selectedId={localProtagonist?.id}
+                    selectedId={localProtagonistId ?? undefined}
                 />
             )}
 
@@ -913,7 +914,7 @@ export function AppModals({
                     existingCharacter={characterModalProperties.item} 
                     allSamplers={allSamplers} 
                     allCharacters={allCharacters}
-                    localProtagonist={localProtagonist}
+                    localProtagonistId={localProtagonistId}
                     interactionData={interactionData}
                     selectedModel={effectiveTokenizerModel} 
                     runningModels={runningModels} 

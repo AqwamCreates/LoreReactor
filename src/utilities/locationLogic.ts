@@ -27,7 +27,9 @@ export function getCoLocatedParticipants(interactionData: InteractionData, chara
 export function getCoLocatedProtagonists(interactionData: InteractionData, character: Character): Character[] {
     const locationId = getCurrentLocationId(interactionData, character);
     if (!locationId) return [];
-    return interactionData.protagonists.filter(p => {
+    const protagIds = new Set(interactionData.protagonistIds || []);
+    return interactionData.participants.filter(p => {
+        if (!protagIds.has(p.id)) return false;
         if (p.id === character.id) return false;
         return getCurrentLocationId(interactionData, p) === locationId;
     });
@@ -230,7 +232,7 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
     if (!locations || locations.length === 0) return interactionData;
 
     const allParticipantIds = new Set<string>();
-    for (const p of interactionData.protagonists) allParticipantIds.add(p.id);
+    for (const id of (interactionData.protagonistIds || [])) allParticipantIds.add(id);
     for (const p of interactionData.participants) allParticipantIds.add(p.id);
 
     const updatedHistories = { ...interactionData.interactionHistories };
@@ -239,7 +241,7 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
 
     const noHistoryAtAll: Character[] = [];
     for (const id of allParticipantIds) {
-        const character = interactionData.protagonists.find(p => p.id === id) || interactionData.participants.find(p => p.id === id);
+        const character = interactionData.participants.find(p => p.id === id);
         if (!character) continue;
 
         const latest = findLatestMessage(interactionData, character);

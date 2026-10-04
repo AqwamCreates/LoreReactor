@@ -291,7 +291,7 @@ export async function cloneChatUpToMessage(currentChat: InteractionData, message
     const clonedChat: InteractionData = {
         id: uuidv4(),
         name: `${currentChat.name} (Clone)`,
-        protagonists: currentChat.protagonists.map(p => ({ ...p })),
+        protagonistIds: [...(currentChat.protagonistIds || [])],
         participants: currentChat.participants.map(p => ({ ...p })),
         contexts: (currentChat.contexts || []).map(c => ({ ...c })),
         locations: (currentChat.locations || []).map(l => ({ ...l })),

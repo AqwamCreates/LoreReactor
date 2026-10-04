@@ -246,8 +246,15 @@ export function ChatInspectionModal({
     const chat = localChat ?? baseChat;
     const canGoBack = internalStack.length > 1;
 
-    const protagonists = useMemo(() => chat?.protagonists || [], [chat]);
-    const protagonistIds = useMemo(() => new Set(protagonists.map(p => p.id)), [protagonists]);
+    // ✅ FIX: Resolve protagonistIds directly, and map protagonists from participants
+    const protagonistIds = useMemo(() => new Set(chat?.protagonistIds || []), [chat]);
+    const protagonists = useMemo(() => {
+        if (!chat?.protagonistIds || !chat.participants) return [];
+        return chat.protagonistIds
+            .map(id => chat.participants.find(p => p.id === id))
+            .filter((c): c is Character => !!c);
+    }, [chat]);
+    
     const participants = useMemo(() => chat?.participants || [], [chat]);
     const locations = chat?.locations || [];
     const audioTracks = chat?.audioTracks || [];
@@ -345,19 +352,20 @@ export function ChatInspectionModal({
 
     const handleToggleProtagonist = useCallback((character: Character) => {
         if (!localChat) return;
-        const currentProtags = localChat.protagonists || [];
-        const isCurrentlyProtag = currentProtags.some(p => p.id === character.id);
+        // ✅ FIX: Manipulate protagonistIds string array instead of Character array
+        const currentProtagIds = localChat.protagonistIds || [];
+        const isCurrentlyProtag = currentProtagIds.includes(character.id);
 
-        let newProtags: Character[];
+        let newProtagIds: string[];
         if (isCurrentlyProtag) {
-            newProtags = currentProtags.filter(p => p.id !== character.id);
+            newProtagIds = currentProtagIds.filter(id => id !== character.id);
         } else {
-            newProtags = [...currentProtags, character];
+            newProtagIds = [...currentProtagIds, character.id];
         }
 
         setLocalChat({
             ...localChat,
-            protagonists: newProtags,
+            protagonistIds: newProtagIds,
             lastUpdatedTimestamp: Date.now(),
         });
         setIsDirty(true);
@@ -368,7 +376,8 @@ export function ChatInspectionModal({
         setLocalChat({
             ...localChat,
             participants: (localChat.participants || []).filter(p => p.id !== characterId),
-            protagonists: (localChat.protagonists || []).filter(p => p.id !== characterId),
+            // ✅ FIX: Filter protagonistIds instead of protagonists
+            protagonistIds: (localChat.protagonistIds || []).filter(id => id !== characterId),
             lastUpdatedTimestamp: Date.now(),
         });
         setIsDirty(true);
@@ -404,8 +413,9 @@ export function ChatInspectionModal({
         }
 
         let currentLoc: Location | undefined;
-        if (chat.protagonists && chat.protagonists.length > 0) {
-            currentLoc = getCurrentLocation(chat, chat.protagonists[0]);
+        // ✅ FIX: Use resolved protagonists array
+        if (protagonists.length > 0) {
+            currentLoc = getCurrentLocation(chat, protagonists[0]);
         }
         if (!currentLoc) {
             let maxTime = -1;
@@ -560,7 +570,7 @@ export function ChatInspectionModal({
         }
 
         return { nodes: graphNodes, edges: graphEdges };
-    }, [chat]);
+    }, [chat, protagonists]);
 
     const occupiedLocations = useMemo(() => {
         if (!chat || !hasLocations) return [];

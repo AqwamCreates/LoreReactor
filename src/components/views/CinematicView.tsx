@@ -10,7 +10,7 @@ import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLog
 
 export const CinematicView = React.memo(function CinematicView(props: ViewModeProps) {
     const {
-        interactionData, localProtagonist, displayMessages, selectedCharacterId,
+        interactionData, localProtagonistId, displayMessages, selectedCharacterId,
         editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
         activeToolbarId, portraitUrlCache, displayNameCache,
         centerAvatar, streamingPortraitUrl, formattedStreamingText,
@@ -174,8 +174,8 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                             message={message}
                             index={index}
                             viewMode="cinematic"
-                            protagonists={interactionData.protagonists}
-                            localProtagonist={localProtagonist}
+                            protagonistIds={interactionData.protagonistIds || []}
+                            localProtagonistId={localProtagonistId}
                             editingId={editingId}
                             editDraft={editDraft}
                             massDeleteId={massDeleteId}

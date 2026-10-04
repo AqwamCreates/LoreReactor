@@ -1,6 +1,6 @@
 // src/hooks/useMessageActions.ts
 import { useState, useCallback } from 'react';
-import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, PromptBlock } from '../types';
 import { 
     deleteMessage, 
     massDeleteMessages, 
@@ -15,19 +15,19 @@ import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 
 interface UseMessageActionsOptions {
     interactionData: InteractionData | null;
-    localProtagonist: Character | null;
+    localProtagonistId: string | null; // ✅ FIX: Changed from Character object to string ID
     isModelReady: boolean | undefined;
     isLoading: boolean;
     setInteractionData: (data: InteractionData) => void;
     setSelectedCharacter: (char: Character | null) => void;
     refreshChatList: () => void;
-    regenerateFromMessage: (id: string, protagonists: Character[]) => Promise<void>;
+    regenerateFromMessage: (id: string, protagonistIds: string[], allPromptBlocks?: PromptBlock[]) => Promise<void>;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
 export function useMessageActions(options: UseMessageActionsOptions) {
     const {
-        interactionData, localProtagonist, isModelReady, isLoading,
+        interactionData, localProtagonistId, isModelReady, isLoading,
         setInteractionData, setSelectedCharacter, refreshChatList,
         regenerateFromMessage, addToast,
     } = options;
@@ -114,7 +114,7 @@ export function useMessageActions(options: UseMessageActionsOptions) {
 
         // 2. Replace tool invocations in the new text
         const toolRegex = new RegExp(`${startEsc}([\\s\\S]*?)${endEsc}`, 'g');
-        processed = processed.replace(toolRegex, (match, inner) => {
+        processed = processed.replace(toolRegex, (_match, inner) => {
             const trimmedInner = inner.trim();
             
             // If the exact tool call hasn't changed, place the exact old badge back
@@ -214,7 +214,8 @@ export function useMessageActions(options: UseMessageActionsOptions) {
             setEditingId(null);
             setEditDraft('');
 
-            await regenerateFromMessage(targetId, finalUpdated.protagonists ?? []);
+            // ✅ FIX: Pass the ID array directly instead of mapping to Character objects
+            await regenerateFromMessage(targetId, finalUpdated.protagonistIds || []);
         } catch (e) {
             addToast((e as Error).message, 'error');
         }
@@ -252,7 +253,11 @@ export function useMessageActions(options: UseMessageActionsOptions) {
             await saveRawInteractionData(branchedChat);
             await saveRawSessionData({ activeChatId: branchedChat.id });
             setInteractionData(branchedChat);
-            if (localProtagonist) setSelectedCharacter(localProtagonist);
+            
+            // ✅ FIX: Resolve the Character object from the new chat's participants using the ID
+            const protagChar = localProtagonistId ? branchedChat.participants.find(p => p.id === localProtagonistId) ?? null : null;
+            if (protagChar) setSelectedCharacter(protagChar);
+            
             speculativeMarkovEngine.clearSession(branchedChat.id);
             refreshChatList();
             addToast(`Branched to "${branchedChat.name}"`, 'success');
@@ -260,7 +265,7 @@ export function useMessageActions(options: UseMessageActionsOptions) {
             console.error('[useMessageActions] Branch error:', e);
             addToast('Failed to branch chat.', 'error');
         }
-    }, [interactionData, localProtagonist, setInteractionData, setSelectedCharacter, refreshChatList, addToast]);
+    }, [interactionData, localProtagonistId, setInteractionData, setSelectedCharacter, refreshChatList, addToast]);
 
     const handleClone = useCallback(async (id: string) => {
         if (!interactionData) return;
@@ -269,7 +274,11 @@ export function useMessageActions(options: UseMessageActionsOptions) {
             await saveRawInteractionData(clonedChat);
             await saveRawSessionData({ activeChatId: clonedChat.id });
             setInteractionData(clonedChat);
-            if (localProtagonist) setSelectedCharacter(localProtagonist);
+            
+            // ✅ FIX: Resolve the Character object from the new chat's participants using the ID
+            const protagChar = localProtagonistId ? clonedChat.participants.find(p => p.id === localProtagonistId) ?? null : null;
+            if (protagChar) setSelectedCharacter(protagChar);
+            
             speculativeMarkovEngine.clearSession(clonedChat.id);
             refreshChatList();
             addToast(`Cloned to "${clonedChat.name}"`, 'success');
@@ -277,7 +286,7 @@ export function useMessageActions(options: UseMessageActionsOptions) {
             console.error('[useMessageActions] Clone error:', e);
             addToast('Failed to clone chat.', 'error');
         }
-    }, [interactionData, localProtagonist, setInteractionData, setSelectedCharacter, refreshChatList, addToast]);
+    }, [interactionData, localProtagonistId, setInteractionData, setSelectedCharacter, refreshChatList, addToast]);
 
     const handleCopyText = useCallback(async (text: string) => {
         try {

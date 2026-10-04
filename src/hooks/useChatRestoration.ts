@@ -27,7 +27,7 @@ function createEmptyChat(): InteractionData {
     return {
         id: uuidv4(),
         name: 'Untitled Chat',
-        protagonists: [],
+        protagonistIds: [],
         participants: [],
         contexts: [],
         locations: [],
@@ -57,18 +57,9 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         restorationDoneRef.current = true;
 
         const activateChat = async (chat: InteractionData) => {
-            const hydratedProtagonists = await Promise.all(
-                (chat.protagonists || []).map(async (p) => {
-                    const freshProtag = allCharacters.find(c => c.id === p.id);
-                    if (freshProtag) {
-                        const fullChar = await loadFullCharacter(freshProtag.id);
-                        if (fullChar) return fullChar;
-                    }
-                    console.warn(`Protagonist ${p.id} not found or failed to load. Keeping shell.`);
-                    return p;
-                })
-            );
-
+            // Since protagonists are now just IDs, we only need to hydrate participants.
+            // The protagonist Character objects will naturally be resolved from the participants array 
+            // via the protagonistIds array when needed.
             const hydratedParticipants = await Promise.all(
                 (chat.participants || []).map(async (p) => {
                     const exists = allCharacters.some(c => c.id === p.id);
@@ -84,7 +75,6 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
 
             const hydratedChat: InteractionData = {
                 ...chat,
-                protagonists: hydratedProtagonists,
                 participants: hydratedParticipants,
             };
 
@@ -108,8 +98,14 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                 speculativeMarkovEngine.fullTrain(trainingMessages, hydratedChat.id);
             }
 
-            if (hydratedProtagonists.length > 0) {
-                setSelectedCharacter(hydratedProtagonists[0]);
+            // Resolve the primary protagonist to set as selected character
+            const primaryProtagonistId = hydratedChat.protagonistIds?.[0];
+            const primaryProtagonist = primaryProtagonistId 
+                ? hydratedParticipants.find(p => p.id === primaryProtagonistId) 
+                : null;
+
+            if (primaryProtagonist) {
+                setSelectedCharacter(primaryProtagonist);
             } else if (hydratedParticipants.length > 0) {
                 setSelectedCharacter(hydratedParticipants[0]);
             } else {

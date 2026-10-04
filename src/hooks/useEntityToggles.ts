@@ -67,35 +67,39 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         if (!interactionData) return;
         
         const isParticipant = interactionData.participants.some(p => p.id === charId);
-        const isProtagonist = interactionData.protagonists?.some(p => p.id === charId) ?? false;
+        const isProtagonist = (interactionData.protagonistIds || []).includes(charId);
 
         if (isParticipant) {
             // ─── REMOVING ────────────────────────────────────────────
             if (isProtagonist) {
-                const protagonistCount = interactionData.protagonists?.length || 0;
+                const protagonistCount = interactionData.protagonistIds?.length || 0;
                 if (protagonistCount <= 1) {
                     addToast('Cannot remove the only protagonist.', 'error');
                     return;
                 }
                 
-                const updatedProtagonists = (interactionData.protagonists || []).filter(p => p.id !== charId);
-                const newActiveProtagonist = updatedProtagonists[0];
+                const updatedProtagonistIds = (interactionData.protagonistIds || []).filter(id => id !== charId);
+                const newActiveProtagonistId = updatedProtagonistIds[0];
+                
+                // Resolve the character object from the new participants array or global list
+                const np = interactionData.participants.filter(p => p.id !== charId);
+                const newActiveProtagonist = newActiveProtagonistId 
+                    ? np.find(p => p.id === newActiveProtagonistId) || allCharacters.find(c => c.id === newActiveProtagonistId) || null
+                    : null;
                 
                 const { histories: updatedHistories } = checkAndCleanHistories(interactionData.interactionHistories, charId);
-                
-                const np = interactionData.participants.filter(p => p.id !== charId);
                 
                 const updatedData: InteractionData = {
                     ...interactionData,
                     participants: np,
-                    protagonists: updatedProtagonists,
+                    protagonistIds: updatedProtagonistIds,
                     interactionHistories: updatedHistories as Record<string, HistoryMessage[]>,
                     lastUpdatedTimestamp: Date.now(),
                 };
                 
                 setInteractionData(updatedData);
                 setSelectedCharacter(newActiveProtagonist);
-                setSelectedCharacterId(newActiveProtagonist.id);
+                if (newActiveProtagonist) setSelectedCharacterId(newActiveProtagonist.id);
                 addToast('Protagonist removed.', 'info');
             } else {
                 const np = interactionData.participants.filter(p => p.id !== charId);
@@ -216,9 +220,9 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         // 1. Identify which protagonist character currently represents this user/account
         const previousProtagonistId = currentAccountId && multiplayerData
             ? multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.protagonistCharacterId
-            : interactionData.protagonists?.[0]?.id;
+            : interactionData.protagonistIds?.[0];
 
-        // 2. Identify protagonist IDs still actively claimed by OTHER peer accounts (if in multiplayer)
+        // 2. Identify protagonist ids still actively claimed by OTHER peer accounts (if in multiplayer)
         const otherAccountProtagonistIds = new Set<string>();
         if (multiplayerData?.multiplayerDataAccountConfigurations) {
             for (const [accId, config] of Object.entries(multiplayerData.multiplayerDataAccountConfigurations)) {
@@ -228,20 +232,20 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             }
         }
 
-        // 3. Keep only protagonists belonging to other peers; replace the previous protagonist for this user
-        const existingProtagonists = interactionData.protagonists || [];
-        const filteredProtagonists = existingProtagonists.filter(p => {
-            if (p.id === charId) return false;
-            if (p.id === previousProtagonistId && !otherAccountProtagonistIds.has(p.id)) {
+        // 3. Keep only protagonist ids belonging to other peers; replace the previous protagonist for this user
+        const existingProtagonistIds = interactionData.protagonistIds || [];
+        const filteredProtagonistIds = existingProtagonistIds.filter(pId => {
+            if (pId === charId) return false;
+            if (pId === previousProtagonistId && !otherAccountProtagonistIds.has(pId)) {
                 return false;
             }
             if (!currentAccountId || otherAccountProtagonistIds.size === 0) {
                 return false; // Solo session: never retain previous protagonists
             }
-            return otherAccountProtagonistIds.has(p.id);
+            return otherAccountProtagonistIds.has(pId);
         });
 
-        const updatedProtagonists = [ch, ...filteredProtagonists];
+        const updatedProtagonistIds = [charId, ...filteredProtagonistIds];
 
         // Update and persist room configuration for the active account
         let updatedMultiplayerData: MultiplayerData | undefined = multiplayerData ? { ...multiplayerData } : undefined;
@@ -279,7 +283,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
 
         let uc: InteractionData = {
             ...interactionData,
-            protagonists: updatedProtagonists,
+            protagonistIds: updatedProtagonistIds,
             lastUpdatedTimestamp: Date.now(),
         };
 

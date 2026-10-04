@@ -1,11 +1,11 @@
 // src/components/views/types.ts
 import type React from 'react';
-import type { Character, InteractionData, ChatMessage } from '../../types';
+import type { Character, InteractionData, ChatMessage, PromptBlock } from '../../types';
 import type { DisplayNameCache } from '../../utilities/immersionLogic';
 
 export interface ViewModeProps {
     interactionData: InteractionData;
-    localProtagonist: Character | null;
+    localProtagonistId: string | null;
     displayMessages: ChatMessage[];
     selectedCharacterId: string | undefined;
     editingId: string | null;
@@ -38,7 +38,7 @@ export interface ViewModeProps {
     onRegenerateFromEdit: () => void;
     onResumeGeneration: (id: string) => void;
     onCopyText: (text: string) => void;
-    onRegenerateFromMessage: (id: string, protagonists: Character[]) => void;
+    onRegenerateFromMessage: (id: string, protagonistIds: string[], allPromptBlocks?: PromptBlock[]) => void;
     onBranch: (id: string) => void;
     onClone: (id: string) => void;
     onDelete: (id: string) => void;

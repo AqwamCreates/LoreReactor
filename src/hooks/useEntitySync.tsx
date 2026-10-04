@@ -48,25 +48,11 @@ export function useEntitySync(options: UseEntitySyncOptions) {
         let changed = false;
         const updated = { ...currentChat };
 
-        // Sync protagonists — update each if fresher version exists
-        if (currentChat.protagonists?.length) {
-            let protagonistsChanged = false;
-            const freshProtagonists = currentChat.protagonists.map(p => {
-                const fresh = charMap.get(p.id);
-                if (fresh && fresh.lastUpdatedTimestamp !== p.lastUpdatedTimestamp) {
-                    protagonistsChanged = true;
-                    return fresh;
-                }
-                return p;
-            });
-            if (protagonistsChanged) {
-                updated.protagonists = freshProtagonists;
-                changed = true;
-            }
-        }
-
         // Sync participants — NEVER filter out participants that aren't in allCharacters.
         // Only update participants that have a fresher version available.
+        // Note: Since protagonists are now just `protagonistIds: string[]`, their underlying
+        // Character objects are stored in `participants`. Syncing participants automatically
+        // syncs the character data for protagonists.
         let participantsChanged = false;
         const freshParticipants = currentChat.participants.map(p => {
             const fresh = charMap.get(p.id);
@@ -81,7 +67,8 @@ export function useEntitySync(options: UseEntitySyncOptions) {
         for (const p of freshParticipants) knownParticipantIdsRef.current.add(p.id);
 
         if (participantsChanged) {
-            updated.participants = freshParticipants; changed = true;
+            updated.participants = freshParticipants; 
+            changed = true;
         }
 
         // Sync contexts — same defensive approach: update but never drop
@@ -96,7 +83,8 @@ export function useEntitySync(options: UseEntitySyncOptions) {
                 return context;
             });
             if (contextsChanged) {
-                updated.contexts = freshContexts; changed = true;
+                updated.contexts = freshContexts; 
+                changed = true;
             }
         }
 
@@ -104,7 +92,8 @@ export function useEntitySync(options: UseEntitySyncOptions) {
         if (currentChat.profile) {
             const freshProfile = profileMap.get(currentChat.profile.id);
             if (freshProfile && freshProfile.lastUpdatedTimestamp !== currentChat.profile.lastUpdatedTimestamp) {
-                updated.profile = freshProfile; changed = true;
+                updated.profile = freshProfile; 
+                changed = true;
             }
         }
 

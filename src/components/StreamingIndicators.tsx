@@ -28,8 +28,11 @@ export function StreamingIndicators({
     if (!isLoading || !streamingCharacter) return null;
 
     const isNotProtagOrAmbient = streamingCharacter.id !== selectedCharacterId && streamingCharacter.id !== AMBIENT_NARRATOR_ID;
+    
+    // ✅ FIX: Pass selectedCharacterId (which represents the local protagonist ID) 
+    // to getDelayedDisplayName so it uses the correct perspective for name resolution.
     const dn = interactionData
-        ? getDelayedDisplayName(interactionData, streamingCharacter, Math.max(0, messagesLength - 1))
+        ? getDelayedDisplayName(interactionData, streamingCharacter, Math.max(0, messagesLength - 1), selectedCharacterId ?? null)
         : streamingCharacter.name;
 
     const avatarColumn = isNotProtagOrAmbient && viewMode === 'ladder' && (

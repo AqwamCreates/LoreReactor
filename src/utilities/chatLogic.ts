@@ -180,7 +180,7 @@ export async function buildChatRequestBody(
         }
 
         const colocatedParticipants = getCoLocatedParticipants(interactionData, character);
-        const protagonistIds = new Set(interactionData.protagonists?.map(p => p.id) ?? []);
+        const protagonistIds = new Set(interactionData.protagonistIds || []);
         const effectiveUseFrontCameraImage = getEffectiveUseFrontCameraImage(character, profile);
 
         // 2. Co-Located Other Participants' Appearance Images
@@ -391,7 +391,7 @@ export function createNewInteractionData(character: Character): InteractionData 
     return {
         id: uuidv4(),
         name: "Untitled Chat",
-        protagonists: [character],
+        protagonistIds: [character.id],
         participants: [character],
         contexts: [],
         locations: [],

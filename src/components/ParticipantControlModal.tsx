@@ -75,7 +75,7 @@ export function ParticipantControlModal({
     const applyOverrides = () => {
         if (isReadOnly) return;
         
-        let updatedHistories = { ...interactionData.interactionHistories };
+        const updatedHistories = { ...interactionData.interactionHistories };
         let changed = false;
 
         for (const p of interactionData.participants) {
@@ -91,7 +91,7 @@ export function ParticipantControlModal({
                 const locMsgs = updatedHistories[locationId] ? [...updatedHistories[locationId]] : [];
                 const msgIdx = locMsgs.findIndex(m => m.id === message.id);
                 
-                let updatedMsg = { ...message };
+                const updatedMsg = { ...message };
                 let msgChanged = false;
 
                 if (hasChatChanged) {
@@ -259,7 +259,8 @@ export function ParticipantControlModal({
                         >
                             <option value="">Select character...</option>
                             {interactionData.participants.map(p => {
-                                const isProtag = interactionData.protagonists?.some(pr => pr.id === p.id);
+                                // ✅ FIX: Use protagonistIds string array instead of protagonists Character array
+                                const isProtag = interactionData.protagonistIds?.includes(p.id) ?? false;
                                 return (
                                     <option key={p.id} value={p.id}>
                                         {p.name} {isProtag ? '★ (Protagonist)' : '(NPC)'}

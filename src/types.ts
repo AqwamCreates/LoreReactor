@@ -356,7 +356,7 @@ export interface ChatMessage extends BaseMessage {
   processedTextContent?: string;
   files?: string[];
   frontCameraImage?: string;
-  doNotRespond: boolean;
+  doNotRespond?: boolean;
   modelTextContentSummaries: Record<string, string>;
   modelInteractionTextContentSummaries: Record<string, string>;
   kvCacheTextContentPaths: Record<string, string>;
@@ -371,7 +371,7 @@ export interface WhisperMessage extends BaseMessage {
   targetCharacterIds: string[];
   files?: string[];
   frontCameraImage?: string;
-  doNotRespond: boolean;
+  doNotRespond?: boolean;
   modelTextContentSummaries: Record<string, string>;
   modelInteractionTextContentSummaries: Record<string, string>;
   kvCacheTextContentPaths: Record<string, string>;
@@ -404,7 +404,7 @@ export interface RawChatMessage extends RawBaseMessage {
   textContent: string;
   files?: string[];
   frontCameraImage?: string;
-  doNotRespond: boolean;
+  doNotRespond?: boolean;
   modelTextContentSummaries: Record<string, string>;
   modelInteractionTextContentSummaries: Record<string, string>;
   kvCacheTextContentPaths: Record<string, string>;
@@ -418,7 +418,7 @@ export interface RawWhisperMessage extends RawBaseMessage {
   targetCharacterIds: string[];
   files?: string[];
   frontCameraImage?: string;
-  doNotRespond: boolean;
+  doNotRespond?: boolean;
   modelTextContentSummaries: Record<string, string>;
   modelInteractionTextContentSummaries: Record<string, string>;
   kvCacheTextContentPaths: Record<string, string>;
@@ -496,7 +496,7 @@ export interface RawMultiplayerData extends RawData {
 }
 
 export interface InteractionData extends ObjectData {
-  protagonists: Character[];
+  protagonistIds: string[];
   participants: Character[];
   contexts: Context[];
   locations: Location[];
@@ -506,6 +506,7 @@ export interface InteractionData extends ObjectData {
   parentInteractionDataId?: string | null;
   parentMessageId?: string | null;
   profile?: Profile;
+  worldIds?: string[]; // ✅ ADD THIS
 }
 
 export interface RawInteractionData extends RawData {
@@ -518,6 +519,7 @@ export interface RawInteractionData extends RawData {
   parentInteractionDataId?: string | null;
   parentMessageId?: string | null;
   profileId?: string;
+  worldIds?: string[]; // ✅ ADD THIS
 }
 
 export type ExtensionType = 'Image Generation API' | 'Accessibility' | 'Extra';

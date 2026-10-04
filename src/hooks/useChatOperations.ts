@@ -12,7 +12,7 @@ const tokenEngine = getLanguageModelEngine();
 interface UseChatOperationsOptions {
     interactionData: InteractionData | null;
     currentCharacter: Character | null;
-    localProtagonist: Character | null;
+    localProtagonistId: string | null; // ✅ FIX: Changed from Character object to string ID
     selectedCharacterId: string | null;
     allCharacters: Character[];
     rawChatShells?: RawInteractionData[];
@@ -70,15 +70,20 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         if (chat) {
             let fullChat = chat;
 
-            // Hydrate protagonists with full data (system prompts, samplers) if available
-            if (loadFullCharacter && fullChat.protagonists?.length) {
-                const hydratedProtagonists = await Promise.all(
-                    fullChat.protagonists.map(async (p) => {
-                        const full = await loadFullCharacter(p.id);
-                        return full || p;
+            // Hydrate protagonists with full data (system prompts, samplers) if available.
+            // Since protagonists are now just IDs, we hydrate the matching participants.
+            if (loadFullCharacter && fullChat.protagonistIds?.length) {
+                const protagIdSet = new Set(fullChat.protagonistIds);
+                const hydratedParticipants = await Promise.all(
+                    fullChat.participants.map(async (p) => {
+                        if (protagIdSet.has(p.id)) {
+                            const full = await loadFullCharacter(p.id);
+                            return full || p;
+                        }
+                        return p;
                     })
                 );
-                fullChat = { ...fullChat, protagonists: hydratedProtagonists };
+                fullChat = { ...fullChat, participants: hydratedParticipants };
             }
 
             if (currentSeq !== switchSeqRef.current) return;
@@ -106,9 +111,10 @@ export function useChatOperations(options: UseChatOperationsOptions) {
                 speculativeMarkovEngine.clearSession(fullChat.id);
             }
 
-            const activeProtagonist = fullChat.protagonists?.[0] 
-                || fullChat.participants?.[0] 
-                || null;
+            const activeProtagonistId = fullChat.protagonistIds?.[0];
+            const activeProtagonist = activeProtagonistId 
+                ? fullChat.participants.find(p => p.id === activeProtagonistId) 
+                : (fullChat.participants?.[0] || null);
                 
             if (activeProtagonist) {
                 setSelectedCharacter(activeProtagonist);

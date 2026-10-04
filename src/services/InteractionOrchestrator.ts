@@ -99,15 +99,18 @@ export async function runTurnSequence(
     let sequenceCompleted = true;
 
     while (!abortController.signal.aborted) {
-        const protagonistIds = new Set(workingData.protagonists.map(p => p.id));
+        const protagonistIds = new Set(workingData.protagonistIds || []);
         const allAI = workingData.participants.filter(p => !protagonistIds.has(p.id));
 
         const hasLocations = workingData.locations && workingData.locations.length > 0;
         const protagonistLocIds = new Set<string>();
         if (hasLocations) {
-            for (const p of workingData.protagonists) {
-                const locId = getCurrentLocationId(workingData, p);
-                if (locId !== undefined) protagonistLocIds.add(locId);
+            for (const pId of (workingData.protagonistIds || [])) {
+                const p = workingData.participants.find(part => part.id === pId);
+                if (p) {
+                    const locId = getCurrentLocationId(workingData, p);
+                    if (locId !== undefined) protagonistLocIds.add(locId);
+                }
             }
         }
 

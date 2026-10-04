@@ -11,7 +11,7 @@ export interface DisplayNameCache {
     forceNameReveal: boolean;
 }
 
-function buildDisplayNameCache(interactionData: InteractionData, protagonist?: Character): DisplayNameCache {
+function buildDisplayNameCache(interactionData: InteractionData, protagonistId?: string | null): DisplayNameCache {
     const participants = interactionData.participants;
     const forceNameReveal = interactionData.profile?.forceNameReveal ?? false;
 
@@ -25,11 +25,15 @@ function buildDisplayNameCache(interactionData: InteractionData, protagonist?: C
         participantIndexMap.set(participants[i].id, i);
     }
 
-    // FIX: Use the protagonist's perspective to trace the exact chronological thread.
+    // ✅ FIX: Use the protagonistId to trace the exact chronological thread.
     // This prevents picking up names from alternate branches or locations the protagonist hasn't visited.
-    const activeProtagonist = protagonist ?? interactionData.protagonists[0];
-    const chatMessages = activeProtagonist 
-        ? getLocalMessageHistory(interactionData, activeProtagonist, ['chat']) as ChatMessage[]
+    const activeProtagonistId = protagonistId ?? interactionData.protagonistIds?.[0];
+    
+    // getLocalMessageHistory only requires the `.id` property, so we pass a lightweight stub
+    const activeProtagonistStub = activeProtagonistId ? { id: activeProtagonistId } as Character : null;
+    
+    const chatMessages = activeProtagonistStub 
+        ? getLocalMessageHistory(interactionData, activeProtagonistStub, ['chat']) as ChatMessage[]
         : [];
 
     return {
@@ -41,11 +45,11 @@ function buildDisplayNameCache(interactionData: InteractionData, protagonist?: C
     };
 }
 
-export function useDisplayNameCache(interactionData: InteractionData | null, protagonist?: Character): DisplayNameCache | null {
+export function useDisplayNameCache(interactionData: InteractionData | null, protagonistId?: string | null): DisplayNameCache | null {
     return useMemo(() => {
         if (!interactionData) return null;
-        return buildDisplayNameCache(interactionData, protagonist);
-    }, [interactionData, protagonist]);
+        return buildDisplayNameCache(interactionData, protagonistId);
+    }, [interactionData, protagonistId]);
 }
 
 /**
@@ -99,10 +103,10 @@ export function resolveDelayedDisplayNameFromCache(
 
 export function getDelayedDisplayName(
     interactionData: InteractionData,
-    character: Character, // Fixed missing comma
-    messageIndex: number,  // Fixed typo 'mssageIndex'
-    protagonist?: Character
+    character: Character,
+    messageIndex: number,
+    protagonistId?: string | null
 ): string {
-    const cache = buildDisplayNameCache(interactionData, protagonist);
+    const cache = buildDisplayNameCache(interactionData, protagonistId);
     return resolveDelayedDisplayNameFromCache(cache, messageIndex, character.id);
 }

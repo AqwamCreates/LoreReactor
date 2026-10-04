@@ -7,7 +7,7 @@ import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { useSessionStore } from './useSessionStore';
 import { getCoLocatedParticipants, getCurrentLocationId } from '../utilities/locationLogic';
 import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
-import { getGlobalMessageHistory } from '../utilities/timelineLogic'; // FIXED: Added import
+import { getGlobalMessageHistory } from '../utilities/timelineLogic';
 import { detectContext, composeFallbackSentence } from '../ambientNarration/composer';
 import { AMBIENT_NARRATOR } from '../ambientNarration/narrator';
 
@@ -20,17 +20,22 @@ export function useAmbientNarration(
     setStreamingText: (t: string) => void,
     streamingTextRef: React.MutableRefObject<string>,
 ) {
-    const generateAmbientNarration = useCallback(async (data: InteractionData, signal: AbortSignal): Promise<InteractionData | null> => {
-        // Determine message window size based on co-located participants.
-        // Use the protagonist's current location as the reference point.
-        const protagonist = data.protagonists?.[0];
-        const coLocatedCount = protagonist ? getCoLocatedParticipants(data, protagonist).length : 0;
+    const generateAmbientNarration = useCallback(async (
+        data: InteractionData, 
+        signal: AbortSignal,
+        localProtagonistId?: string | null
+    ): Promise<InteractionData | null> => {
+        // ✅ Use the explicitly passed ID, or fallback to the first protagonistId in the session
+        const protagonistId = localProtagonistId ?? data.protagonistIds?.[0];
+        
+        // The underlying location logic only needs the `.id` property, so we pass a lightweight stub
+        const protagonistStub = protagonistId ? { id: protagonistId } as Character : null;
+
+        const coLocatedCount = protagonistStub ? getCoLocatedParticipants(data, protagonistStub).length : 0;
         const messageWindow = coLocatedCount + 1;
 
-        // FIXED: Use getGlobalMessageHistory instead of deprecated data.interactionHistory
         const allChatMessages = getGlobalMessageHistory(data).filter((m): m is ChatMessage => m.messageType === 'chat');
 
-        // Apply universal message filter flags to exclude filtered messages
         const filterFlags = getUniversalMessageFilterFlags(
             allChatMessages,
             data.contexts || [],
@@ -39,7 +44,6 @@ export function useAmbientNarration(
         );
         const visibleChatMessages = allChatMessages.filter((_, i) => !filterFlags[i]);
 
-        // Filter out ambient narrator messages and slice to message window
         const recentMessages = visibleChatMessages
             .filter(m => m.character.id !== '__ambient_narrator__')
             .slice(-messageWindow);
@@ -52,7 +56,6 @@ export function useAmbientNarration(
             .slice(-5)
             .map(m => m.textContent);
 
-        // Build context summary for the LLM
         const tagList = [...tags].slice(0, 10).join(', ');
         const userPrompt = `Recent conversation context:\n${recentText}\n\nDetected environmental cues: ${tagList || 'none'}\nDominant mood: ${dominantMood}\n\nWrite one ambient narration sentence for this moment. Do NOT repeat any of these previous narrations: ${recentAmbient.join(' | ')}`;
 
@@ -65,7 +68,6 @@ export function useAmbientNarration(
             stop: ['\n\n', '\nUser:', '\nCharacter'],
         };
 
-        // Try LLM generation — use budget strategy engine if active, otherwise direct
         try {
             const activeStrategy = useSessionStore.getState().activeStrategy;
 
@@ -97,10 +99,8 @@ export function useAmbientNarration(
             console.warn('LLM ambient narration failed, falling back to atomic composition:', e);
         }
 
-        // Fallback to atomic composition if LLM failed or produced nothing
         if (!selected) selected = composeFallbackSentence(tags, dominantMood, recentAmbient);
 
-        // Stream the result character by character
         setStreamingState(AMBIENT_NARRATOR, '');
         streamingTextRef.current = '';
 
@@ -114,11 +114,11 @@ export function useAmbientNarration(
 
         const chatMessage = createChatMessage(data, AMBIENT_NARRATOR, selected);
         
-        // FIXED: Determine the correct location bucket for the ambient message
-        const currentLocId = protagonist ? getCurrentLocationId(data, protagonist) : 'global';
+        // ✅ Anchor to the local protagonist's actual location using the stub
+        const currentLocId = protagonistStub ? getCurrentLocationId(data, protagonistStub) : 'global';
         
         return addMessageToInteractionData(data, chatMessage, currentLocId || 'global');
     }, [setStreamingState, setStreamingText, streamingTextRef]);
 
-    return { generateAmbientNarration, AMBIENT_NARRATOR };
+    return { generateAmbientNarration };
 }

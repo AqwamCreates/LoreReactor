@@ -28,11 +28,11 @@ export function isChatSaveable(data: InteractionData | null): boolean {
     }
 
     // 5. Save if characters/participants were added beyond the initial protagonist
-    const protagonistIds = new Set(data.protagonists?.map((p: Character) => p.id) ?? []);
+    const protagonistIds = new Set(data.protagonistIds || []);
     const nonProtagonistParticipants = data.participants?.filter((p: Character) => !protagonistIds.has(p.id)) ?? [];
 
     // If more than 1 protagonist exists, or if extra participants exist:
-    if (nonProtagonistParticipants.length > 0 || (data.protagonists?.length ?? 0) > 1) {
+    if (nonProtagonistParticipants.length > 0 || (data.protagonistIds?.length ?? 0) > 1) {
         return true;
     }
 

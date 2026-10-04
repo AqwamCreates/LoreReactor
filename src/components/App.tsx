@@ -58,7 +58,7 @@ import { useAppModals } from '../hooks/useAppModals';
 
 // ─── Components ──────────────────────────────────────────────────────
 import { ActionMenu } from './ActionMenu';
-import { AppModals } from './AppModals';
+import AppModals from './AppModals';
 import { ChatInput } from './ChatInput';
 import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
@@ -73,20 +73,21 @@ import '../main.css';
 
 interface LoadStep { id: string; label: string; icon: string; done: boolean; }
 
-function deriveCurrentProtagonist(
+function deriveCurrentProtagonistId(
     interactionData: InteractionData | null,
     multiplayerData: MultiplayerData | null,
     currentAccountId: string | null,
-): Character | null {
-    if (!interactionData?.protagonists?.length) return null;
-    if (!multiplayerData || !currentAccountId) return interactionData.protagonists[0] ?? null;
+): string | null {
+    if (!interactionData?.protagonistIds?.length) return null;
+    if (!multiplayerData || !currentAccountId) return interactionData.protagonistIds[0] ?? null;
+    
     const activeCharId = multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.protagonistCharacterId;
     if (activeCharId) {
-        const found = interactionData.protagonists.find((p: Character) => p.id === activeCharId)
-            || interactionData.participants.find((p: Character) => p.id === activeCharId);
-        if (found) return found;
+        const isProtagonist = interactionData.protagonistIds.includes(activeCharId);
+        const isParticipant = interactionData.participants?.some((p: Character) => p.id === activeCharId);
+        if (isProtagonist || isParticipant) return activeCharId;
     }
-    return interactionData.protagonists[0] ?? null;
+    return interactionData.protagonistIds[0] ?? null;
 }
 
 // ─── App Component ───────────────────────────────────────────────────
@@ -267,10 +268,16 @@ function App() {
     }, []);
 
     // ─── Derived Protagonist ─────────────────────────────────────────
-    const localProtagonist = useMemo(
-        () => deriveCurrentProtagonist(interactionData, mp.multiplayerData, mp.currentAccountId),
+    const localProtagonistId = useMemo(
+        () => deriveCurrentProtagonistId(interactionData, mp.multiplayerData, mp.currentAccountId),
         [interactionData, mp.multiplayerData, mp.currentAccountId],
     );
+
+    const localProtagonist = useMemo(
+        () => localProtagonistId ? interactionData?.participants.find(p => p.id === localProtagonistId) ?? null : null,
+        [localProtagonistId, interactionData]
+    );
+
     const currentCharacter = mp.isMultiplayerClient && mp.joinProtagonist ? mp.joinProtagonist : localProtagonist;
 
     // ─── Entity Sync ─────────────────────────────────────────────────
@@ -364,13 +371,13 @@ function App() {
     });
 
     const messageActions = useMessageActions({
-        interactionData, localProtagonist, isModelReady, isLoading,
+        interactionData, localProtagonistId, isModelReady, isLoading,
         setInteractionData, setSelectedCharacter,
         refreshChatList: chatList.refresh, regenerateFromMessage, addToast,
     });
 
     const chatOps = useChatOperations({
-        interactionData, currentCharacter, localProtagonist, selectedCharacterId,
+        interactionData, currentCharacter, localProtagonistId, selectedCharacterId,
         allCharacters: characters.characters, rawChatShells: chatList.rawChatShells,
         loadFullCharacter: characters.loadFullCharacter,
         setInteractionData, setSelectedCharacter,
@@ -419,7 +426,7 @@ function App() {
     });
 
     const messageToolbar = useMessageToolbar({ chatHistoryRef });
-    const displayNameCache = useDisplayNameCache(interactionData);
+    const displayNameCache = useDisplayNameCache(interactionData, localProtagonistId);
     const { modals } = useAppModals();
 
     // ─── Sync Multiplayer Character Selection ────────────────────
@@ -570,8 +577,7 @@ function App() {
         
         if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
             const char = characters.characters.find(c => c.id === charId) 
-                      || interactionData?.participants.find(p => p.id === charId)
-                      || interactionData?.protagonists.find(p => p.id === charId);
+                      || interactionData?.participants.find(p => p.id === charId);
             
             if (char) {
                 mp.multiplayerSync.sendProtagonist(char);
@@ -802,7 +808,7 @@ function App() {
     const handleLoadWorlds = useCallback((activeWorlds: World[]) => {
         if (!interactionData) return;
 
-        const prevWorldIds: string[] = (interactionData as any)?.worldIds || [];
+        const prevWorldIds: string[] = interactionData?.worldIds || [];
         const prevWorlds = worlds.worlds.filter((w: World) => prevWorldIds.includes(w.id));
 
         const prevWorldCharIds = new Set(prevWorlds.flatMap(w => w.characterIds || []));
@@ -882,22 +888,22 @@ function App() {
         }
 
         // 6. Ensure Protagonists remain in valid participants
-        let mergedProtagonists = interactionData.protagonists || [];
+        let mergedProtagonistIds = interactionData.protagonistIds || [];
         const participantIdSet = new Set(mergedParticipants.map(p => p.id));
-        mergedProtagonists = mergedProtagonists.filter(p => participantIdSet.has(p.id));
-        if (mergedProtagonists.length === 0 && mergedParticipants.length > 0) {
-            mergedProtagonists = [mergedParticipants[0]];
+        mergedProtagonistIds = mergedProtagonistIds.filter(id => participantIdSet.has(id));
+        if (mergedProtagonistIds.length === 0 && mergedParticipants.length > 0) {
+            mergedProtagonistIds = [mergedParticipants[0].id];
         }
 
         let updated: InteractionData = {
             ...interactionData,
-            ...({ worldIds: nextWorldIds } as any),
             participants: mergedParticipants,
-            protagonists: mergedProtagonists,
+            protagonistIds: mergedProtagonistIds,
             contexts: mergedContexts,
             locations: mergedLocations,
             audioTracks: mergedAudioTracks,
             profile: mergedProfile,
+            worldIds: nextWorldIds,
             lastUpdatedTimestamp: Date.now(),
         };
 
@@ -908,7 +914,7 @@ function App() {
         if (canBroadcastState) {
             (mp.multiplayerSync as any).broadcastStateSync?.({
                 participants: updated.participants,
-                protagonists: updated.protagonists,
+                protagonistIds: updated.protagonistIds,
                 contexts: updated.contexts,
                 locations: updated.locations,
                 audioTracks: updated.audioTracks,
@@ -924,7 +930,7 @@ function App() {
     // ─── Base View Props (Stable, contains only committed messages) ───
     const baseViewProps: ViewModeProps = {
         interactionData: interactionData!,
-        localProtagonist,
+        localProtagonistId,
         displayMessages: committedMessages as ChatMessage[],
         selectedCharacterId: currentCharacter?.id,
         editingId: messageActions.editingId, editDraft: messageActions.editDraft,
@@ -1027,7 +1033,7 @@ function App() {
                             safeMessages={committedMessages}
                             displayNameCache={displayNameCache}
                             isMultiplayerChat={isMultiplayerChat}
-                            localProtagonistId={localProtagonist?.id}
+                            localProtagonistId={localProtagonistId}
                         />
 
                         <ContextBar

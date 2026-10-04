@@ -31,13 +31,13 @@ interface SyncChatMessagePayload {
     characterId: string;
     messageType: 'chat';
     textContent: string;
-    doNotRespond: boolean;
+    doNotRespond?: boolean;
     files?: string[];
     frontCameraImage?: string;
     remainingChatStamina?: number;
     remainingActionStamina?: number;
     knownCharacterNames?: Record<string, Record<string, boolean>>;
-    locationId?: string; // FIX: Replaced locationIndex with locationId
+    locationId?: string;
     characterExpression?: string;
     inventory?: Record<string, string | number>;
     characterClothingWearingStatuses: Record<string, boolean>;
@@ -49,7 +49,7 @@ interface SyncInteractionMessagePayload {
     messageId: string;
     characterId: string;
     messageType: 'interaction';
-    isPresent?: boolean; // <--- ADDED FOR LOCATION TRAVEL SYNC
+    isPresent?: boolean;
     remainingChatStamina?: number;
     remainingActionStamina?: number;
     knownCharacterNames?: Record<string, Record<string, boolean>>;
@@ -71,7 +71,7 @@ interface SyncWhisperMessagePayload {
     remainingChatStamina?: number;
     remainingActionStamina?: number;
     knownCharacterNames?: Record<string, Record<string, boolean>>;
-    locationId?: string; // FIX: Replaced locationIndex with locationId
+    locationId?: string;
     characterExpression?: string;
     inventory?: Record<string, string | number>;
     characterClothingWearingStatuses: Record<string, boolean>;
@@ -129,7 +129,7 @@ function extractSyncPayload(message: HistoryMessage, locationId?: string): SyncM
         remainingChatStamina: message.remainingChatStamina,
         remainingActionStamina: message.remainingActionStamina,
         knownCharacterNames: message.knownCharacterNames,
-        locationId: locationId, // FIX: Sync locationId instead of locationIndex
+        locationId: locationId,
         characterExpression: message.characterExpression,
         inventory: message.inventory,
         characterClothingWearingStatuses: message.characterClothingWearingStatuses,
@@ -172,8 +172,7 @@ function resolveCharacter(
 ): Character | undefined {
     return (
         characterMap.get(characterId) ||
-        currentData?.participants.find((participant) => participant.id === characterId) ||
-        currentData?.protagonists.find((protagonist) => protagonist.id === characterId)
+        currentData?.participants.find((participant) => participant.id === characterId)
     );
 }
 
@@ -459,7 +458,6 @@ export function useMultiplayerSync({
                     } satisfies InteractionMessage;
                 }
 
-                // FIX: Route the message into the correct spatial bucket in the interactionHistories Record
                 const targetLocationId = payload.locationId || getCurrentLocationId(currentData, character) || 'default';
                 const updatedHistories = { ...currentData.interactionHistories };
                 const locationMessages = updatedHistories[targetLocationId] ? [...updatedHistories[targetLocationId]] : [];
@@ -488,7 +486,7 @@ export function useMultiplayerSync({
                     });
 
                     if (isNewMessage) {
-                        const allProtagonistIds = new Set(currentData.protagonists?.map(p => p.id) ?? []);
+                        const allProtagonistIds = new Set(currentData.protagonistIds || []);
 
                         if (payload.messageType === 'chat') {
                             const chatPayload = payload as SyncChatMessagePayload;
@@ -524,7 +522,11 @@ export function useMultiplayerSync({
                 const updatedData: InteractionData = {
                     ...currentData,
                     ...(payload.participants !== undefined ? { participants: payload.participants } : {}),
-                    ...(payload.protagonists !== undefined ? { protagonists: payload.protagonists } : {}),
+                    ...((payload as any).protagonistIds !== undefined 
+                        ? { protagonistIds: (payload as any).protagonistIds } 
+                        : (payload as any).protagonists !== undefined 
+                            ? { protagonistIds: (payload as any).protagonists.map((p: Character) => p.id) } 
+                            : {}),
                     ...(payload.contexts !== undefined ? { contexts: payload.contexts } : {}),
                     ...(payload.locations !== undefined ? { locations: payload.locations } : {}),
                     ...(payload.audioTracks !== undefined ? { audioTracks: payload.audioTracks } : {}),
@@ -739,7 +741,6 @@ export function useMultiplayerSync({
                     const isSenderAdministrator = foundAccount?.configuration?.isAdministrator;
                     const senderCharacterId = peerCharacterMapRef.current.get(msg.senderAccountId) || foundAccount?.configuration?.protagonistCharacterId;
                     
-                    // FIX: Search the spatial DAG for the target message
                     let targetMessage: HistoryMessage | undefined;
                     for (const messages of Object.values(currentData.interactionHistories || {})) {
                         const found = messages.find(m => m.id === payload.messageId);
@@ -752,7 +753,6 @@ export function useMultiplayerSync({
                     }
                 }
 
-                // FIX: Mutate the correct spatial bucket
                 const updatedHistories = { ...currentData.interactionHistories };
                 let found = false;
                 for (const [locId, messages] of Object.entries(updatedHistories)) {
@@ -789,7 +789,6 @@ export function useMultiplayerSync({
                     const isSenderAdministrator = foundAccount?.configuration?.isAdministrator;
                     const senderCharacterId = peerCharacterMapRef.current.get(msg.senderAccountId) || foundAccount?.configuration?.protagonistCharacterId;
                     
-                    // FIX: Search the spatial DAG for the target message
                     let targetMessage: HistoryMessage | undefined;
                     for (const messages of Object.values(currentData.interactionHistories || {})) {
                         const found = messages.find(m => m.id === payload.messageId);
@@ -802,7 +801,6 @@ export function useMultiplayerSync({
                     }
                 }
 
-                // FIX: Filter the correct spatial bucket
                 const updatedHistories = { ...currentData.interactionHistories };
                 let found = false;
                 for (const [locId, messages] of Object.entries(updatedHistories)) {
@@ -898,9 +896,7 @@ export function useMultiplayerSync({
                     const isCharacterWhitelisted = accountConfiguration.whitelistedCharacterIds?.includes(payload.requestedCharacterId);
 
                     if (isCharacterShared && (accountConfiguration.isAdministrator || isCharacterWhitelisted || !requiresApproval)) {
-                        assignedCharacter = currentData?.participants.find((participant) => participant.id === payload.requestedCharacterId) 
-                                         || currentData?.protagonists.find((protagonist) => protagonist.id === payload.requestedCharacterId) 
-                                         || null;
+                        assignedCharacter = currentData?.participants.find((participant) => participant.id === payload.requestedCharacterId) || null;
                     } else {
                         sendToRef.current(requestingAccountId, { type: 'join_response', payload: { accepted: false, reason: 'Character not allowed' } });
                         return;
@@ -927,7 +923,7 @@ export function useMultiplayerSync({
                 onSaveMultiplayerDataRef.current?.(updatedMultiplayerData);
 
                 const initialState = currentData ? {
-                    protagonists: currentData.protagonists,
+                    protagonistIds: currentData.protagonistIds,
                     participants: currentData.participants,
                     contexts: currentData.contexts,
                     locations: currentData.locations,
@@ -974,11 +970,10 @@ export function useMultiplayerSync({
                     if (payload.initialState) {
                         const freshData = interactionDataRef.current;
                         
-                        // FIX: Replaced flat interactionHistory with spatial interactionHistories Record
                         const fallbackData: InteractionData = {
                             id: joinSessionId ?? `mp-${Date.now()}`,
                             name: 'Multiplayer Session',
-                            protagonists: [],
+                            protagonistIds: [],
                             participants: [],
                             contexts: [],
                             locations: [],
@@ -995,7 +990,7 @@ export function useMultiplayerSync({
                         setInteractionData({
                             ...baseData,
                             ...payload.initialState,
-                            interactionHistories: {}, // Reset histories on join, they will sync via chat_message
+                            interactionHistories: {},
                             lastUpdatedTimestamp: Date.now(),
                         });
 
@@ -1036,7 +1031,7 @@ export function useMultiplayerSync({
                     }
 
                     const isParticipant = currentData.participants.some(participant => participant.id === character.id);
-                    const isProtagonist = currentData.protagonists.some(protagonist => protagonist.id === character.id);
+                    const isProtagonist = (currentData.protagonistIds || []).includes(character.id);
                     const isSessionCharacter = isParticipant || isProtagonist;
                     
                     if (accountConfiguration.blacklistedCharacterIds?.includes(character.id)) {
@@ -1092,22 +1087,22 @@ export function useMultiplayerSync({
                 }
 
                 const hasParticipant = currentData.participants.some((participant) => participant.id === character.id);
-                const hasProtagonist = currentData.protagonists.some((protagonist) => protagonist.id === character.id);
+                const hasProtagonist = (currentData.protagonistIds || []).includes(character.id);
 
                 const updatedParticipants = hasParticipant
                     ? currentData.participants.map((participant) => (participant.id === character.id ? character : participant))
                     : [...currentData.participants, character];
 
-                const updatedProtagonists = hasProtagonist
-                    ? currentData.protagonists.map((protagonist) => (protagonist.id === character.id ? character : protagonist))
-                    : [...currentData.protagonists, character];
+                const updatedProtagonistIds = hasProtagonist
+                    ? currentData.protagonistIds
+                    : [...(currentData.protagonistIds || []), character.id];
 
                 characterMapRef.current.set(character.id, character);
 
                 setInteractionData({
                     ...currentData,
                     participants: updatedParticipants,
-                    protagonists: updatedProtagonists,
+                    protagonistIds: updatedProtagonistIds,
                     lastUpdatedTimestamp: Date.now(),
                 });
 
@@ -1143,7 +1138,6 @@ export function useMultiplayerSync({
 
             const currentData = interactionDataRef.current;
             if (currentData) {
-                // FIX: Search the spatial DAG to see if the disconnected peer ever spoke
                 let hasSpoken = false;
                 for (const messages of Object.values(currentData.interactionHistories || {})) {
                     if (messages.some(m => m.character.id === characterId)) {
@@ -1154,12 +1148,12 @@ export function useMultiplayerSync({
                 
                 if (!hasSpoken) {
                     const updatedParticipants = currentData.participants.filter((participant) => participant.id !== characterId);
-                    const updatedProtagonists = currentData.protagonists.filter((protagonist) => protagonist.id !== characterId);
+                    const updatedProtagonistIds = (currentData.protagonistIds || []).filter((id) => id !== characterId);
 
                     setInteractionData({
                         ...currentData,
                         participants: updatedParticipants,
-                        protagonists: updatedProtagonists,
+                        protagonistIds: updatedProtagonistIds,
                         lastUpdatedTimestamp: Date.now(),
                     });
                 }
@@ -1307,9 +1301,7 @@ export function useMultiplayerSync({
                     assignedCharacter = pendingJoinRequest.requestedCharacterData;
                     saveRawMultiplayerCharacter(assignedCharacter).catch((error) => console.error('Failed to save uploaded multiplayer character:', error));
                 } else if (pendingJoinRequest.requestedCharacterId && currentData) {
-                    assignedCharacter = currentData.participants.find((participant) => participant.id === pendingJoinRequest.requestedCharacterId) 
-                                     || currentData.protagonists.find((protagonist) => protagonist.id === pendingJoinRequest.requestedCharacterId) 
-                                     || null;
+                    assignedCharacter = currentData.participants.find((participant) => participant.id === pendingJoinRequest.requestedCharacterId) || null;
                 }
 
                 if (assignedCharacter) {
@@ -1351,7 +1343,7 @@ export function useMultiplayerSync({
                 onSaveMultiplayerDataRef.current?.(updatedMultiplayerData);
 
                 const initialState = currentData ? {
-                    protagonists: currentData.protagonists,
+                    protagonistIds: currentData.protagonistIds,
                     participants: currentData.participants,
                     contexts: currentData.contexts,
                     locations: currentData.locations,
@@ -1426,7 +1418,6 @@ export function useMultiplayerSync({
         });
         const currentData = interactionDataRef.current;
         if (currentData) {
-            // FIX: Mutate the correct spatial bucket
             const updatedHistories = { ...currentData.interactionHistories };
             let found = false;
             for (const [locId, messages] of Object.entries(updatedHistories)) {
@@ -1455,7 +1446,6 @@ export function useMultiplayerSync({
         });
         const currentData = interactionDataRef.current;
         if (currentData) {
-            // FIX: Filter the correct spatial bucket
             const updatedHistories = { ...currentData.interactionHistories };
             let found = false;
             for (const [locId, messages] of Object.entries(updatedHistories)) {

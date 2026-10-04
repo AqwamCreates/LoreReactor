@@ -8,13 +8,13 @@ export function CharacterMemoryEditorModal({
     onClose,
     onSaveMemories,
     chatNameMap,
-    localProtagonist,
+    localProtagonistId, // ✅ Changed from localProtagonist (Character) to localProtagonistId (string)
 }: {
     character: Character;
     onClose: () => void;
     onSaveMemories: (memories: Record<string, Memory[]>) => void;
     chatNameMap?: Map<string, string>;
-    localProtagonist?: Character | null;
+    localProtagonistId?: string | null;
 }) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editContent, setEditContent] = useState('');
@@ -40,14 +40,14 @@ export function CharacterMemoryEditorModal({
 
     const filteredMemories = useMemo(() => {
         const result: Record<string, Memory[]> = {};
-        const localProtagonistId = localProtagonist?.id ?? null;
         
         for (const [chatId, mems] of Object.entries(memories)) {
             const filteredMems = mems.filter(mem => {
                 if (!localProtagonistId) return true; 
-                const protags = mem.interactionData?.protagonists;
-                if (!protags || protags.length === 0) return false; 
-                return protags.some(p => p.id === localProtagonistId);
+                // ✅ Directly compare string IDs
+                const protagIds = mem.interactionData?.protagonistIds;
+                if (!protagIds || protagIds.length === 0) return false; 
+                return protagIds.some(id => id === localProtagonistId);
             });
             
             if (filteredMems.length > 0) {
@@ -55,7 +55,7 @@ export function CharacterMemoryEditorModal({
             }
         }
         return result;
-    }, [memories, localProtagonist]);
+    }, [memories, localProtagonistId]);
 
     const resolveChatInfo = (mem: Memory): { name: string; id: string } => {
         const id = mem.interactionData?.id
