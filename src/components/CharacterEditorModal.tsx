@@ -102,6 +102,7 @@ const toolDescriptions: Record<tool, string> = {
     read_file: 'Allow this character to read files on your device. Enable with caution.',
     write_file: 'Allow this character to write files on your device. Enable with caution.',
     shell: 'Allow this character to use shell on your device. Enable with caution.',
+    virtual_vision: 'Allow this character to see what window you are looking at, including several other information related to the watching window.',
     virtual_input: 'Allow this character to take control inputs of your device. Enable with caution.',
     hardware_control: 'Allow this character to control your devices. Enable with caution.'
 };
