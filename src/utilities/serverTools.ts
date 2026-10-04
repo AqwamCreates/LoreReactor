@@ -119,6 +119,19 @@ export async function lockScreen(): Promise<{ success: boolean; message?: string
   }
 }
 
+export async function setSystemPower(action: 'sleep' | 'shutdown' | 'restart'): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const response = await fetch(`${localURL}/tool/power`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+    return await response.json();
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+}
+
 export async function clipboardAction(
   action: 'read' | 'write', 
   text?: string

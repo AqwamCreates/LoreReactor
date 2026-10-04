@@ -10,7 +10,7 @@ import { getAudioEngine } from './AudioEngine';
 import { generateCharacterMemory } from './ChatMessageSummarizationEngine';
 import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
-import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, clipboardAction, captureScreenshot, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, sendVirtualInput, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
+import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, setSystemPower, clipboardAction, captureScreenshot, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, sendVirtualInput, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
 import { buildSearchUrl } from '../utilities/searchURLBuilder';
 import { getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
 import { getLocationMessageHistory } from '../utilities/timelineLogic';
@@ -310,9 +310,9 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
   notify: executeNotify,
   volume_control: executeVolumeControl,
   lock_screen: executeLockScreen,
-  sleep: async () => ({ toolType: 'sleep', args: '', content: 'Not implemented', displayReplacement: '[💤 Sleep]' }),
-  shutdown: async () => ({ toolType: 'shutdown', args: '', content: 'Not implemented', displayReplacement: '[⏻ Shutdown]' }),
-  restart: async () => ({ toolType: 'restart', args: '', content: 'Not implemented', displayReplacement: '[🔄 Restart]' }),
+  sleep: executePower('sleep'),
+  shutdown: executePower('shutdown'),
+  restart: executePower('restart'),
   clipboard: executeClipboard,
   screenshot: executeScreenshot,
   front_camera: executeFrontCamera,
@@ -1949,6 +1949,34 @@ async function executeLockScreen(args: string, _nextMessage: BaseMessage, _inter
   }
   context?.addToast?.('Screen locked', 'info');
   return { toolType: 'lock_screen', args, content: 'Host workstation locked successfully.', displayReplacement: '[🔒 Screen Locked]' };
+}
+
+// ─── Power State Control Factory (Sleep, Shutdown, Restart) ─────────
+function executePower(action: 'sleep' | 'shutdown' | 'restart') {
+    return async (
+        args: string, 
+        _nextMessage: BaseMessage, 
+        _interactionData: InteractionData, 
+        context?: ToolExecutionContext
+    ): Promise<ToolResult> => {
+        const res = await setSystemPower(action);
+        if (!res.success) {
+            return { 
+                toolType: action, 
+                args, 
+                content: `[Error: ${res.error || `Failed to execute ${action}`}]`, 
+                displayReplacement: `[❌ System ${action} failed]` 
+            };
+        }
+
+        context?.addToast?.(`⚠️ System power command executed: ${action}`, 'error');
+        return { 
+            toolType: action, 
+            args, 
+            content: `Successfully triggered operating system ${action}.`, 
+            displayReplacement: `[⚡ SYSTEM ${action.toUpperCase()}]` 
+        };
+    };
 }
 
 // ─── Clipboard Management ───────────────────────────────────────────

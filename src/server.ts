@@ -1446,6 +1446,38 @@ app.post('/tool/lock-screen', (_req, res) => {
   }
 });
 
+// ── OS Power Control (sleep, shutdown, restart) ─────────────────────
+app.post('/tool/power', (req, res) => {
+  const { action } = req.body; // 'sleep' | 'shutdown' | 'restart'
+  if (!['sleep', 'shutdown', 'restart'].includes(action)) {
+    return res.status(400).json({ success: false, error: 'Invalid power action' });
+  }
+
+  try {
+    log.warn(`⚠️ SYSTEM POWER COMMAND INVOKED BY AI: ${action.toUpperCase()}`);
+
+    if (IS_WINDOWS) {
+      if (action === 'shutdown') execSync('shutdown /s /t 5');
+      else if (action === 'restart') execSync('shutdown /r /t 5');
+      else if (action === 'sleep') execSync('rundll32.exe powrprof.dll,SetSuspendState 0,1,0');
+    } else if (IS_MACOS) {
+      if (action === 'shutdown') execSync('osascript -e \'tell application "System Events" to shut down\'');
+      else if (action === 'restart') execSync('osascript -e \'tell application "System Events" to restart\'');
+      else if (action === 'sleep') execSync('pmset sleepnow');
+    } else {
+      // Linux
+      if (action === 'shutdown') execSync('systemctl poweroff');
+      else if (action === 'restart') execSync('systemctl reboot');
+      else if (action === 'sleep') execSync('systemctl suspend');
+    }
+
+    res.json({ success: true, message: `System power action triggered: ${action}` });
+  } catch (error) {
+    log.error(`Power action failed: ${(error as Error).message}`);
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
 app.post('/tool/clipboard', async (req, res) => {
   const { action, text } = req.body; // action: 'read' | 'write'
 
