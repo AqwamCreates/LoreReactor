@@ -1,6 +1,5 @@
 // src/hooks/useChatSession.ts
 import { useRef, useCallback, useEffect } from 'react';
-import { useChatState } from './useChatState';
 import { useChatEngine } from './useChatEngine';
 import { useChatUI } from './useChatUI';
 import { useToast } from '../context/ToastContext';
@@ -17,7 +16,7 @@ import { useThrottledStream } from './useThrottledStream';
 import { useCharacterResponseLock } from './useCharacterResponseLock';
 import { useAmbientNarration } from './useAmbientNarration';
 import { useSessionStore } from './useSessionStore';
-import { type RequestMetadata } from '../services/BudgetStrategyEngine';
+import type { RequestMetadata } from '../services/BudgetStrategyEngine';
 import { learnFromUserMessage } from '../services/ActionFormatEngine';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
@@ -128,16 +127,33 @@ export function useChatSession(options: UseChatSessionOptions) {
     useEffect(() => { allMultiplayerDataRef.current = options?.allMultiplayerData ?? []; }, [options?.allMultiplayerData]);
     useEffect(() => { allActionsRef.current = options?.allActions ?? []; }, [options?.allActions]);
 
-    const state = useChatState();
-    const {
-        setBudgetData, updateRunningModels, setNumberOfTokens,
-        setInteractionData, setStreamingState, setStats,
-        setSelectedCharacterExpression, setLastSelectedModelId,
-        getState, setState, setActiveStrategy, setSelectedModel, setSelectedCharacter,
-    } = state;
+    // ─── Zustand Selectors (Replaces useChatState) ───────────────────
+    const interactionData = useSessionStore(s => s.interactionData);
+    const localProtagonist = useSessionStore(s => s.localProtagonist);
+    const activeStrategy = useSessionStore(s => s.activeStrategy);
+    const selectedModel = useSessionStore(s => s.selectedModel);
+    const runningModels = useSessionStore(s => s.runningModels);
+    const budgetData = useSessionStore(s => s.budgetData);
+    const selectedModelId = useSessionStore(s => s.selectedModelId);
+    const isLoading = useSessionStore(s => s.isLoading);
+    const currentCharacterExpression = useSessionStore(s => s.currentCharacterExpression);
+    const streamingCharacter = useSessionStore(s => s.streamingCharacter);
 
-    const interactionData = useSessionStore((s: { interactionData: any }) => s.interactionData);
-    const selectedModel = useSessionStore((s: { selectedModel: any }) => s.selectedModel);
+    const setInteractionData = useSessionStore(s => s.setInteractionData);
+    const setStreamingState = useSessionStore(s => s.setStreamingState);
+    const setStats = useSessionStore(s => s.setStats);
+    const setSelectedCharacterExpression = useSessionStore(s => s.setSelectedCharacterExpression);
+    const setLastSelectedModelId = useSessionStore(s => s.setLastSelectedModelId);
+    const setActiveStrategy = useSessionStore(s => s.setActiveStrategy);
+    const setSelectedModel = useSessionStore(s => s.setSelectedModel);
+    const setSelectedCharacter = useSessionStore(s => s.setLocalProtagonist);
+    const setBudgetData = useSessionStore(s => s.setBudgetData);
+    const updateRunningModels = useSessionStore(s => s.updateRunningModels);
+    const setNumberOfTokens = useSessionStore(s => s.setNumberOfTokens);
+
+    const getState = useSessionStore.getState;
+    const setState = useSessionStore.setState;
+
     const autonomousMode = interactionData?.profile?.autonomousMode ?? false;
 
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -166,7 +182,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         return requestTimestampsRef.current.length;
     }, []);
 
-    const ui = useChatUI(state.interactionData, isAtBottomRef);
+    const ui = useChatUI(interactionData, isAtBottomRef);
 
     const { throttledSetStreamingText, setStreamingText, streamingTextRef, resetStream } = useThrottledStream();
     const { acquireLock, releaseLock, isLoadingRef } = useCharacterResponseLock();
@@ -1177,7 +1193,26 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, [setInteractionData, setSelectedCharacter, setState]);
 
     return {
-        ...state,
+        // Explicit State (Replaces ...state)
+        interactionData,
+        localProtagonist,
+        activeStrategy,
+        selectedModel,
+        runningModels,
+        budgetData,
+        selectedModelId,
+        isLoading,
+        currentCharacterExpression,
+        streamingCharacter,
+
+        // Explicit Actions
+        setInteractionData,
+        setSelectedCharacter,
+        setActiveBudgetStrategy: setActiveStrategy,
+        setSelectedGlobalModel: setSelectedModel,
+        updateRunningModels,
+
+        // UI & Session Hooks
         ...ui,
         sendMessage,
         stopGeneration,
@@ -1186,8 +1221,5 @@ export function useChatSession(options: UseChatSessionOptions) {
         startNewChat,
         sendActionAndGetResponse,
         triggerHostResponse,
-        setActiveBudgetStrategy: setActiveStrategy,
-        setSelectedGlobalModel: setSelectedModel,
-        updateRunningModels,
     };
 }

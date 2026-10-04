@@ -43,13 +43,13 @@ import { useMultiplayerSession } from '../hooks/useMultiplayerSession';
 import { useSessionEffects } from '../hooks/useSessionEffects';
 import { useChatAutoSave } from '../hooks/useChatAutoSave';
 import { useTokenCounter } from '../hooks/useTokenCounter';
+import { useMultiplayerBroadcast } from '../hooks/useMultiplayerBroadcast'; // ✅ NEW
 
 // ─── Feature Hooks ───────────────────────────────────────────────────
 import { useChatSession } from '../hooks/useChatSession';
 import { useChatRestoration } from '../hooks/useChatRestoration';
 import { useEntitySync } from '../hooks/useEntitySync';
 import { useActionMenu } from '../hooks/useActionMenu';
-import { useMessageActions } from '../hooks/useMessageActions';
 import { useChatOperations } from '../hooks/useChatOperations';
 import { useEntityToggles } from '../hooks/useEntityToggles';
 import { useViewAssets } from '../hooks/useViewAssets';
@@ -68,6 +68,7 @@ import { ChatViewArea } from './views/ChatViewArea';
 import type { ViewModeProps, viewMode } from './views/types';
 import { defaultContextLength } from '../dictionaries/defaults';
 import '../main.css';
+import { useMessageActions } from '../hooks/useMessageActions';
 
 // ─── Types & Helpers ─────────────────────────────────────────────────
 
@@ -371,9 +372,8 @@ function App() {
     });
 
     const messageActions = useMessageActions({
-        interactionData, localProtagonistId, isModelReady, isLoading,
-        setInteractionData, setSelectedCharacter,
-        refreshChatList: chatList.refresh, regenerateFromMessage, addToast,
+        interactionData, isModelReady, isLoading,
+        setInteractionData, regenerateFromMessage, addToast,
     });
 
     const chatOps = useChatOperations({
@@ -401,6 +401,25 @@ function App() {
 
     const isMultiplayerChat = mp.isMultiplayerClient || !!(mp.multiplayerData && interactionData?.id && mp.multiplayerData.interactionDataIds.includes(interactionData.id));
     const canBroadcastState = isMultiplayerChat && mp.multiplayerSync.isConnected && (mp.multiplayerSync.isHost || mp.multiplayerSync.isAdministrator);
+
+    // ─── Multiplayer Broadcast Handlers (Extracted) ──────────────────
+    const mpBroadcast = useMultiplayerBroadcast({
+        handleSetChatProtagonist: entityToggles.handleSetChatProtagonist,
+        handleToggleParticipant: entityToggles.handleToggleParticipant,
+        handleToggleContext: entityToggles.handleToggleContext,
+        handleToggleLocation: entityToggles.handleToggleLocation,
+        handleToggleAudioTrack: entityToggles.handleToggleAudioTrack,
+        handleActivateProfile: entityToggles.handleActivateProfile,
+        isMultiplayerChat,
+        canBroadcastState,
+        multiplayerSync: mp.multiplayerSync,
+        interactionData,
+        allCharacters: characters.characters,
+        allContexts: contexts.contexts,
+        allLocations: locations.locations,
+        allAudioTracks: audioTracks.audioTracks,
+        allProfiles: profiles.profiles,
+    });
 
     // ─── Local UI State ──────────────────────────────────────────────
     const [viewMode, setViewMode] = useState<viewMode>('ladder');
@@ -457,10 +476,11 @@ function App() {
 
     // Auto-resize edit textarea when opened and as user types
     useEffect(() => { 
-        if (!editTextAreaRef.current || !messageActions.editingId) return; 
+        const { editingId } = useSessionStore.getState();
+        if (!editTextAreaRef.current || !editingId) return; 
         editTextAreaRef.current.style.height = 'auto'; 
         editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`; 
-    }, [messageActions.editingId]);
+    }); // Subscribe to editingId
 
     // ─── Derived Display Values ──────────────────────────────────────
     const canDelete = (!isMultiplayerChat || mp.multiplayerSync.isHost || mp.multiplayerSync.isAdministrator) && !isLoading;
@@ -567,86 +587,6 @@ function App() {
             ensureChatsLoaded(); 
         } 
     }, [isInitializing, activeChatRestored, ensureChatsLoaded]);
-
-    // ─── Wrapped Multiplayer-Aware Handlers ──────────────────────────
-    const handleSetProtagonistAndBroadcast = useCallback((charId: string) => {
-        entityToggles.handleSetChatProtagonist(charId);
-        
-        if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
-            const char = characters.characters.find(c => c.id === charId) 
-                      || interactionData?.participants.find(p => p.id === charId);
-            
-            if (char) {
-                mp.multiplayerSync.sendProtagonist(char);
-            }
-        }
-    }, [entityToggles, isMultiplayerChat, mp.multiplayerSync, characters.characters, interactionData]);
-
-    const handleToggleParticipantAndBroadcast = useCallback((charId: string) => {
-        entityToggles.handleToggleParticipant(charId);
-        if (canBroadcastState && interactionData) {
-            const exists = interactionData.participants?.some(p => p.id === charId);
-            const nextParticipants = exists
-                ? interactionData.participants.filter(p => p.id !== charId)
-                : (() => {
-                    const found = characters.characters.find(c => c.id === charId);
-                    return found ? [...interactionData.participants, found] : interactionData.participants;
-                })();
-            (mp.multiplayerSync as any).broadcastStateSync?.({ participants: nextParticipants });
-        }
-    }, [entityToggles, canBroadcastState, interactionData, characters.characters, mp.multiplayerSync]);
-
-    const handleToggleContextAndBroadcast = useCallback((contextId: string) => {
-        entityToggles.handleToggleContext(contextId);
-        if (canBroadcastState && interactionData) {
-            const exists = interactionData.contexts?.some(c => c.id === contextId);
-            const nextContexts = exists
-                ? (interactionData.contexts || []).filter(c => c.id !== contextId)
-                : (() => {
-                    const found = contexts.contexts.find(c => c.id === contextId);
-                    return found ? [...(interactionData.contexts || []), found] : (interactionData.contexts || []);
-                })();
-            (mp.multiplayerSync as any).broadcastStateSync?.({ contexts: nextContexts });
-        }
-    }, [entityToggles, canBroadcastState, interactionData, contexts.contexts, mp.multiplayerSync]);
-
-    const handleToggleLocationAndBroadcast = useCallback((locationId: string) => {
-        entityToggles.handleToggleLocation(locationId);
-        if (canBroadcastState && interactionData) {
-            const exists = interactionData.locations?.some(l => l.id === locationId);
-            const nextLocations = exists
-                ? (interactionData.locations || []).filter(l => l.id !== locationId)
-                : (() => {
-                    const found = locations.locations.find(l => l.id === locationId);
-                    return found ? [...(interactionData.locations || []), found] : (interactionData.locations || []);
-                })();
-            (mp.multiplayerSync as any).broadcastStateSync?.({ locations: nextLocations });
-        }
-    }, [entityToggles, canBroadcastState, interactionData, locations.locations, mp.multiplayerSync]);
-
-    const handleToggleAudioTrackAndBroadcast = useCallback((trackId: string) => {
-        entityToggles.handleToggleAudioTrack(trackId);
-        if (canBroadcastState && interactionData) {
-            const exists = interactionData.audioTracks?.some(t => t.id === trackId);
-            const nextTracks = exists
-                ? (interactionData.audioTracks || []).filter(t => t.id !== trackId)
-                : (() => {
-                    const found = audioTracks.audioTracks.find(t => t.id === trackId);
-                    return found ? [...(interactionData.audioTracks || []), found] : (interactionData.audioTracks || []);
-                })();
-            (mp.multiplayerSync as any).broadcastStateSync?.({ audioTracks: nextTracks });
-        }
-    }, [entityToggles, canBroadcastState, interactionData, audioTracks.audioTracks, mp.multiplayerSync]);
-
-    const handleActivateProfileAndBroadcast = useCallback((profileId: string) => {
-        entityToggles.handleActivateProfile(profileId);
-        if (canBroadcastState && interactionData) {
-            const targetProfile = interactionData.profile?.id === profileId 
-                ? undefined 
-                : profiles.profiles.find(p => p.id === profileId);
-            (mp.multiplayerSync as any).broadcastStateSync?.({ profile: targetProfile });
-        }
-    }, [entityToggles, canBroadcastState, interactionData, profiles.profiles, mp.multiplayerSync]);
 
     const wrappedSaveEdit = useCallback(async () => {
         await messageActions.handleSaveEdit();
@@ -1049,17 +989,17 @@ function App() {
                     onRenameChat={handleRenameChat}
                     onDeleteCharacter={entityModals.getModalProperties('character').delete}
                     onLoadFullCharacter={characters.loadFullCharacter} 
-                    onToggleParticipant={handleToggleParticipantAndBroadcast}
-                    onSetProtagonist={handleSetProtagonistAndBroadcast} 
+                    onToggleParticipant={mpBroadcast.handleToggleParticipantAndBroadcast}
+                    onSetProtagonist={mpBroadcast.handleSetProtagonistAndBroadcast} 
                     onSaveCharacter={characters.saveCharacter}
                     onDeleteContext={entityModals.getModalProperties('context').delete} 
-                    onToggleContext={handleToggleContextAndBroadcast} 
+                    onToggleContext={mpBroadcast.handleToggleContextAndBroadcast} 
                     onSaveContext={contexts.saveContext}
                     onDeleteLocation={entityModals.getModalProperties('location').delete} 
-                    onToggleLocation={handleToggleLocationAndBroadcast} 
+                    onToggleLocation={mpBroadcast.handleToggleLocationAndBroadcast} 
                     onSaveLocation={locations.saveLocation}
                     onDeleteAudioTrack={entityModals.getModalProperties('audioTrack').delete} 
-                    onToggleAudioTrack={handleToggleAudioTrackAndBroadcast} 
+                    onToggleAudioTrack={mpBroadcast.handleToggleAudioTrackAndBroadcast} 
                     onSaveAudioTrack={audioTracks.saveAudioTrack}
                     onSaveWorld={worlds.saveWorld} 
                     onToggleWorlds={handleLoadWorlds} 
@@ -1072,7 +1012,7 @@ function App() {
                     onDeleteBudgetStrategy={entityModals.getModalProperties('budgetStrategy').delete}
                     onActivateBudgetStrategy={entityToggles.handleActivateBudgetStrategy} 
                     onDeleteProfile={entityModals.getModalProperties('profile').delete}
-                    onActivateProfile={handleActivateProfileAndBroadcast} 
+                    onActivateProfile={mpBroadcast.handleActivateProfileAndBroadcast} 
                     onSaveProfile={profiles.saveProfile}
                     onDeleteExtension={extensions.deleteExtension} 
                     onToggleExtension={entityToggles.handleToggleExtension}
