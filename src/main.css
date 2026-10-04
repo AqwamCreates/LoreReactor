@@ -2275,6 +2275,51 @@ VISUAL NOVEL: DYNAMIC BREATHING PATTERNS
 .vn-breathe-none { animation: none !important; }
 
 /* =============================================================================
+MODE: OVERLAY (Floating Desktop Pet / Streamer Widget)
+============================================================================= */
+.chat-container.mode-overlay,
+.mode-overlay {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    bottom: auto !important;
+    left: auto !important;
+    width: 320px !important;
+    height: 480px !important;
+    max-width: none !important;
+    margin: 0 !important;
+    border: 1px solid var(--accent-border) !important;
+    border-radius: 16px !important;
+    z-index: 99999 !important;
+    background: rgba(16, 17, 23, 0.85) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6) !important;
+    resize: both;
+    overflow: hidden;
+}
+
+.mode-overlay .app-header {
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.3) !important;
+}
+
+.mode-overlay .chat-history {
+    max-height: 280px;
+    padding: 10px;
+}
+
+.mode-overlay .input-wrapper {
+    padding: 8px;
+    background: transparent !important;
+}
+
+.mode-overlay .character-avatar {
+    width: 60px;
+    height: 80px;
+}
+
+/* =============================================================================
 SHARED UTILITIES & MODALS (Unchanged sections follow)
 ============================================================================= */
 /* ... (Sections 6 through 23 from original file remain here) ... */

@@ -23,6 +23,13 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
         riskDescription: 'Allows executing arbitrary terminal scripts and commands on your host OS.' 
     },
     { 
+        tool: 'virtual_controller', 
+        label: 'Virtual Gamepad / Controller Emulation', 
+        keywords: ['gamepad', 'controller', 'xbox', 'joystick', 'playstation', 'gaming pad'], 
+        tier: 'os_privileged', 
+        riskDescription: 'Emulates a physical Xbox 360 game controller to control games.' 
+    },
+    { 
         tool: 'virtual_input', 
         label: 'Virtual Mouse & Keyboard Takeover', 
         keywords: ['take control', 'autopilot', 'automation', 'move mouse', 'type for you', 'puppeteer', 'ai worker', 'hands'], 

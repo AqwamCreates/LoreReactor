@@ -276,13 +276,13 @@ export const TOOL_EMOJI_MAP: Record<tool, string> = {
     oracle: '🔮', teleport: '⚡', key: '🔒', clothing: '👕',
     summon: '✨', narrate: '🎙️', inspect: '🔍', administrator: '🔧',
     creator: '🛠️', destroyer: '💀', schedule_response: '⏰',
-    text_to_speech: '🔊', gpu: '📟', system_info: '🖥️', notify: '🔔',
-    volume_control: '🔊', lock_screen: '🔒', clipboard: '📋',
-    screenshot: '📸', front_camera: '📷', network_scanner: '🌐',
+    text_to_speech: '🔊', gpu: '📟', system_info: '🖥️', notify: '🔔', volume_control: '🔊', 
+    lock_screen: '🔒', sleep: '⚡', shutdown: '⚡', restart: '⚡', 
+    clipboard: '📋', screenshot: '📸', front_camera: '📷', network_scanner: '🌐',
     file_watcher: '📂', process_monitor: '⚙️', window_monitor: '🖥️',
     trash: '🗑️', browser: '🌐', read_file: '🔗', write_file: '📁',
-    shell: '💻', virtual_vision: '👁️', virtual_input: '🖱️', hardware_control: '🔌',
-    sleep: '💤', shutdown: '⏻', restart: '🔄'
+    shell: '💻', virtual_vision: '👁️', virtual_input: '🖱️', virtual_controller: '🎮',
+    hardware_control: '🔌',
 };
 
 
@@ -347,6 +347,7 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
   shell: executeShell,
   virtual_vision: executeVirtualVision,
   virtual_input: executeVirtualInput,
+  virtual_controller: executeVirtualInput,
   hardware_control: executeHardwareControl,
 };
 
@@ -439,7 +440,7 @@ function executeWhisper(args: string, nextMessage: BaseMessage, interactionData:
   let text = pArgs.get(1, 'text', 'message', 'content')?.trim();
 
   // CLI fallback without explicit keyword: /whisper alice,bob hello world
-  if (!pArgs.kwargs['text'] && pArgs.positional.length > 0) {
+  if (!pArgs.kwargs.text && pArgs.positional.length > 0) {
     const trimmed = args.trim();
     const cliMatch = trimmed.match(/^("([^"]+)"|'([^']+)'|([^\s]+))\s+([\s\S]+)$/);
     if (cliMatch) {

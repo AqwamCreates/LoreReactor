@@ -66,6 +66,7 @@ export const defaultCharacterTools: Record<tool, boolean> = {
     shell: false,
     virtual_vision: false,
     virtual_input: false,
+    virtual_controller: false,
     hardware_control: false,
 };
 

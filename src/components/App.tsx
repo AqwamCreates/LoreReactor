@@ -665,7 +665,11 @@ function App() {
     }, [isRecording, interactionData?.profile, handleSend, addToast]);
 
     const toggleViewMode = () => {
-        setViewMode(prev => prev === 'ladder' ? 'cinematic' : prev === 'cinematic' ? 'visual novel' : 'ladder');
+        setViewMode(prev => 
+            prev === 'ladder' ? 'cinematic' : 
+            prev === 'cinematic' ? 'visual novel' : 
+            prev === 'visual novel' ? 'overlay' : 'ladder'
+        );
         const container = chatHistoryRef.current;
         let targetIdx = -1;
         if (container && interactionData) {
@@ -961,7 +965,7 @@ function App() {
                                         <button type="button" className="view-mode-toggle" onClick={() => modals.extList.open()} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
                                         <button type="button" onClick={toggleViewMode} className={`view-mode-toggle ${viewMode !== 'ladder' ? 'active' : ''}`} title="Switch View Mode">
                                             <span>{viewMode === 'ladder' ? '📜' : viewMode === 'cinematic' ? '🎥' : '📖'}</span>
-                                            <span>{viewMode === 'ladder' ? 'Ladder' : viewMode === 'cinematic' ? 'Cinematic' : 'Visual Novel'}</span>
+                                            <span>{viewMode === 'ladder' ? 'Ladder' : viewMode === 'cinematic' ? 'Cinematic' : viewMode === "overlay" ? 'Visual Novel' : "Overlay"}</span>
                                         </button>
                                         <ChatStatisticsBar
                                             numberOfMessages={interactionData?.numberOfMessages ?? safeMessages.length}

@@ -31,4 +31,4 @@ export interface ViewModeProps {
     canDelete: boolean;
 }
 
-export type viewMode = "ladder" | "cinematic" | "visual novel"
+export type viewMode = "ladder" | "cinematic" | "visual novel" | "overlay";
