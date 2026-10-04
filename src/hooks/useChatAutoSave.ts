@@ -151,14 +151,27 @@ export function useChatAutoSave(options: UseChatAutoSaveOptions) {
                     await refreshChatList();
                 } catch (e: unknown) {
                     console.error('[useChatAutoSave] Failed to save chat:', e);
+                } finally {
+                    saveTimerRef.current = null;
                 }
             }, 600);
         }
 
+        // 🛡️ CRITICAL FIX: DO NOT clear the timeout in the useEffect cleanup!
+        // The cleanup runs on EVERY dependency change (i.e., every time interactionData updates).
+        // If another state update happens within 600ms (e.g., from runSummarization, useEntitySync, 
+        // or streaming state settling), the cleanup cancels the pending save.
+        // Since prevDataRef was already updated, the next run sees hasActualChange=false and 
+        // schedules no new timeout, permanently losing the AI message save.
+        // We intentionally leave the timeout running across re-renders.
+    }, [interactionData, refreshChatList]);
+
+    // Separate effect to clear timeout ONLY on component unmount
+    useEffect(() => {
         return () => {
             if (saveTimerRef.current) {
                 clearTimeout(saveTimerRef.current);
             }
         };
-    }, [interactionData, refreshChatList]);
+    }, []);
 }

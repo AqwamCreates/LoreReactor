@@ -184,7 +184,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         setInteractionData,
     });
 
-    // ✅ MOVED UP: Initialize Front Camera & Tool Context before Chat Engine
     const { captureFrontCameraImage } = useFrontCamera(addToast);
 
     const buildToolContext = useCallback((): ToolExecutionContext => ({
@@ -206,7 +205,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         addToast,
     }), [captureFrontCameraImage, addToast]);
 
-    // ✅ MOVED UP: Initialize Chat Engine before Session Effects
     const chatEngine = useChatEngine({
         getState,
         setInteractionData,
@@ -317,7 +315,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         return parts.join(' ');
     };
 
-    // UPDATED: Ref now accepts the `thought` parameter
     const triggerDelayedResponseRef = useRef<(characterId: string, thought?: string) => Promise<void>>(null);
 
     const extractAndScheduleResponses = useCallback((data: InteractionData) => {
@@ -335,10 +332,9 @@ export function useChatSession(options: UseChatSessionOptions) {
                             const delay = task.durationMs;
                             const charId = task.characterId;
                             const charName = task.characterName;
-                            const thought = task.thought; // Captured here
+                            const thought = task.thought;
                             
                             setTimeout(() => {
-                                // Passed down to the trigger
                                 triggerDelayedResponseRef.current?.(charId, thought);
                             }, delay);
                             
@@ -374,7 +370,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     const executeTurnPipeline = useCallback(async ({
         data,
         protagonistId,
-        existingCharacterText = '', // Added to accept the injected thought
+        existingCharacterText = '',
         allPromptBlocks,
         respondingCharacter,
         isProtagonistCharId,
@@ -437,9 +433,19 @@ export function useChatSession(options: UseChatSessionOptions) {
                 );
             }
 
-            // Passed down to the chat engine
             const turnResult = await chatEngine.runTurn(data, ctrl, allPromptBlocks, metadata, existingCharacterText);
             let ud = turnResult.interactionData;
+
+            // 🛡️ CRITICAL FIX: Force a new reference if the orchestrator returned the exact same object reference.
+            // In-place mutations by the CharacterActor/Orchestrator will cause Zustand to ignore the update,
+            // preventing useChatAutoSave from firing and leaving AI messages unsaved on disk.
+            if (ud === data) {
+                ud = { 
+                    ...ud, 
+                    interactionHistories: { ...ud.interactionHistories }, 
+                    lastUpdatedTimestamp: Date.now() 
+                };
+            }
 
             if (turnResult.promptText) {
                 const currentModelId = useSessionStore.getState().selectedModelId;
@@ -559,7 +565,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         autoResumeOnCutoff, ui, generateAmbientNarration, isMultiplayerClient, isSpeculatingRef, streamingTextRef, extractAndScheduleResponses
     ]);
 
-    // UPDATED: Accepts `thought` and injects it as a system prefill via existingCharacterText
     const triggerDelayedResponse = useCallback(async (characterId: string, thought?: string) => {
         const currentState = getState();
         const currentData = currentState.interactionData;
@@ -570,7 +575,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         if (!acquireLock()) return;
         
-        // Inject the thought as a hidden system nudge so the AI knows why it's speaking
         const prefillText = thought ? `[System Note: You scheduled this follow-up earlier. Your internal thought was: "${thought}". Continue naturally from this premise.]\n\n` : '';
 
         try {
