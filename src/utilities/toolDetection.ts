@@ -121,6 +121,7 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
     // ═════════════════════════════════════════════════════════════════
     // TIER 3: AMBIENT SENSORS & WEB (Read-Only Telemetry & Audio)
     // ═════════════════════════════════════════════════════════════════
+    { tool: 'virtual_vision', label: 'Targeted Window & Region Vision', keywords: ['watch game', 'watch app', 'look at window', 'look at game', 'look at app','targeted vision', 'see app', 'see game', 'stream spectator', 'crop screen'], tier: 'ambient', riskDescription: 'Captures and crops the active application or specific window on your screen.'},
     { tool: 'window_monitor', label: 'Active Window Focus Monitor', keywords: ['assistant', 'companion', 'roommate', 'secretary', 'overseer', 'hacker', 'ai', 'monitor'], tier: 'ambient', riskDescription: 'Detects the title of the software or browser tab you currently have focused.' },
     { tool: 'process_monitor', label: 'Task & Process Monitor', keywords: ['technician', 'sysadmin', 'debugger', 'engineer', 'diagnostics', 'task manager'], tier: 'ambient', riskDescription: 'Inspects running background applications and CPU/RAM usage.' },
     { tool: 'file_watcher', label: 'Real-Time Filesystem Watcher', keywords: ['watch folder', 'workspace', 'project monitor', 'code assistant', 'folder watcher'], tier: 'ambient', riskDescription: 'Monitors directories for file additions, edits, or removals in real-time.' },

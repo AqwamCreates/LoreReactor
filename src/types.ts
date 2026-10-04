@@ -215,7 +215,7 @@ export interface RawMemory extends RawData {
   interactionDataId: string;
 }
 
-export type tool = "whisper" | "think" | "pick" | "clock" | "calendar" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "oracle" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer" | 'schedule_response' | 'text_to_speech' | 'gpu' | 'system_info' | 'notify' | 'volume_control' | 'lock_screen' | 'sleep' | 'shutdown' | 'restart' | 'clipboard' | 'front_camera' | 'screenshot' | 'network_scanner' | 'file_watcher' | 'window_monitor' | 'process_monitor' | 'trash' | 'browser' | 'read_file' | 'write_file' | 'shell' | 'virtual_input' | 'hardware_control'
+export type tool = "whisper" | "think" | "pick" | "clock" | "calendar" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "oracle" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer" | 'schedule_response' | 'text_to_speech' | 'gpu' | 'system_info' | 'notify' | 'volume_control' | 'lock_screen' | 'sleep' | 'shutdown' | 'restart' | 'clipboard' | 'front_camera' | 'screenshot' | 'network_scanner' | 'file_watcher' | 'window_monitor' | 'process_monitor' | 'trash' | 'browser' | 'read_file' | 'write_file' | 'shell' | 'virtual_vision' | 'virtual_input' | 'hardware_control'
 
 export interface DialoguePrompt extends ObjectData {
   content: string;
@@ -728,10 +728,10 @@ export interface Profile extends ObjectData {
   toolUsageDisplayMode: toolUsageDisplayMode;
   enableCharacterExpression: boolean;
   enableAutoSpeechDetection?: boolean;
-  speechVolumeActivationThreshold?: number; // Volume Gate: 1 to 100 (Default: 15)
-  speechSilenceVolumeActivationThreshold?: number;
-  speechSilenceThresholdMs?: number; // Default ~1500ms of silence to trigger send
-  randomizeTextCharacterInjection: boolean;
+  speechVolumeActivationThreshold?: number; // Volume Gate: 1 to 100 (Default: 18)
+  speechSilenceVolumeActivationThreshold?: number; // Volume Gate: 1 to 100 (Default: 8)
+  speechSilenceThresholdMs?: number; // Default ~1400ms of silence to trigger send
+  randomizeTextCharacterInjection: boolean; 
   randomizeTextCharacterInjectionOnRetry: boolean; // Only randomize if the initial randomization fails. Default is true. This setting get revealed when randomizeTextCharacterInjection is true.
   maximumNumberOfTextCharacterRandomizationPerModel: number; // Number of retries to get the text generated per model. Default is 1. This setting get revealed when randomizeTextCharacterInjection is true.
   forceNoCharacterImageInjection: boolean;
@@ -782,9 +782,9 @@ export interface RawProfile extends RawData {
   toolUsageDisplayMode: toolUsageDisplayMode;
   enableCharacterExpression: boolean;
   enableAutoSpeechDetection?: boolean;
-  speechVolumeActivationThreshold?: number; // Volume Gate: 1 to 100 (Default: 15)
-  speechSilenceVolumeActivationThreshold?: number;
-  speechSilenceThresholdMs?: number; // Default ~1500ms of silence to trigger send
+  speechVolumeActivationThreshold?: number; // Volume Gate: 1 to 100 (Default: 18)
+  speechSilenceVolumeActivationThreshold?: number; // Volume Gate: 1 to 100 (Default: 8)
+  speechSilenceThresholdMs?: number; // Default ~1400ms of silence to trigger send
   randomizeTextCharacterInjection: boolean;
   randomizeTextCharacterInjectionOnRetry: boolean; // Only randomize if the initial randomization fails. Default is true. This setting get revealed when randomizeTextCharacterInjection is true.
   maximumNumberOfTextCharacterRandomizationPerModel: number; // Number of retries to get the text generated per model. Default is 1. This setting get revealed when randomizeTextCharacterInjection is true.

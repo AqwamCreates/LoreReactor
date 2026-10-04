@@ -10,7 +10,7 @@ import { getAudioEngine } from './AudioEngine';
 import { generateCharacterMemory } from './ChatMessageSummarizationEngine';
 import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
-import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, setSystemPower, clipboardAction, captureScreenshot, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, sendVirtualInput, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
+import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, setSystemPower, clipboardAction, captureScreenshot, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, captureVirtualVision, sendVirtualInput, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
 import { buildSearchUrl } from '../utilities/searchURLBuilder';
 import { getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
 import { getLocationMessageHistory } from '../utilities/timelineLogic';
@@ -266,7 +266,7 @@ function getCharacterTimeData(interactionData: InteractionData, character: Chara
   return getTimeDataFromCoordinates(location?.latitude, location?.longitude);
 }
 
-export const TOOL_EMOJI_MAP: Record<string, string> = {
+export const TOOL_EMOJI_MAP: Record<tool, string> = {
     whisper: '🤫', think: '💭', pick: '🎯', clock: '🕰️', calendar: '📅',
     coin: '🪙', dice: '🎲', random: '🎲', rng: '🎲', move: '🚶',
     timer: '⏱️', stopwatch: '⏱️', schedule: '📅', calculator: '🧮',
@@ -281,7 +281,7 @@ export const TOOL_EMOJI_MAP: Record<string, string> = {
     screenshot: '📸', front_camera: '📷', network_scanner: '🌐',
     file_watcher: '📂', process_monitor: '⚙️', window_monitor: '🖥️',
     trash: '🗑️', browser: '🌐', read_file: '🔗', write_file: '📁',
-    shell: '💻', virtual_input: '🖱️', hardware_control: '🔌',
+    shell: '💻', virtual_vision: '👁️', virtual_input: '🖱️', hardware_control: '🔌',
     sleep: '💤', shutdown: '⏻', restart: '🔄'
 };
 
@@ -345,6 +345,7 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
   read_file: executeReadFile,
   write_file: executeWriteFile,
   shell: executeShell,
+  virtual_vision: executeVirtualVision,
   virtual_input: executeVirtualInput,
   hardware_control: executeHardwareControl,
 };
@@ -2315,6 +2316,41 @@ async function executeShell(
   context?.addToast?.(`Shell executed: ${command}`, 'success');
   const output = res.stdout || res.stderr || '[Command executed with no output]';
   return { toolType: 'shell', args, content: output, displayReplacement: `[💻 Shell: "${command}"]` };
+}
+
+// ─── Virtual Vision Tool ────────────────────────────────────────────
+async function executeVirtualVision(
+    args: string, 
+    _nextMessage: BaseMessage, 
+    _interactionData: InteractionData, 
+    context?: ToolExecutionContext
+): Promise<ToolResult> {
+    const pArgs = parsePythonArgs(args);
+    const target = (pArgs.get(0, 'target', 'mode')?.toLowerCase() || 'active') as 'active' | 'fullscreen' | 'region';
+    const appName = pArgs.get(1, 'app', 'appName');
+    const title = pArgs.get(1, 'title');
+    const x = pArgs.getNumber(1, 'x');
+    const y = pArgs.getNumber(2, 'y');
+    const width = pArgs.getNumber(3, 'width', 'w');
+    const height = pArgs.getNumber(4, 'height', 'h');
+
+    const res = await captureVirtualVision({ target, appName, title, x, y, width, height });
+    if (!res.success || !res.base64) {
+        return {
+            toolType: 'virtual_vision',
+            args,
+            content: `[Error: ${res.error || 'Failed to capture targeted vision'}]`,
+            displayReplacement: '[❌ Vision failed]'
+        };
+    }
+
+    context?.addToast?.(`Captured target: ${res.target}`, 'info');
+    return {
+        toolType: 'virtual_vision',
+        args,
+        content: `[Vision Captured: ${res.target} | Base64 Length: ${res.base64.length} bytes]`,
+        displayReplacement: `[👁️ Vision: ${res.target}]`
+    };
 }
 
 // ─── Virtual Input Tool (Mouse & Keyboard) ──────────────────────────

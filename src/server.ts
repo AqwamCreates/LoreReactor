@@ -15,11 +15,12 @@ import { promisify } from 'node:util';
 import chokidar, { type FSWatcher } from 'chokidar';
 import { SerialPort } from 'serialport';
 import say from 'say';
-import activeWindow from 'active-win';
+import { activeWindow, openWindows } from 'get-windows';
 import loudness from 'loudness';
 import findDevices from 'local-devices';
 import trash from 'trash';
-import robot from 'robotjs';
+import robot from '@jitsi/robotjs';
+import sharp from 'sharp';
 
 // --- Configuration ---
 const app = express();
@@ -535,11 +536,6 @@ const MANIFEST_DIRS = [
   'multiplayer_data',
 ];
 
-/**
- * Read a manifest.json array, remove IDs whose .json files no longer exist,
- * rewrite the manifest. Creates directory and empty manifest if missing.
- * Returns count of removed entries.
- */
 function sanitizeManifestDir(dirName: string): number {
   const dirPath = path.join(ROOT_DIR, 'user_data', dirName);
   const manifestPath = path.join(dirPath, 'manifest.json');
@@ -589,10 +585,6 @@ function sanitizeManifestDir(dirName: string): number {
   }
 }
 
-/**
- * Scan interaction_messages/ for .json files not referenced by any chat's
- * interactionHistories. Deletes orphans and rewrites the messages manifest.
- */
 function sanitizeOrphanedMessages(): number {
   const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
   const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
@@ -608,7 +600,6 @@ function sanitizeOrphanedMessages(): number {
         const raw = fs.readFileSync(path.join(chatsDir, file), 'utf-8');
         const chat = JSON.parse(raw);
         
-        // ✅ FIX: Parse the new spatial Record<string, string[]> structure
         if (chat.interactionHistories && typeof chat.interactionHistories === 'object') {
           for (const locId in chat.interactionHistories) {
             const msgIds = chat.interactionHistories[locId];
@@ -657,10 +648,6 @@ function sanitizeOrphanedMessages(): number {
   return orphanedCount;
 }
 
-/**
- * Delete chat messages with empty textContent (hollow chat messages).
- * Interaction-type messages are preserved — they're legitimate silent markers.
- */
 function sanitizeHollowMessages(): number {
   const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
   if (!fs.existsSync(messagesDir)) return 0;
@@ -687,10 +674,6 @@ function sanitizeHollowMessages(): number {
   return hollowCount;
 }
 
-/**
- * Remove stale IDs from chat interactionHistories arrays that point to
- * message files that no longer exist on disk.
- */
 function sanitizeChatHistories(): number {
   const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
   const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
@@ -714,7 +697,6 @@ function sanitizeChatHistories(): number {
       const raw = fs.readFileSync(filePath, 'utf-8');
       const chat = JSON.parse(raw);
 
-      // ✅ FIX: Prune dangling references from the spatial Record
       if (chat.interactionHistories && typeof chat.interactionHistories === 'object') {
         let pruned = 0;
         let changed = false;
@@ -746,7 +728,6 @@ function sanitizeChatHistories(): number {
   return totalPruned;
 }
 
-/** Run all sanitization passes on server startup */
 function runStartupSanitization(): void {
   log.info('Running startup data sanitization...');
 
@@ -788,7 +769,7 @@ function createSnippet(text: string, query: string, radius = 50): string {
   return `${prefix}${text.slice(start, end).trim()}${suffix}`;
 }
 
-// --- /search Route (Strategy B: Multi-Chat Branch-Aware Filesystem Search) ---
+// --- /search Route ---
 app.get('/search', async (req, response) => {
   const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   const limit = Math.min(Number.parseInt(String(req.query.limit || '40'), 10), 100);
@@ -803,7 +784,6 @@ app.get('/search', async (req, response) => {
   const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
   const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
 
-  // 1. Build 1-to-Many map: messageId -> Array<{ chatId, chatName }>
   const messageToChatsMap = new Map<string, Array<{ chatId: string; chatName: string }>>();
   const chatResults: Array<{ type: 'chat'; id: string; name: string }> = [];
 
@@ -816,12 +796,10 @@ app.get('/search', async (req, response) => {
         const chatId = file.replace(/\.json$/, '');
         const chatName = chat.name || 'Untitled Chat';
 
-        // Check if chat title itself matches query
         if (chatName.toLowerCase().includes(lowerQuery)) {
           chatResults.push({ type: 'chat', id: chatId, name: chatName });
         }
 
-        // ✅ FIX: Map messages to chats using the spatial Record
         if (chat.interactionHistories && typeof chat.interactionHistories === 'object') {
           for (const locId in chat.interactionHistories) {
             const msgIds = chat.interactionHistories[locId];
@@ -845,7 +823,6 @@ app.get('/search', async (req, response) => {
     }
   }
 
-  // 2. Scan interaction_messages directly from disk
   const messageResults: Array<{
     type: 'message';
     id: string;
@@ -865,7 +842,6 @@ app.get('/search', async (req, response) => {
         const filePath = path.join(messagesDir, file);
         const raw = fs.readFileSync(filePath, 'utf-8');
         
-        // Fast raw substring search before parsing JSON
         if (raw.toLowerCase().includes(lowerQuery)) {
           const msg = JSON.parse(raw);
           const msgId = file.replace(/\.json$/, '');
@@ -912,7 +888,6 @@ app.use('/user_data', (req, response) => {
     return originalStatus(code);
   };
 
-  // ─── HEAD Request Handler (for existence checks) ─────────────────
   if (req.method === 'HEAD') {
     if (!fs.existsSync(filePath)) {
         for (const ext of ALL_MEDIA_EXTENSIONS) {
@@ -1717,67 +1692,175 @@ app.post('/tool/shell', async (req, res) => {
   }
 });
 
-app.post('/tool/virtual-input', (req, res) => {
-  const { action, x, y, button = 'left', double = false, text, key, modifier, smooth = true } = req.body;
+// ── Virtual Vision (Targeted Window & Region Cropping) ──────────────
+app.post('/tool/virtual-vision', async (req, res) => {
+  const { target = 'active', appName, title, x, y, width, height } = req.body;
 
   try {
+    // 1. Capture the primary display buffer
+    const screenBuffer = await screenshot({ format: 'png' });
+    let cropRegion: { left: number; top: number; width: number; height: number } | null = null;
+    let targetLabel = 'fullscreen';
+
+    // 2. Resolve crop bounds based on targeting strategy
+    if (appName || title) {
+      // Search all open windows for matching app name or window title
+      const allWins = typeof openWindows === 'function' ? await openWindows() : [];
+      const matchedWin = allWins.find(w => 
+        (appName && w.owner?.name?.toLowerCase().includes(String(appName).toLowerCase())) ||
+        (title && w.title?.toLowerCase().includes(String(title).toLowerCase()))
+      );
+
+      if (matchedWin?.bounds) {
+        cropRegion = {
+          left: Math.max(0, matchedWin.bounds.x),
+          top: Math.max(0, matchedWin.bounds.y),
+          width: Math.max(1, matchedWin.bounds.width),
+          height: Math.max(1, matchedWin.bounds.height),
+        };
+        targetLabel = `window "${matchedWin.title}" (${matchedWin.owner?.name || 'Unknown'})`;
+      }
+    }
+
+    // Fall back to active focused window if target is 'active' and no specific window was cropped yet
+    if (!cropRegion && target === 'active') {
+      const activeWin = await activeWindow();
+      if (activeWin?.bounds) {
+        cropRegion = {
+          left: Math.max(0, activeWin.bounds.x),
+          top: Math.max(0, activeWin.bounds.y),
+          width: Math.max(1, activeWin.bounds.width),
+          height: Math.max(1, activeWin.bounds.height),
+        };
+        targetLabel = `active window "${activeWin.title}" (${activeWin.owner?.name || 'Unknown'})`;
+      }
+    } else if (!cropRegion && typeof x === 'number' && typeof y === 'number' && typeof width === 'number' && typeof height === 'number') {
+      cropRegion = {
+        left: Math.max(0, x),
+        top: Math.max(0, y),
+        width: Math.max(1, width),
+        height: Math.max(1, height),
+      };
+      targetLabel = `region (${x}, ${y}, ${width}x${height})`;
+    }
+
+    // 3. Perform image extraction if bounds are defined
+    let finalBuffer = screenBuffer;
+    if (cropRegion) {
+      const metadata = await sharp(screenBuffer).metadata();
+      const imgWidth = metadata.width || 1920;
+      const imgHeight = metadata.height || 1080;
+
+      // Ensure crop dimensions do not exceed actual screen resolution
+      const safeLeft = Math.min(cropRegion.left, imgWidth - 1);
+      const safeTop = Math.min(cropRegion.top, imgHeight - 1);
+      const safeWidth = Math.min(cropRegion.width, imgWidth - safeLeft);
+      const safeHeight = Math.min(cropRegion.height, imgHeight - safeTop);
+
+      finalBuffer = await sharp(screenBuffer)
+        .extract({ left: safeLeft, top: safeTop, width: safeWidth, height: safeHeight })
+        .png()
+        .toBuffer();
+    }
+
+    const base64 = finalBuffer.toString('base64');
+    res.json({
+      success: true,
+      target: targetLabel,
+      contentType: 'image/png',
+      base64,
+      bounds: cropRegion,
+    });
+  } catch (error) {
+    log.error(`Virtual vision capture failed: ${(error as Error).message}`);
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+app.post('/tool/virtual-input', async (req, res) => {
+  const { 
+    action, 
+    x, 
+    y, 
+    toX, 
+    toY, 
+    button = 'left', 
+    double = false, 
+    text, 
+    key, 
+    modifier, 
+    smooth = true, 
+    durationMs = 500 
+  } = req.body;
+
+  try {
+    const clickBtn = button === 'right' || button === 'middle' ? button : 'left';
+
     // 1. Move Mouse Cursor
     if (action === 'move') {
-      if (typeof x !== 'number' || typeof y !== 'number') {
-        return res.status(400).json({ success: false, error: 'Coordinates x and y are required numbers' });
-      }
-      if (smooth) {
-        robot.moveMouseSmooth(x, y);
-      } else {
-        robot.moveMouse(x, y);
-      }
+      if (typeof x !== 'number' || typeof y !== 'number') return res.status(400).json({ success: false, error: 'x and y are required numbers' });
+      if (smooth) robot.moveMouseSmooth(x, y); else robot.moveMouse(x, y);
       return res.json({ success: true, message: `Moved cursor to (${x}, ${y})` });
     }
 
     // 2. Mouse Click
     if (action === 'click') {
-      const clickButton = button === 'right' || button === 'middle' ? button : 'left';
-      robot.mouseClick(clickButton, Boolean(double));
-      return res.json({ success: true, message: `Clicked ${clickButton} button (double=${double})` });
+      robot.mouseClick(clickBtn, Boolean(double));
+      return res.json({ success: true, message: `Clicked ${clickBtn} button` });
     }
 
-    // 3. Type Text Strings
-    if (action === 'type') {
-      if (typeof text !== 'string') {
-        return res.status(400).json({ success: false, error: 'Text string is required for typing' });
+    // 3. Mouse Drag (Aiming, Card Dragging, Sliders)
+    if (action === 'drag') {
+      if (typeof x === 'number' && typeof y === 'number') robot.moveMouse(x, y);
+      robot.mouseToggle('down', clickBtn);
+      if (typeof toX === 'number' && typeof toY === 'number') {
+        robot.moveMouseSmooth(toX, toY);
       }
+      robot.mouseToggle('up', clickBtn);
+      return res.json({ success: true, message: `Dragged ${clickBtn} from (${x}, ${y}) to (${toX}, ${toY})` });
+    }
+
+    // 4. Hold Key (Movement in games e.g. hold W for 2000ms)
+    if (action === 'hold') {
+      if (!key || typeof key !== 'string') return res.status(400).json({ success: false, error: 'Key name is required' });
+      robot.keyToggle(key.toLowerCase(), 'down');
+      setTimeout(() => {
+        try { robot.keyToggle(key.toLowerCase(), 'up'); } catch { /* ignore */ }
+      }, Math.max(50, Math.min(10000, durationMs)));
+      return res.json({ success: true, message: `Holding key "${key}" for ${durationMs}ms` });
+    }
+
+    // 5. Manual Key Down / Up
+    if (action === 'key_down') {
+      if (!key) return res.status(400).json({ success: false, error: 'Key required' });
+      robot.keyToggle(key.toLowerCase(), 'down');
+      return res.json({ success: true, message: `Key "${key}" down` });
+    }
+    if (action === 'key_up') {
+      if (!key) return res.status(400).json({ success: false, error: 'Key required' });
+      robot.keyToggle(key.toLowerCase(), 'up');
+      return res.json({ success: true, message: `Key "${key}" up` });
+    }
+
+    // 6. Type String
+    if (action === 'type') {
+      if (typeof text !== 'string') return res.status(400).json({ success: false, error: 'Text string is required' });
       robot.typeString(text);
       return res.json({ success: true, message: `Typed "${text}"` });
     }
 
-    // 4. Press Specific Key / Shortcuts (e.g., "enter", "escape", or key="s", modifier="control")
+    // 7. Tap Key / Shortcuts
     if (action === 'press') {
-      if (!key || typeof key !== 'string') {
-        return res.status(400).json({ success: false, error: 'Key name is required' });
-      }
-      if (modifier) {
-        robot.keyTap(key.toLowerCase(), modifier.toLowerCase());
-      } else {
-        robot.keyTap(key.toLowerCase());
-      }
-      return res.json({ success: true, message: `Tapped key "${key}" ${modifier ? `with ${modifier}` : ''}` });
+      if (!key || typeof key !== 'string') return res.status(400).json({ success: false, error: 'Key name is required' });
+      if (modifier) robot.keyTap(key.toLowerCase(), modifier.toLowerCase()); else robot.keyTap(key.toLowerCase());
+      return res.json({ success: true, message: `Tapped "${key}"` });
     }
 
-    // 5. Scroll Mouse Wheel
-    if (action === 'scroll') {
-      const scrollY = typeof y === 'number' ? y : 0;
-      const scrollX = typeof x === 'number' ? x : 0;
-      robot.scrollMouse(scrollX, scrollY);
-      return res.json({ success: true, message: `Scrolled mouse by (${scrollX}, ${scrollY})` });
-    }
-
-    // 6. Get Display Screen Resolution Dimensions
+    // 8. Screen & Cursor Queries
     if (action === 'screen_size') {
       const size = robot.getScreenSize();
       return res.json({ success: true, width: size.width, height: size.height });
     }
-
-    // 7. Get Current Cursor Position
     if (action === 'get_position') {
       const pos = robot.getMousePos();
       return res.json({ success: true, x: pos.x, y: pos.y });

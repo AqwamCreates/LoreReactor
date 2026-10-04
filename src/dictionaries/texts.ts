@@ -17,5 +17,6 @@ export const toolLabels: Record<tool, string> = {
     lock_screen: 'Lock Screen', sleep: "Sleep", shutdown: 'Shutdown', restart: 'Restart',
     clipboard: 'Clipboard', screenshot: 'Screenshot', front_camera: 'Front Camera',
     network_scanner: 'Network Scanner', file_watcher: 'File Watcher', window_monitor: 'Window Monitor', process_monitor: 'Process Monitor',
-    trash: 'Trash', browser: 'Open Browser', read_file: 'Read File', write_file: 'Write File', shell: 'Shell', virtual_input: 'Virtual Input', hardware_control: 'Hardware Control'
+    trash: 'Trash', browser: 'Open Browser', read_file: 'Read File', write_file: 'Write File', shell: 'Shell', 
+    virtual_vision: 'Virtual Vision', virtual_input: 'Virtual Input', hardware_control: 'Hardware Control'
 };

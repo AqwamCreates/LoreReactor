@@ -43,6 +43,15 @@ export interface ShellResult {
   error?: string;
 }
 
+export interface VirtualVisionParams {
+  target?: 'active' | 'fullscreen' | 'region';
+  appName?: string;
+  title?: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+}
 export interface VirtualInputParams {
   action: 'move' | 'click' | 'type' | 'press' | 'scroll' | 'screen_size' | 'get_position';
   x?: number;
@@ -247,6 +256,26 @@ export async function runShellCommand(command: string): Promise<ShellResult> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ command }),
+    });
+    return await response.json();
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+}
+
+export async function captureVirtualVision(params: VirtualVisionParams = {}): Promise<{
+  success: boolean;
+  target?: string;
+  contentType?: string;
+  base64?: string;
+  bounds?: { left: number; top: number; width: number; height: number };
+  error?: string;
+}> {
+  try {
+    const response = await fetch(`${localURL}/tool/virtual-vision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
     });
     return await response.json();
   } catch (e) {
