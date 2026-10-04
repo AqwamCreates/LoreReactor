@@ -9,7 +9,7 @@ const engine = getLanguageModelEngine();
 interface SessionState {
     // ── Core chat state ──────────────────────────────────────────────
     interactionData: InteractionData | null;
-    currentCharacter: Character | null;
+    localProtagonist: Character | null; // ✅ RENAMED from currentCharacter
 
     // ── Generation state ─────────────────────────────────────────────
     isLoading: boolean;
@@ -54,7 +54,7 @@ interface SessionState {
     setInteractionData: (
         data: InteractionData | null | ((prev: InteractionData | null) => InteractionData | null)
     ) => void;
-    setCurrentCharacter: (character: Character | null) => void;
+    setLocalProtagonist: (character: Character | null) => void; // ✅ RENAMED
     setActiveStrategy: (strategy: BudgetStrategy | null) => void;
     setSelectedModel: (model: LanguageModel | null) => void;
     updateRunningModels: (models: Record<string, any>) => void;
@@ -98,7 +98,7 @@ export const useSessionStore = create<SessionState>()((set) => {
 
     return {
         interactionData: null,
-        currentCharacter: null,
+        localProtagonist: null, // ✅ RENAMED
 
         isLoading: false,
         streamingText: '',
@@ -143,8 +143,8 @@ export const useSessionStore = create<SessionState>()((set) => {
             });
         },
 
-        setCurrentCharacter: (character) => {
-            set({ currentCharacter: character });
+        setLocalProtagonist: (character) => { // ✅ RENAMED
+            set({ localProtagonist: character });
         },
 
         setActiveStrategy: (strategy) => {

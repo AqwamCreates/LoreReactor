@@ -213,7 +213,7 @@ function App() {
     // Restore join protagonist after chat restoration
     useEffect(() => {
         if (!activeChatRestored || !mp.isMultiplayerClient || !mp.joinProtagonist) return;
-        const stored = useSessionStore.getState().currentCharacter;
+        const stored = useSessionStore.getState().localProtagonist;
         if (!stored || stored.id !== mp.joinProtagonist.id) setSelectedCharacter(mp.joinProtagonist);
     }, [activeChatRestored, mp.isMultiplayerClient, mp.joinProtagonist, setSelectedCharacter]);
 

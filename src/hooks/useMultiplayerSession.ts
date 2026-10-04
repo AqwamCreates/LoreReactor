@@ -23,7 +23,7 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
 
     const interactionData = useSessionStore((state) => state.interactionData);
     const setInteractionData = useSessionStore((state) => state.setInteractionData);
-    const setCurrentCharacter = useSessionStore((state) => state.setCurrentCharacter);
+    const setLocalProtagonist = useSessionStore((state) => state.setLocalProtagonist); // ✅ RENAMED
     const currentAccountId = useSessionStore((state) => state.currentAccountId);
     const multiplayerData = useSessionStore((state) => state.multiplayerData);
 
@@ -76,9 +76,9 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
             joinProtagonist: assignedCharacter,
         }).catch((error: unknown) => console.warn('Failed to save join data:', error));
         setJoinProtagonist(assignedCharacter);
-        setCurrentCharacter(assignedCharacter);
+        setLocalProtagonist(assignedCharacter); // ✅ RENAMED
         setNeedsCharacterSelection(false);
-    }, [addToast, joinSessionId, joinPassword, setCurrentCharacter]);
+    }, [addToast, joinSessionId, joinPassword, setLocalProtagonist]); // ✅ RENAMED
 
     const handleCharacterSelectionRequired = useCallback((_initialState: any, _sessionRules: any) => {
         setNeedsCharacterSelection(true);
@@ -174,10 +174,10 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
 
             clearJoinState();
             if (joinProtagonist) {
-                setCurrentCharacter(joinProtagonist);
+                setLocalProtagonist(joinProtagonist); // ✅ RENAMED
             }
         } else {
-            addToast(`Host migration in progress. Re-anchoring to new host...`, 'info');
+            addToast("Host migration in progress. Re-anchoring to new host...", 'info');
             if (payload.finalState) {
                 setInteractionData(payload.finalState);
             }
@@ -196,7 +196,7 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         }
     }, [
         currentAccountId, addToast, setInteractionData, saveMultiplayerDataVoid,
-        clearJoinState, joinProtagonist, setCurrentCharacter, joinSessionId,
+        clearJoinState, joinProtagonist, setLocalProtagonist, joinSessionId, // ✅ RENAMED
         joinPassword, joinRequestedCharacterId, joinRequestedCharacterData
     ]);
 
