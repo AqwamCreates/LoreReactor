@@ -16,7 +16,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
         parentMessageId, parentInteractionDataName,
         focusedMessageId, setFocusedMessageId,
         onAvatarClick, onResumeGeneration, 
-        onRegenerateFromMessage, onSaveEdit,
+        onRegenerateFromMessage, onRegenerateFromEdit, onSaveEdit,
         onTouchStart, onTouchEnd, onTouchMove,
         suppressNextClickRef, onNavigateToBranchSource,
         canDelete,
@@ -176,6 +176,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
                         onStartEditing={onStartEditing}
                         onCancelEditing={onCancelEditing}
                         onSaveEdit={onSaveEdit}
+                        onRegenerateFromEdit={onRegenerateFromEdit}
                         onResumeGeneration={onResumeGeneration}
                         onRegenerateFromMessage={onRegenerateFromMessage}
                         onSetMassDelete={onSetMassDelete}
@@ -197,7 +198,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
                 <StreamingIndicators
                     formattedStreamingText={formattedStreamingText}
                     viewMode="ladder"
-                    selectedCharacterId={selectedCharacterId}
+                    selectedCharacterId={selectedCharacterId ?? undefined}
                     streamingPortraitUrl={streamingPortraitUrl}
                     messagesLength={displayMessages.length}
                     onAvatarClick={onAvatarClick}

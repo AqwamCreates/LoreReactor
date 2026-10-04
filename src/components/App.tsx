@@ -511,9 +511,6 @@ function App() {
         return base;
     }, [safeMessages, isMultiplayerChat, localProtagonist]);
 
-    const massStartIndex = messageActions.massDeleteId !== null
-        ? committedMessages.findIndex((m) => m.id === messageActions.massDeleteId) : -1;
-
     // ─── Budget Reset Timer ──────────────────────────────────────────
     const timeUntilResetRef = useRef<number | undefined>(undefined);
     const [timeUntilReset, setTimeUntilReset] = useState<number | undefined>(undefined);
@@ -920,26 +917,28 @@ function App() {
     // ─── Base View Props (Stable, contains only committed messages) ───
     const baseViewProps: ViewModeProps = {
         displayMessages: committedMessages as ChatMessage[],
-        portraitUrlCache: viewAssets.portraitUrlCache, displayNameCache,
+        portraitUrlCache: viewAssets.portraitUrlCache, 
+        displayNameCache,
         formattedStreamingText: null,
+        centerAvatar: viewAssets.centerAvatar,
         parentMessageId: interactionData?.parentMessageId ?? null,
         parentInteractionDataName: parentChatName,
-        chatHistoryRef, messageEndRef,
-        editTextAreaRef, focusedMessageId, setFocusedMessageId,
+        chatHistoryRef, 
+        messageEndRef,
+        editTextAreaRef, 
+        focusedMessageId, 
+        setFocusedMessageId,
         onAvatarClick: actionMenu.handleAvatarClick,
         onSaveEdit: wrappedSaveEdit,
-        onResumeGeneration: (id: string) => resumeGeneration(id, promptBlocks.promptBlocks), onRegenerateFromMessage: regenerateFromMessage,
-        onCancelMassDelete: () => useSessionStore.getState().setMassDeleteId(null),
+        onRegenerateFromEdit: messageActions.handleRegenerateFromEdit,
+        onResumeGeneration: (id: string) => resumeGeneration(id, promptBlocks.promptBlocks), 
+        onRegenerateFromMessage: regenerateFromMessage,
         onTouchStart: messageToolbar.handleBubbleTouchStart,
         onTouchEnd: messageToolbar.handleBubbleTouchEnd,
         onTouchMove: messageToolbar.handleBubbleTouchMove,
         suppressNextClickRef: messageToolbar.suppressNextClickRef,
-        setEditDraft: (draft: string) => useSessionStore.getState().setEditDraft(draft),
         onNavigateToBranchSource: handleNavigateToBranchSource,
-        onStartEditTitle: chatOps.handleStartEditTitle, onSaveTitle: chatOps.handleSaveTitle,
-        onCancelEditTitle: chatOps.cancelEditTitle, setEditTitleValue: chatOps.setEditTitleValue,
-        closeActionMenu: actionMenu.closeActionMenu, deactivateToolbar: messageToolbar.deactivateToolbar,
-        onStopGeneration: stopGeneration, canDelete,
+        canDelete,
     };
 
     const containerClass = [

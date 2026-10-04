@@ -19,7 +19,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         parentMessageId, parentInteractionDataName,
         focusedMessageId, setFocusedMessageId,
         onAvatarClick, onResumeGeneration, 
-        onRegenerateFromMessage, onSaveEdit,
+        onRegenerateFromMessage, onRegenerateFromEdit, onSaveEdit,
         onTouchStart, onTouchEnd, onTouchMove,
         suppressNextClickRef, onNavigateToBranchSource,
         canDelete,
@@ -30,7 +30,6 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
     const localProtagonistId = useSessionStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
     const selectedCharacterId = useSessionStore(s => s.selectedCharacterId);
     const isLoading = useSessionStore(s => s.isLoading);
-    const streamingCharacter = useSessionStore(s => s.streamingCharacter);
     const streamingPortraitUrl = useSessionStore(s => s.streamingCharacter ? portraitUrlCache.get(`character:${s.streamingCharacter.id}`) ?? null : null);
 
     const editingId = useSessionStore(s => s.editingId);
@@ -148,7 +147,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                 <ChatMinimap
                     messages={displayMessages.filter((m): m is ChatMessage => m.messageType === 'chat')}
                     containerRef={chatHistoryRef}
-                    selectedCharacterId={selectedCharacterId}
+                    selectedCharacterId={selectedCharacterId ?? undefined}
                 />
             )}
 
@@ -164,7 +163,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                 <StreamingIndicators
                     formattedStreamingText={formattedStreamingText}
                     viewMode="cinematic"
-                    selectedCharacterId={selectedCharacterId}
+                    selectedCharacterId={selectedCharacterId ?? undefined}
                     streamingPortraitUrl={streamingPortraitUrl}
                     messagesLength={displayMessages.length}
                     onAvatarClick={onAvatarClick}
@@ -217,6 +216,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                             onStartEditing={onStartEditing}
                             onCancelEditing={onCancelEditing}
                             onSaveEdit={onSaveEdit}
+                            onRegenerateFromEdit={onRegenerateFromEdit}
                             onResumeGeneration={onResumeGeneration}
                             onRegenerateFromMessage={onRegenerateFromMessage}
                             onSetMassDelete={onSetMassDelete}
