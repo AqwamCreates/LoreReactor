@@ -6,6 +6,7 @@ import { MemoizedMessageText } from '../MemoizedMessageText';
 import { useVisualNovelSpriteStates } from '../../hooks/useVisualNovelSpriteStates';
 import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
 import { useSessionStore } from '../../hooks/useSessionStore';
+import { compileMessageDisplayText } from '../../utilities/messageDisplayCompiler';
 import {
     detectFormatSegments,
     applyConversions,
@@ -42,6 +43,10 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const localProtagonistId = useSessionStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
     const isLoading = useSessionStore(s => s.isLoading);
     const streamingCharacter = useSessionStore(s => s.streamingCharacter);
+
+    // ✅ Read display preferences directly from Zustand for on-the-fly compilation
+    const participants = useSessionStore(s => s.interactionData?.participants || []);
+    const displayMode = useSessionStore(s => s.interactionData?.profile?.toolUsageDisplayMode);
 
     const editingId = useSessionStore(s => s.editingId);
     const editDraft = useSessionStore(s => s.editDraft);
@@ -104,10 +109,13 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const lastMsg = displayMessages[displayMessages.length - 1];
     const isStreamingInList = isLoading && streamingCharacter !== null && lastMsg?.character.id === streamingCharacter.id;
 
-    // STREAMING LAYER: Uses processedTextContent if the stream has updated the message object directly
-    const activeStreamingText: string | null = isStreamingInList
-        ? (lastMsg.processedTextContent ?? lastMsg.textContent)
-        : (isLoading && formattedStreamingText ? String(formattedStreamingText) : null);
+    // STREAMING LAYER: Compiles raw text on the fly
+    const activeStreamingText: string | null = useMemo(() => {
+        if (isStreamingInList && lastMsg) {
+            return compileMessageDisplayText(lastMsg.textContent, displayMode, participants, lastMsg.character);
+        }
+        return isLoading && formattedStreamingText ? String(formattedStreamingText) : null;
+    }, [isStreamingInList, lastMsg, displayMode, participants, isLoading, formattedStreamingText]);
 
     const visibleCharacters = useMemo(() => {
         return interactionData?.participants || [];
@@ -313,11 +321,11 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         e.currentTarget.style.display = 'none';
     }, []);
 
-    // DISPLAY LAYER: Uses processedTextContent if available, falls back to raw textContent
+    // ✅ DISPLAY LAYER: Compiles raw textContent on the fly based on current profile settings
     const displayedTextContent = useMemo(() => {
         if (!displayedMessage) return null;
-        return displayedMessage.processedTextContent ?? displayedMessage.textContent;
-    }, [displayedMessage]);
+        return compileMessageDisplayText(displayedMessage.textContent, displayMode, participants, displayedMessage.character);
+    }, [displayedMessage, displayMode, participants]);
 
     const displayText = useMemo(() => {
         if (isEditingLastSpeaker) return null;
@@ -506,7 +514,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                     </div>
                                 )
                             ) : displayText ? (
-                                // DISPLAY LAYER: Renders the processed text
+                                // DISPLAY LAYER: Renders the compiled text
                                 <MemoizedMessageText text={displayText} />
                             ) : (
                                 <span style={{ opacity: 0.5, fontStyle: 'italic' }}>Waiting for an interaction...</span>

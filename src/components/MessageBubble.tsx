@@ -4,6 +4,7 @@ import type { Character, ChatMessage, WhisperMessage } from '../types';
 import { MemoizedMessageText } from './MemoizedMessageText';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useSessionStore } from '../hooks/useSessionStore';
+import { compileMessageDisplayText } from '../utilities/messageDisplayCompiler';
 import {
     detectFormatSegments,
     applyConversions,
@@ -85,6 +86,10 @@ export const MessageBubble = React.memo(function MessageBubble({
     const deleteMessage = useSessionStore(s => s.deleteMessage);
     const branchChat = useSessionStore(s => s.branchChat);
     const cloneChat = useSessionStore(s => s.cloneChat);
+
+    // ✅ Read display preferences directly from Zustand for on-the-fly compilation
+    const participants = useSessionStore(s => s.interactionData?.participants || []);
+    const displayMode = useSessionStore(s => s.interactionData?.profile?.toolUsageDisplayMode);
 
     const [conversions, setConversions] = React.useState<CategoryConversion[]>([]);
     const [isRawEditing, setIsRawEditing] = React.useState(false);
@@ -225,7 +230,12 @@ export const MessageBubble = React.memo(function MessageBubble({
         activeToolbarId === message.id ? 'toolbar-active' : '',
     ].filter(Boolean).join(' ');
 
-    const displayedTextContent = message.processedTextContent ?? message.textContent;
+    // ✅ Compile on the fly! 
+    // This memoization ensures it only recompiles when the raw text, the display mode, 
+    // or the participant list actually changes.
+    const displayedTextContent = React.useMemo(() => {
+        return compileMessageDisplayText(message.textContent, displayMode, participants, message.character);
+    }, [message.textContent, displayMode, participants, message.character]);
 
     return (
         <React.Fragment>
@@ -389,7 +399,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                         </div>
                     ) : (
                         <>
-                            {/* DISPLAY LAYER: Uses processedTextContent if available, falls back to raw textContent */}
+                            {/* DISPLAY LAYER: Compiles raw textContent on the fly based on current profile settings */}
                             <MemoizedMessageText text={displayedTextContent} />
 
                             {message.files && message.files.length > 0 && (
