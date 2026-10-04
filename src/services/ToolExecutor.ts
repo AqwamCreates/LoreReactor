@@ -367,7 +367,8 @@ export function getFallbackToolResult(innerString: string): ToolResult {
         }
     }
     
-    const emoji = TOOL_EMOJI_MAP[toolType.toLowerCase()] || '🔧';
+    const emoji = TOOL_EMOJI_MAP[toolType.toLowerCase() as tool] || '🔧';
+    
     return {
         toolType,
         args,
