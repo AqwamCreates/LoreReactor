@@ -2430,7 +2430,7 @@ async function executeVirtualController(
   context?: ToolExecutionContext
 ): Promise<ToolResult> {
   const pArgs = parsePythonArgs(args);
-  let action = pArgs.get(0, 'action', 'command')?.toLowerCase();
+  const rawAction = pArgs.get(0, 'action', 'command')?.toLowerCase();
   let button = pArgs.get(1, 'button', 'btn', 'key');
   const stick = (pArgs.get(1, 'stick', 'side')?.toLowerCase() || 'left') as 'left' | 'right';
   const trigger = (pArgs.get(1, 'trigger', 'side')?.toLowerCase() || 'right') as 'left' | 'right';
@@ -2446,8 +2446,8 @@ async function executeVirtualController(
     'up', 'down', 'left', 'right', 'dpad_up', 'dpad_down', 'dpad_left', 'dpad_right'
   ]);
 
-  // If no action or button is provided, output the help signature
-  if (!action && !button) {
+  // If no action or button was supplied, return usage guidance
+  if (!rawAction && !button) {
     return helpResult(
       'virtual_controller',
       'action="tap|press|release|stick|trigger|reset", button="A", x=0.0, y=0.0, value=1.0',
@@ -2455,11 +2455,12 @@ async function executeVirtualController(
     );
   }
 
-  // Handle shorthand calls: virtual_controller("A") or virtual_controller(button="A")
-  if (action && BUTTON_SET.has(action) && !button) {
-    button = action.toUpperCase();
-    action = 'tap';
-  } else if (!action && button) {
+  // Guaranteed string type so TypeScript never flags action as undefined
+  let action: string = rawAction || 'tap';
+
+  // Handle shorthand calls: virtual_controller("A")
+  if (rawAction && BUTTON_SET.has(rawAction) && !button) {
+    button = rawAction.toUpperCase();
     action = 'tap';
   }
 
