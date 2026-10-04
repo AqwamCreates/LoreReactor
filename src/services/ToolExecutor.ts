@@ -10,7 +10,7 @@ import { getAudioEngine } from './AudioEngine';
 import { generateCharacterMemory } from './ChatMessageSummarizationEngine';
 import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
-import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, setSystemPower, clipboardAction, captureScreenshot, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, captureVirtualVision, sendVirtualInput, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
+import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, setSystemPower, clipboardAction, captureScreenshot, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, captureVirtualVision, sendVirtualInput, sendVirtualController, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
 import { buildSearchUrl } from '../utilities/searchURLBuilder';
 import { getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
 import { getLocationMessageHistory } from '../utilities/timelineLogic';
@@ -347,7 +347,7 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
   shell: executeShell,
   virtual_vision: executeVirtualVision,
   virtual_input: executeVirtualInput,
-  virtual_controller: executeVirtualInput,
+  virtual_controller: executeVirtualController,
   hardware_control: executeHardwareControl,
 };
 
@@ -2419,6 +2419,86 @@ async function executeVirtualInput(
     args,
     content: res.message || 'Action executed successfully.',
     displayReplacement: `[🖱️ ${action.toUpperCase()}]`
+  };
+}
+
+// ─── Virtual Controller Tool (Xbox 360 / ViGEm) ─────────────────────
+async function executeVirtualController(
+  args: string,
+  _nextMessage: BaseMessage,
+  _interactionData: InteractionData,
+  context?: ToolExecutionContext
+): Promise<ToolResult> {
+  const pArgs = parsePythonArgs(args);
+  let action = pArgs.get(0, 'action', 'command')?.toLowerCase();
+  let button = pArgs.get(1, 'button', 'btn', 'key');
+  const stick = (pArgs.get(1, 'stick', 'side')?.toLowerCase() || 'left') as 'left' | 'right';
+  const trigger = (pArgs.get(1, 'trigger', 'side')?.toLowerCase() || 'right') as 'left' | 'right';
+  const x = pArgs.getNumber(2, 'x');
+  const y = pArgs.getNumber(3, 'y');
+  const value = pArgs.getNumber(2, 'value', 'val');
+  const durationMs = pArgs.getNumber(-1, 'durationms', 'duration', 'time', 'ms');
+
+  // Common controller button tokens
+  const BUTTON_SET = new Set([
+    'a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'rt', 'l1', 'r1', 'l2', 'r2', 'l3', 'r3',
+    'ls', 'rs', 'start', 'back', 'select', 'menu', 'guide', 'home',
+    'up', 'down', 'left', 'right', 'dpad_up', 'dpad_down', 'dpad_left', 'dpad_right'
+  ]);
+
+  // If no action or button is provided, output the help signature
+  if (!action && !button) {
+    return helpResult(
+      'virtual_controller',
+      'action="tap|press|release|stick|trigger|reset", button="A", x=0.0, y=0.0, value=1.0',
+      'control host virtual Xbox 360 gamepad'
+    );
+  }
+
+  // Handle shorthand calls: virtual_controller("A") or virtual_controller(button="A")
+  if (action && BUTTON_SET.has(action) && !button) {
+    button = action.toUpperCase();
+    action = 'tap';
+  } else if (!action && button) {
+    action = 'tap';
+  }
+
+  const res = await sendVirtualController({
+    action: action as any,
+    button: button ? button.toUpperCase() : undefined,
+    stick,
+    x,
+    y,
+    trigger,
+    value,
+    durationMs,
+  });
+
+  if (!res.success) {
+    return {
+      toolType: 'virtual_controller',
+      args,
+      content: `[Error: ${res.error || 'Virtual controller action failed'}]`,
+      displayReplacement: '[❌ Controller failed]'
+    };
+  }
+
+  // Build a concise label for UI badges & message history
+  const label = action === 'stick'
+    ? `STICK ${stick.toUpperCase()} (${x ?? 0}, ${y ?? 0})`
+    : action === 'trigger'
+    ? `TRIGGER ${trigger.toUpperCase()} (${value ?? 1.0})`
+    : button
+    ? `${action.toUpperCase()} ${button.toUpperCase()}`
+    : action.toUpperCase();
+
+  context?.addToast?.(`Gamepad: ${label}`, 'info');
+
+  return {
+    toolType: 'virtual_controller',
+    args,
+    content: res.message || `Controller action ${label} executed successfully.`,
+    displayReplacement: `[🎮 ${label}]`
   };
 }
 

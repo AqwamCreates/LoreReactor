@@ -291,6 +291,79 @@ function validateAuxPaths(args: string[]): void {
   }
 }
 
+// ─── Virtual Controller State (ViGEmBus / XInput) ────────────────────
+let ViGEmClient: any = null;
+let vigemBus: any = null;
+let x360Controller: any = null;
+let vigemInitAttempted = false;
+let vigemInitError: string | null = null;
+
+const X360_BUTTON_MAP: Record<string, string> = {
+  'A': 'A',
+  'B': 'B',
+  'X': 'X',
+  'Y': 'Y',
+  'LB': 'LEFT_SHOULDER',
+  'L1': 'LEFT_SHOULDER',
+  'LEFT_SHOULDER': 'LEFT_SHOULDER',
+  'RB': 'RIGHT_SHOULDER',
+  'R1': 'RIGHT_SHOULDER',
+  'RIGHT_SHOULDER': 'RIGHT_SHOULDER',
+  'START': 'START',
+  'MENU': 'START',
+  'BACK': 'BACK',
+  'SELECT': 'BACK',
+  'VIEW': 'BACK',
+  'GUIDE': 'GUIDE',
+  'HOME': 'GUIDE',
+  'LS': 'LEFT_THUMB',
+  'L3': 'LEFT_THUMB',
+  'LEFT_THUMB': 'LEFT_THUMB',
+  'RS': 'RIGHT_THUMB',
+  'R3': 'RIGHT_THUMB',
+  'RIGHT_THUMB': 'RIGHT_THUMB',
+  'UP': 'DPAD_UP',
+  'DPAD_UP': 'DPAD_UP',
+  'DOWN': 'DPAD_DOWN',
+  'DPAD_DOWN': 'DPAD_DOWN',
+  'LEFT': 'DPAD_LEFT',
+  'DPAD_LEFT': 'DPAD_LEFT',
+  'RIGHT': 'DPAD_RIGHT',
+  'DPAD_RIGHT': 'DPAD_RIGHT',
+};
+
+function getOrInitVirtualController(): { controller: any; error: string | null } {
+  if (!IS_WINDOWS) {
+    return { controller: null, error: 'Virtual controller is currently supported on Windows only (requires ViGEmBus).' };
+  }
+  if (x360Controller) {
+    return { controller: x360Controller, error: null };
+  }
+  if (vigemInitAttempted && vigemInitError) {
+    return { controller: null, error: vigemInitError };
+  }
+
+  vigemInitAttempted = true;
+  try {
+    ViGEmClient = require('vigemclient');
+    vigemBus = new ViGEmClient();
+    const connectErr = vigemBus.connect();
+    if (connectErr) {
+      vigemInitError = `ViGEmBus connection failed: ${connectErr.message || connectErr}. Ensure ViGEmBus driver is installed.`;
+      log.warn(`[ViGEm] ${vigemInitError}`);
+      return { controller: null, error: vigemInitError };
+    }
+    x360Controller = vigemBus.createX360Controller();
+    x360Controller.connect();
+    log.success('🎮 Virtual Xbox 360 Controller connected to ViGEmBus');
+    return { controller: x360Controller, error: null };
+  } catch (err: any) {
+    vigemInitError = `vigemclient not available: ${err.message}. Install 'vigemclient' and the ViGEmBus driver.`;
+    log.warn(`[ViGEm] ${vigemInitError}`);
+    return { controller: null, error: vigemInitError };
+  }
+}
+
 // ─── GPU Monitoring ─────────────────────────────────────────────────
 
 type GpuVendor = 'nvidia' | 'amd' | 'intel' | 'apple' | 'unknown';
@@ -477,7 +550,6 @@ const GPU_QUERY_MIN_INTERVAL_MS = 1000;
 
 // ─── Media file detection helpers ────────────────────────────────────
 
-/** Directories under user_data that store binary media files (not JSON) */
 const MEDIA_DIR_PREFIXES = [
   'character_images/',
   'character_voices/',
@@ -1314,7 +1386,7 @@ app.post('/fetch', async (req, response) => {
 
 // ─── Tool Endpoints (/tool) ──────────────────────────────────────────
 
-app.post('/tool/text', (req, res) => {
+app.post('/tool/text_to_speech/start', (req, res) => {
   const { text, voice, speed = 1.0 } = req.body;
   if (!text) return res.status(400).json({ error: 'Missing text' });
 
@@ -1369,7 +1441,7 @@ app.post('/tool/notify', (req, res) => {
     {
       title: title || 'LoreReactor Agent',
       message: message,
-      sound: true, // Only plays if OS allows
+      sound: true,
       wait: false
     },
     (err) => {
@@ -1380,7 +1452,7 @@ app.post('/tool/notify', (req, res) => {
 });
 
 app.post('/tool/volume', async (req, res) => {
-  const { action, level } = req.body; // action: 'get' | 'set' | 'mute' | 'unmute'
+  const { action, level } = req.body;
   try {
     if (action === 'get') {
       const vol = await loudness.getVolume();
@@ -1423,7 +1495,7 @@ app.post('/tool/lock-screen', (_req, res) => {
 
 // ── OS Power Control (sleep, shutdown, restart) ─────────────────────
 app.post('/tool/power', (req, res) => {
-  const { action } = req.body; // 'sleep' | 'shutdown' | 'restart'
+  const { action } = req.body;
   if (!['sleep', 'shutdown', 'restart'].includes(action)) {
     return res.status(400).json({ success: false, error: 'Invalid power action' });
   }
@@ -1440,7 +1512,6 @@ app.post('/tool/power', (req, res) => {
       else if (action === 'restart') execSync('osascript -e \'tell application "System Events" to restart\'');
       else if (action === 'sleep') execSync('pmset sleepnow');
     } else {
-      // Linux
       if (action === 'shutdown') execSync('systemctl poweroff');
       else if (action === 'restart') execSync('systemctl reboot');
       else if (action === 'sleep') execSync('systemctl suspend');
@@ -1454,7 +1525,7 @@ app.post('/tool/power', (req, res) => {
 });
 
 app.post('/tool/clipboard', async (req, res) => {
-  const { action, text } = req.body; // action: 'read' | 'write'
+  const { action, text } = req.body;
 
   try {
     if (action === 'read') {
@@ -1481,10 +1552,7 @@ app.post('/tool/screenshot', async (_req, res) => {
       fs.mkdirSync(screenshotDir, { recursive: true });
     }
 
-    // Capture primary display buffer as a JPEG buffer
     const imgBuffer = await screenshot({ format: 'jpg' });
-    
-    // Optionally save a permanent copy to disk
     const filename = `screenshot_${Date.now()}.jpg`;
     const filePath = path.join(screenshotDir, filename);
     fs.writeFileSync(filePath, imgBuffer);
@@ -1526,7 +1594,7 @@ app.post('/tool/file-watcher/start', (req, res) => {
     const watcher = chokidar.watch(targetDir, { ignoreInitial: true });
     watcher.on('all', (event, filePath) => {
       fileChangeEvents.push({ event, path: filePath, timestamp: Date.now() });
-      if (fileChangeEvents.length > 50) fileChangeEvents.shift(); // keep last 50 events
+      if (fileChangeEvents.length > 50) fileChangeEvents.shift();
     });
 
     activeWatchers.set(targetDir, watcher);
@@ -1538,7 +1606,6 @@ app.post('/tool/file-watcher/start', (req, res) => {
 });
 
 app.get('/tool/file-watcher/events', (_req, res) => {
-  // Return the queued events and clear buffer
   const events = [...fileChangeEvents];
   fileChangeEvents.length = 0;
   res.json({ success: true, events });
@@ -1577,7 +1644,6 @@ app.get('/tool/process-monitor', async (req, res) => {
       list = list.filter(p => p.name.toLowerCase().includes(filter));
     }
 
-    // Sort by CPU usage descending
     list = list.sort((a, b) => b.cpu - a.cpu).slice(0, limit);
 
     res.json({
@@ -1610,9 +1676,8 @@ app.post('/tool/trash', async (req, res) => {
   } catch (e) {
     res.status(500).json({ success: false, error: (e as Error).message });
   }
-})
+});
 
-// Single unified endpoint to open files, videos, directories, or URLs
 app.post('/tool/read-file', async (req, response) => {
   const { target } = req.body;
   if (!target) {
@@ -1671,7 +1736,6 @@ app.post('/tool/shell', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Missing command' });
   }
 
-  // Safety filter example: block catastrophic commands if exposed to autonomous agents
   const dangerousPatterns = [/rm\s+-rf\s+\//i, /mkfs/i, />\s*\/dev\/sd/i];
   if (dangerousPatterns.some(pattern => pattern.test(command))) {
     return res.status(403).json({ success: false, error: 'Command blocked by security policy' });
@@ -1697,14 +1761,11 @@ app.post('/tool/virtual-vision', async (req, res) => {
   const { target = 'active', appName, title, x, y, width, height } = req.body;
 
   try {
-    // 1. Capture the primary display buffer
     const screenBuffer = await screenshot({ format: 'png' });
     let cropRegion: { left: number; top: number; width: number; height: number } | null = null;
     let targetLabel = 'fullscreen';
 
-    // 2. Resolve crop bounds based on targeting strategy
     if (appName || title) {
-      // Search all open windows for matching app name or window title
       const allWins = typeof openWindows === 'function' ? await openWindows() : [];
       const matchedWin = allWins.find(w => 
         (appName && w.owner?.name?.toLowerCase().includes(String(appName).toLowerCase())) ||
@@ -1722,7 +1783,6 @@ app.post('/tool/virtual-vision', async (req, res) => {
       }
     }
 
-    // Fall back to active focused window if target is 'active' and no specific window was cropped yet
     if (!cropRegion && target === 'active') {
       const activeWin = await activeWindow();
       if (activeWin?.bounds) {
@@ -1744,14 +1804,12 @@ app.post('/tool/virtual-vision', async (req, res) => {
       targetLabel = `region (${x}, ${y}, ${width}x${height})`;
     }
 
-    // 3. Perform image extraction if bounds are defined
     let finalBuffer = screenBuffer;
     if (cropRegion) {
       const metadata = await sharp(screenBuffer).metadata();
       const imgWidth = metadata.width || 1920;
       const imgHeight = metadata.height || 1080;
 
-      // Ensure crop dimensions do not exceed actual screen resolution
       const safeLeft = Math.min(cropRegion.left, imgWidth - 1);
       const safeTop = Math.min(cropRegion.top, imgHeight - 1);
       const safeWidth = Math.min(cropRegion.width, imgWidth - safeLeft);
@@ -1777,6 +1835,7 @@ app.post('/tool/virtual-vision', async (req, res) => {
   }
 });
 
+// ── Virtual Input Tool (Mouse & Keyboard) ───────────────────────────
 app.post('/tool/virtual-input', async (req, res) => {
   const { 
     action, 
@@ -1796,20 +1855,17 @@ app.post('/tool/virtual-input', async (req, res) => {
   try {
     const clickBtn = button === 'right' || button === 'middle' ? button : 'left';
 
-    // 1. Move Mouse Cursor
     if (action === 'move') {
       if (typeof x !== 'number' || typeof y !== 'number') return res.status(400).json({ success: false, error: 'x and y are required numbers' });
       if (smooth) robot.moveMouseSmooth(x, y); else robot.moveMouse(x, y);
       return res.json({ success: true, message: `Moved cursor to (${x}, ${y})` });
     }
 
-    // 2. Mouse Click
     if (action === 'click') {
       robot.mouseClick(clickBtn, Boolean(double));
       return res.json({ success: true, message: `Clicked ${clickBtn} button` });
     }
 
-    // 3. Mouse Drag (Aiming, Card Dragging, Sliders)
     if (action === 'drag') {
       if (typeof x === 'number' && typeof y === 'number') robot.moveMouse(x, y);
       robot.mouseToggle('down', clickBtn);
@@ -1820,7 +1876,6 @@ app.post('/tool/virtual-input', async (req, res) => {
       return res.json({ success: true, message: `Dragged ${clickBtn} from (${x}, ${y}) to (${toX}, ${toY})` });
     }
 
-    // 4. Hold Key (Movement in games e.g. hold W for 2000ms)
     if (action === 'hold') {
       if (!key || typeof key !== 'string') return res.status(400).json({ success: false, error: 'Key name is required' });
       robot.keyToggle(key.toLowerCase(), 'down');
@@ -1830,7 +1885,6 @@ app.post('/tool/virtual-input', async (req, res) => {
       return res.json({ success: true, message: `Holding key "${key}" for ${durationMs}ms` });
     }
 
-    // 5. Manual Key Down / Up
     if (action === 'key_down') {
       if (!key) return res.status(400).json({ success: false, error: 'Key required' });
       robot.keyToggle(key.toLowerCase(), 'down');
@@ -1842,21 +1896,18 @@ app.post('/tool/virtual-input', async (req, res) => {
       return res.json({ success: true, message: `Key "${key}" up` });
     }
 
-    // 6. Type String
     if (action === 'type') {
       if (typeof text !== 'string') return res.status(400).json({ success: false, error: 'Text string is required' });
       robot.typeString(text);
       return res.json({ success: true, message: `Typed "${text}"` });
     }
 
-    // 7. Tap Key / Shortcuts
     if (action === 'press') {
       if (!key || typeof key !== 'string') return res.status(400).json({ success: false, error: 'Key name is required' });
       if (modifier) robot.keyTap(key.toLowerCase(), modifier.toLowerCase()); else robot.keyTap(key.toLowerCase());
       return res.json({ success: true, message: `Tapped "${key}"` });
     }
 
-    // 8. Screen & Cursor Queries
     if (action === 'screen_size') {
       const size = robot.getScreenSize();
       return res.json({ success: true, width: size.width, height: size.height });
@@ -1872,6 +1923,133 @@ app.post('/tool/virtual-input', async (req, res) => {
   }
 });
 
+// ── Virtual Controller (Xbox 360 / ViGEmBus) ────────────────────────
+app.post('/tool/virtual-controller', (req, res) => {
+  const { controller, error } = getOrInitVirtualController();
+  if (!controller) {
+    return res.status(503).json({ success: false, error: error || 'Virtual controller unavailable.' });
+  }
+
+  const {
+    action = 'tap', // 'tap' | 'press' | 'release' | 'stick' | 'trigger' | 'reset' | 'status'
+    button,
+    stick = 'left', // 'left' | 'right'
+    x,
+    y,
+    trigger = 'right', // 'left' | 'right'
+    value,
+    durationMs = 120
+  } = req.body;
+
+  try {
+    // 1. Reset / Zero-out all controller inputs
+    if (action === 'reset') {
+      Object.values(X360_BUTTON_MAP).forEach((btn) => {
+        try { controller.button[btn]?.setValue(false); } catch {}
+      });
+      controller.axis.leftX.setValue(0.0);
+      controller.axis.leftY.setValue(0.0);
+      controller.axis.rightX.setValue(0.0);
+      controller.axis.rightY.setValue(0.0);
+      controller.axis.leftTrigger.setValue(0.0);
+      controller.axis.rightTrigger.setValue(0.0);
+      return res.json({ success: true, message: 'Virtual controller inputs reset to neutral.' });
+    }
+
+    // 2. Query status
+    if (action === 'status') {
+      return res.json({ success: true, message: 'Virtual Xbox 360 controller connected and active.' });
+    }
+
+    // 3. Analog Sticks (-1.0 to 1.0)
+    if (action === 'stick') {
+      const clampedX = Math.max(-1.0, Math.min(1.0, Number(x) || 0.0));
+      const clampedY = Math.max(-1.0, Math.min(1.0, Number(y) || 0.0));
+
+      if (stick.toLowerCase() === 'right') {
+        controller.axis.rightX.setValue(clampedX);
+        controller.axis.rightY.setValue(clampedY);
+        return res.json({ success: true, message: `Right stick set to (${clampedX}, ${clampedY})` });
+      }
+      controller.axis.leftX.setValue(clampedX);
+      controller.axis.leftY.setValue(clampedY);
+      return res.json({ success: true, message: `Left stick set to (${clampedX}, ${clampedY})` });
+    }
+
+    // 4. Analog Triggers (0.0 to 1.0)
+    if (action === 'trigger') {
+      const clampedVal = Math.max(0.0, Math.min(1.0, Number(value) ?? 1.0));
+      if (trigger.toLowerCase() === 'left') {
+        controller.axis.leftTrigger.setValue(clampedVal);
+        return res.json({ success: true, message: `Left trigger set to ${clampedVal}` });
+      }
+      controller.axis.rightTrigger.setValue(clampedVal);
+      return res.json({ success: true, message: `Right trigger set to ${clampedVal}` });
+    }
+
+    // 5. Digital Buttons (A, B, X, Y, LB, RB, D-Pad, etc.)
+    if (!button || typeof button !== 'string') {
+      return res.status(400).json({ success: false, error: 'Button name is required for button actions.' });
+    }
+
+    const normalizedBtn = button.trim().toUpperCase();
+
+    // Route trigger button names (LT / RT) to analog triggers if supplied as buttons
+    if (normalizedBtn === 'LT' || normalizedBtn === 'L2') {
+      if (action === 'press') {
+        controller.axis.leftTrigger.setValue(1.0);
+      } else if (action === 'release') {
+        controller.axis.leftTrigger.setValue(0.0);
+      } else {
+        controller.axis.leftTrigger.setValue(1.0);
+        setTimeout(() => { try { controller.axis.leftTrigger.setValue(0.0); } catch {} }, durationMs);
+      }
+      return res.json({ success: true, message: `${normalizedBtn} ${action}ed` });
+    }
+
+    if (normalizedBtn === 'RT' || normalizedBtn === 'R2') {
+      if (action === 'press') {
+        controller.axis.rightTrigger.setValue(1.0);
+      } else if (action === 'release') {
+        controller.axis.rightTrigger.setValue(0.0);
+      } else {
+        controller.axis.rightTrigger.setValue(1.0);
+        setTimeout(() => { try { controller.axis.rightTrigger.setValue(0.0); } catch {} }, durationMs);
+      }
+      return res.json({ success: true, message: `${normalizedBtn} ${action}ed` });
+    }
+
+    const internalKey = X360_BUTTON_MAP[normalizedBtn];
+    if (!internalKey || !controller.button[internalKey]) {
+      return res.status(400).json({
+        success: false,
+        error: `Unknown button "${button}". Valid: A, B, X, Y, LB, RB, LT, RT, START, BACK, GUIDE, LS, RS, UP, DOWN, LEFT, RIGHT.`
+      });
+    }
+
+    if (action === 'press') {
+      controller.button[internalKey].setValue(true);
+      return res.json({ success: true, message: `Button ${normalizedBtn} pressed down.` });
+    }
+
+    if (action === 'release') {
+      controller.button[internalKey].setValue(false);
+      return res.json({ success: true, message: `Button ${normalizedBtn} released.` });
+    }
+
+    // Default: tap
+    controller.button[internalKey].setValue(true);
+    setTimeout(() => {
+      try { controller.button[internalKey].setValue(false); } catch {}
+    }, Math.max(30, Math.min(3000, durationMs)));
+
+    return res.json({ success: true, message: `Tapped button ${normalizedBtn} (${durationMs}ms)` });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+// ── Hardware Control ────────────────────────────────────────────────
 app.get('/tool/hardware/list', async (_req, res) => {
   try {
     const ports = await SerialPort.list();
@@ -1943,4 +2121,4 @@ const startServer = () => {
   app.listen(PORT, '0.0.0.0', () => {});
 };
 
-startServer()
+startServer();

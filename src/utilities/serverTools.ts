@@ -22,19 +22,18 @@ export interface ScreenshotResult {
   error?: string;
 }
 
-
 export interface OpenTargetResult {
   success: boolean;
   target?: string;
   error?: string;
 }
+
 export interface FileWriteResult {
   success: boolean;
   path?: string;
   bytes?: number;
   error?: string;
 }
-
 
 export interface ShellResult {
   success: boolean;
@@ -52,20 +51,35 @@ export interface VirtualVisionParams {
   width?: number;
   height?: number;
 }
+
 export interface VirtualInputParams {
-  action: 'move' | 'click' | 'type' | 'press' | 'scroll' | 'screen_size' | 'get_position';
+  action: 'move' | 'click' | 'type' | 'press' | 'scroll' | 'screen_size' | 'get_position' | 'drag' | 'hold' | 'key_down' | 'key_up';
   x?: number;
   y?: number;
+  toX?: number;
+  toY?: number;
   button?: 'left' | 'right' | 'middle';
   double?: boolean;
   text?: string;
   key?: string;
   modifier?: string;
   smooth?: boolean;
+  durationMs?: number;
+}
+
+export interface VirtualControllerParams {
+  action?: 'tap' | 'press' | 'release' | 'stick' | 'trigger' | 'reset' | 'status';
+  button?: string;
+  stick?: 'left' | 'right';
+  x?: number;
+  y?: number;
+  trigger?: 'left' | 'right';
+  value?: number;
+  durationMs?: number;
 }
 
 export async function speakText(text: string, voice?: string, speed = 1.0) {
-  const res = await fetch(`${localURL}/tool/text_to_speech`, {
+  const res = await fetch(`${localURL}/tool/text_to_speech/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, voice, speed }),
@@ -221,9 +235,6 @@ export async function moveToTrash(targetPath: string): Promise<{ success: boolea
   }
 }
 
-/**
- * Universal opener for files, videos, directories, and URLs.
- */
 export async function readFile(target: string): Promise<OpenTargetResult> {
   try {
     const response = await fetch(`${localURL}/tool/read-file`, {
@@ -294,6 +305,23 @@ export async function sendVirtualInput(params: VirtualInputParams): Promise<{
 }> {
   try {
     const response = await fetch(`${localURL}/tool/virtual-input`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    return await response.json();
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+}
+
+export async function sendVirtualController(params: VirtualControllerParams): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const response = await fetch(`${localURL}/tool/virtual-controller`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),

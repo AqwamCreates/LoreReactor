@@ -965,7 +965,7 @@ function App() {
                                         <button type="button" className="view-mode-toggle" onClick={() => modals.extList.open()} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
                                         <button type="button" onClick={toggleViewMode} className={`view-mode-toggle ${viewMode !== 'ladder' ? 'active' : ''}`} title="Switch View Mode">
                                             <span>{viewMode === 'ladder' ? '📜' : viewMode === 'cinematic' ? '🎥' : '📖'}</span>
-                                            <span>{viewMode === 'ladder' ? 'Ladder' : viewMode === 'cinematic' ? 'Cinematic' : viewMode === "overlay" ? 'Visual Novel' : "Overlay"}</span>
+                                            <span>{viewMode === 'ladder' ? 'Ladder' : viewMode === 'cinematic' ? 'Cinematic' : viewMode === "visual novel" ? 'Visual Novel' : "Overlay"}</span>
                                         </button>
                                         <ChatStatisticsBar
                                             numberOfMessages={interactionData?.numberOfMessages ?? safeMessages.length}
