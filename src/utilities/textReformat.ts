@@ -67,7 +67,38 @@ const PATTERNS: { regex: RegExp; category: FormatCategory; innerGroup: number }[
     { regex: /\[([^\]]+)\]/gs, category: 'brackets', innerGroup: 1 },
 ];
 
+// ✅ NEW: Helper to find all tool invocation ranges
+function findToolRanges(text: string): Array<{ start: number; end: number }> {
+    const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const toolRegex = new RegExp(
+        `${escapeRegex(toolStartSring)}[\\s\\S]*?${escapeRegex(toolEndString)}`,
+        'g'
+    );
+    
+    const ranges: Array<{ start: number; end: number }> = [];
+    let match: RegExpExecArray | null;
+    
+    while ((match = toolRegex.exec(text)) !== null) {
+        ranges.push({ start: match.index, end: match.index + match[0].length });
+    }
+    
+    return ranges;
+}
+
+// ✅ NEW: Helper to check if a position is inside a tool invocation
+function isInsideToolRange(pos: number, toolRanges: Array<{ start: number; end: number }>): boolean {
+    for (const range of toolRanges) {
+        if (pos >= range.start && pos < range.end) {
+            return true;
+        }
+    }
+    return false;
+}
+
 export function detectFormatSegments(text: string): DetectedSegment[] {
+    // ✅ Find all tool invocations first
+    const toolRanges = findToolRanges(text);
+    
     const allMatches: RawMatch[] = [];
 
     for (const { regex, category, innerGroup } of PATTERNS) {
@@ -77,6 +108,22 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
             if (match[0].length === 0) {
                 regex.lastIndex++;
                 continue;
+            }
+
+            // ✅ Skip matches that overlap with tool invocations
+            const matchStart = match.index;
+            const matchEnd = match.index + match[0].length;
+            
+            let overlapsWithTool = false;
+            for (const range of toolRanges) {
+                if (matchStart < range.end && matchEnd > range.start) {
+                    overlapsWithTool = true;
+                    break;
+                }
+            }
+            
+            if (overlapsWithTool) {
+                continue; // Skip this match entirely
             }
 
             allMatches.push({
@@ -107,17 +154,45 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
     let pos = 0;
 
     for (const match of accepted) {
+        // ✅ Handle gaps between matches, but skip tool ranges
         if (match.start > pos) {
-            const plainGap = text.slice(pos, match.start);
-
-            if (plainGap.trim().length > 0) {
-                segments.push({
-                    start: pos,
-                    end: match.start,
-                    category: 'plain',
-                    innerText: plainGap,
-                    rawMatch: plainGap,
-                });
+            let gapPos = pos;
+            
+            while (gapPos < match.start) {
+                // Check if we're entering a tool range
+                let toolRange: { start: number; end: number } | null = null;
+                for (const range of toolRanges) {
+                    if (gapPos >= range.start && gapPos < range.end) {
+                        toolRange = range;
+                        break;
+                    }
+                }
+                
+                if (toolRange) {
+                    // Skip to end of tool range
+                    gapPos = toolRange.end;
+                } else {
+                    // Find the end of this plain text segment (either next tool or next match)
+                    let segmentEnd = match.start;
+                    for (const range of toolRanges) {
+                        if (range.start > gapPos && range.start < segmentEnd) {
+                            segmentEnd = range.start;
+                        }
+                    }
+                    
+                    const plainGap = text.slice(gapPos, segmentEnd);
+                    if (plainGap.trim().length > 0) {
+                        segments.push({
+                            start: gapPos,
+                            end: segmentEnd,
+                            category: 'plain',
+                            innerText: plainGap,
+                            rawMatch: plainGap,
+                        });
+                    }
+                    
+                    gapPos = segmentEnd;
+                }
             }
         }
 
@@ -132,17 +207,44 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
         pos = match.end;
     }
 
+    // ✅ Handle trailing text, but skip tool ranges
     if (pos < text.length) {
-        const trailing = text.slice(pos);
-
-        if (trailing.trim().length > 0) {
-            segments.push({
-                start: pos,
-                end: text.length,
-                category: 'plain',
-                innerText: trailing,
-                rawMatch: trailing,
-            });
+        let gapPos = pos;
+        
+        while (gapPos < text.length) {
+            let toolRange: { start: number; end: number } | null = null;
+            for (const range of toolRanges) {
+                if (gapPos >= range.start && gapPos < range.end) {
+                    toolRange = range;
+                    break;
+                }
+            }
+            
+            if (toolRange) {
+                // Skip to end of tool range
+                gapPos = toolRange.end;
+            } else {
+                // Find the end of this plain text segment (either next tool or end of text)
+                let segmentEnd = text.length;
+                for (const range of toolRanges) {
+                    if (range.start > gapPos && range.start < segmentEnd) {
+                        segmentEnd = range.start;
+                    }
+                }
+                
+                const trailing = text.slice(gapPos, segmentEnd);
+                if (trailing.trim().length > 0) {
+                    segments.push({
+                        start: gapPos,
+                        end: segmentEnd,
+                        category: 'plain',
+                        innerText: trailing,
+                        rawMatch: trailing,
+                    });
+                }
+                
+                gapPos = segmentEnd;
+            }
         }
     }
 
@@ -200,29 +302,8 @@ export function applyConversions(
     text: string,
     conversions: Record<FormatCategory, FormatCategory>,
 ): string {
-    // Protect tool invocations from being mangled by format conversion
-    const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const toolRegex = new RegExp(
-        `${escapeRegex(toolStartSring)}[\\s\\S]*?${escapeRegex(toolEndString)}`,
-        'g'
-    );
-
-    const toolPlaceholders: string[] = [];
-    const protectedText = text.replace(toolRegex, (match) => {
-        toolPlaceholders.push(match);
-        return `\u0000TOOL_${toolPlaceholders.length - 1}\u0000`;
-    });
-
-    // Run normal conversion on the protected text
-    const segments = detectFormatSegments(protectedText);
-    if (segments.length === 0) {
-        // Restore tools and return
-        let result = protectedText;
-        for (let i = 0; i < toolPlaceholders.length; i++) {
-            result = result.replace(`\u0000TOOL_${i}\u0000`, toolPlaceholders[i]);
-        }
-        return result;
-    }
+    const segments = detectFormatSegments(text);
+    if (segments.length === 0) return text;
 
     const replacements: { start: number; end: number; replacement: string }[] = [];
 
@@ -239,23 +320,12 @@ export function applyConversions(
         }
     }
 
-    if (replacements.length === 0) {
-        let result = protectedText;
-        for (let i = 0; i < toolPlaceholders.length; i++) {
-            result = result.replace(`\u0000TOOL_${i}\u0000`, toolPlaceholders[i]);
-        }
-        return result;
-    }
+    if (replacements.length === 0) return text;
 
-    let output = protectedText;
+    let output = text;
     for (let i = replacements.length - 1; i >= 0; i--) {
         const r = replacements[i];
         output = output.slice(0, r.start) + r.replacement + output.slice(r.end);
-    }
-
-    // Restore tool invocations
-    for (let i = 0; i < toolPlaceholders.length; i++) {
-        output = output.replace(`\u0000TOOL_${i}\u0000`, toolPlaceholders[i]);
     }
 
     return output;

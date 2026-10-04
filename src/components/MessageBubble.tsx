@@ -234,7 +234,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     // This memoization ensures it only recompiles when the raw text, the display mode, 
     // or the participant list actually changes.
     const displayedTextContent = React.useMemo(() => {
-        return compileMessageDisplayText(message.textContent, displayMode, participants, message.character);
+        return compileMessageDisplayText(message.textContent, displayMode, participants, message.character, message.toolExecutionResults);
     }, [message.textContent, displayMode, participants, message.character]);
 
     return (

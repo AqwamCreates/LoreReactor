@@ -324,7 +324,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     // ✅ DISPLAY LAYER: Compiles raw textContent on the fly based on current profile settings
     const displayedTextContent = useMemo(() => {
         if (!displayedMessage) return null;
-        return compileMessageDisplayText(displayedMessage.textContent, displayMode, participants, displayedMessage.character);
+        return compileMessageDisplayText(displayedMessage.textContent, displayMode, participants, displayedMessage.character, displayedMessage.toolExecutionResults);
     }, [displayedMessage, displayMode, participants]);
 
     const displayText = useMemo(() => {

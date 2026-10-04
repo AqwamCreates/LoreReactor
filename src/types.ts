@@ -329,6 +329,14 @@ export type inventoryInfo = string | number
 
 export type Inventory = Record<string, inventoryInfo>
 
+export interface ToolExecutionResult {
+    rawMatch: string;  // The exact <<tool: ...>> invocation
+    toolType: string;
+    args: string;
+    content: string;
+    displayReplacement: string;
+}
+
 export interface BaseMessage {
   id: string;
   character: Character;
@@ -354,6 +362,7 @@ export interface ChatMessage extends BaseMessage {
   messageType: 'chat';
   textContent: string;
   processedTextContent?: string;
+  toolExecutionResults?: ToolExecutionResult[];
   files?: string[];
   frontCameraImage?: string;
   doNotRespond?: boolean;
@@ -368,6 +377,7 @@ export interface WhisperMessage extends BaseMessage {
   messageType: 'whisper';
   textContent: string;
   processedTextContent?: string;
+  toolExecutionResults?: ToolExecutionResult[];
   targetCharacterIds: string[];
   files?: string[];
   frontCameraImage?: string;

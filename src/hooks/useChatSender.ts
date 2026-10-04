@@ -1,6 +1,6 @@
 // src/hooks/useChatSender.ts
 import { useCallback } from 'react';
-import type { Character, PromptBlock, InteractionData, HistoryMessage, InterjectableAction } from '../types';
+import type { Character, PromptBlock, InteractionData, HistoryMessage, InterjectableAction, ToolExecutionResult } from '../types';
 import { createChatMessage } from '../utilities/chatLogic';
 import { processPendingToolActions, executeTool, type ToolExecutionContext } from '../services/ToolExecutor';
 import { parseSlashCommand } from '../services/ToolInvocationParser';
@@ -98,11 +98,23 @@ export function useChatSender(opts: UseChatSenderOptions) {
                     currentState.interactionData.profile?.toolUsageDisplayMode
                 );
 
-                const rawCmd = text;
-                const displayResult = toolResult.displayReplacement || toolResult.content || `[${slashInvocation.toolType}]`;
+                // ✅ Store the tool execution result for on-the-fly compilation
+                const toolExecutionResult: ToolExecutionResult = {
+                    rawMatch: slashInvocation.rawMatch || `<<tool: ${slashInvocation.toolType} ${slashInvocation.args}>>`,
+                    toolType: slashInvocation.toolType,
+                    args: slashInvocation.args,
+                    content: toolResult.content,
+                    displayReplacement: toolResult.displayReplacement
+                };
+                
+                if (!slashMessage.toolExecutionResults) {
+                    slashMessage.toolExecutionResults = [];
+                }
+                slashMessage.toolExecutionResults.push(toolExecutionResult);
 
+                const rawCmd = text;
                 slashMessage.textContent = rawCmd;
-                slashMessage.processedTextContent = displayResult !== rawCmd ? displayResult : undefined;
+                // Note: processedTextContent is no longer set here - compilation happens on-the-fly
 
                 const preSlashData = currentState.interactionData;
                 const currentLocId = getCurrentLocationId(currentState.interactionData, activeCharacter) || 'global';
@@ -263,7 +275,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
 
     const sendActionAndGetResponse = useCallback(async (
         actionText: string,
-        targetChar: Character, // ✅ No longer ignored!
+        targetChar: Character,
         protagonist: Character
     ) => {
         const currentState = getState();
@@ -300,7 +312,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
         await executeTurnPipeline({
             data: td,
             protagonistId: protagonist.id,
-            respondingCharacter: targetChar, // ✅ FIX: Force the targeted character to be the one who responds!
+            respondingCharacter: targetChar,
             isProtagonistCharId: (id: string) => allProtagonistIds.has(id),
             errorPrefix: 'Action failed',
             lockAlreadyAcquired: true,

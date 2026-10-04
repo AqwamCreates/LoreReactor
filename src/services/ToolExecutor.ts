@@ -266,6 +266,26 @@ function getCharacterTimeData(interactionData: InteractionData, character: Chara
   return getTimeDataFromCoordinates(location?.latitude, location?.longitude);
 }
 
+export const TOOL_EMOJI_MAP: Record<string, string> = {
+    whisper: '🤫', think: '💭', pick: '🎯', clock: '🕰️', calendar: '📅',
+    coin: '🪙', dice: '🎲', random: '🎲', rng: '🎲', move: '🚶',
+    timer: '⏱️', stopwatch: '⏱️', schedule: '📅', calculator: '🧮',
+    web: '🌐', dialogue: '💬', knowledge: '🧠', memory: '🧠',
+    lookup: '🔍', map: '🗺️', audio: '🔊', note: '📝',
+    inventory: '📦', trade: '🤝', invite: '📨', kick: '👢',
+    oracle: '🔮', teleport: '⚡', key: '🔒', clothing: '👕',
+    summon: '✨', narrate: '🎙️', inspect: '🔍', administrator: '🔧',
+    creator: '🛠️', destroyer: '💀', schedule_response: '⏰',
+    text_to_speech: '🔊', gpu: '📟', system_info: '🖥️', notify: '🔔',
+    volume_control: '🔊', lock_screen: '🔒', clipboard: '📋',
+    screenshot: '📸', front_camera: '📷', network_scanner: '🌐',
+    file_watcher: '📂', process_monitor: '⚙️', window_monitor: '🖥️',
+    trash: '🗑️', browser: '🌐', read_file: '🔗', write_file: '📁',
+    shell: '💻', virtual_input: '🖱️', hardware_control: '🔌',
+    sleep: '💤', shutdown: '⏻', restart: '🔄'
+};
+
+
 const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, interactionData: InteractionData, context?: ToolExecutionContext, displayMode?: toolUsageDisplayMode) => ToolResult | Promise<ToolResult>> = {
   whisper: executeWhisper,
   think: executeThink,
@@ -328,6 +348,32 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
   virtual_input: executeVirtualInput,
   hardware_control: executeHardwareControl,
 };
+
+export function getFallbackToolResult(innerString: string): ToolResult {
+    const trimmedInnerString = innerString.trim();
+    let toolType = trimmedInnerString;
+    let args = '';
+    
+    const fnMatch = trimmedInnerString.match(/^([a-zA-Z_]\w*)\s*\(([\s\S]*)\)$/);
+    if (fnMatch) {
+        toolType = fnMatch[1];
+        args = fnMatch[2];
+    } else {
+        const spaceIdx = trimmedInnerString.search(/\s/);
+        if (spaceIdx !== -1) {
+            toolType = trimmedInnerString.slice(0, spaceIdx);
+            args = trimmedInnerString.slice(spaceIdx + 1).trim();
+        }
+    }
+    
+    const emoji = TOOL_EMOJI_MAP[toolType.toLowerCase()] || '🔧';
+    return {
+        toolType,
+        args,
+        content: args,
+        displayReplacement: `[${emoji} ${toolType}${args ? `: ${args}` : ''}]`
+    };
+}
 
 export async function executeTool(
   invocation: ToolInvocation,

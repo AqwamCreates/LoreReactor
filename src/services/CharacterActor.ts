@@ -1,5 +1,5 @@
 // src/services/CharacterActor.ts
-import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile } from '../types';
+import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile, ToolExecutionResult } from '../types';
 import { saveRawBudgetData } from '../storages/serverStorage';
 import { buildChatRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
 import { detectName } from '../utilities/nameDetection';
@@ -62,12 +62,13 @@ export interface TurnExecutionParams {
     isMultiplayerClient?: boolean;
     borrowedModel?: LanguageModel | null;
     metadata?: RequestMetadata;
-    toolContext?: ToolExecutionContext; // ✅ WIRED
+    toolContext?: ToolExecutionContext;
 }
 
 export interface ProcessedReplacements {
     rawReplacements: { rawMatch: string; resultText: string }[];
     displayReplacements: { rawMatch: string; displayText: string }[];
+    executionResults: ToolExecutionResult[]; // ✅ NEW: Store full execution results
 }
 
 // ─── Spacing Sanitizer ──────────────────────────────────────────────
@@ -87,7 +88,7 @@ async function processToolInvocations(
     profile: Profile | undefined,
     targetMessage: ChatMessage,
     interactionData: InteractionData,
-    context?: ToolExecutionContext, // ✅ WIRED
+    context?: ToolExecutionContext,
 ): Promise<ProcessedReplacements | null> {
     if (!invocations || invocations.length === 0) return null;
 
@@ -97,11 +98,11 @@ async function processToolInvocations(
     if (enabledInvocations.length === 0) return null;
 
     const displayMode = profile?.toolUsageDisplayMode ?? 'none';
-    // ✅ PASS context INSTEAD OF undefined
     const toolResults = await executeTools(enabledInvocations, targetMessage, interactionData, context, displayMode);
 
     const rawReplacements: { rawMatch: string; resultText: string }[] = [];
     const displayReplacements: { rawMatch: string; displayText: string }[] = [];
+    const executionResults: ToolExecutionResult[] = []; // ✅ NEW: Collect execution results
 
     for (let i = 0; i < enabledInvocations.length; i++) {
         const toolResult = toolResults[i];
@@ -116,9 +117,18 @@ async function processToolInvocations(
             rawMatch: inv.rawMatch,
             displayText: formatToolDisplay(toolResult, inv.rawMatch, displayMode),
         });
+
+        // ✅ NEW: Store the full execution result for on-the-fly compilation
+        executionResults.push({
+            rawMatch: inv.rawMatch,
+            toolType: toolResult.toolType,
+            args: toolResult.args,
+            content: toolResult.content,
+            displayReplacement: toolResult.displayReplacement
+        });
     }
 
-    return { rawReplacements, displayReplacements };
+    return { rawReplacements, displayReplacements, executionResults };
 }
 
 function applyToolReplacements(
@@ -186,6 +196,7 @@ function createAccState(initialText: string) {
     let displayAcc = initialText;
     let lastRawLen = 0;
     let pendingInvs: ToolInvocation[] = [];
+    let collectedExecutionResults: ToolExecutionResult[] = []; // ✅ NEW: Track all execution results
 
     return {
         get: () => ({
@@ -198,11 +209,16 @@ function createAccState(initialText: string) {
             pendingInvocations: pendingInvs,
             addPendingInvocation: (inv: ToolInvocation) => { pendingInvs.push(inv); },
             clearPendingInvocations: () => { pendingInvs = []; },
+            collectedExecutionResults,
+            addExecutionResults: (results: ToolExecutionResult[]) => { 
+                collectedExecutionResults.push(...results); 
+            },
         }),
         getRaw: () => rawAcc,
         getDisplay: () => displayAcc,
         getPending: () => pendingInvs,
         clearPending: () => { pendingInvs = []; },
+        getCollectedExecutionResults: () => collectedExecutionResults,
     };
 }
 
@@ -217,7 +233,7 @@ export class CharacterActor {
             selectedModel, runningModels, activeStrategy,
             strategyOverride, existingCharacterText, allPromptBlocks, callbacks,
             isMultiplayerClient, borrowedModel, metadata,
-            toolContext, // ✅ WIRED
+            toolContext,
         } = params;
 
         if (isMultiplayerClient) {
@@ -433,9 +449,11 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    // ✅ PASS toolContext
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data, toolContext);
                     if (!toolResult) break;
+
+                    // ✅ Store execution results
+                    accState.get().addExecutionResults(toolResult.executionResults);
 
                     applyToolReplacements(accState, toolResult, callbacks);
                     isFirstChunkAfterTool = true;
@@ -495,9 +513,11 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    // ✅ PASS toolContext
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data, toolContext);
                     if (!toolResult) break;
+
+                    // ✅ Store execution results
+                    accState.get().addExecutionResults(toolResult.executionResults);
 
                     applyToolReplacements(accState, toolResult, callbacks);
                     isFirstChunkAfterTool = true;
@@ -534,9 +554,11 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    // ✅ PASS toolContext
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data, toolContext);
                     if (!toolResult) break;
+
+                    // ✅ Store execution results
+                    accState.get().addExecutionResults(toolResult.executionResults);
 
                     applyToolReplacements(accState, toolResult, callbacks);
                     isFirstChunkAfterTool = true;
@@ -561,9 +583,14 @@ export class CharacterActor {
                 updatedData = data;
             } else {
                 targetMessage.textContent = rawText;
-                if (finalDisplayText !== rawText) {
-                    targetMessage.processedTextContent = finalDisplayText;
+                // Note: processedTextContent is no longer set - compilation happens on-the-fly
+                
+                // ✅ Store all collected tool execution results
+                const allExecutionResults = accState.getCollectedExecutionResults();
+                if (allExecutionResults.length > 0) {
+                    targetMessage.toolExecutionResults = allExecutionResults;
                 }
+                
                 targetMessage.characterExpression = latestExpression ?? undefined;
                 updatedData = addMessageToInteractionData(data, targetMessage);
             }
