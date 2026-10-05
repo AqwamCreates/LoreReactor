@@ -295,9 +295,9 @@ function validateAuxPaths(args: string[]): void {
 let ViGEmClient: any = null;
 let vigemBus: any = null;
 let x360Controller: any = null;
-let vigemInitAttempted = false;
 let vigemInitError: string | null = null;
 
+// Valid native button names on controller.button for X360Controller
 const X360_BUTTON_MAP: Record<string, string> = {
   'A': 'A',
   'B': 'B',
@@ -318,19 +318,21 @@ const X360_BUTTON_MAP: Record<string, string> = {
   'HOME': 'GUIDE',
   'LS': 'LEFT_THUMB',
   'L3': 'LEFT_THUMB',
+  'L_STICK': 'LEFT_THUMB',
+  'LEFT_STICK': 'LEFT_THUMB',
   'LEFT_THUMB': 'LEFT_THUMB',
   'RS': 'RIGHT_THUMB',
   'R3': 'RIGHT_THUMB',
+  'R_STICK': 'RIGHT_THUMB',
+  'RIGHT_STICK': 'RIGHT_THUMB',
   'RIGHT_THUMB': 'RIGHT_THUMB',
-  'UP': 'DPAD_UP',
-  'DPAD_UP': 'DPAD_UP',
-  'DOWN': 'DPAD_DOWN',
-  'DPAD_DOWN': 'DPAD_DOWN',
-  'LEFT': 'DPAD_LEFT',
-  'DPAD_LEFT': 'DPAD_LEFT',
-  'RIGHT': 'DPAD_RIGHT',
-  'DPAD_RIGHT': 'DPAD_RIGHT',
 };
+
+// D-Pad directions mapped exclusively through controller.axis.dpadHorz / dpadVert
+const DPAD_DIRECTIONS = new Set([
+  'UP', 'DOWN', 'LEFT', 'RIGHT',
+  'DPAD_UP', 'DPAD_DOWN', 'DPAD_LEFT', 'DPAD_RIGHT'
+]);
 
 function getOrInitVirtualController(): { controller: any; error: string | null } {
   if (!IS_WINDOWS) {
@@ -339,22 +341,32 @@ function getOrInitVirtualController(): { controller: any; error: string | null }
   if (x360Controller) {
     return { controller: x360Controller, error: null };
   }
-  if (vigemInitAttempted && vigemInitError) {
-    return { controller: null, error: vigemInitError };
-  }
 
-  vigemInitAttempted = true;
   try {
-    ViGEmClient = require('vigemclient');
-    vigemBus = new ViGEmClient();
-    const connectErr = vigemBus.connect();
-    if (connectErr) {
-      vigemInitError = `ViGEmBus connection failed: ${connectErr.message || connectErr}. Ensure ViGEmBus driver is installed.`;
+    if (!ViGEmClient) {
+      ViGEmClient = require('vigemclient');
+    }
+    if (!vigemBus) {
+      vigemBus = new ViGEmClient();
+      const connectErr = vigemBus.connect();
+      if (connectErr) {
+        vigemBus = null;
+        vigemInitError = `ViGEmBus connection failed: ${connectErr.message || connectErr}. Ensure ViGEmBus driver is installed.`;
+        log.warn(`[ViGEm] ${vigemInitError}`);
+        return { controller: null, error: vigemInitError };
+      }
+    }
+
+    const ctrl = vigemBus.createX360Controller();
+    const targetErr = ctrl.connect();
+    if (targetErr) {
+      vigemInitError = `Failed to connect virtual controller target: ${targetErr.message || targetErr}`;
       log.warn(`[ViGEm] ${vigemInitError}`);
       return { controller: null, error: vigemInitError };
     }
-    x360Controller = vigemBus.createX360Controller();
-    x360Controller.connect();
+
+    x360Controller = ctrl;
+    vigemInitError = null;
     log.success('🎮 Virtual Xbox 360 Controller connected to ViGEmBus');
     return { controller: x360Controller, error: null };
   } catch (err: any) {
@@ -363,6 +375,20 @@ function getOrInitVirtualController(): { controller: any; error: string | null }
     return { controller: null, error: vigemInitError };
   }
 }
+
+// Cleanup hook on process exit to prevent exhausting virtual XInput slots (VIGEM_ERROR_NO_FREE_SLOT)
+function cleanupVirtualController() {
+  if (x360Controller) {
+    try {
+      x360Controller.disconnect();
+      log.info('🎮 Virtual controller disconnected cleanly.');
+    } catch {}
+    x360Controller = null;
+  }
+}
+process.on('SIGINT', () => { cleanupVirtualController(); process.exit(0); });
+process.on('SIGTERM', () => { cleanupVirtualController(); process.exit(0); });
+process.on('exit', () => { cleanupVirtualController(); });
 
 // ─── GPU Monitoring ─────────────────────────────────────────────────
 
@@ -1489,7 +1515,7 @@ app.post('/tool/lock-screen', (_req, res) => {
     }
     res.json({ success: true, message: 'Workstation locked' });
   } catch (e) {
-    res.status(500).json({ success: false, error: (e as Error).message });
+    res.status(500).json({ success: false, error: (error as Error).message });
   }
 });
 
@@ -2087,7 +2113,7 @@ app.post('/tool/virtual-vision', async (req, res) => {
 
 // ── Virtual Input Tool (Mouse & Keyboard) ───────────────────────────
 app.post('/tool/virtual-input', async (req, res) => {
-  const { 
+  const {
     action, 
     x, 
     y, 
@@ -2192,17 +2218,23 @@ app.post('/tool/virtual-controller', (req, res) => {
   } = req.body;
 
   try {
-    // 1. Reset / Zero-out all controller inputs
+    // 1. Reset / Zero-out all controller inputs natively
     if (action === 'reset') {
-      Object.values(X360_BUTTON_MAP).forEach((btn) => {
-        try { controller.button[btn]?.setValue(false); } catch {}
-      });
-      controller.axis.leftX.setValue(0.0);
-      controller.axis.leftY.setValue(0.0);
-      controller.axis.rightX.setValue(0.0);
-      controller.axis.rightY.setValue(0.0);
-      controller.axis.leftTrigger.setValue(0.0);
-      controller.axis.rightTrigger.setValue(0.0);
+      if (typeof controller.resetInputs === 'function') {
+        controller.resetInputs();
+      } else {
+        Object.values(X360_BUTTON_MAP).forEach((btn) => {
+          try { controller.button[btn]?.setValue(false); } catch {}
+        });
+        controller.axis.leftX?.setValue(0.0);
+        controller.axis.leftY?.setValue(0.0);
+        controller.axis.rightX?.setValue(0.0);
+        controller.axis.rightY?.setValue(0.0);
+        controller.axis.leftTrigger?.setValue(0.0);
+        controller.axis.rightTrigger?.setValue(0.0);
+        controller.axis.dpadHorz?.setValue(0.0);
+        controller.axis.dpadVert?.setValue(0.0);
+      }
       return res.json({ success: true, message: 'Virtual controller inputs reset to neutral.' });
     }
 
@@ -2213,38 +2245,59 @@ app.post('/tool/virtual-controller', (req, res) => {
 
     // 3. Analog Sticks (-1.0 to 1.0)
     if (action === 'stick') {
-      const clampedX = Math.max(-1.0, Math.min(1.0, Number(x) || 0.0));
-      const clampedY = Math.max(-1.0, Math.min(1.0, Number(y) || 0.0));
+      const numX = Number(x);
+      const numY = Number(y);
+      const clampedX = Math.max(-1.0, Math.min(1.0, Number.isFinite(numX) ? numX : 0.0));
+      const clampedY = Math.max(-1.0, Math.min(1.0, Number.isFinite(numY) ? numY : 0.0));
+      const isRight = String(stick).toLowerCase() === 'right';
+      const targetX = isRight ? controller.axis.rightX : controller.axis.leftX;
+      const targetY = isRight ? controller.axis.rightY : controller.axis.leftY;
 
-      if (stick.toLowerCase() === 'right') {
-        controller.axis.rightX.setValue(clampedX);
-        controller.axis.rightY.setValue(clampedY);
-        return res.json({ success: true, message: `Right stick set to (${clampedX}, ${clampedY})` });
+      targetX.setValue(clampedX);
+      targetY.setValue(clampedY);
+
+      // Support optional duration to auto-neutralize stick
+      if (typeof durationMs === 'number' && durationMs > 0) {
+        setTimeout(() => {
+          try {
+            targetX.setValue(0.0);
+            targetY.setValue(0.0);
+          } catch {}
+        }, Math.max(30, Math.min(10000, durationMs)));
       }
-      controller.axis.leftX.setValue(clampedX);
-      controller.axis.leftY.setValue(clampedY);
-      return res.json({ success: true, message: `Left stick set to (${clampedX}, ${clampedY})` });
+
+      return res.json({
+        success: true,
+        message: `${isRight ? 'Right' : 'Left'} stick set to (${clampedX}, ${clampedY})${durationMs > 0 ? ` for ${durationMs}ms` : ''}`
+      });
     }
 
     // 4. Analog Triggers (0.0 to 1.0)
     if (action === 'trigger') {
-      const clampedVal = Math.max(0.0, Math.min(1.0, Number(value) ?? 1.0));
-      if (trigger.toLowerCase() === 'left') {
-        controller.axis.leftTrigger.setValue(clampedVal);
-        return res.json({ success: true, message: `Left trigger set to ${clampedVal}` });
+      const numVal = Number(value);
+      const clampedVal = Math.max(0.0, Math.min(1.0, Number.isFinite(numVal) ? numVal : 1.0));
+      const isLeft = String(trigger).toLowerCase() === 'left';
+      const targetTrigger = isLeft ? controller.axis.leftTrigger : controller.axis.rightTrigger;
+
+      targetTrigger.setValue(clampedVal);
+
+      if (typeof durationMs === 'number' && durationMs > 0) {
+        setTimeout(() => {
+          try { targetTrigger.setValue(0.0); } catch {}
+        }, Math.max(30, Math.min(10000, durationMs)));
       }
-      controller.axis.rightTrigger.setValue(clampedVal);
-      return res.json({ success: true, message: `Right trigger set to ${clampedVal}` });
+
+      return res.json({ success: true, message: `${isLeft ? 'Left' : 'Right'} trigger set to ${clampedVal}` });
     }
 
-    // 5. Digital Buttons (A, B, X, Y, LB, RB, D-Pad, etc.)
+    // 5. Button Actions
     if (!button || typeof button !== 'string') {
       return res.status(400).json({ success: false, error: 'Button name is required for button actions.' });
     }
 
     const normalizedBtn = button.trim().toUpperCase();
 
-    // Route trigger button names (LT / RT) to analog triggers if supplied as buttons
+    // 5a. Handle LT / RT aliases mapped to analog triggers
     if (normalizedBtn === 'LT' || normalizedBtn === 'L2') {
       if (action === 'press') {
         controller.axis.leftTrigger.setValue(1.0);
@@ -2252,7 +2305,7 @@ app.post('/tool/virtual-controller', (req, res) => {
         controller.axis.leftTrigger.setValue(0.0);
       } else {
         controller.axis.leftTrigger.setValue(1.0);
-        setTimeout(() => { try { controller.axis.leftTrigger.setValue(0.0); } catch {} }, durationMs);
+        setTimeout(() => { try { controller.axis.leftTrigger.setValue(0.0); } catch {} }, Math.max(30, Math.min(3000, durationMs)));
       }
       return res.json({ success: true, message: `${normalizedBtn} ${action}ed` });
     }
@@ -2264,11 +2317,44 @@ app.post('/tool/virtual-controller', (req, res) => {
         controller.axis.rightTrigger.setValue(0.0);
       } else {
         controller.axis.rightTrigger.setValue(1.0);
-        setTimeout(() => { try { controller.axis.rightTrigger.setValue(0.0); } catch {} }, durationMs);
+        setTimeout(() => { try { controller.axis.rightTrigger.setValue(0.0); } catch {} }, Math.max(30, Math.min(3000, durationMs)));
       }
       return res.json({ success: true, message: `${normalizedBtn} ${action}ed` });
     }
 
+    // 5b. Correctly handle D-PAD via controller.axis.dpadHorz / dpadVert
+    if (DPAD_DIRECTIONS.has(normalizedBtn)) {
+      const isUp = normalizedBtn === 'UP' || normalizedBtn === 'DPAD_UP';
+      const isDown = normalizedBtn === 'DOWN' || normalizedBtn === 'DPAD_DOWN';
+      const isLeft = normalizedBtn === 'LEFT' || normalizedBtn === 'DPAD_LEFT';
+      const isRight = normalizedBtn === 'RIGHT' || normalizedBtn === 'DPAD_RIGHT';
+
+      if (action === 'press') {
+        if (isUp) controller.axis.dpadVert.setValue(1.0);
+        if (isDown) controller.axis.dpadVert.setValue(-1.0);
+        if (isLeft) controller.axis.dpadHorz.setValue(-1.0);
+        if (isRight) controller.axis.dpadHorz.setValue(1.0);
+      } else if (action === 'release') {
+        if (isUp || isDown) controller.axis.dpadVert.setValue(0.0);
+        if (isLeft || isRight) controller.axis.dpadHorz.setValue(0.0);
+      } else {
+        // tap
+        if (isUp) controller.axis.dpadVert.setValue(1.0);
+        if (isDown) controller.axis.dpadVert.setValue(-1.0);
+        if (isLeft) controller.axis.dpadHorz.setValue(-1.0);
+        if (isRight) controller.axis.dpadHorz.setValue(1.0);
+
+        setTimeout(() => {
+          try {
+            if (isUp || isDown) controller.axis.dpadVert.setValue(0.0);
+            if (isLeft || isRight) controller.axis.dpadHorz.setValue(0.0);
+          } catch {}
+        }, Math.max(30, Math.min(3000, durationMs)));
+      }
+      return res.json({ success: true, message: `D-Pad ${normalizedBtn} ${action}ed` });
+    }
+
+    // 5c. Standard Digital Face/Shoulder Buttons
     const internalKey = X360_BUTTON_MAP[normalizedBtn];
     if (!internalKey || !controller.button[internalKey]) {
       return res.status(400).json({

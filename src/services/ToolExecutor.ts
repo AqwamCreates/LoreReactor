@@ -2483,24 +2483,60 @@ async function executeVirtualController(
   context?: ToolExecutionContext
 ): Promise<ToolResult> {
   const pArgs = parsePythonArgs(args);
-  const rawAction = pArgs.get(0, 'action', 'command')?.toLowerCase();
-  let button = pArgs.get(1, 'button', 'btn', 'key');
-  const stick = (pArgs.get(1, 'stick', 'side')?.toLowerCase() || 'left') as 'left' | 'right';
-  const trigger = (pArgs.get(1, 'trigger', 'side')?.toLowerCase() || 'right') as 'left' | 'right';
-  const x = pArgs.getNumber(2, 'x');
-  const y = pArgs.getNumber(3, 'y');
-  const value = pArgs.getNumber(2, 'value', 'val');
-  const durationMs = pArgs.getNumber(-1, 'durationms', 'duration', 'time', 'ms');
-
-  // Common controller button tokens
+  const rawFirst = pArgs.get(0, 'action', 'command')?.toLowerCase();
+  
   const BUTTON_SET = new Set([
     'a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'rt', 'l1', 'r1', 'l2', 'r2', 'l3', 'r3',
     'ls', 'rs', 'start', 'back', 'select', 'menu', 'guide', 'home',
     'up', 'down', 'left', 'right', 'dpad_up', 'dpad_down', 'dpad_left', 'dpad_right'
   ]);
 
-  // If no action or button was supplied, return usage guidance
-  if (!rawAction && !button) {
+  let action = 'tap';
+  let button: string | undefined;
+  let stick: 'left' | 'right' = 'left';
+  let trigger: 'left' | 'right' = 'right';
+  let x: number | undefined;
+  let y: number | undefined;
+  let value: number | undefined;
+  const durationMs = pArgs.getNumber(-1, 'durationms', 'duration', 'time', 'ms');
+
+  // Handle shorthand single-argument button calls: virtual_controller("A") or virtual_controller("UP")
+  if (rawFirst && BUTTON_SET.has(rawFirst) && pArgs.positional.length === 1 && Object.keys(pArgs.kwargs).length === 0) {
+    action = 'tap';
+    button = rawFirst.toUpperCase();
+  } else if (rawFirst === 'stick') {
+    action = 'stick';
+    const arg1 = pArgs.get(1, 'stick', 'side')?.toLowerCase();
+    if (arg1 === 'left' || arg1 === 'right') {
+      stick = arg1;
+      x = pArgs.getNumber(2, 'x');
+      y = pArgs.getNumber(3, 'y');
+    } else {
+      // Positional coordinates without side: virtual_controller("stick", 0.5, -0.5)
+      stick = (pArgs.kwargs['stick']?.toLowerCase() === 'right') ? 'right' : 'left';
+      x = pArgs.getNumber(1, 'x');
+      y = pArgs.getNumber(2, 'y');
+    }
+  } else if (rawFirst === 'trigger') {
+    action = 'trigger';
+    const arg1 = pArgs.get(1, 'trigger', 'side')?.toLowerCase();
+    if (arg1 === 'left' || arg1 === 'right') {
+      trigger = arg1;
+      value = pArgs.getNumber(2, 'value', 'val');
+    } else {
+      // Positional value without side: virtual_controller("trigger", 0.8)
+      trigger = (pArgs.kwargs['trigger']?.toLowerCase() === 'left') ? 'left' : 'right';
+      value = pArgs.getNumber(1, 'value', 'val');
+    }
+  } else if (rawFirst === 'reset' || rawFirst === 'status') {
+    action = rawFirst;
+  } else {
+    // Explicit action: press, release, tap
+    action = rawFirst || 'tap';
+    button = (pArgs.get(1, 'button', 'btn', 'key') || pArgs.kwargs['button'])?.toUpperCase();
+  }
+
+  if (!rawFirst && !button) {
     return helpResult(
       'virtual_controller',
       'action="tap|press|release|stick|trigger|reset", button="A", x=0.0, y=0.0, value=1.0',
@@ -2508,18 +2544,9 @@ async function executeVirtualController(
     );
   }
 
-  // Guaranteed string type so TypeScript never flags action as undefined
-  let action: string = rawAction || 'tap';
-
-  // Handle shorthand calls: virtual_controller("A")
-  if (rawAction && BUTTON_SET.has(rawAction) && !button) {
-    button = rawAction.toUpperCase();
-    action = 'tap';
-  }
-
   const res = await sendVirtualController({
     action: action as any,
-    button: button ? button.toUpperCase() : undefined,
+    button,
     stick,
     x,
     y,
@@ -2537,13 +2564,12 @@ async function executeVirtualController(
     };
   }
 
-  // Build a concise label for UI badges & message history
   const label = action === 'stick'
     ? `STICK ${stick.toUpperCase()} (${x ?? 0}, ${y ?? 0})`
     : action === 'trigger'
     ? `TRIGGER ${trigger.toUpperCase()} (${value ?? 1.0})`
     : button
-    ? `${action.toUpperCase()} ${button.toUpperCase()}`
+    ? `${action.toUpperCase()} ${button}`
     : action.toUpperCase();
 
   context?.addToast?.(`Gamepad: ${label}`, 'info');
