@@ -3,7 +3,7 @@ import { useRef, useCallback, useEffect } from 'react';
 import { useChatEngine } from './useChatEngine';
 import { useChatUI } from './useChatUI';
 import { useToast } from '../context/ToastContext';
-import { createChatMessage, convertIdsToDisplayNames, createNewInteractionData, addMessageToInteractionData } from '../utilities/chatLogic';
+import { createChatMessage, convertIdsToDisplayNames, createNewInteractionData } from '../utilities/chatLogic';
 import { processPendingToolActions, type ToolExecutionContext } from '../services/ToolExecutor';
 import { runSummarization } from '../services/SummarizationEngine';
 import { consumeChatStaminaForMessage } from '../utilities/characterLogic';

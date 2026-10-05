@@ -24,7 +24,6 @@ export function ChatViewArea({
     displayNameCache,
     isMultiplayerChat,
 }: ChatViewAreaProps) {
-    // Read directly from Zustand instead of receiving as props
     const localProtagonistId = useSessionStore((s) => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
 
     const streamingText = useSessionStore((s) => s.streamingText);

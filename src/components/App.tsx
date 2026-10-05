@@ -66,6 +66,7 @@ import { LoadingScreen } from './LoadingScreen';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ChatMinimap } from './ChatMinimap';
 import { ChatViewArea } from './views/ChatViewArea';
+import { OverlayView } from './views/OverlayView';
 import type { ViewModeProps, viewMode } from './views/types';
 import { defaultContextLength } from '../dictionaries/defaults';
 import '../main.css';
@@ -193,6 +194,19 @@ function App() {
         setActiveBudgetStrategy, setSelectedGlobalModel,
         activeStrategy, budgetData,
     } = session;
+
+    // ─── ✅ Bridge Overlay Input to Chat Session ─────────────────────
+    useEffect(() => {
+        const handleOverlaySend = (e: CustomEvent<{ text: string }>) => {
+            const text = e.detail?.text;
+            if (text && text.trim()) {
+                sendMessage(text.trim(), promptBlocks.promptBlocks, [], undefined);
+            }
+        };
+
+        window.addEventListener('overlay-send-message', handleOverlaySend as EventListener);
+        return () => window.removeEventListener('overlay-send-message', handleOverlaySend as EventListener);
+    }, [sendMessage, promptBlocks.promptBlocks]);
 
     // ─── Chat Restoration ────────────────────────────────────
     const { activeChatRestored } = useChatRestoration({
@@ -425,7 +439,14 @@ function App() {
     const editingId = useSessionStore(s => s.editingId);
     const editDraft = useSessionStore(s => s.editDraft);
 
+    // Main page view mode strictly handles in-page layouts (Ladder / Cinematic / Visual Novel)
     const [viewMode, setViewMode] = useState<viewMode>('ladder');
+    
+    // Independent floating OS pop-out overlay state
+    const [pipWindow, setPipWindow] = useState<Window | null>(null);
+    // Fallback state for sandboxed environments
+    const [inAppOverlay, setInAppOverlay] = useState(false);
+
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
     const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
@@ -664,12 +685,97 @@ function App() {
         }
     }, [isRecording, interactionData?.profile, handleSend, addToast]);
 
+    // ─── Independent Floating OS Pop-out Overlay Handler ─────────────
+    const handleToggleOverlay = async () => {
+        // 1. Close OS Window if open
+        if (pipWindow) {
+            try { pipWindow.close(); } catch {}
+            setPipWindow(null);
+            return;
+        }
+
+        // 2. Close In-App Overlay if open
+        if (inAppOverlay) {
+            setInAppOverlay(false);
+            return;
+        }
+
+        let pipWin: Window | null = null;
+        let pipSuccess = false;
+
+        // 3. Try Document Picture-in-Picture API first
+        if ('documentPictureInPicture' in window) {
+            try {
+                if ((window as any).documentPictureInPicture.window) {
+                    try { (window as any).documentPictureInPicture.window.close(); } catch {}
+                }
+                pipWin = await (window as any).documentPictureInPicture.requestWindow({
+                    width: 340,
+                    height: 520,
+                });
+                pipSuccess = true;
+            } catch (err) {
+                console.warn('[App] Document PiP failed:', err);
+            }
+        }
+
+        // 4. Fallback to standard detached window popup
+        if (!pipSuccess) {
+            try {
+                pipWin = window.open(
+                    'about:blank',
+                    'LoreReactorOverlay',
+                    'width=340,height=520,resizable=yes,scrollbars=no,status=no,location=no,toolbar=no,menubar=no'
+                );
+                
+                if (pipWin) {
+                    // Test access immediately (This is where Sandboxes throw SecurityError)
+                    const doc = pipWin.document;
+                    doc.title = `${interactionData?.name || 'LoreReactor'} (Overlay)`;
+                    
+                    for (const styleSheet of document.styleSheets) {
+                        try {
+                            if (styleSheet.cssRules) {
+                                const newStyle = doc.createElement('style');
+                                let rulesText = '';
+                                for (const rule of styleSheet.cssRules) rulesText += rule.cssText;
+                                newStyle.textContent = rulesText;
+                                doc.head.appendChild(newStyle);
+                            }
+                        } catch {
+                            if (styleSheet.href) {
+                                const newLink = doc.createElement('link');
+                                newLink.rel = 'stylesheet';
+                                newLink.href = styleSheet.href;
+                                doc.head.appendChild(newLink);
+                            }
+                        }
+                    }
+                    
+                    pipWin.addEventListener('pagehide', () => setPipWindow(null));
+                    setPipWindow(pipWin);
+                    pipSuccess = true;
+                }
+            } catch (securityErr) {
+                console.warn('[App] Popup fallback blocked by cross-origin/sandbox:', securityErr);
+                try { pipWin?.close(); } catch {}
+            }
+        }
+
+        // 5. If both OS-level methods failed, use In-App Floating Overlay
+        if (!pipSuccess) {
+            addToast('OS Pop-out blocked by browser sandbox. Opening In-App Floating Widget.', 'info');
+            setInAppOverlay(true);
+        }
+    };
+
+    // ─── Main Page View Mode Switcher (Ladder <-> Cinematic <-> VN) ──
     const toggleViewMode = () => {
         setViewMode(prev => 
             prev === 'ladder' ? 'cinematic' : 
-            prev === 'cinematic' ? 'visual novel' : 
-            prev === 'visual novel' ? 'overlay' : 'ladder'
+            prev === 'cinematic' ? 'visual novel' : 'ladder'
         );
+
         const container = chatHistoryRef.current;
         let targetIdx = -1;
         if (container && interactionData) {
@@ -686,9 +792,12 @@ function App() {
                 }
             }
         }
-        if (targetIdx === -1 && lastViewedMessageIdRef.current && interactionData)
+        if (targetIdx === -1 && lastViewedMessageIdRef.current && interactionData) {
             targetIdx = safeMessages.findIndex(m => m.id === lastViewedMessageIdRef.current);
-        if (targetIdx >= 0 && interactionData) lastViewedMessageIdRef.current = safeMessages[targetIdx].id;
+        }
+        if (targetIdx >= 0 && interactionData) {
+            lastViewedMessageIdRef.current = safeMessages[targetIdx].id;
+        }
         suppressAutoScrollRef.current = true;
         setTimeout(() => {
             if (targetIdx >= 0 && chatHistoryRef.current) {
@@ -942,6 +1051,15 @@ function App() {
         <>
             {isInitializing && <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />}
 
+            {/* Pass the new In-App props to OverlayView */}
+            <OverlayView 
+                pipWindow={pipWindow} 
+                isInAppOverlay={inAppOverlay} 
+                onCloseInApp={() => setInAppOverlay(false)}
+                locationBackgroundUrl={viewAssets.locationBackgroundUrl}
+                {...baseViewProps}
+            />
+
             <div
                 className={containerClass}
                 style={viewAssets.locationBackgroundUrl && viewMode !== 'visual novel' ? { '--location-bg': `url(${viewAssets.locationBackgroundUrl})` } as React.CSSProperties : undefined}
@@ -961,12 +1079,29 @@ function App() {
                                             : <><span onClick={chatOps.handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = '1'} onMouseLeave={e => e.currentTarget.style.opacity = '0.3'}>✎</span><div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{interactionData?.name || 'Untitled Chat'}</div></>}
                                     </div>
                                     <div className="header-controls-group">
-                                        <button type="button" className="view-mode-toggle" onClick={modals.settings.open} title="Settings" style={{ padding: '6px 10px' }}><span>⚙️</span></button>
-                                        <button type="button" className="view-mode-toggle" onClick={() => modals.extList.open()} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
-                                        <button type="button" onClick={toggleViewMode} className={`view-mode-toggle ${viewMode !== 'ladder' ? 'active' : ''}`} title="Switch View Mode">
-                                            <span>{viewMode === 'ladder' ? '📜' : viewMode === 'cinematic' ? '🎥' : '📖'}</span>
-                                            <span>{viewMode === 'ladder' ? 'Ladder' : viewMode === 'cinematic' ? 'Cinematic' : viewMode === "visual novel" ? 'Visual Novel' : "Overlay"}</span>
+                                        {/* 1. Independent Overlay / PiP Pop-out Button (Directly to the LEFT of Settings) */}
+                                        <button
+                                            type="button"
+                                            className={`view-mode-toggle ${pipWindow || inAppOverlay ? 'active' : ''}`}
+                                            onClick={handleToggleOverlay}
+                                            title={pipWindow || inAppOverlay ? "Close Floating Overlay" : "Open Floating Overlay (Pop-out)"}
+                                            style={{ padding: '6px 10px' }}
+                                        >
+                                            <span>🪟</span>
                                         </button>
+
+                                        {/* 2. Settings Modal Button */}
+                                        <button type="button" className="view-mode-toggle" onClick={modals.settings.open} title="Settings" style={{ padding: '6px 10px' }}><span>⚙️</span></button>
+
+                                        {/* 3. Extensions Modal Button */}
+                                        <button type="button" className="view-mode-toggle" onClick={() => modals.extList.open()} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
+
+                                        {/* 4. In-Page View Mode Switcher (Cycles: Ladder <-> Cinematic <-> Visual Novel) */}
+                                        <button type="button" onClick={toggleViewMode} className="view-mode-toggle" title="Switch View Mode">
+                                            <span>{viewMode === 'ladder' ? '📜' : viewMode === 'cinematic' ? '🎥' : '📖'}</span>
+                                            <span>{viewMode === 'ladder' ? 'Ladder' : viewMode === 'cinematic' ? 'Cinematic' : 'Visual Novel'}</span>
+                                        </button>
+
                                         <ChatStatisticsBar
                                             numberOfMessages={interactionData?.numberOfMessages ?? safeMessages.length}
                                             maximumNumberOfTokens={maxContextLength}

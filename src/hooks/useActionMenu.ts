@@ -56,7 +56,7 @@ export function useActionMenu(options: UseActionMenuOptions) {
         stopGeneration, sendActionAndGetResponse, addToast,
     } = options;
 
-    const { allActions, actionsLoading, incrementActionCount, handleAddAction, handleDeleteAction } = actionManager;
+    const {allActions, actionsLoading, incrementActionCount, handleAddAction, handleDeleteAction } = actionManager;
 
     const [actionMenuTarget, setActionMenuTarget] = useState<{ messageId: string; charId: string; x: number; y: number } | null>(null);
     const [menuSearchQuery, setMenuSearchQuery] = useState('');
