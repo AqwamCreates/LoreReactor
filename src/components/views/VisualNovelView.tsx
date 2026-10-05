@@ -18,7 +18,7 @@ import {
     TARGET_OPTIONS,
     type CategoryConversion,
     type FormatCategory,
-} from '../../utilities/textReformat';
+} from '../../utilities/textDisplayReformatter';
 
 const AMBIENT_NARRATOR_ID = '___ambient_narrator___';
 

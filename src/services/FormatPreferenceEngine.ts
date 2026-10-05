@@ -1,5 +1,5 @@
 // src/services/FormatPreferenceEngine.ts
-import type { FormatCategory } from '../utilities/textReformat';
+import type { FormatCategory } from '../utilities/textDisplayReformatter';
 import { DIALOGUE_STEMS, getStemmedContentWords } from '../utilities/stemmerHelper';
 import {
     loadRawFormatPreferences,

@@ -2,10 +2,11 @@
 import type React from 'react';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '../context/ToastContext';
-import { saveRawInteractionData, loadRawInteractionData, flushSaveQueue } from '../storages/serverStorage';
+import { saveRawInteractionData, loadRawInteractionData, flushSaveQueue, getCharacterImageUrl } from '../storages/serverStorage';
 import { createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
 import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { useDisplayNameCache } from '../utilities/immersionLogic';
+import { compileMessageDisplayText } from '../utilities/messageDisplayCompiler';
 import { getCharacterStarterMessage } from '../utilities/characterLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -66,7 +67,6 @@ import { LoadingScreen } from './LoadingScreen';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ChatMinimap } from './ChatMinimap';
 import { ChatViewArea } from './views/ChatViewArea';
-import { OverlayView } from './views/OverlayView';
 import type { ViewModeProps, viewMode } from './views/types';
 import { defaultContextLength } from '../dictionaries/defaults';
 import '../main.css';
@@ -140,6 +140,7 @@ function App() {
     const sessionLoaded = useSessionStore((s: any) => s.sessionLoaded);
     const selectedCharacterId = useSessionStore((s: any) => s.selectedCharacterId);
     const selectedBudgetStrategyId = useSessionStore((s: any) => s.selectedBudgetStrategyId);
+    const streamingText = useSessionStore((s: any) => s.streamingText);
     const storeSetCurrentAccountId = useSessionStore((s: any) => s.setCurrentAccountId);
     const storeSetSelectedCharacterId = useSessionStore((s: any) => s.setSelectedCharacterId);
     const storeSetSelectedBudgetStrategyId = useSessionStore((s: any) => s.setSelectedBudgetStrategyId);
@@ -194,19 +195,6 @@ function App() {
         setActiveBudgetStrategy, setSelectedGlobalModel,
         activeStrategy, budgetData,
     } = session;
-
-    // ─── ✅ Bridge Overlay Input to Chat Session ─────────────────────
-    useEffect(() => {
-        const handleOverlaySend = (e: CustomEvent<{ text: string }>) => {
-            const text = e.detail?.text;
-            if (text && text.trim()) {
-                sendMessage(text.trim(), promptBlocks.promptBlocks, [], undefined);
-            }
-        };
-
-        window.addEventListener('overlay-send-message', handleOverlaySend as EventListener);
-        return () => window.removeEventListener('overlay-send-message', handleOverlaySend as EventListener);
-    }, [sendMessage, promptBlocks.promptBlocks]);
 
     // ─── Chat Restoration ────────────────────────────────────
     const { activeChatRestored } = useChatRestoration({
@@ -442,10 +430,8 @@ function App() {
     // Main page view mode strictly handles in-page layouts (Ladder / Cinematic / Visual Novel)
     const [viewMode, setViewMode] = useState<viewMode>('ladder');
     
-    // Independent floating OS pop-out overlay state
-    const [pipWindow, setPipWindow] = useState<Window | null>(null);
-    // Fallback state for sandboxed environments
-    const [inAppOverlay, setInAppOverlay] = useState(false);
+    // Native OS Companion Overlay tracking state
+    const [isOverlayOpen, setIsOverlayOpen] = useState(false);
 
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -644,7 +630,7 @@ function App() {
             const isAuto = profile?.enableAutoSpeechDetection ?? false;
 
             if (isAuto) {
-                const actThreshold = profile?.speechVolumeActivationThreshold ?? 15;
+                const actThreshold = profile?.speechVolumeActivatedThreshold ?? 15;
                 const silThreshold = profile?.speechSilenceVolumeActivationThreshold ?? 8;
                 const silenceMs = profile?.speechSilenceThresholdMs ?? 1500;
 
@@ -685,87 +671,28 @@ function App() {
         }
     }, [isRecording, interactionData?.profile, handleSend, addToast]);
 
-    // ─── Independent Floating OS Pop-out Overlay Handler ─────────────
+    // ─── Native Tauri Companion Overlay Toggle Handler ────────────────
     const handleToggleOverlay = async () => {
-        // 1. Close OS Window if open
-        if (pipWindow) {
-            try { pipWindow.close(); } catch {}
-            setPipWindow(null);
-            return;
-        }
-
-        // 2. Close In-App Overlay if open
-        if (inAppOverlay) {
-            setInAppOverlay(false);
-            return;
-        }
-
-        let pipWin: Window | null = null;
-        let pipSuccess = false;
-
-        // 3. Try Document Picture-in-Picture API first
-        if ('documentPictureInPicture' in window) {
-            try {
-                if ((window as any).documentPictureInPicture.window) {
-                    try { (window as any).documentPictureInPicture.window.close(); } catch {}
-                }
-                pipWin = await (window as any).documentPictureInPicture.requestWindow({
-                    width: 340,
-                    height: 520,
-                });
-                pipSuccess = true;
-            } catch (err) {
-                console.warn('[App] Document PiP failed:', err);
-            }
-        }
-
-        // 4. Fallback to standard detached window popup
-        if (!pipSuccess) {
-            try {
-                pipWin = window.open(
-                    'about:blank',
-                    'LoreReactorOverlay',
-                    'width=340,height=520,resizable=yes,scrollbars=no,status=no,location=no,toolbar=no,menubar=no'
-                );
-                
-                if (pipWin) {
-                    // Test access immediately (This is where Sandboxes throw SecurityError)
-                    const doc = pipWin.document;
-                    doc.title = `${interactionData?.name || 'LoreReactor'} (Overlay)`;
-                    
-                    for (const styleSheet of document.styleSheets) {
-                        try {
-                            if (styleSheet.cssRules) {
-                                const newStyle = doc.createElement('style');
-                                let rulesText = '';
-                                for (const rule of styleSheet.cssRules) rulesText += rule.cssText;
-                                newStyle.textContent = rulesText;
-                                doc.head.appendChild(newStyle);
-                            }
-                        } catch {
-                            if (styleSheet.href) {
-                                const newLink = doc.createElement('link');
-                                newLink.rel = 'stylesheet';
-                                newLink.href = styleSheet.href;
-                                doc.head.appendChild(newLink);
-                            }
-                        }
+        try {
+            const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+            const overlayWin = await WebviewWindow.getByLabel('companion-overlay');
+            if (overlayWin) {
+                const isVisible = await overlayWin.isVisible();
+                if (isVisible) {
+                    await overlayWin.hide();
+                    setIsOverlayOpen(false);
+                } else {
+                    await overlayWin.show();
+                    try {
+                        await overlayWin.setFocus();
+                    } catch {
+                        // Ignore focus permission errors
                     }
-                    
-                    pipWin.addEventListener('pagehide', () => setPipWindow(null));
-                    setPipWindow(pipWin);
-                    pipSuccess = true;
+                    setIsOverlayOpen(true);
                 }
-            } catch (securityErr) {
-                console.warn('[App] Popup fallback blocked by cross-origin/sandbox:', securityErr);
-                try { pipWin?.close(); } catch {}
             }
-        }
-
-        // 5. If both OS-level methods failed, use In-App Floating Overlay
-        if (!pipSuccess) {
-            addToast('OS Pop-out blocked by browser sandbox. Opening In-App Floating Widget.', 'info');
-            setInAppOverlay(true);
+        } catch (err) {
+            console.warn('[App] Tauri overlay toggle failed:', err);
         }
     };
 
@@ -1046,19 +973,188 @@ function App() {
         viewAssets.locationBackgroundUrl ? 'has-location-bg' : '',
     ].filter(Boolean).join(' ');
 
+    // ─── Broadcast State Snapshot to Native Tauri Companion Window ───
+    const getCompanionStateSnapshot = useCallback(() => {
+        const protagonistId = localProtagonist?.id ?? interactionData?.protagonistIds?.[0];
+        
+        // Strictly find the AI Companion participant
+        const companionChar = interactionData?.participants?.find((p: Character) => p.id !== protagonistId) 
+            || interactionData?.participants?.find((p: Character) => p.id !== currentCharacter?.id)
+            || null;
+        
+        let activeChar = companionChar;
+        let activeText = '';
+        let isUser = false;
+        let activeMsgId: string | null = null;
+
+        if (isLoading && session.streamingCharacter) {
+            activeChar = session.streamingCharacter;
+            activeText = streamingText || ''; // Streaming text is already compiled to display format
+            isUser = false;
+        } else if (viewAssets.chatMessages && viewAssets.chatMessages.length > 0) {
+            for (let i = viewAssets.chatMessages.length - 1; i >= 0; i--) {
+                const msg = viewAssets.chatMessages[i];
+                if (msg.messageType === 'chat' || msg.messageType === 'whisper') {
+                    activeChar = msg.character;
+                    
+                    activeText = compileMessageDisplayText(
+                        msg.textContent,
+                        interactionData?.profile?.toolUsageDisplayMode,
+                        interactionData?.participants || [],
+                        msg.character,
+                        msg.toolExecutionResults
+                    ) || '';
+                    
+                    isUser = protagonistId ? msg.character.id === protagonistId : false;
+                    activeMsgId = msg.id;
+                    break;
+                }
+            }
+        }
+
+        const avatarChar = (isLoading && session.streamingCharacter && session.streamingCharacter.id !== protagonistId)
+            ? session.streamingCharacter
+            : (!isUser && activeChar && activeChar.id !== protagonistId)
+            ? activeChar
+            : companionChar;
+
+        let avatarUrl: string | null = null;
+        if (avatarChar && avatarChar.id !== protagonistId) {
+            const cache = viewAssets.portraitUrlCache;
+            if (activeMsgId && !isUser && cache.get(activeMsgId)) {
+                avatarUrl = cache.get(activeMsgId);
+            } else if (cache.get(`character:${avatarChar.id}`)) {
+                avatarUrl = cache.get(`character:${avatarChar.id}`);
+            } else if (avatarChar.images) {
+                const expr = (avatarChar.id === session.streamingCharacter?.id ? currentCharacterExpression : undefined) || 'neutral';
+                const filename = avatarChar.images[expr] || avatarChar.images['neutral'] || Object.values(avatarChar.images)[0];
+                if (filename) {
+                    avatarUrl = filename.startsWith('data:') || filename.startsWith('http')
+                        ? filename
+                        : getCharacterImageUrl(avatarChar.id, filename);
+                }
+            }
+        }
+
+        return {
+            avatarUrl,
+            charName: activeChar?.name || companionChar?.name || 'Companion',
+            activeText,
+            isUser,
+            isLoading,
+            streamingText: streamingText || '',
+            locationBackgroundUrl: avatarUrl ? viewAssets.locationBackgroundUrl : null,
+            allActions: actionManager.allActions || [],
+            allModels: allLanguageModels,
+            selectedModelId: models.selectedModelId,
+            allBudgetStrategies: budgetStrategies.strategies,
+            selectedBudgetStrategyId: selectedBudgetStrategyId,
+            allProfiles: profiles.profiles,
+            activeProfileId: interactionData?.profile?.id || null,
+            allWorlds: worlds.worlds,
+            allSamplers: samplers.Samplers,
+            allStopPatterns: stopPatterns.stopPatterns,
+            allPromptBlocks: promptBlocks.promptBlocks,
+            allMemories: memories.memories,
+            lastMessageId: activeMsgId, // ✅ ADD THIS for Resume/Restart buttons
+        };
+    }, [
+        isLoading, session.streamingCharacter, streamingText, currentCharacterExpression, 
+        interactionData, localProtagonist, currentCharacter, viewAssets.chatMessages, 
+        viewAssets.portraitUrlCache, viewAssets.locationBackgroundUrl, actionManager.allActions,
+        allLanguageModels, models.selectedModelId, budgetStrategies.strategies, selectedBudgetStrategyId,
+        profiles.profiles, worlds.worlds, samplers.Samplers, stopPatterns.stopPatterns,
+        promptBlocks.promptBlocks, memories.memories
+    ]);
+
+    const companionChannelRef = useRef<BroadcastChannel | null>(null);
+    const getCompanionStateSnapshotRef = useRef(getCompanionStateSnapshot);
+
+    useEffect(() => {
+        getCompanionStateSnapshotRef.current = getCompanionStateSnapshot;
+    }, [getCompanionStateSnapshot]);
+
+    // Extract stable references for the BroadcastChannel effect to prevent unnecessary re-renders
+    const { setSelectedModelId: setGlobalModelId, toggleModelLoad } = models;
+    const { handleActivateBudgetStrategy } = entityToggles;
+    const { saveProfile } = profiles;
+
+    // 1. Persistent Channel Lifecycle (Does not recreate on every token)
+    useEffect(() => {
+        const channel = new BroadcastChannel('lorereactor-companion-sync');
+        companionChannelRef.current = channel;
+
+        const handleChannelMessage = (e: MessageEvent) => {
+            if (e.data?.type === 'REQUEST_STATE') {
+                channel.postMessage({
+                    type: 'STATE_UPDATE',
+                    data: getCompanionStateSnapshotRef.current(),
+                });
+            } else if (e.data?.type === 'SEND_MESSAGE' && e.data?.text !== undefined) {
+                sendMessage(e.data.text, promptBlocks.promptBlocks, e.data.files || [], undefined);
+            } else if (e.data?.type === 'INTERJECT_ACTION' && e.data?.label) {
+                const protagonistId = localProtagonist?.id ?? interactionData?.protagonistIds?.[0];
+                const companionChar = interactionData?.participants?.find((p: Character) => p.id !== protagonistId) 
+                    || interactionData?.participants?.find((p: Character) => p.id !== currentCharacter?.id)
+                    || null;
+                if (companionChar && localProtagonist) {
+                    actionMenu.handleActionInterject(e.data.label, companionChar, localProtagonist);
+                }
+            } else if (e.data?.type === 'ADD_ACTION' && e.data?.label) {
+                actionManager.handleAddAction(e.data.label);
+            } else if (e.data?.type === 'SELECT_MODEL' && e.data?.modelId !== undefined) {
+                setGlobalModelId(e.data.modelId || null);
+                if (e.data.modelId) {
+                    toggleModelLoad(e.data.modelId);
+                }
+            } else if (e.data?.type === 'SELECT_BUDGET' && e.data?.budgetId !== undefined) {
+                handleActivateBudgetStrategy(e.data.budgetId || null);
+            } else if (e.data?.type === 'UPDATE_PROFILE' && e.data?.profile) {
+                saveProfile(e.data.profile).then(() => {
+                    if (interactionData?.profile?.id === e.data.profile.id && interactionData) {
+                        const updatedData = { ...interactionData, profile: e.data.profile, lastUpdatedTimestamp: Date.now() };
+                        setInteractionData(updatedData);
+                    }
+                    addToast('Profile updated from overlay.', 'success');
+                }).catch(() => {
+                    addToast('Failed to update profile from overlay.', 'error');
+                });
+            } else if (e.data?.type === 'ACTIVATE_PROFILE' && e.data?.profileId) {
+                const targetProfile = profiles.profiles.find(p => p.id === e.data.profileId);
+                if (targetProfile && interactionData) {
+                    const updatedData = { ...interactionData, profile: targetProfile, lastUpdatedTimestamp: Date.now() };
+                    setInteractionData(updatedData);
+                    addToast(`Activated profile "${targetProfile.name}"`, 'success');
+                }
+            } else if (e.data?.type === 'RESUME_GENERATION' && e.data?.messageId) {
+                resumeGeneration(e.data.messageId, promptBlocks.promptBlocks);
+            } else if (e.data?.type === 'RESTART_GENERATION' && e.data?.messageId) {
+                regenerateFromMessage(e.data.messageId);
+            }
+        };
+
+        channel.addEventListener('message', handleChannelMessage);
+        return () => {
+            channel.removeEventListener('message', handleChannelMessage);
+            channel.close();
+            companionChannelRef.current = null;
+        };
+    }, [sendMessage, promptBlocks.promptBlocks, actionMenu, actionManager, localProtagonist, interactionData, currentCharacter, setGlobalModelId, toggleModelLoad, handleActivateBudgetStrategy, saveProfile, setInteractionData, addToast, profiles.profiles, resumeGeneration, regenerateFromMessage]);
+
+    // 2. Broadcast Effect (Fires on every snapshot change / token)
+    useEffect(() => {
+        if (companionChannelRef.current) {
+            companionChannelRef.current.postMessage({
+                type: 'STATE_UPDATE',
+                data: getCompanionStateSnapshot(),
+            });
+        }
+    }, [getCompanionStateSnapshot]);
+
     // ─── Render ──────────────────────────────────────────────────────
     return (
         <>
             {isInitializing && <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />}
-
-            {/* Pass the new In-App props to OverlayView */}
-            <OverlayView 
-                pipWindow={pipWindow} 
-                isInAppOverlay={inAppOverlay} 
-                onCloseInApp={() => setInAppOverlay(false)}
-                locationBackgroundUrl={viewAssets.locationBackgroundUrl}
-                {...baseViewProps}
-            />
 
             <div
                 className={containerClass}
@@ -1079,12 +1175,12 @@ function App() {
                                             : <><span onClick={chatOps.handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = '1'} onMouseLeave={e => e.currentTarget.style.opacity = '0.3'}>✎</span><div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{interactionData?.name || 'Untitled Chat'}</div></>}
                                     </div>
                                     <div className="header-controls-group">
-                                        {/* 1. Independent Overlay / PiP Pop-out Button (Directly to the LEFT of Settings) */}
+                                        {/* 1. Native Tauri Companion Overlay Button */}
                                         <button
                                             type="button"
-                                            className={`view-mode-toggle ${pipWindow || inAppOverlay ? 'active' : ''}`}
+                                            className={`view-mode-toggle ${isOverlayOpen ? 'active' : ''}`}
                                             onClick={handleToggleOverlay}
-                                            title={pipWindow || inAppOverlay ? "Close Floating Overlay" : "Open Floating Overlay (Pop-out)"}
+                                            title={isOverlayOpen ? "Close Companion Overlay" : "Open Companion Overlay"}
                                             style={{ padding: '6px 10px' }}
                                         >
                                             <span>🪟</span>

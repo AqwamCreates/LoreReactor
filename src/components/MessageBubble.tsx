@@ -15,7 +15,7 @@ import {
     TARGET_OPTIONS,
     type CategoryConversion,
     type FormatCategory,
-} from '../utilities/textReformat';
+} from '../utilities/textDisplayReformatter';
 
 interface MessageBubbleProps {
     message: ChatMessage | WhisperMessage;

@@ -3,7 +3,7 @@ import { useCallback } from 'react';
 import type { InteractionData } from '../types';
 import { editChatMessage as editMessage } from '../utilities/messageLogic';
 import { useSessionStore } from './useSessionStore';
-import { learnFromManualEdits } from '../utilities/textReformat';
+import { learnFromManualEdits } from '../utilities/textDisplayReformatter';
 
 interface UseMessageActionsOptions {
     interactionData: InteractionData | null;
