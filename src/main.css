@@ -63,26 +63,6 @@ html, body {
   background: var(--bg);
 }
 
-body.overlay-mode,
-html.overlay-mode {
-    background: transparent !important;
-    overflow: hidden !important;
-}
-
-body.overlay-mode #root,
-.overlay-mode #root {
-    width: 100% !important;
-    max-width: 100% !important;
-    height: 100% !important;
-    min-height: 100% !important;
-    border: none !important;
-    border-inline: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: transparent !important;
-    text-align: left !important;
-}
-
 #root {
   height: 100vh;
   height: 100dvh;
@@ -5160,19 +5140,24 @@ body.overlay-mode,
 html.overlay-mode {
     background: transparent !important;
     overflow: hidden !important;
+    /* Center the root container */
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
 }
 body.overlay-mode #root,
 .overlay-mode #root {
-    width: 100% !important;
-    max-width: 100% !important;
+    /* Force the 9:16 ratio */
+    aspect-ratio: 9 / 16;
     height: 100% !important;
-    min-height: 100% !important;
-    border: none !important;
-    border-inline: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
+    max-height: 100% !important;
+    width: auto !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
     background: transparent !important;
-    text-align: left !important;
+    /* Keep your existing overrides */
+    border: none !important;
+    overflow: hidden !important;
 }
 
 .pip-inapp-close {
