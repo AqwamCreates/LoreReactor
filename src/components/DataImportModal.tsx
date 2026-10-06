@@ -1,6 +1,5 @@
 // src/components/DataImportModal.tsx
 import { useState, useRef, useMemo } from 'react';
-import type { LanguageModel, World } from '../types';
 import { validateExport, importSelectedData, type LoreReactorExport, type ImportResult } from '../services/DataPortabilityEngine';
 import { buildJsonSchema } from '../utilities/dataSchema';
 import { EntitySelectList } from './EntitySelectList';
@@ -96,7 +95,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
         setSelectedContextIds(json.contexts.map((c: { id: string }) => c.id));
         setSelectedLocationIds(json.locations.map((l: { id: string }) => l.id));
         setSelectedAudioTrackIds(json.audioTracks.map((t: { id: string }) => t.id));
-        setSelectedWorldIds(json.worlds?.map((w: World) => w.id) ?? []);
+        setSelectedWorldIds(json.worlds?.map(w => w.id) ?? []);
         setSelectedLanguageModelIds(json.languageModels.map((m: { id: string }) => m.id));
         setSelectedSamplerIds(json.samplers.map((s: { id: string }) => s.id));
         setSelectedPromptBlockIds(json.promptBlocks.map((b: { id: string }) => b.id));
