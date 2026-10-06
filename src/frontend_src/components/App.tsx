@@ -984,20 +984,17 @@ function App() {
             || null;
         
         let activeChar = companionChar;
-        let activeText = '';
         let isUser = false;
         let activeMsgId: string | null = null;
 
         if (isLoading && session.streamingCharacter) {
             activeChar = session.streamingCharacter;
-            activeText = streamingText || ''; // Streaming text is already compiled to display format
             isUser = false;
         } else if (viewAssets.chatMessages && viewAssets.chatMessages.length > 0) {
             for (let i = viewAssets.chatMessages.length - 1; i >= 0; i--) {
                 const msg = viewAssets.chatMessages[i];
                 if (msg.messageType === 'chat' || msg.messageType === 'whisper') {
                     activeChar = msg.character;
-                    activeText = compileMessageDisplayText(msg, interactionData?.profile?.toolUsageDisplayMode, interactionData?.participants || []);
                     isUser = protagonistId ? msg.character.id === protagonistId : false;
                     activeMsgId = msg.id;
                     break;
@@ -1015,9 +1012,9 @@ function App() {
         if (avatarChar && avatarChar.id !== protagonistId) {
             const cache = viewAssets.portraitUrlCache;
             if (activeMsgId && !isUser && cache.get(activeMsgId)) {
-                avatarUrl = cache.get(activeMsgId);
+                avatarUrl = cache.get(activeMsgId) ?? null;
             } else if (cache.get(`character:${avatarChar.id}`)) {
-                avatarUrl = cache.get(`character:${avatarChar.id}`);
+                avatarUrl = cache.get(`character:${avatarChar.id}`) ?? null;
             } else if (avatarChar.images) {
                 const expr = (avatarChar.id === session.streamingCharacter?.id ? currentCharacterExpression : undefined) || 'neutral';
                 const filename = avatarChar.images[expr] || avatarChar.images['neutral'] || Object.values(avatarChar.images)[0];

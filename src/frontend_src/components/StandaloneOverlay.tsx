@@ -13,6 +13,7 @@ import type {
     InteractionData, 
     Character, 
     Context, 
+    Location, // <--- ADD THIS
     AudioTrack, 
     LanguageModel, 
     BudgetStrategy, 

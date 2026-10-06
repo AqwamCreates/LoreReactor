@@ -77,6 +77,7 @@ export function parseSlashCommand(input: string): ToolInvocation | null {
  * Streaming parser that buffers incoming token deltas:
  *   - Detects tool calls enclosed within ⟪ and ⟫.
  *   - Silently drops tool results enclosed within ⟦ and ⟧ so observations never leak into displayText.
+ *   - Absorbs orphan boundary brackets echoed by the inference backend after prompt injection.
  */
 export class ToolInvocationParser {
     private buffer = '';
@@ -91,6 +92,18 @@ export class ToolInvocationParser {
 
     processChunk(chunk: string): ParsedChunkResult {
         this.buffer += chunk;
+
+        // Absorb orphan closing brackets echoed by the model at prompt boundaries
+        while (this.buffer.length > 0) {
+            const trimmedStart = this.buffer.trimStart();
+            if (trimmedStart.startsWith(toolResultEndString)) {
+                this.buffer = trimmedStart.slice(toolResultEndString.length);
+            } else if (trimmedStart.startsWith(toolCallEndString)) {
+                this.buffer = trimmedStart.slice(toolCallEndString.length);
+            } else {
+                break;
+            }
+        }
 
         let displayText = '';
         const toolInvocations: ToolInvocation[] = [];
@@ -153,7 +166,14 @@ export class ToolInvocationParser {
                 }
 
                 const fullEndIdx = endIdx + toolResultEndString.length;
-                this.buffer = this.buffer.slice(fullEndIdx);
+
+                // Absorb any optional trailing boundary space that was appended with the result
+                let nextSliceIdx = fullEndIdx;
+                if (this.buffer[nextSliceIdx] === ' ') {
+                    nextSliceIdx++;
+                }
+
+                this.buffer = this.buffer.slice(nextSliceIdx);
             }
         }
 

@@ -532,7 +532,7 @@ export interface SlashAutocompleteComputeResult {
 }
 
 export function computeSlashAutocomplete(
-inputText: string, interactionData: InteractionData | null, allCharacters: Character[] = [], allContexts: Context[] = [], allLocations: Location[] = [], allAudioTracks: AudioTrack[] = [], allWorlds: World[] = [], allProfiles: Profile[], allPromptBlocks: PromptBlock[] = [], allLanguageModels: LanguageModel[] = [], allSamplers: Sampler[] = [], allStopPatterns: StopPattern[] = [], allBudgetStrategies: BudgetStrategy[] = [], allMemories: Memory[] = [], allAccounts: Account[] = [], allMultiplayerData: MultiplayerData[] = [], localProtagonist: Character | null = null): SlashAutocompleteComputeResult {
+inputText: string, interactionData: InteractionData | null, allCharacters: Character[] = [], allContexts: Context[] = [], allLocations: Location[] = [], allAudioTracks: AudioTrack[] = [], allWorlds: World[] = [], allProfiles: Profile[] = [], allPromptBlocks: PromptBlock[] = [], allLanguageModels: LanguageModel[] = [], allSamplers: Sampler[] = [], allStopPatterns: StopPattern[] = [], allBudgetStrategies: BudgetStrategy[] = [], allMemories: Memory[] = [], allAccounts: Account[] = [], allMultiplayerData: MultiplayerData[] = [], localProtagonist: Character | null = null): SlashAutocompleteComputeResult {
     const raw = inputText.trimStart();
     const isSlash = raw.startsWith('/');
     if (!isSlash) {

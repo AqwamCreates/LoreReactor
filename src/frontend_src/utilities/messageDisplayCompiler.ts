@@ -14,11 +14,16 @@ import { formatToolDisplay, getFallbackToolResult, type ToolResult } from '../se
  * Automatically checks (message.processedTextContent || message.textContent).
  */
 export function compileMessageDisplayText(
-    target: HistoryMessage | null | undefined,
+    target: HistoryMessage | string | null | undefined,
     displayMode: toolUsageDisplayMode = 'simple',
     participants: Character[] = []
 ): string {
     if (!target) return '';
+
+    // Handle string target directly
+    if (typeof target === 'string') {
+        return compileRawString(target, displayMode, participants, undefined, undefined);
+    }
 
     // It's a HistoryMessage: check processedTextContent override first, then raw textContent
     const character = target.character;
@@ -44,12 +49,19 @@ function compileRawString(
 
     const resStartEsc = escapeRegex(toolResultStartString);
     const resEndEsc = escapeRegex(toolResultEndString);
+    const callStartEsc = escapeRegex(toolCallStartString);
+    const callEndEsc = escapeRegex(toolCallEndString);
 
     // 1. Strip observation results completely (including in-progress streaming up to $)
-    const resultRegex = new RegExp(`${resStartEsc}[\\s\\S]*?(${resEndEsc}|$)`, 'g');
+    // Consume any trailing whitespace so orphan spaces or boundaries do not linger: ⟦...⟧ *
+    const resultRegex = new RegExp(`${resStartEsc}[\\s\\S]*?(${resEndEsc}|$) *`, 'g');
     let processed = rawText.replace(resultRegex, '');
 
-    // 2. Build resultMap for executed tools
+    // 2. Strip orphan closing delimiters that might have been echoed by backends at prompt boundaries
+    const orphanEndRegex = new RegExp(`^ *(${resEndEsc}|${callEndEsc}) *`, 'g');
+    processed = processed.replace(orphanEndRegex, '');
+
+    // 3. Build resultMap for executed tools
     const resultMap = new Map<string, ToolExecutionResult>();
     if (toolExecutionResults) {
         for (const res of toolExecutionResults) {
@@ -57,9 +69,7 @@ function compileRawString(
         }
     }
 
-    // 3. Replace complete tool calls: ⟪...⟫
-    const callStartEsc = escapeRegex(toolCallStartString);
-    const callEndEsc = escapeRegex(toolCallEndString);
+    // 4. Replace complete tool calls: ⟪...⟫
     const toolRegex = new RegExp(`${callStartEsc}([\\s\\S]*?)${callEndEsc}`, 'g');
 
     processed = processed.replace(toolRegex, (rawMatch, innerString) => {
@@ -78,11 +88,11 @@ function compileRawString(
         return formatToolDisplay(fallback, rawMatch, mode);
     });
 
-    // 4. Suppress unclosed tool calls at tail of stream
+    // 5. Suppress unclosed tool calls at tail of stream
     const unclosedCallRegex = new RegExp(`${callStartEsc}[\\s\\S]*$`, 'g');
     processed = processed.replace(unclosedCallRegex, '');
 
-    // 5. Clean up spacing and convert IDs
+    // 6. Clean up spacing and convert IDs
     processed = processed.replace(/ {2,}/g, ' ').trim();
 
     if (character) {
