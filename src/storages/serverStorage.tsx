@@ -49,7 +49,7 @@ const ENTITY_REGISTRY = {
   contextImages: { dir: 'context_images', hasManifest: false },
   locations: { dir: 'location_data', hasManifest: true },
   locationImages: { dir: 'location_images', hasManifest: false },
-  models: { dir: 'model_data', hasManifest: true },
+  languageModels: { dir: 'language_model_data', hasManifest: true },
   stopPatterns: { dir: 'stop_pattern_data', hasManifest: true },
   interactionMessages: { dir: 'interaction_messages', hasManifest: false },
   interactionData: { dir: 'interaction_data', hasManifest: true },
@@ -807,7 +807,7 @@ export const deleteRawPromptBlock = promptBlockRepo.remove;
 // =============================================================================
 
 const modelRepo = createRepository<LanguageModel, RawLanguageModel>({
-  entityKey: 'models',
+  entityKey: 'languageModels',
   hydrate: (raw, id) => hydrateEntity<LanguageModel, RawLanguageModel>(raw, id, {
     name: 'Unknown Model',
     backend: 'Other',

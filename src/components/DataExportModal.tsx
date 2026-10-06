@@ -100,7 +100,7 @@ export function DataExportModal({
 
     const totalSelected = selectedChatIds.length + selectedCharacterIds.length + selectedContextIds.length +
         selectedLocationIds.length + selectedAudioTrackIds.length + selectedWorldIds.length +
-        selectedModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
+        selectedLanguageModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
         selectedStopPatternIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
         selectedMemoryIds.length + selectedAccountIds.length + selectedMultiplayerDataIds.length +
         (includeActions ? 1 : 0) + (includeActionFormatData ? 1 : 0) + 
@@ -114,7 +114,7 @@ export function DataExportModal({
             const data = await exportSelectedData({
                 chatIds: selectedChatIds,
                 characterIds: selectedCharacterIds, contextIds: selectedContextIds, locationIds: selectedLocationIds,
-                audioTrackIds: selectedAudioTrackIds, worldIds: selectedWorldIds, modelIds: selectedModelIds,
+                audioTrackIds: selectedAudioTrackIds, worldIds: selectedWorldIds, languageModelIds: selectedLanguageModelIds,
                 samplerIds: selectedSamplerIds, promptBlockIds: selectedPromptBlockIds,
                 stopPatternIds: selectedStopPatternIds, budgetStrategyIds: selectedBudgetStrategyIds,
                 profileIds: selectedProfileIds, memoryIds: selectedMemoryIds,

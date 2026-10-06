@@ -203,7 +203,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
             locations: parsedData.locations.filter(l => selectedLocationIds.includes(l.id)),
             audioTracks: parsedData.audioTracks.filter(t => selectedAudioTrackIds.includes(t.id)),
             worlds: parsedData.worlds?.filter((w: World) => selectedWorldIds.includes(w.id)) ?? [],
-            languagelocalCharacter: parsedData.languagelocalCharacter.filter(m => selectedModelIds.includes(m.id)),
+            languageModels: parsedData.languageModels?.filter((m: LanguageModel) => selectedLanguageModelIds.includes(m.id)) ?? [],
             samplers: parsedData.samplers.filter(s => selectedSamplerIds.includes(s.id)),
             promptBlocks: parsedData.promptBlocks.filter(b => selectedPromptBlockIds.includes(b.id)),
             stopPatterns: parsedData.stopPatterns.filter(s => selectedStopPatternIds.includes(s.id)),
@@ -513,7 +513,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
                                     <div><strong>Locations:</strong> {importResult.counts.locations}</div>
                                     <div><strong>Audio Tracks:</strong> {importResult.counts.audioTracks}</div>
                                     <div><strong>Worlds:</strong> {importResult.counts.worlds}</div>
-                                    <div><strong>Language localCharacter:</strong> {importResult.counts.languagelocalCharacter}</div>
+                                    <div><strong>Language Models:</strong> {importResult.counts.languageModels}</div>
                                     <div><strong>Samplers:</strong> {importResult.counts.samplers}</div>
                                     <div><strong>Prompt Blocks:</strong> {importResult.counts.promptBlocks}</div>
                                     <div><strong>Stop Patterns:</strong> {importResult.counts.stopPatterns}</div>

@@ -1039,7 +1039,7 @@ const MANIFEST_DIRS = [
   'sampler_data',
   'context_data',
   'location_data',
-  'model_data',
+  'language_model_data',
   'stop_pattern_data',
   'interaction_messages',
   'interaction_data',

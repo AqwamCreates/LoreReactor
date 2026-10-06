@@ -62,9 +62,9 @@ export interface ImportResult {
     success: boolean;
     counts: {
         chats: number; characters: number; contexts: number; locations: number; audioTracks: number;
-        worlds: number; models: number; samplers: number; promptBlocks: number; stopPatterns: number;
+        worlds: number; languageModels: number; samplers: number; promptBlocks: number; stopPatterns: number;
         budgetStrategies: number; profiles: number; memories: number; accounts: number;
-        multiplayerData: number; interjectableActions: number; preferences: number;
+        multiplayerData: number; interjectableActions: number; formatPreferences: number;
     };
     errors: string[];
 }
@@ -302,23 +302,23 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
         catch (e) { result.errors.push(`Interjectable Actions: ${(e as Error).message}`); }
     }
     if (data.actionFormatData) {
-        try { await saveActionFormatData(data.actionFormatData); result.counts.preferences++; }
+        try { await saveActionFormatData(data.actionFormatData); result.counts.formatPreferences++; }
         catch (e) { result.errors.push(`Action Format Data: ${(e as Error).message}`); }
     }
     if (data.formatPreferences) {
-        try { await saveRawFormatPreferences(data.formatPreferences); result.counts.preferences++; }
+        try { await saveRawFormatPreferences(data.formatPreferences); result.counts.formatPreferences++; }
         catch (e) { result.errors.push(`Format Preferences: ${(e as Error).message}`); }
     }
     if (data.sessionData) {
-        try { await saveRawSessionData(data.sessionData); result.counts.preferences++; }
+        try { await saveRawSessionData(data.sessionData); result.counts.formatPreferences++; }
         catch (e) { result.errors.push(`Session Data: ${(e as Error).message}`); }
     }
     if (data.multiplayerJoinData) {
-        try { await saveRawMultiplayerJoinData(data.multiplayerJoinData); result.counts.preferences++; }
+        try { await saveRawMultiplayerJoinData(data.multiplayerJoinData); result.counts.formatPreferences++; }
         catch (e) { result.errors.push(`Multiplayer Join Data: ${(e as Error).message}`); }
     }
     if (data.budgetData) {
-        try { await saveRawBudgetData(data.budgetData); result.counts.preferences++; }
+        try { await saveRawBudgetData(data.budgetData); result.counts.formatPreferences++; }
         catch (e) { result.errors.push(`Budget Data: ${(e as Error).message}`); }
     }
 
