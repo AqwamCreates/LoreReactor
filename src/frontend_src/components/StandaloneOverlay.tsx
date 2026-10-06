@@ -577,11 +577,11 @@ export function StandaloneOverlay() {
 
     const statusLabel = state.isLoading 
         ? 'Responding' 
-        : (state.selectedModelId ? 'Live' : 'Idle');
+        : ((state.selectedModelId || state.selectedBudgetStrategyId)? 'Live' : 'Idle');
     
     const statusColorClass = state.isLoading 
         ? 'active' 
-        : (state.selectedModelId ? '' : 'idle');
+        : ((state.selectedModelId || state.selectedBudgetStrategyId)? '' : 'idle');
 
     return (
         <div className="pip-overlay-container" onClick={() => setActionMenuTarget(null)}>
