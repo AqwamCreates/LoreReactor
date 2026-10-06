@@ -197,7 +197,7 @@ export interface RawLanguageModel extends RawData {
   mmproj?: string;
   lora?: string;
   apiKey?: string;
-  parameters?: Record<string, unknown>;       // e.g., "<|im_start|>{role}\n{content}<|im_end|>\n"
+  parameters?: Record<string, unknown>;
   instructionTemplate?: string;
   chatTemplate?: string;
   cacheHitCostPerOneMillionOfTokens?: number;

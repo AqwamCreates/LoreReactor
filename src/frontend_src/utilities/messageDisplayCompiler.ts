@@ -1,6 +1,11 @@
 // frontend_src/utilities/messageDisplayCompiler.ts
 import type { Character, InteractionData, ToolExecutionResult, toolUsageDisplayMode } from '../types';
-import { toolStartSring, toolEndString } from '../dictionaries/stringList';
+import {
+    toolCallStartString,
+    toolCallEndString,
+    toolResultStartString,
+    toolResultEndString,
+} from '../dictionaries/stringList';
 import { convertIdsToDisplayNames } from './chatLogic';
 import { formatToolDisplay, getFallbackToolResult, type ToolResult } from '../services/ToolExecutor';
 
@@ -15,11 +20,13 @@ export function compileMessageDisplayText(
 
     const mode = displayMode || 'simple';
     const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const startEsc = escapeRegex(toolStartSring);
-    const endEsc = escapeRegex(toolEndString);
 
-    // 1. Strip LLM-only result tags (these are never shown to the user)
-    const resultRegex = new RegExp(`${startEsc}result:\\s*[\\s\\S]*?${endEsc}`, 'g');
+    const resStartEsc = escapeRegex(toolResultStartString);
+    const resEndEsc = escapeRegex(toolResultEndString);
+
+    // 1. Strip observation results completely
+    // Matching up to (${resEndEsc}|$) guarantees in-progress unclosed results are stripped during streaming
+    const resultRegex = new RegExp(`${resStartEsc}[\\s\\S]*?(${resEndEsc}|$)`, 'g');
     let processed = rawText.replace(resultRegex, '');
 
     // 2. Build a map from rawMatch to result for quick lookup
@@ -30,14 +37,15 @@ export function compileMessageDisplayText(
         }
     }
 
-    // 3. Replace tool invocations based on the current display mode
-    const toolRegex = new RegExp(`${startEsc}([\\s\\S]*?)${endEsc}`, 'g');
+    // 3. Replace complete tool calls: ⟪...⟫
+    const callStartEsc = escapeRegex(toolCallStartString);
+    const callEndEsc = escapeRegex(toolCallEndString);
+    const toolRegex = new RegExp(`${callStartEsc}([\\s\\S]*?)${callEndEsc}`, 'g');
+
     processed = processed.replace(toolRegex, (rawMatch, innerString) => {
-        // Try to find the exact executed result by rawMatch
         const storedResult = resultMap.get(rawMatch);
-        
+
         if (storedResult) {
-            // We have the real executed result!
             const result: ToolResult = {
                 toolType: storedResult.toolType,
                 args: storedResult.args,
@@ -46,14 +54,19 @@ export function compileMessageDisplayText(
             };
             return formatToolDisplay(result, rawMatch, mode);
         }
-            // Fallback for old messages without stored results
+
+        // Fallback for messages without stored results
         const fallbackResult = getFallbackToolResult(innerString);
         return formatToolDisplay(fallbackResult, rawMatch, mode);
     });
 
-    // 4. Clean up spacing and resolve character IDs to display names
+    // 4. Suppress any unclosed, in-progress tool call at the tail end of the stream
+    const unclosedCallRegex = new RegExp(`${callStartEsc}[\\s\\S]*$`, 'g');
+    processed = processed.replace(unclosedCallRegex, '');
+
+    // 5. Clean up spacing and resolve character IDs to display names
     processed = processed.replace(/ {2,}/g, ' ').trim();
-    
+
     const mockData = { participants } as InteractionData;
     return convertIdsToDisplayNames(processed, mockData, character);
 }

@@ -1,5 +1,10 @@
 // frontend_src/services/ToolInvocationParser.ts
-import { toolStartSring, toolEndString } from '../dictionaries/stringList';
+import {
+    toolCallStartString,
+    toolCallEndString,
+    toolResultStartString,
+    toolResultEndString,
+} from '../dictionaries/stringList';
 
 export interface ToolInvocation {
     toolType: string;
@@ -20,7 +25,7 @@ export interface ParsedChunkResult {
  */
 function parseInnerToolCall(inner: string): { toolType: string; args: string } {
     const trimmed = inner.trim();
-    
+
     // 1. Function format: name(...)
     const fnMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*\(([\s\S]*)\)$/);
     if (fnMatch) {
@@ -55,9 +60,9 @@ export function parseSlashCommand(input: string): ToolInvocation | null {
     trimmed = trimmed.slice(1).trim();
     if (!trimmed) return null;
 
-    // Strip explicit <| and |> if present in the command
-    if (trimmed.startsWith(toolStartSring) && trimmed.endsWith(toolEndString)) {
-        trimmed = trimmed.slice(toolStartSring.length, trimmed.length - toolEndString.length).trim();
+    // Strip explicit ⟪ and ⟫ if present in the command
+    if (trimmed.startsWith(toolCallStartString) && trimmed.endsWith(toolCallEndString)) {
+        trimmed = trimmed.slice(toolCallStartString.length, trimmed.length - toolCallEndString.length).trim();
     }
 
     const { toolType, args } = parseInnerToolCall(trimmed);
@@ -69,8 +74,9 @@ export function parseSlashCommand(input: string): ToolInvocation | null {
 }
 
 /**
- * Streaming parser that buffers incoming token deltas and strictly detects
- * tool calls enclosed within <| and |>.
+ * Streaming parser that buffers incoming token deltas:
+ *   - Detects tool calls enclosed within ⟪ and ⟫.
+ *   - Silently drops tool results enclosed within ⟦ and ⟧ so observations never leak into displayText.
  */
 export class ToolInvocationParser {
     private buffer = '';
@@ -90,16 +96,17 @@ export class ToolInvocationParser {
         const toolInvocations: ToolInvocation[] = [];
 
         while (this.buffer.length > 0) {
-            const startIdx = this.buffer.indexOf(toolStartSring);
+            const callIdx = this.buffer.indexOf(toolCallStartString);
+            const resIdx = this.buffer.indexOf(toolResultStartString);
 
-            // No start token found
-            if (startIdx === -1) {
-                // Check if the buffer ends with a partial start token (e.g. "<")
+            // 1. Neither tag encountered in current buffer
+            if (callIdx === -1 && resIdx === -1) {
                 let safeLen = this.buffer.length;
-                for (let len = 1; len < toolStartSring.length; len++) {
-                    if (this.buffer.endsWith(toolStartSring.slice(0, len))) {
-                        safeLen = this.buffer.length - len;
-                        break;
+                for (const startToken of [toolCallStartString, toolResultStartString]) {
+                    for (let len = 1; len < startToken.length; len++) {
+                        if (this.buffer.endsWith(startToken.slice(0, len))) {
+                            safeLen = Math.min(safeLen, this.buffer.length - len);
+                        }
                     }
                 }
                 displayText += this.buffer.slice(0, safeLen);
@@ -107,36 +114,47 @@ export class ToolInvocationParser {
                 break;
             }
 
-            // Emit any display text before the <| token
-            if (startIdx > 0) {
-                displayText += this.buffer.slice(0, startIdx);
-                this.buffer = this.buffer.slice(startIdx);
+            // 2. Identify whichever delimiter appears first
+            const nextIdx = (callIdx !== -1 && resIdx !== -1)
+                ? Math.min(callIdx, resIdx)
+                : (callIdx !== -1 ? callIdx : resIdx);
+
+            const isCall = nextIdx === callIdx;
+
+            // Emit any plain dialogue preceding the delimiter
+            if (nextIdx > 0) {
+                displayText += this.buffer.slice(0, nextIdx);
+                this.buffer = this.buffer.slice(nextIdx);
             }
 
-            // Look for matching |> closing token
-            const endIdx = this.buffer.indexOf(toolEndString, toolStartSring.length);
+            // 3. Process Tool Call: ⟪...⟫
+            if (isCall) {
+                const endIdx = this.buffer.indexOf(toolCallEndString, toolCallStartString.length);
+                if (endIdx === -1) {
+                    // Tool call is still streaming; hold buffer and await next chunk
+                    break;
+                }
 
-            if (endIdx === -1) {
-                // The tool call is still streaming tokens inside <|...
-                // Hold buffer and wait for the next chunk
-                break;
+                const fullEndIdx = endIdx + toolCallEndString.length;
+                const rawMatch = this.buffer.slice(0, fullEndIdx);
+                const innerContent = this.buffer.slice(toolCallStartString.length, endIdx);
+
+                const { toolType, args } = parseInnerToolCall(innerContent);
+                toolInvocations.push({ toolType, args, rawMatch });
+
+                this.buffer = this.buffer.slice(fullEndIdx);
+            } 
+            // 4. Process Tool Result: ⟦...⟧ (Suppressed completely from displayText)
+            else {
+                const endIdx = this.buffer.indexOf(toolResultEndString, toolResultStartString.length);
+                if (endIdx === -1) {
+                    // In-progress observation; hold buffer to prevent leaking into displayText
+                    break;
+                }
+
+                const fullEndIdx = endIdx + toolResultEndString.length;
+                this.buffer = this.buffer.slice(fullEndIdx);
             }
-
-            // Full <|...|> match found!
-            const fullEndIdx = endIdx + toolEndString.length;
-            const rawMatch = this.buffer.slice(0, fullEndIdx);
-            const innerContent = this.buffer.slice(toolStartSring.length, endIdx);
-
-            const { toolType, args } = parseInnerToolCall(innerContent);
-
-            toolInvocations.push({
-                toolType,
-                args,
-                rawMatch,
-            });
-
-            // Advance past the tool token
-            this.buffer = this.buffer.slice(fullEndIdx);
         }
 
         return {

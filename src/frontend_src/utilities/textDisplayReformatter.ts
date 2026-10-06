@@ -1,6 +1,11 @@
 // frontend_src/utilities/textDisplayReformatter.ts
 import { getFormatPreferenceEngine } from '../services/FormatPreferenceEngine';
-import { toolStartSring, toolEndString } from '../dictionaries/stringList';
+import {
+    toolCallStartString,
+    toolCallEndString,
+    toolResultStartString,
+    toolResultEndString,
+} from '../dictionaries/stringList';
 
 export type FormatCategory = 'plain' | 'italics' | 'bold' | 'strikethrough' | 'quotes' | 'parentheses' | 'brackets';
 
@@ -68,34 +73,34 @@ const PATTERNS: { regex: RegExp; category: FormatCategory; innerGroup: number }[
     { regex: /\[([^\]]+)\]/gs, category: 'brackets', innerGroup: 1 },
 ];
 
-// ✅ NEW: Helper to find all tool invocation ranges
 function findToolRanges(text: string): Array<{ start: number; end: number }> {
     const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const callStartEsc = escapeRegex(toolCallStartString);
+    const callEndEsc = escapeRegex(toolCallEndString);
+    const resStartEsc = escapeRegex(toolResultStartString);
+    const resEndEsc = escapeRegex(toolResultEndString);
+
+    // Protect both ⟪...⟫ tool calls and ⟦...⟧ observations from reformatting
     const toolRegex = new RegExp(
-        `${escapeRegex(toolStartSring)}[\\s\\S]*?${escapeRegex(toolEndString)}`,
+        `(${callStartEsc}[\\s\\S]*?${callEndEsc}|${resStartEsc}[\\s\\S]*?${resEndEsc})`,
         'g'
     );
-    
+
     const ranges: Array<{ start: number; end: number }> = [];
-    
-    // ✅ FIX: Separated assignment from condition
     let match: RegExpExecArray | null = toolRegex.exec(text);
     while (match !== null) {
         ranges.push({ start: match.index, end: match.index + match[0].length });
         match = toolRegex.exec(text);
     }
-    
+
     return ranges;
 }
 
 export function detectFormatSegments(text: string): DetectedSegment[] {
-    // ✅ Find all tool invocations first
     const toolRanges = findToolRanges(text);
-    
     const allMatches: RawMatch[] = [];
 
     for (const { regex, category, innerGroup } of PATTERNS) {
-        // ✅ FIX: Separated assignment from condition
         let match: RegExpExecArray | null = regex.exec(text);
 
         while (match !== null) {
@@ -105,10 +110,9 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
                 continue;
             }
 
-            // ✅ Skip matches that overlap with tool invocations
             const matchStart = match.index;
             const matchEnd = match.index + match[0].length;
-            
+
             let overlapsWithTool = false;
             for (const range of toolRanges) {
                 if (matchStart < range.end && matchEnd > range.start) {
@@ -116,7 +120,7 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
                     break;
                 }
             }
-            
+
             if (!overlapsWithTool) {
                 allMatches.push({
                     start: match.index,
@@ -126,7 +130,7 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
                     rawMatch: match[0],
                 });
             }
-            
+
             match = regex.exec(text);
         }
     }
@@ -149,12 +153,10 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
     let pos = 0;
 
     for (const match of accepted) {
-        // ✅ Handle gaps between matches, but skip tool ranges
         if (match.start > pos) {
             let gapPos = pos;
-            
+
             while (gapPos < match.start) {
-                // Check if we're entering a tool range
                 let toolRange: { start: number; end: number } | null = null;
                 for (const range of toolRanges) {
                     if (gapPos >= range.start && gapPos < range.end) {
@@ -162,19 +164,17 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
                         break;
                     }
                 }
-                
+
                 if (toolRange) {
-                    // Skip to end of tool range
                     gapPos = toolRange.end;
                 } else {
-                    // Find the end of this plain text segment (either next tool or next match)
                     let segmentEnd = match.start;
                     for (const range of toolRanges) {
                         if (range.start > gapPos && range.start < segmentEnd) {
                             segmentEnd = range.start;
                         }
                     }
-                    
+
                     const plainGap = text.slice(gapPos, segmentEnd);
                     if (plainGap.trim().length > 0) {
                         segments.push({
@@ -185,7 +185,7 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
                             rawMatch: plainGap,
                         });
                     }
-                    
+
                     gapPos = segmentEnd;
                 }
             }
@@ -202,10 +202,9 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
         pos = match.end;
     }
 
-    // ✅ Handle trailing text, but skip tool ranges
     if (pos < text.length) {
         let gapPos = pos;
-        
+
         while (gapPos < text.length) {
             let toolRange: { start: number; end: number } | null = null;
             for (const range of toolRanges) {
@@ -214,19 +213,17 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
                     break;
                 }
             }
-            
+
             if (toolRange) {
-                // Skip to end of tool range
                 gapPos = toolRange.end;
             } else {
-                // Find the end of this plain text segment (either next tool or end of text)
                 let segmentEnd = text.length;
                 for (const range of toolRanges) {
                     if (range.start > gapPos && range.start < segmentEnd) {
                         segmentEnd = range.start;
                     }
                 }
-                
+
                 const trailing = text.slice(gapPos, segmentEnd);
                 if (trailing.trim().length > 0) {
                     segments.push({
@@ -237,7 +234,7 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
                         rawMatch: trailing,
                     });
                 }
-                
+
                 gapPos = segmentEnd;
             }
         }
@@ -354,7 +351,7 @@ export function buildCategoryConversionsWithLearning(
 ): CategoryConversion[] {
     const baseConversions = buildCategoryConversions(segments);
     const engine = getFormatPreferenceEngine();
-    
+
     return baseConversions.map(conv => {
         const seg = segments.find(s => s.category === conv.detected);
         if (seg) {
@@ -376,7 +373,7 @@ export function recordCategoryCorrection(
     if (category === target) return;
     const segments = detectFormatSegments(text);
     const engine = getFormatPreferenceEngine();
-    
+
     for (const seg of segments) {
         if (seg.category === category) {
             const context = engine.extractContext(text, seg.start, seg.end, segments);

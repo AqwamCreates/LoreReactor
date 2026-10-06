@@ -20,7 +20,7 @@ import {
 interface MessageBubbleProps {
     message: ChatMessage | WhisperMessage;
     index: number;
-    viewMode: 'ladder' | 'cinematic' | 'vn';
+    viewMode: 'ladder' | 'cinematic';
     protagonistIds: string[];
     localProtagonistId: string | null;
     editingId: string | null;

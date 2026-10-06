@@ -13,6 +13,7 @@ import { ToolInvocationParser, type ToolInvocation } from './ToolInvocationParse
 import { defaultBudgetData } from '../dictionaries/defaults';
 import { executeTools, formatToolDisplay, type ToolExecutionContext } from './ToolExecutor';
 import { findLatestMessage } from '../utilities/messageLogic';
+import { toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 
 // ─── Result Types ───────────────────────────────────────────────────
 
@@ -68,16 +69,16 @@ export interface TurnExecutionParams {
 export interface ProcessedReplacements {
     rawReplacements: { rawMatch: string; resultText: string }[];
     displayReplacements: { rawMatch: string; displayText: string }[];
-    executionResults: ToolExecutionResult[]; // ✅ NEW: Store full execution results
+    executionResults: ToolExecutionResult[];
 }
 
 // ─── Spacing Sanitizer ──────────────────────────────────────────────
 
 function cleanSpacing(str: string): string {
     return str
-        .replace(/\r\n/g, '\n')       // 1. Normalize Windows line breaks
-        .replace(/\n{3,}/g, '\n\n')   // 2. Collapse 3+ newlines to clean double newlines
-        .replace(/^\n+/, '');         // 3. Trim leading blank lines only
+        .replace(/\r\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/^\n+/, '');
 }
 
 // ─── Dual-Text Tool Processing ──────────────────────────────────────
@@ -102,7 +103,7 @@ async function processToolInvocations(
 
     const rawReplacements: { rawMatch: string; resultText: string }[] = [];
     const displayReplacements: { rawMatch: string; displayText: string }[] = [];
-    const executionResults: ToolExecutionResult[] = []; // ✅ NEW: Collect execution results
+    const executionResults: ToolExecutionResult[] = [];
 
     for (let i = 0; i < enabledInvocations.length; i++) {
         const toolResult = toolResults[i];
@@ -118,7 +119,6 @@ async function processToolInvocations(
             displayText: formatToolDisplay(toolResult, inv.rawMatch, displayMode),
         });
 
-        // ✅ NEW: Store the full execution result for on-the-fly compilation
         executionResults.push({
             rawMatch: inv.rawMatch,
             toolType: toolResult.toolType,
@@ -144,8 +144,8 @@ function applyToolReplacements(
         const { rawMatch, resultText } = replacements.rawReplacements[i];
         const { displayText } = replacements.displayReplacements[i];
 
-        // 1. Raw prompt context: delimited observation boundary (<|tool()|><|result: ...|>)
-        const rawReplacement = `${rawMatch}<|result: ${resultText}|> `;
+        // 1. Raw prompt context: delimited observation boundary (⟪tool()⟫⟦result: ...⟧)
+        const rawReplacement = `${rawMatch}${toolResultStartString}result: ${resultText}${toolResultEndString} `;
         if (currentRaw.includes(rawMatch)) {
             currentRaw = currentRaw.replace(rawMatch, rawReplacement);
         } else {
@@ -196,7 +196,7 @@ function createAccState(initialText: string) {
     let displayAcc = initialText;
     let lastRawLen = 0;
     let pendingInvs: ToolInvocation[] = [];
-    let collectedExecutionResults: ToolExecutionResult[] = []; // ✅ NEW: Track all execution results
+    let collectedExecutionResults: ToolExecutionResult[] = [];
 
     return {
         get: () => ({
@@ -344,7 +344,6 @@ export class CharacterActor {
                         }
 
                         if (incoming.length > 0) {
-                            // Prevent double spaces between badge and incoming text
                             if (acc.display.endsWith(' ') && incoming.startsWith(' ')) {
                                 incoming = incoming.trimStart();
                             }
@@ -452,7 +451,6 @@ export class CharacterActor {
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data, toolContext);
                     if (!toolResult) break;
 
-                    // ✅ Store execution results
                     accState.get().addExecutionResults(toolResult.executionResults);
 
                     applyToolReplacements(accState, toolResult, callbacks);
@@ -516,7 +514,6 @@ export class CharacterActor {
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data, toolContext);
                     if (!toolResult) break;
 
-                    // ✅ Store execution results
                     accState.get().addExecutionResults(toolResult.executionResults);
 
                     applyToolReplacements(accState, toolResult, callbacks);
@@ -557,7 +554,6 @@ export class CharacterActor {
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data, toolContext);
                     if (!toolResult) break;
 
-                    // ✅ Store execution results
                     accState.get().addExecutionResults(toolResult.executionResults);
 
                     applyToolReplacements(accState, toolResult, callbacks);
@@ -583,14 +579,12 @@ export class CharacterActor {
                 updatedData = data;
             } else {
                 targetMessage.textContent = rawText;
-                // Note: processedTextContent is no longer set - compilation happens on-the-fly
-                
-                // ✅ Store all collected tool execution results
+
                 const allExecutionResults = accState.getCollectedExecutionResults();
                 if (allExecutionResults.length > 0) {
                     targetMessage.toolExecutionResults = allExecutionResults;
                 }
-                
+
                 targetMessage.characterExpression = latestExpression ?? undefined;
                 updatedData = addMessageToInteractionData(data, targetMessage);
             }
