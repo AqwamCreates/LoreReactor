@@ -9,7 +9,7 @@ import { detectName } from '../utilities/nameDetection';
 import { getFilteredChatMessages } from '../utilities/promptLogic';
 import { getLocalMessageHistory } from '../utilities/timelineLogic';
 import {
-    computeModulatedRegenAmounts,
+    computeModulatedStaminaRegenationAmounts,
     computeChatStaminaConsumptionCost,
     computeMovementCost
 } from '../utilities/dynamicCharacterLogic';
@@ -155,7 +155,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
         try {
             const currentInteractionData = currentState.interactionData;
 
-            const { chatRegen, actionRegen } = computeModulatedRegenAmounts(activeCharacter, currentInteractionData);
+            const { chatRegen, actionRegen } = computeModulatedStaminaRegenationAmounts(activeCharacter, currentInteractionData);
             if (chatRegen > 0) {
                 generateChatStaminaForInteractionData(currentInteractionData, chatRegen, activeCharacter);
             }

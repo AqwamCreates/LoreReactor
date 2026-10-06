@@ -228,7 +228,7 @@ export function weightedSample<T>(pool: { item: T; weight: number }[]): T | null
 }
 
 /** Time-based stamina regeneration using firstCreatedTimestamp */
-export function computeModulatedRegenAmounts(
+export function computeModulatedStaminaRegenationAmounts(
     character: Character,
     data: InteractionData,
 ): { chatRegen: number; actionRegen: number } {

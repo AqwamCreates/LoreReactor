@@ -9,7 +9,7 @@ import {
     computeChatScore,
     computeActionScore,
     weightedSample,
-    computeModulatedRegenAmounts,
+    computeModulatedStaminaRegenationAmounts,
     computeEffectiveSkip,
     computeChatStaminaConsumptionCost,
     computeMovementCost,
@@ -120,7 +120,7 @@ export async function runTurnSequence(
         const chatRefusedThisIteration = new Set<string>();
 
         for (const char of remaining) {
-            const { chatRegen, actionRegen } = computeModulatedRegenAmounts(char, workingData);
+            const { chatRegen, actionRegen } = computeModulatedStaminaRegenationAmounts(char, workingData);
             if (chatRegen > 0) generateChatStaminaForInteractionData(workingData, chatRegen, char);
             if (actionRegen > 0) generateActionStaminaForInteractionData(workingData, actionRegen, char);
         }
