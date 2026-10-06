@@ -5292,9 +5292,6 @@ body.overlay-mode #root,
     pointer-events: auto;
     cursor: pointer;
 }
-.pip-avatar-img:hover {
-    filter: drop-shadow(0 14px 28px rgba(192, 132, 252, 0.35)) drop-shadow(0 0 10px rgba(192, 132, 252, 0.25));
-}
 .pip-avatar-img.speaking { animation: pip-breathe 3s ease-in-out infinite; }
 @keyframes pip-breathe {
     0%, 100% { transform: translateX(-50%) translateY(0) scale(1); }
