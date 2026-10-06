@@ -2096,7 +2096,7 @@ async function executeScreenshot(
     msg.files.push(dataUrl);
   }
 
-  context?.addToast?.('Screenshot captured and sent to vision model', 'success');
+  context?.addToast?.('Screenshot captured and sent to language model', 'success');
   return {
     toolType: 'screenshot',
     args,
@@ -2137,7 +2137,7 @@ async function executeFrontCamera(
     msg.files.push(dataUrl);
   }
 
-  context?.addToast?.('Front camera snapshot captured and sent to vision model', 'success');
+  context?.addToast?.('Front camera snapshot captured and sent to language model', 'success');
   return {
     toolType: 'front_camera',
     args,
