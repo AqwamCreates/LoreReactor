@@ -22,13 +22,13 @@ export interface HandleServerResponseResult {
 interface EngineDependencies {
     getState: () => any;
     setInteractionData: (d: InteractionData) => void;
-    setStreamingState: (c: Character | undefined, t: string) => void;
+    setStreamingState: (c: Character | null, t: string) => void;
     setBudgetData: (d: BudgetData) => void;
     setStats: (l: any) => void;
     setSelectedCharacterExpression: (e: string) => void;
-    setLastSelectedModelId: (id: string | undefined) => void;
+    setLastSelectedModelId: (id: string | null) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
-    requestBorrowedModel?: () => Promise<LanguageModel | undefined>;
+    requestBorrowedModel?: () => Promise<LanguageModel | null>;
     getToolContext?: () => ToolExecutionContext; // ✅ ADD THIS
 }
 
@@ -44,18 +44,18 @@ export function useChatEngine(deps: EngineDependencies) {
         character: Character, 
         signal: AbortSignal,
         onToken?: (text: string) => void,
-        strategyOverride?: BudgetStrategy | undefined,
+        strategyOverride?: BudgetStrategy | null,
         existingCharacterText?: string,
         allPromptBlocks?: PromptBlock[],
         metadata?: RequestMetadata,
-    ): Promise<HandleServerResponseResult | undefined> => {
+    ): Promise<HandleServerResponseResult | null> => {
         const selectedModel = getState().selectedModel;
         const runningModels = getState().runningModels;
         const activeStrategy = getState().activeStrategy;
 
         const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
 
-        let borrowedModel: LanguageModel | undefined = undefined;
+        let borrowedModel: LanguageModel | null = null;
         if (requestBorrowedModel) {
             try {
                 borrowedModel = await requestBorrowedModel();
@@ -98,12 +98,12 @@ export function useChatEngine(deps: EngineDependencies) {
 
         if ('error' in outcome) {
             const { error } = outcome;
-            if (error.type === 'aborted') return undefined;
+            if (error.type === 'aborted') return null;
             if (error.type === 'network') addToast('⚠️ Backend Connection Failed.', 'error');
             else if (error.type === 'no_model') addToast(error.message, 'error');
             else if (error.type === 'budget') addToast(error.message, 'error');
             else addToast(`Inference Error: ${error.message}`, 'error');
-            return undefined;
+            return null;
         }
 
         const { result } = outcome;
@@ -163,7 +163,7 @@ export function useChatEngine(deps: EngineDependencies) {
             initialData,
             executor,
             signal, 
-            (character) => setStreamingState(character ?? undefined, ''),
+            (character) => setStreamingState(character ?? null, ''),
             (data) => setInteractionData(data)
         );
 
@@ -180,7 +180,7 @@ export function useChatEngine(deps: EngineDependencies) {
 
     const startAutonomousMode = useCallback((
         checkCanAct: () => boolean,
-        getData: () => InteractionData | undefined,
+        getData: () => InteractionData | null,
         setData: (data: InteractionData) => void,
         resetStream: () => void
     ) => {
@@ -195,7 +195,7 @@ export function useChatEngine(deps: EngineDependencies) {
             checkCanAct, 
             getData, 
             setData,
-            (character) => setStreamingState(character ?? undefined, '')
+            (character) => setStreamingState(character ?? null, '')
         );
     }, [handleServerResponse, setStreamingState]);
 
