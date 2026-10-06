@@ -3,7 +3,7 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import cors from 'cors';
-import { spawn, spawnSync, execSync, type ChildProcess } from 'node:child_process';
+import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
 import open from 'open';
 import clipboardy from 'clipboardy';
@@ -41,7 +41,7 @@ function bin(name: string): string {
 
 /**
  * Resolve a Python interpreter path inside a backend directory.
- * Checks both direct root and isolated venv locations.
+ * Checks root and venv subdirectories.
  */
 function pythonBin(backendDir: string): string {
   const direct = path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, backendDir, bin('python'));
@@ -109,7 +109,8 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     buildArgs: (modelPath, port, extraArgs) => [
       'start.py', '--model-dir', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
-    healthUrl: (port) => `http://127.0.0.1:${port}/v1/language_models`,
+    // FIX: Standard OpenAI endpoint is /v1/models, NOT /v1/language_models
+    healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'exllamav3'),
     logLabel: 'EXLV3',
     readyPattern: /Uvicorn running/i,
@@ -120,7 +121,8 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     buildArgs: (modelPath, port, extraArgs) => [
       'start.py', '--model-dir', modelPath, '--port', port.toString(), '--host', '0.0.0.0', '--hf-model', ...extraArgs,
     ],
-    healthUrl: (port) => `http://127.0.0.1:${port}/v1/language_models`,
+    // FIX: Standard OpenAI endpoint is /v1/models
+    healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'exllamav3_hf'),
     logLabel: 'EXLV3HF',
     readyPattern: /Uvicorn running/i,
@@ -131,7 +133,8 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     buildArgs: (modelPath, port, extraArgs) => [
       'start.py', '--model-dir', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
-    healthUrl: (port) => `http://127.0.0.1:${port}/v1/language_models`,
+    // FIX: Standard OpenAI endpoint is /v1/models
+    healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'exllamav2'),
     logLabel: 'EXLV2',
     readyPattern: /Uvicorn running/i,
@@ -188,7 +191,8 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     buildArgs: (_modelPath, port, extraArgs) => [
       'server', 'start', '--port', port.toString(), ...extraArgs,
     ],
-    healthUrl: (port) => `http://127.0.0.1:${port}/v1/language_models`,
+    // FIX: Standard OpenAI endpoint is /v1/models
+    healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'lmstudio'),
     logLabel: 'LMS',
     readyPattern: /Server started/i,
@@ -212,7 +216,8 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     buildArgs: (modelPath, port, extraArgs) => [
       '--model-id', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
-    healthUrl: (port) => `http://127.0.0.1:${port}/v1/language_models`,
+    // FIX: Standard OpenAI endpoint is /v1/models
+    healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'mistral-rs'),
     logLabel: 'MRSSV',
     readyPattern: /Started HTTP server/i,
@@ -286,16 +291,15 @@ function broadcastNotify(
     try {
       client.write(payload);
     } catch {
-      notifyClientsClean(client);
+      notifySseClients.delete(client);
     }
   }
 }
 
-function notifyClientsClean(client: express.Response) {
-  notifySseClients.delete(client);
-}
+// FIX: Supports both singular /language_model/notify and plural /language_models/notify
+const NOTIFY_ROUTES = ['/language_models/notify', '/language_model/notify'];
 
-app.get('/language_models/notify', (req, res) => {
+app.get(NOTIFY_ROUTES, (req, res) => {
   if (req.headers.accept?.includes('text/event-stream')) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -304,12 +308,11 @@ app.get('/language_models/notify', (req, res) => {
 
     notifySseClients.add(res);
 
-    // Initial snapshot of active install statuses
     for (const notif of activeNotifications.values()) {
       res.write(`data: ${JSON.stringify(notif)}\n\n`);
     }
 
-    req.on('close', () => notifyClientsClean(res));
+    req.on('close', () => notifySseClients.delete(res));
   } else {
     res.json({
       success: true,
@@ -318,7 +321,7 @@ app.get('/language_models/notify', (req, res) => {
   }
 });
 
-app.post('/language_models/notify', (req, res) => {
+app.post(NOTIFY_ROUTES, (req, res) => {
   const { backend = 'General', status = 'downloading', percent = 0, message = '' } = req.body;
   broadcastNotify(backend, status, percent, message);
   res.json({ success: true });
@@ -386,9 +389,29 @@ function extractArchive(archivePath: string, destDir: string): void {
   }
 }
 
+/** Recursively find and hoist a named binary up to target destination */
+function hoistBinaryIfExists(searchDir: string, binaryName: string, targetDest: string): boolean {
+  if (fs.existsSync(targetDest)) return true;
+
+  function walk(currentDir: string): boolean {
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        if (walk(fullPath)) return true;
+      } else if (entry.name.toLowerCase() === binaryName.toLowerCase()) {
+        fs.copyFileSync(fullPath, targetDest);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  return walk(searchDir);
+}
+
 /**
  * Bootstrap Astral's standalone `uv` executable.
- * Eliminates system Python requirements completely for Python backends.
  */
 async function ensureUv(): Promise<string> {
   const uvDir = path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'tools', 'uv');
@@ -422,16 +445,7 @@ async function ensureUv(): Promise<string> {
   extractArchive(tempArchive, uvDir);
   try { fs.unlinkSync(tempArchive); } catch {}
 
-  // Find extracted uv binary if nested
-  if (!fs.existsSync(uvBinary)) {
-    for (const f of fs.readdirSync(uvDir)) {
-      const nested = path.join(uvDir, f, bin('uv'));
-      if (fs.existsSync(nested)) {
-        fs.copyFileSync(nested, uvBinary);
-        break;
-      }
-    }
-  }
+  hoistBinaryIfExists(uvDir, bin('uv'), uvBinary);
 
   if (!IS_WINDOWS && fs.existsSync(uvBinary)) {
     fs.chmodSync(uvBinary, 0o755);
@@ -445,10 +459,15 @@ async function ensureUv(): Promise<string> {
  * Primary On-Demand Installer Orchestrator
  */
 async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
-  const destDir = path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, BACKEND_CONFIGS[backend].cwd || '');
+  // FIX: config.cwd already contains LOCAL_LANGUAGE_MODEL_BACKENDS_PATH. Do not double-nest!
+  const config = BACKEND_CONFIGS[backend];
+  const destDir = config.cwd
+    ? (path.isAbsolute(config.cwd) ? config.cwd : path.join(ROOT_DIR, config.cwd))
+    : path.dirname(config.binaryPath);
+
   ensureDirectory(destDir);
 
-  log.info(`[AutoInstaller] Initiating on-demand setup for "${backend}"...`);
+  log.info(`[AutoInstaller] Initiating on-demand setup for "${backend}" at ${destDir}...`);
   broadcastNotify(backend, 'downloading', 0, `Initializing setup for ${backend}...`);
 
   // 1. LLAMA.CPP
@@ -459,12 +478,17 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     });
     const release = await releaseRes.json();
     const tag = release.tag_name || 'latest';
-    const tagNorm = tag.replace(/-/g, '_');
 
     let assetPattern = /bin-win-avx2-x64\.zip$/i;
+    let isCudaWindows = false;
+
     if (IS_WINDOWS) {
-      if (detectedGpuVendor === 'nvidia') assetPattern = /bin-win-cuda-.*-x64\.zip$/i;
-      else if (detectedGpuVendor === 'amd' || detectedGpuVendor === 'intel') assetPattern = /bin-win-vulkan-x64\.zip$/i;
+      if (detectedGpuVendor === 'nvidia') {
+        assetPattern = /bin-win-cuda-.*-x64\.zip$/i;
+        isCudaWindows = true;
+      } else if (detectedGpuVendor === 'amd' || detectedGpuVendor === 'intel') {
+        assetPattern = /bin-win-vulkan-x64\.zip$/i;
+      }
     } else if (IS_MACOS) {
       assetPattern = /bin-macos-universal\.tar\.gz$/i;
     } else {
@@ -484,18 +508,27 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       broadcastNotify(backend, 'downloading', pct, `Downloading Llama.cpp (${(loaded / 1048576).toFixed(1)}MB / ${(total / 1048576).toFixed(1)}MB)`);
     });
 
-    broadcastNotify(backend, 'extracting', 95, 'Extracting Llama.cpp binaries...');
+    broadcastNotify(backend, 'extracting', 85, 'Extracting Llama.cpp binaries...');
     extractArchive(tempPath, destDir);
     try { fs.unlinkSync(tempPath); } catch {}
 
-    // Lift nested llama-server binary if extracted in build/bin
-    const binaryName = bin('llama-server');
-    const nestedBinary = path.join(destDir, 'build', 'bin', binaryName);
-    if (fs.existsSync(nestedBinary)) {
-      fs.copyFileSync(nestedBinary, path.join(destDir, binaryName));
+    // FIX: Download companion CUDA DLL package on Windows so llama-server.exe doesn't crash on cudart64
+    if (isCudaWindows) {
+      const cudartAsset = release.assets.find((a: any) => /cudart-llama-bin-win-cuda-.*-x64\.zip$/i.test(a.name));
+      if (cudartAsset?.browser_download_url) {
+        broadcastNotify(backend, 'downloading', 90, 'Downloading NVIDIA CUDA runtime DLLs...');
+        const tempCudaZip = path.join(destDir, `cudart_${Date.now()}.zip`);
+        await downloadFileWithProgress(cudartAsset.browser_download_url, tempCudaZip);
+        extractArchive(tempCudaZip, destDir);
+        try { fs.unlinkSync(tempCudaZip); } catch {}
+      }
     }
-    if (!IS_WINDOWS && fs.existsSync(path.join(destDir, binaryName))) {
-      fs.chmodSync(path.join(destDir, binaryName), 0o755);
+
+    // Hoist llama-server binary to target destination
+    hoistBinaryIfExists(destDir, bin('llama-server'), config.binaryPath);
+
+    if (!IS_WINDOWS && fs.existsSync(config.binaryPath)) {
+      fs.chmodSync(config.binaryPath, 0o755);
     }
   }
 
@@ -516,13 +549,12 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     const asset = release.assets.find((a: any) => assetPattern.test(a.name)) || release.assets[0];
     if (!asset?.browser_download_url) throw new Error('Could not find mistral.rs asset.');
 
-    const targetBinary = path.join(destDir, bin('mistralrs-server'));
-    await downloadFileWithProgress(asset.browser_download_url, targetBinary, (loaded, total) => {
+    await downloadFileWithProgress(asset.browser_download_url, config.binaryPath, (loaded, total) => {
       const pct = Math.round((loaded / total) * 100);
       broadcastNotify(backend, 'downloading', pct, `Downloading mistral.rs binary: ${pct}%`);
     });
 
-    if (!IS_WINDOWS) fs.chmodSync(targetBinary, 0o755);
+    if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
   }
 
   // 3. OLLAMA
@@ -537,10 +569,11 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       });
       extractArchive(tempZip, destDir);
       try { fs.unlinkSync(tempZip); } catch {}
+      hoistBinaryIfExists(destDir, bin('ollama'), config.binaryPath);
     } else {
       execSync('curl -fsSL https://ollama.com/install.sh | sh', { stdio: 'inherit' });
       const systemOllama = execSync('which ollama').toString().trim();
-      if (systemOllama) fs.copyFileSync(systemOllama, path.join(destDir, 'ollama'));
+      if (systemOllama) fs.copyFileSync(systemOllama, config.binaryPath);
     }
   }
 
@@ -550,7 +583,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     execSync('npx --yes lmstudio install-cli', { stdio: 'pipe' });
     const whichLms = IS_WINDOWS ? execSync('where lms').toString().split('\r\n')[0] : execSync('which lms').toString().trim();
     if (whichLms && fs.existsSync(whichLms)) {
-      fs.copyFileSync(whichLms, path.join(destDir, bin('lms')));
+      fs.copyFileSync(whichLms, config.binaryPath);
     }
   }
 
@@ -564,12 +597,11 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     const asset = release.assets.find((a: any) => /Linux-x86_64|Darwin-arm64|windows/i.test(a.name));
     if (!asset) throw new Error('LocalAI prebuilt asset not found.');
 
-    const target = path.join(destDir, bin('local-ai'));
-    await downloadFileWithProgress(asset.browser_download_url, target, (loaded, total) => {
+    await downloadFileWithProgress(asset.browser_download_url, config.binaryPath, (loaded, total) => {
       const pct = Math.round((loaded / total) * 100);
       broadcastNotify(backend, 'downloading', pct, `Downloading LocalAI: ${pct}%`);
     });
-    if (!IS_WINDOWS) fs.chmodSync(target, 0o755);
+    if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
   }
 
   // 6. EXLLAMAV2 / EXLLAMAV3 / EXLLAMAV3 HF (Headless via TabbyAPI + uv)
@@ -586,7 +618,9 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     const extractedFolder = path.join(destDir, 'tabbyAPI-main');
     if (fs.existsSync(extractedFolder)) {
       for (const item of fs.readdirSync(extractedFolder)) {
-        fs.renameSync(path.join(extractedFolder, item), path.join(destDir, item));
+        const src = path.join(extractedFolder, item);
+        const dst = path.join(destDir, item);
+        if (!fs.existsSync(dst)) fs.renameSync(src, dst);
       }
       try { fs.rmdirSync(extractedFolder); } catch {}
     }
@@ -598,7 +632,6 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     broadcastNotify(backend, 'installing', 60, 'Installing ExLlama runtime dependencies (PyTorch/CUDA wheels)...');
     execSync(`"${uvBin}" pip --python "${path.join(destDir, 'venv')}" install -r "${path.join(destDir, 'requirements.txt')}"`, { stdio: 'pipe' });
 
-    // Link Python directly inside backend directory root
     const venvPy = IS_WINDOWS ? path.join(destDir, 'venv', 'Scripts', 'python.exe') : path.join(destDir, 'venv', 'bin', 'python');
     const rootPy = path.join(destDir, bin('python'));
     if (fs.existsSync(venvPy) && !fs.existsSync(rootPy)) {
@@ -613,7 +646,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe' });
     execSync(`"${uvBin}" venv "${path.join(destDir, 'venv')}" --python 3.11`, { stdio: 'pipe' });
 
-    broadcastNotify(backend, 'installing', 50, 'Fetching vLLM high-throughput engine wheels (this may take a moment)...');
+    broadcastNotify(backend, 'installing', 50, 'Fetching vLLM high-throughput engine wheels...');
     execSync(`"${uvBin}" pip --python "${path.join(destDir, 'venv')}" install vllm`, { stdio: 'pipe' });
 
     const venvPy = IS_WINDOWS ? path.join(destDir, 'venv', 'Scripts', 'python.exe') : path.join(destDir, 'venv', 'bin', 'python');
@@ -652,13 +685,11 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     broadcastNotify(backend, 'downloading', 40, `Pulling container image: ${image}...`);
     execSync(`docker pull ${image}`, { stdio: 'inherit' });
 
-    // Generate a lightweight executable script wrapper for uniform execution
-    const wrapperPath = BACKEND_CONFIGS[backend].binaryPath;
     if (IS_WINDOWS) {
-      fs.writeFileSync(wrapperPath, `@echo off\ndocker run --gpus all --rm ${image} %*\n`, 'utf-8');
+      fs.writeFileSync(config.binaryPath, `@echo off\ndocker run --gpus all --rm ${image} %*\n`, 'utf-8');
     } else {
-      fs.writeFileSync(wrapperPath, `#!/bin/sh\nexec docker run --gpus all --rm ${image} "$@"\n`, 'utf-8');
-      fs.chmodSync(wrapperPath, 0o755);
+      fs.writeFileSync(config.binaryPath, `#!/bin/sh\nexec docker run --gpus all --rm ${image} "$@"\n`, 'utf-8');
+      fs.chmodSync(config.binaryPath, 0o755);
     }
   }
 
@@ -695,7 +726,6 @@ async function waitForModelReady(healthUrl: string, timeoutMs = 60000): Promise<
   return false;
 }
 
-/** Validate auxiliary file paths in args (--mmproj, --lora, -md) for llama.cpp-style backends */
 function validateAuxPaths(args: string[]): void {
   const auxFlags = ['--mmproj', '--lora', '-md'];
   for (const flag of auxFlags) {
@@ -719,35 +749,14 @@ let vigemBus: any = null;
 let x360Controller: any = null;
 let vigemInitError: string | null = null;
 
-// Valid native button names on controller.button for X360Controller
 const X360_BUTTON_MAP: Record<string, string> = {
-  'A': 'A',
-  'B': 'B',
-  'X': 'X',
-  'Y': 'Y',
-  'LB': 'LEFT_SHOULDER',
-  'L1': 'LEFT_SHOULDER',
-  'LEFT_SHOULDER': 'LEFT_SHOULDER',
-  'RB': 'RIGHT_SHOULDER',
-  'R1': 'RIGHT_SHOULDER',
-  'RIGHT_SHOULDER': 'RIGHT_SHOULDER',
-  'START': 'START',
-  'MENU': 'START',
-  'BACK': 'BACK',
-  'SELECT': 'BACK',
-  'VIEW': 'BACK',
-  'GUIDE': 'GUIDE',
-  'HOME': 'GUIDE',
-  'LS': 'LEFT_THUMB',
-  'L3': 'LEFT_THUMB',
-  'L_STICK': 'LEFT_THUMB',
-  'LEFT_STICK': 'LEFT_THUMB',
-  'LEFT_THUMB': 'LEFT_THUMB',
-  'RS': 'RIGHT_THUMB',
-  'R3': 'RIGHT_THUMB',
-  'R_STICK': 'RIGHT_THUMB',
-  'RIGHT_STICK': 'RIGHT_THUMB',
-  'RIGHT_THUMB': 'RIGHT_THUMB',
+  'A': 'A', 'B': 'B', 'X': 'X', 'Y': 'Y',
+  'LB': 'LEFT_SHOULDER', 'L1': 'LEFT_SHOULDER', 'LEFT_SHOULDER': 'LEFT_SHOULDER',
+  'RB': 'RIGHT_SHOULDER', 'R1': 'RIGHT_SHOULDER', 'RIGHT_SHOULDER': 'RIGHT_SHOULDER',
+  'START': 'START', 'MENU': 'START', 'BACK': 'BACK', 'SELECT': 'BACK', 'VIEW': 'BACK',
+  'GUIDE': 'GUIDE', 'HOME': 'GUIDE',
+  'LS': 'LEFT_THUMB', 'L3': 'LEFT_THUMB', 'L_STICK': 'LEFT_THUMB', 'LEFT_STICK': 'LEFT_THUMB', 'LEFT_THUMB': 'LEFT_THUMB',
+  'RS': 'RIGHT_THUMB', 'R3': 'RIGHT_THUMB', 'R_STICK': 'RIGHT_THUMB', 'RIGHT_STICK': 'RIGHT_THUMB', 'RIGHT_THUMB': 'RIGHT_THUMB',
 };
 
 const DPAD_DIRECTIONS = new Set([
@@ -764,9 +773,7 @@ function getOrInitVirtualController(): { controller: any; error: string | null }
   }
 
   try {
-    if (!ViGEmClient) {
-      ViGEmClient = require('vigemclient');
-    }
+    if (!ViGEmClient) ViGEmClient = require('vigemclient');
     if (!vigemBus) {
       vigemBus = new ViGEmClient();
       const connectErr = vigemBus.connect();
@@ -836,14 +843,14 @@ function detectGpuVendor(): GpuVendor {
     try {
       execSync(cmd, { stdio: 'pipe', timeout: 3000 });
       return vendor;
-    } catch { /* not available */ }
+    } catch {}
   }
 
   if (IS_MACOS) {
     try {
       execSync('system_profiler SPDisplaysDataType', { stdio: 'pipe', timeout: 3000 });
       return 'apple';
-    } catch { /* not available */ }
+    } catch {}
   }
 
   return 'unknown';
@@ -935,35 +942,28 @@ function queryIntelGpu(): GpuStatus | null {
 
 function queryAppleGpu(): GpuStatus | null {
   try {
-    const raw = execSync(
-      'ioreg -r -c AGXAccelerator -d 1',
-      { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' },
-    ).trim();
-
+    const raw = execSync('ioreg -r -c AGXAccelerator -d 1', { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' }).trim();
     const nameMatch = raw.match(/"IOClass"\s*=\s*"([^"]+)"/);
     const gpuName = nameMatch ? nameMatch[1] : 'Apple GPU';
 
     let utilization = 0;
     let power: number | null = null;
     try {
-      const pmRaw = execSync(
-        'powermetrics --samplers gpu_power -n 1 -i 500 --format json',
-        { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' },
-      ).trim();
+      const pmRaw = execSync('powermetrics --samplers gpu_power -n 1 -i 500 --format json', { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' }).trim();
       const pmData = JSON.parse(pmRaw);
       const gpu = pmData.gpu_power?.[0] || pmData.gpu;
       if (gpu) {
         utilization = gpu.gpu_busy_pct ?? gpu.utilization ?? 0;
         power = gpu.gpu_power_mw ? gpu.gpu_power_mw / 1000 : null;
       }
-    } catch { /* ignore */ }
+    } catch {}
 
     let memTotal = 0;
     try {
       const sysctlRaw = execSync('sysctl hw.memsize', { stdio: 'pipe', timeout: 1000, encoding: 'utf-8' }).trim();
       const memMatch = sysctlRaw.match(/(\d+)/);
       if (memMatch) memTotal = Math.round(Number.parseInt(memMatch[1], 10) / (1024 * 1024));
-    } catch { /* ignore */ }
+    } catch {}
 
     return {
       vendor: 'apple',
@@ -997,16 +997,10 @@ const GPU_QUERY_MIN_INTERVAL_MS = 1000;
 // ─── Media file detection helpers ────────────────────────────────────
 
 const MEDIA_DIR_PREFIXES = [
-  'character_images/',
-  'character_voices/',
-  'multiplayer_character_images/',
-  'multiplayer_character_voices/',
-  'context_images/',
-  'location_images/',
-  'audio_track_audio/',
-  'prompt_block_images/',
-  'factorization_machine_data/',
-  'screenshots/',
+  'character_images/', 'character_voices/',
+  'multiplayer_character_images/', 'multiplayer_character_voices/',
+  'context_images/', 'location_images/', 'audio_track_audio/',
+  'prompt_block_images/', 'factorization_machine_data/', 'screenshots/',
 ];
 
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
@@ -1019,14 +1013,9 @@ function isMediaUploadPath(relativePath: string): boolean {
 
 function getMimeType(ext: string): string {
   const mimeMap: Record<string, string> = {
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.webp': 'image/webp',
-    '.ogg': 'audio/ogg',
-    '.mp3': 'audio/mpeg',
-    '.wav': 'audio/wav',
-    '.flac': 'audio/flac',
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg',
+    '.wav': 'audio/wav', '.flac': 'audio/flac',
   };
   return mimeMap[ext] || 'application/octet-stream';
 }
@@ -1034,24 +1023,11 @@ function getMimeType(ext: string): string {
 // ─── Startup Data Sanitizer ──────────────────────────────────────────
 
 const MANIFEST_DIRS = [
-  'character_data',
-  'multiplayer_character_data',
-  'sampler_data',
-  'context_data',
-  'location_data',
-  'language_model_data',
-  'stop_pattern_data',
-  'interaction_messages',
-  'interaction_data',
-  'budget_strategies',
-  'profile_data',
-  'world_data',
-  'webpage_data',
-  'memory_data',
-  'audio_track_data',
-  'prompt_block_data',
-  'account_data',
-  'multiplayer_data',
+  'character_data', 'multiplayer_character_data', 'sampler_data', 'context_data',
+  'location_data', 'model_data', 'stop_pattern_data', 'interaction_messages',
+  'interaction_data', 'budget_strategies', 'profile_data', 'world_data',
+  'webpage_data', 'memory_data', 'audio_track_data', 'prompt_block_data',
+  'account_data', 'multiplayer_data',
 ];
 
 function sanitizeManifestDir(dirName: string): number {
@@ -1059,23 +1035,17 @@ function sanitizeManifestDir(dirName: string): number {
   const manifestPath = path.join(dirPath, 'manifest.json');
 
   if (!fs.existsSync(dirPath)) {
-    try {
-      fs.mkdirSync(dirPath, { recursive: true });
-      log.info(`Created directory: ${dirPath}`);
-    } catch { /* ignore */ }
+    try { fs.mkdirSync(dirPath, { recursive: true }); log.info(`Created directory: ${dirPath}`); } catch {}
   }
 
   if (!fs.existsSync(manifestPath)) {
-    try {
-      fs.writeFileSync(manifestPath, '[]', 'utf-8');
-    } catch { /* ignore */ }
+    try { fs.writeFileSync(manifestPath, '[]', 'utf-8'); } catch {}
     return 0;
   }
 
   try {
     const raw = fs.readFileSync(manifestPath, 'utf-8');
     const manifest: unknown = JSON.parse(raw);
-
     if (!Array.isArray(manifest)) return 0;
 
     const validIds: string[] = [];
@@ -1083,8 +1053,7 @@ function sanitizeManifestDir(dirName: string): number {
 
     for (const entry of manifest) {
       const id = typeof entry === 'string' ? entry : String(entry);
-      const filePath = path.join(dirPath, `${id}.json`);
-      if (fs.existsSync(filePath)) {
+      if (fs.existsSync(path.join(dirPath, `${id}.json`))) {
         validIds.push(id);
       } else {
         removedCount++;
@@ -1095,7 +1064,6 @@ function sanitizeManifestDir(dirName: string): number {
       fs.writeFileSync(manifestPath, JSON.stringify(validIds, null, 2), 'utf-8');
       log.warn(`Sanitized ${dirName}/manifest.json: removed ${removedCount} orphaned entr${removedCount === 1 ? 'y' : 'ies'}`);
     }
-
     return removedCount;
   } catch (e) {
     log.warn(`Failed to sanitize ${dirName}/manifest.json: ${(e as Error).message}`);
@@ -1106,7 +1074,6 @@ function sanitizeManifestDir(dirName: string): number {
 function sanitizeOrphanedMessages(): number {
   const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
   const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
-
   if (!fs.existsSync(messagesDir)) return 0;
 
   const referencedMessageIds = new Set<string>();
@@ -1117,7 +1084,6 @@ function sanitizeOrphanedMessages(): number {
       try {
         const raw = fs.readFileSync(path.join(chatsDir, file), 'utf-8');
         const chat = JSON.parse(raw);
-
         if (chat.interactionHistories && typeof chat.interactionHistories === 'object') {
           for (const locId in chat.interactionHistories) {
             const msgIds = chat.interactionHistories[locId];
@@ -1128,7 +1094,7 @@ function sanitizeOrphanedMessages(): number {
             }
           }
         }
-      } catch { /* skip */ }
+      } catch {}
     }
   }
 
@@ -1138,10 +1104,7 @@ function sanitizeOrphanedMessages(): number {
   for (const file of messageFiles) {
     const msgId = file.replace(/\.json$/, '');
     if (!referencedMessageIds.has(msgId)) {
-      try {
-        fs.unlinkSync(path.join(messagesDir, file));
-        orphanedCount++;
-      } catch { /* skip */ }
+      try { fs.unlinkSync(path.join(messagesDir, file)); orphanedCount++; } catch {}
     }
   }
 
@@ -1151,18 +1114,15 @@ function sanitizeOrphanedMessages(): number {
       const raw = fs.readFileSync(messagesManifestPath, 'utf-8');
       const manifest: unknown = JSON.parse(raw);
       if (Array.isArray(manifest)) {
-        const cleaned = manifest.filter((id: unknown) =>
-          typeof id === 'string' && referencedMessageIds.has(id)
-        );
+        const cleaned = manifest.filter((id: unknown) => typeof id === 'string' && referencedMessageIds.has(id));
         fs.writeFileSync(messagesManifestPath, JSON.stringify(cleaned, null, 2), 'utf-8');
       }
-    } catch { /* skip */ }
+    } catch {}
   }
 
   if (orphanedCount > 0) {
     log.warn(`Sanitized interaction_messages/: removed ${orphanedCount} orphaned message file${orphanedCount === 1 ? '' : 's'}`);
   }
-
   return orphanedCount;
 }
 
@@ -1177,33 +1137,28 @@ function sanitizeHollowMessages(): number {
     try {
       const raw = fs.readFileSync(path.join(messagesDir, file), 'utf-8');
       const msg = JSON.parse(raw);
-
       if (msg.messageType === 'chat' && (!msg.textContent || !String(msg.textContent).trim())) {
         fs.unlinkSync(path.join(messagesDir, file));
         hollowCount++;
       }
-    } catch { /* skip */ }
+    } catch {}
   }
 
   if (hollowCount > 0) {
     log.warn(`Sanitized interaction_messages/: removed ${hollowCount} hollow message file${hollowCount === 1 ? '' : 's'}`);
   }
-
   return hollowCount;
 }
 
 function sanitizeChatHistories(): number {
   const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
   const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
-
   if (!fs.existsSync(chatsDir)) return 0;
 
   const existingMessageIds = new Set<string>();
   if (fs.existsSync(messagesDir)) {
     const msgFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
-    for (const f of msgFiles) {
-      existingMessageIds.add(f.replace(/\.json$/, ''));
-    }
+    for (const f of msgFiles) existingMessageIds.add(f.replace(/\.json$/, ''));
   }
 
   const chatFiles = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
@@ -1225,10 +1180,7 @@ function sanitizeChatHistories(): number {
               (id: unknown) => typeof id === 'string' && existingMessageIds.has(id)
             );
             const diff = originalLength - chat.interactionHistories[locId].length;
-            if (diff > 0) {
-              pruned += diff;
-              changed = true;
-            }
+            if (diff > 0) { pruned += diff; changed = true; }
           }
         }
         if (changed) {
@@ -1236,37 +1188,28 @@ function sanitizeChatHistories(): number {
           totalPruned += pruned;
         }
       }
-    } catch { /* skip */ }
+    } catch {}
   }
 
   if (totalPruned > 0) {
     log.warn(`Sanitized chat histories: pruned ${totalPruned} dangling message reference${totalPruned === 1 ? '' : 's'}`);
   }
-
   return totalPruned;
 }
 
 function runStartupSanitization(): void {
   log.info('Running startup data sanitization...');
-
   let totalManifestOrphans = 0;
-  for (const dir of MANIFEST_DIRS) {
-    totalManifestOrphans += sanitizeManifestDir(dir);
-  }
+  for (const dir of MANIFEST_DIRS) totalManifestOrphans += sanitizeManifestDir(dir);
 
   const hollowMessages = sanitizeHollowMessages();
   const orphanedMessages = sanitizeOrphanedMessages();
   const prunedReferences = sanitizeChatHistories();
 
   sanitizeManifestDir('interaction_messages');
-
   const totalCleaned = totalManifestOrphans + hollowMessages + orphanedMessages + prunedReferences;
   if (totalCleaned > 0) {
-    log.success(
-      `Startup sanitization complete: ${totalCleaned} issue${totalCleaned === 1 ? '' : 's'} fixed ` +
-      `(${totalManifestOrphans} manifest orphans, ${hollowMessages} hollow messages, ` +
-      `${orphanedMessages} unreferenced messages, ${prunedReferences} dangling references)`
-    );
+    log.success(`Startup sanitization complete: ${totalCleaned} issues fixed.`);
   } else {
     log.info('Startup sanitization: data is clean.');
   }
@@ -1280,21 +1223,14 @@ function createSnippet(text: string, query: string, radius = 50): string {
 
   const start = Math.max(0, idx - radius);
   const end = Math.min(text.length, idx + query.length + radius);
-
-  const prefix = start > 0 ? '...' : '';
-  const suffix = end < text.length ? '...' : '';
-
-  return `${prefix}${text.slice(start, end).trim()}${suffix}`;
+  return `${start > 0 ? '...' : ''}${text.slice(start, end).trim()}${end < text.length ? '...' : ''}`;
 }
 
-// --- /search Route ---
 app.get('/search', async (req, response) => {
   const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   const limit = Math.min(Number.parseInt(String(req.query.limit || '40'), 10), 100);
 
-  if (!query || query.length <= 0) {
-    return response.json({ query, results: [], count: 0, durationMs: 0 });
-  }
+  if (!query) return response.json({ query, results: [], count: 0, durationMs: 0 });
 
   const startTime = Date.now();
   const lowerQuery = query.toLowerCase();
@@ -1325,106 +1261,77 @@ app.get('/search', async (req, response) => {
               for (const msgId of msgIds) {
                 if (typeof msgId === 'string') {
                   let list = messageToChatsMap.get(msgId);
-                  if (!list) {
-                    list = [];
-                    messageToChatsMap.set(msgId, list);
-                  }
-                  if (!list.some(c => c.chatId === chatId)) {
-                    list.push({ chatId, chatName });
-                  }
+                  if (!list) { list = []; messageToChatsMap.set(msgId, list); }
+                  if (!list.some(c => c.chatId === chatId)) list.push({ chatId, chatName });
                 }
               }
             }
           }
         }
-      } catch { /* skip */ }
+      } catch {}
     }
   }
 
   const messageResults: Array<{
-    type: 'message';
-    id: string;
-    chats: Array<{ chatId: string; chatName: string }>;
-    characterId?: string;
-    snippet: string;
-    timestamp: number;
+    type: 'message'; id: string; chats: Array<{ chatId: string; chatName: string }>;
+    characterId?: string; snippet: string; timestamp: number;
   }> = [];
 
   if (fs.existsSync(messagesDir)) {
     const msgFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
-
     for (const file of msgFiles) {
       if (messageResults.length >= limit) break;
-
       try {
         const filePath = path.join(messagesDir, file);
         const raw = fs.readFileSync(filePath, 'utf-8');
-
         if (raw.toLowerCase().includes(lowerQuery)) {
           const msg = JSON.parse(raw);
           const msgId = file.replace(/\.json$/, '');
           const textContent = msg.textContent || '';
-
           if (textContent.toLowerCase().includes(lowerQuery)) {
-            const containingChats = messageToChatsMap.get(msgId) || [];
-
             messageResults.push({
               type: 'message',
               id: msgId,
-              chats: containingChats,
+              chats: messageToChatsMap.get(msgId) || [],
               characterId: msg.characterId,
               snippet: createSnippet(textContent, query),
               timestamp: msg.lastUpdatedTimestamp || msg.firstCreatedTimestamp || 0,
             });
           }
         }
-      } catch { /* skip */ }
+      } catch {}
     }
   }
 
-  const durationMs = Date.now() - startTime;
   const allResults = [...chatResults, ...messageResults].slice(0, limit);
-
-  log.info(`Search for "${query}" completed in ${durationMs}ms with ${allResults.length} result(s)`);
-  response.json({ query, results: allResults, count: allResults.length, durationMs });
+  response.json({ query, results: allResults, count: allResults.length, durationMs: Date.now() - startTime });
 });
 
 // --- /user_data routes ---
 app.use('/user_data', (req, response) => {
   const relativePath = req.url?.startsWith('/') ? req.url?.slice(1) : req.url;
   if (!relativePath || relativePath.includes('..')) {
-    log.warn(`Blocked suspicious path attempt: ${relativePath}`);
     return response.status(403).json({ error: 'Invalid path structure' });
   }
 
   const filePath  = path.join(ROOT_DIR, 'user_data', relativePath);
   const directory = path.dirname(filePath);
 
-  const originalStatus = response.status.bind(response);
-  response.status = (code: number) => {
-    if ((req.method === 'GET' || req.method === 'HEAD') && code >= 400) log.reqError(req.method, req.url || '/', code);
-    return originalStatus(code);
-  };
-
   if (req.method === 'HEAD') {
     if (!fs.existsSync(filePath)) {
       for (const ext of ALL_MEDIA_EXTENSIONS) {
         if (fs.existsSync(filePath + ext)) {
           response.setHeader('Content-Type', getMimeType(ext));
-          response.status(200).end();
-          return;
+          return response.status(200).end();
         }
       }
       return response.status(404).end();
     }
-
     fs.stat(filePath, (error, stats) => {
       if (error) return response.status(500).end();
       response.setHeader('Content-Length', stats.size);
       const ext = path.extname(filePath).toLowerCase();
-      if (ALL_MEDIA_EXTENSIONS.includes(ext)) {
-        response.setHeader('Content-Type', getMimeType(ext));
-      }
+      if (ALL_MEDIA_EXTENSIONS.includes(ext)) response.setHeader('Content-Type', getMimeType(ext));
       response.status(200).end();
     });
     return;
@@ -1436,43 +1343,26 @@ app.use('/user_data', (req, response) => {
         const withExt = filePath + ext;
         if (fs.existsSync(withExt)) {
           response.setHeader('Content-Type', getMimeType(ext));
-          fs.readFile(withExt, (ie, buf) => {
-            if (ie) return response.status(500).send('Media Read Error');
-            response.send(buf);
-          });
-          return;
+          return fs.readFile(withExt, (ie, buf) => ie ? response.status(500).send('Media Read Error') : response.send(buf));
         }
       }
-      log.reqError('GET', req.url || '/', 404);
       return response.status(404).json({ error: 'Resource not found' });
     }
     fs.stat(filePath, (error, stats) => {
-      if (error) { log.reqError('GET', req.url || '/', 500); return response.status(500).json({ error: 'FS Error' }); }
+      if (error) return response.status(500).json({ error: 'FS Error' });
       if (stats.isDirectory()) {
         const manifestPath = path.join(filePath, 'manifest.json');
-        if (!fs.existsSync(manifestPath)) {
-          try {
-            fs.writeFileSync(manifestPath, '[]', 'utf-8');
-          } catch { /* ignore */ }
-        }
-        fs.readdir(filePath, (error, files) => {
-          if (error) { log.reqError('GET', req.url || '/', 500); return response.status(500).json({ error: 'Directory Read Error' }); }
-          response.json(files);
-        });
+        if (!fs.existsSync(manifestPath)) { try { fs.writeFileSync(manifestPath, '[]', 'utf-8'); } catch {} }
+        fs.readdir(filePath, (err, files) => err ? response.status(500).json({ error: 'Read Error' }) : response.json(files));
       } else {
         const ext = path.extname(filePath).toLowerCase();
         if (ALL_MEDIA_EXTENSIONS.includes(ext)) {
           response.setHeader('Content-Type', getMimeType(ext));
-          fs.readFile(filePath, (ie, buf) => {
-            if (ie) { log.reqError('GET', req.url || '/', 500); return response.status(500).send('Media Read Error'); }
-            response.send(buf);
-          });
+          fs.readFile(filePath, (ie, buf) => ie ? response.status(500).send('Media Read Error') : response.send(buf));
         } else {
-          fs.readFile(filePath, 'utf8', (error, data) => {
-            if (error) { log.reqError('GET', req.url || '/', 500); return response.status(500).json({ error: 'Read Error' }); }
-            if (ext === '.json') {
-              response.setHeader('Content-Type', 'application/json');
-            }
+          fs.readFile(filePath, 'utf8', (err, data) => {
+            if (err) return response.status(500).json({ error: 'Read Error' });
+            if (ext === '.json') response.setHeader('Content-Type', 'application/json');
             response.send(data);
           });
         }
@@ -1483,72 +1373,43 @@ app.use('/user_data', (req, response) => {
 
   if (req.method === 'PUT') {
     if (!fs.existsSync(directory)) {
-      try {
-        fs.mkdirSync(directory, { recursive: true });
-        log.success(`Created directory: ${directory}`);
-      } catch (e: unknown) {
-        return response.status(500).json({
-          error: 'Mkdir Failed',
-          details: e instanceof Error ? e.message : 'Unknown error',
-        });
+      try { fs.mkdirSync(directory, { recursive: true }); } catch (e: any) {
+        return response.status(500).json({ error: 'Mkdir Failed', details: e.message });
       }
     }
     const body: unknown = req.body;
-    const isMediaUpload = isMediaUploadPath(relativePath);
-    const base64 =
-      typeof body === 'object' && body !== null && 'base64' in body && typeof (body as Record<string, unknown>).base64 === 'string'
-        ? (body as Record<string, string>).base64
-        : undefined;
+    const base64 = typeof body === 'object' && body !== null && 'base64' in body && typeof (body as any).base64 === 'string'
+      ? (body as any).base64 : undefined;
 
-    if (isMediaUpload && base64) {
+    if (isMediaUploadPath(relativePath) && base64) {
       try {
         const buffer = Buffer.from(base64.replace(/^data:[^;]+;base64,/, ''), 'base64');
-        fs.writeFile(filePath, buffer, (error) =>
-          error ? response.status(500).json({ error: 'Write Media Failed' }) : response.json({ success: true }),
-        );
-        return;
-      } catch {
-        return response.status(400).json({ error: 'Invalid Base64' });
-      }
+        return fs.writeFile(filePath, buffer, err => err ? response.status(500).json({ error: 'Write Media Failed' }) : response.json({ success: true }));
+      } catch { return response.status(400).json({ error: 'Invalid Base64' }); }
     }
 
-    fs.writeFile(filePath, JSON.stringify(body, null, 2), (error) =>
-      error ? response.status(500).json({ error: 'Write JSON Failed' }) : response.json({ success: true }),
-    );
+    fs.writeFile(filePath, JSON.stringify(body, null, 2), err => err ? response.status(500).json({ error: 'Write JSON Failed' }) : response.json({ success: true }));
     return;
   }
 
   if (req.method === 'DELETE') {
     fs.unlink(filePath, (error) => {
       if (error && error.code !== 'ENOENT') return response.status(500).json({ error: 'Delete Failed' });
-
       const relativeDir = path.dirname(relativePath);
       const fileName = path.basename(filePath);
-
       if (MANIFEST_DIRS.includes(relativeDir) && fileName.endsWith('.json') && fileName !== 'manifest.json') {
         const id = fileName.replace(/\.json$/, '');
         const manifestPath = path.join(directory, 'manifest.json');
-
         if (fs.existsSync(manifestPath)) {
           try {
-            const raw = fs.readFileSync(manifestPath, 'utf-8');
-            const manifest: unknown = JSON.parse(raw);
+            const manifest: unknown = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
             if (Array.isArray(manifest)) {
-              const cleaned = manifest.filter((entry: unknown) => {
-                const entryId = typeof entry === 'string' ? entry : String(entry);
-                return entryId !== id;
-              });
-              if (cleaned.length !== manifest.length) {
-                fs.writeFileSync(manifestPath, JSON.stringify(cleaned, null, 2), 'utf-8');
-                log.info(`Removed ${id} from ${relativeDir}/manifest.json`);
-              }
+              const cleaned = manifest.filter(entry => String(entry) !== id);
+              fs.writeFileSync(manifestPath, JSON.stringify(cleaned, null, 2), 'utf-8');
             }
-          } catch (e) {
-            log.warn(`Failed to update ${relativeDir}/manifest.json: ${(e as Error).message}`);
-          }
+          } catch {}
         }
       }
-
       response.json({ success: true });
     });
     return;
@@ -1557,9 +1418,13 @@ app.use('/user_data', (req, response) => {
   response.status(405).json({ error: 'Method Not Allowed' });
 });
 
-// --- Language Model Management ---
+// --- Language Model Management (Aliased for /language_models and legacy /models) ---
 
-app.get('/language_models/status', (_req, response) => {
+const STATUS_ROUTES = ['/language_models/status', '/models/status'];
+const LOAD_ROUTES   = ['/language_models/load', '/models/load'];
+const UNLOAD_ROUTES = ['/language_models/unload', '/models/unload'];
+
+app.get(STATUS_ROUTES, (_req, response) => {
   const status = Array.from(activeModels.entries()).map(([id, instance]) => ({
     id,
     port: instance.port,
@@ -1571,7 +1436,7 @@ app.get('/language_models/status', (_req, response) => {
   response.json({ activeModels: status, count: status.length });
 });
 
-app.post('/language_models/load', async (req, response) => {
+app.post(LOAD_ROUTES, async (req, response) => {
   const { id, modelPath, port: requestedPort, args = [], backend: requestedBackend } = req.body;
 
   if (!id || !modelPath) return response.status(400).json({ error: 'Missing id or modelPath' });
@@ -1616,9 +1481,7 @@ app.post('/language_models/load', async (req, response) => {
   }
 
   const mutableArgs = [...args];
-  if (backendName === 'Llama.cpp') {
-    validateAuxPaths(mutableArgs);
-  }
+  if (backendName === 'Llama.cpp') validateAuxPaths(mutableArgs);
 
   const port = requestedPort || await getFreePort();
   log.info(`Starting ${backendName} model "${id}" on port ${port} ...`);
@@ -1628,7 +1491,7 @@ app.post('/language_models/load', async (req, response) => {
   log.info(`Launch args: ${launchArgs.join(' ')}`);
 
   const spawnCwd = config.cwd
-    ? path.join(ROOT_DIR, config.cwd)
+    ? (path.isAbsolute(config.cwd) ? config.cwd : path.join(ROOT_DIR, config.cwd))
     : path.dirname(config.binaryPath);
 
   const envOverrides = config.envOverrides ? config.envOverrides(port) : {};
@@ -1661,19 +1524,10 @@ app.post('/language_models/load', async (req, response) => {
     const str = data.toString().trim();
     if (!str) return;
     const lowerStr = str.toLowerCase();
-    const isError =
-      lowerStr.includes('error:')       || lowerStr.includes('fatal')       ||
-      lowerStr.includes('failed to')    || lowerStr.includes('exception')   ||
-      lowerStr.includes('abort');
-    const isFalsePositive =
-      lowerStr.includes('was not control-type')    || lowerStr.includes('overridden')           ||
-      lowerStr.includes('n_ctx_seq')               || lowerStr.includes('no implementations')   ||
-      lowerStr.includes('already set by user');
-    if (isError && !isFalsePositive) {
-      log.error(`[${config.logLabel}:${id}] ${str}`);
-    } else {
-      log.backend(config.logLabel, `[id] ${str}`);
-    }
+    const isError = lowerStr.includes('error:') || lowerStr.includes('fatal') || lowerStr.includes('failed to') || lowerStr.includes('abort');
+    const isFalsePositive = lowerStr.includes('was not control-type') || lowerStr.includes('overridden') || lowerStr.includes('already set by user');
+    if (isError && !isFalsePositive) log.error(`[${config.logLabel}:${id}] ${str}`);
+    else log.backend(config.logLabel, `[${id}] ${str}`);
   });
 
   proc.on('exit', (code) => {
@@ -1697,7 +1551,7 @@ app.post('/language_models/load', async (req, response) => {
   }
 });
 
-app.post('/language_models/unload', (req, response) => {
+app.post(UNLOAD_ROUTES, (req, response) => {
   const { id } = req.body;
   if (!id) return response.status(400).json({ error: 'Missing id' });
 
@@ -1707,15 +1561,11 @@ app.post('/language_models/unload', (req, response) => {
   log.info(`Unloading ${instance.backend} model "${id}" ...`);
 
   if (IS_WINDOWS) {
-    try {
-      execSync(`taskkill /PID ${instance.process.pid} /T /F`, { stdio: 'pipe' });
-    } catch { /* ignore */ }
+    try { execSync(`taskkill /PID ${instance.process.pid} /T /F`, { stdio: 'pipe' }); } catch {}
   } else {
     instance.process.kill('SIGTERM');
     setTimeout(() => {
-      if (instance.process.pid) {
-        try { process.kill(instance.process.pid, 'SIGKILL'); } catch { /* ignore */ }
-      }
+      if (instance.process.pid) { try { process.kill(instance.process.pid, 'SIGKILL'); } catch {} }
     }, 2000);
   }
 
@@ -1749,29 +1599,21 @@ app.all('/proxy/:modelId/{*path}', async (req, response) => {
     response.status(proxyRes.status);
     proxyRes.headers.forEach((value, key) => {
       const skipHeaders = ['transfer-encoding', 'connection', 'keep-alive'];
-      if (!skipHeaders.includes(key.toLowerCase())) {
-        response.setHeader(key, value);
-      }
+      if (!skipHeaders.includes(key.toLowerCase())) response.setHeader(key, value);
     });
 
     if (proxyRes.body) {
       const reader = proxyRes.body.getReader();
-      const pump = async (): Promise<void> => {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            response.end();
-            return;
-          }
-          response.write(Buffer.from(value));
-        }
-      };
-      await pump();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) { response.end(); break; }
+        response.write(Buffer.from(value));
+      }
     } else {
       response.end();
     }
-  } catch (error) {
-    response.status(502).json({ error: 'Proxy error', details: (error as Error).message });
+  } catch (error: any) {
+    response.status(502).json({ error: 'Proxy error', details: error.message });
   }
 });
 
@@ -1779,10 +1621,8 @@ app.all('/proxy/:modelId/{*path}', async (req, response) => {
 
 app.get('/gpu/status', (_req, response) => {
   const now = Date.now();
-
   if (now - lastGpuQueryTime < GPU_QUERY_MIN_INTERVAL_MS && lastGpuStatus) {
-    response.json(lastGpuStatus);
-    return;
+    return response.json(lastGpuStatus);
   }
 
   const status = queryGpuStatus();
@@ -1826,7 +1666,6 @@ app.post('/fetch', async (req, response) => {
     clearTimeout(timeoutId);
 
     const contentType = res.headers.get('content-type') || '';
-
     if (contentType.startsWith('image/')) {
       const buffer = Buffer.from(await res.arrayBuffer());
       response.json({ ok: res.ok, status: res.status, contentType, base64: buffer.toString('base64') });
@@ -1837,8 +1676,6 @@ app.post('/fetch', async (req, response) => {
   } catch (e: unknown) {
     const error    = e instanceof Error ? e : new Error(String(e));
     const errorMsg = error.name === 'AbortError' ? 'Timeout' : error.message;
-    log.reqError('FETCH', url, 0);
-    log.warn(`Fetch failed for ${url}: ${errorMsg}`);
     response.json({ ok: false, status: 0, contentType: '', error: errorMsg });
   }
 });
@@ -1848,10 +1685,7 @@ app.post('/fetch', async (req, response) => {
 app.post('/tool/text_to_speech/start', (req, res) => {
   const { text, voice, speed = 1.0 } = req.body;
   if (!text) return res.status(400).json({ error: 'Missing text' });
-
-  say.speak(text, voice || undefined, speed, (err) => {
-    if (err) return log.error(`TTS failed: ${err}`);
-  });
+  say.speak(text, voice || undefined, speed, (err) => { if (err) log.error(`TTS failed: ${err}`); });
   res.json({ success: true, message: 'Speech queued' });
 });
 
@@ -1862,97 +1696,65 @@ app.post('/tool/text_to_speech/stop', (_req, res) => {
 
 app.get('/tool/system-info', async (_req, res) => {
   try {
-    const [cpu, mem, currentLoad, fsSize] = await Promise.all([
-      si.cpu(),
-      si.mem(),
-      si.currentLoad(),
-      si.fsSize()
-    ]);
-
+    const [cpu, mem, currentLoad, fsSize] = await Promise.all([si.cpu(), si.mem(), si.currentLoad(), si.fsSize()]);
     res.json({
       success: true,
       data: {
-        cpuManufacturer: cpu.manufacturer,
-        cpuBrand: cpu.brand,
-        cores: cpu.cores,
+        cpuManufacturer: cpu.manufacturer, cpuBrand: cpu.brand, cores: cpu.cores,
         loadPercent: Math.round(currentLoad.currentLoad),
         memoryTotalMB: Math.round(mem.total / (1024 * 1024)),
         memoryUsedMB: Math.round(mem.used / (1024 * 1024)),
         disks: fsSize.map(d => ({
-          fs: d.fs,
-          type: d.type,
+          fs: d.fs, type: d.type,
           sizeGB: Math.round(d.size / (1024 * 1024 * 1024)),
           usedGB: Math.round(d.used / (1024 * 1024 * 1024)),
-          usePercent: d.use
-        }))
-      }
+          usePercent: d.use,
+        })),
+      },
     });
-  } catch (error) {
-    res.status(500).json({ success: false, error: (error as Error).message });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.post('/tool/notify', (req, res) => {
   const { title, message } = req.body;
   if (!message) return res.status(400).json({ success: false, error: 'Missing message' });
-
-  notifier.notify(
-    {
-      title: title || 'LoreReactor Agent',
-      message: message,
-      sound: true,
-      wait: false
-    },
-    (err) => {
-      if (err) return res.status(500).json({ success: false, error: err.message });
-      res.json({ success: true, message: 'Notification sent' });
-    }
-  );
+  notifier.notify({ title: title || 'LoreReactor Agent', message, sound: true, wait: false }, (err) => {
+    if (err) return res.status(500).json({ success: false, error: err.message });
+    res.json({ success: true, message: 'Notification sent' });
+  });
 });
 
 app.post('/tool/volume', async (req, res) => {
   const { action, level } = req.body;
   try {
-    if (action === 'get') {
-      const vol = await loudness.getVolume();
-      const muted = await loudness.getMuted();
-      return res.json({ success: true, volume: vol, muted });
-    }
+    if (action === 'get') return res.json({ success: true, volume: await loudness.getVolume(), muted: await loudness.getMuted() });
     if (action === 'set') {
       const num = Math.max(0, Math.min(100, Number(level) || 0));
       await loudness.setVolume(num);
       return res.json({ success: true, volume: num });
     }
-    if (action === 'mute') {
-      await loudness.setMuted(true);
-      return res.json({ success: true, muted: true });
-    }
-    if (action === 'unmute') {
-      await loudness.setMuted(false);
-      return res.json({ success: true, muted: false });
-    }
-    res.status(400).json({ success: false, error: 'Invalid action. Use get, set, mute, or unmute.' });
-  } catch (e) {
-    res.status(500).json({ success: false, error: (e as Error).message });
+    if (action === 'mute') { await loudness.setMuted(true); return res.json({ success: true, muted: true }); }
+    if (action === 'unmute') { await loudness.setMuted(false); return res.json({ success: true, muted: false }); }
+    res.status(400).json({ success: false, error: 'Invalid action.' });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
 app.post('/tool/lock-screen', (_req, res) => {
   try {
-    if (IS_WINDOWS) {
-      execSync('rundll32.exe user32.dll,LockWorkStation');
-    } else if (IS_MACOS) {
-      execSync('pmset displaysleepnow');
-    } else {
-      execSync('xdg-screensaver lock || loginctl lock-session');
-    }
+    if (IS_WINDOWS) execSync('rundll32.exe user32.dll,LockWorkStation');
+    else if (IS_MACOS) execSync('pmset displaysleepnow');
+    else execSync('xdg-screensaver lock || loginctl lock-session');
     res.json({ success: true, message: 'Workstation locked' });
-  } catch (e) {
-    res.status(500).json({ success: false, error: (e as Error).message });
+  } catch (e: any) {
+    // FIX: Reference caught variable 'e', not undefined 'error'
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
-// ── OS Power Control (sleep, shutdown, restart) ─────────────────────
 app.post('/tool/power', (req, res) => {
   const { action } = req.body;
   if (!['sleep', 'shutdown', 'restart'].includes(action)) {
@@ -1960,8 +1762,7 @@ app.post('/tool/power', (req, res) => {
   }
 
   try {
-    log.warn(`⚠️ SYSTEM POWER COMMAND INVOKED BY AI: ${action.toUpperCase()}`);
-
+    log.warn(`⚠️ SYSTEM POWER COMMAND: ${action.toUpperCase()}`);
     if (IS_WINDOWS) {
       if (action === 'shutdown') execSync('shutdown /s /t 5');
       else if (action === 'restart') execSync('shutdown /r /t 5');
@@ -1975,32 +1776,24 @@ app.post('/tool/power', (req, res) => {
       else if (action === 'restart') execSync('systemctl reboot');
       else if (action === 'sleep') execSync('systemctl suspend');
     }
-
     res.json({ success: true, message: `System power action triggered: ${action}` });
-  } catch (error) {
-    log.error(`Power action failed: ${(error as Error).message}`);
-    res.status(500).json({ success: false, error: (error as Error).message });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.post('/tool/clipboard', async (req, res) => {
   const { action, text } = req.body;
-
   try {
-    if (action === 'read') {
-      const content = await clipboardy.read();
-      return res.json({ success: true, content });
-    }
-
+    if (action === 'read') return res.json({ success: true, content: await clipboardy.read() });
     if (action === 'write') {
       if (typeof text !== 'string') return res.status(400).json({ success: false, error: 'Missing text parameter' });
       await clipboardy.write(text);
       return res.json({ success: true, message: 'Successfully copied to clipboard' });
     }
-
-    res.status(400).json({ success: false, error: 'Invalid action. Use "read" or "write".' });
-  } catch (error) {
-    res.status(500).json({ success: false, error: (error as Error).message });
+    res.status(400).json({ success: false, error: 'Invalid action.' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -2008,37 +1801,22 @@ app.post('/tool/screenshot', async (req, res) => {
   try {
     const { characterId } = req.body;
     const screenshotDir = path.join(ROOT_DIR, 'user_data', 'screenshots');
-    if (!fs.existsSync(screenshotDir)) {
-      fs.mkdirSync(screenshotDir, { recursive: true });
-    }
+    ensureDirectory(screenshotDir);
 
     const imgBuffer = await screenshot({ format: 'jpg' });
-
     const cleanCharId = characterId ? `${String(characterId).replace(/[^a-zA-Z0-9_-]/g, '')}_` : '';
     const filename = `screenshot_${cleanCharId}${Date.now()}.jpg`;
     const filePath = path.join(screenshotDir, filename);
     fs.writeFileSync(filePath, imgBuffer);
 
-    const base64Image = imgBuffer.toString('base64');
-
-    res.json({
-      success: true,
-      contentType: 'image/jpeg',
-      base64: base64Image,
-      path: filePath
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: (error as Error).message });
+    res.json({ success: true, contentType: 'image/jpeg', base64: imgBuffer.toString('base64'), path: filePath });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.get('/tool/network', async (_req, res) => {
-  try {
-    const devices = await findDevices();
-    res.json({ success: true, devices });
-  } catch (e) {
-    res.status(500).json({ success: false, error: (e as Error).message });
-  }
+  try { res.json({ success: true, devices: await findDevices() }); } catch (e: any) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 const activeWatchers = new Map<string, FSWatcher>();
@@ -2047,10 +1825,7 @@ const fileChangeEvents: Array<{ event: string; path: string; timestamp: number }
 app.post('/tool/file-watcher/start', (req, res) => {
   const { dirPath } = req.body;
   const targetDir = path.isAbsolute(dirPath) ? dirPath : path.join(ROOT_DIR, dirPath);
-
-  if (activeWatchers.has(targetDir)) {
-    return res.json({ success: true, message: `Already watching ${targetDir}` });
-  }
+  if (activeWatchers.has(targetDir)) return res.json({ success: true, message: `Already watching ${targetDir}` });
 
   try {
     const watcher = chokidar.watch(targetDir, { ignoreInitial: true });
@@ -2058,12 +1833,10 @@ app.post('/tool/file-watcher/start', (req, res) => {
       fileChangeEvents.push({ event, path: filePath, timestamp: Date.now() });
       if (fileChangeEvents.length > 50) fileChangeEvents.shift();
     });
-
     activeWatchers.set(targetDir, watcher);
-    log.info(`File watcher started on: ${targetDir}`);
     res.json({ success: true, path: targetDir });
-  } catch (error) {
-    res.status(500).json({ success: false, error: (error as Error).message });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -2076,10 +1849,7 @@ app.get('/tool/file-watcher/events', (_req, res) => {
 app.get('/tool/window-monitor', async (_req, res) => {
   try {
     const currentWindow = await activeWindow();
-    if (!currentWindow) {
-      return res.json({ success: true, window: null, message: 'No active window detected' });
-    }
-
+    if (!currentWindow) return res.json({ success: true, window: null, message: 'No active window detected' });
     res.json({
       success: true,
       window: {
@@ -2089,8 +1859,8 @@ app.get('/tool/window-monitor', async (_req, res) => {
         url: ('url' in currentWindow && currentWindow.url) ? currentWindow.url : undefined,
       },
     });
-  } catch (error) {
-    res.status(500).json({ success: false, error: (error as Error).message });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -2101,92 +1871,57 @@ app.get('/tool/process-monitor', async (req, res) => {
   try {
     const procData = await si.processes();
     let list = procData.list;
-
-    if (filter) {
-      list = list.filter(p => p.name.toLowerCase().includes(filter));
-    }
-
+    if (filter) list = list.filter(p => p.name.toLowerCase().includes(filter));
     list = list.sort((a, b) => b.cpu - a.cpu).slice(0, limit);
 
     res.json({
       success: true,
       totalCount: procData.all,
       runningCount: procData.running,
-      processes: list.map(p => ({
-        pid: p.pid,
-        name: p.name,
-        cpu: p.cpu,
-        memPercent: p.mem,
-      })),
+      processes: list.map(p => ({ pid: p.pid, name: p.name, cpu: p.cpu, memPercent: p.mem })),
     });
-  } catch (error) {
-    res.status(500).json({ success: false, error: (error as Error).message });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.post('/tool/trash', async (req, res) => {
   const { targetPath } = req.body;
   if (!targetPath) return res.status(400).json({ success: false, error: 'Missing targetPath' });
-
   try {
     const resolved = path.isAbsolute(targetPath) ? targetPath : path.join(ROOT_DIR, targetPath);
-    if (!fs.existsSync(resolved)) {
-      return res.status(404).json({ success: false, error: `Path does not exist: ${resolved}` });
-    }
+    if (!fs.existsSync(resolved)) return res.status(404).json({ success: false, error: `Path does not exist: ${resolved}` });
     await trash([resolved]);
     res.json({ success: true, path: resolved, message: 'Item moved to recycle bin/trash' });
-  } catch (e) {
-    res.status(500).json({ success: false, error: (e as Error).message });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
 app.post('/tool/read-file', async (req, response) => {
   const { target } = req.body;
-  if (!target) {
-    return response.status(400).json({ success: false, error: 'Missing target' });
-  }
-
+  if (!target) return response.status(400).json({ success: false, error: 'Missing target' });
   try {
     const isUrl = /^https?:\/\//i.test(target);
-    const resolvedTarget = isUrl
-      ? target
-      : path.isAbsolute(target)
-      ? target
-      : path.join(ROOT_DIR, target);
-
-    if (!isUrl && !fs.existsSync(resolvedTarget)) {
-      return response.status(404).json({ success: false, error: `File or target not found: ${target}` });
-    }
-
+    const resolvedTarget = isUrl ? target : (path.isAbsolute(target) ? target : path.join(ROOT_DIR, target));
+    if (!isUrl && !fs.existsSync(resolvedTarget)) return response.status(404).json({ success: false, error: `File not found: ${target}` });
     await open(resolvedTarget);
-    log.info(`Opened target: ${resolvedTarget}`);
     response.json({ success: true, target: resolvedTarget });
-  } catch (error) {
-    log.error(`Failed to open target ${target}: ${(error as Error).message}`);
-    response.status(500).json({ success: false, error: (error as Error).message });
+  } catch (error: any) {
+    response.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.post('/tool/write-file', (req, response) => {
   const { filePath, content } = req.body;
-  if (!filePath || content === undefined) {
-    return response.status(400).json({ success: false, error: 'Missing filePath or content' });
-  }
-
+  if (!filePath || content === undefined) return response.status(400).json({ success: false, error: 'Missing filePath or content' });
   try {
     const resolvedPath = path.isAbsolute(filePath) ? filePath : path.join(ROOT_DIR, filePath);
-    const dir = path.dirname(resolvedPath);
-
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
+    ensureDirectory(path.dirname(resolvedPath));
     fs.writeFileSync(resolvedPath, content, 'utf-8');
-    log.success(`File written: ${resolvedPath} (${content.length} bytes)`);
     response.json({ success: true, path: resolvedPath, bytes: Buffer.byteLength(content, 'utf-8') });
-  } catch (error) {
-    log.error(`Write file failed for ${filePath}: ${(error as Error).message}`);
-    response.status(500).json({ success: false, error: (error as Error).message });
+  } catch (error: any) {
+    response.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -2194,9 +1929,7 @@ const execAsync = promisify(exec);
 
 app.post('/tool/shell', async (req, res) => {
   const { command } = req.body;
-  if (!command || typeof command !== 'string') {
-    return res.status(400).json({ success: false, error: 'Missing command' });
-  }
+  if (!command || typeof command !== 'string') return res.status(400).json({ success: false, error: 'Missing command' });
 
   const dangerousPatterns = [/rm\s+-rf\s+\//i, /mkfs/i, />\s*\/dev\/sd/i];
   if (dangerousPatterns.some(pattern => pattern.test(command))) {
@@ -2204,17 +1937,10 @@ app.post('/tool/shell', async (req, res) => {
   }
 
   try {
-    log.info(`Executing shell command: ${command}`);
     const { stdout, stderr } = await execAsync(command, { timeout: 10000, cwd: ROOT_DIR });
     res.json({ success: true, stdout: stdout.trim(), stderr: stderr.trim() });
-  } catch (error: unknown) {
-    const err = error as Error & { stdout?: string; stderr?: string };
-    res.status(500).json({
-      success: false,
-      error: err.message,
-      stdout: err.stdout?.trim() || '',
-      stderr: err.stderr?.trim() || ''
-    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message, stdout: error.stdout?.trim() || '', stderr: error.stderr?.trim() || '' });
   }
 });
 
@@ -2259,7 +1985,6 @@ function serverDetectPitch(buffer: Float32Array, sampleRate: number): { pitch: n
     const prevSample = buffer[tau - 1];
     const nextSample = buffer[tau + windowSize - 1];
     runningM = runningM - (prevSample * prevSample) + (nextSample * nextSample);
-
     if (tau >= minLag) {
       let r = 0;
       for (let j = 0; j < windowSize; j++) r += buffer[j] * buffer[j + tau];
@@ -2270,11 +1995,9 @@ function serverDetectPitch(buffer: Float32Array, sampleRate: number): { pitch: n
   const localPeaks: number[] = [];
   let globalMaxVal = 0;
   for (let tau = minLag; tau < maxLag; tau++) {
-    if (nsdf[tau] > 0) {
-      if (nsdf[tau] > nsdf[tau - 1] && nsdf[tau] >= nsdf[tau + 1]) {
-        localPeaks.push(tau);
-        if (nsdf[tau] > globalMaxVal) globalMaxVal = nsdf[tau];
-      }
+    if (nsdf[tau] > 0 && nsdf[tau] > nsdf[tau - 1] && nsdf[tau] >= nsdf[tau + 1]) {
+      localPeaks.push(tau);
+      if (nsdf[tau] > globalMaxVal) globalMaxVal = nsdf[tau];
     }
   }
 
@@ -2283,10 +2006,7 @@ function serverDetectPitch(buffer: Float32Array, sampleRate: number): { pitch: n
   const peakThreshold = globalMaxVal * 0.85;
   let chosenPeak = localPeaks[0];
   for (const peak of localPeaks) {
-    if (nsdf[peak] >= peakThreshold) {
-      chosenPeak = peak;
-      break;
-    }
+    if (nsdf[peak] >= peakThreshold) { chosenPeak = peak; break; }
   }
 
   const y0 = nsdf[chosenPeak - 1];
@@ -2318,16 +2038,8 @@ function serverFrequencyToRichNote(freq: number): string | null {
 }
 
 function stopServerHearingStream(): void {
-  if (serverHearingTimer) {
-    clearTimeout(serverHearingTimer);
-    serverHearingTimer = null;
-  }
-  if (serverHearingProcess) {
-    try {
-      serverHearingProcess.kill('SIGTERM');
-    } catch {}
-    serverHearingProcess = null;
-  }
+  if (serverHearingTimer) { clearTimeout(serverHearingTimer); serverHearingTimer = null; }
+  if (serverHearingProcess) { try { serverHearingProcess.kill('SIGTERM'); } catch {} serverHearingProcess = null; }
   isServerHearingActive = false;
 }
 
@@ -2335,13 +2047,10 @@ app.post('/tool/virtual-hearing', (req, res) => {
   const { action = 'start', duration = 30 } = req.body;
   const normalizedAction = String(action).toLowerCase();
 
-  // 1. START LISTENING SESSION
   if (normalizedAction === 'start') {
     stopServerHearingStream();
-
     serverHearingChunks = [];
     isServerHearingActive = true;
-
     const durationSec = Math.max(5, Math.min(120, Number(duration) || 30));
 
     const audioArgs = IS_WINDOWS
@@ -2352,65 +2061,24 @@ app.post('/tool/virtual-hearing', (req, res) => {
 
     try {
       serverHearingProcess = spawn('ffmpeg', audioArgs, { stdio: ['ignore', 'pipe', 'ignore'] });
-
-      serverHearingProcess.stdout?.on('data', (data: Buffer) => {
-        if (isServerHearingActive) {
-          serverHearingChunks.push(data);
-        }
-      });
-
-      serverHearingProcess.on('error', (err) => {
-        log.warn(`[VirtualHearing] FFmpeg loopback error: ${err.message}`);
-        stopServerHearingStream();
-      });
-
-      serverHearingTimer = setTimeout(() => {
-        stopServerHearingStream();
-      }, durationSec * 1000);
-
-      return res.json({
-        success: true,
-        active: true,
-        message: `Ears opened on host server. Actively recording desktop audio for up to ${durationSec}s. Call action="stop" or action="end" when finished.`,
-      });
+      serverHearingProcess.stdout?.on('data', (data: Buffer) => { if (isServerHearingActive) serverHearingChunks.push(data); });
+      serverHearingProcess.on('error', (err) => { log.warn(`FFmpeg error: ${err.message}`); stopServerHearingStream(); });
+      serverHearingTimer = setTimeout(() => { stopServerHearingStream(); }, durationSec * 1000);
+      return res.json({ success: true, active: true, message: `Recording desktop audio up to ${durationSec}s.` });
     } catch (err: any) {
       stopServerHearingStream();
-      return res.status(500).json({ success: false, error: `Failed to start server audio capture: ${err.message}` });
+      return res.status(500).json({ success: false, error: err.message });
     }
   }
 
-  // 2. STOP / END LISTENING SESSION & PROCESS CAPTURED BUFFER
   if (normalizedAction === 'stop' || normalizedAction === 'end') {
-    const wasActive = isServerHearingActive;
     const capturedChunks = [...serverHearingChunks];
     stopServerHearingStream();
-
-    if (!wasActive && capturedChunks.length === 0) {
-      return res.json({
-        success: true,
-        active: false,
-        rawObservation: '[Virtual Hearing: Session already idle (no audio captured)].',
-        melody: [],
-        events: []
-      });
-    }
 
     const combinedBuffer = Buffer.concat(capturedChunks);
     const floatCount = Math.floor(combinedBuffer.length / 4);
     const pcmData = new Float32Array(floatCount);
-    for (let i = 0; i < floatCount; i++) {
-      pcmData[i] = combinedBuffer.readFloatLE(i * 4);
-    }
-
-    if (pcmData.length === 0) {
-      return res.json({
-        success: true,
-        active: false,
-        rawObservation: '[Virtual Hearing Perception]\n- Ambient silence (no audio output detected during session).',
-        melody: [],
-        events: []
-      });
-    }
+    for (let i = 0; i < floatCount; i++) pcmData[i] = combinedBuffer.readFloatLE(i * 4);
 
     const detectedNotes: string[] = [];
     const chunkSize = 2048;
@@ -2419,50 +2087,38 @@ app.post('/tool/virtual-hearing', (req, res) => {
       const pitchRes = serverDetectPitch(chunk, 16000);
       if (pitchRes) {
         const noteStr = serverFrequencyToRichNote(pitchRes.pitch);
-        if (noteStr && (!detectedNotes.length || detectedNotes[detectedNotes.length - 1] !== noteStr)) {
-          detectedNotes.push(noteStr);
-        }
+        if (noteStr && (!detectedNotes.length || detectedNotes[detectedNotes.length - 1] !== noteStr)) detectedNotes.push(noteStr);
       }
     }
 
     let sumSquares = 0;
     for (let i = 0; i < pcmData.length; i++) sumSquares += pcmData[i] * pcmData[i];
-    const rms = Math.sqrt(sumSquares / pcmData.length);
+    const rms = Math.sqrt(sumSquares / (pcmData.length || 1));
     const events: string[] = [];
     if (rms > 0.15) events.push('Heavy Bass/Impact');
     else if (rms > 0.05) events.push('Notification Sound');
 
     const melodyCompact = detectedNotes.slice(0, 12).join('-');
-    const lines: string[] = ['[Virtual Hearing Perception]'];
+    const lines = ['[Virtual Hearing Perception]'];
     if (melodyCompact) lines.push(`- Melody:${melodyCompact}`);
     if (events.length > 0) lines.push(`- Sounds:[${events.join(',')}]`);
 
-    const rawObservation = lines.length > 1 ? lines.join('\n') : '[Virtual Hearing Perception]\n- Ambient silence.';
-
     return res.json({
-      success: true,
-      active: false,
-      rawObservation,
-      melody: melodyCompact ? [melodyCompact] : [],
-      events,
+      success: true, active: false,
+      rawObservation: lines.length > 1 ? lines.join('\n') : '[Virtual Hearing Perception]\n- Ambient silence.',
+      melody: melodyCompact ? [melodyCompact] : [], events,
     });
   }
 
-  // 3. STATUS QUERY
   if (normalizedAction === 'status') {
-    return res.json({
-      success: true,
-      active: isServerHearingActive,
-      message: isServerHearingActive ? 'Virtual hearing is currently ACTIVE and recording.' : 'Virtual hearing is currently IDLE (off).'
-    });
+    return res.json({ success: true, active: isServerHearingActive });
   }
 
-  return res.status(400).json({ success: false, error: `Invalid action "${action}". Use "start", "stop", "end", or "status".` });
+  return res.status(400).json({ success: false, error: `Invalid action "${action}"` });
 });
 
 app.post('/tool/virtual-vision', async (req, res) => {
   const { target = 'active', appName, title, x, y, width, height } = req.body;
-
   try {
     const screenBuffer = await screenshot({ format: 'png' });
     let cropRegion: { left: number; top: number; width: number; height: number } | null = null;
@@ -2474,15 +2130,12 @@ app.post('/tool/virtual-vision', async (req, res) => {
         (appName && w.owner?.name?.toLowerCase().includes(String(appName).toLowerCase())) ||
         (title && w.title?.toLowerCase().includes(String(title).toLowerCase()))
       );
-
       if (matchedWin?.bounds) {
         cropRegion = {
-          left: Math.max(0, matchedWin.bounds.x),
-          top: Math.max(0, matchedWin.bounds.y),
-          width: Math.max(1, matchedWin.bounds.width),
-          height: Math.max(1, matchedWin.bounds.height),
+          left: Math.max(0, matchedWin.bounds.x), top: Math.max(0, matchedWin.bounds.y),
+          width: Math.max(1, matchedWin.bounds.width), height: Math.max(1, matchedWin.bounds.height),
         };
-        targetLabel = `window "${matchedWin.title}" (${matchedWin.owner?.name || 'Unknown'})`;
+        targetLabel = `window "${matchedWin.title}"`;
       }
     }
 
@@ -2490,20 +2143,13 @@ app.post('/tool/virtual-vision', async (req, res) => {
       const activeWin = await activeWindow();
       if (activeWin?.bounds) {
         cropRegion = {
-          left: Math.max(0, activeWin.bounds.x),
-          top: Math.max(0, activeWin.bounds.y),
-          width: Math.max(1, activeWin.bounds.width),
-          height: Math.max(1, activeWin.bounds.height),
+          left: Math.max(0, activeWin.bounds.x), top: Math.max(0, activeWin.bounds.y),
+          width: Math.max(1, activeWin.bounds.width), height: Math.max(1, activeWin.bounds.height),
         };
-        targetLabel = `active window "${activeWin.title}" (${activeWin.owner?.name || 'Unknown'})`;
+        targetLabel = `active window "${activeWin.title}"`;
       }
     } else if (!cropRegion && typeof x === 'number' && typeof y === 'number' && typeof width === 'number' && typeof height === 'number') {
-      cropRegion = {
-        left: Math.max(0, x),
-        top: Math.max(0, y),
-        width: Math.max(1, width),
-        height: Math.max(1, height),
-      };
+      cropRegion = { left: Math.max(0, x), top: Math.max(0, y), width: Math.max(1, width), height: Math.max(1, height) };
       targetLabel = `region (${x}, ${y}, ${width}x${height})`;
     }
 
@@ -2512,105 +2158,59 @@ app.post('/tool/virtual-vision', async (req, res) => {
       const metadata = await sharp(screenBuffer).metadata();
       const imgWidth = metadata.width || 1920;
       const imgHeight = metadata.height || 1080;
-
-      const safeLeft = Math.min(cropRegion.left, imgWidth - 1);
-      const safeTop = Math.min(cropRegion.top, imgHeight - 1);
-      const safeWidth = Math.min(cropRegion.width, imgWidth - safeLeft);
-      const safeHeight = Math.min(cropRegion.height, imgHeight - safeTop);
-
       finalBuffer = await sharp(screenBuffer)
-        .extract({ left: safeLeft, top: safeTop, width: safeWidth, height: safeHeight })
-        .png()
-        .toBuffer();
+        .extract({
+          left: Math.min(cropRegion.left, imgWidth - 1),
+          top: Math.min(cropRegion.top, imgHeight - 1),
+          width: Math.min(cropRegion.width, imgWidth - cropRegion.left),
+          height: Math.min(cropRegion.height, imgHeight - cropRegion.top),
+        })
+        .png().toBuffer();
     }
 
-    const base64 = finalBuffer.toString('base64');
-    res.json({
-      success: true,
-      target: targetLabel,
-      contentType: 'image/png',
-      base64,
-      bounds: cropRegion,
-    });
-  } catch (error) {
-    log.error(`Virtual vision capture failed: ${(error as Error).message}`);
-    res.status(500).json({ success: false, error: (error as Error).message });
+    res.json({ success: true, target: targetLabel, contentType: 'image/png', base64: finalBuffer.toString('base64'), bounds: cropRegion });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 // ── Virtual Input Tool (Mouse & Keyboard) ───────────────────────────
 app.post('/tool/virtual-input', async (req, res) => {
-  const {
-    action,
-    x,
-    y,
-    toX,
-    toY,
-    button = 'left',
-    double = false,
-    text,
-    key,
-    modifier,
-    smooth = true,
-    durationMs = 500
-  } = req.body;
-
+  const { action, x, y, toX, toY, button = 'left', double = false, text, key, modifier, smooth = true, durationMs = 500 } = req.body;
   try {
     const clickBtn = button === 'right' || button === 'middle' ? button : 'left';
-
     if (action === 'move') {
       if (typeof x !== 'number' || typeof y !== 'number') return res.status(400).json({ success: false, error: 'x and y are required numbers' });
       if (smooth) robot.moveMouseSmooth(x, y); else robot.moveMouse(x, y);
       return res.json({ success: true, message: `Moved cursor to (${x}, ${y})` });
     }
-
     if (action === 'click') {
       robot.mouseClick(clickBtn, Boolean(double));
       return res.json({ success: true, message: `Clicked ${clickBtn} button` });
     }
-
     if (action === 'drag') {
       if (typeof x === 'number' && typeof y === 'number') robot.moveMouse(x, y);
       robot.mouseToggle('down', clickBtn);
-      if (typeof toX === 'number' && typeof toY === 'number') {
-        robot.moveMouseSmooth(toX, toY);
-      }
+      if (typeof toX === 'number' && typeof toY === 'number') robot.moveMouseSmooth(toX, toY);
       robot.mouseToggle('up', clickBtn);
-      return res.json({ success: true, message: `Dragged ${clickBtn} from (${x}, ${y}) to (${toX}, ${toY})` });
+      return res.json({ success: true, message: `Dragged ${clickBtn}` });
     }
-
     if (action === 'hold') {
-      if (!key || typeof key !== 'string') return res.status(400).json({ success: false, error: 'Key name is required' });
+      if (!key || typeof key !== 'string') return res.status(400).json({ success: false, error: 'Key required' });
       robot.keyToggle(key.toLowerCase(), 'down');
-      setTimeout(() => {
-        try { robot.keyToggle(key.toLowerCase(), 'up'); } catch { /* ignore */ }
-      }, Math.max(50, Math.min(10000, durationMs)));
-      return res.json({ success: true, message: `Holding key "${key}" for ${durationMs}ms` });
+      setTimeout(() => { try { robot.keyToggle(key.toLowerCase(), 'up'); } catch {} }, Math.max(50, Math.min(10000, durationMs)));
+      return res.json({ success: true, message: `Holding key "${key}"` });
     }
-
-    if (action === 'key_down') {
-      if (!key) return res.status(400).json({ success: false, error: 'Key required' });
-      robot.keyToggle(key.toLowerCase(), 'down');
-      return res.json({ success: true, message: `Key "${key}" down` });
-    }
-    if (action === 'key_up') {
-      if (!key) return res.status(400).json({ success: false, error: 'Key required' });
-      robot.keyToggle(key.toLowerCase(), 'up');
-      return res.json({ success: true, message: `Key "${key}" up` });
-    }
-
     if (action === 'type') {
-      if (typeof text !== 'string') return res.status(400).json({ success: false, error: 'Text string is required' });
+      if (typeof text !== 'string') return res.status(400).json({ success: false, error: 'Text string required' });
       robot.typeString(text);
       return res.json({ success: true, message: `Typed "${text}"` });
     }
-
     if (action === 'press') {
-      if (!key || typeof key !== 'string') return res.status(400).json({ success: false, error: 'Key name is required' });
+      if (!key || typeof key !== 'string') return res.status(400).json({ success: false, error: 'Key required' });
       if (modifier) robot.keyTap(key.toLowerCase(), modifier.toLowerCase()); else robot.keyTap(key.toLowerCase());
       return res.json({ success: true, message: `Tapped "${key}"` });
     }
-
     if (action === 'screen_size') {
       const size = robot.getScreenSize();
       return res.json({ success: true, width: size.width, height: size.height });
@@ -2619,60 +2219,33 @@ app.post('/tool/virtual-input', async (req, res) => {
       const pos = robot.getMousePos();
       return res.json({ success: true, x: pos.x, y: pos.y });
     }
-
     res.status(400).json({ success: false, error: `Unknown virtual_input action: "${action}"` });
-  } catch (error) {
-    res.status(500).json({ success: false, error: (error as Error).message });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 // ── Virtual Controller (Xbox 360 / ViGEmBus) ────────────────────────
 app.post('/tool/virtual-controller', (req, res) => {
   const { controller, error } = getOrInitVirtualController();
-  if (!controller) {
-    return res.status(503).json({ success: false, error: error || 'Virtual controller unavailable.' });
-  }
+  if (!controller) return res.status(503).json({ success: false, error: error || 'Virtual controller unavailable.' });
 
-  const {
-    action = 'tap',
-    button,
-    stick = 'left',
-    x,
-    y,
-    trigger = 'right',
-    value,
-    durationMs = 120
-  } = req.body;
-
+  const { action = 'tap', button, stick = 'left', x, y, trigger = 'right', value, durationMs = 120 } = req.body;
   try {
     if (action === 'reset') {
-      if (typeof controller.resetInputs === 'function') {
-        controller.resetInputs();
-      } else {
-        Object.values(X360_BUTTON_MAP).forEach((btn) => {
-          try { controller.button[btn]?.setValue(false); } catch {}
-        });
-        controller.axis.leftX?.setValue(0.0);
-        controller.axis.leftY?.setValue(0.0);
-        controller.axis.rightX?.setValue(0.0);
-        controller.axis.rightY?.setValue(0.0);
-        controller.axis.leftTrigger?.setValue(0.0);
-        controller.axis.rightTrigger?.setValue(0.0);
-        controller.axis.dpadHorz?.setValue(0.0);
-        controller.axis.dpadVert?.setValue(0.0);
-      }
+      Object.values(X360_BUTTON_MAP).forEach(btn => { try { controller.button[btn]?.setValue(false); } catch {} });
+      controller.axis.leftX?.setValue(0.0); controller.axis.leftY?.setValue(0.0);
+      controller.axis.rightX?.setValue(0.0); controller.axis.rightY?.setValue(0.0);
+      controller.axis.leftTrigger?.setValue(0.0); controller.axis.rightTrigger?.setValue(0.0);
+      controller.axis.dpadHorz?.setValue(0.0); controller.axis.dpadVert?.setValue(0.0);
       return res.json({ success: true, message: 'Virtual controller inputs reset to neutral.' });
     }
 
-    if (action === 'status') {
-      return res.json({ success: true, message: 'Virtual Xbox 360 controller connected and active.' });
-    }
+    if (action === 'status') return res.json({ success: true, message: 'Virtual Xbox 360 controller connected.' });
 
     if (action === 'stick') {
-      const numX = Number(x);
-      const numY = Number(y);
-      const clampedX = Math.max(-1.0, Math.min(1.0, Number.isFinite(numX) ? numX : 0.0));
-      const clampedY = Math.max(-1.0, Math.min(1.0, Number.isFinite(numY) ? numY : 0.0));
+      const clampedX = Math.max(-1.0, Math.min(1.0, Number.isFinite(Number(x)) ? Number(x) : 0.0));
+      const clampedY = Math.max(-1.0, Math.min(1.0, Number.isFinite(Number(y)) ? Number(y) : 0.0));
       const isRight = String(stick).toLowerCase() === 'right';
       const targetX = isRight ? controller.axis.rightX : controller.axis.leftX;
       const targetY = isRight ? controller.axis.rightY : controller.axis.leftY;
@@ -2680,67 +2253,25 @@ app.post('/tool/virtual-controller', (req, res) => {
       targetX.setValue(clampedX);
       targetY.setValue(clampedY);
 
-      if (typeof durationMs === 'number' && durationMs > 0) {
-        setTimeout(() => {
-          try {
-            targetX.setValue(0.0);
-            targetY.setValue(0.0);
-          } catch {}
-        }, Math.max(30, Math.min(10000, durationMs)));
+      if (durationMs > 0) {
+        setTimeout(() => { try { targetX.setValue(0.0); targetY.setValue(0.0); } catch {} }, Math.max(30, Math.min(10000, durationMs)));
       }
-
-      return res.json({
-        success: true,
-        message: `${isRight ? 'Right' : 'Left'} stick set to (${clampedX}, ${clampedY})${durationMs > 0 ? ` for ${durationMs}ms` : ''}`
-      });
+      return res.json({ success: true, message: `${isRight ? 'Right' : 'Left'} stick set to (${clampedX}, ${clampedY})` });
     }
 
     if (action === 'trigger') {
-      const numVal = Number(value);
-      const clampedVal = Math.max(0.0, Math.min(1.0, Number.isFinite(numVal) ? numVal : 1.0));
+      const clampedVal = Math.max(0.0, Math.min(1.0, Number.isFinite(Number(value)) ? Number(value) : 1.0));
       const isLeft = String(trigger).toLowerCase() === 'left';
       const targetTrigger = isLeft ? controller.axis.leftTrigger : controller.axis.rightTrigger;
-
       targetTrigger.setValue(clampedVal);
-
-      if (typeof durationMs === 'number' && durationMs > 0) {
-        setTimeout(() => {
-          try { targetTrigger.setValue(0.0); } catch {}
-        }, Math.max(30, Math.min(10000, durationMs)));
+      if (durationMs > 0) {
+        setTimeout(() => { try { targetTrigger.setValue(0.0); } catch {} }, Math.max(30, Math.min(10000, durationMs)));
       }
-
       return res.json({ success: true, message: `${isLeft ? 'Left' : 'Right'} trigger set to ${clampedVal}` });
     }
 
-    if (!button || typeof button !== 'string') {
-      return res.status(400).json({ success: false, error: 'Button name is required for button actions.' });
-    }
-
+    if (!button || typeof button !== 'string') return res.status(400).json({ success: false, error: 'Button name required.' });
     const normalizedBtn = button.trim().toUpperCase();
-
-    if (normalizedBtn === 'LT' || normalizedBtn === 'L2') {
-      if (action === 'press') {
-        controller.axis.leftTrigger.setValue(1.0);
-      } else if (action === 'release') {
-        controller.axis.leftTrigger.setValue(0.0);
-      } else {
-        controller.axis.leftTrigger.setValue(1.0);
-        setTimeout(() => { try { controller.axis.leftTrigger.setValue(0.0); } catch {} }, Math.max(30, Math.min(3000, durationMs)));
-      }
-      return res.json({ success: true, message: `${normalizedBtn} ${action}ed` });
-    }
-
-    if (normalizedBtn === 'RT' || normalizedBtn === 'R2') {
-      if (action === 'press') {
-        controller.axis.rightTrigger.setValue(1.0);
-      } else if (action === 'release') {
-        controller.axis.rightTrigger.setValue(0.0);
-      } else {
-        controller.axis.rightTrigger.setValue(1.0);
-        setTimeout(() => { try { controller.axis.rightTrigger.setValue(0.0); } catch {} }, Math.max(30, Math.min(3000, durationMs)));
-      }
-      return res.json({ success: true, message: `${normalizedBtn} ${action}ed` });
-    }
 
     if (DPAD_DIRECTIONS.has(normalizedBtn)) {
       const isUp = normalizedBtn === 'UP' || normalizedBtn === 'DPAD_UP';
@@ -2761,7 +2292,6 @@ app.post('/tool/virtual-controller', (req, res) => {
         if (isDown) controller.axis.dpadVert.setValue(-1.0);
         if (isLeft) controller.axis.dpadHorz.setValue(-1.0);
         if (isRight) controller.axis.dpadHorz.setValue(1.0);
-
         setTimeout(() => {
           try {
             if (isUp || isDown) controller.axis.dpadVert.setValue(0.0);
@@ -2774,47 +2304,28 @@ app.post('/tool/virtual-controller', (req, res) => {
 
     const internalKey = X360_BUTTON_MAP[normalizedBtn];
     if (!internalKey || !controller.button[internalKey]) {
-      return res.status(400).json({
-        success: false,
-        error: `Unknown button "${button}". Valid: A, B, X, Y, LB, RB, LT, RT, START, BACK, GUIDE, LS, RS, UP, DOWN, LEFT, RIGHT.`
-      });
+      return res.status(400).json({ success: false, error: `Unknown button "${button}".` });
     }
 
-    if (action === 'press') {
-      controller.button[internalKey].setValue(true);
-      return res.json({ success: true, message: `Button ${normalizedBtn} pressed down.` });
-    }
-
-    if (action === 'release') {
-      controller.button[internalKey].setValue(false);
-      return res.json({ success: true, message: `Button ${normalizedBtn} released.` });
-    }
+    if (action === 'press') { controller.button[internalKey].setValue(true); return res.json({ success: true }); }
+    if (action === 'release') { controller.button[internalKey].setValue(false); return res.json({ success: true }); }
 
     controller.button[internalKey].setValue(true);
-    setTimeout(() => {
-      try { controller.button[internalKey].setValue(false); } catch {}
-    }, Math.max(30, Math.min(3000, durationMs)));
-
-    return res.json({ success: true, message: `Tapped button ${normalizedBtn} (${durationMs}ms)` });
-  } catch (error) {
-    res.status(500).json({ success: false, error: (error as Error).message });
+    setTimeout(() => { try { controller.button[internalKey].setValue(false); } catch {} }, Math.max(30, Math.min(3000, durationMs)));
+    return res.json({ success: true, message: `Tapped button ${normalizedBtn}` });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 // ── Hardware Control ────────────────────────────────────────────────
 app.get('/tool/hardware/list', async (_req, res) => {
-  try {
-    const ports = await SerialPort.list();
-    res.json({ success: true, ports });
-  } catch (error) {
-    res.status(500).json({ success: false, error: (error as Error).message });
-  }
+  try { res.json({ success: true, ports: await SerialPort.list() }); } catch (error: any) { res.status(500).json({ success: false, error: error.message }); }
 });
 
 app.post('/tool/hardware/send', async (req, res) => {
   const { portPath, command, baudRate = 9600 } = req.body;
   if (!portPath || !command) return res.status(400).json({ error: 'Missing portPath or command' });
-
   try {
     const port = new SerialPort({ path: portPath, baudRate });
     port.write(`${command}\n`, (err) => {
@@ -2822,8 +2333,8 @@ app.post('/tool/hardware/send', async (req, res) => {
       if (err) return res.status(500).json({ success: false, error: err.message });
       res.json({ success: true, sent: command });
     });
-  } catch (error) {
-    res.status(500).json({ success: false, error: (error as Error).message });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -2831,20 +2342,12 @@ app.post('/tool/hardware/send', async (req, res) => {
 
 const startServer = () => {
   detectedGpuVendor = detectGpuVendor();
-
   runStartupSanitization();
 
   const border = '────────────────────────────────────────';
   const title  = `${Colors.Bright}${Colors.FgCyan}⚛️  ${APP_NAME} Server${Colors.Reset}`;
-
-  const archLabel = process.arch === 'x64'   ? 'x64'
-                  : process.arch === 'ia32'  ? 'x86 (32-bit)'
-                  : process.arch === 'arm64' ? 'ARM64'
-                  : process.arch;
-
-  const platLabel = IS_WINDOWS ? `Windows ${archLabel}`
-                  : IS_MACOS   ? `macOS ${archLabel}`
-                  :              `Linux ${archLabel}`;
+  const archLabel = process.arch === 'x64' ? 'x64' : process.arch === 'ia32' ? 'x86 (32-bit)' : process.arch === 'arm64' ? 'ARM64' : process.arch;
+  const platLabel = IS_WINDOWS ? `Windows ${archLabel}` : IS_MACOS ? `macOS ${archLabel}` : `Linux ${archLabel}`;
 
   console.clear();
   console.log(`${Colors.BgBlue}${Colors.Bright}${Colors.FgWhite}  ${APP_NAME}  ${Colors.Reset}`);
@@ -2855,9 +2358,7 @@ const startServer = () => {
 
   for (const [name, cfg] of Object.entries(BACKEND_CONFIGS)) {
     const exists = fs.existsSync(cfg.binaryPath);
-    const icon   = exists
-      ? `${Colors.FgGreen}●${Colors.Reset}`
-      : `${Colors.FgRed}○${Colors.Reset}`;
+    const icon   = exists ? `${Colors.FgGreen}●${Colors.Reset}` : `${Colors.FgRed}○${Colors.Reset}`;
     console.log(`     ${icon} ${(name as string).padEnd(16)} ${Colors.Dim}${cfg.binaryPath}${Colors.Reset}`);
   }
 
