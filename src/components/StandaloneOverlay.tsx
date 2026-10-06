@@ -733,34 +733,51 @@ export function StandaloneOverlay() {
                     {state.charName}
                 </div>
                 
-                {/* ✅ Resume, Regenerate, and Reformat Toggle Buttons */}
+                {/* ✅ Stop, Resume, Regenerate, and Reformat Toggle Buttons */}
                 <div className="pip-dialogue-actions">
-                    <button 
-                        className="pip-dialogue-action-btn" 
-                        onClick={() => {
-                            if (!state.lastMessageId) return;
-                            const channel = new BroadcastChannel('lorereactor-companion-sync');
-                            channel.postMessage({ type: 'RESUME_GENERATION', messageId: state.lastMessageId });
-                            channel.close();
-                        }}
-                        title="Resume Generation"
-                        disabled={!state.lastMessageId || state.isLoading}
-                    >
-                        ▶
-                    </button>
-                    <button 
-                        className="pip-dialogue-action-btn" 
-                        onClick={() => {
-                            if (!state.lastMessageId) return;
-                            const channel = new BroadcastChannel('lorereactor-companion-sync');
-                            channel.postMessage({ type: 'RESTART_GENERATION', messageId: state.lastMessageId });
-                            channel.close();
-                        }}
-                        title="Regenerate Response"
-                        disabled={!state.lastMessageId || state.isLoading}
-                    >
-                        ↻
-                    </button>
+                    {state.isLoading ? (
+                        <button 
+                            className="pip-dialogue-action-btn" 
+                            onClick={() => {
+                                const channel = new BroadcastChannel('lorereactor-companion-sync');
+                                channel.postMessage({ type: 'STOP_GENERATION' });
+                                channel.close();
+                            }}
+                            title="Stop Generation"
+                            style={{ color: '#ef4444' }}
+                        >
+                            ⏹
+                        </button>
+                    ) : (
+                        <>
+                            <button 
+                                className="pip-dialogue-action-btn" 
+                                onClick={() => {
+                                    if (!state.lastMessageId) return;
+                                    const channel = new BroadcastChannel('lorereactor-companion-sync');
+                                    channel.postMessage({ type: 'RESUME_GENERATION', messageId: state.lastMessageId });
+                                    channel.close();
+                                }}
+                                title="Resume Generation"
+                                disabled={!state.lastMessageId}
+                            >
+                                ▶
+                            </button>
+                            <button 
+                                className="pip-dialogue-action-btn" 
+                                onClick={() => {
+                                    if (!state.lastMessageId) return;
+                                    const channel = new BroadcastChannel('lorereactor-companion-sync');
+                                    channel.postMessage({ type: 'RESTART_GENERATION', messageId: state.lastMessageId });
+                                    channel.close();
+                                }}
+                                title="Regenerate Response"
+                                disabled={!state.lastMessageId}
+                            >
+                                ↻
+                            </button>
+                        </>
+                    )}
                     <button 
                         className={`pip-dialogue-action-btn ${isReformatToggled ? 'pip-dialogue-action-btn-active' : ''}`}
                         onClick={() => setIsReformatToggled(prev => !prev)}

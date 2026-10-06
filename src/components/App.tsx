@@ -630,7 +630,7 @@ function App() {
             const isAuto = profile?.enableAutoSpeechDetection ?? false;
 
             if (isAuto) {
-                const actThreshold = profile?.speechVolumeActivatedThreshold ?? 15;
+                const actThreshold = profile?.speechVolumeActivationThreshold ?? 15;
                 const silThreshold = profile?.speechSilenceVolumeActivationThreshold ?? 8;
                 const silenceMs = profile?.speechSilenceThresholdMs ?? 1500;
 
@@ -1056,7 +1056,7 @@ function App() {
             allStopPatterns: stopPatterns.stopPatterns,
             allPromptBlocks: promptBlocks.promptBlocks,
             allMemories: memories.memories,
-            lastMessageId: activeMsgId, // ✅ ADD THIS for Resume/Restart buttons
+            lastMessageId: activeMsgId,
         };
     }, [
         isLoading, session.streamingCharacter, streamingText, currentCharacterExpression, 
@@ -1129,7 +1129,11 @@ function App() {
             } else if (e.data?.type === 'RESUME_GENERATION' && e.data?.messageId) {
                 resumeGeneration(e.data.messageId, promptBlocks.promptBlocks);
             } else if (e.data?.type === 'RESTART_GENERATION' && e.data?.messageId) {
-                regenerateFromMessage(e.data.messageId);
+                // ✅ FIX: Added missing protagonistIds and promptBlocks arguments
+                regenerateFromMessage(e.data.messageId, interactionData?.protagonistIds || [], promptBlocks.promptBlocks);
+            } else if (e.data?.type === 'STOP_GENERATION') {
+                // ✅ FIX: Added missing STOP_GENERATION handler
+                stopGeneration();
             }
         };
 
@@ -1139,7 +1143,7 @@ function App() {
             channel.close();
             companionChannelRef.current = null;
         };
-    }, [sendMessage, promptBlocks.promptBlocks, actionMenu, actionManager, localProtagonist, interactionData, currentCharacter, setGlobalModelId, toggleModelLoad, handleActivateBudgetStrategy, saveProfile, setInteractionData, addToast, profiles.profiles, resumeGeneration, regenerateFromMessage]);
+    }, [sendMessage, promptBlocks.promptBlocks, actionMenu, actionManager, localProtagonist, interactionData, currentCharacter, setGlobalModelId, toggleModelLoad, handleActivateBudgetStrategy, saveProfile, setInteractionData, addToast, profiles.profiles, resumeGeneration, regenerateFromMessage, stopGeneration]);
 
     // 2. Broadcast Effect (Fires on every snapshot change / token)
     useEffect(() => {
