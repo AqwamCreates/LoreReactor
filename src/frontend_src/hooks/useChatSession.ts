@@ -215,6 +215,8 @@ export function useChatSession(options: UseChatSessionOptions) {
         addToast,
         requestBorrowedModel,
         getToolContext: buildToolContext,
+        acquireLock,
+        releaseLock,
     });
 
     useChatSessionEffects({
