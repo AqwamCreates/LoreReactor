@@ -45,8 +45,9 @@ export function LanguageModelInferenceManagerModal({
     const [backends, setBackends] = useState<BackendStatus[]>([]);
     const [isLoadingList, setIsLoadingList] = useState(true);
     const [activeInstalls, setActiveInstalls] = useState<Record<string, InstallNotification>>({});
+    const [deletingBackend, setDeletingBackend] = useState<string | null>(null);
+    const [cancellingBackend, setCancellingBackend] = useState<string | null>(null);
 
-    // Fetch current installation status of all backends
     const fetchBackendStatuses = useCallback(async () => {
         try {
             const res = await fetch(`${localURL}/language_models/local_backends`);
@@ -59,7 +60,7 @@ export function LanguageModelInferenceManagerModal({
                 setBackends(list);
             }
         } catch {
-            // Fail silently or keep list
+            // Keep current list on network error
         } finally {
             setIsLoadingList(false);
         }
@@ -90,11 +91,11 @@ export function LanguageModelInferenceManagerModal({
                         fetchBackendStatuses();
                     }
                 } catch {
-                    // Ignore parsing glitches
+                    // Ignore parse error
                 }
             };
         } catch {
-            // Ignore connection issues
+            // Ignore connection error
         }
 
         return () => {
@@ -102,7 +103,6 @@ export function LanguageModelInferenceManagerModal({
         };
     }, [addToast, fetchBackendStatuses]);
 
-    // Trigger on-demand installation for a specific engine
     const handleTriggerInstall = async (backendName: string) => {
         try {
             setActiveInstalls((prev) => ({
@@ -133,6 +133,66 @@ export function LanguageModelInferenceManagerModal({
         }
     };
 
+    const handleCancelInstall = async (backendName: string) => {
+        try {
+            setCancellingBackend(backendName);
+            const res = await fetch(`${localURL}/language_models/local_backends/cancel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ backend: backendName }),
+            });
+
+            if (res.ok) {
+                addToast(`Installation of ${backendName} cancelled.`, 'info');
+                setActiveInstalls((prev) => {
+                    const next = { ...prev };
+                    delete next[backendName];
+                    return next;
+                });
+                await fetchBackendStatuses();
+            } else {
+                const err = await res.json();
+                addToast(err.error || `Failed to cancel installation for ${backendName}`, 'error');
+            }
+        } catch (e: any) {
+            addToast(`Error cancelling ${backendName}: ${e.message}`, 'error');
+        } finally {
+            setCancellingBackend(null);
+        }
+    };
+
+    const handleDeleteBackend = async (backendName: string) => {
+        if (!confirm(`Are you sure you want to delete and uninstall ${backendName}? This will remove its files and free disk space.`)) {
+            return;
+        }
+
+        try {
+            setDeletingBackend(backendName);
+            const res = await fetch(`${localURL}/language_models/local_backends/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ backend: backendName }),
+            });
+
+            if (res.ok) {
+                addToast(`Uninstalled ${backendName}.`, 'info');
+                setActiveInstalls((prev) => {
+                    const next = { ...prev };
+                    delete next[backendName];
+                    return next;
+                });
+                await fetchBackendStatuses();
+            } else {
+                const err = await res.json();
+                addToast(err.error || `Failed to delete ${backendName}`, 'error');
+            }
+        } catch (e: any) {
+            addToast(`Error deleting ${backendName}: ${e.message}`, 'error');
+        } finally {
+            setDeletingBackend(null);
+        }
+    };
+
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div
@@ -159,7 +219,7 @@ export function LanguageModelInferenceManagerModal({
                             marginBottom: '4px',
                         }}
                     >
-                        Monitor, download, and manage your local inference engines on demand. Backends marked as installed will start automatically when loading models configured for them.
+                        Monitor, download, cancel, and delete local inference engines on demand. Installed engines run models automatically.
                     </div>
 
                     {isLoadingList ? (
@@ -175,6 +235,8 @@ export function LanguageModelInferenceManagerModal({
                                     install.status !== 'ready' &&
                                     install.status !== 'error' &&
                                     install.status !== 'idle';
+                                const isDeleting = deletingBackend === backend.name;
+                                const isCancelling = cancellingBackend === backend.name;
 
                                 return (
                                     <div
@@ -243,26 +305,62 @@ export function LanguageModelInferenceManagerModal({
                                                 </span>
                                             </div>
 
-                                            <div style={{ flexShrink: 0 }}>
+                                            <div style={{ flexShrink: 0, display: 'flex', gap: '6px', alignItems: 'center' }}>
                                                 {backend.installed ? (
-                                                    <button
-                                                        type="button"
-                                                        className="editor-button editor-button-cancel"
-                                                        onClick={() => handleTriggerInstall(backend.name)}
-                                                        disabled={Boolean(isBusy)}
-                                                        style={{
-                                                            padding: '4px 10px',
-                                                            fontSize: '0.7rem',
-                                                            minHeight: '30px',
-                                                            opacity: 0.7,
-                                                        }}
-                                                        title="Reinstall or update binary"
-                                                    >
-                                                        Reinstall
-                                                    </button>
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            className="editor-button editor-button-cancel"
+                                                            onClick={() => handleTriggerInstall(backend.name)}
+                                                            disabled={Boolean(isBusy) || isDeleting}
+                                                            style={{
+                                                                padding: '4px 10px',
+                                                                fontSize: '0.7rem',
+                                                                minHeight: '30px',
+                                                                opacity: 0.7,
+                                                            }}
+                                                            title="Reinstall or update binary"
+                                                        >
+                                                            Reinstall
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="editor-button editor-button-cancel"
+                                                            onClick={() => handleDeleteBackend(backend.name)}
+                                                            disabled={Boolean(isBusy) || isDeleting}
+                                                            style={{
+                                                                padding: '4px 10px',
+                                                                fontSize: '0.7rem',
+                                                                minHeight: '30px',
+                                                                color: '#ef4444',
+                                                                borderColor: 'rgba(239, 68, 68, 0.3)',
+                                                            }}
+                                                            title="Uninstall engine and delete files"
+                                                        >
+                                                            {isDeleting ? 'Deleting...' : 'Delete'}
+                                                        </button>
+                                                    </>
                                                 ) : isBusy ? (
-                                                    <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--accent)' }}>
-                                                        {install.percent}%
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--accent)' }}>
+                                                            {install.percent}%
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            className="editor-button editor-button-cancel"
+                                                            onClick={() => handleCancelInstall(backend.name)}
+                                                            disabled={isCancelling}
+                                                            style={{
+                                                                padding: '4px 8px',
+                                                                fontSize: '0.7rem',
+                                                                minHeight: '28px',
+                                                                color: '#ef4444',
+                                                                borderColor: 'rgba(239, 68, 68, 0.3)',
+                                                            }}
+                                                            title="Cancel download/installation"
+                                                        >
+                                                            {isCancelling ? 'Cancelling...' : 'Cancel'}
+                                                        </button>
                                                     </div>
                                                 ) : (
                                                     <button
@@ -281,7 +379,7 @@ export function LanguageModelInferenceManagerModal({
                                             </div>
                                         </div>
 
-                                        {/* Download / Extraction Progress Track */}
+                                        {/* Progress Track */}
                                         {isBusy && (
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '2px' }}>
                                                 <div
