@@ -6,7 +6,6 @@ import { saveRawInteractionData, loadRawInteractionData, flushSaveQueue, getChar
 import { createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
 import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { useDisplayNameCache } from '../utilities/immersionLogic';
-import { compileMessageDisplayText } from '../utilities/messageDisplayCompiler';
 import { getCharacterStarterMessage } from '../utilities/characterLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -675,7 +674,8 @@ function App() {
     const handleToggleOverlay = async () => {
         try {
             const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-            const overlayWin = await WebviewWindow.getByLabel('companion-overlay');
+            let overlayWin = await WebviewWindow.getByLabel('companion-overlay');
+            
             if (overlayWin) {
                 const isVisible = await overlayWin.isVisible();
                 if (isVisible) {
@@ -685,11 +685,21 @@ function App() {
                     await overlayWin.show();
                     try {
                         await overlayWin.setFocus();
-                    } catch {
-                        // Ignore focus permission errors
-                    }
+                    } catch {}
                     setIsOverlayOpen(true);
                 }
+            } else {
+                // If the window was previously closed or destroyed, re-create it
+                overlayWin = new WebviewWindow('companion-overlay', {
+                    url: 'index.html', // points to your companion route/view
+                    title: 'LoreReactor Companion',
+                    width: 360,
+                    height: 540,
+                    transparent: true,
+                    decorations: false,
+                    alwaysOnTop: true,
+                });
+                setIsOverlayOpen(true);
             }
         } catch (err) {
             console.warn('[App] Tauri overlay toggle failed:', err);
@@ -978,7 +988,6 @@ function App() {
     const getCompanionStateSnapshot = useCallback(() => {
         const protagonistId = localProtagonist?.id ?? interactionData?.protagonistIds?.[0];
         
-        // Strictly find the AI Companion participant
         const companionChar = interactionData?.participants?.find((p: Character) => p.id !== protagonistId) 
             || interactionData?.participants?.find((p: Character) => p.id !== currentCharacter?.id)
             || null;
@@ -1034,6 +1043,14 @@ function App() {
             streamingText: streamingText || '',
             locationBackgroundUrl: avatarUrl ? viewAssets.locationBackgroundUrl : null,
             allActions: actionManager.allActions || [],
+            allCharacters: characters.characters,
+            allLocations: locations.locations,
+            allContexts: contexts.contexts,
+            allAudioTracks: audioTracks.audioTracks,
+            allAccounts: accounts.accounts,
+            allMultiplayerData: multiplayerDataManager.multiplayerData,
+            interactionData,
+            localProtagonist,
             allLanguageModels: allLanguageModels,
             selectedModelId: models.selectedModelId,
             allBudgetStrategies: budgetStrategies.strategies,
@@ -1051,6 +1068,8 @@ function App() {
         isLoading, session.streamingCharacter, streamingText, currentCharacterExpression, 
         interactionData, localProtagonist, currentCharacter, viewAssets.chatMessages, 
         viewAssets.portraitUrlCache, viewAssets.locationBackgroundUrl, actionManager.allActions,
+        characters.characters, locations.locations, contexts.contexts, audioTracks.audioTracks,
+        accounts.accounts, multiplayerDataManager.multiplayerData,
         allLanguageModels, models.selectedModelId, budgetStrategies.strategies, selectedBudgetStrategyId,
         profiles.profiles, worlds.worlds, samplers.Samplers, stopPatterns.stopPatterns,
         promptBlocks.promptBlocks, memories.memories

@@ -3,7 +3,7 @@ import type React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
-import { useCompiledMessageText } from '../hooks/useMessageDisplay';
+import { compileMessageDisplayText } from '../utilities/messageDisplayCompiler';
 import { getLocalMessageHistory } from '../utilities/timelineLogic';
 import { computeSlashAutocomplete, applySlashSelection } from '../utilities/slashCommandLogic';
 import { detectFormatSegments, buildCategoryConversionsWithLearning, applyConversions } from '../utilities/textDisplayReformatter';
@@ -13,7 +13,7 @@ import type {
     InteractionData, 
     Character, 
     Context, 
-    Location, // <--- ADD THIS
+    Location, 
     AudioTrack, 
     LanguageModel, 
     BudgetStrategy, 
@@ -99,9 +99,6 @@ export function StandaloneOverlay() {
     // ─── Voice Recording State ──────────────────────────────────────
     const [isRecording, setIsRecording] = useState(false);
 
-    // ─── Dialogue History Navigation State ──────────────────────────
-    const [viewIndex, setViewIndex] = useState<number | null>(null);
-
     // ─── Single-Message Reformat Toggle State ───────────────────────
     const [isReformatToggled, setIsReformatToggled] = useState(false);
 
@@ -133,21 +130,7 @@ export function StandaloneOverlay() {
         return getLocalMessageHistory(state.interactionData, targetChar, ['chat', 'whisper']) as (ChatMessage | WhisperMessage)[];
     }, [state.interactionData, state.localProtagonist]);
 
-    // Reset view index whenever a new message arrives
-    const prevChatLengthRef = useRef(chatMessages.length);
-    useEffect(() => {
-        if (chatMessages.length > prevChatLengthRef.current) {
-            setViewIndex(null);
-            setIsReformatToggled(false);
-        }
-        prevChatLengthRef.current = chatMessages.length;
-    }, [chatMessages.length]);
-
-    const latestMessage = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1] : null;
-
-    const displayedMessage = (viewIndex !== null && viewIndex >= 0 && viewIndex < chatMessages.length)
-        ? chatMessages[viewIndex]
-        : latestMessage;
+    const displayedMessage = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1] : null;
 
     // ─── Resolved Active Speaker ─────────────────────────────────────
     const activeSpeaker: Character = useMemo(() => {
@@ -197,39 +180,24 @@ export function StandaloneOverlay() {
         return displayedMessage;
     }, [state.isLoading, state.streamingText, state.lastMessageId, activeSpeaker, displayedMessage]);
 
-    // ─── Centralized Compiler Hook ──────────────────────────────────
-    const compiledDialogueText = useCompiledMessageText(currentMessage);
+    // ─── Centralized Compiler Using Broadcasted State ───────────────
+    const activeProfile = useMemo(() => {
+        return state.allProfiles?.find(p => p.id === state.activeProfileId) || state.interactionData?.profile;
+    }, [state.allProfiles, state.activeProfileId, state.interactionData?.profile]);
+
+    const displayMode = activeProfile?.toolUsageDisplayMode ?? 'simple';
+    const participants = state.interactionData?.participants || state.allCharacters || [];
+
+    const compiledDialogueText = useMemo(() => {
+        if (!currentMessage) return '';
+        return compileMessageDisplayText(currentMessage, displayMode, participants);
+    }, [currentMessage, displayMode, participants]);
 
     const targetMessageId = currentMessage?.id || state.lastMessageId || null;
 
-    // Reset reformat toggle when switching target messages
     useEffect(() => {
         setIsReformatToggled(false);
     }, [targetMessageId]);
-
-    // ─── Navigation Handlers ─────────────────────────────────────────
-    const canGoBack = chatMessages.length > 1 && (viewIndex === null ? true : viewIndex > 0);
-    const canGoForward = viewIndex !== null && viewIndex < chatMessages.length - 1;
-
-    const handleGoBack = useCallback(() => {
-        if (viewIndex === null) {
-            if (chatMessages.length >= 2) {
-                setViewIndex(chatMessages.length - 2);
-            }
-        } else if (viewIndex > 0) {
-            setViewIndex(viewIndex - 1);
-        }
-    }, [viewIndex, chatMessages.length]);
-
-    const handleGoForward = useCallback(() => {
-        if (viewIndex !== null) {
-            if (viewIndex < chatMessages.length - 2) {
-                setViewIndex(viewIndex + 1);
-            } else {
-                setViewIndex(null);
-            }
-        }
-    }, [viewIndex, chatMessages.length]);
 
     // ─── Text Reformatter Layer (Operates on Clean Compiled Text) ───
     const { rawDisplay, reformattedDisplay, hasFormats } = useMemo(() => {
@@ -332,7 +300,7 @@ export function StandaloneOverlay() {
             state.allLocations,
             state.allAudioTracks,
             state.allWorlds,
-            state.allProfiles,
+            state.allProfiles || [],
             state.allPromptBlocks,
             state.allLanguageModels,
             state.allSamplers,
@@ -382,13 +350,13 @@ export function StandaloneOverlay() {
     const [actionPunctuation, setActionPunctuation] = useState<ActionPunctuation>('.');
     const [isAutoFormat, setIsAutoFormat] = useState(false);
 
-    // ─── Native Window Close ─────────────────────────────────────────
+    // ─── Native Window Close (Hide rather than destroy) ─────────────
     const handleClose = useCallback(async () => {
         try {
             const win = getCurrentWebviewWindow();
             await win.hide();
         } catch {
-            window.close();
+            // Do not call window.close()
         }
     }, []);
 
@@ -850,30 +818,8 @@ export function StandaloneOverlay() {
                     {displayedSpeakerName}
                 </div>
                 
-                {/* Backlog Navigation & Action Toolbar */}
+                {/* Dialogue Actions Toolbar */}
                 <div className="pip-dialogue-actions">
-                    {/* Dialogue History Backlog Navigation */}
-                    {chatMessages.length > 1 && !state.isLoading && (
-                        <>
-                            <button
-                                className="pip-dialogue-action-btn"
-                                onClick={handleGoBack}
-                                disabled={!canGoBack}
-                                title="Previous message"
-                            >
-                                ◀
-                            </button>
-                            <button
-                                className="pip-dialogue-action-btn"
-                                onClick={handleGoForward}
-                                disabled={!canGoForward}
-                                title={!canGoForward ? 'Latest message' : 'Next message'}
-                            >
-                                ▶
-                            </button>
-                        </>
-                    )}
-
                     {/* Reformat Button */}
                     {!state.isLoading && (
                         <button 
