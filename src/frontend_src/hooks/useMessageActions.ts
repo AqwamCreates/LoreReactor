@@ -1,7 +1,7 @@
 // frontend_src/hooks/useMessageActions.ts
 import { useCallback } from 'react';
 import type { InteractionData } from '../types';
-import { editChatMessage as editMessage } from '../utilities/messageLogic';
+import { editChatMessage as editMessage, massDeleteMessages } from '../utilities/messageLogic';
 import { useSessionStore } from './useSessionStore';
 import { learnFromManualEdits } from '../utilities/textDisplayReformatter';
 
@@ -36,7 +36,6 @@ export function useMessageActions(options: UseMessageActionsOptions) {
             
             if (oldMsg) learnFromManualEdits(oldMsg.textContent, editDraft);
 
-            // Just save the raw text. The display text is compiled on the fly!
             const updated = await editMessage(interactionData, editingId, editDraft);
             
             setInteractionData(updated);
@@ -64,8 +63,24 @@ export function useMessageActions(options: UseMessageActionsOptions) {
         }
     }, [interactionData, isModelReady, isLoading, setInteractionData, regenerateFromMessage, addToast]);
 
+    // ✅ ADDED: Executes mass deletion from the target message onwards
+    const handleConfirmMassDelete = useCallback(async () => {
+        const { massDeleteId, setMassDeleteId } = useSessionStore.getState();
+        if (!interactionData || !massDeleteId) return;
+
+        try {
+            const updatedData = await massDeleteMessages(interactionData, massDeleteId);
+            setInteractionData(updatedData);
+            setMassDeleteId(null);
+            addToast('Messages deleted.', 'success');
+        } catch (e) {
+            addToast((e as Error).message, 'error');
+        }
+    }, [interactionData, setInteractionData, addToast]);
+
     return {
         handleSaveEdit,
         handleRegenerateFromEdit,
+        handleConfirmMassDelete,
     };
 }
