@@ -35,7 +35,7 @@ export function getTurnsSinceLastSpoken(history: HistoryMessage[], characterId: 
 
 /**
  * Counts consecutive messages this character sent at the tip of the provided thread
- * without ANY other participant (protagonist or another AI) interjecting.
+ * without ANY other participant (protagonist or another AI in the room) interjecting.
  */
 export function getConsecutiveTurnsByCharacter(
     history: HistoryMessage[],
@@ -43,7 +43,8 @@ export function getConsecutiveTurnsByCharacter(
 ): number {
     let count = 0;
     for (let i = history.length - 1; i >= 0; i--) {
-        if (history[i].character.id === characterId) {
+        const msg = history[i];
+        if (msg.character.id === characterId) {
             count++;
         } else {
             break;
@@ -137,8 +138,32 @@ export function computeGlobalScore(character: Character, data: InteractionData):
     return staminaRatio * effectiveInitiative * timeMultiplier;
 }
 
+/**
+ * TURN-TAKING CALIBRATION:
+ * When co-located with the protagonist, characters take turns reacting.
+ * If this character spoke last, they yield the floor and return 0 (stopping API spam)
+ * until someone else speaks or a substantial silence threshold passes.
+ */
 export function computeChatScore(character: Character, data: InteractionData): number {
     const profile = data.profile;
+    const localThread = getLocalMessageHistory(data, character, ['chat', 'whisper']);
+    
+    // Check if THIS character was the last one to speak in the thread
+    const monologueStreak = getConsecutiveTurnsByCharacter(localThread, character.id);
+    const timeSinceLastSpokeMs = getTimeSinceLastActionMs(data, character);
+    const impatience = Math.max(0.1, getEffectiveChatImpatienceSensitivity(character, profile));
+
+    // If character spoke last, enforce a silence cooldown before they are allowed to monologue again
+    if (monologueStreak > 0) {
+        // Base follow-up threshold: 15 seconds, reduced by high impatience (e.g. 6s for hyper-fixated, 30s for patient)
+        const monologueCooldownMs = Math.max(4000, 15000 / impatience);
+        
+        // If cooldown hasn't passed, yield the floor completely (ZERO API calls)
+        if (timeSinceLastSpokeMs < monologueCooldownMs) {
+            return 0;
+        }
+    }
+
     const latest = findLatestMessage(data, character);
     const lastMsg = latest?.message;
 
@@ -151,15 +176,12 @@ export function computeChatScore(character: Character, data: InteractionData): n
 
     const baseInitiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
     const localRank = getLocalInitiativeRank(character, data);
-    const momentum = getParticipationMomentum(getLocalMessageHistory(data, character, ['chat']), character.id);
+    const momentum = getParticipationMomentum(localThread, character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
 
-    const timeSince = getTimeSinceLastActionMs(data, character);
-    const timeMultiplier = 1 + Math.log1p(timeSince / 1000);
+    const timeMultiplier = 1 + Math.log1p(timeSinceLastSpokeMs / 1000);
 
-    const turnsSince = getTurnsSinceLastSpoken(getLocalMessageHistory(data, character, ['chat']), character.id);
-    const impatience = Math.max(0, getEffectiveChatImpatienceSensitivity(character, profile));
-
+    const turnsSince = getTurnsSinceLastSpoken(localThread, character.id);
     const charLocId = getCurrentLocationId(data, character);
     let localActivityDensity = 0;
     
@@ -326,7 +348,7 @@ export function computeChatStaminaConsumptionCost(
     if (paragraphs <= 0) return 0;
 
     const hasLocations = data.locations && data.locations.length > 0;
-    let coLocatedCount;
+    let coLocatedCount = 1;
 
     if (!hasLocations) {
         coLocatedCount = Math.max(1, data.participants.filter(p => p.id !== speaker.id).length);
@@ -351,7 +373,7 @@ export function computeMovementCost(fromId: string, toId: string, locations: Loc
 
 /**
  * Pacing calculation:
- * Uses cached local thread history from getLocalMessageHistory to evaluate consecutive turns.
+ * Uses cached local thread history to evaluate pacing.
  */
 export function computeAutonomousTickDelay(character: Character, data: InteractionData): number {
     const profile = data.profile;
@@ -371,7 +393,6 @@ export function computeAutonomousTickDelay(character: Character, data: Interacti
     const nameMentionBoost = 1 + Math.log1p(mentionCount * nameSensitivity * 2);
     const nameFactor = 1 / nameMentionBoost;
 
-    // Fetch the thread strictly for verbal message types via timelineLogic
     const thread = getLocalMessageHistory(data, character, ['chat', 'whisper']);
     const consecutiveMonologueTurns = getConsecutiveTurnsByCharacter(thread, character.id);
     const backoffResistance = impatience;

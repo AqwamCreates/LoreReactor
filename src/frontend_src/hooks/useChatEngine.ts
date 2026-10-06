@@ -29,7 +29,9 @@ interface EngineDependencies {
     setLastSelectedModelId: (id: string | null) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
-    getToolContext?: () => ToolExecutionContext; // ✅ ADD THIS
+    getToolContext?: () => ToolExecutionContext;
+    acquireLock?: () => boolean;
+    releaseLock?: () => void;
 }
 
 export function useChatEngine(deps: EngineDependencies) {
@@ -37,6 +39,7 @@ export function useChatEngine(deps: EngineDependencies) {
         getState, setInteractionData, setStreamingState, 
         setBudgetData, setStats, setSelectedCharacterExpression,
         setLastSelectedModelId, addToast, requestBorrowedModel,
+        acquireLock, releaseLock,
     } = deps;
 
     const handleServerResponse = useCallback(async (
@@ -143,13 +146,12 @@ export function useChatEngine(deps: EngineDependencies) {
         signal: AbortController,
         promptBlocks?: PromptBlock[],
         metadata?: RequestMetadata,
-        existingCharacterText?: string, // ✅ ADD THIS
+        existingCharacterText?: string,
     ): Promise<{ interactionData: InteractionData; isCompleted: boolean; promptText?: string }> => {
         let lastPromptText: string | undefined = undefined;
 
         const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken?: (t: string) => void) => {
             setStreamingState(c, '');
-            // ✅ Forward existingCharacterText here
             const result = await handleServerResponse(d, c, s, onToken, undefined, existingCharacterText || '', promptBlocks, metadata);
             
             if (result?.promptText) {
@@ -176,7 +178,7 @@ export function useChatEngine(deps: EngineDependencies) {
             };
         }
         return { interactionData: initialData, isCompleted: true };
-    }, [handleServerResponse, setStreamingState, setInteractionData]);;
+    }, [handleServerResponse, setStreamingState, setInteractionData]);
 
     const startAutonomousMode = useCallback((
         checkCanAct: () => boolean,
@@ -195,9 +197,11 @@ export function useChatEngine(deps: EngineDependencies) {
             checkCanAct, 
             getData, 
             setData,
-            (character) => setStreamingState(character ?? null, '')
+            (character) => setStreamingState(character ?? null, ''),
+            acquireLock,
+            releaseLock
         );
-    }, [handleServerResponse, setStreamingState]);
+    }, [handleServerResponse, setStreamingState, acquireLock, releaseLock]);
 
     const stopAutonomousMode = useCallback(() => {
         characterSoul.stop();

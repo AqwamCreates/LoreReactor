@@ -120,9 +120,10 @@ export function useChatSessionEffects({
         return () => { cancelled = true; };
     }, [interactionData, setNumberOfTokens, engine]);
 
-    // 6. Autonomous Simulation Lifecycle
+    // 6. Autonomous Simulation Lifecycle (STABLE: Only restarts if chat ID changes, NOT on every message)
+    const activeChatId = interactionData?.id;
     useEffect(() => {
-        if (autonomousMode && interactionData && !isMultiplayerClient) {
+        if (autonomousMode && activeChatId && !isMultiplayerClient) {
             const checkCanAct = () => !isLoadingRef.current && !abortControllerRef.current;
             chatEngine.startAutonomousMode(
                 checkCanAct,
@@ -134,7 +135,7 @@ export function useChatSessionEffects({
             chatEngine.stopAutonomousMode();
         }
         return () => { chatEngine.stopAutonomousMode(); };
-    }, [autonomousMode, interactionData, chatEngine, isLoadingRef, abortControllerRef, resetStream, getState, setState, isMultiplayerClient]);
+    }, [autonomousMode, activeChatId, isMultiplayerClient, chatEngine, isLoadingRef, abortControllerRef, resetStream, getState, setState]);
 
     // 7. Persist Factorization Machine Weights on Window Unload
     useEffect(() => {
