@@ -99,6 +99,11 @@ export function StandaloneOverlay() {
     // ─── Voice Recording State ──────────────────────────────────────
     const [isRecording, setIsRecording] = useState(false);
 
+    // ─── Inline Editing State ───────────────────────────────────────
+    const [isEditing, setIsEditing] = useState(false);
+    const [editDraft, setEditDraft] = useState('');
+    const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+
     // ─── Single-Message Reformat Toggle State ───────────────────────
     const [isReformatToggled, setIsReformatToggled] = useState(false);
 
@@ -197,7 +202,42 @@ export function StandaloneOverlay() {
 
     useEffect(() => {
         setIsReformatToggled(false);
+        setIsEditing(false);
     }, [targetMessageId]);
+
+    // ─── Inline Edit Handlers ────────────────────────────────────────
+    const handleStartEdit = useCallback(() => {
+        if (!currentMessage) return;
+        const textToEdit = ('processedTextContent' in currentMessage && currentMessage.processedTextContent)
+            ? currentMessage.processedTextContent
+            : ('textContent' in currentMessage ? currentMessage.textContent : '');
+        setEditDraft(textToEdit);
+        setIsEditing(true);
+    }, [currentMessage]);
+
+    const handleCancelEdit = useCallback(() => {
+        setIsEditing(false);
+        setEditDraft('');
+    }, []);
+
+    const handleSaveEdit = useCallback(() => {
+        if (!targetMessageId) return;
+        const channel = new BroadcastChannel('lorereactor-companion-sync');
+        channel.postMessage({
+            type: 'SAVE_EDIT',
+            messageId: targetMessageId,
+            text: editDraft,
+        });
+        channel.close();
+        setIsEditing(false);
+    }, [targetMessageId, editDraft]);
+
+    useEffect(() => {
+        if (isEditing && editTextareaRef.current) {
+            editTextareaRef.current.focus();
+            editTextareaRef.current.setSelectionRange(editDraft.length, editDraft.length);
+        }
+    }, [isEditing, editDraft.length]);
 
     // ─── Text Reformatter Layer (Operates on Clean Compiled Text) ───
     const { rawDisplay, reformattedDisplay, hasFormats } = useMemo(() => {
@@ -239,10 +279,10 @@ export function StandaloneOverlay() {
     const dialogueTextRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (dialogueTextRef.current) {
+        if (dialogueTextRef.current && !isEditing) {
             dialogueTextRef.current.scrollTop = dialogueTextRef.current.scrollHeight;
         }
-    }, [compiledDialogueText, state.isLoading, isReformatToggled]);
+    }, [compiledDialogueText, state.isLoading, isReformatToggled, isEditing]);
 
     // Close settings menu when clicking outside
     useEffect(() => {
@@ -579,11 +619,11 @@ export function StandaloneOverlay() {
 
     const statusLabel = state.isLoading 
         ? 'Responding' 
-        : (isLive? 'Live' : 'Idle');
+        : (isLive ? 'Live' : 'Idle');
     
     const statusColorClass = state.isLoading 
         ? 'active' 
-        : (isLive? '' : 'idle');
+        : (isLive ? '' : 'idle');
 
     return (
         <div className="pip-overlay-container" onClick={() => setActionMenuTarget(null)}>
@@ -822,86 +862,139 @@ export function StandaloneOverlay() {
                 
                 {/* Dialogue Actions Toolbar */}
                 <div className="pip-dialogue-actions">
-                    {/* Reformat Button */}
-                    {!state.isLoading && (
-                        <button 
-                            className={`pip-dialogue-action-btn ${isReformatToggled ? 'pip-dialogue-action-btn-active' : ''}`}
-                            onClick={() => setIsReformatToggled(prev => !prev)}
-                            title={isReformatToggled ? "Revert to Raw Text" : "Apply Auto-Reformat"}
-                            disabled={!hasFormats}
-                        >
-                            ✨
-                        </button>
-                    )}
-
-                    {/* Stop or Resume Button */}
-                    {state.isLoading ? (
-                        <button 
-                            className="pip-dialogue-action-btn" 
-                            onClick={() => {
-                                const channel = new BroadcastChannel('lorereactor-companion-sync');
-                                channel.postMessage({ type: 'STOP_GENERATION' });
-                                channel.close();
-                            }}
-                            title="Stop Generation"
-                            style={{ color: '#ef4444' }}
-                        >
-                            ⏹
-                        </button>
+                    {isEditing ? (
+                        <>
+                            <button 
+                                type="button"
+                                className="pip-dialogue-action-btn"
+                                onClick={handleCancelEdit}
+                                title="Cancel Edit"
+                            >
+                                ✕
+                            </button>
+                            <button 
+                                type="button"
+                                className="pip-dialogue-action-btn"
+                                onClick={handleSaveEdit}
+                                title="Save Edit"
+                                style={{ color: '#22c55e' }}
+                            >
+                                💾
+                            </button>
+                        </>
                     ) : (
-                        <button 
-                            className="pip-dialogue-action-btn" 
-                            onClick={() => {
-                                if (!targetMessageId) return;
-                                const channel = new BroadcastChannel('lorereactor-companion-sync');
-                                channel.postMessage({ type: 'RESUME_GENERATION', messageId: targetMessageId });
-                                channel.close();
-                            }}
-                            title="Resume Generation"
-                            disabled={!targetMessageId}
-                        >
-                            ▶
-                        </button>
-                    )}
+                        <>
+                            {/* Reformat Button */}
+                            {!state.isLoading && (
+                                <button 
+                                    className={`pip-dialogue-action-btn ${isReformatToggled ? 'pip-dialogue-action-btn-active' : ''}`}
+                                    onClick={() => setIsReformatToggled(prev => !prev)}
+                                    title={isReformatToggled ? "Revert to Raw Text" : "Apply Auto-Reformat"}
+                                    disabled={!hasFormats}
+                                >
+                                    ✨
+                                </button>
+                            )}
 
-                    {/* Regenerate Button */}
-                    {!state.isLoading && (
-                        <button 
-                            className="pip-dialogue-action-btn" 
-                            onClick={() => {
-                                if (!targetMessageId) return;
-                                const channel = new BroadcastChannel('lorereactor-companion-sync');
-                                channel.postMessage({ type: 'RESTART_GENERATION', messageId: targetMessageId });
-                                channel.close();
-                            }}
-                            title="Regenerate Response"
-                            disabled={!targetMessageId}
-                        >
-                            ↻
-                        </button>
-                    )}
+                            {/* Stop or Resume Button */}
+                            {state.isLoading ? (
+                                <button 
+                                    className="pip-dialogue-action-btn" 
+                                    onClick={() => {
+                                        const channel = new BroadcastChannel('lorereactor-companion-sync');
+                                        channel.postMessage({ type: 'STOP_GENERATION' });
+                                        channel.close();
+                                    }}
+                                    title="Stop Generation"
+                                    style={{ color: '#ef4444' }}
+                                >
+                                    ⏹
+                                </button>
+                            ) : (
+                                <button 
+                                    className="pip-dialogue-action-btn" 
+                                    onClick={() => {
+                                        if (!targetMessageId) return;
+                                        const channel = new BroadcastChannel('lorereactor-companion-sync');
+                                        channel.postMessage({ type: 'RESUME_GENERATION', messageId: targetMessageId });
+                                        channel.close();
+                                    }}
+                                    title="Resume Generation"
+                                    disabled={!targetMessageId}
+                                >
+                                    ▶
+                                </button>
+                            )}
 
-                    {/* Edit Button */}
-                    {!state.isLoading && (
-                        <button 
-                            className="pip-dialogue-action-btn" 
-                            onClick={() => {
-                                if (!targetMessageId) return;
-                                const channel = new BroadcastChannel('lorereactor-companion-sync');
-                                channel.postMessage({ type: 'EDIT_MESSAGE', messageId: targetMessageId });
-                                channel.close();
-                            }}
-                            title="Edit Message"
-                            disabled={!targetMessageId}
-                        >
-                            ✎
-                        </button>
+                            {/* Regenerate Button */}
+                            {!state.isLoading && (
+                                <button 
+                                    className="pip-dialogue-action-btn" 
+                                    onClick={() => {
+                                        if (!targetMessageId) return;
+                                        const channel = new BroadcastChannel('lorereactor-companion-sync');
+                                        channel.postMessage({ type: 'RESTART_GENERATION', messageId: targetMessageId });
+                                        channel.close();
+                                    }}
+                                    title="Regenerate Response"
+                                    disabled={!targetMessageId}
+                                >
+                                    ↻
+                                </button>
+                            )}
+
+                            {/* Edit Button */}
+                            {!state.isLoading && (
+                                <button 
+                                    className="pip-dialogue-action-btn" 
+                                    onClick={handleStartEdit}
+                                    title="Edit Message"
+                                    disabled={!targetMessageId}
+                                >
+                                    ✎
+                                </button>
+                            )}
+                        </>
                     )}
                 </div>
 
-                <div className="pip-dialogue-text" ref={dialogueTextRef}>
+                {/* Main Dialogue Content / Full-Height Inline Edit Textarea */}
+                <div 
+                    className="pip-dialogue-text" 
+                    ref={dialogueTextRef}
+                    style={isEditing ? { display: 'flex', flexDirection: 'column', height: '100%', flex: 1, padding: '2px' } : undefined}
+                >
                     {state.isLoading && !state.streamingText ? (
                         <div className="pip-thinking-dots"><span></span><span></span><span></span></div>
+                    ) : isEditing ? (
+                        <textarea
+                            ref={editTextareaRef}
+                            value={editDraft}
+                            onChange={e => setEditDraft(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    handleCancelEdit();
+                                }
+                            }}
+                            style={{
+                                width: '100%',
+                                height: '100%',
+                                flex: 1,
+                                minHeight: '85px',
+                                background: 'rgba(0, 0, 0, 0.25)',
+                                color: '#fff',
+                                border: '1px solid rgba(168, 85, 247, 0.4)',
+                                borderRadius: '6px',
+                                padding: '8px',
+                                fontSize: '0.85rem',
+                                lineHeight: '1.4',
+                                fontFamily: 'inherit',
+                                resize: 'none',
+                                outline: 'none',
+                                boxSizing: 'border-box',
+                            }}
+                        />
                     ) : displayedText ? (
                         displayedText
                     ) : (
@@ -910,97 +1003,102 @@ export function StandaloneOverlay() {
                 </div>
             </div>
 
-            {/* File Attachment Chips */}
-            {pendingFiles.length > 0 && (
-                <div style={{ position: 'absolute', bottom: '55px', left: '12px', right: '12px', display: 'flex', gap: '6px', flexWrap: 'wrap', zIndex: 45 }}>
-                    {pendingFiles.map((file, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 8px', background: 'rgba(192, 132, 252, 0.2)', border: '1px solid rgba(192, 132, 252, 0.5)', borderRadius: '12px', fontSize: '0.65rem', color: '#fff' }}>
-                            <span style={{ maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📎 {file.name}</span>
-                            <button onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', color: '#ff4444', cursor: 'pointer', padding: '0 2px', fontSize: '0.8rem' }}>×</button>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {/* Invisible Hover Net */}
-            <div className="pip-input-trigger-zone" />
-
-            {/* Stealth Input: Paperclip LEFT | Text MIDDLE | Mic RIGHT */}
-            <div className={`pip-stealth-input-wrapper ${isInputFocused || showAutocomplete || pendingFiles.length > 0 || isRecording ? 'focused has-autocomplete' : ''}`}>
-                {showAutocomplete && (
-                    <div ref={autocompleteRef} className="slash-autocomplete">
-                        <div className="slash-autocomplete-breadcrumbs">
-                            {breadcrumbs.map((b, i) => (
-                                <span key={i} className="slash-breadcrumb">
-                                    {b} {i < breadcrumbs.length - 1 && <span className="slash-breadcrumb-sep">›</span>}
-                                </span>
-                            ))}
-                        </div>
-                        <div className="slash-autocomplete-list">
-                            {options.length === 0 && (
-                                <div className="slash-autocomplete-no-results">
-                                    Type any text, then press Enter to send
-                                </div>
-                            )}
-                            {options.map((opt, i) => (
-                                <div
-                                    key={`${opt.type}-${opt.value}-${opt.id}-${i}`}
-                                    className={`slash-autocomplete-item ${i === selectedIndex ? 'slash-autocomplete-item-selected' : ''}`}
-                                    onMouseDown={(e) => { e.preventDefault(); handleApplySlashSelection(opt); }}
-                                    onMouseEnter={() => setSelectedIndex(i)}
-                                >
-                                    <span className="slash-autocomplete-label">{opt.label}</span>
-                                    {opt.id && opt.id !== 'example' && <span className="slash-autocomplete-id">({opt.id})</span>}
-                                    {opt.desc && <span className="slash-autocomplete-desc">{opt.desc}</span>}
+            {/* Hide Chat Input and File Attachment zone while in Edit Mode */}
+            {!isEditing && (
+                <>
+                    {/* File Attachment Chips */}
+                    {pendingFiles.length > 0 && (
+                        <div style={{ position: 'absolute', bottom: '55px', left: '12px', right: '12px', display: 'flex', gap: '6px', flexWrap: 'wrap', zIndex: 45 }}>
+                            {pendingFiles.map((file, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 8px', background: 'rgba(192, 132, 252, 0.2)', border: '1px solid rgba(192, 132, 252, 0.5)', borderRadius: '12px', fontSize: '0.65rem', color: '#fff' }}>
+                                    <span style={{ maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📎 {file.name}</span>
+                                    <button onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', color: '#ff4444', cursor: 'pointer', padding: '0 2px', fontSize: '0.8rem' }}>×</button>
                                 </div>
                             ))}
                         </div>
-                        <div className="slash-autocomplete-hint">
-                            <span><kbd>Tab</kbd> scroll</span>
-                            <span><kbd>Enter</kbd> select</span>
-                            <span><kbd>Esc</kbd> close</span>
-                        </div>
+                    )}
+
+                    {/* Invisible Hover Net */}
+                    <div className="pip-input-trigger-zone" />
+
+                    {/* Stealth Input: Paperclip LEFT | Text MIDDLE | Mic RIGHT */}
+                    <div className={`pip-stealth-input-wrapper ${isInputFocused || showAutocomplete || pendingFiles.length > 0 || isRecording ? 'focused has-autocomplete' : ''}`}>
+                        {showAutocomplete && (
+                            <div ref={autocompleteRef} className="slash-autocomplete">
+                                <div className="slash-autocomplete-breadcrumbs">
+                                    {breadcrumbs.map((b, i) => (
+                                        <span key={i} className="slash-breadcrumb">
+                                            {b} {i < breadcrumbs.length - 1 && <span className="slash-breadcrumb-sep">›</span>}
+                                        </span>
+                                    ))}
+                                </div>
+                                <div className="slash-autocomplete-list">
+                                    {options.length === 0 && (
+                                        <div className="slash-autocomplete-no-results">
+                                            Type any text, then press Enter to send
+                                        </div>
+                                    )}
+                                    {options.map((opt, i) => (
+                                        <div
+                                            key={`${opt.type}-${opt.value}-${opt.id}-${i}`}
+                                            className={`slash-autocomplete-item ${i === selectedIndex ? 'slash-autocomplete-item-selected' : ''}`}
+                                            onMouseDown={(e) => { e.preventDefault(); handleApplySlashSelection(opt); }}
+                                            onMouseEnter={() => setSelectedIndex(i)}
+                                        >
+                                            <span className="slash-autocomplete-label">{opt.label}</span>
+                                            {opt.id && opt.id !== 'example' && <span className="slash-autocomplete-id">({opt.id})</span>}
+                                            {opt.desc && <span className="slash-autocomplete-desc">{opt.desc}</span>}
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="slash-autocomplete-hint">
+                                    <span><kbd>Tab</kbd> scroll</span>
+                                    <span><kbd>Enter</kbd> select</span>
+                                    <span><kbd>Esc</kbd> close</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Paperclip — LEFT */}
+                        <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="pip-input-icon-btn"
+                            title="Attach File"
+                            disabled={state.isLoading}
+                        >
+                            📎
+                        </button>
+                        <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileSelected} multiple />
+
+                        {/* Text Input — MIDDLE */}
+                        <input
+                            ref={inputRef}
+                            type="text"
+                            className="pip-stealth-input"
+                            placeholder="Say something or type / for commands"
+                            value={inputText}
+                            onChange={(e) => setInputText(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            onFocus={() => setIsInputFocused(true)}
+                            onBlur={() => setIsInputFocused(false)}
+                            autoComplete="off"
+                            disabled={state.isLoading}
+                        />
+
+                        {/* Mic — RIGHT */}
+                        <button
+                            type="button"
+                            onClick={handleToggleMic}
+                            className={`pip-input-icon-btn ${isRecording ? 'recording' : ''}`}
+                            title={isRecording ? "Stop Recording" : "Record Audio"}
+                            disabled={state.isLoading}
+                        >
+                            🎙️
+                        </button>
                     </div>
-                )}
-
-                {/* Paperclip — LEFT */}
-                <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="pip-input-icon-btn"
-                    title="Attach File"
-                    disabled={state.isLoading}
-                >
-                    📎
-                </button>
-                <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileSelected} multiple />
-
-                {/* Text Input — MIDDLE */}
-                <input
-                    ref={inputRef}
-                    type="text"
-                    className="pip-stealth-input"
-                    placeholder="Say something or type / for commands"
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    onFocus={() => setIsInputFocused(true)}
-                    onBlur={() => setIsInputFocused(false)}
-                    autoComplete="off"
-                    disabled={state.isLoading}
-                />
-
-                {/* Mic — RIGHT */}
-                <button
-                    type="button"
-                    onClick={handleToggleMic}
-                    className={`pip-input-icon-btn ${isRecording ? 'recording' : ''}`}
-                    title={isRecording ? "Stop Recording" : "Record Audio"}
-                    disabled={state.isLoading}
-                >
-                    🎙️
-                </button>
-            </div>
+                </>
+            )}
 
             {/* ─── Settings Modals ───────────────────────────────────────── */}
 

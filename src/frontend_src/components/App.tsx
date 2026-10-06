@@ -403,7 +403,7 @@ function App() {
     const isMultiplayerChat = mp.isMultiplayerClient || !!(mp.multiplayerData && interactionData?.id && mp.multiplayerData.interactionDataIds.includes(interactionData.id));
     const canBroadcastState = isMultiplayerChat && mp.multiplayerSync.isConnected && (mp.multiplayerSync.isHost || mp.multiplayerSync.isAdministrator);
 
-    // ─── Multiplayer Broadcast Handlers (Extracted) ──────────────────
+    // ─── Multiplayer Broadcast Handlers ──────────────────────────────
     const mpBroadcast = useMultiplayerBroadcast({
         handleSetChatProtagonist: entityToggles.handleSetChatProtagonist,
         handleToggleParticipant: entityToggles.handleToggleParticipant,
@@ -524,7 +524,7 @@ function App() {
         return chatList.rawChatShells.find((s: RawInteractionData) => s.id === parentInteractionDataId)?.name ?? null;
     }, [parentInteractionDataId, chatList.rawChatShells]);
 
-    // ─── Stable Committed Messages (Only updates when history changes, NOT on stream tokens) ──
+    // ─── Stable Committed Messages ───────────────────────────────────
     const committedMessages = useMemo(() => {
         let base = safeMessages.filter((m): m is ChatMessage | WhisperMessage => m.messageType === 'chat' || m.messageType === 'whisper');
         if (isMultiplayerChat && localProtagonist) {
@@ -675,7 +675,6 @@ function App() {
         try {
             const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
             let overlayWin = await WebviewWindow.getByLabel('companion-overlay');
-            
             if (overlayWin) {
                 const isVisible = await overlayWin.isVisible();
                 if (isVisible) {
@@ -689,9 +688,8 @@ function App() {
                     setIsOverlayOpen(true);
                 }
             } else {
-                // If the window was previously closed or destroyed, re-create it
                 overlayWin = new WebviewWindow('companion-overlay', {
-                    url: 'index.html', // points to your companion route/view
+                    url: 'index.html',
                     title: 'LoreReactor Companion',
                     width: 360,
                     height: 540,
@@ -706,7 +704,7 @@ function App() {
         }
     };
 
-    // ─── Main Page View Mode Switcher (Ladder <-> Cinematic <-> VN) ──
+    // ─── Main Page View Mode Switcher ────────────────────────────────
     const toggleViewMode = () => {
         setViewMode(prev => 
             prev === 'ladder' ? 'cinematic' : 
@@ -825,7 +823,7 @@ function App() {
         await chatOps.handleSwitchChat(parentInteractionDataId);
     }, [parentInteractionDataId, chatOps]);
 
-    // ─── Worlds Management: Rebuild Session from Active Worlds Array ─────
+    // ─── Worlds Management ───────────────────────────────────────────
     const handleLoadWorlds = useCallback((activeWorlds: World[]) => {
         if (!interactionData) return;
 
@@ -843,11 +841,8 @@ function App() {
         const nextWorldLocIds = new Set(activeWorlds.flatMap(w => w.locationIds || []));
         const nextWorldAudioIds = new Set(activeWorlds.flatMap(w => w.audioTrackIds || []));
 
-        // 1. Resolve Participants: Keep manual + currently active world characters
         const retainedParticipants = (interactionData.participants || []).filter(p => {
-            if (prevWorldCharIds.has(p.id)) {
-                return nextWorldCharIds.has(p.id);
-            }
+            if (prevWorldCharIds.has(p.id)) return nextWorldCharIds.has(p.id);
             return true;
         });
         const existingParticipantIds = new Set(retainedParticipants.map(p => p.id));
@@ -857,11 +852,8 @@ function App() {
             .filter((c): c is Character => !!c);
         const mergedParticipants = [...retainedParticipants, ...newCharsToAdd];
 
-        // 2. Resolve Contexts: Keep manual + currently active world contexts
         const retainedContexts = (interactionData.contexts || []).filter(c => {
-            if (prevWorldCtxIds.has(c.id)) {
-                return nextWorldCtxIds.has(c.id);
-            }
+            if (prevWorldCtxIds.has(c.id)) return nextWorldCtxIds.has(c.id);
             return true;
         });
         const existingContextIds = new Set(retainedContexts.map(c => c.id));
@@ -871,11 +863,8 @@ function App() {
             .filter((c): c is Context => !!c);
         const mergedContexts = [...retainedContexts, ...newContextsToAdd];
 
-        // 3. Resolve Locations: Keep manual + currently active world locations
         const retainedLocations = (interactionData.locations || []).filter(l => {
-            if (prevWorldLocIds.has(l.id)) {
-                return nextWorldLocIds.has(l.id);
-            }
+            if (prevWorldLocIds.has(l.id)) return nextWorldLocIds.has(l.id);
             return true;
         });
         const existingLocationIds = new Set(retainedLocations.map(l => l.id));
@@ -885,11 +874,8 @@ function App() {
             .filter((l): l is Location => !!l);
         const mergedLocations = [...retainedLocations, ...newLocsToAdd];
 
-        // 4. Resolve Audio Tracks: Keep manual + currently active world audio tracks
         const retainedAudio = (interactionData.audioTracks || []).filter(t => {
-            if (prevWorldAudioIds.has(t.id)) {
-                return nextWorldAudioIds.has(t.id);
-            }
+            if (prevWorldAudioIds.has(t.id)) return nextWorldAudioIds.has(t.id);
             return true;
         });
         const existingAudioIds = new Set(retainedAudio.map(t => t.id));
@@ -899,7 +885,6 @@ function App() {
             .filter((t): t is AudioTrack => !!t);
         const mergedAudioTracks = [...retainedAudio, ...newAudiosToAdd];
 
-        // 5. Resolve Profile: Prefer first active world with profile, or clean up if detached
         let mergedProfile = interactionData.profile;
         const activeProfileId = activeWorlds.find(w => w.profileId)?.profileId;
         if (activeProfileId) {
@@ -908,7 +893,6 @@ function App() {
             mergedProfile = undefined;
         }
 
-        // 6. Ensure Protagonists remain in valid participants
         let mergedProtagonistIds = interactionData.protagonistIds || [];
         const participantIdSet = new Set(mergedParticipants.map(p => p.id));
         mergedProtagonistIds = mergedProtagonistIds.filter(id => participantIdSet.has(id));
@@ -931,7 +915,6 @@ function App() {
         updated = assignInitialLocationsIfNeeded(updated);
         setInteractionData(updated);
 
-        // 7. Broadcast merged state to multiplayer peers
         if (canBroadcastState) {
             (mp.multiplayerSync as any).broadcastStateSync?.({
                 participants: updated.participants,
@@ -967,7 +950,7 @@ function App() {
         onRegenerateFromEdit: messageActions.handleRegenerateFromEdit,
         onResumeGeneration: (id: string) => resumeGeneration(id, promptBlocks.promptBlocks), 
         onRegenerateFromMessage: regenerateFromMessage,
-        onMassDeleteConfirm: messageActions.handleConfirmMassDelete, // <--- ADD THIS
+        onMassDeleteConfirm: messageActions.handleConfirmMassDelete,
         onTouchStart: messageToolbar.handleBubbleTouchStart,
         onTouchEnd: messageToolbar.handleBubbleTouchEnd,
         onTouchMove: messageToolbar.handleBubbleTouchMove,
@@ -988,6 +971,7 @@ function App() {
     const getCompanionStateSnapshot = useCallback(() => {
         const protagonistId = localProtagonist?.id ?? interactionData?.protagonistIds?.[0];
         
+        // Strictly find the AI Companion participant
         const companionChar = interactionData?.participants?.find((p: Character) => p.id !== protagonistId) 
             || interactionData?.participants?.find((p: Character) => p.id !== currentCharacter?.id)
             || null;
@@ -1082,12 +1066,11 @@ function App() {
         getCompanionStateSnapshotRef.current = getCompanionStateSnapshot;
     }, [getCompanionStateSnapshot]);
 
-    // Extract stable references for the BroadcastChannel effect to prevent unnecessary re-renders
     const { setSelectedModelId: setGlobalModelId, toggleModelLoad } = models;
     const { handleActivateBudgetStrategy } = entityToggles;
     const { saveProfile } = profiles;
 
-    // 1. Persistent Channel Lifecycle (Does not recreate on every token)
+    // 1. Persistent Channel Lifecycle
     useEffect(() => {
         const channel = new BroadcastChannel('lorereactor-companion-sync');
         companionChannelRef.current = channel;
@@ -1137,11 +1120,13 @@ function App() {
             } else if (e.data?.type === 'RESUME_GENERATION' && e.data?.messageId) {
                 resumeGeneration(e.data.messageId, promptBlocks.promptBlocks);
             } else if (e.data?.type === 'RESTART_GENERATION' && e.data?.messageId) {
-                // ✅ FIX: Added missing protagonistIds and promptBlocks arguments
                 regenerateFromMessage(e.data.messageId, interactionData?.protagonistIds || [], promptBlocks.promptBlocks);
             } else if (e.data?.type === 'STOP_GENERATION') {
-                // ✅ FIX: Added missing STOP_GENERATION handler
                 stopGeneration();
+            } else if (e.data?.type === 'SAVE_EDIT' && e.data?.messageId && e.data?.text !== undefined) {
+                // Stage edit in Zustand and run standard wrappedSaveEdit pipeline
+                useSessionStore.getState().setEditingState(e.data.messageId, e.data.text);
+                wrappedSaveEdit();
             }
         };
 
@@ -1151,7 +1136,13 @@ function App() {
             channel.close();
             companionChannelRef.current = null;
         };
-    }, [sendMessage, promptBlocks.promptBlocks, actionMenu, actionManager, localProtagonist, interactionData, currentCharacter, setGlobalModelId, toggleModelLoad, handleActivateBudgetStrategy, saveProfile, setInteractionData, addToast, profiles.profiles, resumeGeneration, regenerateFromMessage, stopGeneration]);
+    }, [
+        sendMessage, promptBlocks.promptBlocks, actionMenu, actionManager, localProtagonist, 
+        interactionData, currentCharacter, setGlobalModelId, toggleModelLoad, 
+        handleActivateBudgetStrategy, saveProfile, setInteractionData, addToast, 
+        profiles.profiles, resumeGeneration, regenerateFromMessage, stopGeneration, 
+        wrappedSaveEdit
+    ]);
 
     // 2. Broadcast Effect (Fires on every snapshot change / token)
     useEffect(() => {
@@ -1204,7 +1195,7 @@ function App() {
                                         {/* 3. Extensions Modal Button */}
                                         <button type="button" className="view-mode-toggle" onClick={() => modals.extList.open()} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
 
-                                        {/* 4. In-Page View Mode Switcher (Cycles: Ladder <-> Cinematic <-> Visual Novel) */}
+                                        {/* 4. In-Page View Mode Switcher */}
                                         <button type="button" onClick={toggleViewMode} className="view-mode-toggle" title="Switch View Mode">
                                             <span>{viewMode === 'ladder' ? '📜' : viewMode === 'cinematic' ? '🎥' : '📖'}</span>
                                             <span>{viewMode === 'ladder' ? 'Ladder' : viewMode === 'cinematic' ? 'Cinematic' : 'Visual Novel'}</span>
@@ -1230,7 +1221,7 @@ function App() {
                             </div>
                         </header>
 
-                        {/* Isolated View Area: App.tsx will NOT re-render during streaming */}
+                        {/* Isolated View Area */}
                         <ChatViewArea
                             viewMode={viewMode}
                             baseProps={baseViewProps}
@@ -1262,7 +1253,8 @@ function App() {
                             allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDataManager.multiplayerData}
                             fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected}
                             onToggleMicrophone={handleToggleMic} onSend={() => handleSend()}
-                            onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} allLanguageModels={models.models} allBudgetStrategies={budgetStrategies.strategies}                        />
+                            onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} allLanguageModels={models.models} allBudgetStrategies={budgetStrategies.strategies}
+                        />
                     </>
                 )}
 
