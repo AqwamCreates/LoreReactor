@@ -7,7 +7,7 @@ import { computeSlashAutocomplete, applySlashSelection } from '../utilities/slas
 import { detectFormatSegments, buildCategoryConversionsWithLearning, applyConversions } from '../utilities/textDisplayReformatter';
 import { StandaloneOverlayProfileEditor } from './StandaloneOverlayProfileEditor';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
-import type { InteractionData, Character, LanguageModel, BudgetStrategy, Profile, World, Sampler, StopPattern, PromptBlock, Memory } from '../types';
+import type { InteractionData, Character, Context, AudioTrack, LanguageModel, BudgetStrategy, Profile, World, Sampler, StopPattern, PromptBlock, Memory, Account, MultiplayerData } from '../types';
 
 type ActionWrap = '*' | '()' | 'none';
 type ActionCase = 'first' | 'pascal' | 'lower';
@@ -30,18 +30,24 @@ interface CompanionState {
     allActions: InterjectableAction[];
     interactionData: InteractionData | null;
     localProtagonist: Character | null;
-    allLanguageModels?: LanguageModel[];
     selectedModelId?: string | null;
-    allBudgetStrategies?: BudgetStrategy[];
     selectedBudgetStrategyId?: string | null;
-    allProfiles?: Profile[];
     activeProfileId?: string | null;
     lastMessageId?: string | null;
+    allCharacters?: Character[];
+    allContexts?: Context[];
+    allLocations?: Location[];
+    allAudioTracks?: AudioTrack[];
     allWorlds?: World[];
+    allProfiles?: Profile[];
+    allPromptBlocks?: PromptBlock[];
+    allLanguageModels?: LanguageModel[];
     allSamplers?: Sampler[];
     allStopPatterns?: StopPattern[];
-    allPromptBlocks?: PromptBlock[];
+    allBudgetStrategies?: BudgetStrategy[];
     allMemories?: Memory[];
+    allAccounts?: Account[];
+    allMultiplayerData?: MultiplayerData[];
 }
 
 export function StandaloneOverlay() {
@@ -155,36 +161,23 @@ export function StandaloneOverlay() {
         return computeSlashAutocomplete(
             inputText,
             state.interactionData,
-            state.interactionData?.participants || [],
-            state.interactionData?.locations || [],
-            state.interactionData?.contexts || [],
-            state.interactionData?.audioTracks || [],
-            state.allWorlds || [],
-            state.allProfiles || [],
-            state.allPromptBlocks || [],
-            state.allLanguageModels || [],
-            state.allSamplers || [],
-            state.allStopPatterns || [],
-            state.allBudgetStrategies || [],
-            state.allStopPatterns || [],
-            state.allMemories || [],
-            state.allAccounts || [],
-            state.allMultiplayerData || [],
+            state.allCharacters,
+            state.allContexts,
+            state.allLocations,
+            state.allAudioTracks,
+            state.allWorlds,
+            state.allProfiles,
+            state.allPromptBlocks,
+            state.allLanguageModels,
+            state.allSamplers,
+            state.allStopPatterns,
+            state.allBudgetStrategies,
+            state.allMemories,
+            state.allAccounts,
+            state.allMultiplayerData,
             state.localProtagonist,
         );
-    }, [
-        inputText,
-        state.interactionData,
-        state.allWorlds,
-        state.allLanguageModels,
-        state.allProfiles,
-        state.allBudgetStrategies,
-        state.allSamplers,
-        state.allStopPatterns,
-        state.allPromptBlocks,
-        state.allMemories,
-        state.localProtagonist
-    ]);
+    }, [inputText, state.interactionData, state.allCharacters, state.allLocations, state.allContexts, state.allAudioTracks, state.allWorlds, state.allProfiles, state.allPromptBlocks, state.allLanguageModels, state.allSamplers, state.allStopPatterns, state.allBudgetStrategies, state.allMemories, state.allAccounts, state.allMultiplayerData, state.localProtagonist]);
 
     const showAutocomplete = isSlash && !isComplete;
 

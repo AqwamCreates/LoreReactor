@@ -41,7 +41,7 @@ export function DataExportModal({
     const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
     const [selectedAudioTrackIds, setSelectedAudioTrackIds] = useState<string[]>([]);
     const [selectedWorldIds, setSelectedWorldIds] = useState<string[]>([]);
-    const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
+    const [selectedModelIds, setSelectedLanguageModelIds] = useState<string[]>([]);
     const [selectedSamplerIds, setSelectedSamplerIds] = useState<string[]>([]);
     const [selectedPromptBlockIds, setSelectedPromptBlockIds] = useState<string[]>([]);
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
@@ -64,7 +64,7 @@ export function DataExportModal({
     const [locationSearch, setLocationSearch] = useState('');
     const [audioTrackSearch, setAudioTrackSearch] = useState('');
     const [worldSearch, setWorldSearch] = useState('');
-    const [modelSearch, setModelSearch] = useState('');
+    const [languageModelSearch, setLanguageModelSearch] = useState('');
     const [samplerSearch, setSamplerSearch] = useState('');
     const [promptBlockSearch, setPromptBlockSearch] = useState('');
     const [stopPatternSearch, setStopPatternSearch] = useState('');
@@ -78,7 +78,7 @@ export function DataExportModal({
         setSummary(null); setError(null); setIsExporting(false);
         setSelectedChatIds([]); setSelectedCharacterIds([]); setSelectedContextIds([]);
         setSelectedLocationIds([]); setSelectedAudioTrackIds([]); setSelectedWorldIds([]);
-        setSelectedModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
+        setSelectedLanguageModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
         setSelectedStopPatternIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
         setSelectedMemoryIds([]); setSelectedAccountIds([]); setSelectedMultiplayerDataIds([]);
         setIncludeActions(true);
@@ -87,7 +87,7 @@ export function DataExportModal({
         setIncludeSessionData(true);
         setIncludeBudgetData(true);
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
-        setAudioTrackSearch(''); setWorldSearch(''); setModelSearch(''); setSamplerSearch('');
+        setAudioTrackSearch(''); setWorldSearch(''); setLanguageModelSearch(''); setSamplerSearch('');
         setPromptBlockSearch(''); setStopPatternSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
         setMemorySearch(''); setAccountSearch(''); setMultiplayerDataSearch('');
     };
@@ -176,7 +176,7 @@ export function DataExportModal({
                                 <EntitySelectList label="Worlds" items={allWorlds} selectedIds={selectedWorldIds}
                                     onToggle={(id) => toggle(selectedWorldIds, setSelectedWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
                                 <EntitySelectList label="Language Models" items={allLanguageModels} selectedIds={selectedModelIds}
-                                    onToggle={(id) => toggle(selectedModelIds, setSelectedModelIds, id)} searchQuery={modelSearch} onSearchChange={setModelSearch} />
+                                    onToggle={(id) => toggle(selectedModelIds, setSelectedLanguageModelIds, id)} searchQuery={languageModelSearch} onSearchChange={setLanguageModelSearch} />
                                 <EntitySelectList label="Samplers" items={allSamplers} selectedIds={selectedSamplerIds}
                                     onToggle={(id) => toggle(selectedSamplerIds, setSelectedSamplerIds, id)} searchQuery={samplerSearch} onSearchChange={setSamplerSearch} />
                                 <EntitySelectList label="Prompt Blocks" items={allPromptBlocks} selectedIds={selectedPromptBlockIds}
@@ -245,7 +245,7 @@ export function DataExportModal({
                                     <div><strong>Locations:</strong> {summary.locations.length}</div>
                                     <div><strong>Audio Tracks:</strong> {summary.audioTracks.length}</div>
                                     <div><strong>Worlds:</strong> {summary.worlds.length}</div>
-                                    <div><strong>Language Models:</strong> {summary.models.length}</div>
+                                    <div><strong>Language Models:</strong> {summary.languageModels.length}</div>
                                     <div><strong>Samplers:</strong> {summary.samplers.length}</div>
                                     <div><strong>Prompt Blocks:</strong> {summary.promptBlocks.length}</div>
                                     <div><strong>Stop Patterns:</strong> {summary.stopPatterns.length}</div>

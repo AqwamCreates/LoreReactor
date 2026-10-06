@@ -53,7 +53,7 @@ function AccountEditorModalInner({
     const [errors, setErrors] = useState<{ name?: string; username?: string }>({});
     
     const [charSearchQuery, setCharSearchQuery] = useState('');
-    const [modelSearchQuery, setModelSearchQuery] = useState('');
+    const [languageModelSearchQuery, setLanguageModelSearchQuery] = useState('');
 
     const validate = (): boolean => {
         const newErrors: { name?: string; username?: string } = {};
@@ -189,8 +189,8 @@ function AccountEditorModalInner({
                             items={allLanguageModels}
                             selectedIds={sharedLanguageModelIds}
                             onToggle={toggleSharedLanguageModel}
-                            searchQuery={modelSearchQuery}
-                            onSearchChange={setModelSearchQuery}
+                            searchQuery={languageModelSearchQuery}
+                            onSearchChange={setLanguageModelSearchQuery}
                         />
                     </div>
                 </div>

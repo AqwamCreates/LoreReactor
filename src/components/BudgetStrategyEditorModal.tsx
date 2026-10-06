@@ -49,12 +49,12 @@ function BudgetStrategyEditorContent({
 
     const [name, setName] = useState(existingStrategy?.name || '');
     const [description, setDescription] = useState(existingStrategy?.description || '');
-    const [selectedModelIds, setSelectedModelIds] = useState<string[]>(
+    const [selectedModelIds, setSelectedLanguageModelIds] = useState<string[]>(
         existingStrategy?.modelIds ?? []
     );
     const [maximumBudget, setMaximumBudget] = useState<number>(existingStrategy?.maximumBudget ?? 10);
     const [errors, setErrors] = useState<{ name?: string }>({});
-    const [modelSearch, setModelSearch] = useState('');
+    const [languageModelSearch, setLanguageModelSearch] = useState('');
 
     // ─── Per-Model Tier State ────────────────────────────────────────
     const [modelCostTiers, setModelCostTiers] = useState<Record<string, number>>(
@@ -79,7 +79,7 @@ function BudgetStrategyEditorContent({
     );
 
     const toggleModel = (id: string) => {
-        setSelectedModelIds(prev => {
+        setSelectedLanguageModelIds(prev => {
             if (prev.includes(id)) {
                 setModelCostTiers(t => { const u = { ...t }; delete u[id]; return u; });
                 setModelLatencyTiers(t => { const u = { ...t }; delete u[id]; return u; });
@@ -362,8 +362,8 @@ function BudgetStrategyEditorContent({
                                     items={allLanguageModels}
                                     selectedIds={selectedModelIds}
                                     onToggle={toggleModel}
-                                    searchQuery={modelSearch}
-                                    onSearchChange={setModelSearch}
+                                    searchQuery={languageModelSearch}
+                                    onSearchChange={setLanguageModelSearch}
                                 />
                             </div>
 

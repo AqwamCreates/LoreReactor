@@ -314,8 +314,8 @@ export function RestrictionReductionModal({
     const [unrestrictedCharacterSearchQuery, setUnrestrictedCharacterSearchQuery] = useState('');
     const [restrictedCharacterSearchQuery, setRestrictedCharacterSearchQuery] = useState('');
     const [samplerSearchQuery, setSamplerSearchQuery] = useState('');
-    const [analysisModelSearchQuery, setAnalysisModelSearchQuery] = useState('');
-    const [generatingModelSearchQuery, setGeneratingModelSearchQuery] = useState('');
+    const [analysisLanguageModelSearchQuery, setAnalysisLanguageModelSearchQuery] = useState('');
+    const [generatingLanguageModelSearchQuery, setGeneratingLanguageModelSearchQuery] = useState('');
     const [profileSearchQuery, setProfileSearchQuery] = useState('');
 
     // Review Step state
@@ -405,8 +405,8 @@ export function RestrictionReductionModal({
             setUnrestrictedCharacterSearchQuery('');
             setRestrictedCharacterSearchQuery('');
             setSamplerSearchQuery('');
-            setAnalysisModelSearchQuery('');
-            setGeneratingModelSearchQuery('');
+            setAnalysisLanguageModelSearchQuery('');
+            setGeneratingLanguageModelSearchQuery('');
             setProfileSearchQuery('');
             setFlagSearchQuery('');
             setActionModeSearchQuery('');
@@ -982,8 +982,8 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
                             items={allLanguageModels} 
                             selectedId={selectedAnalysisModelId} 
                             onSelect={identifier => setSelectedAnalysisModelId(identifier)} 
-                            searchQuery={analysisModelSearchQuery} 
-                            onSearchChange={setAnalysisModelSearchQuery} 
+                            searchQuery={analysisLanguageModelSearchQuery} 
+                            onSearchChange={setAnalysisLanguageModelSearchQuery} 
                             renderDescription={model => model.backend ? `${model.backend} • Context: ${model.contextLength}` : ''}
                         />
                     </div>
@@ -995,8 +995,8 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
                             items={allLanguageModels} 
                             selectedIds={selectedGeneratingModelIds}
                             onToggle={modelIdentifier => toggleGeneratingModel(modelIdentifier)}
-                            searchQuery={generatingModelSearchQuery} 
-                            onSearchChange={setGeneratingModelSearchQuery} 
+                            searchQuery={generatingLanguageModelSearchQuery} 
+                            onSearchChange={setGeneratingLanguageModelSearchQuery} 
                         />
                     </div>
                 </div>

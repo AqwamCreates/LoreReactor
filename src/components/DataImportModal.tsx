@@ -31,7 +31,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
     const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
     const [selectedAudioTrackIds, setSelectedAudioTrackIds] = useState<string[]>([]);
     const [selectedWorldIds, setSelectedWorldIds] = useState<string[]>([]);
-    const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
+    const [selectedModelIds, setSelectedLanguageModelIds] = useState<string[]>([]);
     const [selectedSamplerIds, setSelectedSamplerIds] = useState<string[]>([]);
     const [selectedPromptBlockIds, setSelectedPromptBlockIds] = useState<string[]>([]);
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
@@ -54,7 +54,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
     const [locationSearch, setLocationSearch] = useState('');
     const [audioTrackSearch, setAudioTrackSearch] = useState('');
     const [worldSearch, setWorldSearch] = useState('');
-    const [modelSearch, setModelSearch] = useState('');
+    const [languagelocalCharacterearch, setLanguagelocalCharacterearch] = useState('');
     const [samplerSearch, setSamplerSearch] = useState('');
     const [promptBlockSearch, setPromptBlockSearch] = useState('');
     const [stopPatternSearch, setStopPatternSearch] = useState('');
@@ -68,7 +68,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
         setParsedData(null); setImportResult(null); setError(null); setIsImporting(false);
         setSelectedChatIds([]); setSelectedCharacterIds([]); setSelectedContextIds([]);
         setSelectedLocationIds([]); setSelectedAudioTrackIds([]); setSelectedWorldIds([]);
-        setSelectedModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
+        setSelectedLanguageModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
         setSelectedStopPatternIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
         setSelectedMemoryIds([]); setSelectedAccountIds([]); setSelectedMultiplayerDataIds([]);
         setIncludeActions(true);
@@ -79,7 +79,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
         setPasteText('');
         setSchemaCopied(false);
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
-        setAudioTrackSearch(''); setWorldSearch(''); setModelSearch(''); setSamplerSearch('');
+        setAudioTrackSearch(''); setWorldSearch(''); setLanguagelocalCharacterearch(''); setSamplerSearch('');
         setPromptBlockSearch(''); setStopPatternSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
         setMemorySearch(''); setAccountSearch(''); setMultiplayerDataSearch('');
     };
@@ -97,7 +97,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
         setSelectedLocationIds(json.locations.map((l: { id: string }) => l.id));
         setSelectedAudioTrackIds(json.audioTracks.map((t: { id: string }) => t.id));
         setSelectedWorldIds(json.worlds?.map((w: World) => w.id) ?? []);
-        setSelectedModelIds(json.models.map((m: { id: string }) => m.id));
+        setSelectedLanguageModelIds(json.languageModels.map((m: { id: string }) => m.id));
         setSelectedSamplerIds(json.samplers.map((s: { id: string }) => s.id));
         setSelectedPromptBlockIds(json.promptBlocks.map((b: { id: string }) => b.id));
         setSelectedStopPatternIds(json.stopPatterns.map((s: { id: string }) => s.id));
@@ -156,7 +156,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
                 locations: schemaEntities.includes('Location') ? "/* see _entitySchema */" : [],
                 audioTracks: schemaEntities.includes('AudioTrack') ? "/* see _entitySchema */" : [],
                 worlds: [],
-                models: [],
+                localCharacter: [],
                 samplers: [],
                 promptBlocks: schemaEntities.includes('PromptBlock') ? "/* see _entitySchema */" : [],
                 stopPatterns: [],
@@ -203,7 +203,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
             locations: parsedData.locations.filter(l => selectedLocationIds.includes(l.id)),
             audioTracks: parsedData.audioTracks.filter(t => selectedAudioTrackIds.includes(t.id)),
             worlds: parsedData.worlds?.filter((w: World) => selectedWorldIds.includes(w.id)) ?? [],
-            models: parsedData.models.filter(m => selectedModelIds.includes(m.id)),
+            languagelocalCharacter: parsedData.languagelocalCharacter.filter(m => selectedModelIds.includes(m.id)),
             samplers: parsedData.samplers.filter(s => selectedSamplerIds.includes(s.id)),
             promptBlocks: parsedData.promptBlocks.filter(b => selectedPromptBlockIds.includes(b.id)),
             stopPatterns: parsedData.stopPatterns.filter(s => selectedStopPatternIds.includes(s.id)),
@@ -412,9 +412,9 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
                                     <EntitySelectList label="Worlds" items={parsedData.worlds} selectedIds={selectedWorldIds}
                                         onToggle={(id) => toggle(selectedWorldIds, setSelectedWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
                                 )}
-                                {parsedData.models.length > 0 && (
-                                    <EntitySelectList label="Language Models" items={parsedData.models} selectedIds={selectedModelIds}
-                                        onToggle={(id) => toggle(selectedModelIds, setSelectedModelIds, id)} searchQuery={modelSearch} onSearchChange={setModelSearch} />
+                                {parsedData.languagelocalCharacter.length > 0 && (
+                                    <EntitySelectList label="Language localCharacter" items={parsedData.languagelocalCharacter} selectedIds={selectedModelIds}
+                                        onToggle={(id) => toggle(selectedModelIds, setSelectedLanguageModelIds, id)} searchQuery={languagelocalCharacterearch} onSearchChange={setLanguagelocalCharacterearch} />
                                 )}
                                 {parsedData.samplers.length > 0 && (
                                     <EntitySelectList label="Samplers" items={parsedData.samplers} selectedIds={selectedSamplerIds}
@@ -513,7 +513,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
                                     <div><strong>Locations:</strong> {importResult.counts.locations}</div>
                                     <div><strong>Audio Tracks:</strong> {importResult.counts.audioTracks}</div>
                                     <div><strong>Worlds:</strong> {importResult.counts.worlds}</div>
-                                    <div><strong>Language Models:</strong> {importResult.counts.models}</div>
+                                    <div><strong>Language localCharacter:</strong> {importResult.counts.languagelocalCharacter}</div>
                                     <div><strong>Samplers:</strong> {importResult.counts.samplers}</div>
                                     <div><strong>Prompt Blocks:</strong> {importResult.counts.promptBlocks}</div>
                                     <div><strong>Stop Patterns:</strong> {importResult.counts.stopPatterns}</div>
@@ -523,7 +523,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
                                     <div><strong>Accounts:</strong> {importResult.counts.accounts ?? 0}</div>
                                     <div><strong>Multiplayer Data:</strong> {importResult.counts.multiplayerData ?? 0}</div>
                                     <div><strong>Actions:</strong> {importResult.counts.interjectableActions}</div>
-                                    <div><strong>Preferences:</strong> {importResult.counts.preferences}</div>
+                                    <div><strong>Format Preferences:</strong> {importResult.counts.formatPreferences}</div>
                                 </div>
                             </div>
 

@@ -492,7 +492,7 @@ export interface SlashAutocompleteComputeResult {
 }
 
 export function computeSlashAutocomplete(
-inputText: string, interactionData: InteractionData | null, allCharacters: Character[] = [], allLocations: Location[] = [], allContexts: Context[] = [], allAudioTracksTracks: AudioTrack[] = [], allWorlds: World[] = [], allProfiles: Profile[], allPromptBlocks: PromptBlock[] = [], allLanguageModels: LanguageModel[] = [], allSamplers: Sampler[] = [], allStopPatterns: StopPattern[] = [], allBudgetStrategies: BudgetStrategy[] = [], allMemories: Memory[] = [], allAccounts: Account[] = [], allMultiplayerData: MultiplayerData[] = [], localProtagonist: Character | null = null): SlashAutocompleteComputeResult {
+inputText: string, interactionData: InteractionData | null, allCharacters: Character[] = [], allContexts: Context[] = [], allLocations: Location[] = [], allAudioTracks: AudioTrack[] = [], allWorlds: World[] = [], allProfiles: Profile[], allPromptBlocks: PromptBlock[] = [], allLanguageModels: LanguageModel[] = [], allSamplers: Sampler[] = [], allStopPatterns: StopPattern[] = [], allBudgetStrategies: BudgetStrategy[] = [], allMemories: Memory[] = [], allAccounts: Account[] = [], allMultiplayerData: MultiplayerData[] = [], localProtagonist: Character | null = null): SlashAutocompleteComputeResult {
     const raw = inputText.trimStart();
     const isSlash = raw.startsWith('/');
     if (!isSlash) {
@@ -566,7 +566,7 @@ inputText: string, interactionData: InteractionData | null, allCharacters: Chara
 
             const entities = getEntityOptions(
                 arg.type, interactionData, allCharacters, allLocations, allContexts,
-                allAudioTracksTracks, allPromptBlocks, allSamplers, allStopPatterns,
+                allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
                 allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData, localProtagonist
             );
 
@@ -631,7 +631,7 @@ inputText: string, interactionData: InteractionData | null, allCharacters: Chara
 
         const entities = getEntityOptions(
             arg.type, interactionData, allCharacters, allLocations, allContexts,
-            allAudioTracksTracks, allPromptBlocks, allSamplers, allStopPatterns,
+            allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
             allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData, localProtagonist
         );
 

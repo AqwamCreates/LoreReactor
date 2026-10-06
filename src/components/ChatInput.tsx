@@ -1,7 +1,7 @@
 // src/components/ChatInput.tsx
 import type React from 'react';
 import { useState, useEffect, useRef, useMemo } from 'react';
-import type { BudgetStrategy, InteractionData, Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData } from '../types';
+import type { BudgetStrategy, InteractionData, Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData, LanguageModel } from '../types';
 import { computeSlashAutocomplete, applySlashSelection } from '../utilities/slashCommandLogic';
 
 interface ChatInputProps {
@@ -23,10 +23,12 @@ interface ChatInputProps {
     allContexts: Context[];
     allAudioTracks: AudioTrack[];
     allWorlds: World[];
+    allProfiles: Profile[];
     allPromptBlocks: PromptBlock[];
+    allLanguageModels: LanguageModel[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
-    allProfiles: Profile[];
+    allBudgetStrategies: BudgetStrategy[];
     allMemories: Memory[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
@@ -43,8 +45,8 @@ export function ChatInput({
     inputText, setInputText, pendingFiles, setPendingFiles,
     isRecording, isLoading, isModelReady, isModelLoading, modelStatusMessage,
     localProtagonist, activeStrategy, selectedModelId,
-    interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allWorlds,
-    allPromptBlocks, allSamplers, allStopPatterns, allProfiles, allMemories, allAccounts, allMultiplayerData,
+    interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allWorlds, allProfiles,
+    allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allMemories, allAccounts, allMultiplayerData,
     fileInputRef, textareaRef,
     onFileSelected, onToggleMicrophone, onSend, onStopGeneration, onOpenModels,
 }: ChatInputProps) {
@@ -54,11 +56,11 @@ export function ChatInput({
 
     const { breadcrumbs, options, isComplete, isSlash, activeIndex, currentQuery } = useMemo(() => {
         return computeSlashAutocomplete(
-            inputText, interactionData, allCharacters, allLocations, allContexts,
-            allAudioTracks, allWorlds, allProfiles, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies,
+            inputText, interactionData, allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, 
+            allProfiles, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies,
             allMemories, allAccounts, allMultiplayerData, localProtagonist
         );
-    }, [inputText, interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allWorlds, allPromptBlocks, allSamplers, allStopPatterns, allProfiles, allBudgetStrategies, allMemories, allAccounts, allMultiplayerData, localProtagonist]);
+    }, [inputText, interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allWorlds, allProfiles, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allMemories, allAccounts, allMultiplayerData, localProtagonist]);
 
     const showAutocomplete = isSlash && !isComplete;
 

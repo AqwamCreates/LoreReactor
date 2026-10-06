@@ -3,7 +3,7 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import cors from 'cors';
-import { spawn, execSync, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, execSync, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
 import open from 'open';
 import clipboardy from 'clipboardy';
@@ -41,11 +41,18 @@ function bin(name: string): string {
 
 /**
  * Resolve a Python interpreter path inside a backend directory.
- * Windows: <dir>/python.exe  (copied from venv/Scripts/python.exe by installer)
- * Linux/Mac: <dir>/python    (symlink to venv/bin/python created by installer)
+ * Checks both direct root and isolated venv locations.
  */
 function pythonBin(backendDir: string): string {
-  return path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, backendDir, bin('python'));
+  const direct = path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, backendDir, bin('python'));
+  if (fs.existsSync(direct)) return direct;
+
+  const venvScript = IS_WINDOWS
+    ? path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, backendDir, 'venv', 'Scripts', 'python.exe')
+    : path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, backendDir, 'venv', 'bin', 'python');
+  if (fs.existsSync(venvScript)) return venvScript;
+
+  return direct;
 }
 
 type LocalBackend =
@@ -87,7 +94,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
   },
 
   'Transformers': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'transformers', 'text-generation-launcher'),
+    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'transformers', bin('text-generation-launcher')),
     buildArgs: (modelPath, port, extraArgs) => [
       '--model-id', modelPath, '--port', port.toString(), '--hostname', '0.0.0.0', ...extraArgs,
     ],
@@ -131,7 +138,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
   },
 
   'TensorRT-LLM': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'tensorrt-llm', 'tritonserver'),
+    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'tensorrt-llm', bin('tritonserver')),
     buildArgs: (modelPath, port, extraArgs) => [
       '--model-repository', modelPath, '--http-port', port.toString(), ...extraArgs,
     ],
@@ -189,7 +196,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
   },
 
   'LocalAI': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'localai', 'local-ai'),
+    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'localai', bin('local-ai')),
     buildArgs: (_modelPath, port, extraArgs) => [
       '--address', `0.0.0.0:${port}`, ...extraArgs,
     ],
@@ -243,6 +250,421 @@ const log = {
 
 app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json({ limit: '50mb' }));
+
+// ─── Real-Time Notifications & SSE Dispatcher (/language_models/notify) ─
+
+export interface BackendInstallNotification {
+  backend: string;
+  status: 'idle' | 'downloading' | 'extracting' | 'installing' | 'ready' | 'error';
+  percent: number;
+  message: string;
+  timestamp: number;
+}
+
+const activeNotifications: Map<string, BackendInstallNotification> = new Map();
+const notifySseClients: Set<express.Response> = new Set();
+
+function broadcastNotify(
+  backend: string,
+  status: BackendInstallNotification['status'],
+  percent: number,
+  message: string
+) {
+  const notification: BackendInstallNotification = {
+    backend,
+    status,
+    percent: Math.max(0, Math.min(100, Math.round(percent))),
+    message,
+    timestamp: Date.now(),
+  };
+
+  activeNotifications.set(backend, notification);
+  log.info(`[Notify:${backend}] (${notification.percent}%) ${message}`);
+
+  const payload = `data: ${JSON.stringify(notification)}\n\n`;
+  for (const client of notifySseClients) {
+    try {
+      client.write(payload);
+    } catch {
+      notifyClientsClean(client);
+    }
+  }
+}
+
+function notifyClientsClean(client: express.Response) {
+  notifySseClients.delete(client);
+}
+
+app.get('/language_models/notify', (req, res) => {
+  if (req.headers.accept?.includes('text/event-stream')) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    notifySseClients.add(res);
+
+    // Initial snapshot of active install statuses
+    for (const notif of activeNotifications.values()) {
+      res.write(`data: ${JSON.stringify(notif)}\n\n`);
+    }
+
+    req.on('close', () => notifyClientsClean(res));
+  } else {
+    res.json({
+      success: true,
+      notifications: Array.from(activeNotifications.values()),
+    });
+  }
+});
+
+app.post('/language_models/notify', (req, res) => {
+  const { backend = 'General', status = 'downloading', percent = 0, message = '' } = req.body;
+  broadcastNotify(backend, status, percent, message);
+  res.json({ success: true });
+});
+
+// ─── Automated On-Demand Installer Utilities ────────────────────────
+
+function ensureDirectory(dir: string): void {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+async function downloadFileWithProgress(
+  url: string,
+  destPath: string,
+  onProgress?: (loaded: number, total: number) => void
+): Promise<void> {
+  const res = await fetch(url, { headers: { 'User-Agent': 'LoreReactor/1.0' } });
+  if (!res.ok || !res.body) {
+    throw new Error(`Failed to download from ${url}: HTTP ${res.status}`);
+  }
+
+  const total = Number(res.headers.get('content-length')) || 0;
+  let loaded = 0;
+
+  const fileStream = fs.createWriteStream(destPath);
+  const reader = res.body.getReader();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      loaded += value.length;
+      fileStream.write(Buffer.from(value));
+      if (onProgress && total > 0) {
+        onProgress(loaded, total);
+      }
+    }
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    fileStream.end((err?: Error | null) => (err ? reject(err) : resolve()));
+  });
+}
+
+function extractArchive(archivePath: string, destDir: string): void {
+  ensureDirectory(destDir);
+  const ext = path.extname(archivePath).toLowerCase();
+
+  if (archivePath.endsWith('.tar.gz') || archivePath.endsWith('.tgz')) {
+    execSync(`tar -xzf "${archivePath}" -C "${destDir}"`, { stdio: 'pipe' });
+  } else if (ext === '.zip') {
+    if (IS_WINDOWS) {
+      try {
+        execSync(`tar -xf "${archivePath}" -C "${destDir}"`, { stdio: 'pipe' });
+      } catch {
+        execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`, { stdio: 'pipe' });
+      }
+    } else {
+      try {
+        execSync(`unzip -o "${archivePath}" -d "${destDir}"`, { stdio: 'pipe' });
+      } catch {
+        execSync(`tar -xf "${archivePath}" -C "${destDir}"`, { stdio: 'pipe' });
+      }
+    }
+  }
+}
+
+/**
+ * Bootstrap Astral's standalone `uv` executable.
+ * Eliminates system Python requirements completely for Python backends.
+ */
+async function ensureUv(): Promise<string> {
+  const uvDir = path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'tools', 'uv');
+  const uvBinary = path.join(uvDir, bin('uv'));
+
+  if (fs.existsSync(uvBinary)) return uvBinary;
+
+  broadcastNotify('uv', 'downloading', 10, 'Bootstrapping standalone Python manager (uv)...');
+  ensureDirectory(uvDir);
+
+  const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
+  let asset = '';
+
+  if (IS_WINDOWS) {
+    asset = 'uv-x86_64-pc-windows-msvc.zip';
+  } else if (IS_MACOS) {
+    asset = `uv-${arch}-apple-darwin.tar.gz`;
+  } else {
+    asset = `uv-${arch}-unknown-linux-gnu.tar.gz`;
+  }
+
+  const uvUrl = `https://github.com/astral-sh/uv/releases/latest/download/${asset}`;
+  const tempArchive = path.join(uvDir, `uv_archive${path.extname(asset)}`);
+
+  await downloadFileWithProgress(uvUrl, tempArchive, (loaded, total) => {
+    const pct = Math.round((loaded / total) * 100);
+    broadcastNotify('uv', 'downloading', pct, `Downloading uv installer: ${pct}%`);
+  });
+
+  broadcastNotify('uv', 'extracting', 90, 'Extracting uv standalone binary...');
+  extractArchive(tempArchive, uvDir);
+  try { fs.unlinkSync(tempArchive); } catch {}
+
+  // Find extracted uv binary if nested
+  if (!fs.existsSync(uvBinary)) {
+    for (const f of fs.readdirSync(uvDir)) {
+      const nested = path.join(uvDir, f, bin('uv'));
+      if (fs.existsSync(nested)) {
+        fs.copyFileSync(nested, uvBinary);
+        break;
+      }
+    }
+  }
+
+  if (!IS_WINDOWS && fs.existsSync(uvBinary)) {
+    fs.chmodSync(uvBinary, 0o755);
+  }
+
+  broadcastNotify('uv', 'ready', 100, 'Standalone Python manager initialized.');
+  return uvBinary;
+}
+
+/**
+ * Primary On-Demand Installer Orchestrator
+ */
+async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
+  const destDir = path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, BACKEND_CONFIGS[backend].cwd || '');
+  ensureDirectory(destDir);
+
+  log.info(`[AutoInstaller] Initiating on-demand setup for "${backend}"...`);
+  broadcastNotify(backend, 'downloading', 0, `Initializing setup for ${backend}...`);
+
+  // 1. LLAMA.CPP
+  if (backend === 'Llama.cpp') {
+    broadcastNotify(backend, 'downloading', 5, 'Resolving latest Llama.cpp release assets...');
+    const releaseRes = await fetch('https://api.github.com/repos/ggml-org/llama.cpp/releases/latest', {
+      headers: { 'User-Agent': 'LoreReactor/1.0' }
+    });
+    const release = await releaseRes.json();
+    const tag = release.tag_name || 'latest';
+    const tagNorm = tag.replace(/-/g, '_');
+
+    let assetPattern = /bin-win-avx2-x64\.zip$/i;
+    if (IS_WINDOWS) {
+      if (detectedGpuVendor === 'nvidia') assetPattern = /bin-win-cuda-.*-x64\.zip$/i;
+      else if (detectedGpuVendor === 'amd' || detectedGpuVendor === 'intel') assetPattern = /bin-win-vulkan-x64\.zip$/i;
+    } else if (IS_MACOS) {
+      assetPattern = /bin-macos-universal\.tar\.gz$/i;
+    } else {
+      if (detectedGpuVendor === 'nvidia') assetPattern = /bin-ubuntu-cuda-.*-x64\.tar\.gz$/i;
+      else if (detectedGpuVendor === 'amd' || detectedGpuVendor === 'intel') assetPattern = /bin-ubuntu-vulkan-x64\.tar\.gz$/i;
+      else assetPattern = /bin-ubuntu-avx2-x64\.tar\.gz$/i;
+    }
+
+    const asset = release.assets.find((a: any) => assetPattern.test(a.name))
+      || release.assets.find((a: any) => /avx2|universal/i.test(a.name));
+
+    if (!asset?.browser_download_url) throw new Error(`Could not locate suitable Llama.cpp binary release asset.`);
+
+    const tempPath = path.join(destDir, `llama_pkg_${Date.now()}${path.extname(asset.name)}`);
+    await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
+      const pct = Math.round((loaded / total) * 100);
+      broadcastNotify(backend, 'downloading', pct, `Downloading Llama.cpp (${(loaded / 1048576).toFixed(1)}MB / ${(total / 1048576).toFixed(1)}MB)`);
+    });
+
+    broadcastNotify(backend, 'extracting', 95, 'Extracting Llama.cpp binaries...');
+    extractArchive(tempPath, destDir);
+    try { fs.unlinkSync(tempPath); } catch {}
+
+    // Lift nested llama-server binary if extracted in build/bin
+    const binaryName = bin('llama-server');
+    const nestedBinary = path.join(destDir, 'build', 'bin', binaryName);
+    if (fs.existsSync(nestedBinary)) {
+      fs.copyFileSync(nestedBinary, path.join(destDir, binaryName));
+    }
+    if (!IS_WINDOWS && fs.existsSync(path.join(destDir, binaryName))) {
+      fs.chmodSync(path.join(destDir, binaryName), 0o755);
+    }
+  }
+
+  // 2. MISTRAL.RS
+  else if (backend === 'mistral.rs') {
+    broadcastNotify(backend, 'downloading', 5, 'Resolving mistral.rs release assets...');
+    const releaseRes = await fetch('https://api.github.com/repos/EricLBuehler/mistral.rs/releases/latest', {
+      headers: { 'User-Agent': 'LoreReactor/1.0' }
+    });
+    const release = await releaseRes.json();
+
+    let assetPattern = IS_WINDOWS
+      ? (detectedGpuVendor === 'nvidia' ? /cuda\.exe$/i : /windows.*\.exe$/i)
+      : (detectedGpuVendor === 'nvidia' ? /linux-gnu-cuda$/i : /linux-gnu$/i);
+
+    if (IS_MACOS) assetPattern = /apple-darwin$/i;
+
+    const asset = release.assets.find((a: any) => assetPattern.test(a.name)) || release.assets[0];
+    if (!asset?.browser_download_url) throw new Error('Could not find mistral.rs asset.');
+
+    const targetBinary = path.join(destDir, bin('mistralrs-server'));
+    await downloadFileWithProgress(asset.browser_download_url, targetBinary, (loaded, total) => {
+      const pct = Math.round((loaded / total) * 100);
+      broadcastNotify(backend, 'downloading', pct, `Downloading mistral.rs binary: ${pct}%`);
+    });
+
+    if (!IS_WINDOWS) fs.chmodSync(targetBinary, 0o755);
+  }
+
+  // 3. OLLAMA
+  else if (backend === 'Ollama') {
+    broadcastNotify(backend, 'downloading', 10, 'Fetching portable Ollama binary...');
+    if (IS_WINDOWS) {
+      const zipUrl = 'https://ollama.com/download/ollama-windows-amd64.zip';
+      const tempZip = path.join(destDir, 'ollama.zip');
+      await downloadFileWithProgress(zipUrl, tempZip, (loaded, total) => {
+        const pct = Math.round((loaded / total) * 100);
+        broadcastNotify(backend, 'downloading', pct, `Downloading Ollama runtime: ${pct}%`);
+      });
+      extractArchive(tempZip, destDir);
+      try { fs.unlinkSync(tempZip); } catch {}
+    } else {
+      execSync('curl -fsSL https://ollama.com/install.sh | sh', { stdio: 'inherit' });
+      const systemOllama = execSync('which ollama').toString().trim();
+      if (systemOllama) fs.copyFileSync(systemOllama, path.join(destDir, 'ollama'));
+    }
+  }
+
+  // 4. LM STUDIO (CLI)
+  else if (backend === 'LM Studio') {
+    broadcastNotify(backend, 'installing', 30, 'Installing LM Studio CLI (lms)...');
+    execSync('npx --yes lmstudio install-cli', { stdio: 'pipe' });
+    const whichLms = IS_WINDOWS ? execSync('where lms').toString().split('\r\n')[0] : execSync('which lms').toString().trim();
+    if (whichLms && fs.existsSync(whichLms)) {
+      fs.copyFileSync(whichLms, path.join(destDir, bin('lms')));
+    }
+  }
+
+  // 5. LOCALAI
+  else if (backend === 'LocalAI') {
+    broadcastNotify(backend, 'downloading', 10, 'Locating prebuilt LocalAI distribution...');
+    const releaseRes = await fetch('https://api.github.com/repos/mudler/LocalAI/releases/latest', {
+      headers: { 'User-Agent': 'LoreReactor/1.0' }
+    });
+    const release = await releaseRes.json();
+    const asset = release.assets.find((a: any) => /Linux-x86_64|Darwin-arm64|windows/i.test(a.name));
+    if (!asset) throw new Error('LocalAI prebuilt asset not found.');
+
+    const target = path.join(destDir, bin('local-ai'));
+    await downloadFileWithProgress(asset.browser_download_url, target, (loaded, total) => {
+      const pct = Math.round((loaded / total) * 100);
+      broadcastNotify(backend, 'downloading', pct, `Downloading LocalAI: ${pct}%`);
+    });
+    if (!IS_WINDOWS) fs.chmodSync(target, 0o755);
+  }
+
+  // 6. EXLLAMAV2 / EXLLAMAV3 / EXLLAMAV3 HF (Headless via TabbyAPI + uv)
+  else if (backend === 'ExLlamaV2' || backend === 'ExLlamaV3' || backend === 'ExLlamaV3 HF') {
+    const uvBin = await ensureUv();
+    broadcastNotify(backend, 'downloading', 20, 'Downloading TabbyAPI engine code...');
+
+    const zipUrl = 'https://github.com/theroyallab/tabbyAPI/archive/refs/heads/main.zip';
+    const tempZip = path.join(destDir, 'tabby.zip');
+    await downloadFileWithProgress(zipUrl, tempZip);
+    extractArchive(tempZip, destDir);
+    try { fs.unlinkSync(tempZip); } catch {}
+
+    const extractedFolder = path.join(destDir, 'tabbyAPI-main');
+    if (fs.existsSync(extractedFolder)) {
+      for (const item of fs.readdirSync(extractedFolder)) {
+        fs.renameSync(path.join(extractedFolder, item), path.join(destDir, item));
+      }
+      try { fs.rmdirSync(extractedFolder); } catch {}
+    }
+
+    broadcastNotify(backend, 'installing', 40, 'Installing isolated Python 3.11 environment via uv...');
+    execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe' });
+    execSync(`"${uvBin}" venv "${path.join(destDir, 'venv')}" --python 3.11`, { stdio: 'pipe' });
+
+    broadcastNotify(backend, 'installing', 60, 'Installing ExLlama runtime dependencies (PyTorch/CUDA wheels)...');
+    execSync(`"${uvBin}" pip --python "${path.join(destDir, 'venv')}" install -r "${path.join(destDir, 'requirements.txt')}"`, { stdio: 'pipe' });
+
+    // Link Python directly inside backend directory root
+    const venvPy = IS_WINDOWS ? path.join(destDir, 'venv', 'Scripts', 'python.exe') : path.join(destDir, 'venv', 'bin', 'python');
+    const rootPy = path.join(destDir, bin('python'));
+    if (fs.existsSync(venvPy) && !fs.existsSync(rootPy)) {
+      fs.copyFileSync(venvPy, rootPy);
+    }
+  }
+
+  // 7. VLLM (Headless via uv)
+  else if (backend === 'vLLM') {
+    const uvBin = await ensureUv();
+    broadcastNotify(backend, 'installing', 25, 'Provisioning portable Python 3.11 for vLLM...');
+    execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe' });
+    execSync(`"${uvBin}" venv "${path.join(destDir, 'venv')}" --python 3.11`, { stdio: 'pipe' });
+
+    broadcastNotify(backend, 'installing', 50, 'Fetching vLLM high-throughput engine wheels (this may take a moment)...');
+    execSync(`"${uvBin}" pip --python "${path.join(destDir, 'venv')}" install vllm`, { stdio: 'pipe' });
+
+    const venvPy = IS_WINDOWS ? path.join(destDir, 'venv', 'Scripts', 'python.exe') : path.join(destDir, 'venv', 'bin', 'python');
+    const rootPy = path.join(destDir, bin('python'));
+    if (fs.existsSync(venvPy) && !fs.existsSync(rootPy)) fs.copyFileSync(venvPy, rootPy);
+  }
+
+  // 8. SGLANG (Headless via uv)
+  else if (backend === 'SGLang') {
+    const uvBin = await ensureUv();
+    broadcastNotify(backend, 'installing', 25, 'Provisioning isolated Python environment for SGLang...');
+    execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe' });
+    execSync(`"${uvBin}" venv "${path.join(destDir, 'venv')}" --python 3.11`, { stdio: 'pipe' });
+
+    broadcastNotify(backend, 'installing', 50, 'Installing sglang[srt] optimized runtime...');
+    execSync(`"${uvBin}" pip --python "${path.join(destDir, 'venv')}" install "sglang[srt]"`, { stdio: 'pipe' });
+
+    const venvPy = IS_WINDOWS ? path.join(destDir, 'venv', 'Scripts', 'python.exe') : path.join(destDir, 'venv', 'bin', 'python');
+    const rootPy = path.join(destDir, bin('python'));
+    if (fs.existsSync(venvPy) && !fs.existsSync(rootPy)) fs.copyFileSync(venvPy, rootPy);
+  }
+
+  // 9. DOCKER CONTAINERS (TensorRT-LLM & Transformers/TGI)
+  else if (backend === 'TensorRT-LLM' || backend === 'Transformers') {
+    broadcastNotify(backend, 'installing', 20, `Verifying Docker engine for ${backend}...`);
+    try {
+      execSync('docker --version', { stdio: 'pipe' });
+    } catch {
+      throw new Error(`Docker is required for ${backend}. Please install Docker Desktop and configure NVIDIA Container Toolkit.`);
+    }
+
+    const image = backend === 'TensorRT-LLM'
+      ? 'nvcr.io/nvidia/tritonserver:24.05-trtllm-python-backend'
+      : 'ghcr.io/huggingface/text-generation-inference:latest';
+
+    broadcastNotify(backend, 'downloading', 40, `Pulling container image: ${image}...`);
+    execSync(`docker pull ${image}`, { stdio: 'inherit' });
+
+    // Generate a lightweight executable script wrapper for uniform execution
+    const wrapperPath = BACKEND_CONFIGS[backend].binaryPath;
+    if (IS_WINDOWS) {
+      fs.writeFileSync(wrapperPath, `@echo off\ndocker run --gpus all --rm ${image} %*\n`, 'utf-8');
+    } else {
+      fs.writeFileSync(wrapperPath, `#!/bin/sh\nexec docker run --gpus all --rm ${image} "$@"\n`, 'utf-8');
+      fs.chmodSync(wrapperPath, 0o755);
+    }
+  }
+
+  broadcastNotify(backend, 'ready', 100, `${backend} is installed and ready.`);
+  log.success(`[AutoInstaller] ${backend} installed successfully!`);
+}
 
 function resolveModelPath(inputPath: string): string {
   if (path.isAbsolute(inputPath)) return inputPath;
@@ -328,7 +750,6 @@ const X360_BUTTON_MAP: Record<string, string> = {
   'RIGHT_THUMB': 'RIGHT_THUMB',
 };
 
-// D-Pad directions mapped exclusively through controller.axis.dpadHorz / dpadVert
 const DPAD_DIRECTIONS = new Set([
   'UP', 'DOWN', 'LEFT', 'RIGHT',
   'DPAD_UP', 'DPAD_DOWN', 'DPAD_LEFT', 'DPAD_RIGHT'
@@ -376,7 +797,6 @@ function getOrInitVirtualController(): { controller: any; error: string | null }
   }
 }
 
-// Cleanup hook on process exit to prevent exhausting virtual XInput slots (VIGEM_ERROR_NO_FREE_SLOT)
 function cleanupVirtualController() {
   if (x360Controller) {
     try {
@@ -536,7 +956,7 @@ function queryAppleGpu(): GpuStatus | null {
         utilization = gpu.gpu_busy_pct ?? gpu.utilization ?? 0;
         power = gpu.gpu_power_mw ? gpu.gpu_power_mw / 1000 : null;
       }
-    } catch { /* powermetrics unavailable or needs sudo */ }
+    } catch { /* ignore */ }
 
     let memTotal = 0;
     try {
@@ -697,7 +1117,7 @@ function sanitizeOrphanedMessages(): number {
       try {
         const raw = fs.readFileSync(path.join(chatsDir, file), 'utf-8');
         const chat = JSON.parse(raw);
-        
+
         if (chat.interactionHistories && typeof chat.interactionHistories === 'object') {
           for (const locId in chat.interactionHistories) {
             const msgIds = chat.interactionHistories[locId];
@@ -708,7 +1128,7 @@ function sanitizeOrphanedMessages(): number {
             }
           }
         }
-      } catch { /* skip corrupt chat files */ }
+      } catch { /* skip */ }
     }
   }
 
@@ -721,7 +1141,7 @@ function sanitizeOrphanedMessages(): number {
       try {
         fs.unlinkSync(path.join(messagesDir, file));
         orphanedCount++;
-      } catch { /* skip permission errors */ }
+      } catch { /* skip */ }
     }
   }
 
@@ -762,7 +1182,7 @@ function sanitizeHollowMessages(): number {
         fs.unlinkSync(path.join(messagesDir, file));
         hollowCount++;
       }
-    } catch { /* skip corrupt files */ }
+    } catch { /* skip */ }
   }
 
   if (hollowCount > 0) {
@@ -816,7 +1236,7 @@ function sanitizeChatHistories(): number {
           totalPruned += pruned;
         }
       }
-    } catch { /* skip corrupt files */ }
+    } catch { /* skip */ }
   }
 
   if (totalPruned > 0) {
@@ -860,10 +1280,10 @@ function createSnippet(text: string, query: string, radius = 50): string {
 
   const start = Math.max(0, idx - radius);
   const end = Math.min(text.length, idx + query.length + radius);
-  
+
   const prefix = start > 0 ? '...' : '';
   const suffix = end < text.length ? '...' : '';
-  
+
   return `${prefix}${text.slice(start, end).trim()}${suffix}`;
 }
 
@@ -917,7 +1337,7 @@ app.get('/search', async (req, response) => {
             }
           }
         }
-      } catch { /* skip corrupt chat files */ }
+      } catch { /* skip */ }
     }
   }
 
@@ -939,7 +1359,7 @@ app.get('/search', async (req, response) => {
       try {
         const filePath = path.join(messagesDir, file);
         const raw = fs.readFileSync(filePath, 'utf-8');
-        
+
         if (raw.toLowerCase().includes(lowerQuery)) {
           const msg = JSON.parse(raw);
           const msgId = file.replace(/\.json$/, '');
@@ -958,7 +1378,7 @@ app.get('/search', async (req, response) => {
             });
           }
         }
-      } catch { /* skip corrupt messages */ }
+      } catch { /* skip */ }
     }
   }
 
@@ -988,24 +1408,24 @@ app.use('/user_data', (req, response) => {
 
   if (req.method === 'HEAD') {
     if (!fs.existsSync(filePath)) {
-        for (const ext of ALL_MEDIA_EXTENSIONS) {
-            if (fs.existsSync(filePath + ext)) {
-                response.setHeader('Content-Type', getMimeType(ext));
-                response.status(200).end();
-                return;
-            }
+      for (const ext of ALL_MEDIA_EXTENSIONS) {
+        if (fs.existsSync(filePath + ext)) {
+          response.setHeader('Content-Type', getMimeType(ext));
+          response.status(200).end();
+          return;
         }
-        return response.status(404).end();
+      }
+      return response.status(404).end();
     }
 
     fs.stat(filePath, (error, stats) => {
-        if (error) return response.status(500).end();
-        response.setHeader('Content-Length', stats.size);
-        const ext = path.extname(filePath).toLowerCase();
-        if (ALL_MEDIA_EXTENSIONS.includes(ext)) {
-            response.setHeader('Content-Type', getMimeType(ext));
-        }
-        response.status(200).end();
+      if (error) return response.status(500).end();
+      response.setHeader('Content-Length', stats.size);
+      const ext = path.extname(filePath).toLowerCase();
+      if (ALL_MEDIA_EXTENSIONS.includes(ext)) {
+        response.setHeader('Content-Type', getMimeType(ext));
+      }
+      response.status(200).end();
     });
     return;
   }
@@ -1137,7 +1557,7 @@ app.use('/user_data', (req, response) => {
   response.status(405).json({ error: 'Method Not Allowed' });
 });
 
-// --- Model Management ---
+// --- Language Model Management ---
 
 app.get('/language_models/status', (_req, response) => {
   const status = Array.from(activeModels.entries()).map(([id, instance]) => ({
@@ -1171,10 +1591,23 @@ app.post('/language_models/load', async (req, response) => {
     });
   }
 
+  // ─── On-Demand Automatic Provisioning Hook ──────────────────────────
   if (!fs.existsSync(config.binaryPath)) {
-    return response.status(500).json({
-      error: `${backendName} binary not found at ${config.binaryPath}. Run the backend installer from start.bat / start.sh first.`,
-    });
+    log.info(`Backend binary for "${backendName}" not found at ${config.binaryPath}. Triggering automated on-demand installation...`);
+    try {
+      await installBackendOnDemand(backendName);
+    } catch (installErr: any) {
+      broadcastNotify(backendName, 'error', 0, `On-demand installation failed: ${installErr.message}`);
+      return response.status(500).json({
+        error: `Automated on-demand installation of "${backendName}" failed: ${installErr.message}`,
+      });
+    }
+
+    if (!fs.existsSync(config.binaryPath)) {
+      return response.status(500).json({
+        error: `${backendName} installation routine completed, but executable was not found at ${config.binaryPath}.`,
+      });
+    }
   }
 
   const absoluteModelPath = config.modelNameNotPath ? modelPath : resolveModelPath(modelPath);
@@ -1276,12 +1709,12 @@ app.post('/language_models/unload', (req, response) => {
   if (IS_WINDOWS) {
     try {
       execSync(`taskkill /PID ${instance.process.pid} /T /F`, { stdio: 'pipe' });
-    } catch { /* process may have already exited */ }
+    } catch { /* ignore */ }
   } else {
     instance.process.kill('SIGTERM');
     setTimeout(() => {
       if (instance.process.pid) {
-        try { process.kill(instance.process.pid, 'SIGKILL'); } catch { /* already exited */ }
+        try { process.kill(instance.process.pid, 'SIGKILL'); } catch { /* ignore */ }
       }
     }, 2000);
   }
@@ -1514,8 +1947,8 @@ app.post('/tool/lock-screen', (_req, res) => {
       execSync('xdg-screensaver lock || loginctl lock-session');
     }
     res.json({ success: true, message: 'Workstation locked' });
-  } catch (error) {
-    res.status(500).json({ success: false, error: (error as Error).message });
+  } catch (e) {
+    res.status(500).json({ success: false, error: (e as Error).message });
   }
 });
 
@@ -1558,7 +1991,7 @@ app.post('/tool/clipboard', async (req, res) => {
       const content = await clipboardy.read();
       return res.json({ success: true, content });
     }
-    
+
     if (action === 'write') {
       if (typeof text !== 'string') return res.status(400).json({ success: false, error: 'Missing text parameter' });
       await clipboardy.write(text);
@@ -1579,10 +2012,8 @@ app.post('/tool/screenshot', async (req, res) => {
       fs.mkdirSync(screenshotDir, { recursive: true });
     }
 
-    // Capture primary display buffer as a JPEG buffer
     const imgBuffer = await screenshot({ format: 'jpg' });
-    
-    // Sanitize character ID to prevent invalid filename characters
+
     const cleanCharId = characterId ? `${String(characterId).replace(/[^a-zA-Z0-9_-]/g, '')}_` : '';
     const filename = `screenshot_${cleanCharId}${Date.now()}.jpg`;
     const filePath = path.join(screenshotDir, filename);
@@ -1778,11 +2209,11 @@ app.post('/tool/shell', async (req, res) => {
     res.json({ success: true, stdout: stdout.trim(), stderr: stderr.trim() });
   } catch (error: unknown) {
     const err = error as Error & { stdout?: string; stderr?: string };
-    res.status(500).json({ 
-      success: false, 
-      error: err.message, 
-      stdout: err.stdout?.trim() || '', 
-      stderr: err.stderr?.trim() || '' 
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      stdout: err.stdout?.trim() || '',
+      stderr: err.stderr?.trim() || ''
     });
   }
 });
@@ -1913,7 +2344,7 @@ app.post('/tool/virtual-hearing', (req, res) => {
 
     const durationSec = Math.max(5, Math.min(120, Number(duration) || 30));
 
-    const audioArgs = IS_WINDOWS 
+    const audioArgs = IS_WINDOWS
       ? ['-y', '-f', 'wasapi', '-i', 'default', '-t', durationSec.toString(), '-ar', '16000', '-ac', '1', '-f', 'f32le', 'pipe:1']
       : IS_MACOS
       ? ['-y', '-f', 'avfoundation', '-i', ':default', '-t', durationSec.toString(), '-ar', '16000', '-ac', '1', '-f', 'f32le', 'pipe:1']
@@ -1921,7 +2352,7 @@ app.post('/tool/virtual-hearing', (req, res) => {
 
     try {
       serverHearingProcess = spawn('ffmpeg', audioArgs, { stdio: ['ignore', 'pipe', 'ignore'] });
-      
+
       serverHearingProcess.stdout?.on('data', (data: Buffer) => {
         if (isServerHearingActive) {
           serverHearingChunks.push(data);
@@ -1933,7 +2364,6 @@ app.post('/tool/virtual-hearing', (req, res) => {
         stopServerHearingStream();
       });
 
-      // Auto-stop safety timer
       serverHearingTimer = setTimeout(() => {
         stopServerHearingStream();
       }, durationSec * 1000);
@@ -1982,7 +2412,6 @@ app.post('/tool/virtual-hearing', (req, res) => {
       });
     }
 
-    // Process Monophonic Melody Notes across the entire captured buffer
     const detectedNotes: string[] = [];
     const chunkSize = 2048;
     for (let offset = 0; offset + chunkSize < pcmData.length; offset += chunkSize) {
@@ -1996,7 +2425,6 @@ app.post('/tool/virtual-hearing', (req, res) => {
       }
     }
 
-    // Process Physical RMS Energy & Acoustic Events
     let sumSquares = 0;
     for (let i = 0; i < pcmData.length; i++) sumSquares += pcmData[i] * pcmData[i];
     const rms = Math.sqrt(sumSquares / pcmData.length);
@@ -2004,7 +2432,6 @@ app.post('/tool/virtual-hearing', (req, res) => {
     if (rms > 0.15) events.push('Heavy Bass/Impact');
     else if (rms > 0.05) events.push('Notification Sound');
 
-    // Space-free compact note sequence: "C4-Eb4-G4"
     const melodyCompact = detectedNotes.slice(0, 12).join('-');
     const lines: string[] = ['[Virtual Hearing Perception]'];
     if (melodyCompact) lines.push(`- Melody:${melodyCompact}`);
@@ -2043,7 +2470,7 @@ app.post('/tool/virtual-vision', async (req, res) => {
 
     if (appName || title) {
       const allWins = typeof openWindows === 'function' ? await openWindows() : [];
-      const matchedWin = allWins.find(w => 
+      const matchedWin = allWins.find(w =>
         (appName && w.owner?.name?.toLowerCase().includes(String(appName).toLowerCase())) ||
         (title && w.title?.toLowerCase().includes(String(title).toLowerCase()))
       );
@@ -2114,18 +2541,18 @@ app.post('/tool/virtual-vision', async (req, res) => {
 // ── Virtual Input Tool (Mouse & Keyboard) ───────────────────────────
 app.post('/tool/virtual-input', async (req, res) => {
   const {
-    action, 
-    x, 
-    y, 
-    toX, 
-    toY, 
-    button = 'left', 
-    double = false, 
-    text, 
-    key, 
-    modifier, 
-    smooth = true, 
-    durationMs = 500 
+    action,
+    x,
+    y,
+    toX,
+    toY,
+    button = 'left',
+    double = false,
+    text,
+    key,
+    modifier,
+    smooth = true,
+    durationMs = 500
   } = req.body;
 
   try {
@@ -2207,18 +2634,17 @@ app.post('/tool/virtual-controller', (req, res) => {
   }
 
   const {
-    action = 'tap', // 'tap' | 'press' | 'release' | 'stick' | 'trigger' | 'reset' | 'status'
+    action = 'tap',
     button,
-    stick = 'left', // 'left' | 'right'
+    stick = 'left',
     x,
     y,
-    trigger = 'right', // 'left' | 'right'
+    trigger = 'right',
     value,
     durationMs = 120
   } = req.body;
 
   try {
-    // 1. Reset / Zero-out all controller inputs natively
     if (action === 'reset') {
       if (typeof controller.resetInputs === 'function') {
         controller.resetInputs();
@@ -2238,12 +2664,10 @@ app.post('/tool/virtual-controller', (req, res) => {
       return res.json({ success: true, message: 'Virtual controller inputs reset to neutral.' });
     }
 
-    // 2. Query status
     if (action === 'status') {
       return res.json({ success: true, message: 'Virtual Xbox 360 controller connected and active.' });
     }
 
-    // 3. Analog Sticks (-1.0 to 1.0)
     if (action === 'stick') {
       const numX = Number(x);
       const numY = Number(y);
@@ -2256,7 +2680,6 @@ app.post('/tool/virtual-controller', (req, res) => {
       targetX.setValue(clampedX);
       targetY.setValue(clampedY);
 
-      // Support optional duration to auto-neutralize stick
       if (typeof durationMs === 'number' && durationMs > 0) {
         setTimeout(() => {
           try {
@@ -2272,7 +2695,6 @@ app.post('/tool/virtual-controller', (req, res) => {
       });
     }
 
-    // 4. Analog Triggers (0.0 to 1.0)
     if (action === 'trigger') {
       const numVal = Number(value);
       const clampedVal = Math.max(0.0, Math.min(1.0, Number.isFinite(numVal) ? numVal : 1.0));
@@ -2290,14 +2712,12 @@ app.post('/tool/virtual-controller', (req, res) => {
       return res.json({ success: true, message: `${isLeft ? 'Left' : 'Right'} trigger set to ${clampedVal}` });
     }
 
-    // 5. Button Actions
     if (!button || typeof button !== 'string') {
       return res.status(400).json({ success: false, error: 'Button name is required for button actions.' });
     }
 
     const normalizedBtn = button.trim().toUpperCase();
 
-    // 5a. Handle LT / RT aliases mapped to analog triggers
     if (normalizedBtn === 'LT' || normalizedBtn === 'L2') {
       if (action === 'press') {
         controller.axis.leftTrigger.setValue(1.0);
@@ -2322,7 +2742,6 @@ app.post('/tool/virtual-controller', (req, res) => {
       return res.json({ success: true, message: `${normalizedBtn} ${action}ed` });
     }
 
-    // 5b. Correctly handle D-PAD via controller.axis.dpadHorz / dpadVert
     if (DPAD_DIRECTIONS.has(normalizedBtn)) {
       const isUp = normalizedBtn === 'UP' || normalizedBtn === 'DPAD_UP';
       const isDown = normalizedBtn === 'DOWN' || normalizedBtn === 'DPAD_DOWN';
@@ -2338,7 +2757,6 @@ app.post('/tool/virtual-controller', (req, res) => {
         if (isUp || isDown) controller.axis.dpadVert.setValue(0.0);
         if (isLeft || isRight) controller.axis.dpadHorz.setValue(0.0);
       } else {
-        // tap
         if (isUp) controller.axis.dpadVert.setValue(1.0);
         if (isDown) controller.axis.dpadVert.setValue(-1.0);
         if (isLeft) controller.axis.dpadHorz.setValue(-1.0);
@@ -2354,7 +2772,6 @@ app.post('/tool/virtual-controller', (req, res) => {
       return res.json({ success: true, message: `D-Pad ${normalizedBtn} ${action}ed` });
     }
 
-    // 5c. Standard Digital Face/Shoulder Buttons
     const internalKey = X360_BUTTON_MAP[normalizedBtn];
     if (!internalKey || !controller.button[internalKey]) {
       return res.status(400).json({
@@ -2373,7 +2790,6 @@ app.post('/tool/virtual-controller', (req, res) => {
       return res.json({ success: true, message: `Button ${normalizedBtn} released.` });
     }
 
-    // Default: tap
     controller.button[internalKey].setValue(true);
     setTimeout(() => {
       try { controller.button[internalKey].setValue(false); } catch {}

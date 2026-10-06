@@ -39,7 +39,7 @@ export interface LoreReactorExport {
     locations: Location[];
     audioTracks: AudioTrack[];
     worlds: World[];
-    models: LanguageModel[];
+    languageModels: LanguageModel[];
     samplers: Sampler[];
     promptBlocks: PromptBlock[];
     stopPatterns: StopPattern[];
@@ -80,7 +80,7 @@ export function validateExport(data: unknown): data is LoreReactorExport {
     if (!Array.isArray(d.locations)) return false;
     if (!Array.isArray(d.audioTracks)) return false;
     if (!Array.isArray(d.worlds)) return false;
-    if (!Array.isArray(d.models)) return false;
+    if (!Array.isArray(d.languageModels)) return false;
     if (!Array.isArray(d.samplers)) return false;
     if (!Array.isArray(d.promptBlocks)) return false;
     if (!Array.isArray(d.stopPatterns)) return false;
@@ -107,7 +107,7 @@ export async function exportSelectedData(selection: {
     locationIds: string[];
     audioTrackIds: string[];
     worldIds: string[];
-    modelIds: string[];
+    languageModelIds: string[];
     samplerIds: string[];
     promptBlockIds: string[];
     stopPatternIds: string[];
@@ -125,7 +125,7 @@ export async function exportSelectedData(selection: {
     const data: LoreReactorExport = {
         version: 1, exportedAt: Date.now(),
         chats: [], characters: [], contexts: [], locations: [], audioTracks: [],
-        worlds: [], models: [], samplers: [], promptBlocks: [], stopPatterns: [],
+        worlds: [], languageModels: [], samplers: [], promptBlocks: [], stopPatterns: [],
         budgetStrategies: [], profiles: [], memories: [], accounts: [],
         multiplayerData: [], interjectableActions: [],
     };
@@ -164,7 +164,7 @@ export async function exportSelectedData(selection: {
     }
     for (const id of selection.modelIds) {
         const full = await loadRawModel(id);
-        if (full) data.models.push(full);
+        if (full) data.languageModels.push(full);
     }
     for (const id of selection.samplerIds) {
         const full = await loadRawSampler(id);
@@ -231,9 +231,9 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
         success: true,
         counts: {
             chats: 0, characters: 0, contexts: 0, locations: 0, audioTracks: 0,
-            worlds: 0, models: 0, samplers: 0, promptBlocks: 0, stopPatterns: 0,
+            worlds: 0, languageModels: 0, samplers: 0, promptBlocks: 0, stopPatterns: 0,
             budgetStrategies: 0, profiles: 0, memories: 0, accounts: 0,
-            multiplayerData: 0, interjectableActions: 0, preferences: 0,
+            multiplayerData: 0, interjectableActions: 0, formatPreferences: 0,
         },
         errors: [],
     };
@@ -263,8 +263,8 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
         try { await saveRawWorld(w); result.counts.worlds++; }
         catch (e) { result.errors.push(`World "${w.name || w.id}": ${(e as Error).message}`); }
     }
-    for (const m of data.models) {
-        try { await saveRawModel(m); result.counts.models++; }
+    for (const m of data.languageModels) {
+        try { await saveRawModel(m); result.counts.languageModels++; }
         catch (e) { result.errors.push(`Model "${m.name || m.id}": ${(e as Error).message}`); }
     }
     for (const s of data.samplers) {

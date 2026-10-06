@@ -1254,8 +1254,7 @@ function App() {
                             allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDataManager.multiplayerData}
                             fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected}
                             onToggleMicrophone={handleToggleMic} onSend={() => handleSend()}
-                            onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open}
-                        />
+                            onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} allLanguageModels={models.models} allBudgetStrategies={budgetStrategies.strategies}                        />
                     </>
                 )}
 
