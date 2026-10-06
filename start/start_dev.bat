@@ -71,8 +71,8 @@ if not exist "package.json" (
     pause
     exit /b 1
 )
-if not exist "src\server.ts" (
-    echo   [ERROR] src\server.ts not found.
+if not exist "src\backend_src\server.ts" (
+    echo   [ERROR] src\backend_src\server.ts not found.
     echo   Run start.bat from the LoreReactor root folder.
     echo.
     pause

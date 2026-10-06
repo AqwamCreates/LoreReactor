@@ -1,0 +1,282 @@
+// frontend_src/utilities/traitDetection.ts
+
+// --- Modifier System ---
+
+const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.2;
+const DEFAULT_CHAT_PROBABILITY_VALUE = 0.5;
+const DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE = 4;
+const DEFAULT_NAME_SENSITIVITY_VALUE = 1;
+const DEFAULT_SKIP_PROBABILITY_VALUE = 0;
+const DEFAULT_CHAT_IMPATIENCE_SENSITIVITY_VALUE = 0;
+const DEFAULT_MEMORY_RETENTION_WEIGHT_VALUE = 1;
+const DEFAULT_CONTEXT_RELEVANCE_SENSITIVITY_VALUE = 1;
+const DEFAULT_MAXIMUM_ACTION_STAMINA_VALUE = 5;
+
+interface Modifier {
+    keywords: string[];
+    type: 'intensifier' | 'diminisher';
+    strength: number;
+}
+
+const MODIFIERS: Modifier[] = [
+    { keywords: ['extremely', 'incredibly', 'insanely', 'unbelievably', 'absolutely', 'totally', 'completely', 'utterly', 'annoyingly'], type: 'intensifier', strength: 2 },
+    { keywords: ['very', 'highly', 'really', 'deeply', 'strongly', 'intensely', 'remarkably', 'exceptionally'], type: 'intensifier', strength: 1 },
+    { keywords: ['somewhat', 'fairly', 'moderately', 'pretty', 'quite', 'rather', 'reasonably'], type: 'diminisher', strength: 0.5 },
+
+    { keywords: ['barely', 'hardly', 'scarcely', 'not really', 'not very', 'not particularly'], type: 'diminisher', strength: 2 },
+    { keywords: ['slightly', 'mildly', 'a bit', 'a little', 'messageType of', 'sort of', 'marginally'], type: 'diminisher', strength: 1 },
+];
+
+// --- Trait Rules ---
+
+interface TraitRule {
+    keywords: string[];
+    value: number;
+}
+
+const INITIATIVE_WEIGHT_RULES: TraitRule[] = [
+    { keywords: ['dominant', 'assertive', 'leader', 'commanding', 'alpha', 'boss', 'captain', 'general', 'authoritative'], value: 2.5 },
+    { keywords: ['confident', 'outgoing', 'energetic', 'eager', 'enthusiastic', 'bold', 'forward', 'proactive'], value: 1.8 },
+    { keywords: ['normal', 'balanced', 'average', 'moderate', 'steady', 'calm', 'composed'], value: 1.2 },
+    { keywords: ['quiet', 'reserved', 'hesitant', 'cautious', 'passive', 'timid', 'meek', 'subdued'], value: 0.7 },
+    { keywords: ['shy', 'withdrawn', 'reclusive', 'introverted', 'wallflower', 'bashful', 'diffident'], value: 0.4 },
+    { keywords: ['silent', 'mute', 'nonverbal', 'observer', 'spectator', 'background', 'decorative', 'stoic'], value: 0.15 },
+    { keywords: ['invisible', 'ghost', 'phantom', 'shadow', 'unnoticed', 'forgotten'], value: 0.0 },
+];
+
+const CHAT_PROBABILITY_RULES: TraitRule[] = [
+    { keywords: ['talkative', 'chatty', 'verbose', 'garrulous', 'loquacious', 'extroverted', 'social', 'voluble'], value: 0.95 },
+    { keywords: ['friendly', 'open', 'communicative', 'expressive', 'warm', 'sociable', 'engaging', 'gregarious'], value: 0.78 },
+    { keywords: ['normal', 'balanced', 'moderate', 'average', 'conversational', 'standard', 'typical'], value: 0.5 },
+    { keywords: ['quiet', 'reserved', 'taciturn', 'brief', 'laconic', 'reticent', 'understated'], value: 0.38 },
+    { keywords: ['shy', 'anxious', 'nervous', 'reluctant', 'hesitant', 'insecure', 'fearful', 'apprehensive'], value: 0.22 },
+    { keywords: ['silent', 'mute', 'nonverbal', 'unresponsive', 'withdrawn', 'aloof', 'distant'], value: 0.08 },
+    { keywords: ['catatonic', 'comatose', 'unconscious', 'vegetative', 'inert'], value: 0.0 },
+];
+
+const MAXIMUM_CHAT_STAMINA_RULES: TraitRule[] = [
+    { keywords: ['hyperactive', 'manic', 'relentless', 'tireless', 'obsessive', 'compulsive', 'unstoppable', 'boundless'], value: 10 },
+    { keywords: ['energetic', 'enduring', 'persistent', 'determined', 'focused', 'driven', 'vigorous', 'dynamic'], value: 7 },
+    { keywords: ['normal', 'balanced', 'moderate', 'average', 'conversational', 'standard', 'typical'], value: 4 },
+    { keywords: ['brief', 'concise', 'terse', 'curt', 'succinct', 'economical', 'short-spoken'], value: 2.5 },
+    { keywords: ['exhausted', 'weak', 'frail', 'fatigued', 'breathless', 'wounded', 'weary'], value: 1.5 },
+    { keywords: ['dying', 'fading', 'failing', 'debilitated', 'crippled', 'broken'], value: 0.8 },
+    { keywords: ['incapacitated', 'unconscious', 'asleep', 'paralyzed', 'comatose', 'dead', 'inert'], value: 0 },
+];
+
+const NAME_SENSITIVITY_RULES: TraitRule[] = [
+    { keywords: ['attentive', 'responsive', 'eager', 'alert', 'reactive', 'prompt', 'quick to respond', 'always listening'], value: 3 },
+    { keywords: ['aware', 'observant', 'mindful', 'present', 'engaged', 'interested', 'receptive'], value: 2 },
+    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 1 },
+    { keywords: ['distracted', 'absent-minded', 'preoccupied', 'inattentive', 'oblivious', 'spaced out'], value: 0.5 },
+    { keywords: ['deaf', 'unresponsive', 'ignoring', 'dismissive', 'indifferent', 'uncaring', 'apathetic'], value: 0.2 },
+    { keywords: ['unreachable', 'detached', 'isolated', 'unaware', 'oblivious to surroundings'], value: 0 },
+];
+
+const CHAT_IMPATIENCE_SENSITIVITY_RULES: TraitRule[] = [
+    { keywords: ['hesitant', 'slow to respond', 'deliberate', 'thoughtful', 'pausing', 'reflective', 'contemplative', 'measured'], value: 0.6 },
+    { keywords: ['cautious', 'careful', 'guarded', 'wary', 'tentative', 'unsure', 'uncertain', 'reluctant'], value: 0.45 },
+    { keywords: ['shy', 'timid', 'nervous', 'anxious', 'apprehensive', 'insecure', 'bashful'], value: 0.35 },
+    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 0 },
+    { keywords: ['eager', 'quick', 'impulsive', 'immediate', 'instant', 'rapid', 'hasty'], value: 0 },
+    { keywords: ['slow', 'sluggish', 'lethargic', 'drowsy', 'fatigued', 'exhausted', 'weary'], value: 0.5 },
+    { keywords: ['catatonic', 'unresponsive', 'frozen', 'paralyzed', 'stunned', 'shocked', 'speechless'], value: 0.9 },
+];
+
+const SKIP_PROBABILITY_RULES: TraitRule[] = [
+    { keywords: ['evasive', 'elusive', 'avoidant', 'dodgy', 'slippery', 'noncommittal', 'evasive', 'deflective'], value: 0.7 },
+    { keywords: ['secretive', 'guarded', 'private', 'closed-off', 'withholding', 'tight-lipped', 'circumspect'], value: 0.55 },
+    { keywords: ['shy', 'timid', 'nervous', 'anxious', 'apprehensive', 'insecure', 'bashful', 'diffident'], value: 0.4 },
+    { keywords: ['stoic', 'reserved', 'restrained', 'controlled', 'disciplined', 'measured', 'deliberate'], value: 0.3 },
+    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 0 },
+    { keywords: ['eager', 'impulsive', 'forthcoming', 'candid', 'open', 'transparent', 'direct', 'straightforward'], value: 0 },
+    { keywords: ['talkative', 'chatty', 'verbose', 'garrulous', 'loquacious', 'voluble', 'expressive'], value: 0 },
+    { keywords: ['catatonic', 'unresponsive', 'frozen', 'paralyzed', 'stunned', 'speechless', 'mute'], value: 0.95 },
+];
+
+const MEMORY_RETENTION_WEIGHT_RULES: TraitRule[] = [
+    { keywords: ['eidetic', 'photographic memory', 'perfect recall', 'never forgets', 'remembers everything', 'encyclopedic'], value: 2 },
+    { keywords: ['sharp', 'astute', 'perceptive', 'detail-oriented', 'meticulous', 'thorough', 'observant'], value: 1.5 },
+    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 1 },
+    { keywords: ['forgetful', 'absent-minded', 'scatterbrained', 'distracted', 'careless', 'inattentive'], value: 0.5 },
+    { keywords: ['amnesiac', 'memory loss', 'senile', 'dementia', 'confused', 'disoriented'], value: 0.2 },
+    { keywords: ['goldfish', 'no memory', 'blank slate', 'tabula rasa', 'complete amnesia'], value: 0 },
+];
+
+const CONTEXT_RELEVANCE_SENSITIVITY_RULES: TraitRule[] = [
+    { keywords: ['perceptive', 'observant', 'aware', 'attentive', 'mindful', 'sharp-eyed', 'keen', 'vigilant'], value: 1.5 },
+    { keywords: ['detective', 'investigator', 'analyst', 'scrutinizing', 'analytical', 'detail-oriented', 'thorough'], value: 2 },
+    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 1 },
+    { keywords: ['oblivious', 'unaware', 'clueless', 'dense', 'thick-headed', 'unobservant', 'blind to'], value: 0.5 },
+    { keywords: ['naive', 'innocent', 'gullible', 'trusting', 'unsuspecting', 'credulous'], value: 0.7 },
+    { keywords: ['blind', 'deaf', 'senseless', 'unfeeling', 'numb', 'imperceptive', 'insensible'], value: 0.1 },
+    { keywords: ['catatonic', 'unconscious', 'comatose', 'vegetative', 'inert'], value: 0 },
+];
+
+const MAXIMUM_ACTION_STAMINA_RULES: TraitRule[] = [
+    { keywords: ['hyperactive', 'restless', 'fidgety', 'kinetic', 'perpetual motion', 'can\'t sit still', 'always moving', 'boundless energy'], value: 10 },
+    { keywords: ['athletic', 'agile', 'nimble', 'spry', 'active', 'physical', 'fit', 'mobile', 'adventurous', 'explorer'], value: 7 },
+    { keywords: ['normal', 'balanced', 'moderate', 'average', 'standard', 'typical'], value: 5 },
+    { keywords: ['sedentary', 'inactive', 'lazy', 'sluggish', 'lethargic', 'couch potato', 'stationary'], value: 3 },
+    { keywords: ['frail', 'weak', 'delicate', 'fragile', 'elderly', 'infirm', 'decrepit'], value: 2 },
+    { keywords: ['bedridden', 'immobilized', 'crippled', 'disabled', 'paralyzed', 'wheelchair-bound'], value: 1 },
+    { keywords: ['incapacitated', 'unconscious', 'comatose', 'catatonic', 'vegetative', 'inert', 'dead'], value: 0 },
+];
+
+// --- Core Detection Logic ---
+
+function findModifier(searchText: string, keywordStartIndex: number): Modifier | null {
+    const precedingText = searchText.substring(Math.max(0, keywordStartIndex - 30), keywordStartIndex);
+
+    let bestMatch: Modifier | null = null;
+    let bestPosition = -1;
+
+    for (const mod of MODIFIERS) {
+        for (const kw of mod.keywords) {
+            const idx = precedingText.lastIndexOf(kw);
+            if (idx !== -1 && idx > bestPosition) {
+                bestPosition = idx;
+                bestMatch = mod;
+            }
+        }
+    }
+
+    return bestMatch;
+}
+
+function applyModifier(
+    baseValue: number,
+    modifier: Modifier,
+    allValues: number[],
+    clampResult: boolean
+): number {
+    const sorted = [...new Set(allValues)].sort((a, b) => a - b);
+    const currentIndex = sorted.indexOf(baseValue);
+    if (currentIndex === -1) return baseValue;
+
+    const centerIndex = Math.floor(sorted.length / 2);
+    const isAboveCenter = currentIndex > centerIndex;
+    const isBelowCenter = currentIndex < centerIndex;
+
+    let shiftDirection: number;
+
+    if (modifier.type === 'intensifier') {
+        if (isAboveCenter) shiftDirection = 1;
+        else if (isBelowCenter) shiftDirection = -1;
+        else shiftDirection = 1;
+    } else {
+        if (isAboveCenter) shiftDirection = -1;
+        else if (isBelowCenter) shiftDirection = 1;
+        else shiftDirection = 0;
+    }
+
+    if (clampResult) {
+        const rawShift = modifier.strength * shiftDirection;
+        const newIndex = Math.min(Math.max(Math.round(currentIndex + rawShift), 0), sorted.length - 1);
+        return sorted[newIndex];
+    }
+
+    const rawMagnitude = modifier.strength;
+    const logMagnitude = Math.log(1 + rawMagnitude);
+    const effectiveShift = logMagnitude * shiftDirection;
+    const targetIndex = currentIndex + effectiveShift;
+
+    if (targetIndex <= 0) {
+        const gap = sorted[1] - sorted[0];
+        return sorted[0] + targetIndex * gap;
+    }
+
+    if (targetIndex >= sorted.length - 1) {
+        const gap = sorted[sorted.length - 1] - sorted[sorted.length - 2];
+        const overshoot = targetIndex - (sorted.length - 1);
+        return sorted[sorted.length - 1] + overshoot * gap;
+    }
+
+    const lowerIndex = Math.floor(targetIndex);
+    const upperIndex = Math.ceil(targetIndex);
+    const fraction = targetIndex - lowerIndex;
+    return sorted[lowerIndex] + fraction * (sorted[upperIndex] - sorted[lowerIndex]);
+}
+
+function detectValue(
+    searchText: string,
+    rules: TraitRule[],
+    fallback: number,
+    clampResult: boolean
+): number {
+    const allValues = rules.map(r => r.value);
+    const resolvedValues: number[] = [];
+
+    for (const rule of rules) {
+        for (const keyword of rule.keywords) {
+            let searchFrom = 0;
+            while (searchFrom < searchText.length) {
+                const idx = searchText.indexOf(keyword, searchFrom);
+                if (idx === -1) break;
+
+                const modifier = findModifier(searchText, idx);
+                let value: number;
+
+                if (modifier) {
+                    value = applyModifier(rule.value, modifier, allValues, clampResult);
+                } else {
+                    value = rule.value;
+                }
+
+                if (clampResult) {
+                    value = Math.min(Math.max(value, 0), 1);
+                }
+
+                resolvedValues.push(value);
+                searchFrom = idx + keyword.length;
+            }
+        }
+    }
+
+    if (resolvedValues.length === 0) return fallback;
+
+    const sum = resolvedValues.reduce((acc, v) => acc + v, 0);
+    const average = sum / resolvedValues.length;
+
+    if (clampResult) {
+        return Math.min(Math.max(average, 0), 1);
+    }
+
+    return average;
+}
+
+export function getInitiativeWeightValueFromText(text: string) {
+    return detectValue(text, INITIATIVE_WEIGHT_RULES, DEFAULT_INITIATIVE_WEIGHT_VALUE, false);
+}
+
+export function getChatProbabilityValue(text: string) {
+    return detectValue(text, CHAT_PROBABILITY_RULES, DEFAULT_CHAT_PROBABILITY_VALUE, false);
+}
+
+export function getMaximumChatStaminaValueFromText(text: string) {
+    return Math.round(detectValue(text, MAXIMUM_CHAT_STAMINA_RULES, DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE, false));
+}
+
+export function getNameSensitivityValueFromText(text: string) {
+    return detectValue(text, NAME_SENSITIVITY_RULES, DEFAULT_NAME_SENSITIVITY_VALUE, false);
+}
+
+export function getChatImpatienceSensitivityValueFromText(text: string) {
+    return detectValue(text, CHAT_IMPATIENCE_SENSITIVITY_RULES, DEFAULT_CHAT_IMPATIENCE_SENSITIVITY_VALUE, false);
+}
+
+export function getSkipProbabilityValueFromText(text: string) {
+    return detectValue(text, SKIP_PROBABILITY_RULES, DEFAULT_SKIP_PROBABILITY_VALUE, true);
+}
+
+export function getMemoryRetentionWeightValueFromText(text: string) {
+    return detectValue(text, MEMORY_RETENTION_WEIGHT_RULES, DEFAULT_MEMORY_RETENTION_WEIGHT_VALUE, false);
+}
+
+export function getContextSensitivityValueFromText(text: string) {
+    return detectValue(text, CONTEXT_RELEVANCE_SENSITIVITY_RULES, DEFAULT_CONTEXT_RELEVANCE_SENSITIVITY_VALUE, false);
+}
+
+export function getMaximumActionStaminaValueFromText(text: string) {
+    return Math.round(detectValue(text, MAXIMUM_ACTION_STAMINA_RULES, DEFAULT_MAXIMUM_ACTION_STAMINA_VALUE, false));
+}

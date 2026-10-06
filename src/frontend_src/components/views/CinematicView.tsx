@@ -1,0 +1,246 @@
+// frontend-src/components/views/CinematicView.tsx
+import React, { useEffect, useCallback, useRef } from 'react';
+import type { ViewModeProps } from './types';
+import type { ChatMessage } from '../../types';
+import { MessageBubble } from '../MessageBubble';
+import { StreamingIndicators } from '../StreamingIndicators';
+import { ChatScrollButtons } from '../ChatScrollButtons';
+import { ChatMinimap } from '../ChatMinimap';
+import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
+import { useSessionStore } from '../../hooks/useSessionStore';
+
+export const CinematicView = React.memo(function CinematicView(props: ViewModeProps) {
+    const {
+        displayMessages,
+        portraitUrlCache, displayNameCache,
+        formattedStreamingText,
+        centerAvatar,
+        chatHistoryRef, messageEndRef, editTextAreaRef,
+        parentMessageId, parentInteractionDataName,
+        focusedMessageId, setFocusedMessageId,
+        onAvatarClick, onResumeGeneration, 
+        onRegenerateFromMessage, onRegenerateFromEdit, onSaveEdit,
+        onTouchStart, onTouchEnd, onTouchMove,
+        suppressNextClickRef, onNavigateToBranchSource,
+        canDelete,
+    } = props;
+
+    // ✅ Read directly from Zustand!
+    const interactionData = useSessionStore(s => s.interactionData);
+    const localProtagonistId = useSessionStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
+    const selectedCharacterId = useSessionStore(s => s.selectedCharacterId);
+    const isLoading = useSessionStore(s => s.isLoading);
+    const streamingPortraitUrl = useSessionStore(s => s.streamingCharacter ? portraitUrlCache.get(`character:${s.streamingCharacter.id}`) ?? null : null);
+
+    const editingId = useSessionStore(s => s.editingId);
+    const editDraft = useSessionStore(s => s.editDraft);
+    const setEditDraft = useSessionStore(s => s.setEditDraft);
+    const setEditingState = useSessionStore(s => s.setEditingState);
+
+    const massDeleteId = useSessionStore(s => s.massDeleteId);
+    const setMassDeleteId = useSessionStore(s => s.setMassDeleteId);
+    const activeToolbarId = useSessionStore(s => s.activeToolbarId);
+
+    // Derived state
+    const isMassActive = massDeleteId !== null;
+    const massStartIndex = isMassActive && displayMessages ? displayMessages.findIndex(m => m.id === massDeleteId) : -1;
+
+    const centerAvatarUrl = centerAvatar
+        ? portraitUrlCache.get(`character:${centerAvatar.id}`) ?? null
+        : null;
+
+    const isScrollingRef = useRef(false);
+    const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const skipNextFocusScrollRef = useRef(false);
+
+    useEffect(() => {
+        if (editingId) {
+            skipNextFocusScrollRef.current = true;
+        }
+    }, [editingId]);
+
+    useEffect(() => {
+        if (skipNextFocusScrollRef.current) {
+            skipNextFocusScrollRef.current = false;
+            return;
+        }
+
+        if (focusedMessageId && chatHistoryRef.current && !isScrollingRef.current) {
+            const msgElement = chatHistoryRef.current.querySelector(`[data-message-id="${focusedMessageId}"]`);
+            if (msgElement) {
+                isScrollingRef.current = true;
+                msgElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setTimeout(() => { isScrollingRef.current = false; }, 500);
+            }
+        }
+    }, [focusedMessageId, chatHistoryRef]);
+
+    const updateFocusedFromScroll = useCallback(() => {
+        if (!chatHistoryRef.current || isScrollingRef.current) return;
+
+        const container = chatHistoryRef.current;
+        const containerRect = container.getBoundingClientRect();
+        const elements = container.querySelectorAll('[data-message-id]');
+
+        let bestId: string | null = null;
+        let bestOverlap = Number.NEGATIVE_INFINITY;
+
+        for (const el of elements) {
+            const rect = el.getBoundingClientRect();
+            const overlapTop = Math.max(rect.top, containerRect.top);
+            const overlapBottom = Math.min(rect.bottom, containerRect.bottom);
+            const overlap = overlapBottom - overlapTop;
+
+            if (overlap > bestOverlap) {
+                bestOverlap = overlap;
+                bestId = el.getAttribute('data-message-id');
+            }
+        }
+
+        if (bestId && bestOverlap > 0 && bestId !== focusedMessageId) {
+            skipNextFocusScrollRef.current = true;
+            setFocusedMessageId(bestId);
+        }
+    }, [chatHistoryRef, focusedMessageId, setFocusedMessageId]);
+
+    useEffect(() => {
+        const container = chatHistoryRef.current;
+        if (!container) return;
+
+        const handleScroll = () => {
+            if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+            scrollTimeoutRef.current = setTimeout(updateFocusedFromScroll, 100);
+        };
+
+        container.addEventListener('scroll', handleScroll, { passive: true });
+        return () => {
+            container.removeEventListener('scroll', handleScroll);
+            if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+        };
+    }, [chatHistoryRef, updateFocusedFromScroll]);
+
+    // Local wrappers for Zustand actions to match MessageBubble's expected signatures
+    const onStartEditing = useCallback((id: string, text: string) => setEditingState(id, text), [setEditingState]);
+    const onCancelEditing = useCallback(() => setEditingState(null, ''), [setEditingState]);
+    const onSetMassDelete = useCallback((id: string) => setMassDeleteId(id), [setMassDeleteId]);
+    const onMassDeleteConfirm = useCallback(() => { /* handled in parent or hook */ }, []);
+    const onCancelMassDelete = useCallback(() => setMassDeleteId(null), [setMassDeleteId]);
+
+    return (
+        <>
+            {centerAvatar && centerAvatarUrl && (
+                <div
+                    className="cinematic-stage active"
+                    onClick={e => { e.stopPropagation(); onAvatarClick(e, centerAvatar.id || 'cinematic-bg', centerAvatar); }}
+                    title="Click character to interject action"
+                >
+                    <img
+                        src={centerAvatarUrl}
+                        alt={centerAvatar.name}
+                        className="cinematic-avatar-img"
+                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                </div>
+            )}
+
+            {interactionData && displayMessages.length > 5 && (
+                <ChatMinimap
+                    messages={displayMessages.filter((m): m is ChatMessage => m.messageType === 'chat')}
+                    containerRef={chatHistoryRef}
+                    selectedCharacterId={selectedCharacterId ?? undefined}
+                />
+            )}
+
+            {interactionData && displayMessages.length > 3 && (
+                <ChatScrollButtons 
+                    containerRef={chatHistoryRef} 
+                    messageCount={displayMessages.length} 
+                    useViewportBounds={true}
+                />
+            )}
+
+            <div className="chat-history" ref={chatHistoryRef}>
+                <StreamingIndicators
+                    formattedStreamingText={formattedStreamingText}
+                    viewMode="cinematic"
+                    selectedCharacterId={selectedCharacterId ?? undefined}
+                    streamingPortraitUrl={streamingPortraitUrl}
+                    messagesLength={displayMessages.length}
+                    onAvatarClick={onAvatarClick}
+                />
+
+                {displayMessages.map((message, renderIndex) => {
+                    if (!message.character) return null;
+                    const index = renderIndex;
+                    const dn = displayNameCache
+                        ? resolveDelayedDisplayNameFromCache(displayNameCache, index, message.character.id)
+                        : message.character.name;
+                    
+                    const stem = (() => {
+                        if (!parentMessageId) return false;
+                        const bi = displayMessages.findIndex(m => m.id === parentMessageId);
+                        if (bi === -1) return false;
+                        const ci = displayMessages.findIndex(m => m.id === message.id);
+                        return ci !== -1 && ci <= bi;
+                    })();
+                    
+                    const branchOffIndex = parentMessageId
+                        ? displayMessages.findIndex(m => m.id === parentMessageId)
+                        : -1;
+                    const beforeBranch = !!(parentMessageId && index === branchOffIndex);
+
+                    const messagePortraitUrl = portraitUrlCache.get(message.id)
+                        ?? portraitUrlCache.get(`character:${message.character.id}`)
+                        ?? null;
+
+                    return (
+                        <MessageBubble
+                            key={message.id}
+                            message={message}
+                            index={index}
+                            viewMode="cinematic"
+                            protagonistIds={interactionData?.protagonistIds || []}
+                            localProtagonistId={localProtagonistId}
+                            editingId={editingId}
+                            editDraft={editDraft}
+                            massDeleteId={massDeleteId}
+                            isMassActive={isMassActive}
+                            massStartIndex={massStartIndex}
+                            activeToolbarId={activeToolbarId}
+                            portraitUrl={messagePortraitUrl}
+                            displayName={dn}
+                            isStem={stem}
+                            beforeBranch={beforeBranch}
+                            parentInteractionDataName={parentInteractionDataName}
+                            onAvatarClick={onAvatarClick}
+                            onStartEditing={onStartEditing}
+                            onCancelEditing={onCancelEditing}
+                            onSaveEdit={onSaveEdit}
+                            onRegenerateFromEdit={onRegenerateFromEdit}
+                            onResumeGeneration={onResumeGeneration}
+                            onRegenerateFromMessage={onRegenerateFromMessage}
+                            onSetMassDelete={onSetMassDelete}
+                            onMassDeleteConfirm={onMassDeleteConfirm}
+                            onCancelMassDelete={onCancelMassDelete}
+                            onTouchStart={onTouchStart}
+                            onTouchEnd={onTouchEnd}
+                            onTouchMove={onTouchMove}
+                            suppressNextClickRef={suppressNextClickRef}
+                            editTextAreaRef={editTextAreaRef}
+                            setEditDraft={setEditDraft}
+                            onNavigateToBranchSource={onNavigateToBranchSource}
+                            canDelete={canDelete}
+                        />
+                    );
+                })}
+
+                {displayMessages.length === 0 && !isLoading && (
+                    <div style={{ textAlign: 'center', opacity: 0.5, marginTop: '50px' }}>
+                        <p>Add characters to the chat and start chatting.</p>
+                    </div>
+                )}
+                <div ref={messageEndRef} style={{ height: '1px' }} />
+            </div>
+        </>
+    );
+});
