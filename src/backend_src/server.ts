@@ -291,10 +291,7 @@ function broadcastNotify(
   }
 }
 
-// Strictly plural with 's', with legacy /models alias
-const NOTIFY_ROUTES = ['/language_models/notify', '/models/notify'];
-
-app.get(NOTIFY_ROUTES, (req, res) => {
+app.get('/language_models/notify', (req, res) => {
   if (req.headers.accept?.includes('text/event-stream')) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -316,7 +313,7 @@ app.get(NOTIFY_ROUTES, (req, res) => {
   }
 });
 
-app.post(NOTIFY_ROUTES, (req, res) => {
+app.post('/language_models/notify', (req, res) => {
   const { backend = 'General', status = 'downloading', percent = 0, message = '' } = req.body;
   broadcastNotify(backend, status, percent, message);
   res.json({ success: true });
@@ -331,7 +328,8 @@ function ensureDirectory(dir: string): void {
 async function downloadFileWithProgress(
   url: string,
   destPath: string,
-  onProgress?: (loaded: number, total: number) => void
+  onProgress?: (loaded: number, total: number) => void,
+  backendName?: string
 ): Promise<void> {
   const res = await fetch(url, { headers: { 'User-Agent': 'LoreReactor/1.0' } });
   if (!res.ok || !res.body) {
@@ -345,6 +343,13 @@ async function downloadFileWithProgress(
   const reader = res.body.getReader();
 
   while (true) {
+    if (backendName && cancelledInstalls.has(backendName)) {
+      reader.cancel();
+      fileStream.close();
+      try { fs.unlinkSync(destPath); } catch {}
+      throw new Error(`Download cancelled for ${backendName}`);
+    }
+
     const { done, value } = await reader.read();
     if (done) break;
     if (value) {
@@ -434,7 +439,7 @@ async function ensureUv(): Promise<string> {
   await downloadFileWithProgress(uvUrl, tempArchive, (loaded, total) => {
     const pct = Math.round((loaded / total) * 100);
     broadcastNotify('uv', 'downloading', pct, `Downloading uv installer: ${pct}%`);
-  });
+  }, 'uv');
 
   broadcastNotify('uv', 'extracting', 90, 'Extracting uv standalone binary...');
   extractArchive(tempArchive, uvDir);
@@ -454,6 +459,7 @@ async function ensureUv(): Promise<string> {
  * Primary On-Demand Installer Orchestrator
  */
 async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
+  cancelledInstalls.delete(backend);
   const config = BACKEND_CONFIGS[backend];
   const destDir = config.cwd
     ? (path.isAbsolute(config.cwd) ? config.cwd : path.join(ROOT_DIR, config.cwd))
@@ -499,7 +505,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
       const pct = Math.round((loaded / total) * 100);
       broadcastNotify(backend, 'downloading', pct, `Downloading Llama.cpp (${(loaded / 1048576).toFixed(1)}MB / ${(total / 1048576).toFixed(1)}MB)`);
-    });
+    }, backend);
 
     broadcastNotify(backend, 'extracting', 85, 'Extracting Llama.cpp binaries...');
     extractArchive(tempPath, destDir);
@@ -511,7 +517,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       if (cudartAsset?.browser_download_url) {
         broadcastNotify(backend, 'downloading', 90, 'Downloading NVIDIA CUDA runtime DLLs...');
         const tempCudaZip = path.join(destDir, `cudart_${Date.now()}.zip`);
-        await downloadFileWithProgress(cudartAsset.browser_download_url, tempCudaZip);
+        await downloadFileWithProgress(cudartAsset.browser_download_url, tempCudaZip, undefined, backend);
         extractArchive(tempCudaZip, destDir);
         try { fs.unlinkSync(tempCudaZip); } catch {}
       }
@@ -544,7 +550,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     await downloadFileWithProgress(asset.browser_download_url, config.binaryPath, (loaded, total) => {
       const pct = Math.round((loaded / total) * 100);
       broadcastNotify(backend, 'downloading', pct, `Downloading mistral.rs binary: ${pct}%`);
-    });
+    }, backend);
 
     if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
   }
@@ -558,7 +564,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       await downloadFileWithProgress(zipUrl, tempZip, (loaded, total) => {
         const pct = Math.round((loaded / total) * 100);
         broadcastNotify(backend, 'downloading', pct, `Downloading Ollama runtime: ${pct}%`);
-      });
+      }, backend);
       extractArchive(tempZip, destDir);
       try { fs.unlinkSync(tempZip); } catch {}
       hoistBinaryIfExists(destDir, bin('ollama'), config.binaryPath);
@@ -592,7 +598,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     await downloadFileWithProgress(asset.browser_download_url, config.binaryPath, (loaded, total) => {
       const pct = Math.round((loaded / total) * 100);
       broadcastNotify(backend, 'downloading', pct, `Downloading LocalAI: ${pct}%`);
-    });
+    }, backend);
     if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
   }
 
@@ -603,7 +609,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
 
     const zipUrl = 'https://github.com/theroyallab/tabbyAPI/archive/refs/heads/main.zip';
     const tempZip = path.join(destDir, 'tabby.zip');
-    await downloadFileWithProgress(zipUrl, tempZip);
+    await downloadFileWithProgress(zipUrl, tempZip, undefined, backend);
     extractArchive(tempZip, destDir);
     try { fs.unlinkSync(tempZip); } catch {}
 
@@ -687,6 +693,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
 
   broadcastNotify(backend, 'ready', 100, `${backend} is installed and ready.`);
   log.success(`[AutoInstaller] ${backend} installed successfully!`);
+  cancelledInstalls.delete(backend);
 }
 
 function resolveModelPath(inputPath: string): string {
@@ -1410,15 +1417,20 @@ app.use('/user_data', (req, response) => {
   response.status(405).json({ error: 'Method Not Allowed' });
 });
 
-// --- Language Model Management (Aliased for /language_models and legacy /models) ---
+// --- Language Model Management ---
 
-const STATUS_ROUTES = ['/language_models/status', '/models/status'];
-const LOAD_ROUTES   = ['/language_models/load', '/models/load'];
-const UNLOAD_ROUTES = ['/language_models/unload', '/models/unload'];
-const LOCAL_BACKENDS_ROUTES = ['/language_models/local_backends', '/models/local_backends'];
-const LOCAL_BACKENDS_INSTALL_ROUTES = ['/language_models/local_backends/install', '/models/local_backends/install'];
+const LANGUAGE_MODEL_ROUTE = '/language_models';
+const LANGUAGE_MODEL_STATUS_ROUTE = '/language_models/status';
+const LANGUAGE_MODEL_LOAD_ROUTE   = '/language_models/load';
+const LANGUAGE_MODEL_UNLOAD_ROUTE = '/language_models/unload';
+const LANGUAGE_MODEL_INSTALL_ROUTE = '/language_models/install';
+const LANGUAGE_MODEL_CANCEL_ROUTE = '/language_models/cancel';
+const LANGUAGE_MODEL_DELETE_ROUTE = '/language_models/delete';
 
-app.get(STATUS_ROUTES, (_req, response) => {
+// Track backends that the user has requested to cancel
+const cancelledInstalls = new Set<string>();
+
+app.get(LANGUAGE_MODEL_STATUS_ROUTE, (_req, response) => {
   const status = Array.from(activeModels.entries()).map(([id, instance]) => ({
     id,
     port: instance.port,
@@ -1431,7 +1443,7 @@ app.get(STATUS_ROUTES, (_req, response) => {
 });
 
 // ─── Local Backends Management Endpoints for LanguageModelInferenceManager ───
-app.get(LOCAL_BACKENDS_ROUTES, (_req, res) => {
+app.get(LANGUAGE_MODEL_ROUTE, (_req, res) => {
   const result = Object.entries(BACKEND_CONFIGS).map(([name, cfg]) => ({
     name,
     installed: fs.existsSync(cfg.binaryPath),
@@ -1440,7 +1452,7 @@ app.get(LOCAL_BACKENDS_ROUTES, (_req, res) => {
   res.json({ success: true, backends: result });
 });
 
-app.post(LOCAL_BACKENDS_INSTALL_ROUTES, async (req, res) => {
+app.post(LANGUAGE_MODEL_INSTALL_ROUTE, async (req, res) => {
   const { backend } = req.body;
   if (!backend || !BACKEND_CONFIGS[backend as LocalBackend]) {
     return res.status(400).json({ error: `Invalid backend "${backend}".` });
@@ -1449,6 +1461,9 @@ app.post(LOCAL_BACKENDS_INSTALL_ROUTES, async (req, res) => {
   try {
     installBackendOnDemand(backend as LocalBackend).catch((err) => {
       log.error(`[InstallManager] ${backend} failed: ${err.message}`);
+      if (!cancelledInstalls.has(backend)) {
+        broadcastNotify(backend as string, 'error', 0, `Installation failed: ${err.message}`);
+      }
     });
     res.json({ success: true, message: `Installation for ${backend} started.` });
   } catch (err: any) {
@@ -1456,7 +1471,62 @@ app.post(LOCAL_BACKENDS_INSTALL_ROUTES, async (req, res) => {
   }
 });
 
-app.post(LOAD_ROUTES, async (req, response) => {
+// ─── Cancel Installation ─────────────────────────────────────────────
+app.post(LANGUAGE_MODEL_CANCEL_ROUTE, (req, res) => {
+  const { backend } = req.body;
+  if (!backend) return res.status(400).json({ error: 'Missing backend' });
+
+  cancelledInstalls.add(backend);
+  broadcastNotify(backend, 'idle', 0, `Installation of ${backend} cancelled by user.`);
+  activeNotifications.delete(backend);
+
+  log.info(`[InstallManager] Cancellation requested for ${backend}.`);
+  res.json({ success: true, message: `Cancellation requested for ${backend}.` });
+});
+
+// ─── Delete / Uninstall Backend ──────────────────────────────────────
+app.post(LANGUAGE_MODEL_DELETE_ROUTE, async (req, res) => {
+  const { backend } = req.body;
+  if (!backend || !BACKEND_CONFIGS[backend as LocalBackend]) {
+    return res.status(400).json({ error: `Invalid backend "${backend}".` });
+  }
+
+  const config = BACKEND_CONFIGS[backend as LocalBackend];
+  const destDir = config.cwd
+    ? (path.isAbsolute(config.cwd) ? config.cwd : path.join(ROOT_DIR, config.cwd))
+    : path.dirname(config.binaryPath);
+
+  const activeBackendModels = Array.from(activeModels.values()).filter(m => m.backend === backend);
+  if (activeBackendModels.length > 0) {
+    return res.status(409).json({
+      error: `Cannot delete ${backend} while ${activeBackendModels.length} model(s) are still loaded. Please unload them first.`,
+    });
+  }
+
+  try {
+    const normalizedDest = path.resolve(destDir);
+    const normalizedRoot = path.resolve(ROOT_DIR);
+    const normalizedBackendsRoot = path.resolve(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH);
+
+    if (normalizedDest === normalizedRoot || normalizedDest === normalizedBackendsRoot) {
+      return res.status(400).json({ error: 'Cannot delete shared or root directories.' });
+    }
+
+    if (fs.existsSync(destDir)) {
+      log.info(`[DeleteManager] Moving ${backend} directory to trash: ${destDir}`);
+      await trash([destDir]); 
+      activeNotifications.delete(backend);
+      res.json({ success: true, message: `${backend} uninstalled and moved to trash.` });
+    } else {
+      res.json({ success: true, message: `${backend} files not found. Already uninstalled?` });
+    }
+  } catch (err: any) {
+    log.error(`[DeleteManager] Failed to delete ${backend}: ${err.message}`);
+    res.status(500).json({ error: `Failed to delete ${backend}: ${err.message}` });
+  }
+});
+
+app.post(LANGUAGE_MODEL_LOAD_ROUTE, async (req, response) => {
   const { id, modelPath, port: requestedPort, args = [], backend: requestedBackend } = req.body;
 
   if (!id || !modelPath) return response.status(400).json({ error: 'Missing id or modelPath' });
@@ -1571,7 +1641,7 @@ app.post(LOAD_ROUTES, async (req, response) => {
   }
 });
 
-app.post(UNLOAD_ROUTES, (req, response) => {
+app.post(LANGUAGE_MODEL_UNLOAD_ROUTE, (req, response) => {
   const { id } = req.body;
   if (!id) return response.status(400).json({ error: 'Missing id' });
 

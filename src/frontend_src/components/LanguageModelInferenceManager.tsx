@@ -50,7 +50,7 @@ export function LanguageModelInferenceManagerModal({
 
     const fetchBackendStatuses = useCallback(async () => {
         try {
-            const res = await fetch(`${localURL}/language_models/local_backends`);
+            const res = await fetch(`${localURL}/language_models`);
             if (res.ok) {
                 const data = await res.json();
                 const list: BackendStatus[] = (data.backends || []).map((b: any) => ({
@@ -116,7 +116,7 @@ export function LanguageModelInferenceManagerModal({
                 },
             }));
 
-            const res = await fetch(`${localURL}/language_models/local_backends/install`, {
+            const res = await fetch(`${localURL}/language_models/install`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ backend: backendName }),
@@ -136,7 +136,7 @@ export function LanguageModelInferenceManagerModal({
     const handleCancelInstall = async (backendName: string) => {
         try {
             setCancellingBackend(backendName);
-            const res = await fetch(`${localURL}/language_models/local_backends/cancel`, {
+            const res = await fetch(`${localURL}/language_models/cancel`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ backend: backendName }),
@@ -168,7 +168,7 @@ export function LanguageModelInferenceManagerModal({
 
         try {
             setDeletingBackend(backendName);
-            const res = await fetch(`${localURL}/language_models/local_backends/delete`, {
+            const res = await fetch(`${localURL}/language_models/delete`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ backend: backendName }),
