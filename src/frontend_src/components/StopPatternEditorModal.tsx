@@ -1,4 +1,4 @@
-// frontend-src/components/StopPatternEditorModal.tsx
+// frontend_src/components/StopPatternEditorModal.tsx
 import { useState } from 'react';
 import type { StopPattern, RegularExpressionTrigger } from '../types';
 import { v4 as uuidv4 } from 'uuid';

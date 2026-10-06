@@ -1,4 +1,4 @@
-// frontend-src/utilities/promptLogic.ts
+// frontend_src/utilities/promptLogic.ts
 import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, Context, StopPattern, PromptBlock, promptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger, Clothing, Profile, cacheEfficiencyConfigurationType } from '../types';
 import type { ModelTemplate } from '../dictionaries/modelTemplates';
 import type { OpenAIMessage } from '../services/ProviderCachingStrategy';

@@ -1,4 +1,4 @@
-// frontend-src/components/ChatStatisticsBar.tsx
+// frontend_src/components/ChatStatisticsBar.tsx
 import type React from 'react';
 import { useState, useEffect } from 'react';
 import { useSessionStore } from '../hooks/useSessionStore';

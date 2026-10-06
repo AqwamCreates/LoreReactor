@@ -1,4 +1,4 @@
-// frontend-src/services/ToolInvocationParser.ts
+// frontend_src/services/ToolInvocationParser.ts
 import { toolStartSring, toolEndString } from '../dictionaries/stringList';
 
 export interface ToolInvocation {

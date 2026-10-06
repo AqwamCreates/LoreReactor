@@ -1,4 +1,4 @@
-// frontend-src/hooks/useGpuMonitor.ts
+// frontend_src/hooks/useGpuMonitor.ts
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { localURL } from '../../configurations';
 

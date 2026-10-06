@@ -1,4 +1,4 @@
-// frontend-src/hooks/useMultiplayerSync.ts
+// frontend_src/hooks/useMultiplayerSync.ts
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { 
     InteractionData, MultiplayerData, HistoryMessage, Character, 

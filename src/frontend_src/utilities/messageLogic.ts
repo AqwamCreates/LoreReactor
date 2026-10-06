@@ -1,4 +1,4 @@
-// frontend-src/utilities/messageLogic.ts
+// frontend_src/utilities/messageLogic.ts
 import { deleteRawMessage, saveRawInteractionData, loadAllRawInteractionDataShells } from '../storages/serverStorage';
 import type { InteractionData, HistoryMessage, ChatMessage, Character } from '../types';
 import { v4 as uuidv4 } from 'uuid';

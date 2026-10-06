@@ -1,4 +1,4 @@
-// frontend-src/services/aiRecommendationTypes.ts
+// frontend_src/services/aiRecommendationTypes.ts
 import type { Character, Context, Location, AudioTrack, PromptBlock, Profile } from '../types';
 
 export type EntityType = 'Character' | 'Context' | 'Location' | 'AudioTrack' | 'PromptBlock' | 'profile' | 'World';

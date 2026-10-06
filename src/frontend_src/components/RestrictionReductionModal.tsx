@@ -1,4 +1,4 @@
-// frontend-src/components/RestrictionReductionModal.tsx
+// frontend_src/components/RestrictionReductionModal.tsx
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Character, Profile, Sampler, LanguageModel } from '../types';
 import { EntitySelect } from './EntitySelect';

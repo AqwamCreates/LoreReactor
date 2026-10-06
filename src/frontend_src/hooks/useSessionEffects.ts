@@ -1,4 +1,4 @@
-// frontend-src/hooks/useSessionEffects.ts
+// frontend_src/hooks/useSessionEffects.ts
 import { useEffect, useRef } from 'react';
 import type { BudgetData, BudgetStrategy, Character, LanguageModel } from '../types';
 import { saveRawSessionData } from '../storages/serverStorage';

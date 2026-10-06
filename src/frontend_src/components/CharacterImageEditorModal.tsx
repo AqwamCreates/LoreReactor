@@ -1,4 +1,4 @@
-// frontend-src/components/CharacterImageEditorModal.tsx
+// frontend_src/components/CharacterImageEditorModal.tsx
 import type React from 'react';
 import { useState, useRef, useMemo } from 'react';
 import { uploadCharacterImage, getCharacterImageUrl } from '../storages/serverStorage';

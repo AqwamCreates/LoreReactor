@@ -1,4 +1,4 @@
-// frontend-src/components/LocationEditorModal.tsx
+// frontend_src/components/LocationEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { Location, Character, AudioTrack, RegularExpressionTrigger } from '../types';

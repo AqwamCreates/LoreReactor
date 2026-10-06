@@ -1,4 +1,4 @@
-// frontend-src/services/FormatPreferenceEngine.ts
+// frontend_src/services/FormatPreferenceEngine.ts
 import type { FormatCategory } from '../utilities/textDisplayReformatter';
 import { DIALOGUE_STEMS, getStemmedContentWords } from '../utilities/stemmerHelper';
 import {

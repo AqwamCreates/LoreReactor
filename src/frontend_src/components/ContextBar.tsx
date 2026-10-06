@@ -1,4 +1,4 @@
-// frontend-src/components/ContextBar.tsx
+// frontend_src/components/ContextBar.tsx
 import { useState } from 'react';
 import type { viewMode } from './views/types';
 

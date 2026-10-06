@@ -1,4 +1,4 @@
-// frontend-src/components/WorldEditorModal.tsx
+// frontend_src/components/WorldEditorModal.tsx
 import { useState } from 'react';
 import type { World, Character, Context, Location, Profile, AudioTrack } from '../types';
 import { EntitySelectList } from './EntitySelectList';

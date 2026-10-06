@@ -1,4 +1,4 @@
-// frontend-src/services/InteractionOrchestrator.ts
+// frontend_src/services/InteractionOrchestrator.ts
 import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage, Location } from '../types';
 import { getEffectiveChatProbability, consumeChatStaminaForMessage, consumeActionStaminaForMessage, generateActionStaminaForInteractionData, generateChatStaminaForInteractionData, getEffectiveChatImpatienceSensitivity } from '../utilities/characterLogic';
 import { getCurrentLocationId, findLocationByRegularExpression, getReachableLocationsByCharacter, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../utilities/locationLogic';

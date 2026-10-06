@@ -1,4 +1,4 @@
-// frontend-src/utilities/searchURLBuilder
+// frontend_src/utilities/searchURLBuilder
 import type { searchEngine } from "../types";
 
 const searchEngineUrls: Record<searchEngine, string> = {

@@ -1,4 +1,4 @@
-// frontend-src/components/AIRecommendationModal.tsx
+// frontend_src/components/AIRecommendationModal.tsx
 import type React from 'react';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World, PromptBlock } from '../types';

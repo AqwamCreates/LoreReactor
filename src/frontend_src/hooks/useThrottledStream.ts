@@ -1,4 +1,4 @@
-// frontend-src/hooks/useThrottledStream.ts
+// frontend_src/hooks/useThrottledStream.ts
 import { useRef, useCallback } from 'react';
 import { useSessionStore } from './useSessionStore';
 

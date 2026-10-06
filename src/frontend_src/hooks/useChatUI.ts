@@ -1,4 +1,4 @@
-// frontend-src/hooks/useChatUI.ts
+// frontend_src/hooks/useChatUI.ts
 import { useRef, useEffect, useCallback } from 'react';
 import { getAudioEngine } from '../services/AudioEngine';
 import { useCharacterVoice } from './useCharacterVoice';

@@ -1,4 +1,4 @@
-// frontend-src/components/renderHelpers.tsx
+// frontend_src/components/renderHelpers.tsx
 import type React from 'react';
 import type { LanguageModel, BudgetStrategy, Profile, RawInteractionData, cloudBackend, promptBlockType } from '../types';
 import { cloudBackends } from '../dictionaries/languageModelInformation';

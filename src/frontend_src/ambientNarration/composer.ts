@@ -1,4 +1,4 @@
-// frontend-src/ambientNarration/composer.ts
+// frontend_src/ambientNarration/composer.ts
 import type { Atom } from './atoms';
 import { ATOMS, resolveAtomText } from './atoms';
 

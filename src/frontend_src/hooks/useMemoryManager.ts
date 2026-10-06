@@ -1,4 +1,4 @@
-// frontend-src/hooks/useMemoryManager.ts
+// frontend_src/hooks/useMemoryManager.ts
 import { useState } from 'react';
 import type { Memory } from '../types';
 import { loadAllRawMemories, saveRawMemory, deleteRawMemory } from '../storages/serverStorage';

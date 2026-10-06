@@ -1,4 +1,4 @@
-// frontend-src/components/DataManagerModal.tsx
+// frontend_src/components/DataManagerModal.tsx
 import { useState, useCallback, useMemo } from 'react';
 import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData } from '../types';
 import { useToast } from '../context/ToastContext';

@@ -1,4 +1,4 @@
-// frontend-src/hooks/useCharacterVoice.ts
+// frontend_src/hooks/useCharacterVoice.ts
 import { useCallback, useRef, useEffect, useState } from 'react';
 import type { Character, textType } from '../types';
 import { getCharacterVoiceUrl, getMultiplayerCharacterVoiceUrl, loadRawMultiplayerJoinData } from '../storages/serverStorage';

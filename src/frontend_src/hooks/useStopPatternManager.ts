@@ -1,4 +1,4 @@
-// frontend-src/hooks/useStopPatternManager.ts
+// frontend_src/hooks/useStopPatternManager.ts
 import { useState } from 'react';
 import type { StopPattern } from '../types';
 import { loadAllRawStopPatterns, saveRawStopPattern, deleteRawStopPattern } from '../storages/serverStorage';

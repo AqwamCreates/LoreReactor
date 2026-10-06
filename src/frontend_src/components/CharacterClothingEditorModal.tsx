@@ -1,4 +1,4 @@
-// frontend-src/components/CharacterClothingEditorModal.tsx
+// frontend_src/components/CharacterClothingEditorModal.tsx
 import { useState, useCallback, useMemo, useRef } from 'react';
 import type { Clothing } from '../types';
 import { v4 as uuidv4 } from 'uuid';

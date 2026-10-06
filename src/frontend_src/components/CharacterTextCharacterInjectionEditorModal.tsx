@@ -1,4 +1,4 @@
-// frontend-src/components/CharacterTextCharacterInjectionEditorModal.tsx
+// frontend_src/components/CharacterTextCharacterInjectionEditorModal.tsx
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import type { TextCharacterInjection } from '../types';
 import { v4 as uuidv4 } from 'uuid';

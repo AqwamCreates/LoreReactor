@@ -1,4 +1,4 @@
-// frontend-src/services/SentimentAnalysisEngine.ts
+// frontend_src/services/SentimentAnalysisEngine.ts
 
 const EMOTION_LABELS = [
     'admiration', 'amusement', 'anger', 'annoyance', 'approval',

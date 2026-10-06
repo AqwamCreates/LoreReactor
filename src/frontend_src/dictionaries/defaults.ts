@@ -1,4 +1,4 @@
-// frontend-src/dictionaries/defaults.ts
+// frontend_src/dictionaries/defaults.ts
 import type { BudgetData, BudgetStrategy, Character, InterjectableAction, LanguageModel, MultiplayerData, promptBlockType, Sampler, textType, tool, tristateInteger } from '../types';
 
 export const DEFAULT_BUDGET_RESET_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours

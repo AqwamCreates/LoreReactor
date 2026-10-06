@@ -1,4 +1,4 @@
-// frontend-src/utilities/multiplayerSync.ts
+// frontend_src/utilities/multiplayerSync.ts
 import type { Character } from '../types';
 
 /** Strip a Character down to only fields needed for multiplayer participation */

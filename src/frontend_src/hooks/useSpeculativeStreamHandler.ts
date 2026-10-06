@@ -1,4 +1,4 @@
-// frontend-src/hooks/useSpeculativeStreamHandler.ts
+// frontend_src/hooks/useSpeculativeStreamHandler.ts
 import { useCallback, useRef, type MutableRefObject } from 'react';
 import type { Character, InteractionData, ChatMessage, WhisperMessage, HistoryMessage, PromptBlock } from '../types';
 import { calculateLatencyFactor } from '../utilities/chatSessionLogic';

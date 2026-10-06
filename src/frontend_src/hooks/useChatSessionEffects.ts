@@ -1,4 +1,4 @@
-// frontend-src/hooks/useChatSessionEffects.ts
+// frontend_src/hooks/useChatSessionEffects.ts
 import { useEffect, type MutableRefObject } from 'react';
 import type { InteractionData, LanguageModel, BudgetData } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';

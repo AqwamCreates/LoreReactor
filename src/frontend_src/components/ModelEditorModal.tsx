@@ -1,4 +1,4 @@
-// frontend-src/components/ModelEditorModal.tsx
+// frontend_src/components/ModelEditorModal.tsx
 import { useState, useEffect, useRef } from 'react';
 import type { backend, cloudBackend, LanguageModel, StopPattern } from '../types';
 import { useVramUseEstimation } from '../hooks/useVramUseEstimation';

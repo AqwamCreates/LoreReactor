@@ -1,4 +1,4 @@
-// frontend-src/components/SliderInput.tsx
+// frontend_src/components/SliderInput.tsx
 import type React from 'react';
 import { useState, useRef, useEffect } from 'react';
 import '../main.css';

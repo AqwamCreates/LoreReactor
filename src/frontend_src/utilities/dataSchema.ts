@@ -1,4 +1,4 @@
-// frontend-src/utilities/dataSchema.ts
+// frontend_src/utilities/dataSchema.ts
 import { defaultInputStrategy, defaultCharacterTools, defaultProfileTools } from '../dictionaries/defaults';
 import { emotions } from '../dictionaries/characterPresets';
 import type { EntityType } from './dataTypes';

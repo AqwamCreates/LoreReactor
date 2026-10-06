@@ -1,4 +1,4 @@
-// frontend-src/hooks/useMultiplayerConnection.ts
+// frontend_src/hooks/useMultiplayerConnection.ts
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Peer, { type DataConnection } from 'peerjs';
 import type { MultiplayerData, InteractionData, HistoryMessage, Character, Context, Location, AudioTrack, Profile } from '../types';

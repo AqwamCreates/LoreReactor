@@ -1,4 +1,4 @@
-// frontend-src/utilities/timelineLogic.ts
+// frontend_src/utilities/timelineLogic.ts
 import type { InteractionData, HistoryMessage, Character } from '../types';
 import { getMessageById } from './messageLogic';
 
@@ -96,7 +96,7 @@ export function getGlobalMessageHistory(
  * Traces back the conversation thread using parentMessageId.
  * Handles convergence points by defining a strict search space gap. (CACHED)
  */
-// frontend-src/utilities/timelineLogic.ts
+// frontend_src/utilities/timelineLogic.ts
 
 export function getLocalMessageHistory(
     interactionData: InteractionData, 

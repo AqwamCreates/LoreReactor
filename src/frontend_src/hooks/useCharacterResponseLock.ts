@@ -1,4 +1,4 @@
-// frontend-src/hooks/useCharacterResponseLock.ts
+// frontend_src/hooks/useCharacterResponseLock.ts
 import { useCallback, useRef } from 'react';
 import { useSessionStore } from './useSessionStore';
 

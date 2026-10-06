@@ -1,4 +1,4 @@
-// frontend-src/components/MessageBubble.tsx
+// frontend_src/components/MessageBubble.tsx
 import React from 'react';
 import type { Character, ChatMessage, WhisperMessage } from '../types';
 import { MemoizedMessageText } from './MemoizedMessageText';

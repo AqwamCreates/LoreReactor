@@ -1,4 +1,4 @@
-// frontend-src/hooks/useMessageToolbar.ts
+// frontend_src/hooks/useMessageToolbar.ts
 import { useState, useRef, useCallback, useEffect } from 'react';
 
 interface UseMessageToolbarOptions {

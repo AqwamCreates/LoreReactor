@@ -1,4 +1,4 @@
-// frontend-src/hooks/useEntityToggles.ts
+// frontend_src/hooks/useEntityToggles.ts
 import { useCallback } from 'react';
 import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy, InteractionData, MultiplayerData, HistoryMessage } from '../types';
 import { loadRawContext, loadRawLocation, loadRawAudioTrack, saveRawMultiplayerData } from '../storages/serverStorage';

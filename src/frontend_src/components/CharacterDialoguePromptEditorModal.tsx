@@ -1,4 +1,4 @@
-// frontend-src/components/CharacterDialoguePromptEditorModal.tsx
+// frontend_src/components/CharacterDialoguePromptEditorModal.tsx
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import type { DialoguePrompt, RegularExpressionTrigger } from '../types';
 import { v4 as uuidv4 } from 'uuid';

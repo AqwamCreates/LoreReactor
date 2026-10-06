@@ -1,4 +1,4 @@
-// frontend-src/services/TextToSpeechModelInferenceEngine.ts
+// frontend_src/services/TextToSpeechModelInferenceEngine.ts
 
 export interface TextToSpeedLanguageModelContext {
   serverUrl?: string;   // e.g., "http://localhost:7860"

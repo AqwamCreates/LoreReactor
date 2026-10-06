@@ -1,4 +1,4 @@
-// frontend-src/ambientNarration/atoms.ts
+// frontend_src/ambientNarration/atoms.ts
 
 export interface AtomSlots {
     [key: string]: string[];

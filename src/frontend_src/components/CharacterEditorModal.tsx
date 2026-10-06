@@ -1,4 +1,4 @@
-// frontend-src/components/CharacterEditorModal.tsx
+// frontend_src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, tool, InteractionData } from '../types';

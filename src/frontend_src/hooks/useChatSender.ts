@@ -1,4 +1,4 @@
-// frontend-src/hooks/useChatSender.ts
+// frontend_src/hooks/useChatSender.ts
 import { useCallback } from 'react';
 import type { Character, PromptBlock, InteractionData, HistoryMessage, InterjectableAction, ToolExecutionResult } from '../types';
 import { createChatMessage } from '../utilities/chatLogic';

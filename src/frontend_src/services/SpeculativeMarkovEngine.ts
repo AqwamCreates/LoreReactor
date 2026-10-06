@@ -1,4 +1,4 @@
-// frontend-src/services/SpeculativeMarkovEngine.ts
+// frontend_src/services/SpeculativeMarkovEngine.ts
 
 interface NGramNode {
     nextTokens: Map<string, number>;

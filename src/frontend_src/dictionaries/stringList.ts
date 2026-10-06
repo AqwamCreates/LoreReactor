@@ -1,4 +1,4 @@
-// frontend-src/dictionaries/stringList.ts
+// frontend_src/dictionaries/stringList.ts
 
 export const toolStartSring = "<|"
 export const toolEndString = "|>"

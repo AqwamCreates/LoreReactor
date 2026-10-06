@@ -1,4 +1,4 @@
-// frontend-src/components/AccountEditorModal.tsx
+// frontend_src/components/AccountEditorModal.tsx
 import { useState, useCallback } from 'react';
 import type { Account, Character, LanguageModel } from '../types';
 import { v4 as uuidv4 } from 'uuid';

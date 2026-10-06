@@ -1,4 +1,4 @@
-// frontend-src/hooks/useFrontCamera.ts
+// frontend_src/hooks/useFrontCamera.ts
 import { useRef, useCallback, useEffect } from 'react';
 
 const CAMERA_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes to save phone battery

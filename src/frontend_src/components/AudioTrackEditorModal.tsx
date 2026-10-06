@@ -1,4 +1,4 @@
-// frontend-src/components/AudioTrackEditorModal.tsx
+// frontend_src/components/AudioTrackEditorModal.tsx
 import { useState, useEffect, useRef } from 'react';
 import type { AudioTrack, Character, Context, Location, audioCategory, RegularExpressionTrigger } from '../types';
 import { uploadAudioTrack, getAudioTrackUrl } from '../storages/serverStorage';

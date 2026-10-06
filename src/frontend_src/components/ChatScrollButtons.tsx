@@ -1,4 +1,4 @@
-// frontend-src/components/ChatScrollButtons.tsx
+// frontend_src/components/ChatScrollButtons.tsx
 import React, { useState, useEffect } from 'react';
 
 interface ChatScrollButtonsProps {

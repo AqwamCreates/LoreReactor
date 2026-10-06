@@ -1,4 +1,4 @@
-// frontend-src/utilities/locationLogic.ts
+// frontend_src/utilities/locationLogic.ts
 import type { Character, InteractionData, Location, HistoryMessage } from '../types';
 import { initializeClothingWearingStatuses } from './characterLogic';
 import { findLatestMessage } from './messageLogic';
@@ -225,7 +225,7 @@ export function sampleInitialLocationForCharacter(locations: Location[], charact
     return pool[pool.length - 1].location;
 }
 
-// frontend-src/utilities/locationLogic.ts (inside assignInitialLocationsIfNeeded)
+// frontend_src/utilities/locationLogic.ts (inside assignInitialLocationsIfNeeded)
 
 export function assignInitialLocationsIfNeeded(interactionData: InteractionData): InteractionData {
     const locations = interactionData.locations;

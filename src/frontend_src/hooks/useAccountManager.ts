@@ -1,4 +1,4 @@
-// frontend-src/hooks/useAccountManager.ts
+// frontend_src/hooks/useAccountManager.ts
 import { useState, useCallback } from 'react';
 import type { Account } from '../types';
 import { loadAllRawAccounts, saveRawAccount, deleteRawAccount } from '../storages/serverStorage';

@@ -1,4 +1,4 @@
-// frontend-src/hooks/useViewAssets.ts
+// frontend_src/hooks/useViewAssets.ts
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Character, InteractionData} from '../types';
 import { getCharacterImageUrl, getLocationImageUrl, getMultiplayerCharacterImageUrl } from '../storages/serverStorage';

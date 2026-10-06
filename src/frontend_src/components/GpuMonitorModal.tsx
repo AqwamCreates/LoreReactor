@@ -1,4 +1,4 @@
-// frontend-src/components/GpuMonitorModal.tsx
+// frontend_src/components/GpuMonitorModal.tsx
 import { useGpuMonitor } from '../hooks/useGpuMonitor';
 import '../main.css';
 

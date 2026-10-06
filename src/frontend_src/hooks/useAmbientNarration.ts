@@ -1,4 +1,4 @@
-// frontend-src/hooks/useAmbientNarration.ts
+// frontend_src/hooks/useAmbientNarration.ts
 import { useCallback } from 'react';
 import type { Character, InteractionData, ChatMessage } from '../types';
 import { createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';

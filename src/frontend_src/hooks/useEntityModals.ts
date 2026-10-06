@@ -1,4 +1,4 @@
-// frontend-src/hooks/useEntityModals.ts
+// frontend_src/hooks/useEntityModals.ts
 import { useState, useCallback } from 'react';
 import { useToast } from '../context/ToastContext';
 import type { entityType, Entity } from '../types';

@@ -1,4 +1,4 @@
-// frontend-src/utilities/protagonistLogic.ts
+// frontend_src/utilities/protagonistLogic.ts
 import type { Character, InteractionData, MultiplayerData } from '../types';
 
 /**

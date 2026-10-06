@@ -1,4 +1,4 @@
-// frontend-src/hooks/browserStorage.ts
+// frontend_src/hooks/browserStorage.ts
 import { openDB, type IDBPDatabase } from 'idb';
 
 const DB_NAME = 'LoreReactor';

@@ -1,4 +1,4 @@
-// frontend-src/hooks/useMessageActions.ts
+// frontend_src/hooks/useMessageActions.ts
 import { useCallback } from 'react';
 import type { InteractionData } from '../types';
 import { editChatMessage as editMessage } from '../utilities/messageLogic';

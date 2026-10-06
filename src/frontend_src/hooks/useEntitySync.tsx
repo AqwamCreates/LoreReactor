@@ -1,4 +1,4 @@
-// frontend-src/hooks/useEntitySync.tsx
+// frontend_src/hooks/useEntitySync.tsx
 import { useEffect, useRef } from 'react';
 import type { Character, Context, Profile, InteractionData } from '../types';
 import { useSessionStore } from './useSessionStore';

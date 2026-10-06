@@ -1,4 +1,4 @@
-// frontend-src/components/ActionMenu.tsx
+// frontend_src/components/ActionMenu.tsx
 import type { Character, InterjectableAction } from '../types';
 
 interface ActionMenuProps {

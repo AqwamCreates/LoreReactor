@@ -1,4 +1,4 @@
-// frontend-src/services/CharacterSoul.ts
+// frontend_src/services/CharacterSoul.ts
 import type { InteractionData, Character } from '../types';
 import { runTurnSequence } from './InteractionOrchestrator';
 import { computeGlobalScore, computeAutonomousTickDelay } from '../utilities/dynamicCharacterLogic';

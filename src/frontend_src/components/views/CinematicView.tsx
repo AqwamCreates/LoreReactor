@@ -1,4 +1,4 @@
-// frontend-src/components/views/CinematicView.tsx
+// frontend_src/components/views/CinematicView.tsx
 import React, { useEffect, useCallback, useRef } from 'react';
 import type { ViewModeProps } from './types';
 import type { ChatMessage } from '../../types';

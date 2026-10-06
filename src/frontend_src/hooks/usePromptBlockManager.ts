@@ -1,4 +1,4 @@
-// frontend-src/hooks/usePromptBlockManager.ts
+// frontend_src/hooks/usePromptBlockManager.ts
 import { useState } from 'react';
 import type { PromptBlock } from '../types';
 import { loadAllRawPromptBlocks, saveRawPromptBlock, deleteRawPromptBlock } from '../storages/serverStorage';

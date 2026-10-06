@@ -1,4 +1,4 @@
-// frontend-src/components/ProfileEditorModal.tsx
+// frontend_src/components/ProfileEditorModal.tsx
 import { useState, useMemo, useCallback, type CSSProperties } from 'react';
 import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal } from '../types';
 import { SliderInput } from './SliderInput';

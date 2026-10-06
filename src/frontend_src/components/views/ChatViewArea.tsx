@@ -1,4 +1,4 @@
-// frontend-src/components/views/ChatViewArea.tsx
+// frontend_src/components/views/ChatViewArea.tsx
 import { useMemo } from 'react';
 import type { ViewModeProps, viewMode } from './types';
 import type { ChatMessage, WhisperMessage } from '../../types';

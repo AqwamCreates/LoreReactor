@@ -1,4 +1,4 @@
-// frontend-src/components/views/LadderView.tsx
+// frontend_src/components/views/LadderView.tsx
 import React, { useEffect, useCallback, useRef } from 'react';
 import type { ViewModeProps } from './types';
 import { MessageBubble } from '../MessageBubble';

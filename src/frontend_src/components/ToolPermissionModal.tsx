@@ -1,4 +1,4 @@
-// frontend-src/components/ToolPermissionModal.tsx
+// frontend_src/components/ToolPermissionModal.tsx
 import { useState } from 'react';
 import type { tool } from '../types';
 import type { DetectedToolsResult, ToolRule, ToolSecurityTier } from '../utilities/toolDetection';

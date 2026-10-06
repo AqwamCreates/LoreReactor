@@ -1,4 +1,4 @@
-// frontend-src/components/EntitySelectList.tsx
+// frontend_src/components/EntitySelectList.tsx
 import { useMemo } from 'react';
 import '../main.css';
 

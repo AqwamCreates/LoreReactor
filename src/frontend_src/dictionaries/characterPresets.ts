@@ -1,4 +1,4 @@
-// frontend-src/dictionaries/characterPresets.ts
+// frontend_src/dictionaries/characterPresets.ts
 
 export const emotions = [
     'neutral', 'admiration', 'amusement', 'anger', 'annoyance', 'approval',

@@ -1,4 +1,4 @@
-// frontend-src/components/CharacterKnowledgePromptEditorModal.tsx
+// frontend_src/components/CharacterKnowledgePromptEditorModal.tsx
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import type { KnowledgePrompt } from '../types';
 import { v4 as uuidv4 } from 'uuid';

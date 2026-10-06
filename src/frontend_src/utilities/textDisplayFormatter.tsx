@@ -1,4 +1,4 @@
-// frontend-src/utilities/textDisplayFormatter.tsx
+// frontend_src/utilities/textDisplayFormatter.tsx
 import type React from 'react';
 
 const LEFT_DOUBLE_QUOTE = '\u201C'; // “

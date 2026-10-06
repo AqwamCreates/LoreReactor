@@ -1,4 +1,4 @@
-// frontend-src/utilities/nameDetection.ts
+// frontend_src/utilities/nameDetection.ts
 import type { Character, ChatMessage, WhisperMessage } from '../types';
 
 type TextMessage = ChatMessage | WhisperMessage;

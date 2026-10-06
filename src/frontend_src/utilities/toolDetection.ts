@@ -1,4 +1,4 @@
-// frontend-src/utilities/toolDetection.ts
+// frontend_src/utilities/toolDetection.ts
 import type { tool } from '../types';
 
 export type ToolSecurityTier = 'in_world_readonly' | 'in_world_mutating' | 'ambient' | 'entity_admin' | 'os_privileged';

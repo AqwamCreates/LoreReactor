@@ -1,4 +1,4 @@
-// frontend-src/dictionaries/textCharacterInjectionPresets.ts
+// frontend_src/dictionaries/textCharacterInjectionPresets.ts
 import type { TextCharacterInjection } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 

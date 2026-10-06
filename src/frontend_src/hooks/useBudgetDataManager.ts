@@ -1,4 +1,4 @@
-// frontend-src/hooks/useBudgetDataManager.ts
+// frontend_src/hooks/useBudgetDataManager.ts
 import { useState, useEffect, useCallback } from 'react';
 import type { BudgetData, BudgetStrategy } from '../types';
 import { loadRawBudgetData, saveRawBudgetData } from '../storages/serverStorage';

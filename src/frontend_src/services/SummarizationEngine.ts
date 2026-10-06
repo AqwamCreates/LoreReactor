@@ -1,4 +1,4 @@
-// frontend-src/services/SummarizationEngine.ts
+// frontend_src/services/SummarizationEngine.ts
 import type { InteractionData, ChatMessage, Character } from '../types';
 import { 
     checkTriggerThreshold, 

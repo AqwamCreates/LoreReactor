@@ -1,4 +1,4 @@
-// frontend-src/services/SpeechToTextEngine.ts
+// frontend_src/services/SpeechToTextEngine.ts
 
 const HF_MODEL_ID = 'Xenova/whisper-tiny.en';
 const IDLE_UNLOAD_MS = 3 * 60 * 1000; // 3 minutes

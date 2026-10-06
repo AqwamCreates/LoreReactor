@@ -1,4 +1,4 @@
-// frontend-src/components/CharacterMemoryEditorModal.tsx
+// frontend_src/components/CharacterMemoryEditorModal.tsx
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Character, Memory } from '../types';
 import '../main.css';

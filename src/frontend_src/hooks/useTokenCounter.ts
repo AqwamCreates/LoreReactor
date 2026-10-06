@@ -1,4 +1,4 @@
-// frontend-src/hooks/useTokenCounter.ts
+// frontend_src/hooks/useTokenCounter.ts
 import { useState, useRef, useEffect } from 'react';
 import type { InteractionData, ChatMessage, LanguageModel, BudgetStrategy } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';

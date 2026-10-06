@@ -1,4 +1,4 @@
-// frontend-src/components/views/VisualNovelView.tsx
+// frontend_src/components/views/VisualNovelView.tsx
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import type { ViewModeProps } from './types';
 import type { Character } from '../../types';

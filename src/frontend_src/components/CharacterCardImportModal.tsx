@@ -1,4 +1,4 @@
-// frontend-src/components/CharacterCardImportModal.tsx
+// frontend_src/components/CharacterCardImportModal.tsx
 import type React from 'react';
 import { useState, useRef } from 'react';
 import type { Character, Context, Sampler, tool } from '../types';

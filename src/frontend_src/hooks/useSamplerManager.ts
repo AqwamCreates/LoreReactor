@@ -1,4 +1,4 @@
-// frontend-src/hooks/useSamplerManager.ts
+// frontend_src/hooks/useSamplerManager.ts
 import { useState } from 'react';
 import type { Sampler } from '../types';
 import { loadAllRawSamplers, saveRawSampler, deleteRawSampler } from '../storages/serverStorage';

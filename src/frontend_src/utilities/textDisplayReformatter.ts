@@ -1,4 +1,4 @@
-// frontend-src/utilities/textDisplayReformatter.ts
+// frontend_src/utilities/textDisplayReformatter.ts
 import { getFormatPreferenceEngine } from '../services/FormatPreferenceEngine';
 import { toolStartSring, toolEndString } from '../dictionaries/stringList';
 

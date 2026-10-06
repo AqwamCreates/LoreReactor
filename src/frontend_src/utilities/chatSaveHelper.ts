@@ -1,4 +1,4 @@
-// frontend-src/utilities/chatSaveHelper.ts
+// frontend_src/utilities/chatSaveHelper.ts
 import type { InteractionData, Character } from '../types';
 
 export function isChatSaveable(data: InteractionData | null): boolean {

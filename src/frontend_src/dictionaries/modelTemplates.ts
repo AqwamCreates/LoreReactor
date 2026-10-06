@@ -1,4 +1,4 @@
-// frontend-src/dictionaries/modelTemplates.ts
+// frontend_src/dictionaries/modelTemplates.ts
 
 export interface ModelTemplate {
     key: string;
