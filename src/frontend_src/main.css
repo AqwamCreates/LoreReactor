@@ -5238,6 +5238,10 @@ body.overlay-mode #root,
     background: #10b981;
     box-shadow: 0 0 8px #10b981;
 }
+.pip-status-dot.idle {
+    background: #facc15;
+    box-shadow: 0 0 8px #facc15;
+}
 .pip-status-dot.active {
     background: #c084fc;
     box-shadow: 0 0 12px #c084fc;
