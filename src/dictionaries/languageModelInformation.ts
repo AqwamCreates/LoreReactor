@@ -38,7 +38,7 @@ export const cloudTokenizeEndpoints: Record<string, string> = {
     'Kimi': 'https://api.moonshot.cn/v1/tokenizers/estimate-token-count',
     'Minimax': 'https://api.minimax.io/v1/responses/input_tokens',
     'GLM': 'https://api.z.ai/api/paas/v4/tokenizer',
-    'Google': 'https://generativelanguage.googleapis.com/v1beta/models/{model}:countTokens',
+    'Google': 'https://generativelanguage.googleapis.com/v1beta/language_models/{model}:countTokens',
     'Anthropic': 'https://api.anthropic.com/v1/messages/count_tokens',
     'OpenRouter': 'https://openrouter.ai/api/v1/tokenize',
     'Cohere': 'https://api.cohere.com/v1/tokenize',

@@ -3,7 +3,14 @@ import type { Character, Location, Context, AudioTrack, World, PromptBlock, Samp
 import { getLocalMessageHistory } from './timelineLogic';
 
 // ─── Tree Data Structures ─────────────────────────────────────────
-export type ArgType = 'text' | 'session_location' | 'global_location' | 'session_character' | 'global_character' | 'clothing' | 'audio' | 'item' | 'context' | 'rng_table' | 'dialogue' | 'knowledge' | 'memory' | 'entity_type' | 'prompt_block' | 'sampler' | 'stop_pattern' | 'profile' | 'world' | 'account' | 'multiplayer_session';
+export type ArgType = 
+    | 'text' | 'session_location' | 'global_location' 
+    | 'session_character' | 'global_character' 
+    | 'clothing' | 'audio' | 'item' | 'context' | 'rng_table' 
+    | 'dialogue' | 'knowledge' | 'memory' | 'entity_type' 
+    | 'prompt_block' | 'sampler' | 'stop_pattern' | 'profile' 
+    | 'world' | 'account' | 'multiplayer_session' 
+    | 'language_model' | 'budget_strategy'; // ADDED
 
 export interface SlashArg { name: string; type: ArgType; desc: string; optional?: boolean; example?: string; }
 export interface SlashSub { name: string; desc: string; args?: SlashArg[]; }
@@ -18,7 +25,11 @@ export interface AutocompleteOption {
     desc: string;
 }
 
-export const VALID_ENTITY_TYPES = ['character', 'context', 'location', 'audio_track', 'prompt_block', 'stop_pattern', 'sampler', 'budget_strategy', 'profile', 'world', 'memory', 'account', 'multiplayer_data'];
+export const VALID_ENTITY_TYPES = [
+    'character', 'context', 'location', 'audio_track', 'prompt_block', 
+    'stop_pattern', 'sampler', 'budget_strategy', 'profile', 'world', 
+    'memory', 'account', 'multiplayer_data', 'language_model'
+];
 
 export const COMMAND_TREE: SlashCmd[] = [
     { name: 'whisper', desc: 'Send a private message', args: [
@@ -164,8 +175,11 @@ export const COMMAND_TREE: SlashCmd[] = [
         { name: 'list_chats', desc: 'List all sessions' },
         { name: 'list_accounts', desc: 'List all accounts' },
         { name: 'list_multiplayer', desc: 'List multiplayer sessions' },
+        { name: 'list_models', desc: 'List all language models' },
+        { name: 'list_budget_strategies', desc: 'List all budget strategies' },
         { name: 'move_protagonist', desc: 'Move to session', args: [{ name: 'chat_id', type: 'text', desc: 'Session ID' }] },
-        { name: 'switch_model', desc: 'Switch active model', args: [{ name: 'model_name', type: 'text', desc: 'Model name' }] },
+        { name: 'switch_model', desc: 'Switch active model', args: [{ name: 'model', type: 'language_model', desc: 'Language model' }] },
+        { name: 'switch_budget_strategy', desc: 'Switch active budget strategy', args: [{ name: 'strategy', type: 'budget_strategy', desc: 'Budget strategy' }] },
         { name: 'toggle_account', desc: 'Toggle account active state', args: [{ name: 'account', type: 'account', desc: 'Account to toggle' }] },
         { name: 'join_session', desc: 'Join multiplayer session', args: [
             { name: 'session', type: 'multiplayer_session', desc: 'Multiplayer session' },
@@ -183,6 +197,10 @@ export const COMMAND_TREE: SlashCmd[] = [
         { name: 'entity_type', type: 'entity_type', desc: 'Type of entity to delete' },
         { name: 'entity', type: 'text', desc: 'Entity to delete (type-specific)' }
     ]},
+    { name: 'schedule_response', desc: 'Schedule delayed follow-up response', args: [
+        { name: 'duration', type: 'text', desc: 'Delay (e.g. 2h, 30m)', example: '2h' },
+        { name: 'thought', type: 'text', desc: 'Reason or prompt for follow-up', example: 'Check if Sensei is awake' }
+    ]},
     { name: 'text_to_speech', desc: 'Convert text to speech', args: [{ name: 'text', type: 'text', desc: 'Text to speak or "stop"', example: 'Hello world' }] },
     { name: 'gpu', desc: 'Check GPU telemetry status' },
     { name: 'system_info', desc: 'Check system CPU & RAM info' },
@@ -197,17 +215,19 @@ export const COMMAND_TREE: SlashCmd[] = [
         { name: 'unmute', desc: 'Unmute audio' },
     ]},
     { name: 'lock_screen', desc: 'Lock host workstation screen' },
+    { name: 'sleep', desc: 'Put host system to sleep/hibernate' },
+    { name: 'shutdown', desc: 'Shut down host system' },
+    { name: 'restart', desc: 'Restart host system' },
     { name: 'clipboard', desc: 'Manage clipboard', subs: [
         { name: 'read', desc: 'Read clipboard' },
         { name: 'write', desc: 'Write text to clipboard', args: [{ name: 'text', type: 'text', desc: 'Text to copy', example: 'Copied text' }] },
     ]},
     { name: 'screenshot', desc: 'Capture desktop screenshot' },
-    { name: 'front_camera', desc: 'Capture front camera image' },
+    { name: 'webcam', desc: 'Capture webcam image' },
     { name: 'network_scanner', desc: 'Scan local network devices' },
     { name: 'file_watcher', desc: 'Watch workspace folders', subs: [
         { name: 'start', desc: 'Start watching path', args: [{ name: 'path', type: 'text', desc: 'Directory path', example: './src' }] },
         { name: 'check', desc: 'Check file changes' },
-        { name: 'stop', desc: 'Stop watcher', args: [{ name: 'path', type: 'text', desc: 'Directory path or all', example: 'all', optional: true }] },
     ]},
     { name: 'window_monitor', desc: 'Check active foreground window' },
     { name: 'process_monitor', desc: 'Check running OS processes', args: [{ name: 'query', type: 'text', desc: 'Filter query (optional)', example: 'node', optional: true }] },
@@ -282,6 +302,8 @@ export function getEntityOptions(
     allMemories: Memory[] = [],
     allAccounts: Account[] = [],
     allMultiplayerData: MultiplayerData[] = [],
+    allLanguageModels: LanguageModel[] = [],
+    allBudgetStrategies: BudgetStrategy[] = [],
     localCharacter: Character | null = null
 ): EntityOption[] {
     if (type === 'entity_type') {
@@ -310,7 +332,7 @@ export function getEntityOptions(
             }));
     }
 
-    if (!data && type !== 'account' && type !== 'multiplayer_session') return [];
+    if (!data && type !== 'account' && type !== 'multiplayer_session' && type !== 'language_model' && type !== 'budget_strategy') return [];
 
     if (type === 'session_location') {
         const sessionLocs = data?.locations || [];
@@ -346,6 +368,24 @@ export function getEntityOptions(
             label: m.name,
             id: m.id.substring(0, 8),
             extra: getEntityDescription(m)
+        }));
+    }
+
+    if (type === 'language_model') {
+        return allLanguageModels.map(m => ({
+            value: m.id,
+            label: m.name || m.model || m.id,
+            id: m.id.substring(0, 8),
+            extra: `${m.backend} | ${m.contextLength} ctx`
+        }));
+    }
+
+    if (type === 'budget_strategy') {
+        return allBudgetStrategies.map(b => ({
+            value: b.id,
+            label: b.name,
+            id: b.id.substring(0, 8),
+            extra: `Max Budget: ${b.maximumBudget}`
         }));
     }
 
@@ -567,7 +607,8 @@ inputText: string, interactionData: InteractionData | null, allCharacters: Chara
             const entities = getEntityOptions(
                 arg.type, interactionData, allCharacters, allLocations, allContexts,
                 allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
-                allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData, localProtagonist
+                allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData,
+                allLanguageModels, allBudgetStrategies, localProtagonist
             );
 
             let queryForFilter = effectiveQuery;
@@ -632,7 +673,8 @@ inputText: string, interactionData: InteractionData | null, allCharacters: Chara
         const entities = getEntityOptions(
             arg.type, interactionData, allCharacters, allLocations, allContexts,
             allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
-            allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData, localProtagonist
+            allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData,
+            allLanguageModels, allBudgetStrategies, localProtagonist
         );
 
         let queryForFilter = effectiveQuery;

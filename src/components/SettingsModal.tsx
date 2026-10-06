@@ -116,6 +116,12 @@ const MISCELLANEOUS_ITEMS: SettingsItem[] = [
         label: 'GPU Monitor',
         description: 'Real-time GPU utilization, memory usage, temperature, and power draw.',
     },
+    {
+        id: 'language-model-inference-manager',
+        icon: '⚙️',
+        label: 'Language Model Inference Manager',
+        description: 'Install, manage, and monitor local inference engines and background downloads.',
+    },
 ];
 
 const TAB_ITEMS: Record<SettingsTabId, SettingsItem[]> = {
@@ -147,6 +153,7 @@ interface SettingsModalProps {
     // Miscellaneous tab
     onOpenSuperSearch: () => void;
     onOpenGpuMonitor: () => void;
+    onOpenLanguageModelInferenceManager: () => void; // <--- ADD THIS
 }
 
 export function SettingsModal({
@@ -170,6 +177,7 @@ export function SettingsModal({
     // Miscellaneous tab
     onOpenSuperSearch,
     onOpenGpuMonitor,
+    onOpenLanguageModelInferenceManager,
 }: SettingsModalProps) {
     const [activeTab, setActiveTab] = useState<SettingsTabId>('session');
 
@@ -194,6 +202,7 @@ export function SettingsModal({
             // Miscellaneous tab
             case 'super-search': onOpenSuperSearch(); break;
             case 'gpu-monitor': onOpenGpuMonitor(); break;
+            case 'language-model-inference-manager': onOpenLanguageModelInferenceManager(); break;
         }
     };
 

@@ -46,6 +46,7 @@ import { DataManagerModal } from './DataManagerModal';
 import { AlternateTimelinesModal } from './AlternateTimelinesModal';
 import { ChatInspectionModal } from './ChatInspectionModal';
 import { SuperSearchModal } from './SuperSearchModal';
+import { LanguageModelInferenceManagerModal } from './LanguageModelInferenceManager';
 
 interface EntityModalController {
     isOpen: boolean;
@@ -674,6 +675,7 @@ export function AppModals({
                     onOpenDataManager={modals.dataManager.open}
                     onOpenSuperSearch={modals.superSearch.open}
                     onOpenGpuMonitor={modals.gpuMonitor.open}
+                    onOpenLanguageModelInferenceManager={modals.inferenceManager.open} // <--- ADD THIS
                 />
             )}
 
@@ -895,6 +897,13 @@ export function AppModals({
 
             {modals.gpuMonitor.isOpen && (
                 <GpuMonitorModal onClose={modals.gpuMonitor.close} />
+            )}
+
+            {modals.inferenceManager.isOpen && (
+                <LanguageModelInferenceManagerModal
+                    onClose={modals.inferenceManager.close}
+                    addToast={addToast}
+                />
             )}
 
             {/* ─── Editor Modals ─── */}
