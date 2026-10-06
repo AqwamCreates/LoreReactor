@@ -733,8 +733,21 @@ export function StandaloneOverlay() {
                     {state.charName}
                 </div>
                 
-                {/* ✅ Stop, Resume, Regenerate, and Reformat Toggle Buttons */}
+                {/* ✅ Reformat | Stop/Resume | Regenerate | Edit Buttons */}
                 <div className="pip-dialogue-actions">
+                    {/* Reformat Button (Leftmost) */}
+                    {!state.isLoading && (
+                        <button 
+                            className={`pip-dialogue-action-btn ${isReformatToggled ? 'pip-dialogue-action-btn-active' : ''}`}
+                            onClick={() => setIsReformatToggled(prev => !prev)}
+                            title={isReformatToggled ? "Revert to Raw Text" : "Apply Auto-Reformat"}
+                            disabled={!hasFormats}
+                        >
+                            ✨
+                        </button>
+                    )}
+
+                    {/* Stop or Resume Button */}
                     {state.isLoading ? (
                         <button 
                             className="pip-dialogue-action-btn" 
@@ -749,42 +762,53 @@ export function StandaloneOverlay() {
                             ⏹
                         </button>
                     ) : (
-                        <>
-                            <button 
-                                className="pip-dialogue-action-btn" 
-                                onClick={() => {
-                                    if (!state.lastMessageId) return;
-                                    const channel = new BroadcastChannel('lorereactor-companion-sync');
-                                    channel.postMessage({ type: 'RESUME_GENERATION', messageId: state.lastMessageId });
-                                    channel.close();
-                                }}
-                                title="Resume Generation"
-                                disabled={!state.lastMessageId}
-                            >
-                                ▶
-                            </button>
-                            <button 
-                                className="pip-dialogue-action-btn" 
-                                onClick={() => {
-                                    if (!state.lastMessageId) return;
-                                    const channel = new BroadcastChannel('lorereactor-companion-sync');
-                                    channel.postMessage({ type: 'RESTART_GENERATION', messageId: state.lastMessageId });
-                                    channel.close();
-                                }}
-                                title="Regenerate Response"
-                                disabled={!state.lastMessageId}
-                            >
-                                ↻
-                            </button>
-                            <button 
-                                className={`pip-dialogue-action-btn ${isReformatToggled ? 'pip-dialogue-action-btn-active' : ''}`}
-                                onClick={() => setIsReformatToggled(prev => !prev)}
-                                title={isReformatToggled ? "Revert to Raw Text" : "Apply Auto-Reformat"}
-                                disabled={!hasFormats}
-                            >
-                                ✨
-                            </button>
-                        </>
+                        <button 
+                            className="pip-dialogue-action-btn" 
+                            onClick={() => {
+                                if (!state.lastMessageId) return;
+                                const channel = new BroadcastChannel('lorereactor-companion-sync');
+                                channel.postMessage({ type: 'RESUME_GENERATION', messageId: state.lastMessageId });
+                                channel.close();
+                            }}
+                            title="Resume Generation"
+                            disabled={!state.lastMessageId}
+                        >
+                            ▶
+                        </button>
+                    )}
+
+                    {/* Regenerate Button */}
+                    {!state.isLoading && (
+                        <button 
+                            className="pip-dialogue-action-btn" 
+                            onClick={() => {
+                                if (!state.lastMessageId) return;
+                                const channel = new BroadcastChannel('lorereactor-companion-sync');
+                                channel.postMessage({ type: 'RESTART_GENERATION', messageId: state.lastMessageId });
+                                channel.close();
+                            }}
+                            title="Regenerate Response"
+                            disabled={!state.lastMessageId}
+                        >
+                            ↻
+                        </button>
+                    )}
+
+                    {/* Edit Button (Rightmost) */}
+                    {!state.isLoading && (
+                        <button 
+                            className="pip-dialogue-action-btn" 
+                            onClick={() => {
+                                if (!state.lastMessageId) return;
+                                const channel = new BroadcastChannel('lorereactor-companion-sync');
+                                channel.postMessage({ type: 'EDIT_MESSAGE', messageId: state.lastMessageId });
+                                channel.close();
+                            }}
+                            title="Edit Last Message"
+                            disabled={!state.lastMessageId}
+                        >
+                            ✎
+                        </button>
                     )}
                 </div>
 

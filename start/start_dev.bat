@@ -10,7 +10,7 @@ title LoreReactor
 :: ── Navigate to the project root (one level above this script) ─
 cd /d "%~dp0.."
 set "ROOT=%CD%"
-set "BACKENDS_DIR=%ROOT%\local_backends"
+set "BACKENDS_DIR=%ROOT%\local_language_model_backends"
 
 :: ── Detect Windows architecture ─────────────────────────────
 :: PROCESSOR_ARCHITECTURE = AMD64 on 64-bit, x86 on 32-bit
@@ -312,7 +312,7 @@ echo   [OK] Llama.cpp installed at: !LLAMA_DEST!
 echo   [OK] Found: !LLAMA_SERVER_PATH!
 echo.
 echo   NOTE: server.ts expects llama-server.exe directly inside
-echo         local_backends\llama\. If it is in a subfolder, move it up.
+echo         local_language_model_backends\llama\. If it is in a subfolder, move it up.
 echo.
 pause
 goto BACKEND_MENU
@@ -326,7 +326,7 @@ echo   --- Installing Ollama ---
 echo.
 echo   This will run the official Ollama Windows installer script.
 echo   Ollama will be installed to your user directory.
-echo   A copy of ollama.exe will be placed in local_backends\ollama\.
+echo   A copy of ollama.exe will be placed in local_language_model_backends\ollama\.
 echo.
 set /p "OLLAMA_CONFIRM=  Continue? [Y/n]: "
 if /i "!OLLAMA_CONFIRM!"=="n" goto BACKEND_MENU
@@ -786,7 +786,7 @@ echo.
 echo   This will run the official LM Studio Windows installer.
 echo   LM Studio is a GUI application that includes the lms CLI.
 echo   After installation, the lms binary will be located and
-echo   linked into local_backends\lmstudio\.
+echo   linked into local_language_model_backends\lmstudio\.
 echo.
 set /p "LMS_CONFIRM=  Continue? [Y/n]: "
 if /i "!LMS_CONFIRM!"=="n" goto BACKEND_MENU
@@ -836,7 +836,7 @@ echo   WARNING: LocalAI does not provide a native Windows binary.
 echo   It must be run via WSL ^(Windows Subsystem for Linux^).
 echo.
 echo   If you have WSL2 installed, this will download the Linux
-echo   binary into local_backends\localai\ and you can run it
+echo   binary into local_language_model_backends\localai\ and you can run it
 echo   from within WSL.
 echo.
 echo   Alternatively, use Docker:

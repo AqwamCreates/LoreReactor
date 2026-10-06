@@ -11,7 +11,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$SCRIPT_DIR"
 ROOT="$PWD"
-BACKENDS_DIR="$ROOT/local_backends"
+BACKENDS_DIR="$ROOT/local_language_model_backends"
 
 # ── Detect OS ─────────────────────────────────────────────────
 OS="linux"
@@ -712,7 +712,7 @@ install_lmstudio() {
         echo "  After installing, the lms CLI is at:"
         echo "    /Applications/LM Studio.app/Contents/Resources/lms"
         echo ""
-        confirm "Copy lms into local_backends/lmstudio/ now?" || { backend_menu; return; }
+        confirm "Copy lms into local_language_model_backends/lmstudio/ now?" || { backend_menu; return; }
         local lms_src="/Applications/LM Studio.app/Contents/Resources/lms"
         if [ -f "$lms_src" ]; then
             local dest="$BACKENDS_DIR/lmstudio"

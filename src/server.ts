@@ -28,7 +28,7 @@ const PORT = 8448;
 const ROOT_DIR = process.cwd();
 const APP_NAME = "LoreReactor";
 
-const LOCAL_BACKENDS_PATH = 'local_backends';
+const LOCAL_LANGUAGE_MODEL_BACKENDS_PATH = 'local_language_model_backends';
 
 // ── Platform helpers ────────────────────────────────────────────────
 const IS_WINDOWS = process.platform === 'win32';
@@ -45,7 +45,7 @@ function bin(name: string): string {
  * Linux/Mac: <dir>/python    (symlink to venv/bin/python created by installer)
  */
 function pythonBin(backendDir: string): string {
-  return path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, backendDir, bin('python'));
+  return path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, backendDir, bin('python'));
 }
 
 type LocalBackend =
@@ -76,23 +76,23 @@ interface BackendConfig {
 const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
 
   'Llama.cpp': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, 'llama', bin('llama-server')),
+    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'llama', bin('llama-server')),
     buildArgs: (modelPath, port, extraArgs) => [
       '-m', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/health`,
-    cwd: path.join(LOCAL_BACKENDS_PATH, 'llama'),
+    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'llama'),
     logLabel: 'LLAMA',
     readyPattern: /HTTP server listening/i,
   },
 
   'Transformers': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, 'transformers', 'text-generation-launcher'),
+    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'transformers', 'text-generation-launcher'),
     buildArgs: (modelPath, port, extraArgs) => [
       '--model-id', modelPath, '--port', port.toString(), '--hostname', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/health`,
-    cwd: path.join(LOCAL_BACKENDS_PATH, 'transformers'),
+    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'transformers'),
     logLabel: 'TGI',
     readyPattern: /Connected/i,
   },
@@ -103,7 +103,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
       'start.py', '--model-dir', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
-    cwd: path.join(LOCAL_BACKENDS_PATH, 'exllamav3'),
+    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'exllamav3'),
     logLabel: 'EXLV3',
     readyPattern: /Uvicorn running/i,
   },
@@ -114,7 +114,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
       'start.py', '--model-dir', modelPath, '--port', port.toString(), '--host', '0.0.0.0', '--hf-model', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
-    cwd: path.join(LOCAL_BACKENDS_PATH, 'exllamav3_hf'),
+    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'exllamav3_hf'),
     logLabel: 'EXLV3HF',
     readyPattern: /Uvicorn running/i,
   },
@@ -125,27 +125,27 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
       'start.py', '--model-dir', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
-    cwd: path.join(LOCAL_BACKENDS_PATH, 'exllamav2'),
+    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'exllamav2'),
     logLabel: 'EXLV2',
     readyPattern: /Uvicorn running/i,
   },
 
   'TensorRT-LLM': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, 'tensorrt-llm', 'tritonserver'),
+    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'tensorrt-llm', 'tritonserver'),
     buildArgs: (modelPath, port, extraArgs) => [
       '--model-repository', modelPath, '--http-port', port.toString(), ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/v2/health/ready`,
-    cwd: path.join(LOCAL_BACKENDS_PATH, 'tensorrt-llm'),
+    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'tensorrt-llm'),
     logLabel: 'TRTLLM',
     readyPattern: /Started HTTPService/i,
   },
 
   'Ollama': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, 'ollama', bin('ollama')),
+    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'ollama', bin('ollama')),
     buildArgs: (_modelPath, _port, _extraArgs) => ['serve'],
     healthUrl: (port) => `http://127.0.0.1:${port}/`,
-    cwd: path.join(LOCAL_BACKENDS_PATH, 'ollama'),
+    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'ollama'),
     logLabel: 'OLLAMA',
     readyPattern: /listening on/i,
     envOverrides: (port) => ({ OLLAMA_HOST: `0.0.0.0:${port}` }),
@@ -159,7 +159,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
       '--model', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/health`,
-    cwd: path.join(LOCAL_BACKENDS_PATH, 'vllm'),
+    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'vllm'),
     logLabel: 'VLLM',
     readyPattern: /Application startup complete/i,
   },
@@ -171,42 +171,42 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
       '--model-path', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/health`,
-    cwd: path.join(LOCAL_BACKENDS_PATH, 'sglang'),
+    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'sglang'),
     logLabel: 'SGLANG',
     readyPattern: /The server is fired up and ready/i,
   },
 
   'LM Studio': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, 'lmstudio', bin('lms')),
+    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'lmstudio', bin('lms')),
     buildArgs: (_modelPath, port, extraArgs) => [
       'server', 'start', '--port', port.toString(), ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
-    cwd: path.join(LOCAL_BACKENDS_PATH, 'lmstudio'),
+    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'lmstudio'),
     logLabel: 'LMS',
     readyPattern: /Server started/i,
     modelNameNotPath: true,
   },
 
   'LocalAI': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, 'localai', 'local-ai'),
+    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'localai', 'local-ai'),
     buildArgs: (_modelPath, port, extraArgs) => [
       '--address', `0.0.0.0:${port}`, ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/readyz`,
-    cwd: path.join(LOCAL_BACKENDS_PATH, 'localai'),
+    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'localai'),
     logLabel: 'LOCAI',
     readyPattern: /LocalAI is ready|listening on/i,
     modelNameNotPath: true,
   },
 
   'mistral.rs': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_BACKENDS_PATH, 'mistral-rs', bin('mistralrs-server')),
+    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'mistral-rs', bin('mistralrs-server')),
     buildArgs: (modelPath, port, extraArgs) => [
       '--model-id', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
-    cwd: path.join(LOCAL_BACKENDS_PATH, 'mistral-rs'),
+    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'mistral-rs'),
     logLabel: 'MRSSV',
     readyPattern: /Started HTTP server/i,
   },
@@ -2435,7 +2435,7 @@ const startServer = () => {
   console.log(border);
   console.log(`  ${title}`);
   console.log(`  🖥️  Platform : ${Colors.Dim}${platLabel}${Colors.Reset}`);
-  console.log(`  📂 Backends  : ${Colors.Dim}${path.join(ROOT_DIR, LOCAL_BACKENDS_PATH)}${Colors.Reset}`);
+  console.log(`  📂 Backends  : ${Colors.Dim}${path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH)}${Colors.Reset}`);
 
   for (const [name, cfg] of Object.entries(BACKEND_CONFIGS)) {
     const exists = fs.existsSync(cfg.binaryPath);
