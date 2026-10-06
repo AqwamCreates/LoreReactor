@@ -300,7 +300,7 @@ function App() {
         if (!target || (target.apiKey && target.backend)) return null;
         try {
             const args = buildModelLoadArguments(target);
-            const res = await fetch(`${localURL}/models/load`, {
+            const res = await fetch(`${localURL}/language_models/load`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: target.id, modelPath: target.model || '', args }),
             });

@@ -98,7 +98,7 @@ export function useModelManager() {
     // Stable fetchStatus — stored in ref, updated via effect
     const fetchStatusFn = useCallback(async () => {
         try {
-            const response = await fetch(`${API_BASE}/models/status`);
+            const response = await fetch(`${API_BASE}/language_models/status`);
             if (!response.ok) return;
 
             const data = await response.json();
@@ -194,7 +194,7 @@ export function useModelManager() {
 
     const unloadModelInternal = useCallback(async (id: string): Promise<boolean> => {
         try {
-            const response = await fetch(`${API_BASE}/models/unload`, {
+            const response = await fetch(`${API_BASE}/language_models/unload`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id })
@@ -269,7 +269,7 @@ export function useModelManager() {
 
             try {
                 addToastRef.current(`Starting model ${model.name}...`, "info");
-                const response = await fetch(`${API_BASE}/models/load`, {
+                const response = await fetch(`${API_BASE}/language_models/load`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id: model.id, modelPath, args })

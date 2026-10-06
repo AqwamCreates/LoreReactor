@@ -87,7 +87,7 @@ export function useChatSessionEffects({
         let cancelled = false;
         (async () => {
             try {
-                const response = await fetch(`${localURL}/models/status`);
+                const response = await fetch(`${localURL}/language_models/status`);
                 if (!response.ok || cancelled) return;
                 const data = await response.json();
                 const status: Record<string, { isRunning: boolean; port?: number }> = {};

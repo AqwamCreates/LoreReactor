@@ -102,7 +102,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     buildArgs: (modelPath, port, extraArgs) => [
       'start.py', '--model-dir', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
-    healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
+    healthUrl: (port) => `http://127.0.0.1:${port}/v1/language_models`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'exllamav3'),
     logLabel: 'EXLV3',
     readyPattern: /Uvicorn running/i,
@@ -113,7 +113,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     buildArgs: (modelPath, port, extraArgs) => [
       'start.py', '--model-dir', modelPath, '--port', port.toString(), '--host', '0.0.0.0', '--hf-model', ...extraArgs,
     ],
-    healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
+    healthUrl: (port) => `http://127.0.0.1:${port}/v1/language_models`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'exllamav3_hf'),
     logLabel: 'EXLV3HF',
     readyPattern: /Uvicorn running/i,
@@ -124,7 +124,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     buildArgs: (modelPath, port, extraArgs) => [
       'start.py', '--model-dir', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
-    healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
+    healthUrl: (port) => `http://127.0.0.1:${port}/v1/language_models`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'exllamav2'),
     logLabel: 'EXLV2',
     readyPattern: /Uvicorn running/i,
@@ -181,7 +181,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     buildArgs: (_modelPath, port, extraArgs) => [
       'server', 'start', '--port', port.toString(), ...extraArgs,
     ],
-    healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
+    healthUrl: (port) => `http://127.0.0.1:${port}/v1/language_models`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'lmstudio'),
     logLabel: 'LMS',
     readyPattern: /Server started/i,
@@ -205,7 +205,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     buildArgs: (modelPath, port, extraArgs) => [
       '--model-id', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
-    healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
+    healthUrl: (port) => `http://127.0.0.1:${port}/v1/language_models`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'mistral-rs'),
     logLabel: 'MRSSV',
     readyPattern: /Started HTTP server/i,
@@ -1139,7 +1139,7 @@ app.use('/user_data', (req, response) => {
 
 // --- Model Management ---
 
-app.get('/models/status', (_req, response) => {
+app.get('/language_models/status', (_req, response) => {
   const status = Array.from(activeModels.entries()).map(([id, instance]) => ({
     id,
     port: instance.port,
@@ -1151,7 +1151,7 @@ app.get('/models/status', (_req, response) => {
   response.json({ activeModels: status, count: status.length });
 });
 
-app.post('/models/load', async (req, response) => {
+app.post('/language_models/load', async (req, response) => {
   const { id, modelPath, port: requestedPort, args = [], backend: requestedBackend } = req.body;
 
   if (!id || !modelPath) return response.status(400).json({ error: 'Missing id or modelPath' });
@@ -1264,7 +1264,7 @@ app.post('/models/load', async (req, response) => {
   }
 });
 
-app.post('/models/unload', (req, response) => {
+app.post('/language_models/unload', (req, response) => {
   const { id } = req.body;
   if (!id) return response.status(400).json({ error: 'Missing id' });
 

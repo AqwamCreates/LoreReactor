@@ -658,7 +658,7 @@ export function useMultiplayerSync({
 
                     (async () => {
                         try {
-                            const statusResponse = await fetch(`${localURL}/models/status`);
+                            const statusResponse = await fetch(`${localURL}/language_models/status`);
                             const statusData = await statusResponse.json();
                             const activeModel = statusData.activeModels?.[0];
 
