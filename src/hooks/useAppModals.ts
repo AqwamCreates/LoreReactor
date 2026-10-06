@@ -30,6 +30,7 @@ export type ModalName =
     | 'joinSession'
     | 'superSearch'
     | 'gpuMonitor'
+    | 'languageModelInferenceManager'
     | 'chatInspection'
 
 export interface ModalController {
@@ -68,7 +69,7 @@ export function useAppModals() {
             'settings', 'budgetControl', 'participantControl', 'alternateTimelines',
             'aiRecommendation', 'restrictionReduction', 'cardImport', 'importData',
             'exportData', 'dataManager', 'joinSession', 'superSearch', 'gpuMonitor', 
-            'chatInspection',
+            'languageModelInferenceManager', 'chatInspection'
         ];
 
         const acc = {} as Record<ModalName, ModalController>;

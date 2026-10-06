@@ -675,7 +675,7 @@ export function AppModals({
                     onOpenDataManager={modals.dataManager.open}
                     onOpenSuperSearch={modals.superSearch.open}
                     onOpenGpuMonitor={modals.gpuMonitor.open}
-                    onOpenLanguageModelInferenceManager={modals.inferenceManager.open} // <--- ADD THIS
+                    onOpenLanguageModelInferenceManager={modals.languageModelInferenceManager.open} // <--- ADD THIS
                 />
             )}
 
@@ -899,9 +899,9 @@ export function AppModals({
                 <GpuMonitorModal onClose={modals.gpuMonitor.close} />
             )}
 
-            {modals.inferenceManager.isOpen && (
+            {modals.languageModelInferenceManager.isOpen && (
                 <LanguageModelInferenceManagerModal
-                    onClose={modals.inferenceManager.close}
+                    onClose={modals.languageModelInferenceManager.close}
                     addToast={addToast}
                 />
             )}

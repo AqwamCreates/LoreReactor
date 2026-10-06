@@ -109,7 +109,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     buildArgs: (modelPath, port, extraArgs) => [
       'start.py', '--model-dir', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
-    // FIX: Standard OpenAI endpoint is /v1/models, NOT /v1/language_models
     healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'exllamav3'),
     logLabel: 'EXLV3',
@@ -121,7 +120,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     buildArgs: (modelPath, port, extraArgs) => [
       'start.py', '--model-dir', modelPath, '--port', port.toString(), '--host', '0.0.0.0', '--hf-model', ...extraArgs,
     ],
-    // FIX: Standard OpenAI endpoint is /v1/models
     healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'exllamav3_hf'),
     logLabel: 'EXLV3HF',
@@ -133,7 +131,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     buildArgs: (modelPath, port, extraArgs) => [
       'start.py', '--model-dir', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
-    // FIX: Standard OpenAI endpoint is /v1/models
     healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'exllamav2'),
     logLabel: 'EXLV2',
@@ -191,7 +188,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     buildArgs: (_modelPath, port, extraArgs) => [
       'server', 'start', '--port', port.toString(), ...extraArgs,
     ],
-    // FIX: Standard OpenAI endpoint is /v1/models
     healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'lmstudio'),
     logLabel: 'LMS',
@@ -216,7 +212,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     buildArgs: (modelPath, port, extraArgs) => [
       '--model-id', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
-    // FIX: Standard OpenAI endpoint is /v1/models
     healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'mistral-rs'),
     logLabel: 'MRSSV',
@@ -296,8 +291,8 @@ function broadcastNotify(
   }
 }
 
-// FIX: Supports both singular /language_model/notify and plural /language_models/notify
-const NOTIFY_ROUTES = ['/language_models/notify', '/language_model/notify'];
+// Strictly plural with 's', with legacy /models alias
+const NOTIFY_ROUTES = ['/language_models/notify', '/models/notify'];
 
 app.get(NOTIFY_ROUTES, (req, res) => {
   if (req.headers.accept?.includes('text/event-stream')) {
@@ -459,7 +454,6 @@ async function ensureUv(): Promise<string> {
  * Primary On-Demand Installer Orchestrator
  */
 async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
-  // FIX: config.cwd already contains LOCAL_LANGUAGE_MODEL_BACKENDS_PATH. Do not double-nest!
   const config = BACKEND_CONFIGS[backend];
   const destDir = config.cwd
     ? (path.isAbsolute(config.cwd) ? config.cwd : path.join(ROOT_DIR, config.cwd))
@@ -477,7 +471,6 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       headers: { 'User-Agent': 'LoreReactor/1.0' }
     });
     const release = await releaseRes.json();
-    const tag = release.tag_name || 'latest';
 
     let assetPattern = /bin-win-avx2-x64\.zip$/i;
     let isCudaWindows = false;
@@ -512,7 +505,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     extractArchive(tempPath, destDir);
     try { fs.unlinkSync(tempPath); } catch {}
 
-    // FIX: Download companion CUDA DLL package on Windows so llama-server.exe doesn't crash on cudart64
+    // Companion CUDA DLL package on Windows so llama-server.exe doesn't crash on cudart64
     if (isCudaWindows) {
       const cudartAsset = release.assets.find((a: any) => /cudart-llama-bin-win-cuda-.*-x64\.zip$/i.test(a.name));
       if (cudartAsset?.browser_download_url) {
@@ -524,7 +517,6 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       }
     }
 
-    // Hoist llama-server binary to target destination
     hoistBinaryIfExists(destDir, bin('llama-server'), config.binaryPath);
 
     if (!IS_WINDOWS && fs.existsSync(config.binaryPath)) {
@@ -1423,6 +1415,8 @@ app.use('/user_data', (req, response) => {
 const STATUS_ROUTES = ['/language_models/status', '/models/status'];
 const LOAD_ROUTES   = ['/language_models/load', '/models/load'];
 const UNLOAD_ROUTES = ['/language_models/unload', '/models/unload'];
+const LOCAL_BACKENDS_ROUTES = ['/language_models/local_backends', '/models/local_backends'];
+const LOCAL_BACKENDS_INSTALL_ROUTES = ['/language_models/local_backends/install', '/models/local_backends/install'];
 
 app.get(STATUS_ROUTES, (_req, response) => {
   const status = Array.from(activeModels.entries()).map(([id, instance]) => ({
@@ -1434,6 +1428,32 @@ app.get(STATUS_ROUTES, (_req, response) => {
     uptime: Date.now() - instance.startTime,
   }));
   response.json({ activeModels: status, count: status.length });
+});
+
+// ─── Local Backends Management Endpoints for LanguageModelInferenceManager ───
+app.get(LOCAL_BACKENDS_ROUTES, (_req, res) => {
+  const result = Object.entries(BACKEND_CONFIGS).map(([name, cfg]) => ({
+    name,
+    installed: fs.existsSync(cfg.binaryPath),
+    binaryPath: cfg.binaryPath,
+  }));
+  res.json({ success: true, backends: result });
+});
+
+app.post(LOCAL_BACKENDS_INSTALL_ROUTES, async (req, res) => {
+  const { backend } = req.body;
+  if (!backend || !BACKEND_CONFIGS[backend as LocalBackend]) {
+    return res.status(400).json({ error: `Invalid backend "${backend}".` });
+  }
+
+  try {
+    installBackendOnDemand(backend as LocalBackend).catch((err) => {
+      log.error(`[InstallManager] ${backend} failed: ${err.message}`);
+    });
+    res.json({ success: true, message: `Installation for ${backend} started.` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post(LOAD_ROUTES, async (req, response) => {
@@ -1750,7 +1770,6 @@ app.post('/tool/lock-screen', (_req, res) => {
     else execSync('xdg-screensaver lock || loginctl lock-session');
     res.json({ success: true, message: 'Workstation locked' });
   } catch (e: any) {
-    // FIX: Reference caught variable 'e', not undefined 'error'
     res.status(500).json({ success: false, error: e.message });
   }
 });
