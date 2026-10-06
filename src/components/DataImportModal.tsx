@@ -1,6 +1,6 @@
 // src/components/DataImportModal.tsx
 import { useState, useRef, useMemo } from 'react';
-import type { World } from '../types';
+import type { LanguageModel, World } from '../types';
 import { validateExport, importSelectedData, type LoreReactorExport, type ImportResult } from '../services/DataPortabilityEngine';
 import { buildJsonSchema } from '../utilities/dataSchema';
 import { EntitySelectList } from './EntitySelectList';
@@ -202,8 +202,8 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
             contexts: parsedData.contexts.filter(c => selectedContextIds.includes(c.id)),
             locations: parsedData.locations.filter(l => selectedLocationIds.includes(l.id)),
             audioTracks: parsedData.audioTracks.filter(t => selectedAudioTrackIds.includes(t.id)),
-            worlds: parsedData.worlds?.filter((w: World) => selectedWorldIds.includes(w.id)) ?? [],
-            languageModels: parsedData.languageModels?.filter((m: LanguageModel) => selectedLanguageModelIds.includes(m.id)) ?? [],
+            worlds: parsedData.worlds?.filter(w => selectedWorldIds.includes(w.id)) ?? [],
+            languageModels: parsedData.languageModels?.filter(m => selectedLanguageModelIds.includes(m.id)) ?? [],
             samplers: parsedData.samplers.filter(s => selectedSamplerIds.includes(s.id)),
             promptBlocks: parsedData.promptBlocks.filter(b => selectedPromptBlockIds.includes(b.id)),
             stopPatterns: parsedData.stopPatterns.filter(s => selectedStopPatternIds.includes(s.id)),
