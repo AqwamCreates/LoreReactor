@@ -2,6 +2,7 @@
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import cors from 'cors';
 import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
@@ -55,65 +56,6 @@ function pythonBin(backendDir: string): string {
   return direct;
 }
 
-// ─── GPU vendor detection must be available before installers ───────
-type GpuVendor = 'nvidia' | 'amd' | 'intel' | 'apple' | 'unknown';
-
-let detectedGpuVendor: GpuVendor = 'unknown';
-
-function detectGpuVendor(): GpuVendor {
-  const checks: { vendor: GpuVendor; cmd: string }[] = [
-    { vendor: 'nvidia', cmd: 'nvidia-smi --query-gpu=name --format=csv,noheader,nounits' },
-    { vendor: 'amd',    cmd: 'rocm-smi --showproductname --json' },
-    { vendor: 'intel',  cmd: 'xpu-smi discovery' },
-  ];
-
-  for (const { vendor, cmd } of checks) {
-    try {
-      execSync(cmd, { stdio: 'pipe', timeout: 3000 });
-      return vendor;
-    } catch {}
-  }
-
-  if (IS_MACOS) {
-    try {
-      execSync('system_profiler SPDisplaysDataType', { stdio: 'pipe', timeout: 3000 });
-      return 'apple';
-    } catch {}
-  }
-
-  return 'unknown';
-}
-
-function ensureGpuVendorDetected(): void {
-  if (detectedGpuVendor === 'unknown') {
-    detectedGpuVendor = detectGpuVendor();
-  }
-}
-
-function detectCudaExtra(): string {
-  ensureGpuVendorDetected();
-
-  if (detectedGpuVendor !== 'nvidia') {
-    return 'cu12';
-  }
-
-  try {
-    const out = execSync('nvidia-smi', {
-      stdio: 'pipe',
-      timeout: 3000,
-      encoding: 'utf-8',
-    });
-
-    const match = out.match(/CUDA Version:\s*(\d+)/i);
-    if (match) {
-      const major = Number.parseInt(match[1], 10);
-      if (Number.isFinite(major) && major >= 13) return 'cu13';
-    }
-  } catch {}
-
-  return 'cu12';
-}
-
 type LocalBackend =
   | 'Llama.cpp'
   | 'Transformers'
@@ -128,13 +70,6 @@ type LocalBackend =
   | 'LocalAI'
   | 'mistral.rs';
 
-interface DockerBackendConfig {
-  image: string;
-  containerModelDir: string;
-  entrypoint?: string;
-  commandPrefix?: string[];
-}
-
 interface BackendConfig {
   binaryPath: string;
   buildArgs: (modelPath: string, port: number, extraArgs: string[]) => string[];
@@ -144,7 +79,6 @@ interface BackendConfig {
   readyPattern?: RegExp;
   envOverrides?: (port: number) => Record<string, string>;
   modelNameNotPath?: boolean;
-  docker?: DockerBackendConfig;
 }
 
 const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
@@ -161,11 +95,12 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
   },
 
   'Transformers': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'transformers', 'docker-backend.marker'),
-    docker: {
-      image: 'ghcr.io/huggingface/text-generation-inference:latest',
-      containerModelDir: '/data',
-    },
+    binaryPath: path.join(
+      ROOT_DIR,
+      LOCAL_LANGUAGE_MODEL_BACKENDS_PATH,
+      'transformers',
+      IS_WINDOWS ? 'text-generation-launcher-docker.cmd' : 'text-generation-launcher-docker.sh'
+    ),
     buildArgs: (modelPath, port, extraArgs) => [
       '--model-id', modelPath, '--port', port.toString(), '--hostname', '0.0.0.0', ...extraArgs,
     ],
@@ -209,11 +144,12 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
   },
 
   'TensorRT-LLM': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'tensorrt-llm', 'docker-backend.marker'),
-    docker: {
-      image: 'nvcr.io/nvidia/tritonserver:24.05-trtllm-python-backend',
-      containerModelDir: '/models',
-    },
+    binaryPath: path.join(
+      ROOT_DIR,
+      LOCAL_LANGUAGE_MODEL_BACKENDS_PATH,
+      'tensorrt-llm',
+      IS_WINDOWS ? 'tritonserver-docker.cmd' : 'tritonserver-docker.sh'
+    ),
     buildArgs: (modelPath, port, extraArgs) => [
       '--model-repository', modelPath, '--http-port', port.toString(), ...extraArgs,
     ],
@@ -224,7 +160,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
   },
 
   'Ollama': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'ollama', bin('ollama')),
+    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'ollama', 'bin', bin('ollama')),
     buildArgs: (_modelPath, _port, _extraArgs) => ['serve'],
     healthUrl: (port) => `http://127.0.0.1:${port}/`,
     cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'ollama'),
@@ -235,14 +171,9 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
   },
 
   'vLLM': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'vllm', 'docker-backend.marker'),
-    docker: {
-      image: 'vllm/vllm-openai:latest',
-      containerModelDir: '/models',
-      entrypoint: 'python3',
-      commandPrefix: ['-m', 'vllm.entrypoints.openai.api_server'],
-    },
+    binaryPath: pythonBin('vllm'),
     buildArgs: (modelPath, port, extraArgs) => [
+      '-m', 'vllm.entrypoints.openai.api_server',
       '--model', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/health`,
@@ -252,14 +183,9 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
   },
 
   'SGLang': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'sglang', 'docker-backend.marker'),
-    docker: {
-      image: 'lmsysorg/sglang:latest',
-      containerModelDir: '/models',
-      entrypoint: 'python3',
-      commandPrefix: ['-m', 'sglang.launch_server'],
-    },
+    binaryPath: pythonBin('sglang'),
     buildArgs: (modelPath, port, extraArgs) => [
+      '-m', 'sglang.launch_server',
       '--model-path', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/health`,
@@ -312,7 +238,6 @@ interface ModelInstance {
   modelPath: string;
   backend: LocalBackend;
   startTime: number;
-  containerName?: string;
 }
 
 const activeModels: Map<string, ModelInstance> = new Map();
@@ -413,6 +338,121 @@ function ensureDirectory(dir: string): void {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
+function getDetectedCudaVersion(): { major: number; minor: number } | null {
+  try {
+    const raw = execSync('nvidia-smi', { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' });
+    const match = raw.match(/CUDA Version:\s*(\d+)\.(\d+)/i);
+    if (match) {
+      return {
+        major: Number.parseInt(match[1], 10),
+        minor: Number.parseInt(match[2], 10),
+      };
+    }
+  } catch {}
+  return null;
+}
+
+function getCudaExtra(): string {
+  const cuda = getDetectedCudaVersion();
+  if (cuda && cuda.major >= 13) return 'cu13';
+  return 'cu12';
+}
+
+async function fetchGithubRelease(repo: string, tag?: string): Promise<any> {
+  const url = tag
+    ? `https://api.github.com/repos/${repo}/releases/tags/${tag}`
+    : `https://api.github.com/repos/${repo}/releases/latest`;
+
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'LoreReactor/1.0' },
+  });
+
+  if (!res.ok) {
+    throw new Error(`GitHub release request failed for ${repo}: HTTP ${res.status}`);
+  }
+
+  return res.json();
+}
+
+function findLmsBinary(): string | null {
+  const home = os.homedir();
+
+  const candidates = IS_WINDOWS
+    ? [
+        path.join(home, '.lmstudio', 'bin', 'lms.exe'),
+        path.join(home, 'AppData', 'Local', 'LM Studio', 'bin', 'lms.exe'),
+        path.join(home, 'AppData', 'Roaming', 'LM Studio', 'bin', 'lms.exe'),
+      ]
+    : [
+        path.join(home, '.lmstudio', 'bin', 'lms'),
+        '/Applications/LM Studio.app/Contents/Resources/bin/lms',
+        '/usr/local/bin/lms',
+        '/opt/LM Studio/bin/lms',
+      ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  return null;
+}
+
+function writeDockerWrapper(binaryPath: string, image: string): void {
+  ensureDirectory(path.dirname(binaryPath));
+
+  if (IS_WINDOWS) {
+    const ps1Path = binaryPath.replace(/\.cmd$/i, '.ps1');
+
+    const ps1 = `param([Parameter(ValueFromRemainingArguments=$true)]$Rest)
+$volumes = @()
+$newArgs = @()
+
+foreach ($arg in $Rest) {
+  if ($arg -match '^[A-Za-z]:\\\\' -and (Test-Path -LiteralPath $arg)) {
+    $drive = $arg.Substring(0,1).ToLower()
+    $restPath = $arg.Substring(3) -replace '\\\\','/'
+    $containerPath = "/host/$drive/$restPath"
+
+    $volumes += '-v'
+    $volumes += "\${arg}:\${containerPath}"
+    $newArgs += $containerPath
+  } else {
+    $newArgs += $arg
+  }
+}
+
+$dockerArgs = @('run','--gpus','all','--rm','--shm-size','1g') + $volumes + @('${image}') + $newArgs
+& docker @dockerArgs
+exit $LASTEXITCODE
+`;
+
+    const cmd = `@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0${path.basename(ps1Path)}" %*\r\n`;
+
+    fs.writeFileSync(ps1Path, ps1, 'utf-8');
+    fs.writeFileSync(binaryPath, cmd, 'utf-8');
+    return;
+  }
+
+  const script = `#!/usr/bin/env bash
+volumes=()
+
+for arg in "$@"; do
+  if [[ "$arg" == /* && -e "$arg" ]]; then
+    volumes+=("-v" "$arg:$arg")
+  fi
+done
+
+if [ \${#volumes[@]} -eq 0 ]; then
+  exec docker run --gpus all --rm --shm-size 1g "${image}" "$@"
+else
+  exec docker run --gpus all --rm --shm-size 1g "\${volumes[@]}" "${image}" "$@"
+fi
+`;
+
+  fs.writeFileSync(binaryPath, script, 'utf-8');
+  fs.chmodSync(binaryPath, 0o755);
+}
+
 async function downloadFileWithProgress(
   url: string,
   destPath: string,
@@ -480,6 +520,7 @@ function extractArchive(archivePath: string, destDir: string): void {
 /** Recursively find and hoist a named binary up to target destination */
 function hoistBinaryIfExists(searchDir: string, binaryName: string, targetDest: string): boolean {
   if (fs.existsSync(targetDest)) return true;
+  ensureDirectory(path.dirname(targetDest));
 
   function walk(currentDir: string): boolean {
     const entries = fs.readdirSync(currentDir, { withFileTypes: true });
@@ -496,90 +537,6 @@ function hoistBinaryIfExists(searchDir: string, binaryName: string, targetDest: 
   }
 
   return walk(searchDir);
-}
-
-async function fetchGithubJson(url: string): Promise<any> {
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'LoreReactor/1.0',
-      'Accept': 'application/vnd.github+json',
-    },
-  });
-
-  if (!res.ok) {
-    throw new Error(`GitHub request failed: HTTP ${res.status} for ${url}`);
-  }
-
-  return res.json();
-}
-
-function dockerAvailable(): boolean {
-  try {
-    execSync('docker --version', { stdio: 'pipe', timeout: 5000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function getDockerModelMount(modelPath: string, containerModelDir: string): { hostPath: string; containerPath: string } {
-  const resolved = path.resolve(modelPath);
-
-  try {
-    const stat = fs.statSync(resolved);
-    if (stat.isFile()) {
-      return {
-        hostPath: path.dirname(resolved),
-        containerPath: path.posix.join(containerModelDir, path.basename(resolved)),
-      };
-    }
-  } catch {}
-
-  return {
-    hostPath: resolved,
-    containerPath: containerModelDir,
-  };
-}
-
-function findLmsBinary(): string | null {
-  const home = process.env.HOME || process.env.USERPROFILE || '';
-  const candidates: string[] = [];
-
-  if (home) {
-    candidates.push(path.join(home, '.lmstudio', 'bin', bin('lms')));
-    candidates.push(path.join(home, '.local', 'bin', bin('lms')));
-  }
-
-  if (IS_WINDOWS) {
-    if (process.env.LOCALAPPDATA) {
-      candidates.push(path.join(process.env.LOCALAPPDATA, 'LM Studio', 'bin', bin('lms')));
-    }
-    if (process.env.APPDATA) {
-      candidates.push(path.join(process.env.APPDATA, 'LM Studio', 'bin', bin('lms')));
-    }
-  }
-
-  if (IS_MACOS) {
-    candidates.push('/Applications/LM Studio.app/Contents/MacOS/lms');
-    candidates.push('/Applications/LM Studio.app/Contents/Resources/bin/lms');
-  }
-
-  candidates.push('/usr/local/bin/lms', '/usr/bin/lms');
-
-  for (const candidate of candidates) {
-    if (candidate && fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  try {
-    const command = IS_WINDOWS ? 'where lms' : 'which lms';
-    const out = execSync(command, { stdio: 'pipe', encoding: 'utf-8' }).trim();
-    const first = out.split(/\r?\n/)[0];
-    if (first && fs.existsSync(first)) return first;
-  } catch {}
-
-  return null;
 }
 
 /**
@@ -606,7 +563,7 @@ async function ensureUv(): Promise<string> {
   }
 
   const uvUrl = `https://github.com/astral-sh/uv/releases/latest/download/${asset}`;
-  const tempArchive = path.join(uvDir, `uv_archive${asset.endsWith('.tar.gz') ? '.tar.gz' : path.extname(asset)}`);
+  const tempArchive = path.join(uvDir, `uv_archive${path.extname(asset)}`);
 
   await downloadFileWithProgress(uvUrl, tempArchive, (loaded, total) => {
     const pct = Math.round((loaded / total) * 100);
@@ -627,502 +584,11 @@ async function ensureUv(): Promise<string> {
   return uvBinary;
 }
 
-function getLlamaAssetMatcher(): { primary: RegExp; fallback: RegExp; isCudaWindows: boolean; cudart?: RegExp } {
-  ensureGpuVendorDetected();
-
-  if (IS_WINDOWS) {
-    if (detectedGpuVendor === 'nvidia') {
-      return {
-        primary: /bin-win-cuda-.*-x64\.zip$/i,
-        fallback: /bin-win.*\.zip$/i,
-        isCudaWindows: true,
-        cudart: /cudart-llama-bin-win-cuda-.*-x64\.zip$/i,
-      };
-    }
-
-    if (detectedGpuVendor === 'amd' || detectedGpuVendor === 'intel') {
-      return {
-        primary: /bin-win-vulkan-x64\.zip$/i,
-        fallback: /bin-win.*\.zip$/i,
-        isCudaWindows: false,
-      };
-    }
-
-    return {
-      primary: /bin-win-avx2-x64\.zip$/i,
-      fallback: /bin-win.*\.zip$/i,
-      isCudaWindows: false,
-    };
-  }
-
-  if (IS_MACOS) {
-    return {
-      primary: /bin-macos-universal\.tar\.gz$/i,
-      fallback: /macos.*\.(tar\.gz|zip)$/i,
-      isCudaWindows: false,
-    };
-  }
-
-  if (detectedGpuVendor === 'nvidia') {
-    return {
-      primary: /bin-ubuntu-cuda-.*-x64\.tar\.gz$/i,
-      fallback: /linux.*\.(tar\.gz|zip)$/i,
-      isCudaWindows: false,
-    };
-  }
-
-  if (detectedGpuVendor === 'amd' || detectedGpuVendor === 'intel') {
-    return {
-      primary: /bin-ubuntu-vulkan-x64\.tar\.gz$/i,
-      fallback: /linux.*\.(tar\.gz|zip)$/i,
-      isCudaWindows: false,
-    };
-  }
-
-  return {
-    primary: /bin-ubuntu-avx2-x64\.tar\.gz$/i,
-    fallback: /linux.*\.(tar\.gz|zip)$/i,
-    isCudaWindows: false,
-  };
-}
-
-async function installLlamaCpp(backend: LocalBackend, config: BackendConfig, destDir: string): Promise<void> {
-  broadcastNotify(backend, 'downloading', 5, 'Resolving latest Llama.cpp release assets...');
-
-  const releases: any[] = [];
-
-  try {
-    const latest = await fetchGithubJson('https://api.github.com/repos/ggml-org/llama.cpp/releases/latest');
-    if (latest?.assets?.length) releases.push(latest);
-  } catch {}
-
-  try {
-    const list = await fetchGithubJson('https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=20');
-    if (Array.isArray(list)) {
-      for (const rel of list) {
-        if (rel?.assets?.length && !releases.some(r => r.id === rel.id)) {
-          releases.push(rel);
-        }
-      }
-    }
-  } catch {}
-
-  try {
-    const tagged = await fetchGithubJson('https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/v0.4.1');
-    if (tagged?.assets?.length && !releases.some(r => r.id === tagged.id)) {
-      releases.push(tagged);
-    }
-  } catch {}
-
-  if (!releases.length) {
-    throw new Error('Could not fetch Llama.cpp releases.');
-  }
-
-  const matcher = getLlamaAssetMatcher();
-  let lastError: Error | null = null;
-
-  for (const release of releases) {
-    const assets: any[] = release.assets || [];
-    const asset =
-      assets.find((a: any) => matcher.primary.test(a.name)) ||
-      assets.find((a: any) => matcher.fallback.test(a.name));
-
-    if (!asset?.browser_download_url) continue;
-
-    const archiveExt = asset.name.endsWith('.tar.gz') ? '.tar.gz' : path.extname(asset.name);
-    const tempPath = path.join(destDir, `llama_pkg_${Date.now()}${archiveExt}`);
-
-    try {
-      await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
-        const pct = Math.round((loaded / total) * 100);
-        broadcastNotify(backend, 'downloading', pct, `Downloading Llama.cpp (${(loaded / 1048576).toFixed(1)}MB / ${(total / 1048576).toFixed(1)}MB)`);
-      }, backend);
-
-      broadcastNotify(backend, 'extracting', 85, 'Extracting Llama.cpp binaries...');
-      extractArchive(tempPath, destDir);
-      try { fs.unlinkSync(tempPath); } catch {}
-
-      if (matcher.isCudaWindows && matcher.cudart) {
-        const cudartAsset = assets.find((a: any) => matcher.cudart!.test(a.name));
-        if (cudartAsset?.browser_download_url) {
-          broadcastNotify(backend, 'downloading', 90, 'Downloading NVIDIA CUDA runtime DLLs...');
-          const tempCudaZip = path.join(destDir, `cudart_${Date.now()}.zip`);
-          await downloadFileWithProgress(cudartAsset.browser_download_url, tempCudaZip, undefined, backend);
-          extractArchive(tempCudaZip, destDir);
-          try { fs.unlinkSync(tempCudaZip); } catch {}
-        }
-      }
-
-      hoistBinaryIfExists(destDir, bin('llama-server'), config.binaryPath);
-
-      if (!IS_WINDOWS && fs.existsSync(config.binaryPath)) {
-        fs.chmodSync(config.binaryPath, 0o755);
-      }
-
-      if (fs.existsSync(config.binaryPath)) {
-        return;
-      }
-
-      lastError = new Error('llama-server binary was not found after extraction.');
-    } catch (err: any) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      try { fs.unlinkSync(tempPath); } catch {}
-    }
-  }
-
-  throw lastError || new Error('Could not locate suitable Llama.cpp binary release asset.');
-}
-
-async function installMistralRs(backend: LocalBackend, config: BackendConfig, destDir: string): Promise<void> {
-  broadcastNotify(backend, 'downloading', 5, 'Resolving mistral.rs release assets...');
-
-  let lastError: Error | null = null;
-
-  try {
-    const release = await fetchGithubJson('https://api.github.com/repos/EricLBuehler/mistral.rs/releases/latest');
-    const assets: any[] = release.assets || [];
-
-    let pattern: RegExp;
-    if (IS_WINDOWS) {
-      pattern = /windows.*\.exe$/i;
-    } else if (IS_MACOS) {
-      pattern = /apple-darwin|darwin.*$/i;
-    } else {
-      pattern = process.arch === 'arm64'
-        ? /linux.*(aarch64|arm64)$/i
-        : /linux.*(x86_64|amd64|gnu)$/i;
-    }
-
-    const asset =
-      assets.find((a: any) => pattern.test(a.name) && !/\.(sha256|txt|json)$/i.test(a.name)) ||
-      assets.find((a: any) => !/\.(sha256|txt|json)$/i.test(a.name));
-
-    if (asset?.browser_download_url) {
-      const isArchive = /\.(zip|tar\.gz|tgz)$/i.test(asset.name);
-
-      if (isArchive) {
-        const archiveExt = asset.name.endsWith('.tar.gz') ? '.tar.gz' : path.extname(asset.name);
-        const tempPath = path.join(destDir, `mistralrs_${Date.now()}${archiveExt}`);
-
-        await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
-          const pct = Math.round((loaded / total) * 100);
-          broadcastNotify(backend, 'downloading', pct, `Downloading mistral.rs archive: ${pct}%`);
-        }, backend);
-
-        extractArchive(tempPath, destDir);
-        try { fs.unlinkSync(tempPath); } catch {}
-        hoistBinaryIfExists(destDir, bin('mistralrs-server'), config.binaryPath);
-      } else {
-        await downloadFileWithProgress(asset.browser_download_url, config.binaryPath, (loaded, total) => {
-          const pct = Math.round((loaded / total) * 100);
-          broadcastNotify(backend, 'downloading', pct, `Downloading mistral.rs binary: ${pct}%`);
-        }, backend);
-      }
-
-      if (!IS_WINDOWS && fs.existsSync(config.binaryPath)) {
-        fs.chmodSync(config.binaryPath, 0o755);
-      }
-
-      if (fs.existsSync(config.binaryPath)) {
-        return;
-      }
-    }
-  } catch (err: any) {
-    lastError = err instanceof Error ? err : new Error(String(err));
-  }
-
-  if (!IS_WINDOWS) {
-    broadcastNotify(backend, 'installing', 55, 'Running official mistral.rs installer fallback...');
-
-    try {
-      execSync('curl -fsSL https://mistralrs.dev/install.sh | sh', {
-        stdio: 'pipe',
-        timeout: 600000,
-      });
-
-      const home = process.env.HOME || '';
-      const candidates = [
-        path.join(home, '.local', 'bin', 'mistralrs-server'),
-        path.join(home, '.cargo', 'bin', 'mistralrs-server'),
-        '/usr/local/bin/mistralrs-server',
-        '/usr/bin/mistralrs-server',
-      ];
-
-      let found: string | null = null;
-
-      try {
-        const whichOut = execSync('which mistralrs-server', { stdio: 'pipe', encoding: 'utf-8' }).trim();
-        if (whichOut && fs.existsSync(whichOut)) found = whichOut;
-      } catch {}
-
-      if (!found) {
-        for (const candidate of candidates) {
-          if (candidate && fs.existsSync(candidate)) {
-            found = candidate;
-            break;
-          }
-        }
-      }
-
-      if (found) {
-        fs.copyFileSync(found, config.binaryPath);
-        if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
-        return;
-      }
-    } catch (err: any) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-    }
-  }
-
-  throw lastError || new Error('Could not install mistral.rs.');
-}
-
-async function installOllama(backend: LocalBackend, config: BackendConfig, destDir: string): Promise<void> {
-  broadcastNotify(backend, 'downloading', 10, 'Fetching portable Ollama runtime...');
-
-  if (IS_WINDOWS) {
-    const zipUrl = 'https://ollama.com/download/ollama-windows-amd64.zip';
-    const tempZip = path.join(destDir, 'ollama.zip');
-
-    await downloadFileWithProgress(zipUrl, tempZip, (loaded, total) => {
-      const pct = Math.round((loaded / total) * 100);
-      broadcastNotify(backend, 'downloading', pct, `Downloading Ollama runtime: ${pct}%`);
-    }, backend);
-
-    extractArchive(tempZip, destDir);
-    try { fs.unlinkSync(tempZip); } catch {}
-    hoistBinaryIfExists(destDir, bin('ollama'), config.binaryPath);
-
-    if (!IS_WINDOWS && fs.existsSync(config.binaryPath)) {
-      fs.chmodSync(config.binaryPath, 0o755);
-    }
-
-    return;
-  }
-
-  try {
-    const release = await fetchGithubJson('https://api.github.com/repos/ollama/ollama/releases/latest');
-    const assets: any[] = release.assets || [];
-    const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
-
-    const pattern = IS_MACOS
-      ? /ollama-darwin.*\.(zip|tgz|tar\.gz)$/i
-      : new RegExp(`ollama-linux-${arch}\\.(tgz|tar\\.gz|zip)$`, 'i');
-
-    const asset = assets.find((a: any) => pattern.test(a.name));
-
-    if (asset?.browser_download_url) {
-      const archiveExt = asset.name.endsWith('.tar.gz') ? '.tar.gz' : path.extname(asset.name);
-      const tempPath = path.join(destDir, `ollama_${Date.now()}${archiveExt}`);
-
-      await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
-        const pct = Math.round((loaded / total) * 100);
-        broadcastNotify(backend, 'downloading', pct, `Downloading portable Ollama runtime: ${pct}%`);
-      }, backend);
-
-      extractArchive(tempPath, destDir);
-      try { fs.unlinkSync(tempPath); } catch {}
-      hoistBinaryIfExists(destDir, bin('ollama'), config.binaryPath);
-
-      if (!IS_WINDOWS && fs.existsSync(config.binaryPath)) {
-        fs.chmodSync(config.binaryPath, 0o755);
-      }
-
-      if (fs.existsSync(config.binaryPath)) {
-        return;
-      }
-    }
-  } catch {}
-
-  if (IS_MACOS) {
-    broadcastNotify(backend, 'installing', 45, 'Falling back to official Ollama installer...');
-    execSync('curl -fsSL https://ollama.com/install.sh | sh', { stdio: 'inherit' });
-
-    try {
-      const systemOllama = execSync('which ollama', { encoding: 'utf-8' }).toString().trim();
-      if (systemOllama && fs.existsSync(systemOllama)) {
-        fs.copyFileSync(systemOllama, config.binaryPath);
-        fs.chmodSync(config.binaryPath, 0o755);
-        return;
-      }
-    } catch {}
-  }
-
-  throw new Error('Portable Ollama asset not found. Please install Ollama manually or retry.');
-}
-
-async function installLmStudio(backend: LocalBackend, config: BackendConfig): Promise<void> {
-  broadcastNotify(backend, 'installing', 25, 'Searching for existing LM Studio CLI...');
-
-  const existing = findLmsBinary();
-  if (existing) {
-    fs.copyFileSync(existing, config.binaryPath);
-    if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
-    return;
-  }
-
-  broadcastNotify(backend, 'installing', 45, 'Installing LM Studio CLI (lms)...');
-  execSync('npx --yes lmstudio install-cli', { stdio: 'pipe' });
-
-  const found = findLmsBinary();
-  if (found) {
-    fs.copyFileSync(found, config.binaryPath);
-    if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
-    return;
-  }
-
-  throw new Error('LM Studio CLI could not be located after installation.');
-}
-
-async function installLocalAi(backend: LocalBackend, config: BackendConfig, destDir: string): Promise<void> {
-  broadcastNotify(backend, 'downloading', 10, 'Locating prebuilt LocalAI distribution...');
-
-  const release = await fetchGithubJson('https://api.github.com/repos/mudler/LocalAI/releases/latest');
-  const assets: any[] = release.assets || [];
-
-  let pattern: RegExp;
-  if (IS_WINDOWS) {
-    pattern = /windows.*\.(exe|zip)$/i;
-  } else if (IS_MACOS) {
-    pattern = process.arch === 'arm64'
-      ? /darwin.*arm64/i
-      : /darwin.*(x86_64|amd64)/i;
-  } else {
-    pattern = process.arch === 'arm64'
-      ? /linux.*(aarch64|arm64)/i
-      : /linux.*(x86_64|amd64)/i;
-  }
-
-  const asset =
-    assets.find((a: any) => pattern.test(a.name) && !/sha256/i.test(a.name)) ||
-    assets.find((a: any) => !/sha256/i.test(a.name));
-
-  if (!asset?.browser_download_url) {
-    throw new Error('LocalAI prebuilt asset not found.');
-  }
-
-  const isArchive = /\.(zip|tar\.gz|tgz)$/i.test(asset.name);
-
-  if (isArchive) {
-    const archiveExt = asset.name.endsWith('.tar.gz') ? '.tar.gz' : path.extname(asset.name);
-    const tempPath = path.join(destDir, `localai_${Date.now()}${archiveExt}`);
-
-    await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
-      const pct = Math.round((loaded / total) * 100);
-      broadcastNotify(backend, 'downloading', pct, `Downloading LocalAI: ${pct}%`);
-    }, backend);
-
-    extractArchive(tempPath, destDir);
-    try { fs.unlinkSync(tempPath); } catch {}
-    hoistBinaryIfExists(destDir, bin('local-ai'), config.binaryPath);
-  } else {
-    await downloadFileWithProgress(asset.browser_download_url, config.binaryPath, (loaded, total) => {
-      const pct = Math.round((loaded / total) * 100);
-      broadcastNotify(backend, 'downloading', pct, `Downloading LocalAI: ${pct}%`);
-    }, backend);
-  }
-
-  if (!IS_WINDOWS && fs.existsSync(config.binaryPath)) {
-    fs.chmodSync(config.binaryPath, 0o755);
-  }
-}
-
-async function installExLlamaBackend(backend: LocalBackend, config: BackendConfig, destDir: string): Promise<void> {
-  const uvBin = await ensureUv();
-  broadcastNotify(backend, 'downloading', 20, 'Downloading TabbyAPI engine code...');
-
-  const zipUrl = 'https://github.com/theroyallab/tabbyAPI/archive/refs/heads/main.zip';
-  const tempZip = path.join(destDir, 'tabby.zip');
-
-  await downloadFileWithProgress(zipUrl, tempZip, undefined, backend);
-  extractArchive(tempZip, destDir);
-  try { fs.unlinkSync(tempZip); } catch {}
-
-  const extractedFolder = path.join(destDir, 'tabbyAPI-main');
-  if (fs.existsSync(extractedFolder)) {
-    for (const item of fs.readdirSync(extractedFolder)) {
-      const src = path.join(extractedFolder, item);
-      const dst = path.join(destDir, item);
-      if (!fs.existsSync(dst)) fs.renameSync(src, dst);
-    }
-    try { fs.rmdirSync(extractedFolder); } catch {}
-  }
-
-  broadcastNotify(backend, 'installing', 40, 'Installing isolated Python 3.11 environment via uv...');
-  execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe' });
-  execSync(`"${uvBin}" venv "${path.join(destDir, 'venv')}" --python 3.11`, { stdio: 'pipe' });
-
-  const venvPy = IS_WINDOWS
-    ? path.join(destDir, 'venv', 'Scripts', 'python.exe')
-    : path.join(destDir, 'venv', 'bin', 'python');
-
-  const cudaExtra = detectCudaExtra();
-  const pyprojectPath = path.join(destDir, 'pyproject.toml');
-  const requirementsPath = path.join(destDir, 'requirements.txt');
-
-  broadcastNotify(backend, 'installing', 60, `Installing ExLlama runtime dependencies using ${cudaExtra} extras...`);
-
-  if (fs.existsSync(pyprojectPath)) {
-    try {
-      execSync(`"${uvBin}" pip --python "${venvPy}" install ".[${cudaExtra}]"`, {
-        cwd: destDir,
-        stdio: 'pipe',
-      });
-    } catch {
-      if (fs.existsSync(requirementsPath)) {
-        execSync(`"${uvBin}" pip --python "${venvPy}" install -r "${requirementsPath}"`, {
-          cwd: destDir,
-          stdio: 'pipe',
-        });
-      }
-    }
-  } else if (fs.existsSync(requirementsPath)) {
-    execSync(`"${uvBin}" pip --python "${venvPy}" install -r "${requirementsPath}"`, {
-      cwd: destDir,
-      stdio: 'pipe',
-    });
-  }
-
-  const rootPy = path.join(destDir, bin('python'));
-  if (fs.existsSync(venvPy) && !fs.existsSync(rootPy)) {
-    fs.copyFileSync(venvPy, rootPy);
-  }
-}
-
-async function installDockerBackend(backend: LocalBackend, config: BackendConfig, destDir: string): Promise<void> {
-  if (!config.docker) {
-    throw new Error(`${backend} is not configured as a Docker backend.`);
-  }
-
-  broadcastNotify(backend, 'installing', 20, `Verifying Docker engine for ${backend}...`);
-
-  if (!dockerAvailable()) {
-    throw new Error(`Docker is required for ${backend}. Please install Docker Desktop or Docker Engine and configure NVIDIA Container Toolkit if needed.`);
-  }
-
-  const image = config.docker.image;
-
-  broadcastNotify(backend, 'downloading', 40, `Pulling container image: ${image}...`);
-  execSync(`docker pull ${image}`, { stdio: 'inherit' });
-
-  ensureDirectory(destDir);
-  fs.writeFileSync(
-    config.binaryPath,
-    JSON.stringify({
-      backend,
-      image,
-      installedAt: new Date().toISOString(),
-    }, null, 2),
-    'utf-8'
-  );
-}
-
 /**
  * Primary On-Demand Installer Orchestrator
  */
 async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
   cancelledInstalls.delete(backend);
-
   const config = BACKEND_CONFIGS[backend];
   const destDir = config.cwd
     ? (path.isAbsolute(config.cwd) ? config.cwd : path.join(ROOT_DIR, config.cwd))
@@ -1133,22 +599,420 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
   log.info(`[AutoInstaller] Initiating on-demand setup for "${backend}" at ${destDir}...`);
   broadcastNotify(backend, 'downloading', 0, `Initializing setup for ${backend}...`);
 
-  if (config.docker) {
-    await installDockerBackend(backend, config, destDir);
-  } else if (backend === 'Llama.cpp') {
-    await installLlamaCpp(backend, config, destDir);
-  } else if (backend === 'mistral.rs') {
-    await installMistralRs(backend, config, destDir);
-  } else if (backend === 'Ollama') {
-    await installOllama(backend, config, destDir);
-  } else if (backend === 'LM Studio') {
-    await installLmStudio(backend, config);
-  } else if (backend === 'LocalAI') {
-    await installLocalAi(backend, config, destDir);
-  } else if (backend === 'ExLlamaV2' || backend === 'ExLlamaV3' || backend === 'ExLlamaV3 HF') {
-    await installExLlamaBackend(backend, config, destDir);
-  } else {
-    throw new Error(`No automated installer implemented for ${backend}.`);
+  // 1. LLAMA.CPP
+  if (backend === 'Llama.cpp') {
+    broadcastNotify(backend, 'downloading', 5, 'Resolving Llama.cpp release assets...');
+
+    let release: any = null;
+
+    try {
+      release = await fetchGithubRelease('ggml-org/llama.cpp');
+    } catch (err: any) {
+      log.warn(`[AutoInstaller] Latest Llama.cpp release lookup failed: ${err.message}`);
+    }
+
+    if (!release?.assets?.length) {
+      try {
+        release = await fetchGithubRelease('ggml-org/llama.cpp', 'v0.4.1');
+      } catch (err: any) {
+        log.warn(`[AutoInstaller] Fallback Llama.cpp release lookup failed: ${err.message}`);
+      }
+    }
+
+    if (!release?.assets?.length) {
+      throw new Error('Could not locate suitable Llama.cpp release assets.');
+    }
+
+    let assetPattern = /bin-win-avx2-x64\.zip$/i;
+    let isCudaWindows = false;
+
+    if (IS_WINDOWS) {
+      if (detectedGpuVendor === 'nvidia') {
+        assetPattern = /bin-win-cuda-.*-x64\.zip$/i;
+        isCudaWindows = true;
+      } else if (detectedGpuVendor === 'amd' || detectedGpuVendor === 'intel') {
+        assetPattern = /bin-win-vulkan-x64\.zip$/i;
+      }
+    } else if (IS_MACOS) {
+      assetPattern = /bin-macos-universal\.tar\.gz$/i;
+    } else {
+      if (detectedGpuVendor === 'nvidia') assetPattern = /bin-ubuntu-cuda-.*-x64\.tar\.gz$/i;
+      else if (detectedGpuVendor === 'amd' || detectedGpuVendor === 'intel') assetPattern = /bin-ubuntu-vulkan-x64\.tar\.gz$/i;
+      else assetPattern = /bin-ubuntu-avx2-x64\.tar\.gz$/i;
+    }
+
+    const asset = release.assets.find((a: any) => assetPattern.test(a.name))
+      || release.assets.find((a: any) => /avx2|universal/i.test(a.name));
+
+    if (!asset?.browser_download_url) throw new Error(`Could not locate suitable Llama.cpp binary release asset.`);
+
+    const tempPath = path.join(destDir, `llama_pkg_${Date.now()}${path.extname(asset.name)}`);
+    await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
+      const pct = Math.round((loaded / total) * 100);
+      broadcastNotify(backend, 'downloading', pct, `Downloading Llama.cpp (${(loaded / 1048576).toFixed(1)}MB / ${(total / 1048576).toFixed(1)}MB)`);
+    }, backend);
+
+    broadcastNotify(backend, 'extracting', 85, 'Extracting Llama.cpp binaries...');
+    extractArchive(tempPath, destDir);
+    try { fs.unlinkSync(tempPath); } catch {}
+
+    // Companion CUDA DLL package on Windows so llama-server.exe doesn't crash on cudart64
+    if (isCudaWindows) {
+      const cudartAsset = release.assets.find((a: any) => /cudart-llama-bin-win-cuda-.*-x64\.zip$/i.test(a.name));
+      if (cudartAsset?.browser_download_url) {
+        broadcastNotify(backend, 'downloading', 90, 'Downloading NVIDIA CUDA runtime DLLs...');
+        const tempCudaZip = path.join(destDir, `cudart_${Date.now()}.zip`);
+        await downloadFileWithProgress(cudartAsset.browser_download_url, tempCudaZip, undefined, backend);
+        extractArchive(tempCudaZip, destDir);
+        try { fs.unlinkSync(tempCudaZip); } catch {}
+      }
+    }
+
+    hoistBinaryIfExists(destDir, bin('llama-server'), config.binaryPath);
+
+    if (!IS_WINDOWS && fs.existsSync(config.binaryPath)) {
+      fs.chmodSync(config.binaryPath, 0o755);
+    }
+  }
+
+  // 2. MISTRAL.RS
+  else if (backend === 'mistral.rs') {
+    if (!IS_WINDOWS) {
+      broadcastNotify(backend, 'installing', 10, 'Running official mistral.rs installer...');
+      execSync('curl -fsSL https://mistralrs.dev/install.sh | sh', {
+        cwd: destDir,
+        stdio: 'inherit',
+        timeout: 1800000,
+      });
+
+      let foundBinary: string | null = null;
+
+      try {
+        foundBinary = execSync('command -v mistralrs-server', {
+          stdio: 'pipe',
+          encoding: 'utf-8',
+          shell: '/bin/bash',
+        }).toString().trim() || null;
+      } catch {}
+
+      if (!foundBinary) {
+        const candidates = [
+          path.join(os.homedir(), '.cargo', 'bin', 'mistralrs-server'),
+          '/usr/local/bin/mistralrs-server',
+          '/usr/bin/mistralrs-server',
+          path.join(destDir, 'mistralrs-server'),
+        ];
+        foundBinary = candidates.find(candidate => fs.existsSync(candidate)) || null;
+      }
+
+      if (!foundBinary) {
+        throw new Error('mistral.rs installation completed but the binary could not be located.');
+      }
+
+      ensureDirectory(path.dirname(config.binaryPath));
+      fs.copyFileSync(foundBinary, config.binaryPath);
+      fs.chmodSync(config.binaryPath, 0o755);
+    } else {
+      broadcastNotify(backend, 'downloading', 5, 'Resolving mistral.rs release assets...');
+      const release = await fetchGithubRelease('EricLBuehler/mistral.rs');
+
+      const assetPattern = detectedGpuVendor === 'nvidia'
+        ? /windows.*cuda.*\.exe$|cuda.*windows.*\.exe$/i
+        : /windows.*\.exe$/i;
+
+      const asset = release.assets.find((a: any) => assetPattern.test(a.name))
+        || release.assets.find((a: any) => /windows/i.test(a.name));
+
+      if (!asset?.browser_download_url) throw new Error('Could not find mistral.rs Windows asset.');
+
+      ensureDirectory(path.dirname(config.binaryPath));
+      await downloadFileWithProgress(asset.browser_download_url, config.binaryPath, (loaded, total) => {
+        const pct = Math.round((loaded / total) * 100);
+        broadcastNotify(backend, 'downloading', pct, `Downloading mistral.rs binary: ${pct}%`);
+      }, backend);
+    }
+  }
+
+  // 3. OLLAMA
+  else if (backend === 'Ollama') {
+    broadcastNotify(backend, 'downloading', 10, 'Fetching portable Ollama runtime...');
+    ensureDirectory(path.dirname(config.binaryPath));
+
+    if (IS_WINDOWS) {
+      const zipUrl = 'https://ollama.com/download/ollama-windows-amd64.zip';
+      const tempZip = path.join(destDir, 'ollama.zip');
+      await downloadFileWithProgress(zipUrl, tempZip, (loaded, total) => {
+        const pct = Math.round((loaded / total) * 100);
+        broadcastNotify(backend, 'downloading', pct, `Downloading Ollama runtime: ${pct}%`);
+      }, backend);
+      extractArchive(tempZip, destDir);
+      try { fs.unlinkSync(tempZip); } catch {}
+      hoistBinaryIfExists(destDir, bin('ollama'), config.binaryPath);
+    } else {
+      const release = await fetchGithubRelease('ollama/ollama');
+
+      if (IS_MACOS) {
+        const archPattern = process.arch === 'arm64'
+          ? /arm64|apple|universal/i
+          : /x86_64|amd64|universal/i;
+
+        const asset = release.assets.find((a: any) => /darwin|macos/i.test(a.name) && archPattern.test(a.name))
+          || release.assets.find((a: any) => /darwin|macos/i.test(a.name));
+
+        if (!asset?.browser_download_url) throw new Error('Could not locate portable Ollama macOS asset.');
+
+        const tempPath = path.join(destDir, `ollama_${Date.now()}${path.extname(asset.name)}`);
+        await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
+          const pct = Math.round((loaded / total) * 100);
+          broadcastNotify(backend, 'downloading', pct, `Downloading Ollama runtime: ${pct}%`);
+        }, backend);
+
+        const lowerName = asset.name.toLowerCase();
+        if (lowerName.endsWith('.zip') || lowerName.endsWith('.tgz') || lowerName.endsWith('.tar.gz')) {
+          extractArchive(tempPath, destDir);
+          hoistBinaryIfExists(destDir, bin('ollama'), config.binaryPath);
+        } else {
+          fs.copyFileSync(tempPath, config.binaryPath);
+        }
+
+        try { fs.unlinkSync(tempPath); } catch {}
+        if (fs.existsSync(config.binaryPath)) fs.chmodSync(config.binaryPath, 0o755);
+      } else {
+        const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
+        const asset = release.assets.find((a: any) => a.name === `ollama-linux-${arch}.tgz`)
+          || release.assets.find((a: any) => new RegExp(`linux.*${arch}.*\\.(tgz|tar\\.gz)$`, 'i').test(a.name));
+
+        if (!asset?.browser_download_url) throw new Error('Could not locate portable Ollama Linux asset.');
+
+        const tempPath = path.join(destDir, `ollama_${Date.now()}.tgz`);
+        await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
+          const pct = Math.round((loaded / total) * 100);
+          broadcastNotify(backend, 'downloading', pct, `Downloading Ollama runtime: ${pct}%`);
+        }, backend);
+
+        broadcastNotify(backend, 'extracting', 85, 'Extracting portable Ollama runtime...');
+        extractArchive(tempPath, destDir);
+        try { fs.unlinkSync(tempPath); } catch {}
+
+        const extractedBinary = path.join(destDir, 'bin', 'ollama');
+        if (fs.existsSync(extractedBinary) && path.resolve(extractedBinary) !== path.resolve(config.binaryPath)) {
+          ensureDirectory(path.dirname(config.binaryPath));
+          fs.copyFileSync(extractedBinary, config.binaryPath);
+        } else if (!fs.existsSync(config.binaryPath)) {
+          hoistBinaryIfExists(destDir, bin('ollama'), config.binaryPath);
+        }
+
+        if (fs.existsSync(config.binaryPath)) fs.chmodSync(config.binaryPath, 0o755);
+      }
+    }
+  }
+
+  // 4. LM STUDIO (CLI)
+  else if (backend === 'LM Studio') {
+    broadcastNotify(backend, 'installing', 30, 'Locating or installing LM Studio CLI (lms)...');
+    ensureDirectory(path.dirname(config.binaryPath));
+
+    const existingLms = findLmsBinary();
+    if (existingLms) {
+      fs.copyFileSync(existingLms, config.binaryPath);
+      if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
+    } else {
+      execSync('npx --yes lmstudio install-cli', { stdio: 'pipe', timeout: 600000 });
+
+      const whichLms = IS_WINDOWS
+        ? execSync('where lms').toString().split(/\r?\n/)[0]
+        : execSync('which lms').toString().trim();
+
+      if (!whichLms || !fs.existsSync(whichLms)) {
+        throw new Error('lms CLI could not be located after installation.');
+      }
+
+      fs.copyFileSync(whichLms, config.binaryPath);
+      if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
+    }
+  }
+
+  // 5. LOCALAI
+  else if (backend === 'LocalAI') {
+    broadcastNotify(backend, 'downloading', 10, 'Locating prebuilt LocalAI distribution...');
+    const release = await fetchGithubRelease('mudler/LocalAI');
+
+    let assetPattern: RegExp;
+    if (IS_WINDOWS) {
+      assetPattern = process.arch === 'arm64'
+        ? /windows.*arm64/i
+        : /windows.*(x86_64|amd64)/i;
+    } else if (IS_MACOS) {
+      assetPattern = process.arch === 'arm64'
+        ? /(darwin|macos).*arm64/i
+        : /(darwin|macos).*(x86_64|amd64)/i;
+    } else {
+      assetPattern = process.arch === 'arm64'
+        ? /linux.*arm64/i
+        : /linux.*(x86_64|amd64)/i;
+    }
+
+    const platformFallback = IS_WINDOWS ? /windows/i : IS_MACOS ? /(darwin|macos)/i : /linux/i;
+
+    const asset = release.assets.find((a: any) => assetPattern.test(a.name))
+      || release.assets.find((a: any) => platformFallback.test(a.name));
+
+    if (!asset?.browser_download_url) throw new Error('LocalAI prebuilt asset not found.');
+
+    ensureDirectory(path.dirname(config.binaryPath));
+    await downloadFileWithProgress(asset.browser_download_url, config.binaryPath, (loaded, total) => {
+      const pct = Math.round((loaded / total) * 100);
+      broadcastNotify(backend, 'downloading', pct, `Downloading LocalAI: ${pct}%`);
+    }, backend);
+
+    if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
+  }
+
+  // 6. EXLLAMAV2 / EXLLAMAV3 / EXLLAMAV3 HF (Headless via TabbyAPI + uv)
+  else if (backend === 'ExLlamaV2' || backend === 'ExLlamaV3' || backend === 'ExLlamaV3 HF') {
+    const uvBin = await ensureUv();
+    broadcastNotify(backend, 'downloading', 20, 'Downloading TabbyAPI engine code...');
+
+    const zipUrl = 'https://github.com/theroyallab/tabbyAPI/archive/refs/heads/main.zip';
+    const tempZip = path.join(destDir, 'tabby.zip');
+    await downloadFileWithProgress(zipUrl, tempZip, undefined, backend);
+    extractArchive(tempZip, destDir);
+    try { fs.unlinkSync(tempZip); } catch {}
+
+    const extractedFolder = path.join(destDir, 'tabbyAPI-main');
+    if (fs.existsSync(extractedFolder)) {
+      for (const item of fs.readdirSync(extractedFolder)) {
+        const src = path.join(extractedFolder, item);
+        const dst = path.join(destDir, item);
+        if (!fs.existsSync(dst)) fs.renameSync(src, dst);
+      }
+      try { fs.rmdirSync(extractedFolder); } catch {}
+    }
+
+    broadcastNotify(backend, 'installing', 40, 'Installing isolated Python 3.11 environment via uv...');
+    execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
+    execSync(`"${uvBin}" venv "${path.join(destDir, 'venv')}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
+
+    const venvPy = IS_WINDOWS
+      ? path.join(destDir, 'venv', 'Scripts', 'python.exe')
+      : path.join(destDir, 'venv', 'bin', 'python');
+
+    broadcastNotify(backend, 'installing', 60, 'Installing ExLlama runtime dependencies with GPU extras...');
+
+    try {
+      execSync(`"${uvBin}" pip --python "${venvPy}" install -U torch --torch-backend=auto`, {
+        stdio: 'pipe',
+        cwd: destDir,
+        timeout: 1800000,
+      });
+    } catch (err: any) {
+      log.warn(`[AutoInstaller] torch auto backend preinstall failed: ${err.message}`);
+    }
+
+    if (detectedGpuVendor === 'nvidia') {
+      const cudaExtra = getCudaExtra();
+      execSync(`"${uvBin}" pip --python "${venvPy}" install -U ".[${cudaExtra}]"`, {
+        stdio: 'pipe',
+        cwd: destDir,
+        timeout: 1800000,
+      });
+    } else {
+      execSync(`"${uvBin}" pip --python "${venvPy}" install -U .`, {
+        stdio: 'pipe',
+        cwd: destDir,
+        timeout: 1800000,
+      });
+    }
+
+    const rootPy = path.join(destDir, bin('python'));
+    if (fs.existsSync(venvPy) && !fs.existsSync(rootPy)) {
+      fs.copyFileSync(venvPy, rootPy);
+    }
+  }
+
+  // 7. VLLM (Headless via uv)
+  else if (backend === 'vLLM') {
+    const uvBin = await ensureUv();
+    broadcastNotify(backend, 'installing', 25, 'Provisioning portable Python 3.11 for vLLM...');
+    execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
+    execSync(`"${uvBin}" venv "${path.join(destDir, 'venv')}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
+
+    const venvPy = IS_WINDOWS
+      ? path.join(destDir, 'venv', 'Scripts', 'python.exe')
+      : path.join(destDir, 'venv', 'bin', 'python');
+
+    broadcastNotify(backend, 'installing', 50, 'Fetching vLLM high-throughput engine wheels...');
+
+    try {
+      execSync(`"${uvBin}" pip --python "${venvPy}" install -U torch --torch-backend=auto`, {
+        stdio: 'pipe',
+        cwd: destDir,
+        timeout: 1800000,
+      });
+    } catch (err: any) {
+      log.warn(`[AutoInstaller] torch auto backend preinstall failed: ${err.message}`);
+    }
+
+    execSync(`"${uvBin}" pip --python "${venvPy}" install -U vllm`, {
+      stdio: 'pipe',
+      cwd: destDir,
+      timeout: 1800000,
+    });
+
+    const rootPy = path.join(destDir, bin('python'));
+    if (fs.existsSync(venvPy) && !fs.existsSync(rootPy)) fs.copyFileSync(venvPy, rootPy);
+  }
+
+  // 8. SGLANG (Headless via uv)
+  else if (backend === 'SGLang') {
+    const uvBin = await ensureUv();
+    broadcastNotify(backend, 'installing', 25, 'Provisioning isolated Python environment for SGLang...');
+    execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
+    execSync(`"${uvBin}" venv "${path.join(destDir, 'venv')}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
+
+    const venvPy = IS_WINDOWS
+      ? path.join(destDir, 'venv', 'Scripts', 'python.exe')
+      : path.join(destDir, 'venv', 'bin', 'python');
+
+    broadcastNotify(backend, 'installing', 50, 'Installing sglang[srt] optimized runtime...');
+
+    try {
+      execSync(`"${uvBin}" pip --python "${venvPy}" install -U torch --torch-backend=auto`, {
+        stdio: 'pipe',
+        cwd: destDir,
+        timeout: 1800000,
+      });
+    } catch (err: any) {
+      log.warn(`[AutoInstaller] torch auto backend preinstall failed: ${err.message}`);
+    }
+
+    execSync(`"${uvBin}" pip --python "${venvPy}" install -U "sglang[srt]"`, {
+      stdio: 'pipe',
+      cwd: destDir,
+      timeout: 1800000,
+    });
+
+    const rootPy = path.join(destDir, bin('python'));
+    if (fs.existsSync(venvPy) && !fs.existsSync(rootPy)) fs.copyFileSync(venvPy, rootPy);
+  }
+
+  // 9. DOCKER CONTAINERS (TensorRT-LLM & Transformers/TGI)
+  else if (backend === 'TensorRT-LLM' || backend === 'Transformers') {
+    broadcastNotify(backend, 'installing', 20, `Verifying Docker engine for ${backend}...`);
+    try {
+      execSync('docker --version', { stdio: 'pipe', timeout: 15000 });
+    } catch {
+      throw new Error(`Docker is required for ${backend}. Please install Docker Desktop and configure NVIDIA Container Toolkit.`);
+    }
+
+    const image = backend === 'TensorRT-LLM'
+      ? 'nvcr.io/nvidia/tritonserver:24.05-trtllm-python-backend'
+      : 'ghcr.io/huggingface/text-generation-inference:latest';
+
+    broadcastNotify(backend, 'downloading', 40, `Pulling container image: ${image}...`);
+    execSync(`docker pull ${image}`, { stdio: 'inherit', timeout: 3600000 });
+
+    writeDockerWrapper(config.binaryPath, image);
   }
 
   broadcastNotify(backend, 'ready', 100, `${backend} is installed and ready.`);
@@ -1278,6 +1142,8 @@ process.on('exit', () => { cleanupVirtualController(); });
 
 // ─── GPU Monitoring ─────────────────────────────────────────────────
 
+type GpuVendor = 'nvidia' | 'amd' | 'intel' | 'apple' | 'unknown';
+
 interface GpuStatus {
   vendor: GpuVendor;
   utilizationPercent: number;
@@ -1288,6 +1154,32 @@ interface GpuStatus {
   name: string;
   timestamp: number;
 }
+
+function detectGpuVendor(): GpuVendor {
+  const checks: { vendor: GpuVendor; cmd: string }[] = [
+    { vendor: 'nvidia', cmd: 'nvidia-smi --query-gpu=name --format=csv,noheader,nounits' },
+    { vendor: 'amd',    cmd: 'rocm-smi --showproductname --json' },
+    { vendor: 'intel',  cmd: 'xpu-smi discovery' },
+  ];
+
+  for (const { vendor, cmd } of checks) {
+    try {
+      execSync(cmd, { stdio: 'pipe', timeout: 3000 });
+      return vendor;
+    } catch {}
+  }
+
+  if (IS_MACOS) {
+    try {
+      execSync('system_profiler SPDisplaysDataType', { stdio: 'pipe', timeout: 3000 });
+      return 'apple';
+    } catch {}
+  }
+
+  return 'unknown';
+}
+
+let detectedGpuVendor: GpuVendor = 'unknown';
 
 function queryNvidiaGpu(): GpuStatus | null {
   try {
@@ -1989,7 +1881,7 @@ app.post(LANGUAGE_MODEL_LOAD_ROUTE, async (req, response) => {
 
     if (!fs.existsSync(config.binaryPath)) {
       return response.status(500).json({
-        error: `${backendName} installation routine completed, but executable/marker was not found at ${config.binaryPath}.`,
+        error: `${backendName} installation routine completed, but executable was not found at ${config.binaryPath}.`,
       });
     }
   }
@@ -2006,66 +1898,16 @@ app.post(LANGUAGE_MODEL_LOAD_ROUTE, async (req, response) => {
   log.info(`Starting ${backendName} model "${id}" on port ${port} ...`);
   log.info(`Model path : ${absoluteModelPath}`);
 
-  let spawnCommand: string;
-  let spawnArgs: string[];
-  let containerName: string | undefined;
+  const launchArgs = config.buildArgs(absoluteModelPath, port, mutableArgs);
+  log.info(`Launch args: ${launchArgs.join(' ')}`);
 
   const spawnCwd = config.cwd
     ? (path.isAbsolute(config.cwd) ? config.cwd : path.join(ROOT_DIR, config.cwd))
     : path.dirname(config.binaryPath);
 
-  if (config.docker) {
-    if (!dockerAvailable()) {
-      return response.status(500).json({ error: `Docker is required for ${backendName}.` });
-    }
-
-    ensureGpuVendorDetected();
-
-    const mount = getDockerModelMount(absoluteModelPath, config.docker.containerModelDir);
-    const launchArgs = config.buildArgs(mount.containerPath, port, mutableArgs);
-
-    containerName = `lorereactor_${String(id).replace(/[^a-zA-Z0-9_-]/g, '_')}_${port}`;
-    const hostVolume = mount.hostPath.replace(/\\/g, '/');
-
-    spawnCommand = bin('docker');
-    spawnArgs = [
-      'run',
-      '--name', containerName,
-      '--rm',
-      '--shm-size', '1g',
-    ];
-
-    if (detectedGpuVendor === 'nvidia') {
-      spawnArgs.push('--gpus', 'all');
-    }
-
-    spawnArgs.push('-p', `${port}:${port}`);
-    spawnArgs.push('-v', `${hostVolume}:${mount.containerPath}`);
-
-    if (config.docker.entrypoint) {
-      spawnArgs.push('--entrypoint', config.docker.entrypoint);
-    }
-
-    spawnArgs.push(config.docker.image);
-
-    if (config.docker.commandPrefix) {
-      spawnArgs.push(...config.docker.commandPrefix);
-    }
-
-    spawnArgs.push(...launchArgs);
-
-    log.info(`Docker args: ${spawnArgs.join(' ')}`);
-  } else {
-    const launchArgs = config.buildArgs(absoluteModelPath, port, mutableArgs);
-    log.info(`Launch args: ${launchArgs.join(' ')}`);
-
-    spawnCommand = config.binaryPath;
-    spawnArgs = launchArgs;
-  }
-
   const envOverrides = config.envOverrides ? config.envOverrides(port) : {};
 
-  const proc = spawn(spawnCommand, spawnArgs, {
+  const proc = spawn(config.binaryPath, launchArgs, {
     cwd: spawnCwd,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, ...envOverrides },
@@ -2080,7 +1922,6 @@ app.post(LANGUAGE_MODEL_LOAD_ROUTE, async (req, response) => {
     modelPath: absoluteModelPath,
     backend: backendName,
     startTime: Date.now(),
-    containerName,
   };
   activeModels.set(id, instance);
 
@@ -2115,13 +1956,7 @@ app.post(LANGUAGE_MODEL_LOAD_ROUTE, async (req, response) => {
   } else {
     instance.status = 'error';
     log.error(`${backendName} model "${id}" failed to start within timeout. Killing process.`);
-
-    if (instance.containerName) {
-      try { execSync(`docker rm -f ${instance.containerName}`, { stdio: 'pipe' }); } catch {}
-    } else {
-      proc.kill();
-    }
-
+    proc.kill();
     activeModels.delete(id);
     response.status(504).json({ error: 'Model failed to initialize within timeout' });
   }
@@ -2136,11 +1971,7 @@ app.post(LANGUAGE_MODEL_UNLOAD_ROUTE, (req, response) => {
 
   log.info(`Unloading ${instance.backend} model "${id}" ...`);
 
-  if (instance.containerName) {
-    try {
-      execSync(`docker rm -f ${instance.containerName}`, { stdio: 'pipe' });
-    } catch {}
-  } else if (IS_WINDOWS) {
+  if (IS_WINDOWS) {
     try { execSync(`taskkill /PID ${instance.process.pid} /T /F`, { stdio: 'pipe' }); } catch {}
   } else {
     instance.process.kill('SIGTERM');
@@ -2920,7 +2751,7 @@ app.post('/tool/hardware/send', async (req, res) => {
 // --- Startup ---
 
 const startServer = () => {
-  ensureGpuVendorDetected();
+  detectedGpuVendor = detectGpuVendor();
   runStartupSanitization();
 
   const border = '────────────────────────────────────────';
