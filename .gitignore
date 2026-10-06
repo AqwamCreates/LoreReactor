@@ -64,7 +64,7 @@ user_data/
 *.sln
 *.sw?
 
-# === USER DATA (DEFAULT: IGNORE EVERYTHING) ===
+# ==local_language_model_backends= USER DATA (DEFAULT: IGNORE EVERYTHING) ===
 # We ignore the whole user_data folder by default to protect privacy
 user_data/
 
