@@ -1,12 +1,60 @@
 // frontend_src/components/ChatMinimap.tsx
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import type { ChatMessage } from '../types';
+import { useCompiledMessageText } from '../hooks/useMessageDisplay';
 
 interface ChatMinimapProps {
     messages: ChatMessage[];
     containerRef: React.RefObject<HTMLDivElement | null>;
     selectedCharacterId: string | undefined;
 }
+
+interface MinimapItemProps {
+    msg: ChatMessage;
+    index: number;
+    isProtagonist: boolean;
+    isHovered: boolean;
+    onClick: (index: number) => void;
+    onHover: (index: number | null) => void;
+}
+
+// Sub-component memoized so hovering/scrolling does NOT re-render other items
+const MinimapItem = React.memo(function MinimapItem({
+    msg,
+    index,
+    isProtagonist,
+    isHovered,
+    onClick,
+    onHover,
+}: MinimapItemProps) {
+    // Centralized compiled message text hook (automatically subscribes to displayMode and participants)
+    const compiledText = useCompiledMessageText(msg);
+
+    const compiledFirstLine = useMemo(() => {
+        return compiledText.split('\n')[0]?.trim() || '';
+    }, [compiledText]);
+
+    const truncated = compiledFirstLine.length > 28
+        ? `${compiledFirstLine.slice(0, 28)}…`
+        : compiledFirstLine;
+
+    return (
+        <div
+            className={`chat-minimap-item ${isProtagonist ? 'chat-minimap-item-protagonist' : ''} ${isHovered ? 'chat-minimap-item-hovered' : ''}`}
+            onClick={(e) => {
+                e.stopPropagation();
+                onClick(index);
+            }}
+            onMouseEnter={() => onHover(index)}
+            onMouseLeave={() => onHover(null)}
+            title={`${msg.character.name}: ${compiledFirstLine}`}
+        >
+            <span className={`chat-minimap-text ${isProtagonist ? 'chat-minimap-text-protagonist' : ''} ${isHovered ? 'chat-minimap-text-hovered' : ''}`}>
+                {truncated}
+            </span>
+        </div>
+    );
+});
 
 export const ChatMinimap = React.memo(function ChatMinimap({
     messages,
@@ -86,7 +134,7 @@ export const ChatMinimap = React.memo(function ChatMinimap({
             onMouseEnter={() => { if (!isMobileRef.current) setIsExpanded(true); }}
             onMouseLeave={() => { if (!isMobileRef.current) { setIsExpanded(false); setHoveredIndex(null); } }}
         >
-            {/* Collapsed state — just the viewport dot on a thin line */}
+            {/* Collapsed state — viewport indicator */}
             <div className="chat-minimap-collapsed">
                 <div
                     className="chat-minimap-viewport-dot"
@@ -104,27 +152,17 @@ export const ChatMinimap = React.memo(function ChatMinimap({
                 </div>
 
                 <div ref={stripRef} className="chat-minimap-list">
-                    {messages.map((msg, i) => {
-                        const isprotagonist = msg.character.id === selectedCharacterId;
-                        const firstLine = msg.textContent.split('\n')[0].trim();
-                        const truncated = firstLine.length > 28 ? `${firstLine.slice(0, 28)}…` : firstLine;
-                        const isHov = hoveredIndex === i;
-
-                        return (
-                            <div
-                                key={msg.id}
-                                className={`chat-minimap-item ${isprotagonist ? 'chat-minimap-item-protagonist' : ''} ${isHov ? 'chat-minimap-item-hovered' : ''}`}
-                                onClick={(e) => { e.stopPropagation(); handleClick(i); }}
-                                onMouseEnter={() => setHoveredIndex(i)}
-                                onMouseLeave={() => setHoveredIndex(null)}
-                                title={`${msg.character.name}: ${firstLine}`}
-                            >
-                                <span className={`chat-minimap-text ${isprotagonist ? 'chat-minimap-text-protagonist' : ''} ${isHov ? 'chat-minimap-text-hovered' : ''}`}>
-                                    {truncated}
-                                </span>
-                            </div>
-                        );
-                    })}
+                    {messages.map((msg, i) => (
+                        <MinimapItem
+                            key={msg.id}
+                            msg={msg}
+                            index={i}
+                            isProtagonist={msg.character.id === selectedCharacterId}
+                            isHovered={hoveredIndex === i}
+                            onClick={handleClick}
+                            onHover={setHoveredIndex}
+                        />
+                    ))}
                 </div>
             </div>
         </div>

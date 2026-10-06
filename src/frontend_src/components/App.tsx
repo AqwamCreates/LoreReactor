@@ -997,15 +997,7 @@ function App() {
                 const msg = viewAssets.chatMessages[i];
                 if (msg.messageType === 'chat' || msg.messageType === 'whisper') {
                     activeChar = msg.character;
-                    
-                    activeText = compileMessageDisplayText(
-                        msg.textContent,
-                        interactionData?.profile?.toolUsageDisplayMode,
-                        interactionData?.participants || [],
-                        msg.character,
-                        msg.toolExecutionResults
-                    ) || '';
-                    
+                    activeText = compileMessageDisplayText(msg, interactionData?.profile?.toolUsageDisplayMode, interactionData?.participants || []);
                     isUser = protagonistId ? msg.character.id === protagonistId : false;
                     activeMsgId = msg.id;
                     break;
@@ -1040,7 +1032,6 @@ function App() {
         return {
             avatarUrl,
             charName: activeChar?.name || companionChar?.name || 'Companion',
-            activeText,
             isUser,
             isLoading,
             streamingText: streamingText || '',

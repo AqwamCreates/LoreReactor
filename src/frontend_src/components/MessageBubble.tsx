@@ -4,7 +4,7 @@ import type { Character, ChatMessage, WhisperMessage } from '../types';
 import { MemoizedMessageText } from './MemoizedMessageText';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useSessionStore } from '../hooks/useSessionStore';
-import { compileMessageDisplayText } from '../utilities/messageDisplayCompiler';
+import { useCompiledMessageText } from '../hooks/useMessageDisplay';
 import {
     detectFormatSegments,
     applyConversions,
@@ -81,15 +81,14 @@ export const MessageBubble = React.memo(function MessageBubble({
 
     const isLoading = useSessionStore(s => s.isLoading);
     
-    // ✅ Pulled directly from Zustand to eliminate prop drilling
+    // Pulled directly from Zustand to eliminate prop drilling
     const copyToClipboard = useSessionStore(s => s.copyToClipboard);
     const deleteMessage = useSessionStore(s => s.deleteMessage);
     const branchChat = useSessionStore(s => s.branchChat);
     const cloneChat = useSessionStore(s => s.cloneChat);
 
-    // ✅ Read display preferences directly from Zustand for on-the-fly compilation
-    const participants = useSessionStore(s => s.interactionData?.participants || []);
-    const displayMode = useSessionStore(s => s.interactionData?.profile?.toolUsageDisplayMode);
+    // Centralized message display text compiler hook (handles displayMode and participants automatically)
+    const displayedTextContent = useCompiledMessageText(message);
 
     const [conversions, setConversions] = React.useState<CategoryConversion[]>([]);
     const [isRawEditing, setIsRawEditing] = React.useState(false);
@@ -207,7 +206,6 @@ export const MessageBubble = React.memo(function MessageBubble({
     }, [onCancelEditing]);
 
     const handleSaveEdit = React.useCallback(() => {
-        // Learns from raw textContent to raw editDraft
         learnFromManualEdits(message.textContent, editDraft);
         onSaveEdit();
     }, [message.textContent, editDraft, onSaveEdit]);
@@ -229,13 +227,6 @@ export const MessageBubble = React.memo(function MessageBubble({
         isStem ? 'bubble-stem' : '',
         activeToolbarId === message.id ? 'toolbar-active' : '',
     ].filter(Boolean).join(' ');
-
-    // ✅ Compile on the fly! 
-    // This memoization ensures it only recompiles when the raw text, the display mode, 
-    // or the participant list actually changes.
-    const displayedTextContent = React.useMemo(() => {
-        return compileMessageDisplayText(message.textContent, displayMode, participants, message.character, message.toolExecutionResults);
-    }, [message.textContent, displayMode, participants, message.character]);
 
     return (
         <React.Fragment>
@@ -399,7 +390,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                         </div>
                     ) : (
                         <>
-                            {/* DISPLAY LAYER: Compiles raw textContent on the fly based on current profile settings */}
+                            {/* DISPLAY LAYER: Centralized compile hook */}
                             <MemoizedMessageText text={displayedTextContent} />
 
                             {message.files && message.files.length > 0 && (

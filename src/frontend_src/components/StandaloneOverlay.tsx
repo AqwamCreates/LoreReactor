@@ -3,11 +3,30 @@ import type React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
+import { useCompiledMessageText } from '../hooks/useMessageDisplay';
+import { getLocalMessageHistory } from '../utilities/timelineLogic';
 import { computeSlashAutocomplete, applySlashSelection } from '../utilities/slashCommandLogic';
 import { detectFormatSegments, buildCategoryConversionsWithLearning, applyConversions } from '../utilities/textDisplayReformatter';
 import { StandaloneOverlayProfileEditor } from './StandaloneOverlayProfileEditor';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
-import type { InteractionData, Character, Context, AudioTrack, LanguageModel, BudgetStrategy, Profile, World, Sampler, StopPattern, PromptBlock, Memory, Account, MultiplayerData } from '../types';
+import type { 
+    InteractionData, 
+    Character, 
+    Context, 
+    AudioTrack, 
+    LanguageModel, 
+    BudgetStrategy, 
+    Profile, 
+    World, 
+    Sampler, 
+    StopPattern, 
+    PromptBlock, 
+    Memory, 
+    Account, 
+    MultiplayerData, 
+    ChatMessage, 
+    WhisperMessage 
+} from '../types';
 
 type ActionWrap = '*' | '()' | 'none';
 type ActionCase = 'first' | 'pascal' | 'lower';
@@ -22,7 +41,6 @@ interface InterjectableAction {
 interface CompanionState {
     avatarUrl: string | null;
     charName: string;
-    activeText: string;
     isUser: boolean;
     isLoading: boolean;
     streamingText: string;
@@ -54,7 +72,6 @@ export function StandaloneOverlay() {
     const [state, setState] = useState<CompanionState>({
         avatarUrl: null,
         charName: 'Companion',
-        activeText: '',
         isUser: false,
         isLoading: false,
         streamingText: '',
@@ -81,25 +98,173 @@ export function StandaloneOverlay() {
     // ─── Voice Recording State ──────────────────────────────────────
     const [isRecording, setIsRecording] = useState(false);
 
+    // ─── Dialogue History Navigation State ──────────────────────────
+    const [viewIndex, setViewIndex] = useState<number | null>(null);
+
     // ─── Single-Message Reformat Toggle State ───────────────────────
     const [isReformatToggled, setIsReformatToggled] = useState(false);
-    const prevMessageIdRef = useRef<string | null | undefined>(undefined);
 
-    // Auto-reset the toggle when a new message starts streaming or we switch chats
+    // ─── Listen for Real-Time State Sync from Main Window ───────────
     useEffect(() => {
-        const currentId = state.lastMessageId;
-        const prevId = prevMessageIdRef.current;
+        const channel = new BroadcastChannel('lorereactor-companion-sync');
 
-        if (prevId !== undefined && prevId !== currentId) {
-            if (prevId !== null && currentId === null) {
-                setIsReformatToggled(false);
-            } else if (prevId !== null && currentId !== null && prevId !== currentId) {
-                setIsReformatToggled(false);
+        channel.onmessage = (e: MessageEvent) => {
+            if (e.data?.type === 'STATE_UPDATE' && e.data?.data) {
+                setState((prev) => ({
+                    ...prev,
+                    ...e.data.data,
+                }));
+            }
+        };
+
+        channel.postMessage({ type: 'REQUEST_STATE' });
+
+        return () => {
+            channel.close();
+        };
+    }, []);
+
+    // ─── Extract Real Conversation Thread from Timeline Logic ───────
+    const chatMessages = useMemo(() => {
+        if (!state.interactionData) return [];
+        const targetChar = state.localProtagonist || state.interactionData.participants?.[0];
+        if (!targetChar) return [];
+        return getLocalMessageHistory(state.interactionData, targetChar, ['chat', 'whisper']) as (ChatMessage | WhisperMessage)[];
+    }, [state.interactionData, state.localProtagonist]);
+
+    // Reset view index whenever a new message arrives
+    const prevChatLengthRef = useRef(chatMessages.length);
+    useEffect(() => {
+        if (chatMessages.length > prevChatLengthRef.current) {
+            setViewIndex(null);
+            setIsReformatToggled(false);
+        }
+        prevChatLengthRef.current = chatMessages.length;
+    }, [chatMessages.length]);
+
+    const latestMessage = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1] : null;
+
+    const displayedMessage = (viewIndex !== null && viewIndex >= 0 && viewIndex < chatMessages.length)
+        ? chatMessages[viewIndex]
+        : latestMessage;
+
+    // ─── Resolved Active Speaker ─────────────────────────────────────
+    const activeSpeaker: Character = useMemo(() => {
+        if (displayedMessage) return displayedMessage.character;
+        if (state.localProtagonist) return state.localProtagonist;
+        if (state.interactionData?.participants?.[0]) return state.interactionData.participants[0];
+        return {
+            id: 'companion',
+            name: state.charName,
+            initiativeWeight: 1,
+            chatProbability: 1,
+            maximumChatStamina: 5,
+            nameSensitivity: 1,
+            chatImpatienceSensitivity: 1,
+            skipProbability: 0,
+            memoryRetentionWeight: 1,
+            contextSensitivity: 1,
+            maximumActionStamina: 5,
+            numberOfMessagesToDisableThinkPrompt: 0,
+            numberOfMessagesToDisableMetaThinkInstructions: 0,
+            numberOfMessagesToDisableDialoguePrompt: 0,
+            numberOfMessagesToDisableStarterPrompt: 0,
+            tools: {} as any,
+            clothings: [],
+            knownCharacterNames: {},
+            textCharacterInjections: [],
+            memories: {},
+            firstCreatedTimestamp: Date.now(),
+            lastUpdatedTimestamp: Date.now(),
+        };
+    }, [displayedMessage, state.localProtagonist, state.interactionData, state.charName]);
+
+    // ─── Single Unified Message Source (Idle or Streaming) ───────────
+    const currentMessage: ChatMessage | WhisperMessage | null = useMemo(() => {
+        if (state.isLoading && state.streamingText) {
+            return {
+                id: state.lastMessageId || 'streaming',
+                character: activeSpeaker,
+                textContent: state.streamingText,
+                messageType: 'chat',
+                characterClothingWearingStatuses: {},
+                characterLockedLocations: {},
+                firstCreatedTimestamp: Date.now(),
+                lastUpdatedTimestamp: Date.now(),
+            } as ChatMessage;
+        }
+        return displayedMessage;
+    }, [state.isLoading, state.streamingText, state.lastMessageId, activeSpeaker, displayedMessage]);
+
+    // ─── Centralized Compiler Hook ──────────────────────────────────
+    const compiledDialogueText = useCompiledMessageText(currentMessage);
+
+    const targetMessageId = currentMessage?.id || state.lastMessageId || null;
+
+    // Reset reformat toggle when switching target messages
+    useEffect(() => {
+        setIsReformatToggled(false);
+    }, [targetMessageId]);
+
+    // ─── Navigation Handlers ─────────────────────────────────────────
+    const canGoBack = chatMessages.length > 1 && (viewIndex === null ? true : viewIndex > 0);
+    const canGoForward = viewIndex !== null && viewIndex < chatMessages.length - 1;
+
+    const handleGoBack = useCallback(() => {
+        if (viewIndex === null) {
+            if (chatMessages.length >= 2) {
+                setViewIndex(chatMessages.length - 2);
+            }
+        } else if (viewIndex > 0) {
+            setViewIndex(viewIndex - 1);
+        }
+    }, [viewIndex, chatMessages.length]);
+
+    const handleGoForward = useCallback(() => {
+        if (viewIndex !== null) {
+            if (viewIndex < chatMessages.length - 2) {
+                setViewIndex(viewIndex + 1);
+            } else {
+                setViewIndex(null);
             }
         }
-        
-        prevMessageIdRef.current = currentId;
-    }, [state.lastMessageId]);
+    }, [viewIndex, chatMessages.length]);
+
+    // ─── Text Reformatter Layer (Operates on Clean Compiled Text) ───
+    const { rawDisplay, reformattedDisplay, hasFormats } = useMemo(() => {
+        if (!compiledDialogueText) return { rawDisplay: null, reformattedDisplay: null, hasFormats: false };
+
+        const rawDisplay = formatDisplayMessageText(compiledDialogueText);
+        const segments = detectFormatSegments(compiledDialogueText);
+        const hasSegments = segments.some(s => s.category !== 'plain');
+
+        const conversions = buildCategoryConversionsWithLearning(compiledDialogueText, segments);
+        const conversionMap: Record<string, string> = {};
+        for (const c of conversions) conversionMap[c.detected] = c.target;
+        const reformattedText = applyConversions(compiledDialogueText, conversionMap as any);
+
+        const actuallyChangesText = reformattedText !== compiledDialogueText;
+
+        return {
+            rawDisplay,
+            reformattedDisplay: formatDisplayMessageText(reformattedText),
+            hasFormats: hasSegments && actuallyChangesText,
+        };
+    }, [compiledDialogueText]);
+
+    const displayedText = isReformatToggled && hasFormats ? reformattedDisplay : rawDisplay;
+
+    // ─── Resolved Speaker Presentation ──────────────────────────────
+    const displayedSpeakerName = currentMessage ? currentMessage.character.name : state.charName;
+    const displayedAvatarUrl = currentMessage?.character.images?.default || state.avatarUrl;
+
+    const isMessageFromUser = useMemo(() => {
+        if (state.isLoading) return false;
+        if (currentMessage && state.localProtagonist) {
+            return currentMessage.character.id === state.localProtagonist.id;
+        }
+        return state.isUser;
+    }, [state.isLoading, currentMessage, state.localProtagonist, state.isUser]);
 
     // ─── Auto-Scroll Dialogue Text ──────────────────────────────────
     const dialogueTextRef = useRef<HTMLDivElement>(null);
@@ -108,7 +273,7 @@ export function StandaloneOverlay() {
         if (dialogueTextRef.current) {
             dialogueTextRef.current.scrollTop = dialogueTextRef.current.scrollHeight;
         }
-    }, [state.activeText, state.isLoading, isReformatToggled]);
+    }, [compiledDialogueText, state.isLoading, isReformatToggled]);
 
     // Close settings menu when clicking outside
     useEffect(() => {
@@ -215,26 +380,6 @@ export function StandaloneOverlay() {
     const [actionCase, setActionCase] = useState<ActionCase>('first');
     const [actionPunctuation, setActionPunctuation] = useState<ActionPunctuation>('.');
     const [isAutoFormat, setIsAutoFormat] = useState(false);
-
-    // ─── Listen for Real-Time State Sync from Main Window ───────────
-    useEffect(() => {
-        const channel = new BroadcastChannel('lorereactor-companion-sync');
-
-        channel.onmessage = (e: MessageEvent) => {
-            if (e.data?.type === 'STATE_UPDATE' && e.data?.data) {
-                setState((prev) => ({
-                    ...prev,
-                    ...e.data.data,
-                }));
-            }
-        };
-
-        channel.postMessage({ type: 'REQUEST_STATE' });
-
-        return () => {
-            channel.close();
-        };
-    }, []);
 
     // ─── Native Window Close ─────────────────────────────────────────
     const handleClose = useCallback(async () => {
@@ -422,7 +567,7 @@ export function StandaloneOverlay() {
             .sort((a, b) => b.count - a.count);
     }, [state.allActions, menuSearchQuery]);
 
-    // ─── Consistent 10px Gap on Both Left & Right ────────────────────
+    // ─── Position Action Menu ─────────────────────────────────────────
     const menuPositionStyle = useMemo<React.CSSProperties>(() => {
         if (!actionMenuTarget) return { display: 'none' };
 
@@ -458,32 +603,7 @@ export function StandaloneOverlay() {
         };
     }, [actionMenuTarget]);
 
-    // ─── Text Reformatter Logic (FIXED: Checks if reformat actually changes text) ──
-    const { rawDisplay, reformattedDisplay, hasFormats } = useMemo(() => {
-        if (!state.activeText) return { rawDisplay: null, reformattedDisplay: null, hasFormats: false };
-        
-        const rawDisplay = formatDisplayMessageText(state.activeText);
-        const segments = detectFormatSegments(state.activeText);
-        const hasSegments = segments.some(s => s.category !== 'plain');
-        
-        const conversions = buildCategoryConversionsWithLearning(state.activeText, segments);
-        const conversionMap: Record<string, string> = {};
-        for (const c of conversions) conversionMap[c.detected] = c.target;
-        const reformattedText = applyConversions(state.activeText, conversionMap as any);
-        
-        // ✅ FIX: Only consider it "has formats" if the reformatting will ACTUALLY change the text
-        const actuallyChangesText = reformattedText !== state.activeText;
-        
-        return {
-            rawDisplay,
-            reformattedDisplay: formatDisplayMessageText(reformattedText),
-            hasFormats: hasSegments && actuallyChangesText
-        };
-    }, [state.activeText]);
-
-    const displayedText = isReformatToggled && hasFormats ? reformattedDisplay : rawDisplay;
-
-    // ─── Derived ────────────────────────────────────────────────────
+    // ─── Status Metadata ─────────────────────────────────────────────
     const activeProfileId = state.activeProfileId || null;
 
     const statusLabel = state.isLoading 
@@ -547,7 +667,7 @@ export function StandaloneOverlay() {
 
             {/* Avatar & Scene Stage */}
             <div className="pip-avatar-stage">
-                {state.avatarUrl && state.locationBackgroundUrl && (
+                {displayedAvatarUrl && state.locationBackgroundUrl && (
                     <>
                         <div
                             className="pip-location-bg"
@@ -557,10 +677,10 @@ export function StandaloneOverlay() {
                     </>
                 )}
 
-                {state.avatarUrl ? (
+                {displayedAvatarUrl ? (
                     <img
-                        src={state.avatarUrl}
-                        alt={state.charName}
+                        src={displayedAvatarUrl}
+                        alt={displayedSpeakerName}
                         title="Click to interact"
                         className={`pip-avatar-img ${state.isLoading ? 'speaking' : ''}`}
                         onClick={(e) => {
@@ -725,13 +845,35 @@ export function StandaloneOverlay() {
 
             {/* Frosted Dialogue Box */}
             <div className="pip-dialogue-box">
-                <div className={`pip-dialogue-name ${state.isUser ? 'user' : ''}`}>
-                    {state.charName}
+                <div className={`pip-dialogue-name ${isMessageFromUser ? 'user' : ''}`}>
+                    {displayedSpeakerName}
                 </div>
                 
-                {/* ✅ Reformat | Stop/Resume | Regenerate | Edit Buttons */}
+                {/* Backlog Navigation & Action Toolbar */}
                 <div className="pip-dialogue-actions">
-                    {/* Reformat Button (Leftmost) */}
+                    {/* Dialogue History Backlog Navigation */}
+                    {chatMessages.length > 1 && !state.isLoading && (
+                        <>
+                            <button
+                                className="pip-dialogue-action-btn"
+                                onClick={handleGoBack}
+                                disabled={!canGoBack}
+                                title="Previous message"
+                            >
+                                ◀
+                            </button>
+                            <button
+                                className="pip-dialogue-action-btn"
+                                onClick={handleGoForward}
+                                disabled={!canGoForward}
+                                title={!canGoForward ? 'Latest message' : 'Next message'}
+                            >
+                                ▶
+                            </button>
+                        </>
+                    )}
+
+                    {/* Reformat Button */}
                     {!state.isLoading && (
                         <button 
                             className={`pip-dialogue-action-btn ${isReformatToggled ? 'pip-dialogue-action-btn-active' : ''}`}
@@ -761,13 +903,13 @@ export function StandaloneOverlay() {
                         <button 
                             className="pip-dialogue-action-btn" 
                             onClick={() => {
-                                if (!state.lastMessageId) return;
+                                if (!targetMessageId) return;
                                 const channel = new BroadcastChannel('lorereactor-companion-sync');
-                                channel.postMessage({ type: 'RESUME_GENERATION', messageId: state.lastMessageId });
+                                channel.postMessage({ type: 'RESUME_GENERATION', messageId: targetMessageId });
                                 channel.close();
                             }}
                             title="Resume Generation"
-                            disabled={!state.lastMessageId}
+                            disabled={!targetMessageId}
                         >
                             ▶
                         </button>
@@ -778,30 +920,30 @@ export function StandaloneOverlay() {
                         <button 
                             className="pip-dialogue-action-btn" 
                             onClick={() => {
-                                if (!state.lastMessageId) return;
+                                if (!targetMessageId) return;
                                 const channel = new BroadcastChannel('lorereactor-companion-sync');
-                                channel.postMessage({ type: 'RESTART_GENERATION', messageId: state.lastMessageId });
+                                channel.postMessage({ type: 'RESTART_GENERATION', messageId: targetMessageId });
                                 channel.close();
                             }}
                             title="Regenerate Response"
-                            disabled={!state.lastMessageId}
+                            disabled={!targetMessageId}
                         >
                             ↻
                         </button>
                     )}
 
-                    {/* Edit Button (Rightmost) */}
+                    {/* Edit Button */}
                     {!state.isLoading && (
                         <button 
                             className="pip-dialogue-action-btn" 
                             onClick={() => {
-                                if (!state.lastMessageId) return;
+                                if (!targetMessageId) return;
                                 const channel = new BroadcastChannel('lorereactor-companion-sync');
-                                channel.postMessage({ type: 'EDIT_MESSAGE', messageId: state.lastMessageId });
+                                channel.postMessage({ type: 'EDIT_MESSAGE', messageId: targetMessageId });
                                 channel.close();
                             }}
-                            title="Edit Last Message"
-                            disabled={!state.lastMessageId}
+                            title="Edit Message"
+                            disabled={!targetMessageId}
                         >
                             ✎
                         </button>
