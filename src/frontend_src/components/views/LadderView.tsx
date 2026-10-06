@@ -17,6 +17,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
         focusedMessageId, setFocusedMessageId,
         onAvatarClick, onResumeGeneration, 
         onRegenerateFromMessage, onRegenerateFromEdit, onSaveEdit,
+        onMassDeleteConfirm, // <--- Destructure from props
         onTouchStart, onTouchEnd, onTouchMove,
         suppressNextClickRef, onNavigateToBranchSource,
         canDelete,
@@ -120,7 +121,6 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
     const onStartEditing = useCallback((id: string, text: string) => setEditingState(id, text), [setEditingState]);
     const onCancelEditing = useCallback(() => setEditingState(null, ''), [setEditingState]);
     const onSetMassDelete = useCallback((id: string) => setMassDeleteId(id), [setMassDeleteId]);
-    const onMassDeleteConfirm = useCallback(() => { /* handled in parent or hook */ }, []);
     const onCancelMassDelete = useCallback(() => setMassDeleteId(null), [setMassDeleteId]);
 
     return (

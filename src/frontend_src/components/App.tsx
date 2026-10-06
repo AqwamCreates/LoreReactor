@@ -957,6 +957,7 @@ function App() {
         onRegenerateFromEdit: messageActions.handleRegenerateFromEdit,
         onResumeGeneration: (id: string) => resumeGeneration(id, promptBlocks.promptBlocks), 
         onRegenerateFromMessage: regenerateFromMessage,
+        onMassDeleteConfirm: messageActions.handleConfirmMassDelete, // <--- ADD THIS
         onTouchStart: messageToolbar.handleBubbleTouchStart,
         onTouchEnd: messageToolbar.handleBubbleTouchEnd,
         onTouchMove: messageToolbar.handleBubbleTouchMove,

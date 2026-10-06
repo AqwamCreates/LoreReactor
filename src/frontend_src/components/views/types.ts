@@ -21,8 +21,9 @@ export interface ViewModeProps {
     onAvatarClick: (e: React.MouseEvent, id: string, character: Character) => void;
     onResumeGeneration: (id: string) => void;
     onRegenerateFromMessage: (id: string, protagonistIds: string[]) => void;
-    onRegenerateFromEdit: () => void; // ✅ Added back
+    onRegenerateFromEdit: () => void;
     onSaveEdit: () => void;
+    onMassDeleteConfirm: () => void; // <--- ADD THIS
     onTouchStart: (e: React.TouchEvent, id: string) => void;
     onTouchEnd: (e: React.TouchEvent) => void;
     onTouchMove: (e: React.TouchEvent) => void;

@@ -31,6 +31,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         messageEndRef, editTextAreaRef,
         onSaveEdit,
         onResumeGeneration, onRegenerateFromMessage,
+        onMassDeleteConfirm, // <--- Replace 'onMessageActions' with this
         onNavigateToBranchSource,
         parentInteractionDataName,
         focusedMessageId,
@@ -38,13 +39,13 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         canDelete,
     } = props;
 
-    // ✅ Read directly from Zustand!
+    // Read directly from Zustand store
     const interactionData = useSessionStore(s => s.interactionData);
     const localProtagonistId = useSessionStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
     const isLoading = useSessionStore(s => s.isLoading);
     const streamingCharacter = useSessionStore(s => s.streamingCharacter);
 
-    // ✅ Read display preferences directly from Zustand for on-the-fly compilation
+    // Read display preferences directly from Zustand for on-the-fly compilation
     const participants = useSessionStore(s => s.interactionData?.participants || []);
     const displayMode = useSessionStore(s => s.interactionData?.profile?.toolUsageDisplayMode);
 
@@ -67,7 +68,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const onStartEditing = useCallback((id: string, text: string) => setEditingState(id, text), [setEditingState]);
     const onCancelEditing = useCallback(() => setEditingState(null, ''), [setEditingState]);
     const onSetMassDelete = useCallback((id: string) => setMassDeleteId(id), [setMassDeleteId]);
-    const onMassDeleteConfirm = useCallback(() => { /* handled in parent or hook */ }, []);
     const onCancelMassDelete = useCallback(() => setMassDeleteId(null), [setMassDeleteId]);
     
     const onCopyText = copyToClipboard;
@@ -76,7 +76,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const onDelete = deleteMessage;
     const onStopGeneration = stopGeneration;
 
-    // FIX: Use state instead of ref so UI updates trigger re-renders properly
     const [rawDraft, setRawDraft] = useState('');
     const [conversions, setConversions] = useState<CategoryConversion[]>([]);
     const [isRawEditing, setIsRawEditing] = useState(false);
@@ -143,7 +142,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
             || null;
     }, [viewIndex, displayedMessage, isLoading, streamingCharacter, isStreamingInList, lastMsg, centerAvatar, visibleCharacters, localProtagonistId]);
 
-    // Compute the resolved display name for the active speaker using the immersion cache (one message behind)
+    // Compute the resolved display name for the active speaker using the immersion cache
     const activeSpeakerDisplayName = useMemo(() => {
         if (!activeSpeaker || activeSpeaker.id === AMBIENT_NARRATOR_ID) return 'System';
         const msgIdx = displayedMessage ? chatMessages.findIndex(m => m.id === displayedMessage.id) : chatMessages.length - 1;
@@ -196,15 +195,21 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
             .map((c: Character) => c.id);
     }, [visibleCharacters, localProtagonistId]);
 
-    const { spriteStates, rollbackToMessage, isInitialLoad, jumpingCharacterIds } = useVisualNovelSpriteStates({
+    // Hook integration with transient animation triggers
+    const {
+        spriteStates,
+        rollbackToMessage,
+        isInitialLoad,
+        jumpingCharacterIds,
+        shakingCharacterIds,
+        fallingCharacterIds,
+    } = useVisualNovelSpriteStates({
         chatMessages,
         visibleCharacterIds: spriteCharacterIds,
-        // ✅ FIX: Coerce null to undefined to satisfy the hook's type signature
         protagonistId: localProtagonistId ?? undefined,
         viewedMessageIndex: viewIndex,
     });
 
-    // ✅ FIX: Updated to accept protagonistIds (string[]) instead of Character[]
     const handleRegenerateFromMessageWithRollback = useCallback((id: string, protagonistIds: string[]) => {
         const msgIndex = chatMessages.findIndex(m => m.id === id);
         if (msgIndex !== -1) rollbackToMessage(msgIndex);
@@ -246,7 +251,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         return editDraft;
     }, [isRawEditing, rawDraft, editDraft]);
 
-    // FIX: Sync the parent's editDraft whenever rawDraft or conversions change
     useEffect(() => {
         if (isEditingLastSpeaker) {
             const converted = applyConversions(rawDraft, conversionMap);
@@ -306,25 +310,28 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     const handleSaveEdit = useCallback(() => {
         if (displayedMessage) {
-            // Learns from raw textContent to raw edited text
             learnFromManualEdits(displayedMessage.textContent, rawDraft);
         }
         onSaveEdit();
     }, [displayedMessage, rawDraft, onSaveEdit]);
 
-    // Fallback background since locationBackgroundUrl was removed from props
     const bgStyle: React.CSSProperties = { background: 'linear-gradient(to bottom, #1a1a2e, #16213e)' };
-
     const isMassDeletingThis = isMassActive && massDeleteId === displayedMessage?.id;
 
     const handleImageError = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
         e.currentTarget.style.display = 'none';
     }, []);
 
-    // ✅ DISPLAY LAYER: Compiles raw textContent on the fly based on current profile settings
+    // DISPLAY LAYER: Compiles raw textContent on the fly based on current profile settings
     const displayedTextContent = useMemo(() => {
         if (!displayedMessage) return null;
-        return compileMessageDisplayText(displayedMessage.textContent, displayMode, participants, displayedMessage.character, displayedMessage.toolExecutionResults);
+        return compileMessageDisplayText(
+            displayedMessage.textContent,
+            displayMode,
+            participants,
+            displayedMessage.character,
+            displayedMessage.toolExecutionResults
+        );
     }, [displayedMessage, displayMode, participants]);
 
     const displayText = useMemo(() => {
@@ -350,12 +357,16 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
                     const isSpeaking = activeSpeaker?.id === characterId;
                     const isJumping = jumpingCharacterIds.has(characterId);
+                    const isShaking = shakingCharacterIds.has(characterId);
+                    const isFalling = fallingCharacterIds.has(characterId);
                     const breatheClass = `vn-breathe-${state.breathingPattern || 'calm'}`;
 
                     const classNames = [
                         'vn-character-layer',
                         isInitialLoad ? 'vn-no-transition' : '',
                         isJumping ? 'vn-jumping' : '',
+                        isShaking ? 'vn-shaking' : '',
+                        isFalling ? 'vn-falling' : '',
                     ].filter(Boolean).join(' ');
 
                     return (
@@ -460,7 +471,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                         <button 
                                             type="button" 
                                             className="vn-toolbar-btn" 
-                                            // ✅ FIX: Pass protagonistIds array directly
                                             onClick={() => handleRegenerateFromMessageWithRollback(displayedMessage.id, interactionData?.protagonistIds || [])} 
                                             title="Regenerate"
                                         >
@@ -469,7 +479,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                         <button
                                             type="button"
                                             className="vn-toolbar-btn"
-                                            // EDIT LAYER: Always passes raw textContent to the editor
                                             onClick={() => onStartEditing(displayedMessage.id, displayedMessage.textContent)}
                                             disabled={isLoading}
                                             title={isLoading ? 'Generation in progress...' : 'Edit Message'}
@@ -514,7 +523,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                     </div>
                                 )
                             ) : displayText ? (
-                                // DISPLAY LAYER: Renders the compiled text
                                 <MemoizedMessageText text={displayText} />
                             ) : (
                                 <span style={{ opacity: 0.5, fontStyle: 'italic' }}>Waiting for an interaction...</span>
