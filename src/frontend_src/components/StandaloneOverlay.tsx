@@ -575,13 +575,15 @@ export function StandaloneOverlay() {
     // ─── Status Metadata ─────────────────────────────────────────────
     const activeProfileId = state.activeProfileId || null;
 
+    const activeModelId = state.selectedModelId || state.selectedBudgetStrategyId
+
     const statusLabel = state.isLoading 
         ? 'Responding' 
-        : ((state.selectedModelId || state.selectedBudgetStrategyId)? 'Live' : 'Idle');
+        : (activeModelId? 'Live' : 'Idle');
     
     const statusColorClass = state.isLoading 
         ? 'active' 
-        : ((state.selectedModelId || state.selectedBudgetStrategyId)? '' : 'idle');
+        : (activeModelId? '' : 'idle');
 
     return (
         <div className="pip-overlay-container" onClick={() => setActionMenuTarget(null)}>
