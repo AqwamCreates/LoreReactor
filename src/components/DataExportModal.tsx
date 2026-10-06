@@ -41,7 +41,7 @@ export function DataExportModal({
     const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
     const [selectedAudioTrackIds, setSelectedAudioTrackIds] = useState<string[]>([]);
     const [selectedWorldIds, setSelectedWorldIds] = useState<string[]>([]);
-    const [selectedModelIds, setSelectedLanguageModelIds] = useState<string[]>([]);
+    const [selectedLanguageModelIds, setSelectedLanguageModelIds] = useState<string[]>([]);
     const [selectedSamplerIds, setSelectedSamplerIds] = useState<string[]>([]);
     const [selectedPromptBlockIds, setSelectedPromptBlockIds] = useState<string[]>([]);
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
@@ -175,8 +175,8 @@ export function DataExportModal({
                                     onToggle={(id) => toggle(selectedAudioTrackIds, setSelectedAudioTrackIds, id)} searchQuery={audioTrackSearch} onSearchChange={setAudioTrackSearch} />
                                 <EntitySelectList label="Worlds" items={allWorlds} selectedIds={selectedWorldIds}
                                     onToggle={(id) => toggle(selectedWorldIds, setSelectedWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
-                                <EntitySelectList label="Language Models" items={allLanguageModels} selectedIds={selectedModelIds}
-                                    onToggle={(id) => toggle(selectedModelIds, setSelectedLanguageModelIds, id)} searchQuery={languageModelSearch} onSearchChange={setLanguageModelSearch} />
+                                <EntitySelectList label="Language Models" items={allLanguageModels} selectedIds={selectedLanguageModelIds}
+                                    onToggle={(id) => toggle(selectedLanguageModelIds, setSelectedLanguageModelIds, id)} searchQuery={languageModelSearch} onSearchChange={setLanguageModelSearch} />
                                 <EntitySelectList label="Samplers" items={allSamplers} selectedIds={selectedSamplerIds}
                                     onToggle={(id) => toggle(selectedSamplerIds, setSelectedSamplerIds, id)} searchQuery={samplerSearch} onSearchChange={setSamplerSearch} />
                                 <EntitySelectList label="Prompt Blocks" items={allPromptBlocks} selectedIds={selectedPromptBlockIds}

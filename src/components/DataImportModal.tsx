@@ -31,7 +31,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
     const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
     const [selectedAudioTrackIds, setSelectedAudioTrackIds] = useState<string[]>([]);
     const [selectedWorldIds, setSelectedWorldIds] = useState<string[]>([]);
-    const [selectedModelIds, setSelectedLanguageModelIds] = useState<string[]>([]);
+    const [selectedLanguageModelIds, setSelectedLanguageModelIds] = useState<string[]>([]);
     const [selectedSamplerIds, setSelectedSamplerIds] = useState<string[]>([]);
     const [selectedPromptBlockIds, setSelectedPromptBlockIds] = useState<string[]>([]);
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
@@ -232,7 +232,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
 
     const totalSelected = selectedChatIds.length + selectedCharacterIds.length + selectedContextIds.length +
         selectedLocationIds.length + selectedAudioTrackIds.length + selectedWorldIds.length +
-        selectedModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
+        selectedLanguageModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
         selectedStopPatternIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
         selectedMemoryIds.length + selectedAccountIds.length + selectedMultiplayerDataIds.length +
         (includeActions ? 1 : 0) + (includeActionFormatData ? 1 : 0) + 
@@ -412,9 +412,9 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
                                     <EntitySelectList label="Worlds" items={parsedData.worlds} selectedIds={selectedWorldIds}
                                         onToggle={(id) => toggle(selectedWorldIds, setSelectedWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
                                 )}
-                                {parsedData.languagelocalCharacter.length > 0 && (
-                                    <EntitySelectList label="Language localCharacter" items={parsedData.languagelocalCharacter} selectedIds={selectedModelIds}
-                                        onToggle={(id) => toggle(selectedModelIds, setSelectedLanguageModelIds, id)} searchQuery={languagelocalCharacterearch} onSearchChange={setLanguagelocalCharacterearch} />
+                                {parsedData.languageModels.length > 0 && (
+                                    <EntitySelectList label="Language localCharacter" items={parsedData.languageModels} selectedIds={selectedLanguageModelIds}
+                                        onToggle={(id) => toggle(selectedLanguageModelIds, setSelectedLanguageModelIds, id)} searchQuery={languagelocalCharacterearch} onSearchChange={setLanguagelocalCharacterearch} />
                                 )}
                                 {parsedData.samplers.length > 0 && (
                                     <EntitySelectList label="Samplers" items={parsedData.samplers} selectedIds={selectedSamplerIds}
