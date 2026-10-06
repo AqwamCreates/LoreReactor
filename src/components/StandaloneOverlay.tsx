@@ -776,16 +776,16 @@ export function StandaloneOverlay() {
                             >
                                 ↻
                             </button>
+                            <button 
+                                className={`pip-dialogue-action-btn ${isReformatToggled ? 'pip-dialogue-action-btn-active' : ''}`}
+                                onClick={() => setIsReformatToggled(prev => !prev)}
+                                title={isReformatToggled ? "Revert to Raw Text" : "Apply Auto-Reformat"}
+                                disabled={!hasFormats}
+                            >
+                                ✨
+                            </button>
                         </>
                     )}
-                    <button 
-                        className={`pip-dialogue-action-btn ${isReformatToggled ? 'pip-dialogue-action-btn-active' : ''}`}
-                        onClick={() => setIsReformatToggled(prev => !prev)}
-                        title={isReformatToggled ? "Revert to Raw Text" : "Apply Auto-Reformat"}
-                        disabled={!hasFormats}
-                    >
-                        ✨
-                    </button>
                 </div>
 
                 <div className="pip-dialogue-text" ref={dialogueTextRef}>
