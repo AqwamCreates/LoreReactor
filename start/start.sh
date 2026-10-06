@@ -1,113 +1,99 @@
-@echo off
-setlocal EnableDelayedExpansion
-title LoreReactor
+#!/usr/bin/env bash
+set -euo pipefail
 
-:: ── Navigate to project root (handles root or scripts/ folder) ─
-if exist "%~dp0package.json" (
-    cd /d "%~dp0"
-) else (
-    cd /d "%~dp0.."
-)
-set "ROOT=%CD%"
+# ── Navigate to project root (handles root or scripts/ folder) ─
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/package.json" ]; then
+    cd "$SCRIPT_DIR"
+else
+    cd "$SCRIPT_DIR/.."
+fi
+ROOT="$PWD"
 
-:: ── Detect Architecture ─────────────────────────────────────
-set "WIN_ARCH=x86"
-if "%PROCESSOR_ARCHITECTURE%"=="AMD64" set "WIN_ARCH=x64"
-if "%PROCESSOR_ARCHITEW6432%"=="AMD64" set "WIN_ARCH=x64"
-if "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "WIN_ARCH=arm64"
+# ── Detect OS & Architecture ──────────────────────────────────
+OS="Linux"
+[[ "$OSTYPE" == "darwin"* ]] && OS="macOS"
+RAW_ARCH="$(uname -m)"
 
-echo.
-echo   ========================================
-echo           LoreReactor Launcher
-echo           Windows !WIN_ARCH!
-echo   ========================================
-echo.
+echo ""
+echo "  ========================================"
+echo "          LoreReactor Launcher"
+echo "          $OS ($RAW_ARCH)"
+echo "  ========================================"
+echo ""
 
-:: ── [1/3] Check Node.js ─────────────────────────────────────
-echo   [1/3] Checking Node.js ...
-where node >nul 2>&1
-if %errorlevel% neq 0 (
-    echo.
-    echo   [ERROR] Node.js is NOT installed.
-    echo   Download LTS from: https://nodejs.org/en/download
-    echo.
-    pause
-    exit /b 1
-)
+# ── [1/3] Check Node.js ──────────────────────────────────────
+echo "  [1/3] Checking Node.js ..."
+if ! command -v node &>/dev/null; then
+    echo ""
+    echo "  [ERROR] Node.js is NOT installed."
+    echo "  Download from: https://nodejs.org/en/download"
+    echo ""
+    exit 1
+fi
 
-for /f "tokens=1 delims=v" %%v in ('node -v') do set "NODE_VER=%%v"
-for /f "tokens=1 delims=." %%m in ("!NODE_VER!") do set "NODE_MAJOR=%%m"
-if !NODE_MAJOR! LSS 18 (
-    echo.
-    echo   [ERROR] Node.js v!NODE_VER! is too old ^(requires v18+^).
-    echo   Update from: https://nodejs.org/en/download
-    echo.
-    pause
-    exit /b 1
-)
+NODE_MAJOR="$(node -v | sed 's/v//' | cut -d. -f1)"
+if [ "$NODE_MAJOR" -lt 18 ]; then
+    echo "  [ERROR] Node.js $(node -v) is too old (requires v18+)."
+    echo "  Update from: https://nodejs.org/en/download"
+    exit 1
+fi
 
-:: ── [2/3] Verify Project Files ───────────────────────────────
-echo   [2/3] Verifying project structure ...
-if not exist "package.json" (
-    echo   [ERROR] package.json not found in !ROOT!.
-    pause
-    exit /b 1
-)
-if not exist "src\backend_src\server.ts" (
-    echo   [ERROR] src\backend_src\server.ts not found in !ROOT!.
-    pause
-    exit /b 1
-)
+# ── [2/3] Verify Project Files ────────────────────────────────
+echo "  [2/3] Verifying project structure ..."
+if [ ! -f "package.json" ]; then
+    echo "  [ERROR] package.json not found in $ROOT."
+    exit 1
+fi
+if [ ! -f "src/backend_src/server.ts" ]; then
+    echo "  [ERROR] src/backend_src/server.ts not found in $ROOT."
+    exit 1
+fi
 
-:: ── [3/3] Install / Update Dependencies ─────────────────────
-set "NEED_INSTALL=0"
-if not exist "node_modules" (
-    set "NEED_INSTALL=1"
-    echo   [3/3] Installing dependencies ^(first run^) ...
-) else (
-    for /f %%t in ('powershell -NoProfile -Command "(Get-Item ''package.json'').LastWriteTime -gt (Get-Item ''node_modules'').LastWriteTime"') do (
-        if "%%t"=="True" (
-            set "NEED_INSTALL=1"
-            echo   [3/3] Dependencies outdated — updating ...
-        )
-    )
-)
+# ── [3/3] Install / Update Dependencies ───────────────────────
+NEED_INSTALL=0
+if [ ! -d "node_modules" ]; then
+    NEED_INSTALL=1
+    echo "  [3/3] Installing dependencies (first run) ..."
+elif [ "package.json" -nt "node_modules" ]; then
+    NEED_INSTALL=1
+    echo "  [3/3] Dependencies outdated — updating ..."
+fi
 
-if "!NEED_INSTALL!"=="1" (
-    if exist "package-lock.json" (
-        call npm ci
-    ) else (
-        call npm install
-    )
-    if !errorlevel! neq 0 (
-        echo.
-        echo   [ERROR] Dependency installation failed.
-        pause
-        exit /b 1
-    )
-) else (
-    echo   [3/3] Dependencies up to date.
-)
+if [ "$NEED_INSTALL" -eq 1 ]; then
+    if [ -f "package-lock.json" ]; then
+        npm ci
+    else
+        npm install
+    fi
+else
+    echo "  [3/3] Dependencies up to date."
+fi
 
-:: ── Launch ──────────────────────────────────────────────────
-echo.
-echo   ========================================
-echo     LoreReactor is starting!
-echo.
-echo     API Server: http://localhost:8448
-echo     Engines   : Managed on-demand in UI
-echo.
-echo     Press Ctrl + C to stop all servers.
-echo   ========================================
-echo.
+# ── Launch ───────────────────────────────────────────────────
+echo ""
+echo "  ========================================"
+echo "    LoreReactor is starting!"
+echo ""
+echo "    API Server: http://localhost:8448"
+echo "    Engines   : Managed on-demand in UI"
+echo ""
+echo "    Press Ctrl + C to stop all servers."
+echo "  ========================================"
+echo ""
 
-npx concurrently ^
-    --kill-others ^
-    --kill-signal SIGTERM ^
-    --names "WEB,API" ^
-    --prefix-colors "cyan,magenta" ^
-    "npm run dev" ^
+cleanup() {
+    echo ""
+    echo "  Shutting down LoreReactor ..."
+    kill 0 2>/dev/null || true
+    wait 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+npx concurrently \
+    --kill-others \
+    --kill-signal SIGTERM \
+    --names "WEB,API" \
+    --prefix-colors "cyan,magenta" \
+    "npm run dev" \
     "npm run server"
-
-endlocal
-exit /b 0
