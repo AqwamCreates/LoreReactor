@@ -30,7 +30,7 @@ interface CompanionState {
     allActions: InterjectableAction[];
     interactionData: InteractionData | null;
     localProtagonist: Character | null;
-    allModels?: LanguageModel[];
+    allLanguageModels?: LanguageModel[];
     selectedModelId?: string | null;
     allBudgetStrategies?: BudgetStrategy[];
     selectedBudgetStrategyId?: string | null;
@@ -131,12 +131,12 @@ export function StandaloneOverlay() {
 
     const filteredModels = useMemo(() => {
         const q = modalSearchQuery.toLowerCase().trim();
-        if (!q) return state.allModels || [];
-        return (state.allModels || []).filter(m =>
+        if (!q) return state.allLanguageModels || [];
+        return (state.allLanguageModels || []).filter(m =>
             m.name.toLowerCase().includes(q) ||
             (m.backend && m.backend.toLowerCase().includes(q))
         );
-    }, [state.allModels, modalSearchQuery]);
+    }, [state.allLanguageModels, modalSearchQuery]);
 
     const filteredBudgets = useMemo(() => {
         const q = modalSearchQuery.toLowerCase().trim();
@@ -160,20 +160,23 @@ export function StandaloneOverlay() {
             state.interactionData?.contexts || [],
             state.interactionData?.audioTracks || [],
             state.allWorlds || [],
-            state.allModels || [],
             state.allProfiles || [],
-            state.allBudgetStrategies || [],
+            state.allPromptBlocks || [],
+            state.allLanguageModels || [],
             state.allSamplers || [],
             state.allStopPatterns || [],
-            state.allPromptBlocks || [],
+            state.allBudgetStrategies || [],
+            state.allStopPatterns || [],
             state.allMemories || [],
-            state.localProtagonist
+            state.allAccounts || [],
+            state.allMultiplayerData || [],
+            state.localProtagonist,
         );
     }, [
         inputText,
         state.interactionData,
         state.allWorlds,
-        state.allModels,
+        state.allLanguageModels,
         state.allProfiles,
         state.allBudgetStrategies,
         state.allSamplers,

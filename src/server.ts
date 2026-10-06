@@ -1514,7 +1514,7 @@ app.post('/tool/lock-screen', (_req, res) => {
       execSync('xdg-screensaver lock || loginctl lock-session');
     }
     res.json({ success: true, message: 'Workstation locked' });
-  } catch (e) {
+  } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
   }
 });

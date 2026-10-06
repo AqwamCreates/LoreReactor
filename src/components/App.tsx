@@ -1045,7 +1045,7 @@ function App() {
             streamingText: streamingText || '',
             locationBackgroundUrl: avatarUrl ? viewAssets.locationBackgroundUrl : null,
             allActions: actionManager.allActions || [],
-            allModels: allLanguageModels,
+            allLanguageModels: allLanguageModels,
             selectedModelId: models.selectedModelId,
             allBudgetStrategies: budgetStrategies.strategies,
             selectedBudgetStrategyId: selectedBudgetStrategyId,

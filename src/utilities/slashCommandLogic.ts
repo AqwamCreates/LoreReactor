@@ -1,5 +1,5 @@
 // src/utilities/slashCommandLogic.ts
-import type { Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData, InteractionData, ChatMessage } from '../types';
+import type { Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData, InteractionData, BudgetStrategy, LanguageModel } from '../types';
 import { getLocalMessageHistory } from './timelineLogic';
 
 // ─── Tree Data Structures ─────────────────────────────────────────
@@ -270,19 +270,19 @@ export function getEntityDescription(entity: any): string {
 export function getEntityOptions(
     type: ArgType,
     data: InteractionData | null,
-    allChars: Character[] = [],
-    allLocs: Location[] = [],
-    allCtxs: Context[] = [],
-    allAudio: AudioTrack[] = [],
-    allPrompts: PromptBlock[] = [],
+    allCharacters: Character[] = [],
+    allLocations: Location[] = [],
+    allContexts: Context[] = [],
+    allAudioTracks: AudioTrack[] = [],
+    allPromptBlocks: PromptBlock[] = [],
     allSamplers: Sampler[] = [],
-    allStops: StopPattern[] = [],
+    allStopPatterns: StopPattern[] = [],
     allProfiles: Profile[] = [],
     allWorlds: World[] = [],
-    allMems: Memory[] = [],
+    allMemories: Memory[] = [],
     allAccounts: Account[] = [],
     allMultiplayerData: MultiplayerData[] = [],
-    localChar: Character | null = null
+    localCharacter: Character | null = null
 ): EntityOption[] {
     if (type === 'entity_type') {
         return VALID_ENTITY_TYPES.map(t => ({ value: t, label: t, id: '', extra: '' }));
@@ -300,7 +300,7 @@ export function getEntityOptions(
 
     if (type === 'global_character') {
         const participantIds = new Set((data?.participants || []).map(p => p.id));
-        return allChars
+        return allCharacters
             .filter(c => !participantIds.has(c.id))
             .map(c => ({
                 value: c.id,
@@ -323,7 +323,7 @@ export function getEntityOptions(
     }
 
     if (type === 'global_location') {
-        return allLocs.map(l => ({
+        return allLocations.map(l => ({
             value: l.id,
             label: l.name,
             id: l.id.substring(0, 8),
@@ -350,7 +350,7 @@ export function getEntityOptions(
     }
 
     if (type === 'audio') {
-        return allAudio.map(t => ({
+        return allAudioTracks.map(t => ({
             value: t.id,
             label: t.name,
             id: t.id.substring(0, 8),
@@ -358,8 +358,8 @@ export function getEntityOptions(
         }));
     }
 
-    if (type === 'clothing' && localChar) {
-        return (localChar.clothings || []).map(c => ({
+    if (type === 'clothing' && localCharacter) {
+        return (localCharacter.clothings || []).map(c => ({
             value: c.id,
             label: c.name,
             id: c.id.substring(0, 8),
@@ -368,8 +368,8 @@ export function getEntityOptions(
     }
 
     if (type === 'item') {
-        if (!data || !localChar) return [];
-        const localMessageHistory = getLocalMessageHistory(data, localChar, ['chat', 'whisper']);
+        if (!data || !localCharacter) return [];
+        const localMessageHistory = getLocalMessageHistory(data, localCharacter, ['chat', 'whisper']);
         const lastMsg = localMessageHistory[localMessageHistory.length - 1];
         
         if (lastMsg?.inventory) {
@@ -386,7 +386,7 @@ export function getEntityOptions(
     }
 
     if (type === 'context') {
-        return allCtxs.map(c => ({
+        return allContexts.map(c => ({
             value: c.id,
             label: c.name,
             id: c.id.substring(0, 8),
@@ -395,7 +395,7 @@ export function getEntityOptions(
     }
 
     if (type === 'prompt_block') {
-        return allPrompts.map(p => ({
+        return allPromptBlocks.map(p => ({
             value: p.id,
             label: p.name,
             id: p.id.substring(0, 8),
@@ -413,7 +413,7 @@ export function getEntityOptions(
     }
 
     if (type === 'stop_pattern') {
-        return allStops.map(s => ({
+        return allStopPatterns.map(s => ({
             value: s.id,
             label: s.name,
             id: s.id.substring(0, 8),
@@ -440,7 +440,7 @@ export function getEntityOptions(
     }
 
     if (type === 'memory') {
-        return allMems.map(m => ({
+        return allMemories.map(m => ({
             value: m.id,
             label: m.name,
             id: m.id.substring(0, 8),
@@ -449,7 +449,7 @@ export function getEntityOptions(
     }
 
     if (type === 'rng_table') {
-        return allCtxs
+        return allContexts
             .filter(c => c.text && /^\d+[-:]/.test(c.text || ''))
             .map(c => ({
                 value: c.name || c.id,
@@ -460,7 +460,7 @@ export function getEntityOptions(
     }
 
     if (type === 'dialogue') {
-        const dialogues = localChar?.dialoguePrompts || [];
+        const dialogues = localCharacter?.dialoguePrompts || [];
         return dialogues.map(d => ({
             value: d.id,
             label: d.name,
@@ -470,7 +470,7 @@ export function getEntityOptions(
     }
 
     if (type === 'knowledge') {
-        const knowledge = localChar?.knowledgePrompts || [];
+        const knowledge = localCharacter?.knowledgePrompts || [];
         return knowledge.map(k => ({
             value: k.id,
             label: k.name,
@@ -492,22 +492,7 @@ export interface SlashAutocompleteComputeResult {
 }
 
 export function computeSlashAutocomplete(
-    inputText: string,
-    interactionData: InteractionData | null,
-    allCharacters: Character[] = [],
-    allLocations: Location[] = [],
-    allContexts: Context[] = [],
-    allAudioTracks: AudioTrack[] = [],
-    allPromptBlocks: PromptBlock[] = [],
-    allSamplers: Sampler[] = [],
-    allStopPatterns: StopPattern[] = [],
-    allProfiles: Profile[] = [],
-    allWorlds: World[] = [],
-    allMemories: Memory[] = [],
-    allAccounts: Account[] = [],
-    allMultiplayerData: MultiplayerData[] = [],
-    localProtagonist: Character | null = null
-): SlashAutocompleteComputeResult {
+inputText: string, interactionData: InteractionData | null, allCharacters: Character[] = [], allLocations: Location[] = [], allContexts: Context[] = [], allAudioTracksTracks: AudioTrack[] = [], allWorlds: World[] = [], allProfiles: Profile[], allPromptBlocks: PromptBlock[] = [], allLanguageModels: LanguageModel[] = [], allSamplers: Sampler[] = [], allStopPatterns: StopPattern[] = [], allBudgetStrategies: BudgetStrategy[] = [], allMemories: Memory[] = [], allAccounts: Account[] = [], allMultiplayerData: MultiplayerData[] = [], localProtagonist: Character | null = null): SlashAutocompleteComputeResult {
     const raw = inputText.trimStart();
     const isSlash = raw.startsWith('/');
     if (!isSlash) {
@@ -581,7 +566,7 @@ export function computeSlashAutocomplete(
 
             const entities = getEntityOptions(
                 arg.type, interactionData, allCharacters, allLocations, allContexts,
-                allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
+                allAudioTracksTracks, allPromptBlocks, allSamplers, allStopPatterns,
                 allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData, localProtagonist
             );
 
@@ -646,7 +631,7 @@ export function computeSlashAutocomplete(
 
         const entities = getEntityOptions(
             arg.type, interactionData, allCharacters, allLocations, allContexts,
-            allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
+            allAudioTracksTracks, allPromptBlocks, allSamplers, allStopPatterns,
             allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData, localProtagonist
         );
 

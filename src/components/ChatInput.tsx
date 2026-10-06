@@ -55,10 +55,10 @@ export function ChatInput({
     const { breadcrumbs, options, isComplete, isSlash, activeIndex, currentQuery } = useMemo(() => {
         return computeSlashAutocomplete(
             inputText, interactionData, allCharacters, allLocations, allContexts,
-            allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
-            allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData, localProtagonist
+            allAudioTracks, allWorlds, allProfiles, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies,
+            allMemories, allAccounts, allMultiplayerData, localProtagonist
         );
-    }, [inputText, interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns, allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData, localProtagonist]);
+    }, [inputText, interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allWorlds, allPromptBlocks, allSamplers, allStopPatterns, allProfiles, allBudgetStrategies, allMemories, allAccounts, allMultiplayerData, localProtagonist]);
 
     const showAutocomplete = isSlash && !isComplete;
 

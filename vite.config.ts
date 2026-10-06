@@ -58,10 +58,10 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 4444,
     proxy: {
-      '/api/model': {
+      '/api/language_models': {
         target: 'http://localhost:8080',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/model/, ''),
+        rewrite: (path) => path.replace(/^\/api\/language_models/, ''),
       },
       '/api/web': {
         target: 'http://localhost:8448',
