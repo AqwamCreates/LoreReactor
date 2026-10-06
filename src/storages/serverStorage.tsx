@@ -816,9 +816,9 @@ const modelRepo = createRepository<LanguageModel, RawLanguageModel>({
 });
 
 export const loadRawModelManifest = modelRepo.loadManifest;
-export const loadRawModel = modelRepo.loadRaw;
+export const loadRawLanguageModel = modelRepo.loadRaw;
 export const loadAllRawModels = modelRepo.loadAll;
-export const saveRawModel = modelRepo.save;
+export const saveRawLanguageModel = modelRepo.save;
 export const deleteRawModel = modelRepo.remove;
 
 // =============================================================================

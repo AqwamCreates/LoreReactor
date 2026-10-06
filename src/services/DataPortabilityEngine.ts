@@ -11,7 +11,7 @@ import {
     loadRawLocation, saveRawLocation,
     loadRawAudioTrack, saveRawAudioTrack,
     loadRawWorld, saveRawWorld,
-    loadRawModel, saveRawModel,
+    loadRawLanguageModel, saveRawLanguageModel,
     loadRawSampler, saveRawSampler,
     loadRawPromptBlock, saveRawPromptBlock,
     loadRawStopPattern, saveRawStopPattern,
@@ -162,8 +162,8 @@ export async function exportSelectedData(selection: {
         const full = await loadRawWorld(id);
         if (full) data.worlds.push(full);
     }
-    for (const id of selection.modelIds) {
-        const full = await loadRawModel(id);
+    for (const id of selection.languageModelIds) {
+        const full = await loadRawLanguageModel(id);
         if (full) data.languageModels.push(full);
     }
     for (const id of selection.samplerIds) {
@@ -264,7 +264,7 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
         catch (e) { result.errors.push(`World "${w.name || w.id}": ${(e as Error).message}`); }
     }
     for (const m of data.languageModels) {
-        try { await saveRawModel(m); result.counts.languageModels++; }
+        try { await saveRawLanguageModel(m); result.counts.languageModels++; }
         catch (e) { result.errors.push(`Model "${m.name || m.id}": ${(e as Error).message}`); }
     }
     for (const s of data.samplers) {
