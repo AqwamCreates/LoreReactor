@@ -271,34 +271,6 @@ export function LanguageModelInferenceManagerModal({
                                                     <span style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-h)' }}>
                                                         {backend.name}
                                                     </span>
-                                                    <span
-                                                        style={{
-                                                            fontSize: '0.65rem',
-                                                            fontWeight: 'bold',
-                                                            padding: '2px 8px',
-                                                            borderRadius: '12px',
-                                                            lineHeight: 1.2,
-                                                            background: backend.installed
-                                                                ? 'rgba(34, 197, 94, 0.15)'
-                                                                : isBusy
-                                                                ? 'var(--accent-bg)'
-                                                                : 'rgba(255, 255, 255, 0.05)',
-                                                            color: backend.installed
-                                                                ? '#22c55e'
-                                                                : isBusy
-                                                                ? 'var(--accent)'
-                                                                : 'var(--text)',
-                                                            border: `1px solid ${
-                                                                backend.installed
-                                                                    ? 'rgba(34, 197, 94, 0.3)'
-                                                                    : isBusy
-                                                                    ? 'var(--accent-border)'
-                                                                    : 'var(--border)'
-                                                            }`,
-                                                        }}
-                                                    >
-                                                        {backend.installed ? '● Installed' : isBusy ? '⬇ Installing' : '○ Not Installed'}
-                                                    </span>
                                                 </div>
                                                 <span style={{ fontSize: '0.7rem', color: 'var(--text-h)', opacity: 0.6, lineHeight: 1.3 }}>
                                                     {backend.description}
