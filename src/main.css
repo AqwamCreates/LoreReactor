@@ -5381,6 +5381,7 @@ body.overlay-mode #root,
     color: #f8fafc;
     overflow-y: auto;
     scrollbar-width: thin;
+    text-align: center;
     scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     white-space: pre-wrap;
     word-break: break-word;
