@@ -131,7 +131,7 @@ function App() {
         promptBlock: { saveFunction: promptBlocks.savePromptBlock, deleteFunction: promptBlocks.deletePromptBlock, entityLabel: 'Prompt Block' },
         stopPattern: { saveFunction: stopPatterns.saveStopPattern, deleteFunction: stopPatterns.deleteStopPattern, entityLabel: 'Stop Pattern' },
         budgetStrategy: { saveFunction: budgetStrategies.saveStrategy, deleteFunction: budgetStrategies.deleteStrategy, entityLabel: 'Budget Strategy' },
-        profile: { saveFunction: profiles.saveProfile, deleteFunction: profiles.deleteProfile, entityLabel: 'profile' },
+        profile: { saveFunction: profiles.saveProfile, deleteFunction: profiles.deleteProfile, entityLabel: 'Profile' },
         account: { saveFunction: accounts.saveAccount, deleteFunction: accounts.deleteAccount, entityLabel: 'Account' },
         multiplayerData: { saveFunction: multiplayerDataManager.saveMultiplayerData, deleteFunction: multiplayerDataManager.deleteMultiplayerData, entityLabel: 'Multiplayer Data' },
     });

@@ -20,7 +20,10 @@ export class CharacterSoul {
         this.isRunning = true;
         this.abortController = new AbortController();
 
-        this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange);
+        const initialData = getData();
+        const initialDelay = initialData?.profile?.autonomousInteractionIntervalMs || 1000;
+
+        this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, initialDelay);
     }
 
     private scheduleNextTick(
@@ -29,35 +32,37 @@ export class CharacterSoul {
         getData: () => InteractionData | null,
         setData: (data: InteractionData) => void,
         onSpeakerChange?: (char: Character | null) => void,
+        delay = 1000
     ): void {
         if (!this.isRunning) return;
 
         this.timeoutId = setTimeout(async () => {
-            if (!this.isRunning || !checkCanAct()) {
-                this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange);
+            if (!this.isRunning) return;
+
+            const data = getData();
+
+            // ─── THE GATEKEEPER ───
+            if (!data || !data.profile?.autonomousMode) {
+                this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, 2000);
                 return;
             }
 
-            const data = getData();
-            
-            // ─── THE GATEKEEPER ───
-            if (!data || !data.profile?.autonomousMode || !this.abortController) {
-                this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange);
+            if (!checkCanAct()) {
+                // If model is currently busy responding, poll lightly at the base interval
+                const retryDelay = data.profile.autonomousInteractionIntervalMs || 1000;
+                this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, retryDelay);
                 return;
             }
 
             try {
                 const protagonistIds = new Set(data.protagonistIds || []);
                 const aiParticipants = data.participants.filter(p => !protagonistIds.has(p.id));
-                
+
                 if (aiParticipants.length === 0) {
-                    this.timeoutId = setTimeout(() => {
-                        this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange);
-                    }, 5000);
+                    this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, 3000);
                     return;
                 }
 
-                // Find the most urgent AI character to determine the tick pacing
                 let mostUrgentChar = aiParticipants[0];
                 let maxScore = -1;
 
@@ -69,18 +74,13 @@ export class CharacterSoul {
                     }
                 }
 
-                // If no one has any urgency, fallback to a baseline derived from the first AI char
-                if (maxScore <= 0) {
-                    this.timeoutId = setTimeout(() => {
-                        this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange);
-                    }, computeAutonomousTickDelay(mostUrgentChar, data));
-                    return;
-                }
-
-                // Compute dynamic delay based on THIS SPECIFIC character's stats and the live interaction data
                 const dynamicDelay = computeAutonomousTickDelay(mostUrgentChar, data);
 
-                // Execute the turn sequence safely
+                // Re-create a fresh AbortController per sequence to avoid latching aborted states
+                if (!this.abortController || this.abortController.signal.aborted) {
+                    this.abortController = new AbortController();
+                }
+
                 const result = await runTurnSequence(
                     data,
                     executor,
@@ -88,26 +88,21 @@ export class CharacterSoul {
                     onSpeakerChange,
                     setData
                 );
-                
+
                 if (result) {
                     setData(result.interactionData);
                 }
 
-                // Schedule the next tick using the dynamically calculated delay
-                this.timeoutId = setTimeout(() => {
-                    this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange);
-                }, dynamicDelay);
+                this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, dynamicDelay);
 
             } catch (e) {
                 if ((e as Error).name !== 'AbortError') {
                     console.warn('CharacterSoul evaluation failed:', e);
                 }
-                // On error, fallback to a safe medium delay before retrying
-                this.timeoutId = setTimeout(() => {
-                    this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange);
-                }, 3000);
+                const fallbackDelay = data?.profile?.autonomousInteractionIntervalMs || 1500;
+                this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, fallbackDelay);
             }
-        }, 5000); // Initial wait
+        }, delay);
     }
 
     stop(): void {

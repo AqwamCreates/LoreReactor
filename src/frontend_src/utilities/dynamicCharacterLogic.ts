@@ -33,10 +33,31 @@ export function getTurnsSinceLastSpoken(history: HistoryMessage[], characterId: 
     return turns;
 }
 
+/**
+ * Counts consecutive messages this character sent at the tip of the provided thread
+ * without ANY other participant (protagonist or another AI) interjecting.
+ */
+export function getConsecutiveTurnsByCharacter(
+    history: HistoryMessage[],
+    characterId: string
+): number {
+    let count = 0;
+    for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].character.id === characterId) {
+            count++;
+        } else {
+            break;
+        }
+    }
+    return count;
+}
+
+/** Measures elapsed real time since this character's last message was first created */
 export function getTimeSinceLastActionMs(data: InteractionData, character: Character): number {
     const latest = findLatestMessage(data, character);
     if (!latest) return Number.POSITIVE_INFINITY;
-    return Date.now() - latest.message.lastUpdatedTimestamp;
+    const stamp = latest.message.firstCreatedTimestamp || latest.message.lastUpdatedTimestamp;
+    return Math.max(0, Date.now() - stamp);
 }
 
 export function getParticipationMomentum(history: HistoryMessage[], charId: string): number {
@@ -90,33 +111,6 @@ export function getLocalInitiativeRank(character: Character, data: InteractionDa
     return 1 / (1 + outrankedBy * (1 - exclusivityBoost));
 }
 
-export function sampleStochasticRegenAmount(maxStamina: number): number {
-    if (maxStamina <= 0 || maxStamina === Number.POSITIVE_INFINITY) return 0;
-
-    const weights: number[] = [];
-    let cumulativeWeight = 0;
-
-    for (let k = 1; k <= maxStamina; k++) {
-        cumulativeWeight += Math.log(1 + k);
-        weights.push(cumulativeWeight);
-    }
-
-    const randomValue = Math.random() * cumulativeWeight;
-
-    let lo = 0;
-    let hi = weights.length - 1;
-    while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (weights[mid] < randomValue) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
-    }
-
-    return lo + 1;
-}
-
 export function computeGlobalScore(character: Character, data: InteractionData): number {
     const profile = data.profile;
     const latest = findLatestMessage(data, character);
@@ -128,16 +122,17 @@ export function computeGlobalScore(character: Character, data: InteractionData):
     const remainingChat = lastMsg?.remainingChatStamina ?? maxChat;
 
     const maxTotal = maxAction + maxChat;
-    if (maxTotal <= 0 || maxTotal === Number.POSITIVE_INFINITY) return 0;
+    const staminaRatio = (maxTotal <= 0 || maxTotal === Number.POSITIVE_INFINITY)
+        ? 1.0
+        : Math.max(0.15, (remainingAction + remainingChat) / maxTotal);
 
-    const staminaRatio = (remainingAction + remainingChat) / maxTotal;
-    const baseInitiative = getEffectiveInitiativeWeight(character, profile);
+    const baseInitiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
     const localRank = getLocalInitiativeRank(character, data);
-    const momentum = getParticipationMomentum(getLocalMessageHistory(data, character), character.id);
+    const momentum = getParticipationMomentum(getLocalMessageHistory(data, character, ['chat']), character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
 
     const timeSince = getTimeSinceLastActionMs(data, character);
-    const timeMultiplier = 1 + Math.log1p(timeSince);
+    const timeMultiplier = 1 + Math.log1p(timeSince / 1000);
 
     return staminaRatio * effectiveInitiative * timeMultiplier;
 }
@@ -150,25 +145,26 @@ export function computeChatScore(character: Character, data: InteractionData): n
     const maxChat = getEffectiveMaximumChatStamina(character, profile);
     const remainingChat = lastMsg?.remainingChatStamina ?? maxChat;
 
-    if (maxChat <= 0 || maxChat === Number.POSITIVE_INFINITY) return 0;
+    const staminaRatio = (maxChat <= 0 || maxChat === Number.POSITIVE_INFINITY)
+        ? 1.0
+        : Math.max(0.1, remainingChat / maxChat);
 
-    const staminaRatio = remainingChat / maxChat;
-    const baseInitiative = getEffectiveInitiativeWeight(character, profile);
+    const baseInitiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
     const localRank = getLocalInitiativeRank(character, data);
-    const momentum = getParticipationMomentum(getLocalMessageHistory(data, character), character.id);
+    const momentum = getParticipationMomentum(getLocalMessageHistory(data, character, ['chat']), character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
 
     const timeSince = getTimeSinceLastActionMs(data, character);
-    const timeMultiplier = 1 + Math.log1p(timeSince);
+    const timeMultiplier = 1 + Math.log1p(timeSince / 1000);
 
-    const turnsSince = getTurnsSinceLastSpoken(getLocalMessageHistory(data, character), character.id);
-    const impatience = getEffectiveChatImpatienceSensitivity(character, profile);
+    const turnsSince = getTurnsSinceLastSpoken(getLocalMessageHistory(data, character, ['chat']), character.id);
+    const impatience = Math.max(0, getEffectiveChatImpatienceSensitivity(character, profile));
 
     const charLocId = getCurrentLocationId(data, character);
     let localActivityDensity = 0;
     
     if (charLocId) {
-        const locHistory = getLocationMessageHistory(data, charLocId);
+        const locHistory = getLocationMessageHistory(data, charLocId, ['chat']);
         for (let i = locHistory.length - 1; i >= 0; i--) {
             const msg = locHistory[i];
             if (!hasTextContent(msg)) continue;
@@ -180,7 +176,8 @@ export function computeChatScore(character: Character, data: InteractionData): n
     
     const patienceBoost = Math.log1p(localActivityDensity);
     const effectiveImpatience = impatience / (1 + patienceBoost);
-    const compressedImpatience = Math.log1p(turnsSince * effectiveImpatience);
+
+    const compressedImpatience = 1 + Math.log1p((turnsSince + 0.5) * effectiveImpatience);
 
     const mentionCount = getNameMentionCount(character, data);
     const nameSensitivity = getEffectiveNameSensitivity(character, profile);
@@ -197,16 +194,17 @@ export function computeActionScore(character: Character, data: InteractionData, 
     const maxAction = getEffectiveMaximumActionStamina(character, profile);
     const remainingAction = lastMsg?.remainingActionStamina ?? maxAction;
 
-    if (maxAction <= 0 || maxAction === Number.POSITIVE_INFINITY) return 0;
+    const staminaRatio = (maxAction <= 0 || maxAction === Number.POSITIVE_INFINITY)
+        ? 1.0
+        : Math.max(0.1, remainingAction / maxAction);
 
-    const staminaRatio = remainingAction / maxAction;
-    const baseInitiative = getEffectiveInitiativeWeight(character, profile);
+    const baseInitiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
     const localRank = getLocalInitiativeRank(character, data);
-    const momentum = getParticipationMomentum(getLocalMessageHistory(data, character), character.id);
+    const momentum = getParticipationMomentum(getLocalMessageHistory(data, character, ['chat']), character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
 
     const timeSince = getTimeSinceLastActionMs(data, character);
-    const timeMultiplier = 1 + Math.log1p(timeSince);
+    const timeMultiplier = 1 + Math.log1p(timeSince / 1000);
 
     const moverLocId = getCurrentLocationId(data, character);
     const reachable = getReachableLocations(data.locations || [], moverLocId, triggeringMessageText);
@@ -229,6 +227,7 @@ export function weightedSample<T>(pool: { item: T; weight: number }[]): T | null
     return pool[pool.length - 1].item;
 }
 
+/** Time-based stamina regeneration using firstCreatedTimestamp */
 export function computeModulatedRegenAmounts(
     character: Character,
     data: InteractionData,
@@ -239,20 +238,23 @@ export function computeModulatedRegenAmounts(
     const latest = findLatestMessage(data, character);
     const lastMsg = latest?.message;
 
-    let chatRegen = sampleStochasticRegenAmount(maxChat);
-    let actionRegen = sampleStochasticRegenAmount(maxAction);
-
-    if (!lastMsg) return { chatRegen, actionRegen };
-
-    const timeSinceMs = Date.now() - lastMsg.lastUpdatedTimestamp;
-    if (maxChat !== Number.POSITIVE_INFINITY && maxChat > 0) {
-        const chatIdleFactor = timeSinceMs / (timeSinceMs + maxChat * 1000);
-        chatRegen *= (1 + chatIdleFactor);
+    if (!lastMsg) {
+        return { chatRegen: Math.max(1, maxChat), actionRegen: Math.max(1, maxAction) };
     }
-    if (maxAction !== Number.POSITIVE_INFINITY && maxAction > 0) {
-        const actionIdleFactor = timeSinceMs / (timeSinceMs + maxAction * 1000);
-        actionRegen *= (1 + actionIdleFactor);
-    }
+
+    const stamp = lastMsg.firstCreatedTimestamp || lastMsg.lastUpdatedTimestamp;
+    const elapsedSeconds = Math.max(0.5, (Date.now() - stamp) / 1000);
+
+    const REGEN_TIME_WINDOW_SEC = 15;
+    const chatRegenRate = (maxChat > 0 && maxChat !== Number.POSITIVE_INFINITY)
+        ? (maxChat / REGEN_TIME_WINDOW_SEC)
+        : 1;
+    const actionRegenRate = (maxAction > 0 && maxAction !== Number.POSITIVE_INFINITY)
+        ? (maxAction / REGEN_TIME_WINDOW_SEC)
+        : 1;
+
+    let chatRegen = Math.max(1, Math.round(elapsedSeconds * chatRegenRate));
+    let actionRegen = Math.max(1, Math.round(elapsedSeconds * actionRegenRate));
 
     const charLocId = getCurrentLocationId(data, character);
     const currentLoc = getCurrentLocation(data, character);
@@ -269,20 +271,19 @@ export function computeModulatedRegenAmounts(
     let densitySignal = socialPolarity * Math.log1p(coLocatedCount);
 
     if (isLocationOwner(character, currentLoc) && coLocatedCount > 0) {
-        const ownerBonus = Math.log1p(coLocatedCount) * 0.3;
-        densitySignal += ownerBonus;
+        densitySignal += Math.log1p(coLocatedCount) * 0.3;
     }
 
-    const rawSocialMult = 1 / (1 + Math.exp(-6 * (densitySignal - 0.3)));
-    const neutralBaseline = 1 / (1 + Math.exp(6 * 0.3));
+    const rawSocialMult = 1 / (1 + Math.exp(-4 * (densitySignal - 0.2)));
+    const neutralBaseline = 1 / (1 + Math.exp(4 * 0.2));
     const socialMultiplier = rawSocialMult / neutralBaseline;
 
-    chatRegen *= socialMultiplier;
-    actionRegen *= socialMultiplier;
+    chatRegen = Math.round(chatRegen * socialMultiplier);
+    actionRegen = Math.round(actionRegen * socialMultiplier);
 
     return {
-        chatRegen: Math.max(0, chatRegen),
-        actionRegen: Math.max(0, actionRegen),
+        chatRegen: Math.max(1, chatRegen),
+        actionRegen: Math.max(1, actionRegen),
     };
 }
 
@@ -299,14 +300,8 @@ export function computeEffectiveSkip(
     const lastMsg = latest?.message;
     const currentChat = lastMsg?.remainingChatStamina ?? maxChat;
     const staminaRatio = maxChat > 0 ? currentChat / maxChat : 1;
-    const depletionRaw = (1 - staminaRatio) * (1 - staminaRatio);
-    const dNorm = depletionRaw / (1 + depletionRaw);
 
-    let verbosityRaw = 0;
-    if (lastMsg && hasTextContent(lastMsg)) {
-        verbosityRaw = Math.log1p(countParagraphs(lastMsg.textContent));
-    }
-    const vNorm = verbosityRaw / (1 + verbosityRaw);
+    const depletion = staminaRatio < 0.2 ? (0.2 - staminaRatio) * 1.5 : 0;
 
     const winnerLocId = getCurrentLocationId(data, character);
     let weightedEscapeValue = 0;
@@ -318,27 +313,9 @@ export function computeEffectiveSkip(
             weightedEscapeValue += Math.max(0, weight);
         }
     }
-    const escapeRaw = Math.log1p(weightedEscapeValue);
-    const eNorm = escapeRaw / (1 + escapeRaw);
+    const escapeModifier = Math.min(0.2, Math.log1p(weightedEscapeValue) * 0.05);
 
-    const currentLoc = getCurrentLocation(data, character);
-    const homeWeight = currentLoc?.characterWeights?.[character.id] ?? 0;
-    const globalWeight = currentLoc?.globalWeight ?? 1;
-    let homeComfortRatio = globalWeight > 0 ? homeWeight / globalWeight : 0;
-
-    if (isLocationOwner(character, currentLoc)) {
-        homeComfortRatio = Math.max(homeComfortRatio, 1.0);
-    }
-
-    const comfortRaw = Math.log1p(Math.max(0, homeComfortRatio - 1));
-    const comfortNorm = comfortRaw / (1 + comfortRaw);
-
-    const combinedModulation = (dNorm + vNorm + eNorm) / 3;
-    const effectiveSkip = baseSkip
-        + (1 - baseSkip) * combinedModulation
-        - comfortNorm * baseSkip;
-
-    return 1 / (1 + Math.exp(-10 * (effectiveSkip - 0.5)));
+    return Math.min(0.75, Math.max(0, baseSkip + depletion + escapeModifier));
 }
 
 export function computeChatStaminaConsumptionCost(
@@ -349,68 +326,58 @@ export function computeChatStaminaConsumptionCost(
     if (paragraphs <= 0) return 0;
 
     const hasLocations = data.locations && data.locations.length > 0;
-    
-    let coLocatedCount: number;
+    let coLocatedCount;
+
     if (!hasLocations) {
-        coLocatedCount = data.participants.filter(p => p.id !== speaker.id).length;
+        coLocatedCount = Math.max(1, data.participants.filter(p => p.id !== speaker.id).length);
     } else {
         const speakerLocId = getCurrentLocationId(data, speaker);
-        const speakerLocation = getCurrentLocation(data, speaker);
         coLocatedCount = speakerLocId
-            ? data.participants.filter(p => {
-                if (p.id === speaker.id) return false;
-                const pLocId = getCurrentLocationId(data, p);
-                return pLocId === speakerLocId;
-            }).length
-            : 0;
-
-        if (isLocationOwner(speaker, speakerLocation)) {
-            coLocatedCount = Math.floor(coLocatedCount * 0.5);
-        }
+            ? Math.max(1, data.participants.filter(p => p.id !== speaker.id && getCurrentLocationId(data, p) === speakerLocId).length)
+            : 1;
     }
-    
-    const loadMultiplier = Math.sqrt(coLocatedCount);
-    return paragraphs * loadMultiplier;
+
+    return Math.max(1, Math.round((paragraphs * 0.5) * Math.sqrt(coLocatedCount)));
 }
 
 export function computeMovementCost(fromId: string, toId: string, locations: Location[]): number {
     if (fromId === toId) return 0;
     const fromLoc = locations.find(l => l.id === fromId);
     const distance = fromLoc?.locationDistances?.[toId];
-    
-    if (distance !== undefined) return Math.sqrt(Math.max(0, distance));
+
+    if (distance !== undefined) return Math.max(1, Math.round(Math.sqrt(Math.max(0, distance))));
     return 1; 
 }
 
 /**
- * Computes the dynamic tick delay for autonomous actions based PURELY on character stats and live interaction data.
- * No hardcoded caps; bounds are derived directly from the character's initiative weight.
+ * Pacing calculation:
+ * Uses cached local thread history from getLocalMessageHistory to evaluate consecutive turns.
  */
 export function computeAutonomousTickDelay(character: Character, data: InteractionData): number {
     const profile = data.profile;
     
-    // 1. Base bounds derived entirely from character's initiative (higher initiative = faster potential reactions)
+    const baseInterval = profile?.autonomousInteractionIntervalMs && profile.autonomousInteractionIntervalMs > 0
+        ? profile.autonomousInteractionIntervalMs
+        : 1000;
+
     const initiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
-    const minDelay = 1000 / initiative;  // Scaling factor: high initiative chars can react in ~500ms, low in ~2000ms
-    const maxDelay = 10000 / initiative; // Scaling factor: high initiative chars idle for ~5s, low for ~20s
+    const targetDelay = baseInterval / initiative;
 
-    // 2. Impatience factor (higher impatience = faster ticks)
-    const impatience = getEffectiveChatImpatienceSensitivity(character, profile);
-    const impatienceFactor = 1 / (1 + impatience);
+    const impatience = Math.max(0.1, getEffectiveChatImpatienceSensitivity(character, profile));
+    const impatienceFactor = 1 / (0.5 + 0.5 * impatience);
 
-    // 3. Name mention factor (if called by name, react MUCH faster based on their sensitivity)
     const mentionCount = getNameMentionCount(character, data);
     const nameSensitivity = getEffectiveNameSensitivity(character, profile);
-    const nameMentionBoost = 1 + Math.log1p(mentionCount * nameSensitivity);
+    const nameMentionBoost = 1 + Math.log1p(mentionCount * nameSensitivity * 2);
     const nameFactor = 1 / nameMentionBoost;
 
-    // 4. Time since last action factor (longer wait = higher urgency to act)
-    const timeSinceMs = getTimeSinceLastActionMs(data, character);
-    const timeFactor = 1 / (1 + Math.log1p(timeSinceMs / 5000)); // 5000ms is just a scaling constant for the log curve
+    // Fetch the thread strictly for verbal message types via timelineLogic
+    const thread = getLocalMessageHistory(data, character, ['chat', 'whisper']);
+    const consecutiveMonologueTurns = getConsecutiveTurnsByCharacter(thread, character.id);
+    const backoffResistance = impatience;
+    const backoffMultiplier = 1 + (consecutiveMonologueTurns * 0.75) / backoffResistance;
 
-    // Combine all dynamic factors
-    const dynamicDelay = maxDelay * impatienceFactor * nameFactor * timeFactor;
+    const dynamicDelay = targetDelay * impatienceFactor * nameFactor * backoffMultiplier;
 
-    // Clamp strictly to the character's own derived min/max bounds
-    return Math.max(minDelay, Math.min(maxDelay, dynamicDelay));
+    return Math.max(baseInterval * 0.5, Math.min(baseInterval * 5, dynamicDelay));
 }

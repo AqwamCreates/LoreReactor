@@ -2,15 +2,15 @@
 
 // --- Modifier System ---
 
-const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.2;
-const DEFAULT_CHAT_PROBABILITY_VALUE = 0.5;
-const DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE = 4;
-const DEFAULT_NAME_SENSITIVITY_VALUE = 1;
-const DEFAULT_SKIP_PROBABILITY_VALUE = 0;
-const DEFAULT_CHAT_IMPATIENCE_SENSITIVITY_VALUE = 0;
-const DEFAULT_MEMORY_RETENTION_WEIGHT_VALUE = 1;
-const DEFAULT_CONTEXT_RELEVANCE_SENSITIVITY_VALUE = 1;
-const DEFAULT_MAXIMUM_ACTION_STAMINA_VALUE = 5;
+const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.0;
+const DEFAULT_CHAT_PROBABILITY_VALUE = 0.8;          // Calibrated: 80% baseline chance to speak
+const DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE = 5;
+const DEFAULT_NAME_SENSITIVITY_VALUE = 1.0;
+const DEFAULT_SKIP_PROBABILITY_VALUE = 0.05;         // Natural small hesitation baseline (5%)
+const DEFAULT_CHAT_IMPATIENCE_SENSITIVITY_VALUE = 1.0; // Baseline: 1.0 is standard back-and-forth patience
+const DEFAULT_MEMORY_RETENTION_WEIGHT_VALUE = 1.0;
+const DEFAULT_CONTEXT_RELEVANCE_SENSITIVITY_VALUE = 1.0;
+const DEFAULT_MAXIMUM_ACTION_STAMINA_VALUE = 6;
 
 interface Modifier {
     keywords: string[];
@@ -22,9 +22,8 @@ const MODIFIERS: Modifier[] = [
     { keywords: ['extremely', 'incredibly', 'insanely', 'unbelievably', 'absolutely', 'totally', 'completely', 'utterly', 'annoyingly'], type: 'intensifier', strength: 2 },
     { keywords: ['very', 'highly', 'really', 'deeply', 'strongly', 'intensely', 'remarkably', 'exceptionally'], type: 'intensifier', strength: 1 },
     { keywords: ['somewhat', 'fairly', 'moderately', 'pretty', 'quite', 'rather', 'reasonably'], type: 'diminisher', strength: 0.5 },
-
     { keywords: ['barely', 'hardly', 'scarcely', 'not really', 'not very', 'not particularly'], type: 'diminisher', strength: 2 },
-    { keywords: ['slightly', 'mildly', 'a bit', 'a little', 'messageType of', 'sort of', 'marginally'], type: 'diminisher', strength: 1 },
+    { keywords: ['slightly', 'mildly', 'a bit', 'a little', 'sort of', 'marginally'], type: 'diminisher', strength: 1 },
 ];
 
 // --- Trait Rules ---
@@ -37,90 +36,91 @@ interface TraitRule {
 const INITIATIVE_WEIGHT_RULES: TraitRule[] = [
     { keywords: ['dominant', 'assertive', 'leader', 'commanding', 'alpha', 'boss', 'captain', 'general', 'authoritative'], value: 2.5 },
     { keywords: ['confident', 'outgoing', 'energetic', 'eager', 'enthusiastic', 'bold', 'forward', 'proactive'], value: 1.8 },
-    { keywords: ['normal', 'balanced', 'average', 'moderate', 'steady', 'calm', 'composed'], value: 1.2 },
-    { keywords: ['quiet', 'reserved', 'hesitant', 'cautious', 'passive', 'timid', 'meek', 'subdued'], value: 0.7 },
-    { keywords: ['shy', 'withdrawn', 'reclusive', 'introverted', 'wallflower', 'bashful', 'diffident'], value: 0.4 },
-    { keywords: ['silent', 'mute', 'nonverbal', 'observer', 'spectator', 'background', 'decorative', 'stoic'], value: 0.15 },
+    { keywords: ['normal', 'balanced', 'average', 'moderate', 'steady', 'calm', 'composed'], value: 1.0 },
+    { keywords: ['quiet', 'reserved', 'hesitant', 'cautious', 'passive', 'timid', 'meek', 'subdued'], value: 0.75 },
+    { keywords: ['shy', 'withdrawn', 'reclusive', 'introverted', 'wallflower', 'bashful', 'diffident'], value: 0.5 },
+    { keywords: ['silent', 'mute', 'nonverbal', 'observer', 'spectator', 'background', 'decorative', 'stoic'], value: 0.2 },
     { keywords: ['invisible', 'ghost', 'phantom', 'shadow', 'unnoticed', 'forgotten'], value: 0.0 },
 ];
 
 const CHAT_PROBABILITY_RULES: TraitRule[] = [
-    { keywords: ['talkative', 'chatty', 'verbose', 'garrulous', 'loquacious', 'extroverted', 'social', 'voluble'], value: 0.95 },
-    { keywords: ['friendly', 'open', 'communicative', 'expressive', 'warm', 'sociable', 'engaging', 'gregarious'], value: 0.78 },
-    { keywords: ['normal', 'balanced', 'moderate', 'average', 'conversational', 'standard', 'typical'], value: 0.5 },
-    { keywords: ['quiet', 'reserved', 'taciturn', 'brief', 'laconic', 'reticent', 'understated'], value: 0.38 },
-    { keywords: ['shy', 'anxious', 'nervous', 'reluctant', 'hesitant', 'insecure', 'fearful', 'apprehensive'], value: 0.22 },
-    { keywords: ['silent', 'mute', 'nonverbal', 'unresponsive', 'withdrawn', 'aloof', 'distant'], value: 0.08 },
+    { keywords: ['talkative', 'chatty', 'verbose', 'garrulous', 'loquacious', 'extroverted', 'social', 'voluble'], value: 0.98 },
+    { keywords: ['friendly', 'open', 'communicative', 'expressive', 'warm', 'sociable', 'engaging', 'gregarious'], value: 0.90 },
+    { keywords: ['normal', 'balanced', 'moderate', 'average', 'conversational', 'standard', 'typical'], value: 0.80 },
+    { keywords: ['quiet', 'reserved', 'taciturn', 'brief', 'laconic', 'reticent', 'understated'], value: 0.65 },
+    { keywords: ['shy', 'anxious', 'nervous', 'reluctant', 'hesitant', 'insecure', 'fearful', 'apprehensive'], value: 0.50 },
+    { keywords: ['silent', 'mute', 'nonverbal', 'unresponsive', 'withdrawn', 'aloof', 'distant'], value: 0.20 },
     { keywords: ['catatonic', 'comatose', 'unconscious', 'vegetative', 'inert'], value: 0.0 },
 ];
 
 const MAXIMUM_CHAT_STAMINA_RULES: TraitRule[] = [
     { keywords: ['hyperactive', 'manic', 'relentless', 'tireless', 'obsessive', 'compulsive', 'unstoppable', 'boundless'], value: 10 },
     { keywords: ['energetic', 'enduring', 'persistent', 'determined', 'focused', 'driven', 'vigorous', 'dynamic'], value: 7 },
-    { keywords: ['normal', 'balanced', 'moderate', 'average', 'conversational', 'standard', 'typical'], value: 4 },
-    { keywords: ['brief', 'concise', 'terse', 'curt', 'succinct', 'economical', 'short-spoken'], value: 2.5 },
-    { keywords: ['exhausted', 'weak', 'frail', 'fatigued', 'breathless', 'wounded', 'weary'], value: 1.5 },
-    { keywords: ['dying', 'fading', 'failing', 'debilitated', 'crippled', 'broken'], value: 0.8 },
+    { keywords: ['normal', 'balanced', 'moderate', 'average', 'conversational', 'standard', 'typical'], value: 5 },
+    { keywords: ['brief', 'concise', 'terse', 'curt', 'succinct', 'economical', 'short-spoken'], value: 3 },
+    { keywords: ['exhausted', 'weak', 'frail', 'fatigued', 'breathless', 'wounded', 'weary'], value: 2 },
+    { keywords: ['dying', 'fading', 'failing', 'debilitated', 'crippled', 'broken'], value: 1 },
     { keywords: ['incapacitated', 'unconscious', 'asleep', 'paralyzed', 'comatose', 'dead', 'inert'], value: 0 },
 ];
 
 const NAME_SENSITIVITY_RULES: TraitRule[] = [
-    { keywords: ['attentive', 'responsive', 'eager', 'alert', 'reactive', 'prompt', 'quick to respond', 'always listening'], value: 3 },
-    { keywords: ['aware', 'observant', 'mindful', 'present', 'engaged', 'interested', 'receptive'], value: 2 },
-    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 1 },
+    { keywords: ['attentive', 'responsive', 'eager', 'alert', 'reactive', 'prompt', 'quick to respond', 'always listening'], value: 3.0 },
+    { keywords: ['aware', 'observant', 'mindful', 'present', 'engaged', 'interested', 'receptive'], value: 2.0 },
+    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 1.0 },
     { keywords: ['distracted', 'absent-minded', 'preoccupied', 'inattentive', 'oblivious', 'spaced out'], value: 0.5 },
     { keywords: ['deaf', 'unresponsive', 'ignoring', 'dismissive', 'indifferent', 'uncaring', 'apathetic'], value: 0.2 },
-    { keywords: ['unreachable', 'detached', 'isolated', 'unaware', 'oblivious to surroundings'], value: 0 },
+    { keywords: ['unreachable', 'detached', 'isolated', 'unaware', 'oblivious to surroundings'], value: 0.0 },
 ];
 
+// CALIBRATED: Higher = More impatient / Restless / Ignores silence hints. Lower = Patient / Deliberate / Backs off.
 const CHAT_IMPATIENCE_SENSITIVITY_RULES: TraitRule[] = [
+    { keywords: ['obsessive', 'manic', 'fixated', 'relentless', 'unrelenting', 'hyperactive', 'unhinged', 'hyper-focused'], value: 2.5 },
+    { keywords: ['impatient', 'eager', 'quick', 'impulsive', 'immediate', 'instant', 'rapid', 'hasty', 'pushy'], value: 1.8 },
+    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 1.0 },
     { keywords: ['hesitant', 'slow to respond', 'deliberate', 'thoughtful', 'pausing', 'reflective', 'contemplative', 'measured'], value: 0.6 },
-    { keywords: ['cautious', 'careful', 'guarded', 'wary', 'tentative', 'unsure', 'uncertain', 'reluctant'], value: 0.45 },
-    { keywords: ['shy', 'timid', 'nervous', 'anxious', 'apprehensive', 'insecure', 'bashful'], value: 0.35 },
-    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 0 },
-    { keywords: ['eager', 'quick', 'impulsive', 'immediate', 'instant', 'rapid', 'hasty'], value: 0 },
-    { keywords: ['slow', 'sluggish', 'lethargic', 'drowsy', 'fatigued', 'exhausted', 'weary'], value: 0.5 },
-    { keywords: ['catatonic', 'unresponsive', 'frozen', 'paralyzed', 'stunned', 'shocked', 'speechless'], value: 0.9 },
+    { keywords: ['cautious', 'careful', 'guarded', 'wary', 'tentative', 'unsure', 'uncertain', 'reluctant'], value: 0.4 },
+    { keywords: ['shy', 'timid', 'nervous', 'anxious', 'apprehensive', 'insecure', 'bashful'], value: 0.25 },
+    { keywords: ['patient', 'slow', 'sluggish', 'stoic', 'calm', 'serene', 'composed'], value: 0.1 },
+    { keywords: ['catatonic', 'unresponsive', 'frozen', 'paralyzed', 'stunned', 'speechless'], value: 0.0 },
 ];
 
 const SKIP_PROBABILITY_RULES: TraitRule[] = [
-    { keywords: ['evasive', 'elusive', 'avoidant', 'dodgy', 'slippery', 'noncommittal', 'evasive', 'deflective'], value: 0.7 },
-    { keywords: ['secretive', 'guarded', 'private', 'closed-off', 'withholding', 'tight-lipped', 'circumspect'], value: 0.55 },
-    { keywords: ['shy', 'timid', 'nervous', 'anxious', 'apprehensive', 'insecure', 'bashful', 'diffident'], value: 0.4 },
-    { keywords: ['stoic', 'reserved', 'restrained', 'controlled', 'disciplined', 'measured', 'deliberate'], value: 0.3 },
-    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 0 },
-    { keywords: ['eager', 'impulsive', 'forthcoming', 'candid', 'open', 'transparent', 'direct', 'straightforward'], value: 0 },
-    { keywords: ['talkative', 'chatty', 'verbose', 'garrulous', 'loquacious', 'voluble', 'expressive'], value: 0 },
     { keywords: ['catatonic', 'unresponsive', 'frozen', 'paralyzed', 'stunned', 'speechless', 'mute'], value: 0.95 },
+    { keywords: ['evasive', 'elusive', 'avoidant', 'dodgy', 'slippery', 'noncommittal', 'deflective'], value: 0.45 },
+    { keywords: ['secretive', 'guarded', 'private', 'closed-off', 'withholding', 'tight-lipped'], value: 0.30 },
+    { keywords: ['shy', 'timid', 'nervous', 'anxious', 'apprehensive', 'insecure', 'bashful'], value: 0.20 },
+    { keywords: ['stoic', 'reserved', 'restrained', 'controlled', 'disciplined', 'measured'], value: 0.10 },
+    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 0.05 },
+    { keywords: ['eager', 'impulsive', 'forthcoming', 'candid', 'open', 'transparent', 'direct', 'talkative', 'chatty'], value: 0.0 },
 ];
 
 const MEMORY_RETENTION_WEIGHT_RULES: TraitRule[] = [
-    { keywords: ['eidetic', 'photographic memory', 'perfect recall', 'never forgets', 'remembers everything', 'encyclopedic'], value: 2 },
+    { keywords: ['eidetic', 'photographic memory', 'perfect recall', 'never forgets', 'remembers everything', 'encyclopedic'], value: 2.0 },
     { keywords: ['sharp', 'astute', 'perceptive', 'detail-oriented', 'meticulous', 'thorough', 'observant'], value: 1.5 },
-    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 1 },
+    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 1.0 },
     { keywords: ['forgetful', 'absent-minded', 'scatterbrained', 'distracted', 'careless', 'inattentive'], value: 0.5 },
     { keywords: ['amnesiac', 'memory loss', 'senile', 'dementia', 'confused', 'disoriented'], value: 0.2 },
-    { keywords: ['goldfish', 'no memory', 'blank slate', 'tabula rasa', 'complete amnesia'], value: 0 },
+    { keywords: ['goldfish', 'no memory', 'blank slate', 'tabula rasa', 'complete amnesia'], value: 0.0 },
 ];
 
 const CONTEXT_RELEVANCE_SENSITIVITY_RULES: TraitRule[] = [
-    { keywords: ['perceptive', 'observant', 'aware', 'attentive', 'mindful', 'sharp-eyed', 'keen', 'vigilant'], value: 1.5 },
-    { keywords: ['detective', 'investigator', 'analyst', 'scrutinizing', 'analytical', 'detail-oriented', 'thorough'], value: 2 },
-    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 1 },
-    { keywords: ['oblivious', 'unaware', 'clueless', 'dense', 'thick-headed', 'unobservant', 'blind to'], value: 0.5 },
+    { keywords: ['detective', 'investigator', 'analyst', 'scrutinizing', 'analytical', 'detail-oriented', 'thorough'], value: 2.0 },
+    { keywords: ['perceptive', 'observant', 'aware', 'attentive', 'mindful', 'sharp-eyed', 'keen', 'vigilant', 'inventor', 'engineer'], value: 1.5 },
+    { keywords: ['normal', 'balanced', 'average', 'moderate', 'standard', 'typical'], value: 1.0 },
     { keywords: ['naive', 'innocent', 'gullible', 'trusting', 'unsuspecting', 'credulous'], value: 0.7 },
-    { keywords: ['blind', 'deaf', 'senseless', 'unfeeling', 'numb', 'imperceptive', 'insensible'], value: 0.1 },
-    { keywords: ['catatonic', 'unconscious', 'comatose', 'vegetative', 'inert'], value: 0 },
+    { keywords: ['oblivious', 'unaware', 'clueless', 'dense', 'thick-headed', 'unobservant'], value: 0.5 },
+    { keywords: ['blind', 'deaf', 'senseless', 'unfeeling', 'numb', 'imperceptive'], value: 0.1 },
+    { keywords: ['catatonic', 'unconscious', 'comatose', 'vegetative', 'inert'], value: 0.0 },
 ];
 
 const MAXIMUM_ACTION_STAMINA_RULES: TraitRule[] = [
-    { keywords: ['hyperactive', 'restless', 'fidgety', 'kinetic', 'perpetual motion', 'can\'t sit still', 'always moving', 'boundless energy'], value: 10 },
-    { keywords: ['athletic', 'agile', 'nimble', 'spry', 'active', 'physical', 'fit', 'mobile', 'adventurous', 'explorer'], value: 7 },
+    { keywords: ['hyperactive', 'restless', 'fidgety', 'kinetic', 'perpetual motion', 'always moving', 'boundless energy'], value: 10 },
+    { keywords: ['athletic', 'agile', 'nimble', 'spry', 'active', 'physical', 'fit', 'mobile', 'adventurous'], value: 7 },
     { keywords: ['normal', 'balanced', 'moderate', 'average', 'standard', 'typical'], value: 5 },
     { keywords: ['sedentary', 'inactive', 'lazy', 'sluggish', 'lethargic', 'couch potato', 'stationary'], value: 3 },
     { keywords: ['frail', 'weak', 'delicate', 'fragile', 'elderly', 'infirm', 'decrepit'], value: 2 },
     { keywords: ['bedridden', 'immobilized', 'crippled', 'disabled', 'paralyzed', 'wheelchair-bound'], value: 1 },
-    { keywords: ['incapacitated', 'unconscious', 'comatose', 'catatonic', 'vegetative', 'inert', 'dead'], value: 0 },
+    { keywords: ['incapacitated', 'unconscious', 'comatose', 'catatonic', 'vegetative', 'dead'], value: 0 },
 ];
 
 // --- Core Detection Logic ---
