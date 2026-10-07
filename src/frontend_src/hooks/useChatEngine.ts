@@ -128,9 +128,16 @@ export function useChatEngine(deps: EngineDependencies) {
             costWithoutCacheMisses: prev.costWithoutCacheMisses + result.statsDelta.costWithoutCacheMisses,
         }));
 
-        const effectiveData = isResuming
+        // PRESERVE LIVE PROFILE: Keep the current live profile from state (e.g. if autonomousMode was toggled off)
+        const liveProfile = getState().interactionData?.profile;
+        const baseUpdated = isResuming
             ? (getState().interactionData ?? result.updatedData)
             : result.updatedData;
+
+        const effectiveData: InteractionData = {
+            ...baseUpdated,
+            profile: liveProfile ?? baseUpdated.profile,
+        };
         
         return {
             interactionData: effectiveData,

@@ -71,7 +71,8 @@ export async function runTurnSequence(
 ): Promise<{ interactionData: InteractionData; isCompleted: boolean } | null> {
 
     const emitIntermediateData = (data: InteractionData) => {
-        if (!onIntermediateData) return;
+        // Drop intermediate state emissions immediately if aborted
+        if (!onIntermediateData || abortController.signal.aborted) return;
         const newHistories: Record<string, HistoryMessage[]> = {};
         for (const [locId, msgs] of Object.entries(data.interactionHistories || {})) {
             newHistories[locId] = [...msgs];

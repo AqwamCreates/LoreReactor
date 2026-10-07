@@ -21,6 +21,13 @@ export class CharacterSoul {
         acquireLock?: () => boolean,
         releaseLock?: () => void,
     ): void {
+        const initialData = getData();
+        // Do not even start if autonomous mode is disabled
+        if (!initialData || !initialData.profile?.autonomousMode) {
+            this.stop();
+            return;
+        }
+
         if (this.isRunning) return;
         this.isRunning = true;
         this.isExecuting = false;
@@ -28,9 +35,7 @@ export class CharacterSoul {
         this.acquireLock = acquireLock ?? null;
         this.releaseLock = releaseLock ?? null;
 
-        const initialData = getData();
-        const initialDelay = initialData?.profile?.autonomousInteractionIntervalMs || 1000;
-
+        const initialDelay = initialData.profile.autonomousInteractionIntervalMs || 1000;
         this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, initialDelay);
     }
 
@@ -55,9 +60,10 @@ export class CharacterSoul {
 
             const data = getData();
 
-            // ─── THE GATEKEEPER ───
+            // ─── STRICT GATEKEEPER: FULL HALT ───
+            // If autonomous mode was toggled off, HARD STOP immediately. Do NOT reschedule!
             if (!data || !data.profile?.autonomousMode) {
-                this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, 2000);
+                this.stop();
                 return;
             }
 
@@ -80,7 +86,7 @@ export class CharacterSoul {
                 const aiParticipants = data.participants.filter(p => !protagonistIds.has(p.id));
 
                 if (aiParticipants.length === 0) {
-                    this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, Math.max(baseInterval, 3000));
+                    this.stop();
                     return;
                 }
 
@@ -88,7 +94,6 @@ export class CharacterSoul {
                     this.abortController = new AbortController();
                 }
 
-                // Explicitly pass { singleTurn: true } so autonomous ticks ONLY execute 1 character
                 const result = await runTurnSequence(
                     data,
                     executor,
@@ -98,37 +103,58 @@ export class CharacterSoul {
                     { singleTurn: true }
                 );
 
+                // If stopped or aborted during the turn, exit immediately and do NOT persist or reschedule
                 if (!this.isRunning || this.abortController?.signal.aborted) {
                     return;
                 }
 
-                const updatedData = result?.interactionData ?? data;
+                const freshDataAfterTurn = getData();
+                // If autonomous mode was toggled off while the model was generating, HARD STOP now
+                if (!freshDataAfterTurn || !freshDataAfterTurn.profile?.autonomousMode) {
+                    this.stop();
+                    return;
+                }
+
                 if (result) {
-                    setData(updatedData);
+                    // PRESERVE LIVE PROFILE: Never overwrite the user's latest profile with the pre-turn snapshot
+                    const mergedData: InteractionData = {
+                        ...result.interactionData,
+                        profile: freshDataAfterTurn.profile,
+                        lastUpdatedTimestamp: Date.now()
+                    };
+                    setData(mergedData);
+                }
+
+                const finalData = getData() ?? data;
+                if (!finalData.profile?.autonomousMode) {
+                    this.stop();
+                    return;
                 }
 
                 let mostUrgentChar = aiParticipants[0];
                 let maxScore = -1;
 
                 for (const char of aiParticipants) {
-                    const score = computeGlobalScore(char, updatedData);
+                    const score = computeGlobalScore(char, finalData);
                     if (score > maxScore) {
                         maxScore = score;
                         mostUrgentChar = char;
                     }
                 }
 
-                const dynamicDelay = computeAutonomousTickDelay(mostUrgentChar, updatedData);
-
+                const dynamicDelay = computeAutonomousTickDelay(mostUrgentChar, finalData);
                 this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, dynamicDelay);
 
             } catch (e) {
                 if ((e as Error).name !== 'AbortError') {
                     console.warn('CharacterSoul evaluation failed:', e);
                 }
-                if (this.isRunning && !this.abortController?.signal.aborted) {
-                    const fallbackDelay = data?.profile?.autonomousInteractionIntervalMs || 1500;
+                const freshData = getData();
+                if (this.isRunning && !this.abortController?.signal.aborted && freshData?.profile?.autonomousMode) {
+                    const fallbackDelay = freshData.profile.autonomousInteractionIntervalMs || 1500;
                     this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, fallbackDelay);
+                } else {
+                    this.stop();
                 }
             } finally {
                 this.isExecuting = false;
