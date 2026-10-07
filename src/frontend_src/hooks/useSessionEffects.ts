@@ -63,11 +63,18 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
         saveRawSessionData({ selectedModelId: selectedModelId ?? null });
     }, [selectedModelId]);
 
-    // Activate budget strategy when selectedBudgetStrategyId changes
+    // Activate or cleanly deactivate budget strategy when selectedBudgetStrategyId changes
     useEffect(() => {
-        if (!selectedBudgetStrategyId || allBudgetStrategies.length === 0) return;
+        if (!selectedBudgetStrategyId) {
+            // FIX: Explicitly nullify active strategy when no strategy is selected
+            setActiveBudgetStrategy(null);
+            return;
+        }
+        if (allBudgetStrategies.length === 0) return;
+
         const strategy = allBudgetStrategies.find(s => s.id === selectedBudgetStrategyId);
         if (!strategy) {
+            setActiveBudgetStrategy(null);
             saveRawSessionData({ selectedBudgetStrategyId: null });
             return;
         }

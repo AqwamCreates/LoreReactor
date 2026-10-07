@@ -108,10 +108,19 @@ export const useSessionStore = create<SessionState>()((set, get) => {
     loadRawSessionData()
         .then((session) => {
             const updates: Partial<SessionState> = { sessionLoaded: true };
-            if (session.selectedModelId !== undefined) updates.selectedModelId = session.selectedModelId;
-            if (session.selectedBudgetStrategyId !== undefined) updates.selectedBudgetStrategyId = session.selectedBudgetStrategyId;
             if (session.selectedCharacterId !== undefined) updates.selectedCharacterId = session.selectedCharacterId;
             if (session.currentAccountId !== undefined) updates.currentAccountId = session.currentAccountId;
+
+            // Mutual exclusivity on bootstrap hydration:
+            // If both were previously saved, resolve conflicts cleanly
+            if (session.selectedBudgetStrategyId) {
+                updates.selectedBudgetStrategyId = session.selectedBudgetStrategyId;
+                updates.selectedModelId = null;
+            } else if (session.selectedModelId) {
+                updates.selectedModelId = session.selectedModelId;
+                updates.selectedBudgetStrategyId = null;
+            }
+
             set(updates);
         })
         .catch((e) => {
@@ -177,11 +186,17 @@ export const useSessionStore = create<SessionState>()((set, get) => {
         },
 
         setActiveStrategy: (strategy) => {
-            set({ activeStrategy: strategy });
+            set({ 
+                activeStrategy: strategy,
+                ...(strategy ? { selectedModel: null, selectedModelId: null } : {})
+            });
         },
 
         setSelectedModel: (model) => {
-            set({ selectedModel: model });
+            set({ 
+                selectedModel: model,
+                ...(model ? { activeStrategy: null, selectedBudgetStrategyId: null } : {})
+            });
         },
 
         updateRunningModels: (models) => {
@@ -194,6 +209,7 @@ export const useSessionStore = create<SessionState>()((set, get) => {
         },
 
         setLastSelectedModelId: (id) => {
+            // Internal telemetry reported by BudgetStrategyEngine — does not clear strategy
             set({ selectedModelId: id });
         },
 
@@ -225,7 +241,6 @@ export const useSessionStore = create<SessionState>()((set, get) => {
             set({ 
                 editingId: id, 
                 editDraft: draft,
-                // Close the active toolbar if we are opening the edit mode
                 activeToolbarId: id ? null : get().activeToolbarId 
             });
         },
@@ -262,7 +277,7 @@ export const useSessionStore = create<SessionState>()((set, get) => {
             });
         },
 
-        // ── Message & Chat Actions (Eliminates Prop Drilling) ────────────
+        // ── Message & Chat Actions ────────────────────────────────────
         copyToClipboard: async (text: string) => {
             try {
                 await navigator.clipboard.writeText(text);
@@ -276,7 +291,6 @@ export const useSessionStore = create<SessionState>()((set, get) => {
             if (!interactionData) return;
             try {
                 await deleteRawMessage(id);
-                // ✅ FIX: Added await since deleteMessage returns a Promise<InteractionData>
                 const updated = await deleteMessage(interactionData, id);
                 set({ interactionData: updated });
             } catch (e) {
@@ -312,15 +326,22 @@ export const useSessionStore = create<SessionState>()((set, get) => {
             }
         },
 
-        // ── Preference Actions ───────────────────────────────────────
+        // ── Preference Actions (Mutually Exclusive Model & Strategy) ───
         setSelectedCharacterId: (id) => {
             set({ selectedCharacterId: id });
             saveRawSessionData({ selectedCharacterId: id });
         },
 
         setSelectedModelId: (id) => {
-            set({ selectedModelId: id });
-            saveRawSessionData({ selectedModelId: id });
+            set({ 
+                selectedModelId: id,
+                // Selecting a manual model deselects and deactivates any budget strategy
+                ...(id ? { selectedBudgetStrategyId: null, activeStrategy: null } : { selectedModel: null }),
+            });
+            saveRawSessionData({ 
+                selectedModelId: id,
+                ...(id ? { selectedBudgetStrategyId: null } : {}),
+            });
         },
 
         setSelectedProfileId: (id) => {
@@ -329,8 +350,15 @@ export const useSessionStore = create<SessionState>()((set, get) => {
         },
 
         setSelectedBudgetStrategyId: (id) => {
-            set({ selectedBudgetStrategyId: id });
-            saveRawSessionData({ selectedBudgetStrategyId: id });
+            set({ 
+                selectedBudgetStrategyId: id,
+                // Activating a budget strategy deselects any manual model
+                ...(id ? { selectedModelId: null, selectedModel: null } : { activeStrategy: null }),
+            });
+            saveRawSessionData({ 
+                selectedBudgetStrategyId: id,
+                ...(id ? { selectedModelId: null } : {}),
+            });
         },
 
         setActiveChatId: (id) => {

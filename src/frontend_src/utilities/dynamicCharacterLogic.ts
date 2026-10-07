@@ -139,6 +139,11 @@ export function computeGlobalScore(character: Character, data: InteractionData):
     return staminaRatio * effectiveInitiative * timeMultiplier;
 }
 
+/**
+ * Continuous Exhaustion Curve:
+ * Rather than a hard stop, willingness decays gracefully with output volume
+ * and consecutive monologue turns.
+ */
 export function computeChatScore(character: Character, data: InteractionData): number {
     const profile = data.profile;
     const latest = findLatestMessage(data, character);
@@ -147,14 +152,27 @@ export function computeChatScore(character: Character, data: InteractionData): n
     const maxChat = getEffectiveMaximumChatStamina(character, profile);
     const remainingChat = lastMsg?.remainingChatStamina ?? maxChat;
 
-    // Real stamina exhaustion: yield cleanly if stamina is depleted
+    // Hard floor: fully depleted stamina yields cleanly
     if (maxChat > 0 && maxChat !== Number.POSITIVE_INFINITY && remainingChat <= 0) {
         return 0;
     }
 
-    const staminaRatio = (maxChat <= 0 || maxChat === Number.POSITIVE_INFINITY)
+    const rawStaminaRatio = (maxChat <= 0 || maxChat === Number.POSITIVE_INFINITY)
         ? 1.0
-        : remainingChat / maxChat;
+        : Math.max(0, Math.min(1, remainingChat / maxChat));
+
+    // 1. Continuous Stamina Decay (Power curve)
+    const staminaWillingness = Math.pow(rawStaminaRatio, 1.5);
+
+    // 2. Monologue Fatigue Curve:
+    // Turn 0 (responding to another): factor = 1.0 (Fresh)
+    // Turn 1 (adding follow-up):      factor ≈ 0.45
+    // Turn 2 (rambling):             factor ≈ 0.28
+    const thread = getLocalMessageHistory(data, character, ['chat', 'whisper']);
+    const consecutiveTurns = getConsecutiveTurnsByCharacter(thread, character.id);
+    const impatience = Math.max(0.1, getEffectiveChatImpatienceSensitivity(character, profile));
+    const monologueResistance = 0.8 + (impatience * 0.4);
+    const monologueFatigue = 1 / (1 + (consecutiveTurns * 1.5) / monologueResistance);
 
     const baseInitiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
     const localRank = getLocalInitiativeRank(character, data);
@@ -165,7 +183,6 @@ export function computeChatScore(character: Character, data: InteractionData): n
     const timeMultiplier = 1 + Math.log1p(timeSince / 1000);
 
     const turnsSince = getTurnsSinceLastSpoken(getLocalMessageHistory(data, character, ['chat']), character.id);
-    const impatience = Math.max(0, getEffectiveChatImpatienceSensitivity(character, profile));
 
     const charLocId = getCurrentLocationId(data, character);
     let localActivityDensity = 0;
@@ -183,19 +200,13 @@ export function computeChatScore(character: Character, data: InteractionData): n
     
     const patienceBoost = Math.log1p(localActivityDensity);
     const effectiveImpatience = impatience / (1 + patienceBoost);
-
     const compressedImpatience = 1 + Math.log1p((turnsSince + 0.5) * effectiveImpatience);
 
     const mentionCount = getNameMentionCount(character, data);
     const nameSensitivity = getEffectiveNameSensitivity(character, profile);
     const nameMentionBoost = 1 + Math.log1p(mentionCount * nameSensitivity);
 
-    // Monologue fatigue penalty: discourage repeated solo turns
-    const thread = getLocalMessageHistory(data, character, ['chat', 'whisper']);
-    const consecutiveMonologueTurns = getConsecutiveTurnsByCharacter(thread, character.id);
-    const monologueFatigue = 1 / (1 + consecutiveMonologueTurns * 1.5);
-
-    return staminaRatio * effectiveInitiative * timeMultiplier * compressedImpatience * nameMentionBoost * monologueFatigue;
+    return staminaWillingness * monologueFatigue * effectiveInitiative * timeMultiplier * compressedImpatience * nameMentionBoost;
 }
 
 export function computeActionScore(character: Character, data: InteractionData, triggeringMessageText?: string): number {
@@ -243,7 +254,12 @@ export function weightedSample<T>(pool: { item: T; weight: number }[]): T | null
     return pool[pool.length - 1].item;
 }
 
-/** Time-based stamina regeneration using firstCreatedTimestamp */
+/**
+ * Stamina Modulation:
+ * Physical action stamina (movement) regenerates passively with time.
+ * Chat stamina ONLY trickle-recharges after prolonged silence (> 25s) to allow ambient silence breaking,
+ * not every 1-second tick!
+ */
 export function computeModulatedStaminaRegenationAmounts(
     character: Character,
     data: InteractionData,
@@ -261,45 +277,22 @@ export function computeModulatedStaminaRegenationAmounts(
     const stamp = lastMsg.firstCreatedTimestamp || lastMsg.lastUpdatedTimestamp;
     const elapsedSeconds = Math.max(0.5, (Date.now() - stamp) / 1000);
 
-    const REGEN_TIME_WINDOW_SEC = 15;
-    const chatRegenRate = (maxChat > 0 && maxChat !== Number.POSITIVE_INFINITY)
-        ? (maxChat / REGEN_TIME_WINDOW_SEC)
-        : 1;
+    // Movement stamina recovers over a 30s window
     const actionRegenRate = (maxAction > 0 && maxAction !== Number.POSITIVE_INFINITY)
-        ? (maxAction / REGEN_TIME_WINDOW_SEC)
+        ? (maxAction / 30)
         : 1;
+    let actionRegen = Math.max(0, Math.round(elapsedSeconds * actionRegenRate));
 
-    let chatRegen = Math.max(1, Math.round(elapsedSeconds * chatRegenRate));
-    let actionRegen = Math.max(1, Math.round(elapsedSeconds * actionRegenRate));
-
-    const charLocId = getCurrentLocationId(data, character);
-    const currentLoc = getCurrentLocation(data, character);
-    const coLocatedCount = charLocId
-        ? data.participants.filter(p => {
-            if (p.id === character.id) return false;
-            const pLocId = getCurrentLocationId(data, p);
-            return pLocId === charLocId;
-        }).length
-        : 0;
-
-    const baseSkip = getEffectiveSkipProbability(character, profile);
-    const socialPolarity = 0.5 - baseSkip;
-    let densitySignal = socialPolarity * Math.log1p(coLocatedCount);
-
-    if (isLocationOwner(character, currentLoc) && coLocatedCount > 0) {
-        densitySignal += Math.log1p(coLocatedCount) * 0.3;
+    // Conversational stamina does NOT refill on an arbitrary 1-second clock.
+    // It only trickles in after a prolonged quiet lull (> 25 seconds) to break silence.
+    let chatRegen = 0;
+    if (elapsedSeconds > 25) {
+        chatRegen = 1;
     }
 
-    const rawSocialMult = 1 / (1 + Math.exp(-4 * (densitySignal - 0.2)));
-    const neutralBaseline = 1 / (1 + Math.exp(4 * 0.2));
-    const socialMultiplier = rawSocialMult / neutralBaseline;
-
-    chatRegen = Math.round(chatRegen * socialMultiplier);
-    actionRegen = Math.round(actionRegen * socialMultiplier);
-
     return {
-        chatRegen: Math.max(1, chatRegen),
-        actionRegen: Math.max(1, actionRegen),
+        chatRegen,
+        actionRegen,
     };
 }
 
@@ -317,7 +310,12 @@ export function computeEffectiveSkip(
     const currentChat = lastMsg?.remainingChatStamina ?? maxChat;
     const staminaRatio = maxChat > 0 ? currentChat / maxChat : 1;
 
-    const depletion = staminaRatio < 0.2 ? (0.2 - staminaRatio) * 1.5 : 0;
+    // Conversational Pause: Each consecutive turn increases the natural urge to yield the floor
+    const thread = getLocalMessageHistory(data, character, ['chat', 'whisper']);
+    const consecutiveTurns = getConsecutiveTurnsByCharacter(thread, character.id);
+    const monologuePause = consecutiveTurns > 0 ? Math.min(0.55, consecutiveTurns * 0.25) : 0;
+
+    const depletion = staminaRatio < 0.25 ? (0.25 - staminaRatio) * 1.5 : 0;
 
     const winnerLocId = getCurrentLocationId(data, character);
     let weightedEscapeValue = 0;
@@ -331,7 +329,7 @@ export function computeEffectiveSkip(
     }
     const escapeModifier = Math.min(0.2, Math.log1p(weightedEscapeValue) * 0.05);
 
-    return Math.min(0.75, Math.max(0, baseSkip + depletion + escapeModifier));
+    return Math.min(0.85, Math.max(0, baseSkip + depletion + monologuePause + escapeModifier));
 }
 
 export function computeChatStaminaConsumptionCost(
@@ -366,8 +364,11 @@ export function computeMovementCost(fromId: string, toId: string, locations: Loc
 }
 
 /**
- * Pacing calculation:
- * Strictly respects the configured autonomous interval as the lower bound.
+ * Organic Pacing:
+ * Couples exhaustion directly to pacing:
+ * - Fresh (responding to another person): fast tempo (baseInterval).
+ * - Follow-up thought: natural hesitation pause (1.5x - 2.0x baseInterval).
+ * - Trailing off (monologue): long pause before continuing (3.0x+ baseInterval).
  */
 export function computeAutonomousTickDelay(character: Character, data: InteractionData): number {
     const profile = data.profile;
@@ -387,14 +388,13 @@ export function computeAutonomousTickDelay(character: Character, data: Interacti
     const nameMentionBoost = 1 + Math.log1p(mentionCount * nameSensitivity * 2);
     const nameFactor = 1 / nameMentionBoost;
 
-    // Fetch the thread strictly for verbal message types via timelineLogic
+    // Pacing hesitation scales with consecutive monologue turns
     const thread = getLocalMessageHistory(data, character, ['chat', 'whisper']);
-    const consecutiveMonologueTurns = getConsecutiveTurnsByCharacter(thread, character.id);
-    const backoffResistance = impatience;
-    const backoffMultiplier = 1 + (consecutiveMonologueTurns * 1.5) / backoffResistance;
+    const consecutiveTurns = getConsecutiveTurnsByCharacter(thread, character.id);
+    const cadenceHesitation = 1 + (consecutiveTurns * 1.5);
 
-    const dynamicDelay = targetDelay * impatienceFactor * nameFactor * backoffMultiplier;
+    const dynamicDelay = targetDelay * impatienceFactor * nameFactor * cadenceHesitation;
 
-    // Enforce baseInterval as the strict minimum floor
-    return Math.max(baseInterval, Math.min(baseInterval * 10, dynamicDelay));
+    // Base interval is the strict floor
+    return Math.max(baseInterval, Math.min(baseInterval * 8, dynamicDelay));
 }

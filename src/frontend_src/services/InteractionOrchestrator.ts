@@ -1,6 +1,6 @@
 // frontend_src/services/InteractionOrchestrator.ts
 import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage, Location } from '../types';
-import { getEffectiveChatProbability, consumeChatStaminaForMessage, consumeActionStaminaForMessage, generateActionStaminaForInteractionData, generateChatStaminaForInteractionData, getEffectiveChatImpatienceSensitivity } from '../utilities/characterLogic';
+import { getEffectiveChatProbability, consumeChatStaminaForMessage, consumeActionStaminaForMessage, generateActionStaminaForInteractionData, generateChatStaminaForInteractionData, getEffectiveChatImpatienceSensitivity, getEffectiveMaximumChatStamina } from '../utilities/characterLogic';
 import { getCurrentLocationId, findLocationByRegularExpression, getReachableLocationsByCharacter, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -19,7 +19,7 @@ import type { HandleServerResponseResult } from '../hooks/useChatEngine';
 type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal) => Promise<HandleServerResponseResult | null>;
 
 export interface TurnSequenceOptions {
-    singleTurn?: boolean; // When true (Autonomous mode), stops after 1 character acts/speaks
+    singleTurn?: boolean; // True in Autonomous mode, false in manual chat
 }
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
@@ -49,7 +49,6 @@ function createSilentInteraction(
     };
 }
 
-/** Check if a character is co-located with any protagonist */
 function isCoLocatedWithAnyProtagonist(
     data: InteractionData,
     characterId: string,
@@ -71,7 +70,6 @@ export async function runTurnSequence(
 ): Promise<{ interactionData: InteractionData; isCompleted: boolean } | null> {
 
     const emitIntermediateData = (data: InteractionData) => {
-        // Drop intermediate state emissions immediately if aborted
         if (!onIntermediateData || abortController.signal.aborted) return;
         const newHistories: Record<string, HistoryMessage[]> = {};
         for (const [locId, msgs] of Object.entries(data.interactionHistories || {})) {
@@ -125,6 +123,7 @@ export async function runTurnSequence(
 
         const chatRefusedThisIteration = new Set<string>();
 
+        // Passive movement stamina recharge
         for (const char of remaining) {
             const { chatRegen, actionRegen } = computeModulatedStaminaRegenationAmounts(char, workingData);
             if (chatRegen > 0) generateChatStaminaForInteractionData(workingData, chatRegen, char);
@@ -201,6 +200,7 @@ export async function runTurnSequence(
             const newLastEntry = allResultMessages.length > 0 ? allResultMessages[allResultMessages.length - 1] : undefined;
             
             if (newLastEntry && newLastEntry.character.id === speaker.id && hasTextContent(newLastEntry)) {
+                // 1. Consume speaker's stamina
                 const paragraphs = countParagraphs((newLastEntry as ChatMessage).textContent);
                 const chatCost = computeChatStaminaConsumptionCost(speaker, resultData, paragraphs);
                 
@@ -211,6 +211,16 @@ export async function runTurnSequence(
                             consumeChatStaminaForMessage(msgs[idx], chatCost);
                             break;
                         }
+                    }
+                }
+
+                // 2. SOCIAL RECOVERY:
+                // Hearing someone speak gives all OTHER listening characters an urge/recharge to reply
+                for (const other of allAI) {
+                    if (other.id !== speaker.id) {
+                        const maxChat = getEffectiveMaximumChatStamina(other, profile);
+                        const rechargeAmount = Math.max(2, Math.round(maxChat * 0.6));
+                        generateChatStaminaForInteractionData(resultData, rechargeAmount, other);
                     }
                 }
 
@@ -259,7 +269,7 @@ export async function runTurnSequence(
 
             if (!sequenceCompleted) break;
         } else {
-            // Action/Movement branch for characters NOT with any protagonist
+            // Action/Movement branch
             const actionEligible = remaining.filter(p => {
                 if (actedThisSequence.has(p.id)) return false;
                 return !isCoLocatedWithAnyProtagonist(workingData, p.id, protagonistLocIds, !!hasLocations);
