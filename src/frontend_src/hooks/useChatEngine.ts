@@ -1,5 +1,5 @@
 // frontend_src/hooks/useChatEngine.ts
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { Character, InteractionData, PromptBlock, BudgetStrategy, BudgetData, LanguageModel } from '../types';
 import { CharacterActor } from '../services/CharacterActor';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
@@ -139,7 +139,7 @@ export function useChatEngine(deps: EngineDependencies) {
             rawText: result.rawText,
             displayText: result.displayText,
         };
-    }, [getState, setStreamingState, setStats, setSelectedCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast, requestBorrowedModel]);
+    }, [getState, setStreamingState, setStats, setSelectedCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast, requestBorrowedModel, deps.getToolContext]);
 
     const runTurn = useCallback(async (
         initialData: InteractionData,
@@ -207,10 +207,10 @@ export function useChatEngine(deps: EngineDependencies) {
         characterSoul.stop();
     }, []);
 
-    return {
+    return useMemo(() => ({
         handleServerResponse,
         runTurn,
         startAutonomousMode,
         stopAutonomousMode,
-    };
+    }), [handleServerResponse, runTurn, startAutonomousMode, stopAutonomousMode]);
 }

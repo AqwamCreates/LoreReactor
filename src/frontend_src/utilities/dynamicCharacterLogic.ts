@@ -124,7 +124,9 @@ export function computeGlobalScore(character: Character, data: InteractionData):
     const maxTotal = maxAction + maxChat;
     const staminaRatio = (maxTotal <= 0 || maxTotal === Number.POSITIVE_INFINITY)
         ? 1.0
-        : Math.max(0.15, (remainingAction + remainingChat) / maxTotal);
+        : Math.max(0, (remainingAction + remainingChat) / maxTotal);
+
+    if (staminaRatio <= 0) return 0;
 
     const baseInitiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
     const localRank = getLocalInitiativeRank(character, data);
@@ -145,9 +147,14 @@ export function computeChatScore(character: Character, data: InteractionData): n
     const maxChat = getEffectiveMaximumChatStamina(character, profile);
     const remainingChat = lastMsg?.remainingChatStamina ?? maxChat;
 
+    // Real stamina exhaustion: yield cleanly if stamina is depleted
+    if (maxChat > 0 && maxChat !== Number.POSITIVE_INFINITY && remainingChat <= 0) {
+        return 0;
+    }
+
     const staminaRatio = (maxChat <= 0 || maxChat === Number.POSITIVE_INFINITY)
         ? 1.0
-        : Math.max(0.1, remainingChat / maxChat);
+        : remainingChat / maxChat;
 
     const baseInitiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
     const localRank = getLocalInitiativeRank(character, data);
@@ -183,7 +190,12 @@ export function computeChatScore(character: Character, data: InteractionData): n
     const nameSensitivity = getEffectiveNameSensitivity(character, profile);
     const nameMentionBoost = 1 + Math.log1p(mentionCount * nameSensitivity);
 
-    return staminaRatio * effectiveInitiative * timeMultiplier * compressedImpatience * nameMentionBoost;
+    // Monologue fatigue penalty: discourage repeated solo turns
+    const thread = getLocalMessageHistory(data, character, ['chat', 'whisper']);
+    const consecutiveMonologueTurns = getConsecutiveTurnsByCharacter(thread, character.id);
+    const monologueFatigue = 1 / (1 + consecutiveMonologueTurns * 1.5);
+
+    return staminaRatio * effectiveInitiative * timeMultiplier * compressedImpatience * nameMentionBoost * monologueFatigue;
 }
 
 export function computeActionScore(character: Character, data: InteractionData, triggeringMessageText?: string): number {
@@ -194,9 +206,13 @@ export function computeActionScore(character: Character, data: InteractionData, 
     const maxAction = getEffectiveMaximumActionStamina(character, profile);
     const remainingAction = lastMsg?.remainingActionStamina ?? maxAction;
 
+    if (maxAction > 0 && maxAction !== Number.POSITIVE_INFINITY && remainingAction <= 0) {
+        return 0;
+    }
+
     const staminaRatio = (maxAction <= 0 || maxAction === Number.POSITIVE_INFINITY)
         ? 1.0
-        : Math.max(0.1, remainingAction / maxAction);
+        : remainingAction / maxAction;
 
     const baseInitiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
     const localRank = getLocalInitiativeRank(character, data);
@@ -351,7 +367,7 @@ export function computeMovementCost(fromId: string, toId: string, locations: Loc
 
 /**
  * Pacing calculation:
- * Uses cached local thread history from getLocalMessageHistory to evaluate consecutive turns.
+ * Strictly respects the configured autonomous interval as the lower bound.
  */
 export function computeAutonomousTickDelay(character: Character, data: InteractionData): number {
     const profile = data.profile;
@@ -375,9 +391,10 @@ export function computeAutonomousTickDelay(character: Character, data: Interacti
     const thread = getLocalMessageHistory(data, character, ['chat', 'whisper']);
     const consecutiveMonologueTurns = getConsecutiveTurnsByCharacter(thread, character.id);
     const backoffResistance = impatience;
-    const backoffMultiplier = 1 + (consecutiveMonologueTurns * 0.75) / backoffResistance;
+    const backoffMultiplier = 1 + (consecutiveMonologueTurns * 1.5) / backoffResistance;
 
     const dynamicDelay = targetDelay * impatienceFactor * nameFactor * backoffMultiplier;
 
-    return Math.max(baseInterval * 0.5, Math.min(baseInterval * 5, dynamicDelay));
+    // Enforce baseInterval as the strict minimum floor
+    return Math.max(baseInterval, Math.min(baseInterval * 10, dynamicDelay));
 }

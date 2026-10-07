@@ -105,37 +105,43 @@ export function useChatSessionEffects({
         if (selectedModel) engine.setContext(selectedModel);
     }, [selectedModel, engine]);
 
-    // 5. Context Token Accounting
+    // 5. Context Token Accounting (Debounced to prevent cloud tokenize API spamming)
     useEffect(() => {
         if (!interactionData) return;
         let cancelled = false;
-        (async () => {
+        const timer = setTimeout(async () => {
             let total = 0;
             const history = getGlobalMessageHistory(interactionData);
             for (const m of history) {
                 if (hasTextContent(m)) total += await engine.countTokens(m.textContent);
             }
             if (!cancelled) setNumberOfTokens(total);
-        })();
-        return () => { cancelled = true; };
+        }, 300);
+
+        return () => { 
+            cancelled = true; 
+            clearTimeout(timer);
+        };
     }, [interactionData, setNumberOfTokens, engine]);
 
-    // 6. Autonomous Simulation Lifecycle (STABLE: Only restarts if chat ID changes, NOT on every message)
+    // 6. Autonomous Simulation Lifecycle
     const activeChatId = interactionData?.id;
+    const { startAutonomousMode, stopAutonomousMode } = chatEngine;
+
     useEffect(() => {
         if (autonomousMode && activeChatId && !isMultiplayerClient) {
             const checkCanAct = () => !isLoadingRef.current && !abortControllerRef.current;
-            chatEngine.startAutonomousMode(
+            startAutonomousMode(
                 checkCanAct,
                 () => getState().interactionData,
                 (data: InteractionData) => { setState({ interactionData: data }); },
                 resetStream
             );
         } else {
-            chatEngine.stopAutonomousMode();
+            stopAutonomousMode();
         }
-        return () => { chatEngine.stopAutonomousMode(); };
-    }, [autonomousMode, activeChatId, isMultiplayerClient, chatEngine, isLoadingRef, abortControllerRef, resetStream, getState, setState]);
+        return () => { stopAutonomousMode(); };
+    }, [autonomousMode, activeChatId, isMultiplayerClient, startAutonomousMode, stopAutonomousMode, isLoadingRef, abortControllerRef, resetStream, getState, setState]);
 
     // 7. Persist Factorization Machine Weights on Window Unload
     useEffect(() => {

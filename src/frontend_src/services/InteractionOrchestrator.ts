@@ -16,7 +16,11 @@ import {
 } from '../utilities/dynamicCharacterLogic';
 import type { HandleServerResponseResult } from '../hooks/useChatEngine';
 
-type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal) => Promise<HandleServerResponseResult | null>
+type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal) => Promise<HandleServerResponseResult | null>;
+
+export interface TurnSequenceOptions {
+    singleTurn?: boolean; // When true (Autonomous mode), stops after 1 character acts/speaks
+}
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
     return msg.messageType === 'chat';
@@ -62,7 +66,8 @@ export async function runTurnSequence(
     executor: TurnExecutor,
     abortController: AbortController,
     onSpeakerChange?: (char: Character | null) => void,
-    onIntermediateData?: (data: InteractionData) => void
+    onIntermediateData?: (data: InteractionData) => void,
+    options?: TurnSequenceOptions
 ): Promise<{ interactionData: InteractionData; isCompleted: boolean } | null> {
 
     const emitIntermediateData = (data: InteractionData) => {
@@ -138,6 +143,7 @@ export async function runTurnSequence(
         const effectiveSkip = computeEffectiveSkip(globalWinner, workingData, triggeringMessageText);
         if (Math.random() < effectiveSkip) {
             actedThisSequence.add(globalWinner.id);
+            if (options?.singleTurn) break;
             continue;
         }
 
@@ -152,24 +158,27 @@ export async function runTurnSequence(
 
             if (chatEligible.length === 0) {
                 actedThisSequence.add(globalWinner.id);
+                if (options?.singleTurn) break;
                 continue;
             }
 
-            let speaker: Character;
-            if (chatEligible.length === 1) {
-                speaker = chatEligible[0];
-            } else {
-                const chatPool: { item: Character; weight: number }[] = [];
-                for (const char of chatEligible) {
-                    const score = computeChatScore(char, workingData);
-                    if (score > 0) chatPool.push({ item: char, weight: score });
-                }
-                speaker = weightedSample(chatPool) ?? chatEligible[0];
+            const chatPool: { item: Character; weight: number }[] = [];
+            for (const char of chatEligible) {
+                const score = computeChatScore(char, workingData);
+                if (score > 0) chatPool.push({ item: char, weight: score });
+            }
+
+            const speaker = weightedSample(chatPool);
+            if (!speaker) {
+                actedThisSequence.add(globalWinner.id);
+                if (options?.singleTurn) break;
+                continue;
             }
 
             const chatProb = getEffectiveChatProbability(speaker, profile);
             if (chatProb < 1 && Math.random() >= chatProb) {
                 chatRefusedThisIteration.add(speaker.id);
+                if (options?.singleTurn) break;
                 continue;
             }
 
@@ -187,7 +196,6 @@ export async function runTurnSequence(
             }
 
             const resultData = result.interactionData;
-
             const allResultMessages = Object.values(resultData.interactionHistories || {}).flat().sort((a, b) => a.firstCreatedTimestamp - b.firstCreatedTimestamp);
             const newLastEntry = allResultMessages.length > 0 ? allResultMessages[allResultMessages.length - 1] : undefined;
             
@@ -211,7 +219,6 @@ export async function runTurnSequence(
                     const finalLoc = regexLoc !== undefined ? regexLoc : (currentLocId ? resultData.locations.find(l => l.id === currentLocId) : undefined);
 
                     if (regexLoc && currentLocId && regexLoc.id !== currentLocId) {
-                        // FIX 1: Pass string IDs and the locations array instead of indices
                         const movementCost = computeMovementCost(currentLocId, regexLoc.id, resultData.locations);
                         for (const msgs of Object.values(resultData.interactionHistories || {})) {
                             const idx = msgs.findIndex(m => m.id === newLastEntry.id);
@@ -245,28 +252,35 @@ export async function runTurnSequence(
             spokenThisSequence.add(speaker.id);
             emitIntermediateData(workingData);
 
+            if (options?.singleTurn) {
+                break;
+            }
+
             if (!sequenceCompleted) break;
         } else {
+            // Action/Movement branch for characters NOT with any protagonist
             const actionEligible = remaining.filter(p => {
                 if (actedThisSequence.has(p.id)) return false;
                 return !isCoLocatedWithAnyProtagonist(workingData, p.id, protagonistLocIds, !!hasLocations);
             });
 
-            let mover: Character;
-            if (actionEligible.length === 1) {
-                mover = actionEligible[0];
-            } else {
-                const actionPool: { item: Character; weight: number }[] = [];
-                for (const char of actionEligible) {
-                    const score = computeActionScore(char, workingData, triggeringMessageText);
-                    if (score > 0) actionPool.push({ item: char, weight: score });
-                }
-                mover = weightedSample(actionPool) ?? actionEligible[0];
+            const actionPool: { item: Character; weight: number }[] = [];
+            for (const char of actionEligible) {
+                const score = computeActionScore(char, workingData, triggeringMessageText);
+                if (score > 0) actionPool.push({ item: char, weight: score });
+            }
+
+            const mover = weightedSample(actionPool);
+            if (!mover) {
+                actedThisSequence.add(globalWinner.id);
+                if (options?.singleTurn) break;
+                continue;
             }
 
             const actionEffectiveSkip = computeEffectiveSkip(mover, workingData, triggeringMessageText);
             if (Math.random() < actionEffectiveSkip) {
                 actedThisSequence.add(mover.id);
+                if (options?.singleTurn) break;
                 continue;
             }
 
@@ -287,12 +301,14 @@ export async function runTurnSequence(
                 const leaver = weightedSample(leavePool);
                 if (!leaver || leaver.id !== mover.id) {
                     actedThisSequence.add(mover.id);
+                    if (options?.singleTurn) break;
                     continue;
                 }
 
                 const leavingSkip = computeEffectiveSkip(mover, workingData, triggeringMessageText);
                 if (Math.random() < leavingSkip) {
                     actedThisSequence.add(mover.id);
+                    if (options?.singleTurn) break;
                     continue;
                 }
             }
@@ -308,7 +324,6 @@ export async function runTurnSequence(
             const reachable = getReachableLocationsByCharacter(workingData, mover, triggeringMessageText);
             const newLoc: Location | undefined = sampleReachableLocationByWeight(reachable, mover);
 
-            // FIX 2: Check string IDs directly and pass the locations array
             if (newLoc !== undefined && moverLocId && newLoc.id !== moverLocId) {
                 const currentLocExists = workingData.locations.some(l => l.id === moverLocId);
                 const newLocExists = workingData.locations.some(l => l.id === newLoc.id);
@@ -352,6 +367,10 @@ export async function runTurnSequence(
 
             actedThisSequence.add(mover.id);
             emitIntermediateData(workingData);
+
+            if (options?.singleTurn) {
+                break;
+            }
         }
     }
 
