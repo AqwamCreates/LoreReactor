@@ -103,8 +103,20 @@ export function useActionMenu(options: UseActionMenuOptions) {
         setMenuSearchQuery('');
         setShowActionFormat(false);
 
-        // Guard against missing targetChar or protagonist
-        if (!interactionData || !currentCharacter || !targetChar || !protagonist) return;
+        if (!interactionData) {
+            addToast('No active chat session.', 'error');
+            return;
+        }
+
+        if (!targetChar) {
+            addToast('Target character not found.', 'error');
+            return;
+        }
+
+        if (!protagonist || !currentCharacter) {
+            addToast('No protagonist selected.', 'error');
+            return;
+        }
 
         if (!isModelReady) {
             addToast('Model is not ready.', 'error');
