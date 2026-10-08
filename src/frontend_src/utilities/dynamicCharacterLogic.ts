@@ -281,12 +281,12 @@ export function computeModulatedStaminaRegenationAmounts(
     const actionRegenRate = (maxAction > 0 && maxAction !== Number.POSITIVE_INFINITY)
         ? (maxAction / 30)
         : 1;
-    let actionRegen = Math.max(0, Math.round(elapsedSeconds * actionRegenRate));
+    const actionRegen = Math.max(0, Math.round(elapsedSeconds * actionRegenRate));
 
     // Conversational stamina does NOT refill on an arbitrary 1-second clock.
     // It only trickles in after a prolonged quiet lull (> 25 seconds) to break silence.
     let chatRegen = 0;
-    if (elapsedSeconds > 25) {
+    if (elapsedSeconds > 20) {
         chatRegen = 1;
     }
 
