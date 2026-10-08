@@ -397,7 +397,7 @@ function App() {
         setInteractionData, setSelectedCharacter, setActiveBudgetStrategy,
         setSelectedBudgetStrategyId: storeSetSelectedBudgetStrategyId,
         setSelectedCharacterId: storeSetSelectedCharacterId,
-        setSelectedModelId: models.setSelectedModelId, // <--- PASSED TO ENTITY TOGGLES
+        setSelectedModelId: models.setSelectedModelId,
         loadFullCharacter: characters.loadFullCharacter, addToast,
     });
 
@@ -1026,6 +1026,7 @@ function App() {
             isUser,
             isLoading,
             streamingText: streamingText || '',
+            streamingCharacter: session.streamingCharacter || null,
             locationBackgroundUrl: avatarUrl ? viewAssets.locationBackgroundUrl : null,
             allActions: actionManager.allActions || [],
             allCharacters: characters.characters,

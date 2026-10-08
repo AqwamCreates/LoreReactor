@@ -33,6 +33,7 @@ interface CompanionState {
     allPromptBlocks?: PromptBlock[]; allLanguageModels?: LanguageModel[];
     allSamplers?: Sampler[]; allStopPatterns?: StopPattern[]; allBudgetStrategies?: BudgetStrategy[];
     allMemories?: Memory[]; allAccounts?: Account[]; allMultiplayerData?: MultiplayerData[];
+    streamingCharacter?: Character | null;
 }
 
 export function StandaloneOverlay() {
@@ -41,7 +42,7 @@ export function StandaloneOverlay() {
     const [state, setState] = useState<CompanionState>({
         avatarUrl: null, charName: 'Companion', isUser: false, isLoading: false,
         streamingText: '', locationBackgroundUrl: null, allActions: [],
-        interactionData: null, localProtagonist: null,
+        interactionData: null, localProtagonist: null, streamingCharacter: null,
     });
 
     const [inputText, setInputText] = useState('');
@@ -84,6 +85,16 @@ export function StandaloneOverlay() {
     const displayedMessage = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1] : null;
 
     const activeSpeaker: Character = useMemo(() => {
+        if (state.isLoading) {
+            if (state.streamingCharacter) return state.streamingCharacter;
+            const found = state.interactionData?.participants?.find(p => p.name === state.charName)
+                || state.allCharacters?.find(c => c.name === state.charName);
+            if (found) return found;
+            const protagonistId = state.localProtagonist?.id ?? state.interactionData?.protagonistIds?.[0];
+            const companionChar = state.interactionData?.participants?.find(p => p.id !== protagonistId);
+            if (companionChar) return companionChar;
+        }
+
         if (displayedMessage) return displayedMessage.character;
         if (state.localProtagonist) return state.localProtagonist;
         if (state.interactionData?.participants?.[0]) return state.interactionData.participants[0];
@@ -96,10 +107,13 @@ export function StandaloneOverlay() {
             tools: {} as any, clothings: [], knownCharacterNames: {}, textCharacterInjections: [],
             memories: {}, firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
         };
-    }, [displayedMessage, state.localProtagonist, state.interactionData, state.charName]);
+    }, [
+        displayedMessage, state.localProtagonist, state.interactionData, 
+        state.charName, state.isLoading, state.streamingCharacter, state.allCharacters
+    ]);
 
     const currentMessage: ChatMessage | WhisperMessage | null = useMemo(() => {
-        if (state.isLoading && state.streamingText) {
+        if (state.isLoading) {
             return {
                 id: state.lastMessageId || 'streaming', character: activeSpeaker,
                 textContent: state.streamingText, messageType: 'chat',
@@ -173,8 +187,13 @@ export function StandaloneOverlay() {
     }, [compiledDialogueText]);
 
     const displayedText = isReformatToggled && hasFormats ? reformattedDisplay : rawDisplay;
-    const displayedSpeakerName = currentMessage ? currentMessage.character.name : state.charName;
-    const displayedAvatarUrl = currentMessage?.character.images?.default || state.avatarUrl;
+    const displayedSpeakerName = state.isLoading
+        ? (state.streamingCharacter?.name || activeSpeaker.name || state.charName)
+        : (currentMessage ? currentMessage.character.name : state.charName);
+
+    const displayedAvatarUrl = state.isLoading
+        ? (state.avatarUrl || activeSpeaker.images?.default || null)
+        : (state.avatarUrl || currentMessage?.character.images?.default || null);
 
     const isMessageFromUser = useMemo(() => {
         if (state.isLoading) return false;
