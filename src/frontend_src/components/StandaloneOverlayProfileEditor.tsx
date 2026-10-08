@@ -1,5 +1,5 @@
 // frontend_src/components/StandaloneOverlayProfileEditor.tsx
-import { useState, type CSSProperties } from 'react';
+import { useState } from 'react';
 import type { Profile, textType, toolUsageDisplayMode } from '../types';
 import { SliderInput } from './SliderInput';
 
@@ -34,19 +34,14 @@ function sliderToDb(sliderValue: number): number {
     return Math.round(-60 + (clamped / 100) * 50);
 }
 
-const SLIDER_HEADER_STYLE: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' };
-const SLIDER_LABEL_STYLE: CSSProperties = { margin: 0 };
-const SLIDER_VALUE_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6 };
-const FIELD_HINT_STYLE: CSSProperties = { fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' };
-
 function ProfileCheckbox({ checked, onChange, label, hint, spaced = false }: { checked: boolean; onChange: (checked: boolean) => void; label: string; hint?: string; spaced?: boolean }) {
     return (
-        <div className={`profile-checkbox-row ${spaced ? 'profile-checkbox-spaced' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: spaced ? '8px' : '4px' }}>
-            <label className="editor-checkbox-label profile-checkbox-left" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+        <div className={`pip-profile-checkbox-row ${spaced ? 'spaced' : ''}`}>
+            <label className="pip-profile-checkbox-label">
                 <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="editor-checkbox-input" />
-                <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>{label}</span>
+                <span className="pip-profile-checkbox-title">{label}</span>
             </label>
-            {hint && <div className="profile-checkbox-hint" style={{ fontSize: '0.65rem', opacity: 0.6, marginLeft: '26px' }}>{hint}</div>}
+            {hint && <div className="pip-profile-checkbox-hint">{hint}</div>}
         </div>
     );
 }
@@ -91,8 +86,8 @@ export function StandaloneOverlayProfileEditor({ profile, onClose, onSave }: Sta
     };
 
     return (
-        <div className="modal-overlay" onClick={onClose} style={{ zIndex: 10000 }}>
-            <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', maxHeight: '85vh' }}>
+        <div className="modal-overlay pip-modal-overlay" onClick={onClose}>
+            <div className="modal-content editor-modal-content editor-modal-content-compact" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
                     <h2>Edit Profile (General)</h2>
                     <div className="editor-modal-actions">
@@ -101,16 +96,25 @@ export function StandaloneOverlayProfileEditor({ profile, onClose, onSave }: Sta
                     </div>
                 </div>
 
-                <div className="modal-body editor-modal-body" style={{ padding: '16px' }}>
-                    <div style={{ marginBottom: '16px' }}><label className="editor-label">Name <span style={{ color: '#ff4444' }}>*</span></label><input type="text" value={name} onChange={(e) => setName(e.target.value)} className="editor-input" /></div>
-                    <div style={{ marginBottom: '16px' }}><label className="editor-label">Description</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" rows={2} /></div>
+                <div className="modal-body editor-modal-body editor-modal-body-compact">
+                    <div className="editor-field-group">
+                        <label className="editor-label">Name <span className="required-asterisk">*</span></label>
+                        <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="editor-input" />
+                    </div>
+                    <div className="editor-field-group">
+                        <label className="editor-label">Description</label>
+                        <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" rows={2} />
+                    </div>
 
                     <div className="editor-section">
                         <span className="editor-section-title">Agentic Roleplay</span>
                         <ProfileCheckbox checked={autonomousMode} onChange={setAutonomousMode} label="Autonomous Mode" hint="Characters act independently in the background." />
                         {autonomousMode && (
-                            <div style={{ marginTop: '12px' }}>
-                                <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Interaction Interval</label><span style={SLIDER_VALUE_STYLE}>{(autonomousInteractionIntervalMs / 1000).toFixed(1)}s</span></div>
+                            <div className="editor-nested-field">
+                                <div className="slider-header-row">
+                                    <label className="editor-label editor-label-small editor-label-no-margin">Interaction Interval</label>
+                                    <span className="slider-value-display">{(autonomousInteractionIntervalMs / 1000).toFixed(1)}s</span>
+                                </div>
                                 <SliderInput label="" value={autonomousInteractionIntervalMs} minimumValue={1000} maximumValue={60000} stepValue={1000} decimals={0} onChange={(val) => setAutonomousInteractionIntervalMs(Math.round(val))} description="How often the engine evaluates characters for autonomous actions." />
                             </div>
                         )}
@@ -121,16 +125,25 @@ export function StandaloneOverlayProfileEditor({ profile, onClose, onSave }: Sta
                         <ProfileCheckbox checked={enableAutoSpeechDetection} onChange={setEnableAutoSpeechDetection} label="Auto-Send Voice Input (Hands-Free VAD)" hint="Automatically detect when you start and stop speaking." />
                         {enableAutoSpeechDetection && (
                             <>
-                                <div style={{ marginTop: '12px' }}>
-                                    <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Speech Activation Threshold</label><span style={SLIDER_VALUE_STYLE}>{speechVolumeActivationThreshold}% ({sliderToDb(speechVolumeActivationThreshold)} dBFS)</span></div>
+                                <div className="editor-nested-field">
+                                    <div className="slider-header-row">
+                                        <label className="editor-label editor-label-small editor-label-no-margin">Speech Activation Threshold</label>
+                                        <span className="slider-value-display">{speechVolumeActivationThreshold}% ({sliderToDb(speechVolumeActivationThreshold)} dBFS)</span>
+                                    </div>
                                     <SliderInput label="" value={speechVolumeActivationThreshold} minimumValue={1} maximumValue={100} stepValue={1} decimals={0} onChange={(val) => setSpeechVolumeActivationThreshold(Math.round(val))} description="How loud you must speak to wake up the engine." />
                                 </div>
-                                <div style={{ marginTop: '12px' }}>
-                                    <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Silence Deactivation Threshold</label><span style={SLIDER_VALUE_STYLE}>{speechSilenceVolumeActivationThreshold}% ({sliderToDb(speechSilenceVolumeActivationThreshold)} dBFS)</span></div>
+                                <div className="editor-nested-field">
+                                    <div className="slider-header-row">
+                                        <label className="editor-label editor-label-small editor-label-no-margin">Silence Deactivation Threshold</label>
+                                        <span className="slider-value-display">{speechSilenceVolumeActivationThreshold}% ({sliderToDb(speechSilenceVolumeActivationThreshold)} dBFS)</span>
+                                    </div>
                                     <SliderInput label="" value={speechSilenceVolumeActivationThreshold} minimumValue={1} maximumValue={100} stepValue={1} decimals={0} onChange={(val) => setSpeechSilenceVolumeActivationThreshold(Math.round(val))} description="The lower volume cutoff that triggers the silence countdown." />
                                 </div>
-                                <div style={{ marginTop: '12px' }}>
-                                    <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Silence Pause Duration</label><span style={SLIDER_VALUE_STYLE}>{(speechSilenceThresholdMs / 1000).toFixed(1)}s</span></div>
+                                <div className="editor-nested-field">
+                                    <div className="slider-header-row">
+                                        <label className="editor-label editor-label-small editor-label-no-margin">Silence Pause Duration</label>
+                                        <span className="slider-value-display">{(speechSilenceThresholdMs / 1000).toFixed(1)}s</span>
+                                    </div>
                                     <SliderInput label="" value={speechSilenceThresholdMs} minimumValue={500} maximumValue={5000} stepValue={100} decimals={0} onChange={(val) => setSpeechSilenceThresholdMs(Math.round(val))} description="Duration of silence below the cutoff before final transcription is fired." />
                                 </div>
                             </>
@@ -139,10 +152,15 @@ export function StandaloneOverlayProfileEditor({ profile, onClose, onSave }: Sta
 
                     <div className="editor-section">
                         <span className="editor-section-title">Volume</span>
-                        <div style={{ marginBottom: '12px' }}>
-                            <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Global Volume Override</label><span style={SLIDER_VALUE_STYLE}>{volume === -1 ? '(Per-track default)' : `${Math.round(volume * 100)}%`}</span></div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="range" min="-1" max="1" step="0.01" value={volume} onChange={(e) => setVolume(Number(e.target.value))} style={{ flex: 1 }} /></div>
-                            <div style={FIELD_HINT_STYLE}>-1 = use each track's own volume. ≥0 = override all tracks uniformly.</div>
+                        <div className="editor-field-group">
+                            <div className="slider-header-row">
+                                <label className="editor-label editor-label-small editor-label-no-margin">Global Volume Override</label>
+                                <span className="slider-value-display">{volume === -1 ? '(Per-track default)' : `${Math.round(volume * 100)}%`}</span>
+                            </div>
+                            <div className="slider-row-wrapper">
+                                <input type="range" min="-1" max="1" step="0.01" value={volume} onChange={(e) => setVolume(Number(e.target.value))} className="slider-range-full" />
+                            </div>
+                            <div className="editor-field-hint">-1 = use each track's own volume. ≥0 = override all tracks uniformly.</div>
                         </div>
                     </div>
 
@@ -150,23 +168,23 @@ export function StandaloneOverlayProfileEditor({ profile, onClose, onSave }: Sta
                         <span className="editor-section-title">Display</span>
                         <ProfileCheckbox checked={forceNameReveal} onChange={setForceNameReveal} label="Force Name Reveal" hint='Always show character names instead of "Character X".' />
                         <ProfileCheckbox checked={enableAmbientNarration} onChange={setEnableAmbientNarration} label="Enable Ambient Narration" hint="Generate environmental narration to fill silence." spaced />
-                        <div style={{ marginTop: '12px', marginBottom: '12px' }}>
+                        <div className="editor-field-group">
                             <label className="editor-label editor-label-small">Tool Usage Display Mode</label>
-                            <select value={toolUsageDisplayMode} onChange={(e) => setToolUsageDisplayMode(e.target.value as toolUsageDisplayMode)} className="editor-select" style={{ width: '100%' }}>
+                            <select value={toolUsageDisplayMode} onChange={(e) => setToolUsageDisplayMode(e.target.value as toolUsageDisplayMode)} className="editor-select editor-select-full">
                                 {TOOL_USAGE_DISPLAY_MODES.map(mode => (<option key={mode.value} value={mode.value}>{mode.label}</option>))}
                             </select>
-                            <div style={FIELD_HINT_STYLE}>{selectedToolUsageDisplayMode.description}</div>
+                            <div className="editor-field-hint">{selectedToolUsageDisplayMode.description}</div>
                         </div>
                         <ProfileCheckbox checked={enableCharacterExpression} onChange={setEnableCharacterExpression} label="Enable Character Expression" hint="Use sentiment analysis to swap character images based on emotional tone." />
                     </div>
 
                     <div className="editor-section">
                         <span className="editor-section-title">Voice Narration</span>
-                        <div className="voice-narration-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                        <div className="voice-narration-grid">
                             {(Object.keys(NARRATE_TEXT_LABELS) as textType[]).map(type => (
-                                <label key={type} className="voice-narration-toggle" style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                                <label key={type} className="voice-narration-toggle">
                                     <input type="checkbox" checked={narrateTexts[type]} onChange={(e) => handleNarrateToggle(type, e.target.checked)} className="editor-checkbox-input" />
-                                    <span style={{ fontSize: '0.75rem' }}>{NARRATE_TEXT_LABELS[type]}</span>
+                                    <span className="voice-narration-label">{NARRATE_TEXT_LABELS[type]}</span>
                                 </label>
                             ))}
                         </div>
