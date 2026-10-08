@@ -372,12 +372,19 @@ export function StandaloneOverlay() {
     const onAddAction = useCallback((label: string) => {
         const trimmed = label.trim();
         if (!trimmed) return;
-        setState((prev) => ({ ...prev, allActions: [...prev.allActions, { id: `custom-${Date.now()}`, label: trimmed, count: 1 }] }));
+        setState((prev) => {
+            if (prev.allActions.some((a) => a.label.toLowerCase() === trimmed.toLowerCase())) {
+                return prev;
+            }
+            return {
+                ...prev,
+                allActions: [...prev.allActions, { id: `custom-${Date.now()}`, label: trimmed, count: 0 }]
+            };
+        });
         const channel = new BroadcastChannel('lorereactor-companion-sync');
         channel.postMessage({ type: 'ADD_ACTION', label: trimmed });
         channel.close();
-        handleInterject(trimmed);
-    }, [handleInterject]);
+    }, []);
 
     const onDeleteAction = useCallback((label: string) => {
         setState((prev) => ({ ...prev, allActions: prev.allActions.filter((a) => a.label !== label) }));

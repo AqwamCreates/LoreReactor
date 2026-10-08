@@ -1,5 +1,5 @@
 // frontend_src/components/ActionMenu.tsx
-import { useMemo } from 'react';
+import { useState, useRef, useLayoutEffect, useEffect } from 'react';
 import type { Character, InterjectableAction } from '../types';
 
 interface ActionMenuProps {
@@ -26,6 +26,8 @@ interface ActionMenuProps {
     onActionInterject: (label: string, targetChar?: Character, protagonist?: Character) => void;
 }
 
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
 export function ActionMenu({
     actionMenuTarget,
     interactionDataExists = true,
@@ -41,6 +43,26 @@ export function ActionMenu({
     localProtagonist = null,
     onAddAction, onDeleteAction, onActionInterject,
 }: ActionMenuProps) {
+    const menuRef = useRef<HTMLDivElement>(null);
+    const [measuredDimensions, setMeasuredDimensions] = useState<{ width: number; height: number }>({
+        width: 190,
+        height: 250,
+    });
+
+    useIsomorphicLayoutEffect(() => {
+        if (menuRef.current) {
+            const rect = menuRef.current.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                setMeasuredDimensions(prev => {
+                    if (prev.width !== rect.width || prev.height !== rect.height) {
+                        return { width: rect.width, height: rect.height };
+                    }
+                    return prev;
+                });
+            }
+        }
+    }, [showActionFormat, menuSearchQuery, filteredActions.length]);
+
     if (!actionMenuTarget || !interactionDataExists) return null;
 
     const handleInterject = (label: string) => {
@@ -48,40 +70,99 @@ export function ActionMenu({
         onActionInterject(label, tc, localProtagonist ?? undefined);
     };
 
-    // Calculate position directly inside the menu component
-    const winWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
-    const winHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
-    const menuWidth = 190;
-    const menuHeight = 250;
-    const offset = 10; // Exactly 10px spacing on both sides
-    const edge = 8;
+    // Find the enclosing overlay or chat container bounds
+    const getBounds = () => {
+        if (typeof window === 'undefined') {
+            return { left: 0, top: 0, right: 1200, bottom: 800, width: 1200, height: 800 };
+        }
+        const container = menuRef.current?.closest('.pip-overlay-container, .chat-container, #root')
+            || document.querySelector('.pip-overlay-container, .chat-container, #root');
 
-    const fitsRight = actionMenuTarget.x + offset + menuWidth + edge <= winWidth;
-    const fitsLeft = actionMenuTarget.x - offset - menuWidth - edge >= 0;
-    const placeLeft = (!fitsRight && fitsLeft) || (!fitsRight && !fitsLeft && actionMenuTarget.x > winWidth / 2);
+        if (container) {
+            const r = container.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) {
+                return {
+                    left: r.left,
+                    top: r.top,
+                    right: r.right,
+                    bottom: r.bottom,
+                    width: r.width,
+                    height: r.height,
+                };
+            }
+        }
+        return {
+            left: 0,
+            top: 0,
+            right: window.innerWidth,
+            bottom: window.innerHeight,
+            width: window.innerWidth,
+            height: window.innerHeight,
+        };
+    };
 
-    let left = placeLeft ? actionMenuTarget.x - offset : actionMenuTarget.x + offset;
-    const transform = placeLeft ? 'translateX(-100%)' : 'none';
+    const bounds = getBounds();
+    const menuWidth = measuredDimensions.width;
+    const menuHeight = measuredDimensions.height;
+    const offset = 10; // Gap between cursor and menu
+    const edge = 8;    // Minimum padding from container boundary
 
-    // Viewport clamping
-    if (placeLeft) {
-        left = Math.min(left, winWidth - edge);
-        left = Math.max(edge + menuWidth, left);
+    // Calculate space to the right and left relative to the actual container boundary
+    const spaceRight = bounds.right - (actionMenuTarget.x + offset);
+    const spaceLeft = (actionMenuTarget.x - offset) - bounds.left;
+
+    const fitsRight = spaceRight >= menuWidth + edge;
+    const fitsLeft = spaceLeft >= menuWidth + edge;
+
+    let placeLeft = false;
+
+    if (!fitsRight && fitsLeft) {
+        // Not enough space on the right, but fits on the left -> place on left
+        placeLeft = true;
+    } else if (!fitsLeft && fitsRight) {
+        // Not enough space on the left, but fits on the right -> place on right
+        placeLeft = false;
+    } else if (!fitsRight && !fitsLeft) {
+        // Neither side has enough room -> pick whichever side has more space
+        placeLeft = spaceLeft > spaceRight;
     } else {
-        left = Math.max(edge, left);
-        left = Math.min(winWidth - menuWidth - edge, left);
+        // Both sides fit -> default to right
+        placeLeft = false;
     }
 
+    // Direct pixel positioning:
+    let left = placeLeft
+        ? actionMenuTarget.x - offset - menuWidth
+        : actionMenuTarget.x + offset;
+
+    // Viewport & container boundary clamping
+    const minLeft = bounds.left + edge;
+    const maxLeft = Math.max(minLeft, bounds.right - menuWidth - edge);
+    left = Math.max(minLeft, Math.min(maxLeft, left));
+
+    // Vertical positioning & clamping
     let top = actionMenuTarget.y;
-    if (top + menuHeight > winHeight - edge) {
-        top = Math.max(edge, winHeight - menuHeight - edge);
+    const minTop = bounds.top + edge;
+    const maxTop = Math.max(minTop, bounds.bottom - menuHeight - edge);
+    if (top + menuHeight > bounds.bottom - edge) {
+        top = maxTop;
     }
-    top = Math.max(edge, top);
+    top = Math.max(minTop, Math.min(maxTop, top));
 
     return (
         <div
+            ref={menuRef}
             className="action-menu-container"
-            style={{ left: `${left}px`, top: `${top}px`, transform, zIndex: 9999 }}
+            style={{
+                left: `${left}px`,
+                top: `${top}px`,
+                transform: 'none',
+                // Overrides CSS variables for .pip-overlay-container
+                '--menu-left': `${left}px`,
+                '--menu-top': `${top}px`,
+                '--menu-transform': 'none',
+                zIndex: 9999,
+            } as React.CSSProperties}
             onClick={e => e.stopPropagation()}
         >
             <div className="action-menu-header">
