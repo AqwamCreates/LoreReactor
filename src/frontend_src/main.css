@@ -5521,20 +5521,8 @@ body.overlay-mode #root,
     font-style: italic;
 }
 
-.pip-thinking-dots {
-    display: inline-flex;
-    gap: 4px;
-    align-items: center;
-}
-
-.pip-thinking-dots span {
-    width: 6px;
-    height: 6px;
-    background: #c084fc;
-    border-radius: 50%;
-    animation: pip-dot-bounce 1.4s infinite ease-in-out both;
-}
-
+.pip-thinking-dots { display: inline-flex; gap: 4px; align-items: center; }
+.pip-thinking-dots span { width: 6px; height: 6px; background: #c084fc; border-radius: 50%; animation: pip-dot-bounce 1.4s infinite ease-in-out both; }
 .pip-thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
 .pip-thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
 
@@ -5839,6 +5827,8 @@ COMPANION OVERLAY: MODAL CONTAINMENT
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .pip-overlay-container .modal-body,
@@ -5979,7 +5969,7 @@ COMPANION OVERLAY: SETTINGS LIST ITEMS
 }
 
 /* =============================================================================
-COMPANION OVERLAY: PROFILE EDITOR CONTAINMENT + BUTTON SIZING
+COMPANION OVERLAY: PROFILE EDITOR CONTAINMENT + HINT FIXES
 ============================================================================= */
 .pip-overlay-container .editor-modal-content,
 .pip-overlay-container .editor-modal-content-compact {
@@ -5994,6 +5984,7 @@ COMPANION OVERLAY: PROFILE EDITOR CONTAINMENT + BUTTON SIZING
     display: block;
 }
 
+/* CRITICAL: Added .editor-field-hint and .slider-description to prevent overflow */
 .pip-overlay-container .editor-section,
 .pip-overlay-container .editor-field-group,
 .pip-overlay-container .editor-nested-field,
@@ -6002,12 +5993,15 @@ COMPANION OVERLAY: PROFILE EDITOR CONTAINMENT + BUTTON SIZING
 .pip-overlay-container .slider-header-row,
 .pip-overlay-container .slider-row-wrapper,
 .pip-overlay-container .voice-narration-grid,
-.pip-overlay-container .pip-profile-checkbox-row {
+.pip-overlay-container .pip-profile-checkbox-row,
+.pip-overlay-container .editor-field-hint,
+.pip-overlay-container .slider-description {
     width: 100%;
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
     overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .pip-overlay-container .editor-modal-content input,
@@ -6117,27 +6111,26 @@ COMPANION OVERLAY: PROFILE EDITOR CONTAINMENT + BUTTON SIZING
     word-break: break-word;
 }
 
-/* Cancel / Save buttons — match the 32px close button size */
-.pip-overlay-container .editor-modal-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-}
-
-.pip-overlay-container .editor-modal-actions .editor-button {
-    min-width: 32px !important;
-    min-height: 32px !important;
-    height: 32px !important;
-    padding: 0 10px !important;
-    font-size: 0.7rem !important;
-    line-height: 1 !important;
-    border-radius: 6px !important;
-    box-sizing: border-box !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    white-space: nowrap !important;
+/* =============================================================================
+COMPANION OVERLAY: MOBILE MEDIA QUERY OVERRIDE
+Prevents global 768px rules from forcing 48px min-height / 1rem font 
+on overlay inputs and buttons, which breaks compact formatting.
+============================================================================= */
+@media (max-width: 768px) {
+    .pip-overlay-container .editor-modal-content .editor-input,
+    .pip-overlay-container .editor-modal-content .editor-textarea,
+    .pip-overlay-container .editor-modal-content .editor-select,
+    .pip-overlay-container .editor-modal-content .editor-button,
+    .pip-overlay-container .pip-settings-search {
+        font-size: inherit !important;
+        min-height: unset !important;
+    }
+    
+    .pip-overlay-container .editor-modal-content .editor-button {
+        padding: 6px 12px !important;
+        min-height: 32px !important;
+        font-size: 0.75rem !important;
+    }
 }
 
 /* =============================================================================
@@ -6359,13 +6352,7 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
 .pip-overlay-container .slash-autocomplete-list::-webkit-scrollbar { width: 3px; }
 .pip-overlay-container .slash-autocomplete-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); }
 
-.pip-overlay-container .slash-autocomplete-no-results {
-    padding: 16px;
-    text-align: center;
-    color: #94a3b8;
-    font-style: italic;
-    font-size: 0.85rem;
-}
+.pip-overlay-container .slash-autocomplete-no-results { padding: 16px; text-align: center; color: #94a3b8; font-style: italic; font-size: 0.85rem; }
 
 .pip-overlay-container .slash-autocomplete-item {
     display: grid;
@@ -6378,32 +6365,11 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
 }
 
 .pip-overlay-container .slash-autocomplete-item:hover,
-.pip-overlay-container .slash-autocomplete-item-selected {
-    background: var(--accent-bg, rgba(192, 132, 252, 0.18));
-}
+.pip-overlay-container .slash-autocomplete-item-selected { background: var(--accent-bg, rgba(192, 132, 252, 0.18)); }
 
-.pip-overlay-container .slash-autocomplete-label {
-    font-size: 0.78rem;
-    font-weight: 700;
-    color: #fff;
-    white-space: nowrap;
-}
-
-.pip-overlay-container .slash-autocomplete-id {
-    font-family: monospace;
-    font-size: 0.7rem;
-    color: var(--accent, #c084fc);
-    white-space: nowrap;
-    opacity: 0.8;
-}
-
-.pip-overlay-container .slash-autocomplete-desc {
-    font-size: 0.72rem;
-    color: #94a3b8;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
+.pip-overlay-container .slash-autocomplete-label { font-size: 0.78rem; font-weight: 700; color: #fff; white-space: nowrap; }
+.pip-overlay-container .slash-autocomplete-id { font-family: monospace; font-size: 0.7rem; color: var(--accent, #c084fc); white-space: nowrap; opacity: 0.8; }
+.pip-overlay-container .slash-autocomplete-desc { font-size: 0.72rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .pip-overlay-container .slash-autocomplete-hint {
     display: flex;
