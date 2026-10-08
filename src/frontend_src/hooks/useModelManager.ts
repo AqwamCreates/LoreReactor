@@ -27,16 +27,11 @@ interface ActiveModel {
 export function useModelManager() {
     const [models, setModels] = useState<LanguageModel[]>([]);
     const [isLoading, setIsLoading] = useState(false);
-    // Initialized clean — populated async from server session data
     const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
 
-    // Track whether initial session load has completed to avoid saving defaults back
     const sessionLoadedRef = useRef(false);
-
-    // Read runningModels directly from the session store — single source of truth
     const runningModels = useSessionStore(s => s.runningModels) as Record<string, ModelState>;
 
-    // Write to session store instead of local state
     const setRunningModels = useCallback((update: Record<string, ModelState> | ((prev: Record<string, ModelState>) => Record<string, ModelState>)) => {
         useSessionStore.setState(prev => ({
             runningModels: typeof update === 'function'
@@ -53,7 +48,6 @@ export function useModelManager() {
     const addToastRef = useRef(addToast);
     const selectedModelIdRef = useRef(selectedModelId);
 
-    // Sync refs via effects (not during render)
     useEffect(() => { runningModelsRef.current = runningModels; }, [runningModels]);
     useEffect(() => { modelsRef.current = models; }, [models]);
     useEffect(() => { addToastRef.current = addToast; }, [addToast]);
@@ -77,7 +71,7 @@ export function useModelManager() {
         return () => { cancelled = true; };
     }, []);
 
-    // Persist selected model ID to server session data on change (only after initial load)
+    // Persist selected model ID to server session data on change
     useEffect(() => {
         if (!sessionLoadedRef.current) return;
         saveRawSessionData({ selectedModelId }).catch(e =>
@@ -85,7 +79,7 @@ export function useModelManager() {
         );
     }, [selectedModelId]);
 
-    // Sync selected model to session store whenever it changes
+    // Sync selected model to session store
     useEffect(() => {
         if (selectedModelId) {
             const model = models.find(m => m.id === selectedModelId);
@@ -95,7 +89,6 @@ export function useModelManager() {
         }
     }, [selectedModelId, models]);
 
-    // Stable fetchStatus — stored in ref, updated via effect
     const fetchStatusFn = useCallback(async () => {
         try {
             const response = await fetch(`${API_BASE}/language_models/status`);
@@ -160,7 +153,6 @@ export function useModelManager() {
     const fetchStatusRef = useRef(fetchStatusFn);
     useEffect(() => { fetchStatusRef.current = fetchStatusFn; }, [fetchStatusFn]);
 
-    // Stable loadModels — stored in ref, updated via effect
     const loadModelsFn = useCallback(async () => {
         setIsLoading(true);
         try {
@@ -179,7 +171,6 @@ export function useModelManager() {
     const loadModelsRef = useRef(loadModelsFn);
     useEffect(() => { loadModelsRef.current = loadModelsFn; }, [loadModelsFn]);
 
-    // Public-facing stable callbacks
     const loadModels = useCallback(async () => { await loadModelsRef.current(); }, []);
 
     const saveModel = useCallback(async (model: LanguageModel) => {
@@ -229,6 +220,14 @@ export function useModelManager() {
         }
     }, [unloadModelInternal]);
 
+    // ─── MUTUALLY EXCLUSIVE: Selecting a Model deactivates any active Budget Strategy ───
+    const deactivateActiveBudgetStrategy = useCallback(() => {
+        useSessionStore.setState({ activeStrategy: null, selectedBudgetStrategyId: null });
+        saveRawSessionData({ selectedBudgetStrategyId: null }).catch(e =>
+            console.warn('[useModelManager] Failed to deactivate budget strategy:', e)
+        );
+    }, []);
+
     const toggleModelLoad = useCallback(async (id: string, forceUnload = false) => {
         const model = modelsRef.current.find(m => m.id === id);
         if (!model) return;
@@ -242,6 +241,7 @@ export function useModelManager() {
             } else {
                 await unloadOtherRunningModels(id);
                 setSelectedModelId(id);
+                deactivateActiveBudgetStrategy();
                 addToastRef.current(`Cloud model ${model.name} selected`, "success");
             }
             return;
@@ -280,6 +280,7 @@ export function useModelManager() {
                     addToastRef.current(`Model loaded on port ${data.port}`, "success");
                     setRunningModels(prev => ({ ...prev, [id]: { isRunning: true, port: data.port, status: 'ready', isIdle: false } }));
                     setSelectedModelId(id);
+                    deactivateActiveBudgetStrategy();
                 } else {
                     throw new Error((await response.json()).error || "Unknown error");
                 }
@@ -291,9 +292,10 @@ export function useModelManager() {
         else if (isCurrentlyRunning) {
             await unloadOtherRunningModels(id);
             setSelectedModelId(id);
+            deactivateActiveBudgetStrategy();
             addToastRef.current(`Model ${model.name} selected`, "success");
         }
-    }, [API_BASE, unloadModelInternal, unloadOtherRunningModels, setRunningModels]);
+    }, [API_BASE, unloadModelInternal, unloadOtherRunningModels, setRunningModels, deactivateActiveBudgetStrategy]);
 
     const deleteModel = useCallback(async (id: string) => {
         if (runningModelsRef.current[id]?.isRunning) {
@@ -309,7 +311,6 @@ export function useModelManager() {
         }
     }, [unloadModelInternal]);
 
-    // Single effect: load once on mount, poll every 3 seconds
     useEffect(() => {
         let cancelled = false;
 

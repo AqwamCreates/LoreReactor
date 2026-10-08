@@ -1,7 +1,7 @@
 // frontend_src/hooks/useEntityToggles.ts
 import { useCallback } from 'react';
 import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy, InteractionData, MultiplayerData, HistoryMessage } from '../types';
-import { loadRawContext, loadRawLocation, loadRawAudioTrack, saveRawMultiplayerData } from '../storages/serverStorage';
+import { loadRawContext, loadRawLocation, loadRawAudioTrack, saveRawMultiplayerData, saveRawSessionData } from '../storages/serverStorage';
 import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { useSessionStore } from './useSessionStore';
 import { createDefaultMultiplayerData } from '../dictionaries/defaults';
@@ -19,6 +19,7 @@ interface UseEntityTogglesOptions {
     selectedBudgetStrategyId: string | null;
     setSelectedBudgetStrategyId: (id: string | null) => void;
     setSelectedCharacterId: (id: string | null) => void;
+    setSelectedModelId?: (id: string | null) => void;
     loadFullCharacter: (id: string) => Promise<Character | null>;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
@@ -31,13 +32,13 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         setInteractionData, setSelectedCharacter, setActiveBudgetStrategy,
         selectedBudgetStrategyId,
         setSelectedBudgetStrategyId, setSelectedCharacterId,
+        setSelectedModelId,
         loadFullCharacter, addToast,
     } = options;
 
     const currentAccountId = useSessionStore(s => s.currentAccountId);
     const multiplayerData = useSessionStore(s => s.multiplayerData);
 
-    // Helper to check if character has chat messages and to clean spatial histories
     const checkAndCleanHistories = (histories: Record<string, HistoryMessage[]> | undefined, id: string) => {
         let hasChatMessages = false;
         const newHistories: Record<string, HistoryMessage[]> = {};
@@ -53,7 +54,6 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             return { hasChatMessages, histories };
         }
         
-        // If no chat messages, strip all trace of the character (e.g. initial spatial placement interactions)
         for (const [locId, messages] of Object.entries(histories || {})) {
             const filtered = messages.filter(m => m.character.id !== id);
             if (filtered.length > 0) {
@@ -70,7 +70,6 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         const isProtagonist = (interactionData.protagonistIds || []).includes(charId);
 
         if (isParticipant) {
-            // ─── REMOVING ────────────────────────────────────────────
             if (isProtagonist) {
                 const protagonistCount = interactionData.protagonistIds?.length || 0;
                 if (protagonistCount <= 1) {
@@ -81,7 +80,6 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
                 const updatedProtagonistIds = (interactionData.protagonistIds || []).filter(id => id !== charId);
                 const newActiveProtagonistId = updatedProtagonistIds[0];
                 
-                // Resolve the character object from the new participants array or global list
                 const np = interactionData.participants.filter(p => p.id !== charId);
                 const newActiveProtagonist = newActiveProtagonistId 
                     ? np.find(p => p.id === newActiveProtagonistId) || allCharacters.find(c => c.id === newActiveProtagonistId) || null
@@ -103,7 +101,6 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
                 addToast('Protagonist removed.', 'info');
             } else {
                 const np = interactionData.participants.filter(p => p.id !== charId);
-                
                 const { histories: cleanedHistories } = checkAndCleanHistories(interactionData.interactionHistories, charId);
 
                 const updatedData: InteractionData = {
@@ -117,7 +114,6 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
                 addToast('Participant removed.', 'info');
             }
         } else {
-            // ─── ADDING ──────────────────────────────────────────────
             const sh = allCharacters.find(c => c.id === charId);
             if (!sh) return;
 
@@ -217,12 +213,10 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         }
         if (!ch) return;
 
-        // 1. Identify which protagonist character currently represents this user/account
         const previousProtagonistId = currentAccountId && multiplayerData
             ? multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.protagonistCharacterId
             : interactionData.protagonistIds?.[0];
 
-        // 2. Identify protagonist ids still actively claimed by OTHER peer accounts (if in multiplayer)
         const otherAccountProtagonistIds = new Set<string>();
         if (multiplayerData?.multiplayerDataAccountConfigurations) {
             for (const [accId, config] of Object.entries(multiplayerData.multiplayerDataAccountConfigurations)) {
@@ -232,7 +226,6 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             }
         }
 
-        // 3. Keep only protagonist ids belonging to other peers; replace the previous protagonist for this user
         const existingProtagonistIds = interactionData.protagonistIds || [];
         const filteredProtagonistIds = existingProtagonistIds.filter(pId => {
             if (pId === charId) return false;
@@ -240,14 +233,13 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
                 return false;
             }
             if (!currentAccountId || otherAccountProtagonistIds.size === 0) {
-                return false; // Solo session: never retain previous protagonists
+                return false;
             }
             return otherAccountProtagonistIds.has(pId);
         });
 
         const updatedProtagonistIds = [charId, ...filteredProtagonistIds];
 
-        // Update and persist room configuration for the active account
         let updatedMultiplayerData: MultiplayerData | undefined = multiplayerData ? { ...multiplayerData } : undefined;
         if (currentAccountId) {
             if (!updatedMultiplayerData) {
@@ -306,16 +298,27 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         addToast('Extensions updated.', 'info');
     }, [activeExtensionIds, setActiveExtensionIds, addToast]);
 
-    const handleActivateBudgetStrategy = useCallback((sid: string) => {
-        if (selectedBudgetStrategyId === sid) {
+    // ─── MUTUALLY EXCLUSIVE: Activating a Budget Strategy deselects any direct model ───
+    const handleActivateBudgetStrategy = useCallback((sid: string | null) => {
+        if (!sid || selectedBudgetStrategyId === sid) {
             setSelectedBudgetStrategyId(null);
             setActiveBudgetStrategy(null);
+            saveRawSessionData({ selectedBudgetStrategyId: null });
             addToast('Budget strategy deactivated.', 'info');
         } else {
+            const strategy = allBudgetStrategies.find(s => s.id === sid);
             setSelectedBudgetStrategyId(sid);
-            addToast(`Budget strategy "${allBudgetStrategies.find(s => s.id === sid)?.name}" activated!`, 'success');
+            setActiveBudgetStrategy(strategy ?? null);
+            saveRawSessionData({ selectedBudgetStrategyId: sid });
+
+            // Deselect any active model
+            setSelectedModelId?.(null);
+            useSessionStore.setState({ selectedModel: null, selectedModelId: null });
+            saveRawSessionData({ selectedModelId: null });
+
+            addToast(`Budget strategy "${strategy?.name || sid}" activated!`, 'success');
         }
-    }, [selectedBudgetStrategyId, allBudgetStrategies, setSelectedBudgetStrategyId, setActiveBudgetStrategy, addToast]);
+    }, [selectedBudgetStrategyId, allBudgetStrategies, setSelectedBudgetStrategyId, setActiveBudgetStrategy, setSelectedModelId, addToast]);
 
     const handleActivateProfile = useCallback((pid: string) => {
         if (!interactionData) return;

@@ -560,14 +560,14 @@ export function AppModals({
                         const modelStatus = runningModels[model.id];
                         const isCloud = !!model.apiKey && !!model.backend && cloudBackends.includes(model.backend as cloudBackend);
                         const inStrategy = strategyModelIds.has(model.id);
-                        if (inStrategy && activeStrategy && selectedModelId !== model.id) return `★ In strategy "${activeStrategy.name}" — Click to override & select`;
+                        if (inStrategy && activeStrategy && selectedModelId !== model.id) return `★ In strategy "${activeStrategy.name}" — Click to select & override strategy`;
                         if (isCloud && selectedModelId === model.id) return '☁️ Cloud Model — Click to Deselect';
-                        if (isCloud) return '☁️ Cloud Model — Click to Select';
+                        if (isCloud) return '☁️ Cloud Model — Click to Select (Overrides Budget)';
                         if (modelStatus?.isRunning && modelStatus?.isIdle && selectedModelId === model.id) return '⏹ Stop & Deselect';
                         if (modelStatus?.isRunning && modelStatus?.isIdle) return '⏹ Stop Model';
                         if (modelStatus?.isRunning && !modelStatus?.isIdle) return '⏳ Loading...';
                         if (selectedModelId === model.id) return '✓ Already Selected — Click to Load';
-                        return '▶ Load & Select Model';
+                        return '▶ Load & Select Model (Overrides Budget)';
                     }} 
                 />
             )}
@@ -618,7 +618,7 @@ export function AppModals({
                     orderedListMode={false}
                     selectedId={selectedBudgetStrategyId || undefined} 
                     onSelectItem={(budgetStrategy: BudgetStrategy) => onActivateBudgetStrategy(budgetStrategy.id)}
-                    specialActionTooltip={(budgetStrategy: BudgetStrategy) => selectedBudgetStrategyId === budgetStrategy.id ? `Deactivate ${budgetStrategy.name}` : `Activate ${budgetStrategy.name}`} 
+                    specialActionTooltip={(budgetStrategy: BudgetStrategy) => selectedBudgetStrategyId === budgetStrategy.id ? `Deactivate ${budgetStrategy.name}` : `Activate ${budgetStrategy.name} (Deselects Direct Model)`} 
                 />
             )}
 

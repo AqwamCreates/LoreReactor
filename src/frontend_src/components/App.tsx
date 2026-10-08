@@ -397,6 +397,7 @@ function App() {
         setInteractionData, setSelectedCharacter, setActiveBudgetStrategy,
         setSelectedBudgetStrategyId: storeSetSelectedBudgetStrategyId,
         setSelectedCharacterId: storeSetSelectedCharacterId,
+        setSelectedModelId: models.setSelectedModelId, // <--- PASSED TO ENTITY TOGGLES
         loadFullCharacter: characters.loadFullCharacter, addToast,
     });
 
@@ -1094,12 +1095,20 @@ function App() {
             } else if (e.data?.type === 'ADD_ACTION' && e.data?.label) {
                 actionManager.handleAddAction(e.data.label);
             } else if (e.data?.type === 'SELECT_MODEL' && e.data?.modelId !== undefined) {
-                setGlobalModelId(e.data.modelId || null);
-                if (e.data.modelId) {
-                    toggleModelLoad(e.data.modelId);
+                // Mutually exclusive: selecting a model clears any budget strategy
+                const targetModelId = e.data.modelId || null;
+                setGlobalModelId(targetModelId);
+                if (targetModelId) {
+                    toggleModelLoad(targetModelId);
+                    handleActivateBudgetStrategy(null);
                 }
             } else if (e.data?.type === 'SELECT_BUDGET' && e.data?.budgetId !== undefined) {
-                handleActivateBudgetStrategy(e.data.budgetId || null);
+                // Mutually exclusive: selecting a budget strategy clears any direct model
+                const targetBudgetId = e.data.budgetId || null;
+                handleActivateBudgetStrategy(targetBudgetId);
+                if (targetBudgetId) {
+                    setGlobalModelId(null);
+                }
             } else if (e.data?.type === 'UPDATE_PROFILE' && e.data?.profile) {
                 saveProfile(e.data.profile).then(() => {
                     if (interactionData?.profile?.id === e.data.profile.id && interactionData) {
@@ -1124,7 +1133,6 @@ function App() {
             } else if (e.data?.type === 'STOP_GENERATION') {
                 stopGeneration();
             } else if (e.data?.type === 'SAVE_EDIT' && e.data?.messageId && e.data?.text !== undefined) {
-                // Stage edit in Zustand and run standard wrappedSaveEdit pipeline
                 useSessionStore.getState().setEditingState(e.data.messageId, e.data.text);
                 wrappedSaveEdit();
             }

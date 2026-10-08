@@ -390,7 +390,7 @@ export function StandaloneOverlay() {
     const [actionPunctuation, setActionPunctuation] = useState<ActionPunctuation>('.');
     const [isAutoFormat, setIsAutoFormat] = useState(false);
 
-    // ─── Native Window Close (Hide rather than destroy) ─────────────
+    // ─── Native Window Close ─────────────────────────────────────────
     const handleClose = useCallback(async () => {
         try {
             const win = getCurrentWebviewWindow();
@@ -576,7 +576,7 @@ export function StandaloneOverlay() {
             .sort((a, b) => b.count - a.count);
     }, [state.allActions, menuSearchQuery]);
 
-    // ─── Position Action Menu ─────────────────────────────────────────
+    // ─── Dynamic Cursor Position Style (Sole Coordinate Attribute) ──
     const menuPositionStyle = useMemo<React.CSSProperties>(() => {
         if (!actionMenuTarget) return { display: 'none' };
 
@@ -608,13 +608,11 @@ export function StandaloneOverlay() {
             left: `${left}px`,
             top: `${top}px`,
             transform,
-            zIndex: 9999,
         };
     }, [actionMenuTarget]);
 
     // ─── Status Metadata ─────────────────────────────────────────────
     const activeProfileId = state.activeProfileId || null;
-
     const isLive = state.selectedModelId || state.selectedBudgetStrategyId;
 
     const statusLabel = state.isLoading 
@@ -628,11 +626,11 @@ export function StandaloneOverlay() {
     return (
         <div className="pip-overlay-container" onClick={() => setActionMenuTarget(null)}>
             {/* Header */}
-            <div className="pip-header" data-tauri-drag-region style={{ cursor: 'grab' }}>
+            <div className="pip-header" data-tauri-drag-region>
                 <div className="pip-header-title" data-tauri-drag-region>
                     <span>◆</span> LoreReactor
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div className="pip-header-controls">
                     <div className="pip-status-indicator">
                         <div className={`pip-status-dot ${statusColorClass}`} />
                         <span>{statusLabel}</span>
@@ -641,10 +639,9 @@ export function StandaloneOverlay() {
                     {/* Settings Gear */}
                     <button
                         type="button"
-                        className="pip-inapp-close"
+                        className="pip-header-btn"
                         onClick={() => setShowSettingsMenu(prev => !prev)}
                         title="Settings"
-                        style={{ fontSize: '0.9rem' }}
                     >
                         ⚙️
                     </button>
@@ -654,7 +651,6 @@ export function StandaloneOverlay() {
                         className="pip-inapp-close"
                         onClick={handleClose}
                         title="Close Overlay"
-                        style={{ cursor: 'pointer', marginLeft: '6px' }}
                     >
                         ✕
                     </button>
@@ -710,7 +706,6 @@ export function StandaloneOverlay() {
                                 prev ? null : { x: e.clientX, y: e.clientY }
                             );
                         }}
-                        style={{ cursor: 'pointer' }}
                         title="Click to interact"
                     >
                         <div className="pip-anonymous-dots">
@@ -748,45 +743,23 @@ export function StandaloneOverlay() {
                             <div className="action-format-row">
                                 <button
                                     type="button"
-                                    className={`action-format-button ${isAutoFormat ? 'action-format-button-active' : ''}`}
+                                    className={`action-format-button action-format-button-full ${isAutoFormat ? 'action-format-button-active' : ''}`}
                                     onClick={() => setIsAutoFormat(!isAutoFormat)}
-                                    style={{ gridColumn: '1 / -1', fontWeight: 'bold' }}
                                 >
                                     {isAutoFormat ? 'Auto-Format' : 'Manual Format'}
                                 </button>
                             </div>
-                            <div
-                                className="action-format-row"
-                                style={{
-                                    opacity: isAutoFormat ? 0.4 : 1,
-                                    pointerEvents: isAutoFormat ? 'none' : 'auto',
-                                    transition: 'opacity 0.2s',
-                                }}
-                            >
+                            <div className={`action-format-row-manual ${isAutoFormat ? 'disabled' : ''}`}>
                                 <button type="button" className={`action-format-button ${actionWrap === '*' ? 'action-format-button-active' : ''}`} onClick={() => setActionWrap('*')}>*</button>
                                 <button type="button" className={`action-format-button ${actionWrap === '()' ? 'action-format-button-active' : ''}`} onClick={() => setActionWrap('()')}>()</button>
                                 <button type="button" className={`action-format-button ${actionWrap === 'none' ? 'action-format-button-active' : ''}`} onClick={() => setActionWrap('none')}>None</button>
                             </div>
-                            <div
-                                className="action-format-row"
-                                style={{
-                                    opacity: isAutoFormat ? 0.4 : 1,
-                                    pointerEvents: isAutoFormat ? 'none' : 'auto',
-                                    transition: 'opacity 0.2s',
-                                }}
-                            >
+                            <div className={`action-format-row-manual ${isAutoFormat ? 'disabled' : ''}`}>
                                 <button type="button" className={`action-format-button ${actionCase === 'first' ? 'action-format-button-active' : ''}`} onClick={() => setActionCase('first')}>A*</button>
                                 <button type="button" className={`action-format-button ${actionCase === 'pascal' ? 'action-format-button-active' : ''}`} onClick={() => setActionCase('pascal')}>A* A*</button>
                                 <button type="button" className={`action-format-button ${actionCase === 'lower' ? 'action-format-button-active' : ''}`} onClick={() => setActionCase('lower')}>a*</button>
                             </div>
-                            <div
-                                className="action-format-row"
-                                style={{
-                                    opacity: isAutoFormat ? 0.4 : 1,
-                                    pointerEvents: isAutoFormat ? 'none' : 'auto',
-                                    transition: 'opacity 0.2s',
-                                }}
-                            >
+                            <div className={`action-format-row-manual ${isAutoFormat ? 'disabled' : ''}`}>
                                 <button type="button" className={`action-format-button ${actionPunctuation === '.' ? 'action-format-button-active' : ''}`} onClick={() => setActionPunctuation('.')}>.</button>
                                 <button type="button" className={`action-format-button ${actionPunctuation === '-' ? 'action-format-button-active' : ''}`} onClick={() => setActionPunctuation('-')}>-</button>
                                 <button type="button" className={`action-format-button ${actionPunctuation === 'none' ? 'action-format-button-active' : ''}`} onClick={() => setActionPunctuation('none')}>None</button>
@@ -874,17 +847,15 @@ export function StandaloneOverlay() {
                             </button>
                             <button 
                                 type="button"
-                                className="pip-dialogue-action-btn"
+                                className="pip-dialogue-action-btn pip-btn-save"
                                 onClick={handleSaveEdit}
                                 title="Save Edit"
-                                style={{ color: '#22c55e' }}
                             >
                                 💾
                             </button>
                         </>
                     ) : (
                         <>
-                            {/* Reformat Button */}
                             {!state.isLoading && (
                                 <button 
                                     className={`pip-dialogue-action-btn ${isReformatToggled ? 'pip-dialogue-action-btn-active' : ''}`}
@@ -896,17 +867,15 @@ export function StandaloneOverlay() {
                                 </button>
                             )}
 
-                            {/* Stop or Resume Button */}
                             {state.isLoading ? (
                                 <button 
-                                    className="pip-dialogue-action-btn" 
+                                    className="pip-dialogue-action-btn pip-btn-stop" 
                                     onClick={() => {
                                         const channel = new BroadcastChannel('lorereactor-companion-sync');
                                         channel.postMessage({ type: 'STOP_GENERATION' });
                                         channel.close();
                                     }}
                                     title="Stop Generation"
-                                    style={{ color: '#ef4444' }}
                                 >
                                     ⏹
                                 </button>
@@ -926,7 +895,6 @@ export function StandaloneOverlay() {
                                 </button>
                             )}
 
-                            {/* Regenerate Button */}
                             {!state.isLoading && (
                                 <button 
                                     className="pip-dialogue-action-btn" 
@@ -943,7 +911,6 @@ export function StandaloneOverlay() {
                                 </button>
                             )}
 
-                            {/* Edit Button */}
                             {!state.isLoading && (
                                 <button 
                                     className="pip-dialogue-action-btn" 
@@ -958,11 +925,10 @@ export function StandaloneOverlay() {
                     )}
                 </div>
 
-                {/* Main Dialogue Content / Full-Height Inline Edit Textarea */}
+                {/* Main Dialogue Content */}
                 <div 
-                    className="pip-dialogue-text" 
+                    className={`pip-dialogue-text ${isEditing ? 'is-editing' : ''}`} 
                     ref={dialogueTextRef}
-                    style={isEditing ? { display: 'flex', flexDirection: 'column', height: '100%', flex: 1, padding: '2px' } : undefined}
                 >
                     {state.isLoading && !state.streamingText ? (
                         <div className="pip-thinking-dots"><span></span><span></span><span></span></div>
@@ -977,23 +943,7 @@ export function StandaloneOverlay() {
                                     handleCancelEdit();
                                 }
                             }}
-                            style={{
-                                width: '100%',
-                                height: '100%',
-                                flex: 1,
-                                minHeight: '85px',
-                                background: 'rgba(0, 0, 0, 0.25)',
-                                color: '#fff',
-                                border: '1px solid rgba(168, 85, 247, 0.4)',
-                                borderRadius: '6px',
-                                padding: '8px',
-                                fontSize: '0.85rem',
-                                lineHeight: '1.4',
-                                fontFamily: 'inherit',
-                                resize: 'none',
-                                outline: 'none',
-                                boxSizing: 'border-box',
-                            }}
+                            className="pip-inline-edit-textarea"
                         />
                     ) : displayedText ? (
                         displayedText
@@ -1003,16 +953,15 @@ export function StandaloneOverlay() {
                 </div>
             </div>
 
-            {/* Hide Chat Input and File Attachment zone while in Edit Mode */}
+            {/* Chat Input & Attachment Area */}
             {!isEditing && (
                 <>
-                    {/* File Attachment Chips */}
                     {pendingFiles.length > 0 && (
-                        <div style={{ position: 'absolute', bottom: '55px', left: '12px', right: '12px', display: 'flex', gap: '6px', flexWrap: 'wrap', zIndex: 45 }}>
+                        <div className="pip-file-chips-strip">
                             {pendingFiles.map((file, i) => (
-                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 8px', background: 'rgba(192, 132, 252, 0.2)', border: '1px solid rgba(192, 132, 252, 0.5)', borderRadius: '12px', fontSize: '0.65rem', color: '#fff' }}>
-                                    <span style={{ maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📎 {file.name}</span>
-                                    <button onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', color: '#ff4444', cursor: 'pointer', padding: '0 2px', fontSize: '0.8rem' }}>×</button>
+                                <div key={i} className="pip-file-chip">
+                                    <span className="pip-file-chip-name">📎 {file.name}</span>
+                                    <button onClick={() => removeFile(i)} className="pip-file-chip-remove">×</button>
                                 </div>
                             ))}
                         </div>
@@ -1021,7 +970,7 @@ export function StandaloneOverlay() {
                     {/* Invisible Hover Net */}
                     <div className="pip-input-trigger-zone" />
 
-                    {/* Stealth Input: Paperclip LEFT | Text MIDDLE | Mic RIGHT */}
+                    {/* Stealth Input */}
                     <div className={`pip-stealth-input-wrapper ${isInputFocused || showAutocomplete || pendingFiles.length > 0 || isRecording ? 'focused has-autocomplete' : ''}`}>
                         {showAutocomplete && (
                             <div ref={autocompleteRef} className="slash-autocomplete">
@@ -1059,7 +1008,6 @@ export function StandaloneOverlay() {
                             </div>
                         )}
 
-                        {/* Paperclip — LEFT */}
                         <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
@@ -1069,9 +1017,8 @@ export function StandaloneOverlay() {
                         >
                             📎
                         </button>
-                        <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileSelected} multiple />
+                        <input type="file" ref={fileInputRef} className="file-input-hidden" onChange={handleFileSelected} multiple />
 
-                        {/* Text Input — MIDDLE */}
                         <input
                             ref={inputRef}
                             type="text"
@@ -1086,7 +1033,6 @@ export function StandaloneOverlay() {
                             disabled={state.isLoading}
                         />
 
-                        {/* Mic — RIGHT */}
                         <button
                             type="button"
                             onClick={handleToggleMic}
@@ -1100,17 +1046,19 @@ export function StandaloneOverlay() {
                 </>
             )}
 
-            {/* ─── Settings Modals ───────────────────────────────────────── */}
+            {/* ─── Zero-Gap Flush Settings Modals (Zero Inline CSS) ─────────── */}
 
             {/* Profile List Modal */}
             {activeSettingsModal === 'profile-list' && (
-                <div className="modal-overlay" onClick={() => setActiveSettingsModal(null)} style={{ zIndex: 10000 }}>
-                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '360px' }}>
-                        <div className="modal-header" style={{ padding: '12px 16px' }}>
-                            <h2 style={{ fontSize: '1rem', margin: 0 }}>Select Profile</h2>
-                            <button className="close-button" onClick={() => setActiveSettingsModal(null)} style={{ minWidth: '32px', minHeight: '32px', fontSize: '1.2rem' }}>×</button>
+                <div className="pip-modal-overlay" onClick={() => setActiveSettingsModal(null)}>
+                    <div className="pip-modal-content" onClick={e => e.stopPropagation()}>
+                        <div className="pip-modal-header">
+                            <h2 className="pip-modal-title">Select Profile</h2>
+                            <button className="pip-modal-close-btn" onClick={() => setActiveSettingsModal(null)}>×</button>
                         </div>
-                        <div className="modal-body" style={{ padding: '12px 16px' }}>
+
+                        {/* Search Bar ABOVE the Scrolling List Frame */}
+                        <div className="pip-search-container">
                             <input
                                 type="text"
                                 className="pip-settings-search"
@@ -1119,35 +1067,37 @@ export function StandaloneOverlay() {
                                 onChange={(e) => setModalSearchQuery(e.target.value)}
                                 autoFocus
                             />
-                            <div className="pip-settings-list">
-                                {filteredProfiles.map(profile => (
-                                    <div
-                                        key={profile.id}
-                                        className={`pip-settings-item ${activeProfileId === profile.id ? 'selected' : ''}`}
-                                        onClick={() => handleActivateProfile(profile.id)}
-                                    >
-                                        <div className="pip-settings-item-info">
-                                            <div className="pip-settings-item-title">{profile.name}</div>
-                                            {profile.description && <div className="pip-settings-item-sub">{profile.description}</div>}
-                                        </div>
-                                        <div className="pip-settings-item-actions">
-                                            <button
-                                                className="pip-settings-item-btn"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleEditProfile(profile);
-                                                }}
-                                                title="Edit Profile (General)"
-                                            >
-                                                ✎
-                                            </button>
-                                        </div>
+                        </div>
+
+                        {/* Scrolling Frame */}
+                        <div className="pip-settings-list">
+                            {filteredProfiles.map(profile => (
+                                <div
+                                    key={profile.id}
+                                    className={`pip-settings-item ${activeProfileId === profile.id ? 'selected' : ''}`}
+                                    onClick={() => handleActivateProfile(profile.id)}
+                                >
+                                    <div className="pip-settings-item-info">
+                                        <div className="pip-settings-item-title">{profile.name}</div>
+                                        {profile.description && <div className="pip-settings-item-sub">{profile.description}</div>}
                                     </div>
-                                ))}
-                                {filteredProfiles.length === 0 && (
-                                    <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem', padding: '16px 0', opacity: 0.6 }}>No profiles found.</div>
-                                )}
-                            </div>
+                                    <div className="pip-settings-item-actions">
+                                        <button
+                                            className="pip-settings-item-btn"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleEditProfile(profile);
+                                            }}
+                                            title="Edit Profile (General)"
+                                        >
+                                            ✎
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                            {filteredProfiles.length === 0 && (
+                                <div className="pip-settings-empty">No profiles found.</div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -1162,15 +1112,17 @@ export function StandaloneOverlay() {
                 />
             )}
 
-            {/* Model Selector */}
+            {/* Model Selector Modal */}
             {activeSettingsModal === 'model' && (
-                <div className="modal-overlay" onClick={() => setActiveSettingsModal(null)} style={{ zIndex: 10000 }}>
-                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '360px' }}>
-                        <div className="modal-header" style={{ padding: '12px 16px' }}>
-                            <h2 style={{ fontSize: '1rem', margin: 0 }}>Select Model</h2>
-                            <button className="close-button" onClick={() => setActiveSettingsModal(null)} style={{ minWidth: '32px', minHeight: '32px', fontSize: '1.2rem' }}>×</button>
+                <div className="pip-modal-overlay" onClick={() => setActiveSettingsModal(null)}>
+                    <div className="pip-modal-content" onClick={e => e.stopPropagation()}>
+                        <div className="pip-modal-header">
+                            <h2 className="pip-modal-title">Select Model</h2>
+                            <button className="pip-modal-close-btn" onClick={() => setActiveSettingsModal(null)}>×</button>
                         </div>
-                        <div className="modal-body" style={{ padding: '12px 16px' }}>
+
+                        {/* Search Bar ABOVE the Scrolling List Frame */}
+                        <div className="pip-search-container">
                             <input
                                 type="text"
                                 className="pip-settings-search"
@@ -1179,42 +1131,46 @@ export function StandaloneOverlay() {
                                 onChange={(e) => setModalSearchQuery(e.target.value)}
                                 autoFocus
                             />
-                            <div className="pip-settings-list">
-                                {filteredModels.map(m => (
-                                    <div
-                                        key={m.id}
-                                        className={`pip-settings-item ${state.selectedModelId === m.id ? 'selected' : ''}`}
-                                        onClick={() => {
-                                            const channel = new BroadcastChannel('lorereactor-companion-sync');
-                                            const newId = state.selectedModelId === m.id ? '' : m.id;
-                                            channel.postMessage({ type: 'SELECT_MODEL', modelId: newId });
-                                            channel.close();
-                                        }}
-                                    >
-                                        <div className="pip-settings-item-info">
-                                            <div className="pip-settings-item-title">{m.name}</div>
-                                            {m.backend && <div className="pip-settings-item-sub">{m.backend}</div>}
-                                        </div>
+                        </div>
+
+                        {/* Scrolling Frame */}
+                        <div className="pip-settings-list">
+                            {filteredModels.map(m => (
+                                <div
+                                    key={m.id}
+                                    className={`pip-settings-item ${state.selectedModelId === m.id ? 'selected' : ''}`}
+                                    onClick={() => {
+                                        const channel = new BroadcastChannel('lorereactor-companion-sync');
+                                        const newId = state.selectedModelId === m.id ? '' : m.id;
+                                        channel.postMessage({ type: 'SELECT_MODEL', modelId: newId });
+                                        channel.close();
+                                    }}
+                                >
+                                    <div className="pip-settings-item-info">
+                                        <div className="pip-settings-item-title">{m.name}</div>
+                                        {m.backend && <div className="pip-settings-item-sub">{m.backend}</div>}
                                     </div>
-                                ))}
-                                {filteredModels.length === 0 && (
-                                    <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem', padding: '16px 0', opacity: 0.6 }}>No models found.</div>
-                                )}
-                            </div>
+                                </div>
+                            ))}
+                            {filteredModels.length === 0 && (
+                                <div className="pip-settings-empty">No models found.</div>
+                            )}
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Budget Strategy Selector */}
+            {/* Budget Strategy Selector Modal */}
             {activeSettingsModal === 'budget' && (
-                <div className="modal-overlay" onClick={() => setActiveSettingsModal(null)} style={{ zIndex: 10000 }}>
-                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '360px' }}>
-                        <div className="modal-header" style={{ padding: '12px 16px' }}>
-                            <h2 style={{ fontSize: '1rem', margin: 0 }}>Select Budget Strategy</h2>
-                            <button className="close-button" onClick={() => setActiveSettingsModal(null)} style={{ minWidth: '32px', minHeight: '32px', fontSize: '1.2rem' }}>×</button>
+                <div className="pip-modal-overlay" onClick={() => setActiveSettingsModal(null)}>
+                    <div className="pip-modal-content" onClick={e => e.stopPropagation()}>
+                        <div className="pip-modal-header">
+                            <h2 className="pip-modal-title">Select Budget Strategy</h2>
+                            <button className="pip-modal-close-btn" onClick={() => setActiveSettingsModal(null)}>×</button>
                         </div>
-                        <div className="modal-body" style={{ padding: '12px 16px' }}>
+
+                        {/* Search Bar ABOVE the Scrolling List Frame */}
+                        <div className="pip-search-container">
                             <input
                                 type="text"
                                 className="pip-settings-search"
@@ -1223,27 +1179,29 @@ export function StandaloneOverlay() {
                                 onChange={(e) => setModalSearchQuery(e.target.value)}
                                 autoFocus
                             />
-                            <div className="pip-settings-list">
-                                {filteredBudgets.map(b => (
-                                    <div
-                                        key={b.id}
-                                        className={`pip-settings-item ${state.selectedBudgetStrategyId === b.id ? 'selected' : ''}`}
-                                        onClick={() => {
-                                            const channel = new BroadcastChannel('lorereactor-companion-sync');
-                                            const newId = state.selectedBudgetStrategyId === b.id ? '' : b.id;
-                                            channel.postMessage({ type: 'SELECT_BUDGET', budgetId: newId });
-                                            channel.close();
-                                        }}
-                                    >
-                                        <div className="pip-settings-item-info">
-                                            <div className="pip-settings-item-title">{b.name}</div>
-                                        </div>
+                        </div>
+
+                        {/* Scrolling Frame */}
+                        <div className="pip-settings-list">
+                            {filteredBudgets.map(b => (
+                                <div
+                                    key={b.id}
+                                    className={`pip-settings-item ${state.selectedBudgetStrategyId === b.id ? 'selected' : ''}`}
+                                    onClick={() => {
+                                        const channel = new BroadcastChannel('lorereactor-companion-sync');
+                                        const newId = state.selectedBudgetStrategyId === b.id ? '' : b.id;
+                                        channel.postMessage({ type: 'SELECT_BUDGET', budgetId: newId });
+                                        channel.close();
+                                    }}
+                                >
+                                    <div className="pip-settings-item-info">
+                                        <div className="pip-settings-item-title">{b.name}</div>
                                     </div>
-                                ))}
-                                {filteredBudgets.length === 0 && (
-                                    <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem', padding: '16px 0', opacity: 0.6 }}>No budgets found.</div>
-                                )}
-                            </div>
+                                </div>
+                            ))}
+                            {filteredBudgets.length === 0 && (
+                                <div className="pip-settings-empty">No budgets found.</div>
+                            )}
                         </div>
                     </div>
                 </div>

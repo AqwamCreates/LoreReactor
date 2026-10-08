@@ -35,7 +35,7 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
 
     const isInitialMount = useRef(true);
 
-    // Persist active chat ID when it changes
+    // Persist active chat ID
     useEffect(() => {
         if (isMultiplayerClient) return;
         if (interactionDataId) {
@@ -51,7 +51,7 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
         }
     }, [selectedProfileId, isMultiplayerClient]);
 
-    // Persist selected model ID (skips initial empty mount to avoid overwriting stored value)
+    // Persist selected model ID
     useEffect(() => {
         if (isInitialMount.current) {
             isInitialMount.current = false;
@@ -63,23 +63,23 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
         saveRawSessionData({ selectedModelId: selectedModelId ?? null });
     }, [selectedModelId]);
 
-    // Activate or cleanly deactivate budget strategy when selectedBudgetStrategyId changes
+    // ─── FIXED: Synchronize activeStrategy state when selectedBudgetStrategyId becomes null ───
     useEffect(() => {
         if (!selectedBudgetStrategyId) {
-            // FIX: Explicitly nullify active strategy when no strategy is selected
-            setActiveBudgetStrategy(null);
+            if (activeStrategy !== null) {
+                setActiveBudgetStrategy(null);
+            }
             return;
         }
         if (allBudgetStrategies.length === 0) return;
-
         const strategy = allBudgetStrategies.find(s => s.id === selectedBudgetStrategyId);
         if (!strategy) {
-            setActiveBudgetStrategy(null);
             saveRawSessionData({ selectedBudgetStrategyId: null });
+            setActiveBudgetStrategy(null);
             return;
         }
         setActiveBudgetStrategy(strategy);
-    }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy]);
+    }, [selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy, activeStrategy]);
 
     // Clear selected model if it's no longer running (local models only)
     useEffect(() => {
@@ -97,7 +97,7 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
         }
     }, [selectedModelId, allLanguageModels, runningModels, setSelectedModelId]);
 
-    // Apply default character when selectedCharacterId changes
+    // Apply default character
     useEffect(() => {
         if (isMultiplayerClient) return;
         if (selectedCharacterId && allCharacters.length > 0) {
@@ -108,7 +108,7 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
         }
     }, [selectedCharacterId, allCharacters, setSelectedCharacter, isMultiplayerClient]);
 
-    // Sync selected model to global model with runtime port
+    // Sync selected model to global model
     useEffect(() => {
         if (selectedModelId && runningModels[selectedModelId]?.isRunning) {
             const foundModel = allLanguageModels.find(m => m.id === selectedModelId);
