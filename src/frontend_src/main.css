@@ -5693,6 +5693,8 @@ COMPANION OVERLAY: SETTINGS DROPDOWN MENU
 
 /* =============================================================================
 COMPANION OVERLAY: MODAL CONTAINMENT
+Keeps every modal inside the overlay container. No viewport escape.
+No arbitrary mini-modal width. Full container, clipped and scrollable.
 ============================================================================= */
 .pip-overlay-container .modal-overlay,
 .pip-overlay-container .pip-modal-overlay {
@@ -5827,8 +5829,6 @@ COMPANION OVERLAY: MODAL CONTAINMENT
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .pip-overlay-container .modal-body,
@@ -5852,6 +5852,7 @@ COMPANION OVERLAY: MODAL CONTAINMENT
 
 /* =============================================================================
 COMPANION OVERLAY: SETTINGS LIST ITEMS
+Enough height. Descriptions wrap. No horizontal blowout. Hidden scrollbar.
 ============================================================================= */
 .pip-settings-list {
     display: flex;
@@ -5969,7 +5970,8 @@ COMPANION OVERLAY: SETTINGS LIST ITEMS
 }
 
 /* =============================================================================
-COMPANION OVERLAY: PROFILE EDITOR CONTAINMENT + HINT FIXES
+COMPANION OVERLAY: PROFILE EDITOR CONTAINMENT + BUTTON SIZING
+Does NOT modify internal editor styling beyond containment and button size.
 ============================================================================= */
 .pip-overlay-container .editor-modal-content,
 .pip-overlay-container .editor-modal-content-compact {
@@ -5984,7 +5986,6 @@ COMPANION OVERLAY: PROFILE EDITOR CONTAINMENT + HINT FIXES
     display: block;
 }
 
-/* CRITICAL: Added .editor-field-hint and .slider-description to prevent overflow */
 .pip-overlay-container .editor-section,
 .pip-overlay-container .editor-field-group,
 .pip-overlay-container .editor-nested-field,
@@ -6001,6 +6002,20 @@ COMPANION OVERLAY: PROFILE EDITOR CONTAINMENT + HINT FIXES
     min-width: 0;
     box-sizing: border-box;
     overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.editor-field-hint {
+    font-size: 0.65rem;
+    opacity: 0.6;
+    min-width: 0;
+    word-break: break-word;
+}
+
+.slider-value-display {
+    font-size: 0.65rem;
+    opacity: 0.6;
+    min-width: 0;
     word-break: break-word;
 }
 
@@ -6111,26 +6126,27 @@ COMPANION OVERLAY: PROFILE EDITOR CONTAINMENT + HINT FIXES
     word-break: break-word;
 }
 
-/* =============================================================================
-COMPANION OVERLAY: MOBILE MEDIA QUERY OVERRIDE
-Prevents global 768px rules from forcing 48px min-height / 1rem font 
-on overlay inputs and buttons, which breaks compact formatting.
-============================================================================= */
-@media (max-width: 768px) {
-    .pip-overlay-container .editor-modal-content .editor-input,
-    .pip-overlay-container .editor-modal-content .editor-textarea,
-    .pip-overlay-container .editor-modal-content .editor-select,
-    .pip-overlay-container .editor-modal-content .editor-button,
-    .pip-overlay-container .pip-settings-search {
-        font-size: inherit !important;
-        min-height: unset !important;
-    }
-    
-    .pip-overlay-container .editor-modal-content .editor-button {
-        padding: 6px 12px !important;
-        min-height: 32px !important;
-        font-size: 0.75rem !important;
-    }
+/* Cancel / Save buttons — match the 32px close button size */
+.pip-overlay-container .editor-modal-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.pip-overlay-container .editor-modal-actions .editor-button {
+    min-width: 32px !important;
+    min-height: 32px !important;
+    height: 32px !important;
+    padding: 0 10px !important;
+    font-size: 0.7rem !important;
+    line-height: 1 !important;
+    border-radius: 6px !important;
+    box-sizing: border-box !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
 }
 
 /* =============================================================================
