@@ -5884,7 +5884,6 @@ Enough height. Descriptions wrap. No horizontal blowout. Hidden scrollbar.
     border: 1px solid transparent;
     cursor: pointer;
     transition: all 0.15s;
-    min-height: 56px;
     height: auto;
     width: 100%;
     max-width: 100%;
