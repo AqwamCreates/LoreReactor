@@ -1,5 +1,5 @@
 // frontend_src/components/StandaloneOverlayProfileEditor.tsx
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { Profile, textType, toolUsageDisplayMode } from '../types';
 import { SliderInput } from './SliderInput';
 
@@ -34,14 +34,19 @@ function sliderToDb(sliderValue: number): number {
     return Math.round(-60 + (clamped / 100) * 50);
 }
 
+const SLIDER_HEADER_STYLE: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' };
+const SLIDER_LABEL_STYLE: CSSProperties = { margin: 0 };
+const SLIDER_VALUE_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6 };
+const FIELD_HINT_STYLE: CSSProperties = { fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' };
+
 function ProfileCheckbox({ checked, onChange, label, hint, spaced = false }: { checked: boolean; onChange: (checked: boolean) => void; label: string; hint?: string; spaced?: boolean }) {
     return (
-        <div className={`pip-profile-checkbox-row ${spaced ? 'spaced' : ''}`}>
-            <label className="pip-profile-checkbox-label">
+        <div className={`profile-checkbox-row ${spaced ? 'profile-checkbox-spaced' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: spaced ? '8px' : '4px' }}>
+            <label className="editor-checkbox-label profile-checkbox-left" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                 <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="editor-checkbox-input" />
-                <span className="pip-profile-checkbox-title">{label}</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>{label}</span>
             </label>
-            {hint && <div className="pip-profile-checkbox-hint">{hint}</div>}
+            {hint && <div className="profile-checkbox-hint" style={{ fontSize: '0.65rem', opacity: 0.6, marginLeft: '26px' }}>{hint}</div>}
         </div>
     );
 }
@@ -86,113 +91,92 @@ export function StandaloneOverlayProfileEditor({ profile, onClose, onSave }: Sta
     };
 
     return (
-        <div className="pip-modal-overlay" onClick={onClose}>
-            <div className="pip-modal-content" onClick={e => e.stopPropagation()}>
-                <div className="pip-modal-header">
-                    <h2 className="pip-modal-title">Edit Profile</h2>
-                    <div className="pip-editor-actions">
-                        <button type="button" className="pip-editor-btn-cancel" onClick={onClose}>Cancel</button>
-                        <button type="button" className="pip-editor-btn-save" onClick={handleSubmit}>Save</button>
+        <div className="modal-overlay" onClick={onClose}>
+            <div 
+                className="modal-content editor-modal-content" 
+                onClick={e => e.stopPropagation()} 
+            >
+                <div className="modal-header">
+                    <h2>Edit Profile (General)</h2>
+                    <div className="editor-modal-actions">
+                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Cancel</button>
+                        <button type="button" className="editor-button editor-button-save" onClick={handleSubmit}>Save</button>
                     </div>
                 </div>
 
-                <div className="pip-editor-modal-body">
-                    <div className="pip-editor-field-group">
-                        <label className="editor-label">Name <span className="pip-required-asterisk">*</span></label>
-                        <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="editor-input" />
-                    </div>
+                <div className="modal-body editor-modal-body" style={{ padding: '16px', flex: 1, overflowY: 'auto' }}>
+                    <div style={{ marginBottom: '16px' }}><label className="editor-label">Name <span style={{ color: '#ff4444' }}>*</span></label><input type="text" value={name} onChange={(e) => setName(e.target.value)} className="editor-input" /></div>
+                    <div style={{ marginBottom: '16px' }}><label className="editor-label">Description</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" rows={2} /></div>
 
-                    <div className="pip-editor-field-group">
-                        <label className="editor-label">Description</label>
-                        <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" rows={2} />
-                    </div>
-
-                    <div className="pip-editor-section">
-                        <span className="pip-editor-section-title">Agentic Roleplay</span>
+                    <div className="editor-section">
+                        <span className="editor-section-title">Agentic Roleplay</span>
                         <ProfileCheckbox checked={autonomousMode} onChange={setAutonomousMode} label="Autonomous Mode" hint="Characters act independently in the background." />
                         {autonomousMode && (
-                            <div className="pip-slider-container">
-                                <div className="pip-slider-header">
-                                    <label className="pip-slider-label">Interaction Interval</label>
-                                    <span className="pip-slider-value">{(autonomousInteractionIntervalMs / 1000).toFixed(1)}s</span>
-                                </div>
+                            <div style={{ marginTop: '12px' }}>
+                                <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Interaction Interval</label><span style={SLIDER_VALUE_STYLE}>{(autonomousInteractionIntervalMs / 1000).toFixed(1)}s</span></div>
                                 <SliderInput label="" value={autonomousInteractionIntervalMs} minimumValue={1000} maximumValue={60000} stepValue={1000} decimals={0} onChange={(val) => setAutonomousInteractionIntervalMs(Math.round(val))} description="How often the engine evaluates characters for autonomous actions." />
                             </div>
                         )}
                     </div>
 
-                    <div className="pip-editor-section">
-                        <span className="pip-editor-section-title">Voice Activity Detection & Auto-Send</span>
+                    <div className="editor-section">
+                        <span className="editor-section-title">Voice Activity Detection & Auto-Send</span>
                         <ProfileCheckbox checked={enableAutoSpeechDetection} onChange={setEnableAutoSpeechDetection} label="Auto-Send Voice Input (Hands-Free VAD)" hint="Automatically detect when you start and stop speaking." />
                         {enableAutoSpeechDetection && (
                             <>
-                                <div className="pip-slider-container">
-                                    <div className="pip-slider-header">
-                                        <label className="pip-slider-label">Speech Activation Threshold</label>
-                                        <span className="pip-slider-value">{speechVolumeActivationThreshold}% ({sliderToDb(speechVolumeActivationThreshold)} dBFS)</span>
-                                    </div>
+                                <div style={{ marginTop: '12px' }}>
+                                    <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Speech Activation Threshold</label><span style={SLIDER_VALUE_STYLE}>{speechVolumeActivationThreshold}% ({sliderToDb(speechVolumeActivationThreshold)} dBFS)</span></div>
                                     <SliderInput label="" value={speechVolumeActivationThreshold} minimumValue={1} maximumValue={100} stepValue={1} decimals={0} onChange={(val) => setSpeechVolumeActivationThreshold(Math.round(val))} description="How loud you must speak to wake up the engine." />
                                 </div>
-                                <div className="pip-slider-container">
-                                    <div className="pip-slider-header">
-                                        <label className="pip-slider-label">Silence Deactivation Threshold</label>
-                                        <span className="pip-slider-value">{speechSilenceVolumeActivationThreshold}% ({sliderToDb(speechSilenceVolumeActivationThreshold)} dBFS)</span>
-                                    </div>
+                                <div style={{ marginTop: '12px' }}>
+                                    <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Silence Deactivation Threshold</label><span style={SLIDER_VALUE_STYLE}>{speechSilenceVolumeActivationThreshold}% ({sliderToDb(speechSilenceVolumeActivationThreshold)} dBFS)</span></div>
                                     <SliderInput label="" value={speechSilenceVolumeActivationThreshold} minimumValue={1} maximumValue={100} stepValue={1} decimals={0} onChange={(val) => setSpeechSilenceVolumeActivationThreshold(Math.round(val))} description="The lower volume cutoff that triggers the silence countdown." />
                                 </div>
-                                <div className="pip-slider-container">
-                                    <div className="pip-slider-header">
-                                        <label className="pip-slider-label">Silence Pause Duration</label>
-                                        <span className="pip-slider-value">{(speechSilenceThresholdMs / 1000).toFixed(1)}s</span>
-                                    </div>
+                                <div style={{ marginTop: '12px' }}>
+                                    <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Silence Pause Duration</label><span style={SLIDER_VALUE_STYLE}>{(speechSilenceThresholdMs / 1000).toFixed(1)}s</span></div>
                                     <SliderInput label="" value={speechSilenceThresholdMs} minimumValue={500} maximumValue={5000} stepValue={100} decimals={0} onChange={(val) => setSpeechSilenceThresholdMs(Math.round(val))} description="Duration of silence below the cutoff before final transcription is fired." />
                                 </div>
                             </>
                         )}
                     </div>
 
-                    <div className="pip-editor-section">
-                        <span className="pip-editor-section-title">Volume</span>
-                        <div className="pip-slider-container">
-                            <div className="pip-slider-header">
-                                <label className="pip-slider-label">Global Volume Override</label>
-                                <span className="pip-slider-value">{volume === -1 ? '(Per-track default)' : `${Math.round(volume * 100)}%`}</span>
-                            </div>
-                            <div className="pip-volume-slider-wrapper">
-                                <input type="range" min="-1" max="1" step="0.01" value={volume} onChange={(e) => setVolume(Number(e.target.value))} className="pip-volume-range-input" />
-                            </div>
-                            <div className="pip-field-hint">-1 = use each track's own volume. ≥0 = override all tracks uniformly.</div>
+                    <div className="editor-section">
+                        <span className="editor-section-title">Volume</span>
+                        <div style={{ marginBottom: '12px' }}>
+                            <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Global Volume Override</label><span style={SLIDER_VALUE_STYLE}>{volume === -1 ? '(Per-track default)' : `${Math.round(volume * 100)}%`}</span></div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><input type="range" min="-1" max="1" step="0.01" value={volume} onChange={(e) => setVolume(Number(e.target.value))} style={{ flex: 1 }} /></div>
+                            <div style={FIELD_HINT_STYLE}>-1 = use each track's own volume. ≥0 = override all tracks uniformly.</div>
                         </div>
                     </div>
 
-                    <div className="pip-editor-section">
-                        <span className="pip-editor-section-title">Display</span>
+                    <div className="editor-section">
+                        <span className="editor-section-title">Display</span>
                         <ProfileCheckbox checked={forceNameReveal} onChange={setForceNameReveal} label="Force Name Reveal" hint='Always show character names instead of "Character X".' />
                         <ProfileCheckbox checked={enableAmbientNarration} onChange={setEnableAmbientNarration} label="Enable Ambient Narration" hint="Generate environmental narration to fill silence." spaced />
-                        <div className="pip-editor-field-group">
-                            <label className="editor-label">Tool Usage Display Mode</label>
-                            <select value={toolUsageDisplayMode} onChange={(e) => setToolUsageDisplayMode(e.target.value as toolUsageDisplayMode)} className="pip-editor-select">
+                        <div style={{ marginTop: '12px', marginBottom: '12px' }}>
+                            <label className="editor-label editor-label-small">Tool Usage Display Mode</label>
+                            <select value={toolUsageDisplayMode} onChange={(e) => setToolUsageDisplayMode(e.target.value as toolUsageDisplayMode)} className="editor-select" style={{ width: '100%' }}>
                                 {TOOL_USAGE_DISPLAY_MODES.map(mode => (<option key={mode.value} value={mode.value}>{mode.label}</option>))}
                             </select>
-                            <div className="pip-field-hint">{selectedToolUsageDisplayMode.description}</div>
+                            <div style={FIELD_HINT_STYLE}>{selectedToolUsageDisplayMode.description}</div>
                         </div>
                         <ProfileCheckbox checked={enableCharacterExpression} onChange={setEnableCharacterExpression} label="Enable Character Expression" hint="Use sentiment analysis to swap character images based on emotional tone." />
                     </div>
 
-                    <div className="pip-editor-section">
-                        <span className="pip-editor-section-title">Voice Narration</span>
-                        <div className="pip-voice-narration-grid">
+                    <div className="editor-section">
+                        <span className="editor-section-title">Voice Narration</span>
+                        <div className="voice-narration-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
                             {(Object.keys(NARRATE_TEXT_LABELS) as textType[]).map(type => (
-                                <label key={type} className="pip-voice-narration-toggle">
+                                <label key={type} className="voice-narration-toggle" style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                                     <input type="checkbox" checked={narrateTexts[type]} onChange={(e) => handleNarrateToggle(type, e.target.checked)} className="editor-checkbox-input" />
-                                    <span className="pip-voice-narration-text">{NARRATE_TEXT_LABELS[type]}</span>
+                                    <span style={{ fontSize: '0.75rem' }}>{NARRATE_TEXT_LABELS[type]}</span>
                                 </label>
                             ))}
                         </div>
                     </div>
 
-                    <div className="pip-editor-section">
-                        <span className="pip-editor-section-title">Output Processing</span>
+                    <div className="editor-section">
+                        <span className="editor-section-title">Output Processing</span>
                         <ProfileCheckbox checked={stripThinkTokens} onChange={setStripThinkTokens} label="Strip Think Tokens" hint="Remove thinking tokens from displayed output." />
                     </div>
                 </div>

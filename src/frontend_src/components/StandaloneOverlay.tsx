@@ -630,16 +630,15 @@ export function StandaloneOverlay() {
                 <div className="pip-header-title" data-tauri-drag-region>
                     <span>◆</span> LoreReactor
                 </div>
-                <div className="pip-header-controls">
+                <div className="pip-header-right">
                     <div className="pip-status-indicator">
                         <div className={`pip-status-dot ${statusColorClass}`} />
                         <span>{statusLabel}</span>
                     </div>
 
-                    {/* Settings Gear */}
                     <button
                         type="button"
-                        className="pip-header-btn"
+                        className="pip-inapp-close pip-gear-btn"
                         onClick={() => setShowSettingsMenu(prev => !prev)}
                         title="Settings"
                     >
@@ -743,23 +742,23 @@ export function StandaloneOverlay() {
                             <div className="action-format-row">
                                 <button
                                     type="button"
-                                    className={`action-format-button action-format-button-full ${isAutoFormat ? 'action-format-button-active' : ''}`}
+                                    className={`action-format-button action-format-btn-full ${isAutoFormat ? 'action-format-button-active' : ''}`}
                                     onClick={() => setIsAutoFormat(!isAutoFormat)}
                                 >
                                     {isAutoFormat ? 'Auto-Format' : 'Manual Format'}
                                 </button>
                             </div>
-                            <div className={`action-format-row-manual ${isAutoFormat ? 'disabled' : ''}`}>
+                            <div className={`action-format-row ${isAutoFormat ? 'disabled' : ''}`}>
                                 <button type="button" className={`action-format-button ${actionWrap === '*' ? 'action-format-button-active' : ''}`} onClick={() => setActionWrap('*')}>*</button>
                                 <button type="button" className={`action-format-button ${actionWrap === '()' ? 'action-format-button-active' : ''}`} onClick={() => setActionWrap('()')}>()</button>
                                 <button type="button" className={`action-format-button ${actionWrap === 'none' ? 'action-format-button-active' : ''}`} onClick={() => setActionWrap('none')}>None</button>
                             </div>
-                            <div className={`action-format-row-manual ${isAutoFormat ? 'disabled' : ''}`}>
+                            <div className={`action-format-row ${isAutoFormat ? 'disabled' : ''}`}>
                                 <button type="button" className={`action-format-button ${actionCase === 'first' ? 'action-format-button-active' : ''}`} onClick={() => setActionCase('first')}>A*</button>
                                 <button type="button" className={`action-format-button ${actionCase === 'pascal' ? 'action-format-button-active' : ''}`} onClick={() => setActionCase('pascal')}>A* A*</button>
                                 <button type="button" className={`action-format-button ${actionCase === 'lower' ? 'action-format-button-active' : ''}`} onClick={() => setActionCase('lower')}>a*</button>
                             </div>
-                            <div className={`action-format-row-manual ${isAutoFormat ? 'disabled' : ''}`}>
+                            <div className={`action-format-row ${isAutoFormat ? 'disabled' : ''}`}>
                                 <button type="button" className={`action-format-button ${actionPunctuation === '.' ? 'action-format-button-active' : ''}`} onClick={() => setActionPunctuation('.')}>.</button>
                                 <button type="button" className={`action-format-button ${actionPunctuation === '-' ? 'action-format-button-active' : ''}`} onClick={() => setActionPunctuation('-')}>-</button>
                                 <button type="button" className={`action-format-button ${actionPunctuation === 'none' ? 'action-format-button-active' : ''}`} onClick={() => setActionPunctuation('none')}>None</button>
@@ -847,7 +846,7 @@ export function StandaloneOverlay() {
                             </button>
                             <button 
                                 type="button"
-                                className="pip-dialogue-action-btn pip-btn-save"
+                                className="pip-dialogue-action-btn pip-dialogue-btn-save"
                                 onClick={handleSaveEdit}
                                 title="Save Edit"
                             >
@@ -869,7 +868,7 @@ export function StandaloneOverlay() {
 
                             {state.isLoading ? (
                                 <button 
-                                    className="pip-dialogue-action-btn pip-btn-stop" 
+                                    className="pip-dialogue-action-btn pip-dialogue-btn-stop" 
                                     onClick={() => {
                                         const channel = new BroadcastChannel('lorereactor-companion-sync');
                                         channel.postMessage({ type: 'STOP_GENERATION' });
@@ -1050,11 +1049,11 @@ export function StandaloneOverlay() {
 
             {/* Profile List Modal */}
             {activeSettingsModal === 'profile-list' && (
-                <div className="pip-modal-overlay" onClick={() => setActiveSettingsModal(null)}>
-                    <div className="pip-modal-content" onClick={e => e.stopPropagation()}>
-                        <div className="pip-modal-header">
-                            <h2 className="pip-modal-title">Select Profile</h2>
-                            <button className="pip-modal-close-btn" onClick={() => setActiveSettingsModal(null)}>×</button>
+                <div className="modal-overlay" onClick={() => setActiveSettingsModal(null)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>Select Profile</h2>
+                            <button className="close-button" onClick={() => setActiveSettingsModal(null)}>×</button>
                         </div>
 
                         {/* Search Bar ABOVE the Scrolling List Frame */}
@@ -1096,7 +1095,7 @@ export function StandaloneOverlay() {
                                 </div>
                             ))}
                             {filteredProfiles.length === 0 && (
-                                <div className="pip-settings-empty">No profiles found.</div>
+                                <div className="pip-empty-text">No profiles found.</div>
                             )}
                         </div>
                     </div>
@@ -1114,11 +1113,11 @@ export function StandaloneOverlay() {
 
             {/* Model Selector Modal */}
             {activeSettingsModal === 'model' && (
-                <div className="pip-modal-overlay" onClick={() => setActiveSettingsModal(null)}>
-                    <div className="pip-modal-content" onClick={e => e.stopPropagation()}>
-                        <div className="pip-modal-header">
-                            <h2 className="pip-modal-title">Select Model</h2>
-                            <button className="pip-modal-close-btn" onClick={() => setActiveSettingsModal(null)}>×</button>
+                <div className="modal-overlay" onClick={() => setActiveSettingsModal(null)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>Select Model</h2>
+                            <button className="close-button" onClick={() => setActiveSettingsModal(null)}>×</button>
                         </div>
 
                         {/* Search Bar ABOVE the Scrolling List Frame */}
@@ -1153,7 +1152,7 @@ export function StandaloneOverlay() {
                                 </div>
                             ))}
                             {filteredModels.length === 0 && (
-                                <div className="pip-settings-empty">No models found.</div>
+                                <div className="pip-empty-text">No models found.</div>
                             )}
                         </div>
                     </div>
@@ -1162,11 +1161,11 @@ export function StandaloneOverlay() {
 
             {/* Budget Strategy Selector Modal */}
             {activeSettingsModal === 'budget' && (
-                <div className="pip-modal-overlay" onClick={() => setActiveSettingsModal(null)}>
-                    <div className="pip-modal-content" onClick={e => e.stopPropagation()}>
-                        <div className="pip-modal-header">
-                            <h2 className="pip-modal-title">Select Budget Strategy</h2>
-                            <button className="pip-modal-close-btn" onClick={() => setActiveSettingsModal(null)}>×</button>
+                <div className="modal-overlay" onClick={() => setActiveSettingsModal(null)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>Select Budget Strategy</h2>
+                            <button className="close-button" onClick={() => setActiveSettingsModal(null)}>×</button>
                         </div>
 
                         {/* Search Bar ABOVE the Scrolling List Frame */}
@@ -1200,7 +1199,7 @@ export function StandaloneOverlay() {
                                 </div>
                             ))}
                             {filteredBudgets.length === 0 && (
-                                <div className="pip-settings-empty">No budgets found.</div>
+                                <div className="pip-empty-text">No budgets found.</div>
                             )}
                         </div>
                     </div>
