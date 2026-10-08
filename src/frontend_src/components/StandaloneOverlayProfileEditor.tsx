@@ -91,11 +91,8 @@ export function StandaloneOverlayProfileEditor({ profile, onClose, onSave }: Sta
     };
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div 
-                className="modal-content editor-modal-content" 
-                onClick={e => e.stopPropagation()} 
-            >
+        <div className="modal-overlay" onClick={onClose} style={{ zIndex: 10000 }}>
+            <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', maxHeight: '85vh' }}>
                 <div className="modal-header">
                     <h2>Edit Profile (General)</h2>
                     <div className="editor-modal-actions">
@@ -104,7 +101,7 @@ export function StandaloneOverlayProfileEditor({ profile, onClose, onSave }: Sta
                     </div>
                 </div>
 
-                <div className="modal-body editor-modal-body" style={{ padding: '16px', flex: 1, overflowY: 'auto' }}>
+                <div className="modal-body editor-modal-body" style={{ padding: '16px' }}>
                     <div style={{ marginBottom: '16px' }}><label className="editor-label">Name <span style={{ color: '#ff4444' }}>*</span></label><input type="text" value={name} onChange={(e) => setName(e.target.value)} className="editor-input" /></div>
                     <div style={{ marginBottom: '16px' }}><label className="editor-label">Description</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" rows={2} /></div>
 

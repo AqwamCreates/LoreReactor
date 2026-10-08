@@ -5140,17 +5140,14 @@ body.overlay-mode,
 html.overlay-mode {
     background: transparent !important;
     overflow: hidden !important;
+    /* Center the root container */
     display: flex !important;
     justify-content: center !important;
     align-items: center !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
 }
-
 body.overlay-mode #root,
 .overlay-mode #root {
+    /* Force the 9:16 ratio */
     aspect-ratio: 9 / 16;
     height: 100% !important;
     max-height: 100% !important;
@@ -5158,6 +5155,7 @@ body.overlay-mode #root,
     max-width: 100% !important;
     margin: 0 auto !important;
     background: transparent !important;
+    /* Keep your existing overrides */
     border: none !important;
     overflow: hidden !important;
 }
@@ -5171,7 +5169,6 @@ body.overlay-mode #root,
     padding: 0 4px;
     transition: color 0.2s;
     line-height: 1;
-    margin-left: 6px;
 }
 .pip-inapp-close:hover { color: #ef4444; }
 
@@ -5214,9 +5211,6 @@ body.overlay-mode #root,
     flex-shrink: 0;
     position: relative;
 }
-.pip-header[data-tauri-drag-region] {
-    cursor: grab;
-}
 .pip-header-title {
     font-size: 0.75rem;
     font-weight: 700;
@@ -5226,14 +5220,6 @@ body.overlay-mode #root,
     display: flex;
     align-items: center;
     gap: 8px;
-}
-.pip-header-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.pip-gear-btn {
-    font-size: 0.9rem;
 }
 .pip-status-indicator {
     display: flex;
@@ -5324,11 +5310,11 @@ body.overlay-mode #root,
     display: flex;
     align-items: center;
     justify-content: center;
+    /* Adjusted to match the new 15vh bottom offset roughly */
     padding-bottom: calc(15vh + 50px); 
     background: radial-gradient(circle at 50% 35%, rgba(170, 59, 255, 0.1) 0%, rgba(15, 15, 25, 0.6) 55%, var(--bg, #16171d) 85%);
     pointer-events: none;
     user-select: none;
-    cursor: pointer;
 }
 .pip-anonymous-dots { display: flex; align-items: center; gap: 14px; }
 .pip-anonymous-dots span {
@@ -5346,13 +5332,13 @@ body.overlay-mode #root,
     50% { opacity: 0.9; transform: scale(1.25); box-shadow: 0 0 20px var(--accent, #c084fc), 0 0 35px var(--accent, #c084fc); }
 }
 
-/* Flex spacer */
+/* Flex spacer pushes dialogue + input to the bottom of the container */
 .pip-content-spacer {
     flex: 1;
     min-height: 0;
 }
 
-/* Dialogue box */
+/* Dialogue box — now a flex child, no longer absolute */
 .pip-dialogue-box {
     flex-shrink: 0;
     min-height: 155px;
@@ -5387,6 +5373,7 @@ body.overlay-mode #root,
     box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
 }
 
+/* No more aggressive gradient mask, no more 60px overlap padding */
 .pip-dialogue-text {
     flex: 1;
     margin-top: 8px;
@@ -5402,32 +5389,8 @@ body.overlay-mode #root,
     mask-image: none;
     -webkit-mask-image: none;
 }
-.pip-dialogue-text.is-editing {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    padding: 2px;
-}
 .pip-dialogue-text::-webkit-scrollbar { width: 4px; }
 .pip-dialogue-text::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
-
-.pip-inline-edit-textarea {
-    width: 100%;
-    height: 100%;
-    flex: 1;
-    min-height: 85px;
-    background: rgba(0, 0, 0, 0.25);
-    color: #fff;
-    border: 1px solid rgba(168, 85, 247, 0.4);
-    border-radius: 6px;
-    padding: 8px;
-    font-size: 0.85rem;
-    line-height: 1.4;
-    font-family: inherit;
-    resize: none;
-    outline: none;
-    box-sizing: border-box;
-}
 
 .pip-empty-state { display: flex; align-items: center; justify-content: center; height: 100%; color: #64748b; font-size: 0.8rem; font-style: italic; }
 .pip-thinking-dots { display: inline-flex; gap: 4px; align-items: center; }
@@ -5439,45 +5402,7 @@ body.overlay-mode #root,
     40% { transform: scale(1); opacity: 1; }
 }
 
-/* File Attachment Chips */
-.pip-file-chips-strip {
-    position: absolute;
-    bottom: 55px;
-    left: 12px;
-    right: 12px;
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    z-index: 45;
-}
-.pip-file-chip {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    background: rgba(192, 132, 252, 0.2);
-    border: 1px solid rgba(192, 132, 252, 0.5);
-    border-radius: 12px;
-    font-size: 0.65rem;
-    color: #fff;
-}
-.pip-file-chip-name {
-    max-width: 100px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.pip-file-chip-remove {
-    background: none;
-    border: none;
-    color: #ff4444;
-    cursor: pointer;
-    padding: 0 2px;
-    font-size: 0.8rem;
-    line-height: 1;
-}
-
-/* Stealth Input */
+/* Stealth Input — now a flex child that animates height to push dialogue up */
 .pip-stealth-input-wrapper {
     flex-shrink: 0;
     height: 0;
@@ -5495,9 +5420,13 @@ body.overlay-mode #root,
     position: relative;
     z-index: 40;
 }
+
+/* Allow autocomplete to overflow upward when focused */
 .pip-stealth-input-wrapper.focused {
     overflow: visible;
 }
+
+/* The invisible hover net */
 .pip-input-trigger-zone {
     position: absolute;
     bottom: 0;
@@ -5506,6 +5435,8 @@ body.overlay-mode #root,
     height: 60px; 
     z-index: 39;
 }
+
+/* Reveal logic now relies on the trigger zone, the input itself, or focus state */
 .pip-input-trigger-zone:hover ~ .pip-stealth-input-wrapper,
 .pip-stealth-input-wrapper:hover,
 .pip-stealth-input-wrapper.focused {
@@ -5514,9 +5445,12 @@ body.overlay-mode #root,
     pointer-events: auto;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
+
+/* Instant hide when mouse leaves and not focused */
 .pip-stealth-input-wrapper:not(.focused):not(:hover) {
     transition: opacity 0s ease;
 }
+
 .pip-stealth-input {
     flex: 1;
     min-width: 0;
@@ -5530,6 +5464,7 @@ body.overlay-mode #root,
 }
 .pip-stealth-input::placeholder { color: rgba(255, 255, 255, 0.3); font-style: italic; }
 
+/* Input Icon Buttons (Mic & Paperclip) */
 .pip-input-icon-btn {
     background: none;
     border: none;
@@ -5555,56 +5490,16 @@ body.overlay-mode #root,
     color: #ef4444;
     animation: pip-mic-pulse 1.5s infinite;
 }
+
 @keyframes pip-mic-pulse {
     0% { opacity: 1; text-shadow: 0 0 0 rgba(239, 68, 68, 0.4); }
     50% { opacity: 0.8; text-shadow: 0 0 8px rgba(239, 68, 68, 0.6); }
     100% { opacity: 1; text-shadow: 0 0 0 rgba(239, 68, 68, 0.4); }
 }
 
-/* Dialogue Box Action Buttons */
-.pip-dialogue-actions {
-    position: absolute;
-    top: -14px;
-    right: 16px;
-    display: flex;
-    gap: 6px;
-    z-index: 60;
-}
-.pip-dialogue-action-btn {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: rgba(15, 15, 25, 0.85);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    color: #e2e8f0;
-    font-size: 0.8rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-    padding: 0;
-    line-height: 1;
-}
-.pip-dialogue-action-btn:hover:not(:disabled) {
-    background: var(--accent, #c084fc);
-    border-color: var(--accent, #c084fc);
-    color: #fff;
-    transform: scale(1.1);
-    box-shadow: 0 0 12px rgba(192, 132, 252, 0.4);
-}
-.pip-dialogue-action-btn:active:not(:disabled) { transform: scale(0.95); }
-.pip-dialogue-action-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-    filter: grayscale(0.5);
-}
-.pip-dialogue-btn-save { color: #22c55e; }
-.pip-dialogue-btn-stop { color: #ef4444; }
-
-/* Settings Dropdown Menu */
+/* =============================================================================
+COMPANION OVERLAY: SETTINGS DROPDOWN MENU
+============================================================================= */
 .pip-settings-menu {
     position: absolute;
     top: 40px;
@@ -5620,10 +5515,12 @@ body.overlay-mode #root,
     overflow: hidden;
     animation: pip-menu-slide 0.15s ease-out;
 }
+
 @keyframes pip-menu-slide {
     from { opacity: 0; transform: translateY(-8px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
 .pip-settings-menu-item {
     padding: 10px 16px;
     font-size: 0.8rem;
@@ -5636,113 +5533,45 @@ body.overlay-mode #root,
     transition: background 0.15s, color 0.15s;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
-.pip-settings-menu-item:last-child { border-bottom: none; }
+
+.pip-settings-menu-item:last-child {
+    border-bottom: none;
+}
+
 .pip-settings-menu-item:hover {
     background: rgba(192, 132, 252, 0.15);
     color: #fff;
 }
 
 /* =============================================================================
-ZERO-GAP FLUSH MODALS & LAYOUT CONTAINERS (NO SPILLING, ZERO INLINE CSS)
+COMPANION OVERLAY: COMPACT SETTINGS MODALS
 ============================================================================= */
-
-/* Bounded directly to the overlay window with 0px gap to borders */
-.pip-overlay-container .modal-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: 100%;
-    height: 100%;
-    padding: 0;
-    margin: 0;
-    box-sizing: border-box;
-    z-index: 1000;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-}
-
-/* Flush modal container: width matches the window edges exactly */
-.pip-overlay-container .modal-content,
-.pip-overlay-container .editor-modal-content {
-    width: 100%;
-    max-width: 100%;
-    height: 100%;
-    max-height: 100%;
-    margin: 0;
-    padding: 0;
-    border: none;
-    border-radius: 0;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background: var(--bg);
-}
-
-.pip-overlay-container .modal-header {
-    padding: 12px 16px;
-    flex-shrink: 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    box-sizing: border-box;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg);
-}
-.pip-overlay-container .modal-header h2 {
-    font-size: 1rem;
-    margin: 0;
-    color: var(--text-h);
-}
-.pip-overlay-container .close-button {
-    min-width: 32px;
-    min-height: 32px;
-    font-size: 1.2rem;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-/* Search container placed directly ABOVE the scrolling frame */
-.pip-search-container {
-    padding: 8px 16px 10px 16px;
-    flex-shrink: 0;
-    box-sizing: border-box;
-    background: var(--bg);
-}
-.pip-search-container .pip-settings-search {
-    width: 100%;
-    margin: 0;
-    box-sizing: border-box;
-}
-
-/* Scrolling List Frame */
-.pip-overlay-container .pip-settings-list {
-    flex: 1;
-    min-height: 0;
-    width: 100%;
+.pip-settings-list {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding: 0 16px 16px 16px;
     overflow-y: auto;
-    overflow-x: hidden;
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+.pip-settings-list::-webkit-scrollbar { width: 4px; }
+.pip-settings-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
+
+.pip-settings-search {
+    width: 100%;
+    padding: 8px 12px;
+    margin-bottom: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 0.75rem;
+    outline: none;
     box-sizing: border-box;
+    transition: border-color 0.2s;
 }
-.pip-overlay-container .pip-settings-list::-webkit-scrollbar { width: 4px; }
-.pip-overlay-container .pip-settings-list::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-}
+.pip-settings-search:focus { border-color: var(--accent, #c084fc); }
+.pip-settings-search::placeholder { color: rgba(255, 255, 255, 0.3); font-style: italic; }
 
 .pip-settings-item {
     display: flex;
@@ -5751,17 +5580,16 @@ ZERO-GAP FLUSH MODALS & LAYOUT CONTAINERS (NO SPILLING, ZERO INLINE CSS)
     padding: 8px 12px;
     border-radius: 6px;
     background: rgba(255, 255, 255, 0.03);
-    border: 1px solid transparent;
+    border: 1px solid transparent; /* Default transparent border */
     cursor: pointer;
     transition: all 0.15s;
     min-height: 38px;
-    box-sizing: border-box;
-    width: 100%;
 }
 .pip-settings-item:hover { 
     background: rgba(192, 132, 252, 0.12); 
     border-color: rgba(192, 132, 252, 0.2); 
 }
+/* ✅ PERMANENT GLOW FOR ACTIVE SELECTION (Matches Model/Budget) */
 .pip-settings-item.selected { 
     background: rgba(192, 132, 252, 0.2); 
     border-color: var(--accent, #c084fc); 
@@ -5809,131 +5637,203 @@ ZERO-GAP FLUSH MODALS & LAYOUT CONTAINERS (NO SPILLING, ZERO INLINE CSS)
     background: rgba(255, 255, 255, 0.1); 
     color: #fff; 
 }
-.pip-empty-text {
-    text-align: center;
-    color: #94a3b8;
-    font-size: 0.75rem;
-    padding: 16px 0;
-    opacity: 0.6;
+
+/* =============================================================================
+COMPANION OVERLAY: DIALOGUE BOX ACTION BUTTONS (RESUME / RESTART)
+============================================================================= */
+.pip-dialogue-actions {
+    position: absolute;
+    top: -14px; /* Aligns perfectly with the .pip-dialogue-name plate */
+    right: 16px;
+    display: flex;
+    gap: 6px;
+    z-index: 60;
 }
 
-/* Profile Editor CSS Classes */
-.pip-editor-body {
-    padding: 16px;
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    box-sizing: border-box;
-    width: 100%;
+.pip-dialogue-action-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(15, 15, 25, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #e2e8f0;
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+    padding: 0;
+    line-height: 1;
 }
-.pip-form-group {
-    margin-bottom: 16px;
-    box-sizing: border-box;
-    width: 100%;
+
+.pip-dialogue-action-btn:hover:not(:disabled) {
+    background: var(--accent, #c084fc);
+    border-color: var(--accent, #c084fc);
+    color: #fff;
+    transform: scale(1.1);
+    box-shadow: 0 0 12px rgba(192, 132, 252, 0.4);
 }
-.pip-required-star {
-    color: #ff4444;
+
+.pip-dialogue-action-btn:active:not(:disabled) {
+    transform: scale(0.95);
 }
-.pip-slider-group {
-    margin-top: 12px;
-    box-sizing: border-box;
-    width: 100%;
+
+.pip-dialogue-action-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    filter: grayscale(0.5);
 }
-.pip-slider-header {
+
+/* =============================================================================
+COMPANION OVERLAY: DYNAMIC CURSOR-ANCHORED ACTION MENU
+============================================================================= */
+.pip-overlay-container .action-menu-container {
+    position: fixed;
+    width: 190px;
+    max-height: 250px;
+    background: rgba(15, 15, 25, 0.94);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(192, 132, 252, 0.15);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: pip-cursor-pop 0.15s ease-out;
+    pointer-events: auto;
+}
+@keyframes pip-cursor-pop { from { opacity: 0; } to { opacity: 1; } }
+
+.pip-overlay-container .action-menu-header {
+    padding: 6px 10px;
+    font-size: 0.65rem;
+    font-weight: bold;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    opacity: 0.9;
+    background: rgba(255, 255, 255, 0.03);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 4px;
-    box-sizing: border-box;
-    width: 100%;
+    flex-shrink: 0;
+    color: var(--text-h, #e2e8f0);
 }
-.pip-slider-label {
-    margin: 0;
+.pip-overlay-container .action-format-toggle {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: var(--text-h, #e2e8f0);
+    font-size: 0.6rem;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
 }
-.pip-slider-value {
-    font-size: 0.65rem;
-    opacity: 0.6;
-}
-.pip-field-hint {
-    font-size: 0.55rem;
-    opacity: 0.5;
-    margin-top: 2px;
-}
-.pip-checkbox-container {
+.pip-overlay-container .action-format-toggle:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--accent, #c084fc); }
+.pip-overlay-container .action-format-toggle-active { background: var(--accent, #c084fc); color: #fff; border-color: var(--accent, #c084fc); }
+
+.pip-overlay-container .action-format-panel {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    margin-bottom: 4px;
-    box-sizing: border-box;
-    width: 100%;
+    gap: 4px;
+    padding: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.35);
 }
-.pip-checkbox-container.spaced {
-    margin-bottom: 8px;
-}
-.pip-checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-}
-.pip-checkbox-title {
-    font-size: 0.8rem;
-    font-weight: bold;
-}
-.pip-checkbox-hint {
+.pip-overlay-container .action-format-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+.pip-overlay-container .action-format-button {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-h, #e2e8f0);
     font-size: 0.65rem;
-    opacity: 0.6;
-    margin-left: 26px;
+    font-weight: bold;
+    padding: 4px 0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: monospace;
+    transition: all 0.15s;
+    text-align: center;
 }
-.pip-volume-row {
+.pip-overlay-container .action-format-button:hover:not(.action-format-button-active) { background: rgba(255, 255, 255, 0.15); border-color: var(--accent, #c084fc); }
+.pip-overlay-container .action-format-button-active { background: var(--accent, #c084fc); color: #fff; border-color: var(--accent, #c084fc); }
+
+.pip-overlay-container .action-menu-search {
+    background: rgba(0, 0, 0, 0.3);
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 8px 10px;
+    font-size: 0.75rem;
+    color: var(--text-h, #e2e8f0);
+    outline: none;
+    width: 100%;
+    box-sizing: border-box;
+    font-family: inherit;
+}
+.pip-overlay-container .action-menu-search::placeholder { color: rgba(255, 255, 255, 0.35); font-style: italic; font-size: 0.7rem; }
+
+.pip-overlay-container .action-menu-list {
+    overflow-y: auto;
+    flex-shrink: 1;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+    padding: 4px 0;
+}
+.pip-overlay-container .action-menu-list::-webkit-scrollbar { width: 3px; }
+.pip-overlay-container .action-menu-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); }
+
+.pip-overlay-container .action-menu-item {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    padding: 6px 8px;
+    text-align: left;
+    cursor: pointer;
+    color: var(--text-h, #e2e8f0);
+    font-size: 0.75rem;
+    transition: all 0.15s;
+    width: 100%;
     display: flex;
-    align-items: center;
-    gap: 8px;
-    box-sizing: border-box;
-    width: 100%;
-}
-.pip-volume-input {
-    flex: 1;
-}
-.pip-select-group {
-    margin-top: 12px;
-    margin-bottom: 12px;
-    box-sizing: border-box;
-    width: 100%;
-}
-.pip-select-full {
-    width: 100%;
-    box-sizing: border-box;
-}
-.pip-voice-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-    box-sizing: border-box;
-    width: 100%;
-}
-.pip-voice-toggle-label {
-    display: flex;
+    justify-content: space-between;
     align-items: center;
     gap: 6px;
-    cursor: pointer;
+    position: relative;
+    box-sizing: border-box;
 }
-.pip-voice-toggle-text {
-    font-size: 0.75rem;
-}
+.pip-overlay-container .action-menu-item:last-child { border-bottom: none; }
+.pip-overlay-container .action-menu-item:hover { background: var(--accent-bg, rgba(192, 132, 252, 0.18)); color: #fff; }
+.pip-overlay-container .action-menu-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Action Menu Dynamic Modifiers */
-.action-format-btn-full {
-    grid-column: 1 / -1;
-    font-weight: bold;
+.pip-overlay-container .action-meta-container { display: flex; align-items: center; gap: 0; flex-shrink: 0; }
+.pip-overlay-container .action-count-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 2px 6px;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    color: var(--text-h, #e2e8f0);
+    cursor: default;
+    box-sizing: border-box;
+    line-height: 1;
 }
-.action-format-row.disabled {
-    opacity: 0.4;
-    pointer-events: none;
-}
+.pip-overlay-container .action-count-badge .badge-count { display: inline-block; }
+.pip-overlay-container .action-count-badge .badge-delete { display: none; font-size: 0.75rem; color: #ef4444; font-weight: bold; line-height: 1; }
+.pip-overlay-container .action-menu-item:hover .action-count-badge { background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); cursor: pointer; }
+.pip-overlay-container .action-menu-item:hover .action-count-badge .badge-count { display: none; }
+.pip-overlay-container .action-menu-item:hover .action-count-badge .badge-delete { display: inline-block; }
 
-/* Slash Autocomplete */
+/* --- Overlay Stealth Input Upward Slash Autocomplete --- */
+/* Note: Class names aligned with StandaloneOverlay.tsx (.slash-autocomplete) */
 .pip-overlay-container .slash-autocomplete {
     position: absolute;
     bottom: 50px; 
