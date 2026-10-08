@@ -98,12 +98,13 @@ export function useActionMenu(options: UseActionMenuOptions) {
         });
     }, [actionWrap, actionCase, actionPunctuation, isAutoFormat]);
 
-    const handleActionInterject = useCallback(async (label: string, targetChar: Character, protagonist: Character) => {
+    const handleActionInterject = useCallback(async (label: string, targetChar?: Character, protagonist?: Character) => {
         setActionMenuTarget(null);
         setMenuSearchQuery('');
         setShowActionFormat(false);
 
-        if (!interactionData || !currentCharacter) return;
+        // Guard against missing targetChar or protagonist
+        if (!interactionData || !currentCharacter || !targetChar || !protagonist) return;
 
         if (!isModelReady) {
             addToast('Model is not ready.', 'error');
@@ -119,7 +120,7 @@ export function useActionMenu(options: UseActionMenuOptions) {
 
         // Determine user's previous action wrapping style
         let prevUserWrap: ActionWrap | 'unknown' = 'unknown';
-        const localMessageHistory = getLocalMessageHistory(interactionData, protagonist)
+        const localMessageHistory = getLocalMessageHistory(interactionData, protagonist);
         for (let i = localMessageHistory.length - 1; i >= 0; i--) {
             const msg = localMessageHistory[i];
             if (msg.character.id === currentCharacter.id && msg.messageType === 'chat') {
