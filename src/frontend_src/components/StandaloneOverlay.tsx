@@ -14,6 +14,7 @@ import type {
     BudgetStrategy, Profile, World, Sampler, StopPattern, PromptBlock, Memory, 
     Account, MultiplayerData, ChatMessage, WhisperMessage 
 } from '../types';
+import { ActionMenu } from './ActionMenu';
 
 type ActionWrap = '*' | '()' | 'none';
 type ActionCase = 'first' | 'pascal' | 'lower';
@@ -35,6 +36,8 @@ interface CompanionState {
 }
 
 export function StandaloneOverlay() {
+    const containerRef = useRef<HTMLDivElement>(null);
+
     const [state, setState] = useState<CompanionState>({
         avatarUrl: null, charName: 'Companion', isUser: false, isLoading: false,
         streamingText: '', locationBackgroundUrl: null, allActions: [],
@@ -390,39 +393,13 @@ export function StandaloneOverlay() {
         return actions.filter((a) => a.label.toLowerCase().includes(query)).sort((a, b) => b.count - a.count);
     }, [state.allActions, menuSearchQuery]);
 
-    const menuPositionVars = useMemo<React.CSSProperties>(() => {
-        if (!actionMenuTarget) return {};
-        const winWidth = typeof window !== 'undefined' ? window.innerWidth : 360;
-        const winHeight = typeof window !== 'undefined' ? window.innerHeight : 540;
-        const menuWidth = 190;
-        const menuHeight = 240;
-        const isFlippedLeft = actionMenuTarget.x + menuWidth + 10 > winWidth;
-        let left: number;
-        let transform: string;
-        if (isFlippedLeft) {
-            left = Math.max(menuWidth + 8, actionMenuTarget.x - 10);
-            transform = 'translateX(-100%)';
-        } else {
-            left = Math.min(actionMenuTarget.x + 10, winWidth - menuWidth - 8);
-            transform = 'none';
-        }
-        let top = actionMenuTarget.y;
-        if (top + menuHeight > winHeight - 10) top = Math.max(40, winHeight - menuHeight - 10);
-        top = Math.max(40, top);
-        return {
-            '--menu-left': `${left}px`,
-            '--menu-top': `${top}px`,
-            '--menu-transform': transform,
-        } as React.CSSProperties;
-    }, [actionMenuTarget]);
-
     const activeProfileId = state.activeProfileId || null;
     const isLive = state.selectedModelId || state.selectedBudgetStrategyId;
     const statusLabel = state.isLoading ? 'Responding' : (isLive ? 'Live' : 'Idle');
     const statusColorClass = state.isLoading ? 'active' : (isLive ? '' : 'idle');
 
     return (
-        <div className="pip-overlay-container" onClick={() => setActionMenuTarget(null)}>
+        <div ref={containerRef} className="pip-overlay-container" onClick={() => setActionMenuTarget(null)}>
             <div className="pip-header" data-tauri-drag-region>
                 <div className="pip-header-title" data-tauri-drag-region><span>◆</span> LoreReactor</div>
                 <div className="pip-header-actions">
@@ -474,57 +451,25 @@ export function StandaloneOverlay() {
             </div>
 
             {actionMenuTarget && (
-                <div className="action-menu-container" style={menuPositionVars} onClick={(e) => e.stopPropagation()}>
-                    <div className="action-menu-header">
-                        <span>Interject Action</span>
-                        <button type="button" className={`action-format-toggle ${showActionFormat ? 'action-format-toggle-active' : ''}`} onClick={(e) => { e.stopPropagation(); setShowActionFormat(!showActionFormat); }}>Format</button>
-                    </div>
-                    {showActionFormat ? (
-                        <div className="action-format-panel" onClick={(e) => e.stopPropagation()}>
-                            <div className="action-format-row">
-                                <button type="button" className={`action-format-button action-format-button-full ${isAutoFormat ? 'action-format-button-active' : ''}`} onClick={() => setIsAutoFormat(!isAutoFormat)}>
-                                    {isAutoFormat ? 'Auto-Format' : 'Manual Format'}
-                                </button>
-                            </div>
-                            <div className={`action-format-row ${isAutoFormat ? 'action-format-row-disabled' : ''}`}>
-                                <button type="button" className={`action-format-button ${actionWrap === '*' ? 'action-format-button-active' : ''}`} onClick={() => setActionWrap('*')}>*</button>
-                                <button type="button" className={`action-format-button ${actionWrap === '()' ? 'action-format-button-active' : ''}`} onClick={() => setActionWrap('()')}>()</button>
-                                <button type="button" className={`action-format-button ${actionWrap === 'none' ? 'action-format-button-active' : ''}`} onClick={() => setActionWrap('none')}>None</button>
-                            </div>
-                            <div className={`action-format-row ${isAutoFormat ? 'action-format-row-disabled' : ''}`}>
-                                <button type="button" className={`action-format-button ${actionCase === 'first' ? 'action-format-button-active' : ''}`} onClick={() => setActionCase('first')}>A*</button>
-                                <button type="button" className={`action-format-button ${actionCase === 'pascal' ? 'action-format-button-active' : ''}`} onClick={() => setActionCase('pascal')}>A* A*</button>
-                                <button type="button" className={`action-format-button ${actionCase === 'lower' ? 'action-format-button-active' : ''}`} onClick={() => setActionCase('lower')}>a*</button>
-                            </div>
-                            <div className={`action-format-row ${isAutoFormat ? 'action-format-row-disabled' : ''}`}>
-                                <button type="button" className={`action-format-button ${actionPunctuation === '.' ? 'action-format-button-active' : ''}`} onClick={() => setActionPunctuation('.')}>.</button>
-                                <button type="button" className={`action-format-button ${actionPunctuation === '-' ? 'action-format-button-active' : ''}`} onClick={() => setActionPunctuation('-')}>-</button>
-                                <button type="button" className={`action-format-button ${actionPunctuation === 'none' ? 'action-format-button-active' : ''}`} onClick={() => setActionPunctuation('none')}>None</button>
-                            </div>
-                        </div>
-                    ) : (
-                        <>
-                            <input className="action-menu-search" type="text" value={menuSearchQuery} onChange={(e) => setMenuSearchQuery(e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter') { onAddAction(menuSearchQuery); setMenuSearchQuery(''); } if (e.key === 'Escape') setActionMenuTarget(null); }}
-                                placeholder="Filter or type new & Enter..." onClick={(e) => e.stopPropagation()} />
-                            <div className="action-menu-list">
-                                {filteredActions.map((action) => (
-                                    <div key={action.label} className="action-menu-item" role="button" tabIndex={0}
-                                        onClick={(e) => { e.stopPropagation(); handleInterject(action.label); }}
-                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); handleInterject(action.label); } }}>
-                                        <span className="action-menu-item-label">{action.label}</span>
-                                        <div className="action-meta-container">
-                                            <span className="action-count-badge" onClick={(e) => { e.stopPropagation(); onDeleteAction(action.label); }} title="Click to remove action">
-                                                <span className="badge-count">{action.count || 0}</span>
-                                                <span className="badge-delete">×</span>
-                                            </span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </>
-                    )}
-                </div>
+                <ActionMenu
+                    actionMenuTarget={actionMenuTarget}
+                    menuSearchQuery={menuSearchQuery}
+                    setMenuSearchQuery={setMenuSearchQuery}
+                    showActionFormat={showActionFormat}
+                    setShowActionFormat={setShowActionFormat}
+                    actionWrap={actionWrap}
+                    setActionWrap={setActionWrap}
+                    actionCase={actionCase}
+                    setActionCase={setActionCase}
+                    actionPunctuation={actionPunctuation}
+                    setActionPunctuation={setActionPunctuation}
+                    isAutoFormat={isAutoFormat}
+                    setIsAutoFormat={setIsAutoFormat}
+                    filteredActions={filteredActions}
+                    onAddAction={onAddAction}
+                    onDeleteAction={onDeleteAction}
+                    onActionInterject={handleInterject}
+                />
             )}
 
             <div className="pip-content-spacer" />

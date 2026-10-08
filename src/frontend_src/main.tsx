@@ -9,19 +9,21 @@ import './main.css';
 
 const isOverlayWindow = new URLSearchParams(window.location.search).get('overlay') === 'true';
 
+const root = document.getElementById('root')
+
 if (isOverlayWindow) {
   document.documentElement.classList.add('overlay-mode');
   document.body.classList.add('overlay-mode');
   document.documentElement.style.background = 'transparent';
   document.body.style.background = 'transparent';
 
-  ReactDOM.createRoot(document.getElementById('root')!).render(
+  ReactDOM.createRoot(root!).render(
     <React.StrictMode>
       <StandaloneOverlay />
     </React.StrictMode>
   );
 } else {
-  ReactDOM.createRoot(document.getElementById('root')!).render(
+  ReactDOM.createRoot(root!).render(
     <React.StrictMode>
       <ToastProvider>
         <App />
