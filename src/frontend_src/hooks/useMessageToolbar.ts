@@ -1,5 +1,6 @@
 // frontend_src/hooks/useMessageToolbar.ts
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
+import { useSessionStore } from './useSessionStore';
 
 interface UseMessageToolbarOptions {
     chatHistoryRef: React.RefObject<HTMLDivElement | null>;
@@ -10,7 +11,18 @@ const TOUCH_SLOP = 10; // Pixel threshold to ignore micro-movements on mobile to
 export function useMessageToolbar(options: UseMessageToolbarOptions) {
     const { chatHistoryRef } = options;
 
-    const [activeToolbarId, setActiveToolbarId] = useState<string | null>(null);
+    // Read and write directly to Zustand so LadderView and all views stay in sync
+    const activeToolbarId = useSessionStore((s: any) => s.activeToolbarId ?? null);
+    
+    const setActiveToolbarId = useCallback((id: string | null) => {
+        const store = useSessionStore.getState() as any;
+        if (typeof store.setActiveToolbarId === 'function') {
+            store.setActiveToolbarId(id);
+        } else {
+            useSessionStore.setState({ activeToolbarId: id });
+        }
+    }, []);
+
     const activeToolbarIdRef = useRef<string | null>(null);
     useEffect(() => { activeToolbarIdRef.current = activeToolbarId; }, [activeToolbarId]);
 
@@ -29,7 +41,7 @@ export function useMessageToolbar(options: UseMessageToolbarOptions) {
             toolbarAutoHideRef.current = null;
         }
         setActiveToolbarId(null);
-    }, []);
+    }, [setActiveToolbarId]);
 
     const activateToolbar = useCallback((mid: string) => {
         if (toolbarAutoHideRef.current) {
@@ -37,9 +49,12 @@ export function useMessageToolbar(options: UseMessageToolbarOptions) {
         }
         setActiveToolbarId(mid);
         toolbarAutoHideRef.current = setTimeout(() => {
-            setActiveToolbarId(p => p === mid ? null : p);
+            const current = (useSessionStore.getState() as any).activeToolbarId;
+            if (current === mid) {
+                setActiveToolbarId(null);
+            }
         }, 8000);
-    }, []);
+    }, [setActiveToolbarId]);
 
     // Auto-deactivate on scroll without thrashing event listeners
     useEffect(() => {
@@ -73,7 +88,6 @@ export function useMessageToolbar(options: UseMessageToolbarOptions) {
         const touch = e.touches[0];
         touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
 
-        // Synchronously capture target bubble before setTimeout
         const targetElement = e.target as HTMLElement;
         const bubbleElement = targetElement.closest('.message-bubble');
 
@@ -92,12 +106,6 @@ export function useMessageToolbar(options: UseMessageToolbarOptions) {
             }, 300);
 
             navigator.vibrate?.(30);
-
-            // Auto-clear click suppression after browser tap dispatch window expires
-            if (clickSuppressionTimerRef.current) clearTimeout(clickSuppressionTimerRef.current);
-            clickSuppressionTimerRef.current = setTimeout(() => {
-                suppressNextClickRef.current = false;
-            }, 400);
         }, 500);
     }, [activateToolbar]);
 
@@ -112,6 +120,11 @@ export function useMessageToolbar(options: UseMessageToolbarOptions) {
 
         if (isLongPressingRef.current) {
             e.preventDefault();
+            // Keep suppressNextClickRef true across the finger lift so the synthetic click is swallowed
+            if (clickSuppressionTimerRef.current) clearTimeout(clickSuppressionTimerRef.current);
+            clickSuppressionTimerRef.current = setTimeout(() => {
+                suppressNextClickRef.current = false;
+            }, 600);
             isLongPressingRef.current = false;
         }
         touchStartPosRef.current = null;
