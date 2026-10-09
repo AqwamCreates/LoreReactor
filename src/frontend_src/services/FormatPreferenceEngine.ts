@@ -29,7 +29,8 @@ interface UserCorrection {
 
 export interface FormatPreferenceData {
     globalTransitions: Record<FormatCategory, Record<FormatCategory, number>>;
-    contextTransitions: Record<string, Record<FormatCategory, Record<FormatCategory, number>>>;
+    // Replaces contextTransitions with individual feature weights
+    featureTransitions: Record<string, Record<FormatCategory, Record<FormatCategory, number>>>;
     recentCorrections: UserCorrection[];
     lastUpdatedTimestamp: number;
 }
@@ -62,7 +63,7 @@ export class FormatPreferenceEngine {
 
         return {
             globalTransitions,
-            contextTransitions: {},
+            featureTransitions: {},
             recentCorrections: [],
             lastUpdatedTimestamp: Date.now(),
         };
@@ -77,7 +78,6 @@ export class FormatPreferenceEngine {
         const totalLength = text.length;
         const segmentLength = segmentEnd - segmentStart;
 
-        // Mutually exclusive if/else-if chain to prevent overwriting
         let position: position = 'middle';
         if (segmentStart < totalLength * 0.2) {
             position = 'start';
@@ -105,7 +105,6 @@ export class FormatPreferenceEngine {
         const quoteMatches = textBefore.match(/["“”]/g) || [];
         const insideQuote = quoteMatches.length % 2 !== 0;
 
-        // Use stemmed content words to detect dialogue tags robustly
         const beforeSegment = text.slice(Math.max(0, segmentStart - 100), segmentStart);
         const words = getStemmedContentWords(beforeSegment);
         const lastWord = words.length > 0 ? words[words.length - 1] : '';
@@ -118,11 +117,9 @@ export class FormatPreferenceEngine {
         else if (segmentLength > 100) lengthCategory = 'very long';
         else if (segmentLength > 50) lengthCategory = 'long';
 
-        // NEW: Determine ending punctuation, ignoring trailing formatting markers
         const segmentText = text.slice(segmentStart, segmentEnd).trim();
         let punctuation: punctuationType = 'none';
         
-        // Strip trailing formatting markers and whitespace to find the actual ending punctuation
         const trimmedForPunct = segmentText.replace(/[\*_\)\"\]”\s]+$/, '');
         
         if (trimmedForPunct.endsWith('...') || trimmedForPunct.endsWith('…')) punctuation = 'ellipsis';
@@ -145,16 +142,16 @@ export class FormatPreferenceEngine {
         };
     }
 
-    private contextToKey(context: FormatContext): string {
-        const parts: string[] = [];
-        parts.push(`position:${context.position}`);
-        if (context.previousFormat) parts.push(`previous:${context.previousFormat}`);
-        if (context.nextFormat) parts.push(`next:${context.nextFormat}`);
-        if (context.insideQuote) parts.push('inQuote');
-        if (context.afterDialogueTag) parts.push('afterTag');
-        parts.push(`length:${context.lengthCategory}`);
-        if (context.punctuation !== 'none') parts.push(`punctuation:${context.punctuation}`);
-        return parts.join('|');
+    private extractActiveFeatures(context: FormatContext): string[] {
+        const features: string[] = [];
+        features.push(`position:${context.position}`);
+        if (context.previousFormat) features.push(`previous:${context.previousFormat}`);
+        if (context.nextFormat) features.push(`next:${context.nextFormat}`);
+        if (context.insideQuote) features.push('inQuote');
+        if (context.afterDialogueTag) features.push('afterTag');
+        features.push(`length:${context.lengthCategory}`);
+        if (context.punctuation !== 'none') features.push(`punctuation:${context.punctuation}`);
+        return features;
     }
 
     recordCorrection(
@@ -164,17 +161,21 @@ export class FormatPreferenceEngine {
     ): void {
         this.data.globalTransitions[detected][target]++;
 
-        const contextKey = this.contextToKey(context);
-        if (!this.data.contextTransitions[contextKey]) {
-            this.data.contextTransitions[contextKey] = {} as any;
-            for (const cat of ALL_CATEGORIES) {
-                this.data.contextTransitions[contextKey][cat] = {} as any;
-                for (const tgt of ALL_CATEGORIES) {
-                    this.data.contextTransitions[contextKey][cat][tgt] = 0;
+        const activeFeatures = this.extractActiveFeatures(context);
+        
+        // Update weights for EACH active feature independently
+        for (const feature of activeFeatures) {
+            if (!this.data.featureTransitions[feature]) {
+                this.data.featureTransitions[feature] = {} as any;
+                for (const cat of ALL_CATEGORIES) {
+                    this.data.featureTransitions[feature][cat] = {} as any;
+                    for (const tgt of ALL_CATEGORIES) {
+                        this.data.featureTransitions[feature][cat][tgt] = 0;
+                    }
                 }
             }
+            this.data.featureTransitions[feature][detected][target]++;
         }
-        this.data.contextTransitions[contextKey][detected][target]++;
 
         this.data.recentCorrections.push({
             detected,
@@ -195,15 +196,40 @@ export class FormatPreferenceEngine {
         detected: FormatCategory,
         context: FormatContext,
     ): { target: FormatCategory; confidence: number } | null {
-        const contextKey = this.contextToKey(context);
+        const activeFeatures = this.extractActiveFeatures(context);
+        
+        // Aggregate scores for each target across all active features
+        const targetScores: Record<FormatCategory, number> = {} as any;
+        for (const cat of ALL_CATEGORIES) targetScores[cat] = 0;
+        
+        let totalVotes = 0;
 
-        // 1. Try context-specific prediction first
-        if (this.data.contextTransitions[contextKey]) {
-            const contextPrediction = this.calculateBestTarget(
-                this.data.contextTransitions[contextKey][detected]
-            );
-            if (contextPrediction && contextPrediction.confidence >= AUTO_APPLY_THRESHOLD) {
-                return contextPrediction;
+        for (const feature of activeFeatures) {
+            if (this.data.featureTransitions[feature] && this.data.featureTransitions[feature][detected]) {
+                for (const cat of ALL_CATEGORIES) {
+                    const weight = this.data.featureTransitions[feature][detected][cat] ?? 0;
+                    targetScores[cat] += weight;
+                    totalVotes += weight;
+                }
+            }
+        }
+
+        // 1. Try aggregated feature prediction first
+        if (totalVotes > 0) {
+            let bestTarget: FormatCategory | null = null;
+            let bestScore = 0;
+            for (const cat of ALL_CATEGORIES) {
+                if (targetScores[cat] > bestScore) {
+                    bestScore = targetScores[cat];
+                    bestTarget = cat;
+                }
+            }
+            
+            if (bestTarget) {
+                const confidence = bestScore / totalVotes;
+                if (confidence >= AUTO_APPLY_THRESHOLD) {
+                    return { target: bestTarget, confidence };
+                }
             }
         }
 
