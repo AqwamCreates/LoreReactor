@@ -268,7 +268,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                             </div>
                             <div className="chat-stat-detail-row">
                                 <span className="chat-stat-detail-label">Cache Invalidations:</span>
-                                <span className="chat-stat-detail-value">{formatNumber(numberOfCacheInvalidations)} ({invalidationRate}%)</span>
+                                <span className="chat-stat-detail-value">{formatNumber(numberOfCacheInvalidations)}</span>
                             </div>
                             <div className="chat-stat-detail-row">
                                 <span className="chat-stat-detail-label">Total Requests:</span>
