@@ -147,13 +147,13 @@ export class FormatPreferenceEngine {
 
     private contextToKey(context: FormatContext): string {
         const parts: string[] = [];
-        parts.push(`pos:${context.position}`);
-        if (context.previousFormat) parts.push(`prev:${context.previousFormat}`);
+        parts.push(`position:${context.position}`);
+        if (context.previousFormat) parts.push(`previous:${context.previousFormat}`);
         if (context.nextFormat) parts.push(`next:${context.nextFormat}`);
         if (context.insideQuote) parts.push('inQuote');
         if (context.afterDialogueTag) parts.push('afterTag');
-        parts.push(`len:${context.lengthCategory}`);
-        if (context.punctuation !== 'none') parts.push(`punct:${context.punctuation}`);
+        parts.push(`length:${context.lengthCategory}`);
+        if (context.punctuation !== 'none') parts.push(`punctuation:${context.punctuation}`);
         return parts.join('|');
     }
 
