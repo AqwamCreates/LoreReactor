@@ -20,18 +20,10 @@ export interface FormatContext {
     punctuation: punctuationType;
 }
 
-interface UserCorrection {
-    detected: FormatCategory;
-    target: FormatCategory;
-    context: FormatContext;
-    timestamp: number;
-}
-
 export interface FormatPreferenceData {
     globalTransitions: Record<FormatCategory, Record<FormatCategory, number>>;
-    // Replaces contextTransitions with individual feature weights
-    featureTransitions: Record<string, Record<FormatCategory, Record<FormatCategory, number>>>;
-    recentCorrections: UserCorrection[];
+    featureCounts: Record<string, number>;
+    featureTargetCounts: Record<string, Record<FormatCategory, number>>;
     lastUpdatedTimestamp: number;
 }
 
@@ -41,8 +33,8 @@ const ALL_CATEGORIES: FormatCategory[] = [
 ];
 
 const AUTO_APPLY_THRESHOLD = 0.75;
-const MAX_RECENT_CORRECTIONS = 100;
 const SAVE_DEBOUNCE_MS = 3000;
+const LAPLACE_ALPHA = 1;
 
 export class FormatPreferenceEngine {
     private data: FormatPreferenceData;
@@ -63,8 +55,8 @@ export class FormatPreferenceEngine {
 
         return {
             globalTransitions,
-            featureTransitions: {},
-            recentCorrections: [],
+            featureCounts: {},
+            featureTargetCounts: {},
             lastUpdatedTimestamp: Date.now(),
         };
     }
@@ -163,29 +155,16 @@ export class FormatPreferenceEngine {
 
         const activeFeatures = this.extractActiveFeatures(context);
         
-        // Update weights for EACH active feature independently
         for (const feature of activeFeatures) {
-            if (!this.data.featureTransitions[feature]) {
-                this.data.featureTransitions[feature] = {} as any;
+            this.data.featureCounts[feature] = (this.data.featureCounts[feature] ?? 0) + 1;
+            
+            if (!this.data.featureTargetCounts[feature]) {
+                this.data.featureTargetCounts[feature] = {} as any;
                 for (const cat of ALL_CATEGORIES) {
-                    this.data.featureTransitions[feature][cat] = {} as any;
-                    for (const tgt of ALL_CATEGORIES) {
-                        this.data.featureTransitions[feature][cat][tgt] = 0;
-                    }
+                    this.data.featureTargetCounts[feature][cat] = 0;
                 }
             }
-            this.data.featureTransitions[feature][detected][target]++;
-        }
-
-        this.data.recentCorrections.push({
-            detected,
-            target,
-            context,
-            timestamp: Date.now(),
-        });
-        
-        if (this.data.recentCorrections.length > MAX_RECENT_CORRECTIONS) {
-            this.data.recentCorrections.shift();
+            this.data.featureTargetCounts[feature][target]++;
         }
 
         this.data.lastUpdatedTimestamp = Date.now();
@@ -197,75 +176,58 @@ export class FormatPreferenceEngine {
         context: FormatContext,
     ): { target: FormatCategory; confidence: number } | null {
         const activeFeatures = this.extractActiveFeatures(context);
+        const NUM_CATEGORIES = ALL_CATEGORIES.length;
+
+        let totalGlobal = 0;
+        for (const cat of ALL_CATEGORIES) {
+            totalGlobal += this.data.globalTransitions[detected][cat];
+        }
+
+        if (totalGlobal === 0) return null;
+
+        const logScores: Record<FormatCategory, number> = {} as any;
         
-        // Aggregate scores for each target across all active features
-        const targetScores: Record<FormatCategory, number> = {} as any;
-        for (const cat of ALL_CATEGORIES) targetScores[cat] = 0;
-        
-        let totalVotes = 0;
+        // 1. Initialize Result_0 with Global Prior
+        for (const target of ALL_CATEGORIES) {
+            const globalCount = this.data.globalTransitions[detected][target];
+            const prior = (globalCount + LAPLACE_ALPHA) / (totalGlobal + LAPLACE_ALPHA * NUM_CATEGORIES);
+            logScores[target] = Math.log(prior);
+        }
 
-        for (const feature of activeFeatures) {
-            if (this.data.featureTransitions[feature] && this.data.featureTransitions[feature][detected]) {
-                for (const cat of ALL_CATEGORIES) {
-                    const weight = this.data.featureTransitions[feature][detected][cat] ?? 0;
-                    targetScores[cat] += weight;
-                    totalVotes += weight;
-                }
+        // 2. Multiplicative Chain (Calculated in Log-Space to prevent IEEE 754 underflow)
+        for (const target of ALL_CATEGORIES) {
+            for (const feature of activeFeatures) {
+                const featCount = this.data.featureCounts[feature] ?? 0;
+                const featTargetCount = this.data.featureTargetCounts[feature]?.[target] ?? 0;
+                
+                const weight = (featTargetCount + LAPLACE_ALPHA) / (featCount + LAPLACE_ALPHA * NUM_CATEGORIES);
+                logScores[target] += Math.log(weight);
             }
         }
 
-        // 1. Try aggregated feature prediction first
-        if (totalVotes > 0) {
-            let bestTarget: FormatCategory | null = null;
-            let bestScore = 0;
-            for (const cat of ALL_CATEGORIES) {
-                if (targetScores[cat] > bestScore) {
-                    bestScore = targetScores[cat];
-                    bestTarget = cat;
-                }
-            }
-            
-            if (bestTarget) {
-                const confidence = bestScore / totalVotes;
-                if (confidence >= AUTO_APPLY_THRESHOLD) {
-                    return { target: bestTarget, confidence };
-                }
-            }
+        // 3. Normalize (Log-Sum-Exp trick to retrieve accurate probabilities)
+        const maxLogScore = Math.max(...Object.values(logScores));
+        let sumExp = 0;
+        for (const target of ALL_CATEGORIES) {
+            sumExp += Math.exp(logScores[target] - maxLogScore);
         }
 
-        // 2. Fallback to global prediction
-        const globalPrediction = this.calculateBestTarget(
-            this.data.globalTransitions[detected]
-        );
-        if (globalPrediction && globalPrediction.confidence >= AUTO_APPLY_THRESHOLD) {
-            return globalPrediction;
-        }
-
-        return null;
-    }
-
-    private calculateBestTarget(
-        transitions: Record<FormatCategory, number>
-    ): { target: FormatCategory; confidence: number } | null {
-        let totalCorrections = 0;
         let bestTarget: FormatCategory | null = null;
-        let bestCount = 0;
+        let bestConfidence = 0;
 
         for (const target of ALL_CATEGORIES) {
-            const count = transitions[target] ?? 0;
-            totalCorrections += count;
-            if (count > bestCount) {
-                bestCount = count;
+            const prob = Math.exp(logScores[target] - maxLogScore) / sumExp;
+            if (prob > bestConfidence) {
+                bestConfidence = prob;
                 bestTarget = target;
             }
         }
 
-        if (!bestTarget || totalCorrections === 0) {
-            return null;
+        if (bestTarget && bestConfidence >= AUTO_APPLY_THRESHOLD) {
+            return { target: bestTarget, confidence: bestConfidence };
         }
 
-        const confidence = bestCount / totalCorrections;
-        return { target: bestTarget, confidence };
+        return null;
     }
 
     getPreferenceData(): FormatPreferenceData {
