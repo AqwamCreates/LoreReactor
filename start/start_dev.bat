@@ -106,8 +106,7 @@ npx concurrently ^
     --kill-signal SIGTERM ^
     --names "WEB,API" ^
     --prefix-colors "cyan,magenta" ^
-    "npm run dev" ^
-    "npm run server"
+    "npm run dev"
 
 endlocal
 exit /b 0
