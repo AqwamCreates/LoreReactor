@@ -355,25 +355,6 @@ function App() {
         voiceCloningEngine.setDevicePreference(vcDevice);
     }, [interactionData]);
 
-    // ─── TTS Preloading & Unloading based on Narration Settings ────
-    useEffect(() => {
-        const profile = interactionData?.profile;
-        
-        // Check if ANY text type is set to be narrated
-        const isNarrationEnabled = profile?.narrateTexts 
-            ? Object.values(profile.narrateTexts).some(v => v === true) 
-            : false;
-        
-        if (isNarrationEnabled) {
-            // Preload the TTS model in the background while the user is typing/reading.
-            // This eliminates the "loading model" delay when the AI finishes generating text.
-            textToSpeechModelEngine.load(); 
-        } else {
-            // If no narration is enabled, aggressively unload the TTS model to free VRAM/RAM.
-            textToSpeechModelEngine.unload();
-        }
-    }, [interactionData]);
-
     // ─── Chat Auto-Save ──────────────────────────────────────────────
     useChatAutoSave({
         interactionData,
