@@ -433,7 +433,7 @@ SHARED CHAT COMPONENTS (Used by Ladder & Cinematic)
 /* --- Message Toolbar --- */
 .message-toolbar {
     position: absolute;
-    bottom: -14px;
+    bottom: -40px;
     right: -4px;
     display: flex;
     gap: 2px;
@@ -1341,7 +1341,7 @@ MODE: LADDER (Standard Chat View)
     }
 
     .mode-ladder .message-row.message-left .message-toolbar {
-        bottom: -14px;
+        bottom: -40px;
         right: 0;
     }
 

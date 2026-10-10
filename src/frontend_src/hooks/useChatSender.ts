@@ -119,8 +119,8 @@ export function useChatSender(opts: UseChatSenderOptions) {
                 const preSlashData = currentState.interactionData;
                 const currentLocId = getCurrentLocationId(currentState.interactionData, activeCharacter) || 'global';
                 const newHistories = { ...currentState.interactionData.interactionHistories };
-                if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
-                newHistories[currentLocId].push(slashMessage);
+                const currentLocMessages = newHistories[currentLocId] || [];
+                newHistories[currentLocId] = [...currentLocMessages, slashMessage];
 
                 let updatedData = { ...currentState.interactionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
                 updatedData = processPendingToolActions(updatedData, allCharactersRef.current, { onToast: addToast });
@@ -188,8 +188,8 @@ export function useChatSender(opts: UseChatSenderOptions) {
 
             const currentLocId = getCurrentLocationId(currentInteractionData, activeCharacter) || 'global';
             const newHistories = { ...currentInteractionData.interactionHistories };
-            if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
-            newHistories[currentLocId].push(chatMessage);
+            const currentLocMessages = newHistories[currentLocId] || [];
+            newHistories[currentLocId] = [...currentLocMessages, chatMessage];
 
             let td = { ...currentInteractionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
 
@@ -241,10 +241,8 @@ export function useChatSender(opts: UseChatSenderOptions) {
                     onMessageBroadcastRef.current?.(arrivalInteraction);
 
                     const updatedHistories = { ...td.interactionHistories };
-                    if (!updatedHistories[finalLocId]) {
-                        updatedHistories[finalLocId] = [];
-                    }
-                    updatedHistories[finalLocId].push(arrivalInteraction);
+                    const finalLocMessages = updatedHistories[finalLocId] || [];
+                    updatedHistories[finalLocId] = [...finalLocMessages, arrivalInteraction];
                     td = { ...td, interactionHistories: updatedHistories, lastUpdatedTimestamp: Date.now() };
                 }
             }
@@ -294,8 +292,8 @@ export function useChatSender(opts: UseChatSenderOptions) {
 
         const currentLocId = getCurrentLocationId(currentInteractionData, activeProtagonist) || 'global';
         const newHistories = { ...currentInteractionData.interactionHistories };
-        if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
-        newHistories[currentLocId].push(chatMessage);
+        const currentLocMessages = newHistories[currentLocId] || [];
+        newHistories[currentLocId] = [...currentLocMessages, chatMessage];
 
         const td = { ...currentInteractionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
 
