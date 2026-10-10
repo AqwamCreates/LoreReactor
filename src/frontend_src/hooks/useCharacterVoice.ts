@@ -1,7 +1,7 @@
 // frontend_src/hooks/useCharacterVoice.ts
 import { useCallback } from 'react';
 import type { Character, textType } from '../types';
-import { textToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechEngine';
+import { textToSpeechEngine , type TextToSpeedLanguageModelContext } from '../services/TextToSpeechEngine';
 import { useSessionStore } from './useSessionStore';
 
 const TEXT_EXTRACTORS: Record<textType, (text: string) => string[]> = {
@@ -33,7 +33,7 @@ export function useCharacterVoice() {
             try {
                 const context: TextToSpeedLanguageModelContext = { devicePreference: profile?.textToSpeechDeviceType ?? 'auto' };
                 // Blindly trigger. If voicepack.bin doesn't exist, the engine returns null gracefully.
-                const blob = await textToSpeechModelEngine.synthesize(text, character.id, context);
+                const blob = await textToSpeechEngine .synthesize(text, character.id, context);
                 if (blob) {
                     const u = URL.createObjectURL(blob);
                     const a = new Audio(u);

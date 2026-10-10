@@ -8,7 +8,7 @@ import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { useDisplayNameCache } from '../utilities/immersionLogic';
 import { getCharacterStarterMessage } from '../utilities/characterLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
-import { textToSpeechModelEngine } from '../services/TextToSpeechEngine';
+import { textToSpeechEngine  } from '../services/TextToSpeechEngine';
 import { voiceCloningEngine } from '../services/VoiceCloningEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { buildModelLoadArguments } from '../utilities/modelLoadArguments';
@@ -351,7 +351,7 @@ function App() {
         const ttsDevice = profile?.textToSpeechDeviceType ?? 'auto';
         const vcDevice = profile?.voiceCloningDeviceType ?? 'auto';
         
-        textToSpeechModelEngine.setDevicePreference(ttsDevice);
+        textToSpeechEngine .setDevicePreference(ttsDevice);
         voiceCloningEngine.setDevicePreference(vcDevice);
     }, [interactionData]);
 

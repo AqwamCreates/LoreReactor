@@ -6,15 +6,11 @@ import { getCharacterVoice } from '../storages/serverStorage';
 // Kokoro-82M ONNX model (Apache 2.0 / MIT licensed)
 const KOKORO_MODEL_URL = 'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q8f16.onnx';
 
-export interface TextToSpeedLanguageModelContext {
+export interface TextToSpeechModelContext {
   devicePreference?: deviceType;
 }
 
-export interface TextToSpeedSynthesizeOptions {
-  language?: string;    
-}
-
-class TextToSpeechModelEngine {
+class TextToSpeechEngine {
     private session: ort.InferenceSession | null = null;
     private loading: Promise<void> | null = null;
     private loadError: string | null = null;
@@ -94,7 +90,7 @@ class TextToSpeechModelEngine {
         async synthesize(
         text: string,
         characterId: string,
-        modelContext?: TextToSpeedLanguageModelContext,
+        modelContext?: TextToSpeechModelContext,
     ): Promise<Blob | null> {
         if (modelContext?.devicePreference) {
             this.setDevicePreference(modelContext.devicePreference);
@@ -286,4 +282,4 @@ class TextToSpeechModelEngine {
     getError(): string | null { return this.loadError; }
 }
 
-export const textToSpeechModelEngine = new TextToSpeechModelEngine();
+export const textToSpeechEngine = new TextToSpeechEngine();
