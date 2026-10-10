@@ -6,7 +6,7 @@ import { getCharacterVoice } from '../storages/serverStorage';
 // Kokoro-82M ONNX model (Apache 2.0 / MIT licensed)
 const KOKORO_MODEL_URL = 'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q8f16.onnx';
 
-export interface TextToSpeechModelContext {
+export interface TextToSpeechContext {
   devicePreference?: deviceType;
 }
 
@@ -19,7 +19,8 @@ class TextToSpeechEngine {
 
     constructor() {
         ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/';
-        ort.env.wasm.numThreads = 1;
+        // FIX: Allow WASM to use background threads to prevent main thread blocking during inference
+        ort.env.wasm.numThreads = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
         ort.env.wasm.simd = true;
     }
 
@@ -87,13 +88,13 @@ class TextToSpeechEngine {
         console.log('[TTSEngine] Unloaded.');
     }
 
-        async synthesize(
+    async synthesize(
         text: string,
         characterId: string,
-        modelContext?: TextToSpeechModelContext,
+        context?: TextToSpeechContext,
     ): Promise<Blob | null> {
-        if (modelContext?.devicePreference) {
-            this.setDevicePreference(modelContext.devicePreference);
+        if (context?.devicePreference) {
+            this.setDevicePreference(context.devicePreference);
         }
 
         const loaded = await this.load();
@@ -144,8 +145,6 @@ class TextToSpeechEngine {
             const chunk = chunks[i];
             if (chunk.length === 0) continue;
 
-            // Fallback tokenization: Map characters to integer IDs.
-            // Kokoro expects phoneme IDs (0-157 for English). We map character codes as a fallback.
             const inputIds = new BigInt64Array(chunk.length + 2);
             inputIds[0] = 0n; // BOS
             for (let j = 0; j < chunk.length; j++) {
@@ -155,8 +154,6 @@ class TextToSpeechEngine {
 
             const inputIdsTensor = new ort.Tensor('int64', inputIds, [1, inputIds.length]);
 
-            // FIX: Kokoro strictly expects a 256-dim style vector.
-            // WavLM outputs 768 (or 512) dims. We must slice/pad to exactly 256 to prevent the ONNX crash.
             let styleData = voicepack;
             if (voicepack.length > 256) {
                 styleData = voicepack.slice(0, 256);
@@ -182,6 +179,11 @@ class TextToSpeechEngine {
                 
                 if (audioTensor && audioTensor.data) {
                     audioChunks.push(audioTensor.data as Float32Array);
+                }
+                
+                // FIX: Yield to the main thread between chunks to prevent UI stuttering/freezing
+                if (i < chunks.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 0));
                 }
             } catch (e) {
                 console.error(`[TTSEngine] Inference failed for chunk ${i}:`, e);
@@ -268,11 +270,15 @@ class TextToSpeechEngine {
         writeString(36, 'data');
         view.setUint32(40, samples.length * 2, true);
 
-        let offset = 44;
-        for (let i = 0; i < samples.length; i++, offset += 2) {
+        // FIX: Use Int16Array for massively faster conversion, avoiding the slow DataView.setInt16 loop
+        const int16 = new Int16Array(samples.length);
+        for (let i = 0; i < samples.length; i++) {
             const s = Math.max(-1, Math.min(1, samples[i]));
-            view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+            int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
         }
+        
+        // Memcpy the Int16 buffer directly into the WAV buffer instantly
+        new Uint8Array(buffer, 44).set(new Uint8Array(int16.buffer));
 
         return new Blob([buffer], { type: 'audio/wav' });
     }

@@ -20,9 +20,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      devOptions: {
-        enabled: false,
-      },
+      devOptions: { enabled: false },
       includeAssets: [],
       manifest: {
         name: 'LoreReactor',
@@ -57,6 +55,11 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 4444,
+    // ✅ ADD THESE HEADERS FOR SHARED ARRAY BUFFER / WASM MULTI-THREADING
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp"
+    },
     proxy: {
       '/api/language_models': {
         target: 'http://localhost:8080',
