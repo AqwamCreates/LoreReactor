@@ -1359,7 +1359,8 @@ const MEDIA_DIR_PREFIXES = [
 
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
 const AUDIO_EXTENSIONS = ['.ogg', '.mp3', '.wav', '.flac'];
-const ALL_MEDIA_EXTENSIONS = [...IMAGE_EXTENSIONS, ...AUDIO_EXTENSIONS];
+const BINARY_EXTENSIONS = ['.bin'];
+const ALL_MEDIA_EXTENSIONS = [...IMAGE_EXTENSIONS, ...AUDIO_EXTENSIONS, ...BINARY_EXTENSIONS];
 
 function isMediaUploadPath(relativePath: string): boolean {
   return MEDIA_DIR_PREFIXES.some(prefix => relativePath.includes(prefix));
@@ -1369,7 +1370,7 @@ function getMimeType(ext: string): string {
   const mimeMap: Record<string, string> = {
     '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
     '.webp': 'image/webp', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg',
-    '.wav': 'audio/wav', '.flac': 'audio/flac',
+    '.wav': 'audio/wav', '.flac': 'audio/flac', '.bin': 'application/octet-stream',
   };
   return mimeMap[ext] || 'application/octet-stream';
 }

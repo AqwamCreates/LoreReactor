@@ -4,7 +4,8 @@ import type { deviceType } from '../types';
 import { getCharacterVoice } from '../storages/serverStorage';
 
 // Kokoro-82M ONNX model (Apache 2.0 / MIT licensed)
-const KOKORO_MODEL_URL = 'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q8f32.onnx';
+// FIX: Updated to model_q8f16.onnx as model_q8f32.onnx does not exist in the repository.
+const KOKORO_MODEL_URL = 'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q8f16.onnx';
 
 export interface TextToSpeedLanguageModelContext {
   devicePreference?: deviceType;
