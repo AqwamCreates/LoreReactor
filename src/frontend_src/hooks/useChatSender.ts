@@ -27,6 +27,7 @@ import {
     type GenerationTurnOptions,
 } from '../utilities/chatSessionLogic';
 import { learnFromUserMessage } from '../services/ActionFormatEngine';
+import { textToSpeechModelEngine } from '../services/TextToSpeechEngine'; // ✅ ADD THIS
 
 interface UseChatSenderOptions {
     isMultiplayerClient: boolean;
@@ -65,6 +66,19 @@ export function useChatSender(opts: UseChatSenderOptions) {
 
         if (!currentState.interactionData || !activeCharacter || (!text && (!files || !files.length))) return;
 
+        // ✅ LAZY LOAD/UNLOAD STRICTLY ON SEND
+        // Prevents thrashing on profile switches. Starts loading in background while LLM generates.
+        const profile = currentState.interactionData.profile;
+        const isNarrationEnabled = profile?.narrateTexts 
+            ? Object.values(profile.narrateTexts).some(v => v === true) 
+            : false;
+
+        if (isNarrationEnabled) {
+            textToSpeechModelEngine.load(); 
+        } else {
+            textToSpeechModelEngine.unload();
+        }
+
         const slashInvocation = parseSlashCommand(text);
         const isSlashCommand = !!(slashInvocation && !files?.length && !frontCameraImageBase64);
 
@@ -98,7 +112,6 @@ export function useChatSender(opts: UseChatSenderOptions) {
                     currentState.interactionData.profile?.toolUsageDisplayMode
                 );
 
-                // ✅ Store the tool execution result for on-the-fly compilation
                 const toolExecutionResult: ToolExecutionResult = {
                     rawMatch: slashInvocation.rawMatch || `<<tool: ${slashInvocation.toolType} ${slashInvocation.args}>>`,
                     toolType: slashInvocation.toolType,
@@ -114,7 +127,6 @@ export function useChatSender(opts: UseChatSenderOptions) {
 
                 const rawCmd = text;
                 slashMessage.textContent = rawCmd;
-                // Note: processedTextContent is no longer set here - compilation happens on-the-fly
 
                 const preSlashData = currentState.interactionData;
                 const currentLocId = getCurrentLocationId(currentState.interactionData, activeCharacter) || 'global';
