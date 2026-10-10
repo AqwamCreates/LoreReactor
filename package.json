@@ -6,11 +6,11 @@
   "scripts": {
     "server": "tsx src/backend_src/server.ts",
     "preview": "vite --host 0.0.0.0 --port 4444",
-    "website": "npm run build && vite preview --host 0.0.0.0 --port 4444",
+    "final": "npm run build && vite preview --host 0.0.0.0 --port 4444",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "dev": "concurrently \"npm run preview\" \"npm run server\"",
-    "start": "concurrently \"npm run website\" \"npm run server\""
+    "start": "concurrently \"npm run final\" \"npm run server\""
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
