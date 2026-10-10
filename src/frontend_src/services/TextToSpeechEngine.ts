@@ -4,7 +4,6 @@ import type { deviceType } from '../types';
 import { getCharacterVoice } from '../storages/serverStorage';
 
 // Kokoro-82M ONNX model (Apache 2.0 / MIT licensed)
-// FIX: Updated to model_q8f16.onnx as model_q8f32.onnx does not exist in the repository.
 const KOKORO_MODEL_URL = 'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q8f16.onnx';
 
 export interface TextToSpeedLanguageModelContext {
@@ -104,7 +103,6 @@ class TextToSpeechModelEngine {
         const loaded = await this.ensureLoaded();
         if (!loaded || !this.session) return null;
 
-        // 1. Fetch the refined voicepack binary using the hardcoded filename
         const voiceUrl = getCharacterVoice(characterId);
         if (!voiceUrl) {
             console.warn('[TTSEngine] No voice file found for character:', characterId);
@@ -113,23 +111,29 @@ class TextToSpeechModelEngine {
 
         let voicepack: Float32Array | null;
         try {
-            // voiceUrl is strictly string here due to the null check above
             const response = await fetch(voiceUrl);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
-            // serverStorage saves files as JSON { base64: "..." }
-            const json = await response.json();
-            if (!json.base64) throw new Error('Missing base64 data');
+            // Read as raw binary buffer first
+            const arrayBuffer = await response.arrayBuffer();
+            const uint8View = new Uint8Array(arrayBuffer);
             
-            // Decode base64 string to raw binary bytes
-            const binaryString = atob(json.base64);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
+            // Check if the payload is actually JSON (starts with '{' which is 0x7B)
+            // This safely handles legacy JSON {base64: "..."} formats or unpatched server responses
+            if (uint8View.length > 0 && uint8View[0] === 0x7B) {
+                const text = new TextDecoder().decode(uint8View);
+                const json = JSON.parse(text);
+                if (!json.base64) throw new Error('Missing base64 data in JSON');
+                const binaryString = atob(json.base64.replace(/^data:[^;]+;base64,/, ''));
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                voicepack = new Float32Array(bytes.buffer);
+            } else {
+                // Standard raw binary response (application/octet-stream)
+                voicepack = new Float32Array(arrayBuffer);
             }
-            
-            // Cast the decoded binary buffer directly to Float32Array
-            voicepack = new Float32Array(bytes.buffer);
         } catch (e) {
             console.warn('[TTSEngine] Failed to fetch and parse voicepack tensor:', e);
             return null;
@@ -140,21 +144,15 @@ class TextToSpeechModelEngine {
             return null;
         }
 
-        // Kokoro-82M has a hard limit of 512 tokens (phonemes) per inference pass.
         const chunks = this.chunkText(text, 280);
         const audioChunks: Float32Array[] = [];
 
-        // Use chunk length directly to avoid unused variable warnings
         for (let i = 0; i < chunks.length; i++) {
-            // Placeholder for the actual DSP pipeline output
-            const pcmAudio = new Float32Array(16000); // 1 second of silence per chunk as placeholder
+            const pcmAudio = new Float32Array(16000); 
             audioChunks.push(pcmAudio);
         }
 
-        // Crossfade and stitch chunks together to prevent phase mismatch clicks
-        const finalAudio = this.stitchAudioChunks(audioChunks, 1600); // 100ms crossfade at 16kHz
-
-        // Convert Float32Array to WAV Blob
+        const finalAudio = this.stitchAudioChunks(audioChunks, 1600); 
         return this.float32ToWavBlob(finalAudio, 16000);
     }
 
