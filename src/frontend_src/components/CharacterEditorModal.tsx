@@ -3,7 +3,8 @@ import type React from 'react';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, tool, InteractionData } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { uploadCharacterImage, uploadCharacterVoice, getCharacterImageUrl } from '../storages/serverStorage';
+import { uploadCharacterImage, getCharacterImageUrl, getCharacterVoice } from '../storages/serverStorage';
+import { voiceCloningEngine } from '../services/VoiceCloningEngine';
 import { 
     getInitiativeWeightValueFromText, 
     getChatProbabilityValue, 
@@ -43,8 +44,6 @@ const DEFAULT_CONTEXT_SENSITIVITY = 1;
 const DEFAULT_MAXIMUM_ACTION_STAMINA = 5;
 const MAX_VOICE_FILE_SIZE = 5 * 1024 * 1024;
 
-
-
 const tokenEngine = getLanguageModelEngine();
 
 interface TokenCounts {
@@ -67,7 +66,7 @@ interface CharacterEditorModalProps {
     runningModels?: Record<string, any>;
     chatNameMap?: Map<string, string>;
     interactionData?: InteractionData | null;
-    localProtagonistId?: string | null; // ✅ Changed from Character to string ID
+    localProtagonistId?: string | null;
 }
 
 export function CharacterEditorModal({ isReadOnly = false, onClose, onSave, existingCharacter,
@@ -137,8 +136,28 @@ function CharacterEditorModalInner({
     const [maximumActionStaminaStr, setMaximumActionStaminaStr] = useState<string>(String(existingCharacter?.maximumActionStamina ?? -1));
 
     const [voiceFile, setVoiceFile] = useState<File | null>(null);
-    const [voiceName, setVoiceName] = useState<string>(existingCharacter?.voice || '');
-    const [existingVoiceName, setExistingVoiceName] = useState<string>(existingCharacter?.voice || '');
+    const [hasExistingVoice, setHasExistingVoice] = useState<boolean>(false);
+
+    useEffect(() => {
+        if (!existingCharacter) return;
+
+        const url = getCharacterVoice(existingCharacter.id);
+        if (!url) return;
+
+        let isSubscribed = true;
+
+        fetch(url, { method: 'HEAD' })
+            .then(res => {
+                if (isSubscribed) setHasExistingVoice(res.ok);
+            })
+            .catch(() => {
+                if (isSubscribed) setHasExistingVoice(false);
+            });
+
+        return () => {
+            isSubscribed = false;
+        };
+    }, [existingCharacter]);
 
     const [useFrontCameraImage, setUseFrontCameraImage] = useState<boolean>(existingCharacter?.useFrontCameraImage ?? false);
     const [doNotInjectCharacterImage, setDoNotInjectCharacterImage] = useState<boolean>(existingCharacter?.doNotInjectCharacterImage ?? false);
@@ -288,7 +307,6 @@ function CharacterEditorModalInner({
 
     const handleKnowCurrentProtagonist = useCallback(() => {
         if (!localProtagonistId) return;
-        // ✅ Resolve the character object using the ID
         const protagChar = allCharacters.find(c => c.id === localProtagonistId) 
             || interactionData?.participants.find(p => p.id === localProtagonistId);
         if (protagChar) mergeKnownNames([protagChar]);
@@ -501,15 +519,13 @@ function CharacterEditorModalInner({
                 return; 
             }
             setVoiceFile(file); 
-            setVoiceName(file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_')); 
             setSubmitError(null);
         }
     };
 
     const handleRemoveVoice = () => { 
         setVoiceFile(null); 
-        setVoiceName(''); 
-        setExistingVoiceName(''); 
+        setHasExistingVoice(false); 
         if (voiceInputRef.current) voiceInputRef.current.value = ''; 
     };
 
@@ -658,7 +674,7 @@ function CharacterEditorModalInner({
 
         const targetCharacterId = isNewClone ? uuidv4() : (existingCharacter?.id || pendingCharacterId || uuidv4());
 
-        let finalImages: Record<string, string> = { ...emotionImages };
+        const finalImages: Record<string, string> = { ...emotionImages };
 
         if (imageFile) {
             setIsUploading(true);
@@ -674,19 +690,22 @@ function CharacterEditorModalInner({
             delete finalImages.neutral;
         }
 
-        let finalVoiceFilename: string | undefined = isNewClone ? undefined : existingCharacter?.voice;
         if (voiceFile) {
             setIsUploading(true);
             try { 
-                finalVoiceFilename = await uploadCharacterVoice(targetCharacterId, voiceFile); 
+                const success = await voiceCloningEngine.enqueueUpload(targetCharacterId, voiceFile);
+                if (!success) {
+                    setSubmitError("Failed to extract and upload voice tensor."); 
+                    setIsUploading(false); 
+                    return null; 
+                }
+                setHasExistingVoice(true);
             } catch { 
-                setSubmitError("Failed to upload voice."); 
+                setSubmitError("Failed to extract and upload voice tensor."); 
                 setIsUploading(false); 
                 return null; 
             }
             setIsUploading(false);
-        } else if (!isNewClone && voiceName === '' && existingVoiceName !== '') { 
-            finalVoiceFilename = undefined; 
         }
 
         const rawIW = Number.parseFloat(initiativeWeightStr);
@@ -777,7 +796,7 @@ function CharacterEditorModalInner({
             aliases: aliases.length > 0 ? aliases : undefined,
             images: Object.keys(finalImages).length > 0 ? finalImages : undefined,
             useFrontCameraImage: useFrontCameraImage || undefined,
-            voice: finalVoiceFilename, sampler: finalSampler,
+            sampler: finalSampler,
             initiativeWeight: finalIW, chatProbability: finalCP, maximumChatStamina: finalMS,
             nameSensitivity: finalNS, chatImpatienceSensitivity: finalCIS, skipProbability: finalSP,
             memoryRetentionWeight: finalMRW, contextSensitivity: finalCRS,
@@ -805,7 +824,7 @@ function CharacterEditorModalInner({
         const displayCount = count ?? 0;
         return <div className={`editor-token-count ${countingField === field ? 'counting' : ''}`}>{`~${displayCount.toLocaleString()} token(s)`}</div>;
     };
-    const hasVoice = !!voiceFile || !!existingVoiceName;
+    const hasVoice = !!voiceFile || hasExistingVoice;
     const effectiveCharacterId = existingCharacter?.id || pendingCharacterId || '';
     const memoryCount = Object.values(memories).reduce((sum, arr) => sum + arr.length, 0);
 
@@ -985,7 +1004,7 @@ function CharacterEditorModalInner({
                                         <span className="editor-section-title">Voice</span>
                                         <div className="editor-voice-hint">Used for reading character's text. Maximum 5MB.</div>
                                         {hasVoice ? (
-                                            <div className="editor-voice-chip"><span className="editor-voice-chip-name">🎙️ {voiceFile ? voiceFile.name : existingVoiceName}</span>{!isReadOnly && <button type="button" onClick={handleRemoveVoice} disabled={isUploading} className="editor-voice-remove-button" title="Remove voice">×</button>}</div>
+                                            <div className="editor-voice-chip"><span className="editor-voice-chip-name">🎙️ {voiceFile ? voiceFile.name : 'voicepack.bin'}</span>{!isReadOnly && <button type="button" onClick={handleRemoveVoice} disabled={isUploading} className="editor-voice-remove-button" title="Remove voice">×</button>}</div>
                                         ) : (
                                             !isReadOnly && <button type="button" onClick={() => !isUploading && voiceInputRef.current?.click()} disabled={isUploading} className={`toolbar-button editor-voice-upload-button ${isUploading ? 'uploading' : ''}`}>{isUploading ? '⏳ Uploading...' : '🎙️ Upload Voice Sample'}</button>
                                         )}

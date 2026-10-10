@@ -309,12 +309,15 @@ export function StandaloneOverlay() {
             await speechToTextEngine.stopRecording();
             setIsRecording(false);
         } else {
+            const sttDevice = activeProfile?.speechToTextDeviceType ?? 'auto';
+            speechToTextEngine.setDevicePreference(sttDevice);
+
             const started = await speechToTextEngine.startRecording(
                 (text: string) => setInputText(prev => prev + (prev ? ' ' : '') + text)
             );
             if (started) setIsRecording(true);
         }
-    }, [isRecording]);
+    }, [isRecording, activeProfile]);
 
     const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files ? Array.from(e.target.files) : [];
@@ -479,6 +482,7 @@ export function StandaloneOverlay() {
             {actionMenuTarget && (
                 <ActionMenu
                     actionMenuTarget={actionMenuTarget}
+                    interactionDataExists={!!state.interactionData}
                     menuSearchQuery={menuSearchQuery}
                     setMenuSearchQuery={setMenuSearchQuery}
                     showActionFormat={showActionFormat}
@@ -492,6 +496,9 @@ export function StandaloneOverlay() {
                     isAutoFormat={isAutoFormat}
                     setIsAutoFormat={setIsAutoFormat}
                     filteredActions={filteredActions}
+                    isModelReady={true}
+                    allCharacters={state.allCharacters || []}
+                    localProtagonist={state.localProtagonist}
                     onAddAction={onAddAction}
                     onDeleteAction={onDeleteAction}
                     onActionInterject={handleInterject}

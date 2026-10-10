@@ -1,89 +1,28 @@
 // frontend_src/hooks/useCharacterVoice.ts
-import { useCallback, useRef, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import type { Character, textType } from '../types';
-import { getCharacterVoiceUrl, getMultiplayerCharacterVoiceUrl, loadRawMultiplayerJoinData } from '../storages/serverStorage';
-import { TextToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechModelEngine';
-import { localAddress } from '../../configurations';
+import { textToSpeechModelEngine, type TextToSpeedLanguageModelContext } from '../services/TextToSpeechEngine';
 import { useSessionStore } from './useSessionStore';
 
-const textToSpeechModelEngine = new TextToSpeechModelEngine();
-
 const TEXT_EXTRACTORS: Record<textType, (text: string) => string[]> = {
-    normal: (text) => {
-        const stripped = text
-            .replace(/"[^"]*"|'[^']*'/g, '')
-            .replace(/\*\*[^*]+\*\*/g, '')
-            .replace(/(?<!\*)\*(?!\*)[^*]+\*(?!\*)/g, '')
-            .replace(/\([^)]+\)/g, '')
-            .replace(/\[[^\]]+\]/g, '')
-            .replace(/\{[^}]+\}/g, '')
-            .trim();
-        return stripped ? [stripped] : [];
-    },
-    quoted: (text) => {
-        const m = text.match(/"[^"]*"|'[^']*'/g);
-        return m ? m.map(x => x.replace(/^["']|["']$/g, '')) : [];
-    },
-    bolded: (text) => {
-        const m = text.match(/\*\*[^*]+\*\*/g);
-        return m ? m.map(x => x.replace(/\*\*/g, '')) : [];
-    },
-    italicized: (text) => {
-        const m = text.match(/(?<!\*)\*(?!\*)[^*]+\*(?!\*)/g);
-        return m ? m.map(x => x.replace(/\*/g, '')) : [];
-    },
-    parenthesized: (text) => {
-        const m = text.match(/\(([^)]+)\)/g);
-        return m ? m.map(x => x.replace(/^\(|\)$/g, '')) : [];
-    },
-    bracketed: (text) => {
-        const m = text.match(/\[([^\]]+)\]/g);
-        return m ? m.map(x => x.replace(/^\[|\]$/g, '')) : [];
-    },
-    braced: (text) => {
-        const m = text.match(/\{([^}]+)\}/g);
-        return m ? m.map(x => x.replace(/^\{|\}$/g, '')) : [];
-    },
+    normal: (text) => { const s = text.replace(/"[^"]*"|'[^']*'/g, '').replace(/\*\*[^*]+\*\*/g, '').replace(/(?<!\*)\*(?!\*)[^*]+\*(?!\*)/g, '').replace(/\([^)]+\)/g, '').replace(/\[[^\]]+\]/g, '').replace(/\{[^}]+\}/g, '').trim(); return s ? [s] : []; },
+    quoted: (text) => { const m = text.match(/"[^"]*"|'[^']*'/g); return m ? m.map(x => x.replace(/^["']|["']$/g, '')) : []; },
+    bolded: (text) => { const m = text.match(/\*\*[^*]+\*\*/g); return m ? m.map(x => x.replace(/\*\*/g, '')) : []; },
+    italicized: (text) => { const m = text.match(/(?<!\*)\*(?!\*)[^*]+\*(?!\*)/g); return m ? m.map(x => x.replace(/\*/g, '')) : []; },
+    parenthesized: (text) => { const m = text.match(/\(([^)]+)\)/g); return m ? m.map(x => x.replace(/^\(|\)$/g, '')) : []; },
+    bracketed: (text) => { const m = text.match(/\[([^\]]+)\]/g); return m ? m.map(x => x.replace(/^\[|\]$/g, '')) : []; },
+    braced: (text) => { const m = text.match(/\{([^}]+)\}/g); return m ? m.map(x => x.replace(/^\{|\}$/g, '')) : []; },
 };
 
 export function useCharacterVoice() {
-    const uploadedTtsVoicesRef = useRef<Set<string>>(new Set());
-    const ttsServerUrl = `${localAddress}:7860`;
-
-    // Async-loaded multiplayer join state
-    const [isMultiplayerClient, setIsMultiplayerClient] = useState(false);
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                const joinData = await loadRawMultiplayerJoinData();
-                if (!cancelled && joinData.joinSessionId) {
-                    setIsMultiplayerClient(true);
-                }
-            } catch (e) {
-                console.warn('Failed to load multiplayer join data for voice:', e);
-            }
-        })();
-        return () => { cancelled = true; };
-    }, []);
-
-    const multiplayerData = useSessionStore(s => s.multiplayerData);
-    const interactionDataId = useSessionStore(s => s.interactionData?.id ?? null);
-    const isMultiplayerChat = isMultiplayerClient || !!(multiplayerData && interactionDataId && multiplayerData.interactionDataIds.includes(interactionDataId));
-
     const speakMessage = useCallback((text: string, character: Character) => {
-        if (!character.voice) return;
         const profile = useSessionStore.getState().interactionData?.profile;
         if (profile) {
-            const narrateTexts = profile.narrateTexts;
             const parts: string[] = [];
-            for (const [type, enabled] of Object.entries(narrateTexts)) {
+            for (const [type, enabled] of Object.entries(profile.narrateTexts)) {
                 if (!enabled) continue;
                 const extractor = TEXT_EXTRACTORS[type as textType];
-                if (extractor) {
-                    parts.push(...extractor(text));
-                }
+                if (extractor) parts.push(...extractor(text));
             }
             const filtered = parts.join(' ').trim();
             if (!filtered) return;
@@ -92,21 +31,9 @@ export function useCharacterVoice() {
 
         (async () => {
             try {
-                const context: TextToSpeedLanguageModelContext = { serverUrl: ttsServerUrl || undefined, backend: 'Qwen3-TTS' };
-                const label = character.id;
-                if (!uploadedTtsVoicesRef.current.has(label)) {
-                    // Try main folder, fallback to multiplayer folder if session is multiplayer
-                    const url = getCharacterVoiceUrl(label, character.voice) || (isMultiplayerChat ? getMultiplayerCharacterVoiceUrl(label, character.voice) : null);
-                    if (!url) return;
-                    const response = await fetch(url);
-                    if (!response.ok) return;
-                    const blob = await response.blob();
-                    const file = new File([blob], `${label}.wav`, { type: blob.type || 'audio/wav' });
-                    if (!await textToSpeechModelEngine.uploadVoice(label, file, context)) return;
-                    uploadedTtsVoicesRef.current.add(label);
-                }
-                await new Promise(r => setTimeout(r, 500));
-                const blob = await textToSpeechModelEngine.synthesize(text, context, { voice: label });
+                const context: TextToSpeedLanguageModelContext = { devicePreference: profile?.textToSpeechDeviceType ?? 'auto' };
+                // Blindly trigger. If voicepack.bin doesn't exist, the engine returns null gracefully.
+                const blob = await textToSpeechModelEngine.synthesize(text, character.id, context);
                 if (blob) {
                     const u = URL.createObjectURL(blob);
                     const a = new Audio(u);
@@ -117,7 +44,7 @@ export function useCharacterVoice() {
                 console.warn('TTS speak failed:', e);
             }
         })();
-    }, [ttsServerUrl, isMultiplayerChat]);
+    }, []);
 
     return { speakMessage };
 }

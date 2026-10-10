@@ -8,6 +8,8 @@ import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { useDisplayNameCache } from '../utilities/immersionLogic';
 import { getCharacterStarterMessage } from '../utilities/characterLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
+import { textToSpeechModelEngine } from '../services/TextToSpeechEngine';
+import { voiceCloningEngine } from '../services/VoiceCloningEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { buildModelLoadArguments } from '../utilities/modelLoadArguments';
 import { localURL } from '../../configurations';
@@ -334,9 +336,6 @@ function App() {
         const enabled = profile?.enableCharacterExpression ?? false;
         const devicePref = profile?.sentimentalAnalysisDeviceType ?? 'auto';
         
-        // Update the engine's internal device preference.
-        // If the pipeline is already loaded on a different device, the engine 
-        // will automatically unload it so the next analysis lazy-loads the correct backend.
         sentimentEngine.setDevicePreference(devicePref);
 
         if (enabled) {
@@ -345,6 +344,16 @@ function App() {
             sentimentEngine.unload();
         }
     }, [interactionData?.profile?.enableCharacterExpression, interactionData?.profile?.sentimentalAnalysisDeviceType]);
+
+    // ─── TTS & Voice Cloning Engine Device Preferences ───────────────
+    useEffect(() => {
+        const profile = interactionData?.profile;
+        const ttsDevice = profile?.textToSpeechDeviceType ?? 'auto';
+        const vcDevice = profile?.voiceCloningDeviceType ?? 'auto';
+        
+        textToSpeechModelEngine.setDevicePreference(ttsDevice);
+        voiceCloningEngine.setDevicePreference(vcDevice);
+    }, [interactionData?.profile?.textToSpeechDeviceType, interactionData?.profile?.voiceCloningDeviceType]);
 
     // ─── Chat Auto-Save ──────────────────────────────────────────────
     useChatAutoSave({
@@ -368,7 +377,6 @@ function App() {
             audioTracks: audioTracks.refresh,
             budgetStrategies: budgetStrategies.refresh,
             stopPatterns: stopPatterns.refresh,
-            // extensions: extensions.refresh,
             memories: memories.refresh,
             accounts: accounts.refresh,
             multiplayerData: multiplayerDataManager.refresh,
@@ -462,10 +470,7 @@ function App() {
     const editingId = useSessionStore(s => s.editingId);
     const editDraft = useSessionStore(s => s.editDraft);
 
-    // Main page view mode strictly handles in-page layouts (Ladder / Cinematic / Visual Novel)
     const [viewMode, setViewMode] = useState<viewMode>('ladder');
-    
-    // Native OS Companion Overlay tracking state
     const [isOverlayOpen, setIsOverlayOpen] = useState(false);
 
     const [inputText, setInputText] = useState('');
@@ -476,7 +481,6 @@ function App() {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const editTextAreaRef = useRef<HTMLTextAreaElement>(null);
 
-    // ─── Local Refs for View Assets ──────────────────────────────────
     const lastViewedMessageIdRef = useRef<string | null>(null);
     const suppressAutoScrollRef = useRef(false);
 
@@ -493,7 +497,6 @@ function App() {
     const displayNameCache = useDisplayNameCache(interactionData, localProtagonistId);
     const { modals } = useAppModals();
 
-    // ─── Sync Multiplayer Character Selection ────────────────────
     useEffect(() => {
         if (mp.needsCharacterSelection) {
             modals.charList.open();
@@ -502,7 +505,6 @@ function App() {
         }
     }, [mp.needsCharacterSelection, modals.charList, addToast, mp]);
 
-    // ─── Token Counter ───────────────────────────────────────────────
     const maxParticipantTokens = useTokenCounter({
         messages: (viewAssets.chatMessages || []).filter((m): m is ChatMessage => m.messageType === 'chat'),
         interactionData,
@@ -512,21 +514,18 @@ function App() {
         activeStrategy,
     });
 
-    // Auto-resize textarea when text actually changes
     useEffect(() => { 
         if (!textareaRef.current) return; 
         textareaRef.current.style.height = 'auto'; 
         textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, window.innerHeight * 0.3)}px`; 
     }, []);
 
-    // Auto-resize edit textarea when opened and as user types
     useEffect(() => { 
         if (!editTextAreaRef.current || !editingId) return; 
         editTextAreaRef.current.style.height = 'auto'; 
         editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`; 
     }, [editingId]);
 
-    // ─── Derived Display Values ──────────────────────────────────────
     const canDelete = (!isMultiplayerChat || mp.multiplayerSync.isHost || mp.multiplayerSync.isAdministrator) && !isLoading;
     const safeMessages = useMemo(() => viewAssets.chatMessages || [], [viewAssets.chatMessages]);
 
@@ -560,7 +559,6 @@ function App() {
         return chatList.rawChatShells.find((s: RawInteractionData) => s.id === parentInteractionDataId)?.name ?? null;
     }, [parentInteractionDataId, chatList.rawChatShells]);
 
-    // ─── Stable Committed Messages ───────────────────────────────────
     const committedMessages = useMemo(() => {
         let base = safeMessages.filter((m): m is ChatMessage | WhisperMessage => m.messageType === 'chat' || m.messageType === 'whisper');
         if (isMultiplayerChat && localProtagonist) {
@@ -575,7 +573,6 @@ function App() {
         return base;
     }, [safeMessages, isMultiplayerChat, localProtagonist]);
 
-    // ─── Budget Reset Timer ──────────────────────────────────────────
     const timeUntilResetRef = useRef<number | undefined>(undefined);
     const [timeUntilReset, setTimeUntilReset] = useState<number | undefined>(undefined);
     useEffect(() => {
@@ -587,7 +584,6 @@ function App() {
         return () => { clearInterval(interval); cancelAnimationFrame(raf); };
     }, [budgetData, activeStrategy]);
 
-    // ─── Loading Screen ──────────────────────────────────────────────
     const loadSteps = useMemo<LoadStep[]>(() => [
         { id: 'session', label: 'Session Data', icon: '⚙️', done: sessionLoaded },
         { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatList.isLoading },
@@ -637,7 +633,6 @@ function App() {
         if (isMultiplayerChat && editingId) mp.multiplayerSync.broadcastMessageEdit(editingId, editDraft);
     }, [messageActions, isMultiplayerChat, mp.multiplayerSync, editingId, editDraft]);
 
-    // ─── Input Handlers ──────────────────────────────────────────────
     const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files ? Array.from(e.target.files) : [];
         if (files.length > 0) { setPendingFiles(prev => [...prev, ...files]); addToast(`${files.length} file${files.length !== 1 ? 's' : ''} attached.`); }
@@ -664,7 +659,6 @@ function App() {
             const profile = interactionData?.profile;
             const isAuto = profile?.enableAutoSpeechDetection ?? false;
 
-            // Inject hardware preference before starting the stream
             const sttDevice = profile?.speechToTextDeviceType ?? 'auto';
             speechToTextEngine.setDevicePreference(sttDevice);
 
@@ -714,7 +708,6 @@ function App() {
         }
     }, [isRecording, interactionData?.profile, handleSend, addToast]);
 
-    // ─── Native Tauri Companion Overlay Toggle Handler ────────────────
     const handleToggleOverlay = async () => {
         try {
             const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
@@ -748,7 +741,6 @@ function App() {
         }
     };
 
-    // ─── Main Page View Mode Switcher ────────────────────────────────
     const toggleViewMode = () => {
         setViewMode(prev => 
             prev === 'ladder' ? 'cinematic' : 
@@ -792,7 +784,6 @@ function App() {
         }, 50);
     };
 
-    // ─── Chat Management Handlers ────────────────────────────────────
     const handleImportComplete = useCallback(() => { getLanguageModelEngine().clearTokenCache(); chatList.refresh(); }, [chatList]);
 
     const handleForceFirstMessage = useCallback((char: Character) => {
@@ -871,7 +862,6 @@ function App() {
         await chatOps.handleSwitchChat(parentInteractionDataId);
     }, [parentInteractionDataId, chatOps]);
 
-    // ─── Worlds Management ───────────────────────────────────────────
     const handleLoadWorlds = useCallback((activeWorlds: World[]) => {
         if (!interactionData) return;
 
@@ -979,7 +969,6 @@ function App() {
         setInteractionData, canBroadcastState, mp.multiplayerSync
     ]);
 
-    // ─── Base View Props (Stable, contains only committed messages) ───
     const baseViewProps: ViewModeProps = {
         displayMessages: committedMessages as ChatMessage[],
         portraitUrlCache: viewAssets.portraitUrlCache, 
@@ -1015,11 +1004,9 @@ function App() {
         viewAssets.locationBackgroundUrl ? 'has-location-bg' : '',
     ].filter(Boolean).join(' ');
 
-    // ─── Broadcast State Snapshot to Native Tauri Companion Window ───
     const getCompanionStateSnapshot = useCallback(() => {
         const protagonistId = localProtagonist?.id ?? interactionData?.protagonistIds?.[0];
         
-        // Strictly find the AI Companion participant
         const companionChar = interactionData?.participants?.find((p: Character) => p.id !== protagonistId) 
             || interactionData?.participants?.find((p: Character) => p.id !== currentCharacter?.id)
             || null;
@@ -1119,7 +1106,6 @@ function App() {
     const { handleActivateBudgetStrategy } = entityToggles;
     const { saveProfile } = profiles;
 
-    // 1. Persistent Channel Lifecycle
     useEffect(() => {
         const channel = new BroadcastChannel('lorereactor-companion-sync');
         companionChannelRef.current = channel;
@@ -1142,8 +1128,9 @@ function App() {
                 }
             } else if (e.data?.type === 'ADD_ACTION' && e.data?.label) {
                 actionManager.handleAddAction(e.data.label);
+            } else if (e.data?.type === 'DELETE_ACTION' && e.data?.label) {
+                actionManager.handleDeleteAction(e.data.label);
             } else if (e.data?.type === 'SELECT_MODEL' && e.data?.modelId !== undefined) {
-                // Mutually exclusive: selecting a model clears any budget strategy
                 const targetModelId = e.data.modelId || null;
                 setGlobalModelId(targetModelId);
                 if (targetModelId) {
@@ -1151,7 +1138,6 @@ function App() {
                     handleActivateBudgetStrategy(null);
                 }
             } else if (e.data?.type === 'SELECT_BUDGET' && e.data?.budgetId !== undefined) {
-                // Mutually exclusive: selecting a budget strategy clears any direct model
                 const targetBudgetId = e.data.budgetId || null;
                 handleActivateBudgetStrategy(targetBudgetId);
                 if (targetBudgetId) {
@@ -1200,7 +1186,6 @@ function App() {
         wrappedSaveEdit
     ]);
 
-    // 2. Broadcast Effect (Fires on every snapshot change / token)
     useEffect(() => {
         if (companionChannelRef.current) {
             companionChannelRef.current.postMessage({
@@ -1210,7 +1195,6 @@ function App() {
         }
     }, [getCompanionStateSnapshot]);
 
-    // ─── Render ──────────────────────────────────────────────────────
     return (
         <>
             {isInitializing && <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />}
@@ -1234,7 +1218,6 @@ function App() {
                                             : <><span onClick={chatOps.handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = '1'} onMouseLeave={e => e.currentTarget.style.opacity = '0.3'}>✎</span><div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{interactionData?.name || 'Untitled Chat'}</div></>}
                                     </div>
                                     <div className="header-controls-group">
-                                        {/* 1. Native Tauri Companion Overlay Button */}
                                         <button
                                             type="button"
                                             className={`view-mode-toggle ${isOverlayOpen ? 'active' : ''}`}
@@ -1245,13 +1228,10 @@ function App() {
                                             <span>🪟</span>
                                         </button>
 
-                                        {/* 2. Settings Modal Button */}
                                         <button type="button" className="view-mode-toggle" onClick={modals.settings.open} title="Settings" style={{ padding: '6px 10px' }}><span>⚙️</span></button>
 
-                                        {/* 3. Extensions Modal Button */}
                                         <button type="button" className="view-mode-toggle" onClick={() => modals.extensionList.open()} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
 
-                                        {/* 4. In-Page View Mode Switcher */}
                                         <button type="button" onClick={toggleViewMode} className="view-mode-toggle" title="Switch View Mode">
                                             <span>{viewMode === 'ladder' ? '📜' : viewMode === 'cinematic' ? '🎥' : '📖'}</span>
                                             <span>{viewMode === 'ladder' ? 'Ladder' : viewMode === 'cinematic' ? 'Cinematic' : 'Visual Novel'}</span>
@@ -1277,7 +1257,6 @@ function App() {
                             </div>
                         </header>
 
-                        {/* Isolated View Area */}
                         <ChatViewArea
                             viewMode={viewMode}
                             baseProps={baseViewProps}

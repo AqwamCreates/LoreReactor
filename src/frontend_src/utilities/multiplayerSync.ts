@@ -11,7 +11,6 @@ export function stripCharacterForSync(char: Character): Character {
         firstCreatedTimestamp: char.firstCreatedTimestamp,
         lastUpdatedTimestamp: char.lastUpdatedTimestamp,
         images: char.images,
-        voice: char.voice,
         systemPrompt: char.systemPrompt,
         thinkPrompt: char.thinkPrompt,
         appearancePrompt: char.appearancePrompt,

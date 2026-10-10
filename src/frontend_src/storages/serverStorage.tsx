@@ -248,6 +248,20 @@ async function deleteResource(url: string): Promise<void> {
   }
 }
 
+function getURL(entityKey: EntityKey, ...pathParts: string[]): string | null {
+  const basePath = PATHS[entityKey];
+  const cleanPath = basePath.startsWith('/') ? basePath : `/${basePath}`;
+  return `${localURL}${cleanPath}/${pathParts.join('/')}`;
+}
+
+async function upload(entityKey: EntityKey, pathParts: string, file: File): Promise<string> {
+  const base64 = await fileToBase64(file);
+  const filename = getCleanFileName(file);
+  const imagePath = `${PATHS[entityKey]}/${[pathParts, filename].join('/')}`;
+  await putJson(imagePath, { base64 });
+  return filename;
+}
+
 // =============================================================================
 // MANIFEST MANAGEMENT
 // =============================================================================
@@ -932,6 +946,11 @@ const profileRepo = createRepository<Profile, RawProfile>({
         tools: {} as Record<tool, tristateInteger>,
         inputStrategy: [...defaultInputStrategy],
         enableSpeculativeMarkov: false,
+        sentimentalAnalysisDeviceType: 'auto',
+        textToSpeechDeviceType: 'auto',
+        voiceCloningDeviceType: 'auto',
+        speechToTextDeviceType: 'auto',
+        voiceActivityDetectionDeviceType: 'auto',
     }, {
         summarizationSteps: () => summarizationSteps,
     });
@@ -1469,26 +1488,12 @@ export async function saveRawBudgetData(data: BudgetData): Promise<void> {
 // IMAGE & VOICE HELPERS
 // =============================================================================
 
-function getImageUrl(entityKey: EntityKey, ...pathParts: string[]): string | null {
-  const basePath = PATHS[entityKey];
-  const cleanPath = basePath.startsWith('/') ? basePath : `/${basePath}`;
-  return `${localURL}${cleanPath}/${pathParts.join('/')}`;
-}
-
-async function uploadImage(entityKey: EntityKey, pathParts: string, file: File): Promise<string> {
-  const base64 = await fileToBase64(file);
-  const filename = getCleanFileName(file);
-  const imagePath = `${PATHS[entityKey]}/${[pathParts, filename].join('/')}`;
-  await putJson(imagePath, { base64 });
-  return filename;
-}
-
-export function getCharacterImageUrl(characterId: string, characterExpression?: string): string | null {
-    return getImageUrl('characterImages', characterId, characterExpression || 'neutral');
+export function getCharacterImageUrl(characterId: string, characterExpression: string): string | null {
+    return getURL('characterImages', characterId, characterExpression);
 }
 
 export async function getCharacterImageUrlWithFallBack(characterId: string, characterExpression?: string): Promise<string | null> {
-    const characterImageUrl = getCharacterImageUrl(characterId, characterExpression);
+    const characterImageUrl = getCharacterImageUrl(characterId, characterExpression || 'neutral');
     if (!characterImageUrl) return null;
 
     try {
@@ -1515,71 +1520,72 @@ export async function getCharacterImageUrlWithFallBack(characterId: string, char
 }
 
 export async function uploadCharacterImage(characterId: string, file: File): Promise<string> {
-    return uploadImage('characterImages', characterId, file);
+    return upload('characterImages', characterId, file);
 }
 
-export function getCharacterVoiceUrl(characterId: string, voiceFileName: string | undefined): string | null {
-  if (!voiceFileName) return null;
-  return getImageUrl('characterVoices', characterId, voiceFileName);
+export function getCharacterVoice(characterId: string): string | null {
+  return getURL('characterVoices', characterId, "voicepack.bin");
 }
 
-export async function uploadCharacterVoice(characterId: string, file: File): Promise<string> {
-  return uploadImage('characterVoices', characterId, file);
+export async function uploadCharacterVoice(characterId: string, tensor: Float32Array): Promise<string> {
+  const tensorBlob = new Blob([tensor.buffer as ArrayBuffer], { type: 'application/octet-stream' });
+  const tensorFile = new File([tensorBlob], 'voicepack.bin', { type: 'application/octet-stream' });
+  return upload('characterVoices', characterId, tensorFile);
 }
 
 export function getContextImageUrl(contextId: string, imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  return getImageUrl('contextImages', contextId, imageFilename);
+  return getURL('contextImages', contextId, imageFilename);
 }
 
 export async function uploadContextImage(contextId: string, file: File): Promise<string> {
-  return uploadImage('contextImages', contextId, file);
+  return upload('contextImages', contextId, file);
 }
 
 export function getLocationImageUrl(locationId: string, imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  return getImageUrl('locationImages', locationId, imageFilename);
+  return getURL('locationImages', locationId, imageFilename);
 }
 
 export async function uploadLocationImage(locationId: string, file: File): Promise<string> {
-  return uploadImage('locationImages', locationId, file);
+  return upload('locationImages', locationId, file);
 }
 
 export function getAudioTrackUrl(audioTrackId: string, imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  return getImageUrl('audioTrackAudios', audioTrackId, imageFilename);
+  return getURL('audioTrackAudios', audioTrackId, imageFilename);
 }
 
 export async function uploadAudioTrack(audioTrackId: string, file: File): Promise<string> {
-    return uploadImage('audioTrackAudios', audioTrackId, file);
+    return upload('audioTrackAudios', audioTrackId, file);
 }
 
 export function getPromptBlockImageUrl(promptBlockId: string, imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
-  return getImageUrl('promptBlockImages', promptBlockId, imageFilename);
+  return getURL('promptBlockImages', promptBlockId, imageFilename);
 }
 
 export async function uploadPromptBlockImage(promptBlockId: string, file: File): Promise<string> {
-  return uploadImage('promptBlockImages', promptBlockId, file);
+  return upload('promptBlockImages', promptBlockId, file);
 }
 
 // --- Isolated Multiplayer Character Assets ---
 
 export function getMultiplayerCharacterImageUrl(characterId: string, characterExpression?: string): string | null {
-    return getImageUrl('multiplayerCharacterImages', characterId, characterExpression || 'neutral');
+    return getURL('multiplayerCharacterImages', characterId, characterExpression || 'neutral');
 }
 
 export async function uploadMultiplayerCharacterImage(characterId: string, file: File): Promise<string> {
-    return uploadImage('multiplayerCharacterImages', characterId, file);
+    return upload('multiplayerCharacterImages', characterId, file);
 }
 
 export function getMultiplayerCharacterVoiceUrl(characterId: string, voiceFileName: string | undefined): string | null {
   if (!voiceFileName) return null;
-  return getImageUrl('multiplayerCharacterVoices', characterId, voiceFileName);
+  return getURL('multiplayerCharacterVoices', characterId, voiceFileName);
 }
 
 export async function uploadMultiplayerCharacterVoice(characterId: string, file: File): Promise<string> {
-  return uploadImage('multiplayerCharacterVoices', characterId, file);
+  return upload('multiplayerCharacterVoices', characterId, file);
 }
 
 export async function loadRawFactorizationMachine(name: string): Promise<FMSerialized | null> {

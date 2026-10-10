@@ -170,7 +170,6 @@ export function CharacterCardImportModal({
                 dialoguePrompts: undefined,
                 starterPrompts: Object.keys(starterPrompts).length > 0 ? starterPrompts : undefined,
                 images: Object.keys(images).length > 0 ? images : undefined,
-                voice: undefined,
                 sampler: defaultSampler,
                 stopPatterns: undefined,
                 initiativeWeight,

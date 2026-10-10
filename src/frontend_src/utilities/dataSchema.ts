@@ -255,6 +255,8 @@ ${characterToolsSchema}
     "doNotInjectDefaultStopTokens": "boolean (default false)",
     "enableSpeculativeMarkov": "boolean (default false). Uses a local Markov chain to predict and append highly confident tokens during streaming, reducing API output costs.",
     "sentimentalAnalysisDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
+    "textToSpeechDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
+    "voiceCloningDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "speechToTextDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "voiceActivityDetectionDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "narrateTexts": {
