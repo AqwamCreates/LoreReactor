@@ -356,7 +356,7 @@ function App() {
             audioTracks: audioTracks.refresh,
             budgetStrategies: budgetStrategies.refresh,
             stopPatterns: stopPatterns.refresh,
-            extensions: extensions.refresh,
+            // extensions: extensions.refresh,
             memories: memories.refresh,
             accounts: accounts.refresh,
             multiplayerData: multiplayerDataManager.refresh,
