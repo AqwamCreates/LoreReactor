@@ -1,4 +1,5 @@
 // frontend_src/services/SentimentAnalysisEngine.ts
+import type { deviceType } from '../types';
 
 const EMOTION_LABELS = [
     'admiration', 'amusement', 'anger', 'annoyance', 'approval',
@@ -36,6 +37,31 @@ class SentimentAnalysisEngine {
     private loading: Promise<void> | null = null;
     private loadError: string | null = null;
     private usingWebGpu = false;
+    
+    // Internal state tracker for hardware execution preference
+    private currentDevicePreference: deviceType = 'auto';
+
+    /**
+     * Updates the target execution device. 
+     * If the engine is already loaded on a different device than the new preference,
+     * it immediately unloads the pipeline so the next analysis call lazy-loads the correct backend.
+     */
+    setDevicePreference(preference: deviceType): void {
+        if (this.currentDevicePreference !== preference) {
+            this.currentDevicePreference = preference;
+            
+            if (this.classifier) {
+                const isGpu = this.usingWebGpu;
+                const wantsCpu = preference === 'cpu';
+                const wantsGpu = preference === 'gpu';
+                
+                if ((wantsCpu && isGpu) || (wantsGpu && !isGpu)) {
+                    console.log(`[SentimentEngine] Device preference changed to ${preference}. Unloading current pipeline to lazy-reload on next use.`);
+                    this.unload(); 
+                }
+            }
+        }
+    }
 
     async initialize(): Promise<void> {
         if (this.classifier) return;
@@ -43,10 +69,11 @@ class SentimentAnalysisEngine {
 
         this.loading = (async () => {
             const { pipeline } = await import('@huggingface/transformers');
+            
+            const devicePreference = this.currentDevicePreference; 
+            const webGpuAvailable = devicePreference !== 'cpu' ? await isWebGpuAvailable() : false;
 
-            const webGpuAvailable = await isWebGpuAvailable();
-
-            if (webGpuAvailable) {
+            if (webGpuAvailable && devicePreference !== 'cpu') {
                 try {
                     console.log('[SentimentEngine] Loading with WebGPU...');
                     this.classifier = await pipeline('text-classification', HF_MODEL_ID, {
@@ -59,6 +86,9 @@ class SentimentAnalysisEngine {
                 } catch (e) {
                     console.warn('[SentimentEngine] WebGPU failed, falling back to CPU:', e instanceof Error ? e.message : String(e));
                     this.classifier = null;
+                    if (devicePreference === 'gpu') {
+                        this.loadError = 'WebGPU forced but failed. Falling back to CPU.';
+                    }
                 }
             }
 
@@ -97,6 +127,11 @@ class SentimentAnalysisEngine {
     }
 
     async analyze(text: string): Promise<SentimentResult | null> {
+        // Trigger lazy loading if the pipeline is not currently active or mid-flight
+        if (!this.classifier && !this.loading) {
+            await this.initialize();
+        }
+        
         if (!this.classifier) return null;
 
         try {

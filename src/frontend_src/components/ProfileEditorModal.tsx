@@ -1,6 +1,6 @@
 // frontend_src/components/ProfileEditorModal.tsx
 import { useState, useMemo, useCallback, type CSSProperties } from 'react';
-import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal } from '../types';
+import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal, deviceType } from '../types';
 import { SliderInput } from './SliderInput';
 import '../main.css';
 import { 
@@ -110,7 +110,6 @@ function migrateNarrateTexts(profile: Profile): Record<textType, boolean> {
     };
 }
 
-/** Converts a 1-100 slider value into an acoustic decibel (dBFS) representation */
 function sliderToDb(sliderValue: number): number {
     const clamped = Math.max(1, Math.min(100, sliderValue));
     return Math.round(-60 + (clamped / 100) * 50);
@@ -179,7 +178,6 @@ export function ProfileEditorModal({
     const [autonomousMode, setAutonomousMode] = useState(ep?.autonomousMode ?? false);
     const [autonomousInteractionIntervalMs, setAutonomousInteractionIntervalMs] = useState<number>(ep?.autonomousInteractionIntervalMs ?? 10000);
 
-    // ─── Voice Activity Detection & Auto-Send State ──────────────────
     const [enableAutoSpeechDetection, setEnableAutoSpeechDetection] = useState<boolean>(ep?.enableAutoSpeechDetection ?? false);
     const [speechVolumeActivationThreshold, setSpeechVolumeActivationThreshold] = useState<number>(
         ep?.speechVolumeActivationThreshold ?? 18
@@ -221,6 +219,10 @@ export function ProfileEditorModal({
     const [volume, setVolume] = useState<number>(ep?.volume ?? -1);
     const [stripThinkTokens, setStripThinkTokens] = useState(ep?.stripThinkTokens ?? false);
     
+    const [sentimentalAnalysisDeviceType, setSentimentalAnalysisDeviceType] = useState<deviceType>(ep?.sentimentalAnalysisDeviceType ?? 'auto');
+    const [speechToTextDeviceType, setSpeechToTextDeviceType] = useState<deviceType>(ep?.speechToTextDeviceType ?? 'auto');
+    const [voiceActivityDetectionDeviceType, setvoiceActivityDetectionDeviceType] = useState<deviceType>(ep?.voiceActivityDetectionDeviceType ?? 'auto');
+
     const [tools, setTools] = useState<Record<tool, tristateInteger>>(mergeToolsWithDefaults(ep?.tools));
     const [toolSearchQuery, setToolSearchQuery] = useState('');
     const [narrateTexts, setNarrateTexts] = useState<Record<textType, boolean>>(ep ? migrateNarrateTexts(ep) : { ...DEFAULT_NARRATE_TEXTS });
@@ -230,7 +232,6 @@ export function ProfileEditorModal({
     );
     const [summarizationInstruction, setSummarizationInstruction] = useState<string>(ep?.summarizationInstruction || '');
     
-    // ─── Auto-Resume Signals State ─────────────────────────────────────
     const [autoResumeSignals, setAutoResumeSignals] = useState<AutoResumeSignal[]>(ep?.autoResumeSignals ?? []);
     const [expandedSignalIndex, setExpandedSignalIndex] = useState<number | null>(null);
 
@@ -269,7 +270,6 @@ export function ProfileEditorModal({
     const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
     const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
 
-    // ─── Cache Efficiency State ─────────────────────────────────────
     const defaultCacheLevels: Record<cacheEfficiencyConfigurationType, number> = { 'Character Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
     const [cacheEfficiencyLevels, setCacheEfficiencyLevels] = useState<Record<cacheEfficiencyConfigurationType, number>>(
         ep?.cacheEfficiencyLevels ?? { ...defaultCacheLevels }
@@ -294,7 +294,6 @@ export function ProfileEditorModal({
         setCacheEfficiencyLevels(prev => ({ ...prev, [category]: Math.round(value) }));
     };
 
-    // ─── Tool Bulk Actions ──────────────────────────────────────────
     const handleSelectAllTools = useCallback(() => {
         setTools(prev => {
             const next = { ...prev };
@@ -348,6 +347,9 @@ export function ProfileEditorModal({
             minimalVolatileCacheMode,
             doNotInjectDefaultStopTokens,
             enableSpeculativeMarkov,
+            sentimentalAnalysisDeviceType,
+            speechToTextDeviceType,
+            voiceActivityDetectionDeviceType,
             volume, stripThinkTokens, tools: { ...tools },
             narrateTexts: { ...narrateTexts },
             inputStrategy: [...inputStrategy],
@@ -417,7 +419,6 @@ export function ProfileEditorModal({
 
     const selectedToolUsageDisplayMode = TOOL_USAGE_DISPLAY_MODES.find(m => m.value === toolUsageDisplayMode) ?? TOOL_USAGE_DISPLAY_MODES[0];
 
-    // Filtered tools based on search query
     const filteredToolKeys = useMemo(() => {
         const q = toolSearchQuery.toLowerCase().trim();
         if (!q) return allToolKeys;
@@ -451,7 +452,6 @@ export function ProfileEditorModal({
                     </div>
                 </div>
 
-                {/* Tab Bar */}
                 <div className="entity-tab-bar" style={{ padding: '0 20px', marginBottom: 0, borderBottom: '1px solid var(--border)', background: 'var(--social-bg)' }}>
                     {profileTabs.map(tab => (
                         <button
@@ -466,13 +466,11 @@ export function ProfileEditorModal({
                 </div>
 
                 <div className="modal-body editor-modal-body">
-                    {/* ─── GENERAL TAB ─── */}
                     {activeTab === 'general' && (
                         <>
                             <div style={{ marginBottom: '16px' }}><label className="editor-label">Name <span style={{ color: '#ff4444' }}>*</span></label><input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Default RP, No Cache Mode, Strict Names" />{errors.name && <div className="editor-error-message">{errors.name}</div>}</div>
                             <div style={{ marginBottom: '16px' }}><label className="editor-label">Description</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Describe when to use this profile" rows={2} /></div>
 
-                            {/* Agentic Roleplay */}
                             <div className="editor-section">
                                 <span className="editor-section-title">Agentic Roleplay</span>
                                 <ProfileCheckbox checked={autonomousMode} onChange={setAutonomousMode} label="Autonomous Mode" hint="When enabled, characters act independently in the background using weighted sampling based on initiative, stamina ratios, and skip probability." />
@@ -484,7 +482,6 @@ export function ProfileEditorModal({
                                 )}
                             </div>
 
-                            {/* Voice Activity Detection & Auto-Send */}
                             <div className="editor-section">
                                 <span className="editor-section-title">Voice Activity Detection & Auto-Send</span>
                                 <ProfileCheckbox 
@@ -588,7 +585,6 @@ export function ProfileEditorModal({
                         </>
                     )}
 
-                    {/* ─── INJECTION TAB ─── */}
                     {activeTab === 'injection' && (
                         <>
                             <div className="editor-section">
@@ -632,7 +628,6 @@ export function ProfileEditorModal({
                         </>
                     )}
 
-                    {/* ─── BEHAVIOUR TAB ─── */}
                     {activeTab === 'behaviour' && (
                         <div className="editor-section">
                             <span className="editor-section-title">Turn Sequencing</span>
@@ -649,7 +644,6 @@ export function ProfileEditorModal({
                         </div>
                     )}
 
-                    {/* ─── TOOLS TAB ─── */}
                     {activeTab === 'tools' && (
                         <div className="editor-section">
                             <span className="editor-section-title">Tools</span>
@@ -701,7 +695,6 @@ export function ProfileEditorModal({
                         </div>
                     )}
 
-                    {/* ─── PIPELINE TAB ─── */}
                     {activeTab === 'pipeline' && (
                         <>
                             <div className="editor-section">
@@ -718,7 +711,6 @@ export function ProfileEditorModal({
                                 <div style={{ marginTop: '8px' }}><select onChange={(e) => { const val = e.target.value as SummarizationStrategyType; if (val) addSummarizationStep(val); e.target.value = ''; }} className="editor-select" defaultValue=""><option value="" disabled>+ Add a summarization step</option>{ALL_STRATEGY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                 {summarizationSteps.length === 0 && (<div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '12px 0' }}>No summarization steps configured. Add one above to enable context management.</div>)}
                                 
-                                {/* Summarization Instruction Input */}
                                 <div style={{ marginTop: '16px' }}>
                                     <label className="editor-label editor-label-small">Summarization Instruction</label>
                                     <textarea 
@@ -734,7 +726,6 @@ export function ProfileEditorModal({
                         </>
                     )}
 
-                    {/* ─── CACHE TAB ─── */}
                     {activeTab === 'cache' && (
                         <>
                             <div className="editor-section">
@@ -776,7 +767,6 @@ export function ProfileEditorModal({
                         </>
                     )}
 
-                    {/* ─── MODEL TAB ─── */}
                     {activeTab === 'model' && (
                         <>
                             <div className="editor-section">
@@ -796,7 +786,55 @@ export function ProfileEditorModal({
                                 />
                             </div>
 
-                            {/* ─── AUTO-RESUME SIGNALS SECTION ─── */}
+                            <div className="editor-section">
+                                <span className="editor-section-title">Hardware Acceleration</span>
+                                <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>
+                                    Control which hardware backend is used for local browser-side AI models. Auto attempts WebGPU and falls back to CPU. Forcing CPU saves VRAM for the main LLM backend.
+                                </div>
+                                
+                                <div className="editor-row" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                                    <div>
+                                        <label className="editor-label editor-label-small">Sentiment Analysis</label>
+                                        <select 
+                                            value={sentimentalAnalysisDeviceType} 
+                                            onChange={(e) => setSentimentalAnalysisDeviceType(e.target.value as deviceType)} 
+                                            className="editor-select"
+                                        >
+                                            <option value="auto">Auto (Recommended)</option>
+                                            <option value="gpu">Force GPU (WebGPU)</option>
+                                            <option value="cpu">Force CPU (WASM)</option>
+                                        </select>
+                                        <div style={FIELD_HINT_STYLE}>Expression swapping.</div>
+                                    </div>
+                                    <div>
+                                        <label className="editor-label editor-label-small">Speech-to-Text</label>
+                                        <select 
+                                            value={speechToTextDeviceType} 
+                                            onChange={(e) => setSpeechToTextDeviceType(e.target.value as deviceType)} 
+                                            className="editor-select"
+                                        >
+                                            <option value="auto">Auto (Recommended)</option>
+                                            <option value="gpu">Force GPU (WebGPU)</option>
+                                            <option value="cpu">Force CPU (WASM)</option>
+                                        </select>
+                                        <div style={FIELD_HINT_STYLE}>Whisper transcription.</div>
+                                    </div>
+                                    <div>
+                                        <label className="editor-label editor-label-small">Voice Activity Detection</label>
+                                        <select 
+                                            value={voiceActivityDetectionDeviceType} 
+                                            onChange={(e) => setvoiceActivityDetectionDeviceType(e.target.value as deviceType)} 
+                                            className="editor-select"
+                                        >
+                                            <option value="auto">Auto (Recommended)</option>
+                                            <option value="gpu">Force GPU (WebGPU)</option>
+                                            <option value="cpu">Force CPU (WASM)</option>
+                                        </select>
+                                        <div style={FIELD_HINT_STYLE}>Silero VAD speech gating.</div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="editor-section">
                                 <div className="sampler-section-header">
                                     <span className="editor-section-title" style={{ marginBottom: 0 }}>Auto-Resume Signals</span>
@@ -928,7 +966,6 @@ export function ProfileEditorModal({
                                     )}
                                 </div>
                             </div>
-                            {/* ───────────────────────────────────────── */}
 
                             <div className="editor-section">
                                 <span className="editor-section-title">Samplers</span>

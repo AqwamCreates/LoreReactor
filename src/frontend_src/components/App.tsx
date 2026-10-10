@@ -330,9 +330,21 @@ function App() {
 
     // ─── Sentiment Engine ────────────────────────────────────
     useEffect(() => {
-        const enabled = interactionData?.profile?.enableCharacterExpression ?? false;
-        if (enabled) sentimentEngine.initialize();
-    }, [interactionData?.profile?.enableCharacterExpression]);
+        const profile = interactionData?.profile;
+        const enabled = profile?.enableCharacterExpression ?? false;
+        const devicePref = profile?.sentimentalAnalysisDeviceType ?? 'auto';
+        
+        // Update the engine's internal device preference.
+        // If the pipeline is already loaded on a different device, the engine 
+        // will automatically unload it so the next analysis lazy-loads the correct backend.
+        sentimentEngine.setDevicePreference(devicePref);
+
+        if (enabled) {
+            sentimentEngine.initialize();
+        } else {
+            sentimentEngine.unload();
+        }
+    }, [interactionData?.profile?.enableCharacterExpression, interactionData?.profile?.sentimentalAnalysisDeviceType]);
 
     // ─── Chat Auto-Save ──────────────────────────────────────────────
     useChatAutoSave({
@@ -651,6 +663,10 @@ function App() {
         } else {
             const profile = interactionData?.profile;
             const isAuto = profile?.enableAutoSpeechDetection ?? false;
+
+            // Inject hardware preference before starting the stream
+            const sttDevice = profile?.speechToTextDeviceType ?? 'auto';
+            speechToTextEngine.setDevicePreference(sttDevice);
 
             if (isAuto) {
                 const actThreshold = profile?.speechVolumeActivationThreshold ?? 15;

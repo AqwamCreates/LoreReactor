@@ -1,4 +1,5 @@
 // frontend_src/services/SpeechToTextEngine.ts
+import type { deviceType } from '../types';
 
 const HF_MODEL_ID = 'Xenova/whisper-tiny.en';
 const IDLE_UNLOAD_MS = 3 * 60 * 1000; // 3 minutes
@@ -16,7 +17,7 @@ async function isWebGpuAvailable(): Promise<boolean> {
 }
 
 /**
- * Converts a 1–100 sensitivity slider value to a linear RMS energy threshold.
+ * Converts a 1-100 sensitivity slider value to a linear RMS energy threshold.
  * Uses logarithmic dBFS mapping (-60 dBFS quiet floor to -10 dBFS loud speech)
  * matching human auditory perception and digital mic response curves.
  */
@@ -34,6 +35,9 @@ class SpeechToTextEngine {
     private loadError: string | null = null;
     private usingWebGpu = false;
     private idleTimer: ReturnType<typeof setTimeout> | null = null;
+    
+    // Internal state tracker for hardware execution preference
+    private currentDevicePreference: deviceType = 'auto';
 
     // Audio capture state
     private audioContext: AudioContext | null = null;
@@ -45,7 +49,7 @@ class SpeechToTextEngine {
     private onPartialTranscription: ((text: string) => void) | null = null;
     private transcriptionInterval: ReturnType<typeof setInterval> | null = null;
 
-    // ─── Dual-Threshold Hysteresis & VAD State ──────────────────────
+    // Dual-Threshold Hysteresis & VAD State
     private isAutoListening = false;
     private silenceTimer: ReturnType<typeof setTimeout> | null = null;
     private hasDetectedSpeech = false;
@@ -53,6 +57,41 @@ class SpeechToTextEngine {
     private silenceThresholdMs = 1400;
     private activationRmsThreshold = sliderToRms(18); // ~ -51 dBFS (Conversational entry)
     private silenceRmsThreshold = sliderToRms(8);     // ~ -56 dBFS (Silence floor cutoff)
+
+    /**
+     * Updates the target execution device.
+     * Implements immediate hot-swapping: nukes the ML pipeline to free VRAM/RAM,
+     * but leaves the Web Audio API hardware stream completely untouched so the 
+     * microphone doesn't drop or desync. The audio buffer acts as a shock absorber
+     * while the new pipeline loads in the background.
+     */
+    setDevicePreference(preference: deviceType): void {
+        if (this.currentDevicePreference !== preference) {
+            this.currentDevicePreference = preference;
+            
+            if (this.pipeline || this.loading) {
+                const isGpu = this.usingWebGpu;
+                const wantsCpu = preference === 'cpu';
+                const wantsGpu = preference === 'gpu';
+                
+                const needsReload = (wantsCpu && isGpu) || (wantsGpu && !isGpu);
+                
+                if (needsReload) {
+                    console.log(`[STTEngine] Device preference changed to ${preference}. Hot-swapping pipeline without dropping audio stream.`);
+                    
+                    // Nuke the ML Inference Layer
+                    this.pipeline = null;
+                    this.loading = null;
+                    this.usingWebGpu = false;
+                    
+                    // Immediately rebuild the pipeline on the new device
+                    this.ensureLoaded().catch(err => {
+                        console.error('[STTEngine] Hot-swap reload failed:', err);
+                    });
+                }
+            }
+        }
+    }
 
     private async ensureLoaded(): Promise<boolean> {
         if (this.pipeline) {
@@ -66,9 +105,10 @@ class SpeechToTextEngine {
 
         this.loading = (async () => {
             const { pipeline } = await import('@huggingface/transformers');
-            const webGpuAvailable = await isWebGpuAvailable();
+            const devicePreference = this.currentDevicePreference;
+            const webGpuAvailable = devicePreference !== 'cpu' ? await isWebGpuAvailable() : false;
 
-            if (webGpuAvailable) {
+            if (webGpuAvailable && devicePreference !== 'cpu') {
                 try {
                     console.log('[STTEngine] Loading Whisper with WebGPU...');
                     this.pipeline = await pipeline('automatic-speech-recognition', HF_MODEL_ID, {
@@ -81,6 +121,9 @@ class SpeechToTextEngine {
                 } catch (e) {
                     console.warn('[STTEngine] WebGPU failed, falling back to CPU:', e instanceof Error ? e.message : String(e));
                     this.pipeline = null;
+                    if (devicePreference === 'gpu') {
+                        this.loadError = 'WebGPU forced but failed. Falling back to CPU.';
+                    }
                 }
             }
 
@@ -233,7 +276,7 @@ class SpeechToTextEngine {
                 const inputData = event.inputBuffer.getChannelData(0);
                 this.audioChunks.push(new Float32Array(inputData));
 
-                // ─── Dual-Threshold Hysteresis (Schmitt Trigger) ─────────
+                // Dual-Threshold Hysteresis (Schmitt Trigger)
                 if (this.isAutoListening) {
                     let sumSquares = 0;
                     for (let i = 0; i < inputData.length; i++) {
@@ -351,7 +394,14 @@ class SpeechToTextEngine {
     }
 
     private async transcribeAccumulated(): Promise<string | null> {
-        if (this.audioChunks.length === 0 || !this.pipeline) return null;
+        if (this.audioChunks.length === 0) return null;
+
+        // Shock Absorber: If a hot-swap is mid-flight, wait for the new pipeline to finish loading
+        if (this.loading) {
+            await this.loading;
+        }
+        
+        if (!this.pipeline) return null;
 
         try {
             const totalLength = this.audioChunks.reduce((sum, chunk) => sum + chunk.length, 0);

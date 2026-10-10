@@ -719,6 +719,8 @@ export interface AutoResumeSignal {
   maximumNumberOfAutoResumes: number // At 0, no auto-resume. Default is 10.
 
 }
+
+export type deviceType = 'auto' | 'cpu' | 'gpu'
 export interface Profile extends ObjectData {
   autonomousMode: boolean;
   autonomousInteractionIntervalMs: number;
@@ -762,6 +764,9 @@ export interface Profile extends ObjectData {
   summarizationSteps: SummarizationStep[];
   summarizationInstruction?: string // If empty, then use in-built default.
   enableSpeculativeMarkov: boolean;
+  sentimentalAnalysisDeviceType: deviceType; // Default is auto.
+  speechToTextDeviceType: deviceType; // Default is auto.
+  voiceActivityDetectionDeviceType: deviceType; // Default is auto.
   autoResumeSignals: AutoResumeSignal[]; // When empty, the models will determine the natural stop. Otherwise, if the partially-generated text does not end with these signals, it will auto-resume until this signal is hit.
   characterSampler?: Sampler;
   webSummarizationSampler?: Sampler;
@@ -816,6 +821,9 @@ export interface RawProfile extends RawData {
   summarizationSteps: RawSummarizationStep[];
   summarizationInstruction?: string // If empty, then use in-built default.
   enableSpeculativeMarkov: boolean;
+  sentimentalAnalysisDeviceType: deviceType; // Default is auto.
+  speechToTextDeviceType: deviceType; // Default is auto.
+  voiceActivityDetectionDeviceType: deviceType; // Default is auto.
   autoResumeSignals: AutoResumeSignal[]; // When empty, the models will determine the natural stop. Otherwise, if the partially-generated text does not end with these signals and has visited the activating, it will auto-resume until this signal is hit.
   characterSamplerId?: string;
   webSummarizationSamplerId?: string;
