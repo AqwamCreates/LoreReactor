@@ -47,6 +47,7 @@ import { AlternateTimelinesModal } from './AlternateTimelinesModal';
 import { ChatInspectionModal } from './ChatInspectionModal';
 import { SuperSearchModal } from './SuperSearchModal';
 import { LanguageModelInferenceManagerModal } from './LanguageModelInferenceManager';
+import { voiceCloningEngine } from '../services/VoiceCloningEngine'; // ✅ ADDED IMPORT
 
 interface EntityModalController {
     isOpen: boolean;
@@ -267,6 +268,24 @@ export function AppModals({
     const [aiProfileSaveRedirect, setAiProfileSaveRedirect] = useState<((profile: Profile) => void) | null>(null);
 
     const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
+
+    // ✅ ADDED: Background Voice Cloning Handler
+    const handleBackgroundVoiceClone = useCallback((characterId: string, file: File) => {
+        addToast(`🎙️ Cloning voice in background...`, 'info');
+        
+        voiceCloningEngine.enqueueUpload(characterId, file)
+            .then(success => {
+                if (success) {
+                    addToast('✅ Voice cloned successfully!', 'success');
+                } else {
+                    addToast('❌ Voice cloning failed.', 'error');
+                }
+            })
+            .catch(err => {
+                console.error('[AppModals] Background voice clone failed:', err);
+                addToast(`❌ Voice cloning error: ${err.message}`, 'error');
+            });
+    }, [addToast]);
 
     // ─── Active World IDs from Interaction Data ───
     const currentWorldIds = useMemo(() => {
@@ -675,7 +694,7 @@ export function AppModals({
                     onOpenDataManager={modals.dataManager.open}
                     onOpenSuperSearch={modals.superSearch.open}
                     onOpenGpuMonitor={modals.gpuMonitor.open}
-                    onOpenLanguageModelInferenceManager={modals.languageModelInferenceManager.open} // <--- ADD THIS
+                    onOpenLanguageModelInferenceManager={modals.languageModelInferenceManager.open}
                 />
             )}
 
@@ -920,6 +939,7 @@ export function AppModals({
                             characterModalProperties.save(character); 
                         } 
                     }}
+                    onVoiceCloneRequested={handleBackgroundVoiceClone} // ✅ WIRED UP BACKGROUND CLONING
                     existingCharacter={characterModalProperties.item} 
                     allSamplers={allSamplers} 
                     allCharacters={allCharacters}

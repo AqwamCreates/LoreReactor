@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, tool, InteractionData } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { uploadCharacterImage, getCharacterImageUrl, getCharacterVoice } from '../storages/serverStorage';
-import { voiceCloningEngine } from '../services/VoiceCloningEngine';
+// ✅ REMOVED: voiceCloningEngine import is no longer needed here
 import { 
     getInitiativeWeightValueFromText, 
     getChatProbabilityValue, 
@@ -58,6 +58,8 @@ interface CharacterEditorModalProps {
     isReadOnly?: boolean;
     onClose: () => void;
     onSave: (character: Character) => void;
+    // ✅ ADDED: Callback to trigger background cloning after modal closes
+    onVoiceCloneRequested?: (characterId: string, file: File) => void;
     existingCharacter?: Character | null;
     allSamplers: Sampler[];
     allCharacters: Character[];
@@ -69,7 +71,8 @@ interface CharacterEditorModalProps {
     localProtagonistId?: string | null;
 }
 
-export function CharacterEditorModal({ isReadOnly = false, onClose, onSave, existingCharacter,
+export function CharacterEditorModal({ 
+    isReadOnly = false, onClose, onSave, onVoiceCloneRequested, existingCharacter,
     allSamplers, allCharacters, isLoadingSamplers = false,
     selectedModel, runningModels,
     chatNameMap, interactionData, localProtagonistId,
@@ -82,6 +85,7 @@ export function CharacterEditorModal({ isReadOnly = false, onClose, onSave, exis
             key={modalKey}
             onClose={onClose}
             onSave={onSave}
+            onVoiceCloneRequested={onVoiceCloneRequested} // ✅ PASSED DOWN
             existingCharacter={existingCharacter}
             allSamplers={allSamplers}
             allCharacters={allCharacters}
@@ -97,7 +101,7 @@ export function CharacterEditorModal({ isReadOnly = false, onClose, onSave, exis
 }
 
 function CharacterEditorModalInner({
-    onClose, onSave, existingCharacter,
+    onClose, onSave, onVoiceCloneRequested, existingCharacter, // ✅ ADDED TO DESTRUCTURING
     allSamplers, allCharacters, isLoadingSamplers = false,
     selectedModel, runningModels,
     chatNameMap, interactionData, localProtagonistId,
@@ -690,22 +694,11 @@ function CharacterEditorModalInner({
             delete finalImages.neutral;
         }
 
-        if (voiceFile) {
-            setIsUploading(true);
-            try { 
-                const success = await voiceCloningEngine.enqueueUpload(targetCharacterId, voiceFile);
-                if (!success) {
-                    setSubmitError("Failed to extract and upload voice tensor."); 
-                    setIsUploading(false); 
-                    return null; 
-                }
-                setHasExistingVoice(true);
-            } catch { 
-                setSubmitError("Failed to extract and upload voice tensor."); 
-                setIsUploading(false); 
-                return null; 
-            }
-            setIsUploading(false);
+        // ✅ REPLACED BLOCKING UPLOAD WITH NON-BLOCKING HANDOFF
+        // We no longer await the upload here. The modal closes immediately.
+        // The parent component will handle the background cloning via onVoiceCloneRequested.
+        if (voiceFile && onVoiceCloneRequested) {
+            onVoiceCloneRequested(targetCharacterId, voiceFile);
         }
 
         const rawIW = Number.parseFloat(initiativeWeightStr);

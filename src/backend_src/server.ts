@@ -1788,6 +1788,65 @@ app.use('/user_data', (req, response) => {
   response.status(405).json({ error: 'Method Not Allowed' });
 });
 
+// ─── Kokoro Voice Cloning Endpoint ──────────────────────────────────
+app.post('/api/clone-voice', async (req, res) => {
+  const { characterId, audioBase64, device = 'auto' } = req.body;
+  if (!audioBase64 || !characterId) {
+    return res.status(400).json({ error: 'Missing audioBase64 or characterId' });
+  }
+
+  // Map frontend deviceType ('auto' | 'cpu' | 'gpu') to PyTorch devices
+  let pytorchDevice = device;
+  if (device === 'gpu') {
+    pytorchDevice = IS_MACOS ? 'mps' : 'cuda';
+  }
+
+  const tempDir = path.join(ROOT_DIR, 'temp_audio');
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+
+  const tempInputPath = path.join(tempDir, `${characterId}_input.wav`);
+  const targetVoiceDir = path.join(ROOT_DIR, 'user_data', 'character_voices', characterId);
+  const finalOutputPath = path.join(targetVoiceDir, 'voicepack.bin');
+
+  try {
+    // 1. Decode Base64 and save to temporary file
+    const base64Data = audioBase64.replace(/^data:[^;]+;base64,/, '');
+    const audioBuffer = Buffer.from(base64Data, 'base64');
+    fs.writeFileSync(tempInputPath, audioBuffer);
+
+    // 2. Ensure target directory exists
+    if (!fs.existsSync(targetVoiceDir)) fs.mkdirSync(targetVoiceDir, { recursive: true });
+
+    // 3. Call Python script (kokoro_inno.py)
+    const pythonScript = path.join(ROOT_DIR, 'src', 'backend_src', 'kokoro_inno.py');
+    const pythonBinCmd = process.platform === 'win32' ? 'python' : 'python3';
+    
+    const result = await new Promise<string>((resolve, reject) => {
+      exec(`${pythonBinCmd} "${pythonScript}" "${tempInputPath}" "${finalOutputPath}" --device ${pytorchDevice}`, 
+          { timeout: 60000 }, 
+          (error, stdout, stderr) => {
+              if (error) reject(new Error(stderr || error.message));
+              else resolve(stdout);
+          }
+      );
+    });
+
+    if (!result.includes('SUCCESS')) {
+      throw new Error('Python script did not report success');
+    }
+
+    // 4. Cleanup temp file
+    try { fs.unlinkSync(tempInputPath); } catch {}
+
+    res.json({ success: true, message: `Voice cloned on ${pytorchDevice} and saved as voicepack.bin` });
+  } catch (e: any) {
+    log.error(`[VoiceClone] Failed: ${e.message}`);
+    // Cleanup on failure
+    try { fs.unlinkSync(tempInputPath); } catch {}
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // --- Language Model Management ---
 
 const LANGUAGE_MODEL_ROUTE = '/language_models';

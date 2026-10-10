@@ -1,101 +1,29 @@
 // frontend_src/services/VoiceCloningEngine.ts
-import * as ort from 'onnxruntime-web';
+import { localURL } from '../../configurations';
 import type { deviceType } from '../types';
-import { uploadCharacterVoice } from '../storages/serverStorage';
-
-// MIT Licensed WavLM speaker verification model (Xenova mirror is ungated and public)
-const SPEAKER_ENCODER_MODEL_URL = 'https://huggingface.co/Xenova/wavlm-base-plus-sv/resolve/main/onnx/model_quantized.onnx';
-
-interface QueueTask {
-    characterId: string;
-    file: File;
-    resolve: (success: boolean) => void;
-    reject: (error: any) => void;
-}
 
 class VoiceCloningEngine {
-    private session: ort.InferenceSession | null = null;
-    private loading: Promise<void> | null = null;
-    private loadError: string | null = null;
-    private usingWebGpu = false;
-    private currentDevicePreference: deviceType = 'auto';
-    private queue: QueueTask[] = [];
+    private queue: Array<{characterId: string; file: File; resolve: (s: boolean) => void; reject: (e: any) => void}> = [];
     private isProcessing = false;
-
-    constructor() {
-        ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/';
-        ort.env.wasm.numThreads = 1;
-        ort.env.wasm.simd = true;
-    }
+    private currentDevicePreference: deviceType = 'auto';
 
     setDevicePreference(preference: deviceType): void {
-        if (this.currentDevicePreference !== preference) {
-            this.currentDevicePreference = preference;
-            if (this.session) {
-                console.log(`[VoiceCloningEngine] Device preference changed to ${preference}. Unloading to lazy-reload.`);
-                this.unload();
-            }
-        }
-    }
-
-    private async load(): Promise<boolean> {
-        if (this.session) return true;
-        if (this.loading) {
-            await this.loading;
-            return this.session !== null;
-        }
-
-        this.loading = (async () => {
-            try {
-                const devicePreference = this.currentDevicePreference;
-                const eps: string[] = [];
-                
-                if (devicePreference !== 'cpu') {
-                    const hasWebGpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
-                    if (hasWebGpu) eps.push('webgpu');
-                }
-                eps.push('wasm');
-
-                console.log(`[VoiceCloningEngine] Loading Speaker Encoder with EPs: ${eps.join(', ')}`);
-                
-                this.session = await ort.InferenceSession.create(SPEAKER_ENCODER_MODEL_URL, {
-                    executionProviders: eps,
-                });
-
-                this.usingWebGpu = eps[0] === 'webgpu';
-                console.log(`[VoiceCloningEngine] Ready (${this.usingWebGpu ? 'WebGPU' : 'WASM'}).`);
-            } catch (e) {
-                const msg = e instanceof Error ? e.message : String(e);
-                console.error('[VoiceCloningEngine] Initialization failed:', msg);
-                this.loadError = msg;
-                this.session = null;
-            } finally {
-                this.loading = null;
-            }
-        })();
-
-        await this.loading;
-        return this.session !== null;
-    }
-
-    async unload(): Promise<void> {
-        if (this.loading) {
-            try { await this.loading; } catch {}
-        }
-        if (this.session) {
-            try { await this.session.release(); } catch {}
-        }
-        this.session = null;
-        this.loading = null;
-        this.loadError = null;
-        this.usingWebGpu = false;
-        console.log('[VoiceCloningEngine] Unloaded.');
+        this.currentDevicePreference = preference;
     }
 
     async enqueueUpload(characterId: string, file: File): Promise<boolean> {
         return new Promise((resolve, reject) => {
             this.queue.push({ characterId, file, resolve, reject });
             this.processQueue();
+        });
+    }
+
+    private fileToBase64(file: File): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = error => reject(error);
         });
     }
 
@@ -106,96 +34,35 @@ class VoiceCloningEngine {
         while (this.queue.length > 0) {
             const task = this.queue.shift()!;
             try {
-                const arrayBuffer = await task.file.arrayBuffer();
-                const audioContext = new AudioContext({ sampleRate: 16000 });
-                
-                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                const float32Data = audioBuffer.getChannelData(0);
-                
-                const tensor = await this.extractVoicepack(float32Data, audioBuffer.sampleRate);
-                
-                if (tensor) {
-                    await uploadCharacterVoice(task.characterId, tensor);
-                    task.resolve(true);
-                } else {
-                    task.resolve(false);
+                const base64Data = await this.fileToBase64(task.file);
+
+                const response = await fetch(`${localURL}/api/clone-voice`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        characterId: task.characterId,
+                        audioBase64: base64Data,
+                        device: this.currentDevicePreference
+                    })
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                    throw new Error(errData.error || `HTTP ${response.status}`);
                 }
+                
+                task.resolve(true);
             } catch (err) {
-                console.error('[VoiceCloningEngine] Queue task failed:', err);
+                console.error('[VoiceCloningEngine] Backend cloning failed:', err);
                 task.reject(err);
             }
         }
-
         this.isProcessing = false;
-        this.unload(); 
     }
 
-    private async extractVoicepack(audioBuffer: Float32Array, sampleRate: number): Promise<Float32Array | null> {
-        const loaded = await this.load();
-        if (!loaded || !this.session) return null;
-
-        try {
-            let inputBuffer = audioBuffer;
-            if (sampleRate !== 16000) {
-                const ratio = 16000 / sampleRate;
-                const newLength = Math.round(audioBuffer.length * ratio);
-                const resampled = new Float32Array(newLength);
-                for (let i = 0; i < newLength; i++) {
-                    const srcIdx = i / ratio;
-                    const floor = Math.floor(srcIdx);
-                    const ceil = Math.min(floor + 1, audioBuffer.length - 1);
-                    const weight = srcIdx - floor;
-                    resampled[i] = audioBuffer[floor] * (1 - weight) + audioBuffer[ceil] * weight;
-                }
-                inputBuffer = resampled;
-            }
-
-            const inputTensor = new ort.Tensor('float32', inputBuffer, [1, inputBuffer.length]);
-
-            // Xenova's WavLM ONNX export only accepts input_values. 
-            // Passing attention_mask will throw "invalid input" errors.
-            const results = await this.session.run({
-                input_values: inputTensor
-            });
-
-            const outputKey = Object.keys(results)[0];
-            const outputTensor = results[outputKey];
-            const data = outputTensor.data as Float32Array;
-            const dims = outputTensor.dims;
-
-            // Mean pooling + L2 normalization to extract the final embedding vector
-            if (dims.length === 3) {
-                const seqLen = dims[1] as number;
-                const hiddenDim = dims[2] as number;
-                const pooled = new Float32Array(hiddenDim);
-
-                for (let t = 0; t < seqLen; t++) {
-                    for (let d = 0; d < hiddenDim; d++) {
-                        pooled[d] += data[t * hiddenDim + d];
-                    }
-                }
-                for (let d = 0; d < hiddenDim; d++) pooled[d] /= seqLen;
-
-                let norm = 0;
-                for (let d = 0; d < hiddenDim; d++) norm += pooled[d] * pooled[d];
-                norm = Math.sqrt(norm);
-                if (norm > 0) {
-                    for (let d = 0; d < hiddenDim; d++) pooled[d] /= norm;
-                }
-
-                return pooled;
-            }
-
-            return data as Float32Array;
-        } catch (e) {
-            console.warn('[VoiceCloningEngine] Extraction failed:', e);
-            return null;
-        }
-    }
-
-    isReady(): boolean { return this.session !== null; }
-    isUsingWebGpu(): boolean { return this.usingWebGpu; }
-    getError(): string | null { return this.loadError; }
+    isReady(): boolean { return true; }
+    isUsingWebGpu(): boolean { return false; }
+    getError(): string | null { return null; }
 }
 
 export const voiceCloningEngine = new VoiceCloningEngine();
