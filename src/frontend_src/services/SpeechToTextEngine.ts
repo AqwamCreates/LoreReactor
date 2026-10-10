@@ -49,7 +49,7 @@ class SpeechToTextEngine {
     private onPartialTranscription: ((text: string) => void) | null = null;
     private transcriptionInterval: ReturnType<typeof setInterval> | null = null;
 
-    // Dual-Threshold Hysteresis & VAD State
+    // Dual-Threshold Hysteresis & VAD State (Layer 1 RMS Pre-Filter)
     private isAutoListening = false;
     private silenceTimer: ReturnType<typeof setTimeout> | null = null;
     private hasDetectedSpeech = false;
@@ -276,7 +276,7 @@ class SpeechToTextEngine {
                 const inputData = event.inputBuffer.getChannelData(0);
                 this.audioChunks.push(new Float32Array(inputData));
 
-                // Dual-Threshold Hysteresis (Schmitt Trigger)
+                // Layer 1: Dual-Threshold Hysteresis (Schmitt Trigger) RMS Pre-Filter
                 if (this.isAutoListening) {
                     let sumSquares = 0;
                     for (let i = 0; i < inputData.length; i++) {

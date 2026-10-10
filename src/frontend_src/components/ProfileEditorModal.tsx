@@ -221,7 +221,7 @@ export function ProfileEditorModal({
     
     const [sentimentalAnalysisDeviceType, setSentimentalAnalysisDeviceType] = useState<deviceType>(ep?.sentimentalAnalysisDeviceType ?? 'auto');
     const [speechToTextDeviceType, setSpeechToTextDeviceType] = useState<deviceType>(ep?.speechToTextDeviceType ?? 'auto');
-    const [voiceActivityDetectionDeviceType, setvoiceActivityDetectionDeviceType] = useState<deviceType>(ep?.voiceActivityDetectionDeviceType ?? 'auto');
+    const [voiceActivityDetectionDeviceType, setVoiceActivityDetectionDeviceType] = useState<deviceType>(ep?.voiceActivityDetectionDeviceType ?? 'auto');
 
     const [tools, setTools] = useState<Record<tool, tristateInteger>>(mergeToolsWithDefaults(ep?.tools));
     const [toolSearchQuery, setToolSearchQuery] = useState('');
@@ -792,9 +792,9 @@ export function ProfileEditorModal({
                                     Control which hardware backend is used for local browser-side AI models. Auto attempts WebGPU and falls back to CPU. Forcing CPU saves VRAM for the main LLM backend.
                                 </div>
                                 
-                                <div className="editor-row" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                                <div className="editor-row">
                                     <div>
-                                        <label className="editor-label editor-label-small">Sentiment Analysis</label>
+                                        <label className="editor-label editor-label-small">Sentiment Analysis (Expressions)</label>
                                         <select 
                                             value={sentimentalAnalysisDeviceType} 
                                             onChange={(e) => setSentimentalAnalysisDeviceType(e.target.value as deviceType)} 
@@ -804,12 +804,12 @@ export function ProfileEditorModal({
                                             <option value="gpu">Force GPU (WebGPU)</option>
                                             <option value="cpu">Force CPU (WASM)</option>
                                         </select>
-                                        <div style={FIELD_HINT_STYLE}>Expression swapping.</div>
+                                        <div style={FIELD_HINT_STYLE}>Used for character expression swapping.</div>
                                     </div>
                                     <div>
-                                        <label className="editor-label editor-label-small">Speech-to-Text</label>
+                                        <label className="editor-label editor-label-small">Speech-To-Text (Whisper)</label>
                                         <select 
-                                            value={speechToTextDeviceType} 
+                                            value={speechToTextDeviceType}
                                             onChange={(e) => setSpeechToTextDeviceType(e.target.value as deviceType)} 
                                             className="editor-select"
                                         >
@@ -817,21 +817,25 @@ export function ProfileEditorModal({
                                             <option value="gpu">Force GPU (WebGPU)</option>
                                             <option value="cpu">Force CPU (WASM)</option>
                                         </select>
-                                        <div style={FIELD_HINT_STYLE}>Whisper transcription.</div>
+                                        <div style={FIELD_HINT_STYLE}>Used for voice input transcription.</div>
                                     </div>
+                                </div>
+
+                                <div className="editor-row" style={{ marginTop: '12px' }}>
                                     <div>
-                                        <label className="editor-label editor-label-small">Voice Activity Detection</label>
+                                        <label className="editor-label editor-label-small">Voice Activity Detection (VAD)</label>
                                         <select 
                                             value={voiceActivityDetectionDeviceType} 
-                                            onChange={(e) => setvoiceActivityDetectionDeviceType(e.target.value as deviceType)} 
+                                            onChange={(e) => setVoiceActivityDetectionDeviceType(e.target.value as deviceType)} 
                                             className="editor-select"
                                         >
                                             <option value="auto">Auto (Recommended)</option>
                                             <option value="gpu">Force GPU (WebGPU)</option>
                                             <option value="cpu">Force CPU (WASM)</option>
                                         </select>
-                                        <div style={FIELD_HINT_STYLE}>Silero VAD speech gating.</div>
+                                        <div style={FIELD_HINT_STYLE}>Used for detecting speech boundaries (Silero VAD).</div>
                                     </div>
+                                    <div></div>
                                 </div>
                             </div>
 
