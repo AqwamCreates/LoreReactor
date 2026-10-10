@@ -829,9 +829,9 @@ export function ProfileEditorModal({
                                             onChange={(e) => setSentimentalAnalysisDeviceType(e.target.value as deviceType)} 
                                             className="editor-select"
                                         >
-                                            <option value="auto">Auto (Recommended)</option>
-                                            <option value="gpu">Force GPU (WebGPU)</option>
-                                            <option value="cpu">Force CPU (WASM)</option>
+                                            <option value="auto">Auto</option>
+                                            <option value="gpu">GPU (WebGPU)</option>
+                                            <option value="cpu">CPU (WASM)</option>
                                         </select>
                                         <div style={FIELD_HINT_STYLE}>Used for character expression swapping.</div>
                                     </div>
@@ -842,9 +842,9 @@ export function ProfileEditorModal({
                                             onChange={(e) => setTextToSpeechDeviceType(e.target.value as deviceType)} 
                                             className="editor-select"
                                         >
-                                            <option value="auto">Auto (Recommended)</option>
-                                            <option value="gpu">Force GPU (WebGPU)</option>
-                                            <option value="cpu">Force CPU (WASM)</option>
+                                            <option value="auto">Auto</option>
+                                            <option value="gpu">GPU (WebGPU)</option>
+                                            <option value="cpu">CPU (WASM)</option>
                                         </select>
                                         <div style={FIELD_HINT_STYLE}>Used for generating spoken audio from text.</div>
                                     </div>
@@ -858,9 +858,9 @@ export function ProfileEditorModal({
                                             onChange={(e) => setVoiceCloningDeviceType(e.target.value as deviceType)} 
                                             className="editor-select"
                                         >
-                                            <option value="auto">Auto (Recommended)</option>
-                                            <option value="gpu">Force GPU (WebGPU)</option>
-                                            <option value="cpu">Force CPU (WASM)</option>
+                                            <option value="auto">Auto</option>
+                                            <option value="gpu">GPU (WebGPU)</option>
+                                            <option value="cpu">CPU (WASM)</option>
                                         </select>
                                         <div style={FIELD_HINT_STYLE}>Used for extracting voice from audio.</div>
                                     </div>
@@ -871,9 +871,9 @@ export function ProfileEditorModal({
                                             onChange={(e) => setSpeechToTextDeviceType(e.target.value as deviceType)} 
                                             className="editor-select"
                                         >
-                                            <option value="auto">Auto (Recommended)</option>
-                                            <option value="gpu">Force GPU (WebGPU)</option>
-                                            <option value="cpu">Force CPU (WASM)</option>
+                                            <option value="auto">Auto</option>
+                                            <option value="gpu">GPU (WebGPU)</option>
+                                            <option value="cpu">CPU (WASM)</option>
                                         </select>
                                         <div style={FIELD_HINT_STYLE}>Used for voice input transcription.</div>
                                     </div>
@@ -887,9 +887,9 @@ export function ProfileEditorModal({
                                             onChange={(e) => setVoiceActivityDetectionDeviceType(e.target.value as deviceType)} 
                                             className="editor-select"
                                         >
-                                            <option value="auto">Auto (Recommended)</option>
-                                            <option value="gpu">Force GPU (WebGPU)</option>
-                                            <option value="cpu">Force CPU (WASM)</option>
+                                            <option value="auto">Auto</option>
+                                            <option value="gpu">GPU (WebGPU)</option>
+                                            <option value="cpu">CPU (WASM)</option>
                                         </select>
                                         <div style={FIELD_HINT_STYLE}>Used for detecting speech boundaries.</div>
                                     </div>
