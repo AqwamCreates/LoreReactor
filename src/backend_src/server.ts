@@ -330,6 +330,37 @@ app.post('/language_models/notify', (req, res) => {
   res.json({ success: true });
 });
 
+// ─── Real-Time File Sync SSE Dispatcher (/sync) ─────────────
+const syncSseClients: Set<express.Response> = new Set();
+
+function broadcastSyncChange(method: string, path: string, clientId?: string) {
+  const payload = `data: ${JSON.stringify({ method, path, clientId, timestamp: Date.now() })}\n\n`;
+  for (const clientRes of syncSseClients) {
+    try {
+      clientRes.write(payload);
+    } catch {
+      syncSseClients.delete(clientRes);
+    }
+  }
+}
+
+app.get('/sync', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  syncSseClients.add(res);
+  
+  // Keep-alive ping every 15 seconds to prevent proxy timeouts
+  const ping = setInterval(() => res.write(':ping\n\n'), 15000);
+
+  req.on('close', () => {
+    clearInterval(ping);
+    syncSseClients.delete(res);
+  });
+});
+
 // ─── Automated On-Demand Installer Utilities ────────────────────────
 
 const cancelledInstalls = new Set<string>();
@@ -1707,11 +1738,19 @@ app.use('/user_data', (req, response) => {
     if (isMediaUploadPath(relativePath) && base64) {
       try {
         const buffer = Buffer.from(base64.replace(/^data:[^;]+;base64,/, ''), 'base64');
-        return fs.writeFile(filePath, buffer, err => err ? response.status(500).json({ error: 'Write Media Failed' }) : response.json({ success: true }));
+        return fs.writeFile(filePath, buffer, err => {
+          if (err) return response.status(500).json({ error: 'Write Media Failed' });
+          broadcastSyncChange('PUT', relativePath, req.headers['x-client-id'] as string);
+          response.json({ success: true });
+        });
       } catch { return response.status(400).json({ error: 'Invalid Base64' }); }
     }
 
-    fs.writeFile(filePath, JSON.stringify(body, null, 2), err => err ? response.status(500).json({ error: 'Write JSON Failed' }) : response.json({ success: true }));
+    fs.writeFile(filePath, JSON.stringify(body, null, 2), err => {
+      if (err) return response.status(500).json({ error: 'Write JSON Failed' });
+      broadcastSyncChange('PUT', relativePath, req.headers['x-client-id'] as string);
+      response.json({ success: true });
+    });
     return;
   }
 
@@ -1733,6 +1772,7 @@ app.use('/user_data', (req, response) => {
           } catch {}
         }
       }
+      broadcastSyncChange('DELETE', relativePath, req.headers['x-client-id'] as string);
       response.json({ success: true });
     });
     return;

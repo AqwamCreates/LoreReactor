@@ -44,6 +44,7 @@ import { useSessionEffects } from '../hooks/useSessionEffects';
 import { useChatAutoSave } from '../hooks/useChatAutoSave';
 import { useTokenCounter } from '../hooks/useTokenCounter';
 import { useMultiplayerBroadcast } from '../hooks/useMultiplayerBroadcast';
+import { useServerSync } from '../hooks/useServerSync';
 
 // ─── Feature Hooks ───────────────────────────────────────────────────
 import { useChatSession } from '../hooks/useChatSession';
@@ -338,6 +339,28 @@ function App() {
         interactionData,
         rawChatShells: chatList.rawChatShells,
         refreshChatList: chatList.refresh,
+    });
+
+    // ─── Server Sync (Multi-Device State Updates) ────────────────────
+    useServerSync({
+        refreshers: {
+            characters: characters.refresh,
+            chats: chatList.refresh,
+            contexts: contexts.refresh,
+            locations: locations.refresh,
+            models: models.refresh,
+            samplers: samplers.refresh,
+            worlds: worlds.refresh,
+            profiles: profiles.refresh,
+            promptBlocks: promptBlocks.refresh,
+            audioTracks: audioTracks.refresh,
+            budgetStrategies: budgetStrategies.refresh,
+            stopPatterns: stopPatterns.refresh,
+            extensions: extensions.refresh,
+            memories: memories.refresh,
+            accounts: accounts.refresh,
+            multiplayerData: multiplayerDataManager.refresh,
+        },
     });
 
     // ─── Model Readiness ─────────────────────────────────────────────
@@ -807,17 +830,21 @@ function App() {
     }, [chatOps]);
 
     const handleRenameChat = useCallback(async (id: string, name: string) => {
-        const loaded = (interactionData?.id === id)
-            ? interactionData
-            : await loadRawInteractionData(id, characters.characters);
+        const currentInteractionData = useSessionStore.getState().interactionData;
+        
+        const loaded = (currentInteractionData?.id === id)
+            ? currentInteractionData
+            : await loadRawInteractionData(id);
 
         if (!loaded) { addToast('Chat not found.', 'error'); return; }
         const updated = { ...loaded, name, lastUpdatedTimestamp: Date.now() };
         await saveRawInteractionData(updated);
         chatList.refresh();
-        if (interactionData?.id === id) setInteractionData(updated);
+        if (currentInteractionData?.id === id) {
+            useSessionStore.getState().setInteractionData(updated);
+        }
         addToast(`Renamed to "${name}"`, 'success');
-    }, [characters.characters, interactionData, setInteractionData, chatList, addToast]);
+    }, [chatList, addToast]);
 
     const handleNavigateToBranchSource = useCallback(async () => {
         if (!parentInteractionDataId) return;
@@ -1202,7 +1229,7 @@ function App() {
                                         <button type="button" className="view-mode-toggle" onClick={modals.settings.open} title="Settings" style={{ padding: '6px 10px' }}><span>⚙️</span></button>
 
                                         {/* 3. Extensions Modal Button */}
-                                        <button type="button" className="view-mode-toggle" onClick={() => modals.extList.open()} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
+                                        <button type="button" className="view-mode-toggle" onClick={() => modals.extensionList.open()} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
 
                                         {/* 4. In-Page View Mode Switcher */}
                                         <button type="button" onClick={toggleViewMode} className="view-mode-toggle" title="Switch View Mode">

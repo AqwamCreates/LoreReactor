@@ -14,7 +14,7 @@ export type ModalName =
     | 'stopList'
     | 'budgetStrategyList'
     | 'profileList'
-    | 'extList'
+    | 'extensionList'
     | 'accountList'
     | 'multiplayerDataList'
     | 'settings'
@@ -65,7 +65,7 @@ export function useAppModals() {
         const names: ModalName[] = [
             'chatList', 'charList', 'contextList', 'locationList', 'audioTrackList',
             'worldManager', 'promptBlockList', 'modelList', 'samplerList', 'stopList',
-            'budgetStrategyList', 'profileList', 'extList', 'accountList', 'multiplayerDataList',
+            'budgetStrategyList', 'profileList', 'extensionList', 'accountList', 'multiplayerDataList',
             'settings', 'budgetControl', 'participantControl', 'alternateTimelines',
             'aiRecommendation', 'restrictionReduction', 'cardImport', 'importData',
             'exportData', 'dataManager', 'joinSession', 'superSearch', 'gpuMonitor', 

@@ -640,11 +640,11 @@ export function AppModals({
                 />
             )}
 
-            {modals.extList.isOpen && (
+            {modals.extensionList.isOpen && (
                 <ManagerModal 
                     title="Extensions" 
                     localLibraryItems={allExtensions} 
-                    onClose={modals.extList.close}
+                    onClose={modals.extensionList.close}
                     onSelect={undefined} 
                     onDelete={onDeleteExtension} 
                     onCreateNew={() => addToast('Create Extension Modal coming soon!', 'info')}
