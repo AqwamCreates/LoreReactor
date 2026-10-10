@@ -343,7 +343,7 @@ function App() {
         } else {
             sentimentEngine.unload();
         }
-    }, [interactionData?.profile?.enableCharacterExpression, interactionData?.profile?.sentimentalAnalysisDeviceType]);
+    }, [interactionData]);
 
     // ─── TTS & Voice Cloning Engine Device Preferences ───────────────
     useEffect(() => {
@@ -353,7 +353,7 @@ function App() {
         
         textToSpeechModelEngine.setDevicePreference(ttsDevice);
         voiceCloningEngine.setDevicePreference(vcDevice);
-    }, [interactionData?.profile?.textToSpeechDeviceType, interactionData?.profile?.voiceCloningDeviceType]);
+    }, [interactionData]);
 
     // ─── Chat Auto-Save ──────────────────────────────────────────────
     useChatAutoSave({
