@@ -51,6 +51,6 @@ export function useChatListManager() {
         isLoading, 
         deleteChat, 
         refresh, 
-        ensureLoaded: loadChats 
+        load: loadChats 
     };
 }

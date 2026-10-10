@@ -38,7 +38,7 @@ class VoiceCloningEngine {
         }
     }
 
-    private async ensureLoaded(): Promise<boolean> {
+    private async load(): Promise<boolean> {
         if (this.session) return true;
         if (this.loading) {
             await this.loading;
@@ -131,7 +131,7 @@ class VoiceCloningEngine {
     }
 
     private async extractVoicepack(audioBuffer: Float32Array, sampleRate: number): Promise<Float32Array | null> {
-        const loaded = await this.ensureLoaded();
+        const loaded = await this.load();
         if (!loaded || !this.session) return null;
 
         try {

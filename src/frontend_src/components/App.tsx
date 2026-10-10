@@ -367,7 +367,7 @@ function App() {
         if (isNarrationEnabled) {
             // Preload the TTS model in the background while the user is typing/reading.
             // This eliminates the "loading model" delay when the AI finishes generating text.
-            textToSpeechModelEngine.ensureLoaded(); 
+            textToSpeechModelEngine.load(); 
         } else {
             // If no narration is enabled, aggressively unload the TTS model to free VRAM/RAM.
             textToSpeechModelEngine.unload();
@@ -639,7 +639,7 @@ function App() {
         return () => clearTimeout(timer);
     }, [loadSteps, isInitializing, activeChatRestored, interactionData]);
 
-    const ensureChatsLoaded = chatList.ensureLoaded;
+    const ensureChatsLoaded = chatList.load;
 
     useEffect(() => { 
         if (!isInitializing && activeChatRestored) {
@@ -1380,7 +1380,7 @@ function App() {
                     onInjectFirstMessage={handleInjectFirst}
                     onImportComplete={handleImportComplete} 
                     addToast={addToast} 
-                    ensureChatsLoaded={chatList.ensureLoaded}
+                    ensureChatsLoaded={chatList.load}
                     pendingJoinRequests={mp.multiplayerSync.pendingJoinRequests}
                     onAcceptJoinRequest={mp.multiplayerSync.acceptJoinRequest}
                     onRejectJoinRequest={mp.multiplayerSync.rejectJoinRequest}

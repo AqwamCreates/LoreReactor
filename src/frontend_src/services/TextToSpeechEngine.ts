@@ -37,7 +37,7 @@ class TextToSpeechModelEngine {
         }
     }
 
-    async ensureLoaded(): Promise<boolean> {
+    async load(): Promise<boolean> {
         if (this.session) return true;
         if (this.loading) {
             await this.loading;
@@ -100,7 +100,7 @@ class TextToSpeechModelEngine {
             this.setDevicePreference(modelContext.devicePreference);
         }
 
-        const loaded = await this.ensureLoaded();
+        const loaded = await this.load();
         if (!loaded || !this.session) return null;
 
         const voiceUrl = getCharacterVoice(characterId);

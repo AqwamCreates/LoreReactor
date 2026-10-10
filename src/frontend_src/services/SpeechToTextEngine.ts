@@ -90,7 +90,7 @@ class SpeechToTextEngine {
                     this.usingWebGpu = false;
                     
                     // Immediately rebuild the pipeline on the new device
-                    this.ensureLoaded().catch(err => {
+                    this.load().catch(err => {
                         console.error('[STTEngine] Hot-swap reload failed:', err);
                     });
                 }
@@ -98,7 +98,7 @@ class SpeechToTextEngine {
         }
     }
 
-    private async ensureLoaded(): Promise<boolean> {
+    private async load(): Promise<boolean> {
         if (this.pipeline) {
             this.resetIdleTimer();
             return true;
@@ -195,7 +195,7 @@ class SpeechToTextEngine {
      * can transcribe buffers directly using the single shared Whisper pipeline in memory.
      */
     async transcribeBuffer(buffer: Float32Array): Promise<string | null> {
-        const loaded = await this.ensureLoaded();
+        const loaded = await this.load();
         if (!loaded || !this.pipeline) return null;
 
         try {
@@ -224,7 +224,7 @@ class SpeechToTextEngine {
             vadDevicePreference?: deviceType;
         }
     ): Promise<boolean> {
-        const loaded = await this.ensureLoaded();
+        const loaded = await this.load();
         if (!loaded) return false;
 
         if (this.isRecording) {
@@ -261,7 +261,7 @@ class SpeechToTextEngine {
         onPartialTranscription: (text: string) => void,
         transcriptionIntervalMs = 2000,
     ): Promise<boolean> {
-        const loaded = await this.ensureLoaded();
+        const loaded = await this.load();
         if (!loaded) return false;
 
         if (this.isRecording) return true;
