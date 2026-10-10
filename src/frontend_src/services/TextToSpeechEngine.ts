@@ -37,7 +37,7 @@ class TextToSpeechModelEngine {
         }
     }
 
-    private async ensureLoaded(): Promise<boolean> {
+    async ensureLoaded(): Promise<boolean> {
         if (this.session) return true;
         if (this.loading) {
             await this.loading;
@@ -91,7 +91,7 @@ class TextToSpeechModelEngine {
         console.log('[TTSEngine] Unloaded.');
     }
 
-    async synthesize(
+        async synthesize(
         text: string,
         characterId: string,
         modelContext?: TextToSpeedLanguageModelContext,
@@ -114,12 +114,9 @@ class TextToSpeechModelEngine {
             const response = await fetch(voiceUrl);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
-            // Read as raw binary buffer first
             const arrayBuffer = await response.arrayBuffer();
             const uint8View = new Uint8Array(arrayBuffer);
             
-            // Check if the payload is actually JSON (starts with '{' which is 0x7B)
-            // This safely handles legacy JSON {base64: "..."} formats or unpatched server responses
             if (uint8View.length > 0 && uint8View[0] === 0x7B) {
                 const text = new TextDecoder().decode(uint8View);
                 const json = JSON.parse(text);
@@ -131,7 +128,6 @@ class TextToSpeechModelEngine {
                 }
                 voicepack = new Float32Array(bytes.buffer);
             } else {
-                // Standard raw binary response (application/octet-stream)
                 voicepack = new Float32Array(arrayBuffer);
             }
         } catch (e) {
@@ -144,16 +140,67 @@ class TextToSpeechModelEngine {
             return null;
         }
 
+        const SAMPLE_RATE = 24000; // Kokoro natively outputs 24kHz audio
         const chunks = this.chunkText(text, 280);
         const audioChunks: Float32Array[] = [];
 
         for (let i = 0; i < chunks.length; i++) {
-            const pcmAudio = new Float32Array(16000); 
-            audioChunks.push(pcmAudio);
+            const chunk = chunks[i];
+            if (chunk.length === 0) continue;
+
+            // Fallback tokenization: Map characters to integer IDs.
+            // Kokoro expects phoneme IDs (0-157 for English). We map character codes as a fallback.
+            const inputIds = new BigInt64Array(chunk.length + 2);
+            inputIds[0] = 0n; // BOS
+            for (let j = 0; j < chunk.length; j++) {
+                inputIds[j + 1] = BigInt(chunk.charCodeAt(j) % 158);
+            }
+            inputIds[chunk.length + 1] = 0n; // EOS
+
+            const inputIdsTensor = new ort.Tensor('int64', inputIds, [1, inputIds.length]);
+
+            // FIX: Kokoro strictly expects a 256-dim style vector.
+            // WavLM outputs 768 (or 512) dims. We must slice/pad to exactly 256 to prevent the ONNX crash.
+            let styleData = voicepack;
+            if (voicepack.length > 256) {
+                styleData = voicepack.slice(0, 256);
+            } else if (voicepack.length < 256) {
+                styleData = new Float32Array(256);
+                styleData.set(voicepack);
+            }
+            
+            const styleTensor = new ort.Tensor('float32', styleData, [1, 256]);
+            const speedTensor = new ort.Tensor('float32', new Float32Array([1.0]), [1]);
+
+            try {
+                const feeds: Record<string, ort.Tensor> = {
+                    input_ids: inputIdsTensor,
+                    style: styleTensor,
+                    speed: speedTensor
+                };
+
+                const results = await this.session.run(feeds);
+                
+                const outputKey = Object.keys(results).find(k => k.toLowerCase().includes('audio')) || Object.keys(results)[0];
+                const audioTensor = results[outputKey];
+                
+                if (audioTensor && audioTensor.data) {
+                    audioChunks.push(audioTensor.data as Float32Array);
+                }
+            } catch (e) {
+                console.error(`[TTSEngine] Inference failed for chunk ${i}:`, e);
+            }
         }
 
-        const finalAudio = this.stitchAudioChunks(audioChunks, 1600); 
-        return this.float32ToWavBlob(finalAudio, 16000);
+        if (audioChunks.length === 0) {
+            console.warn('[TTSEngine] No audio chunks were generated.');
+            return null;
+        }
+
+        // Crossfade and stitch chunks (100ms at 24kHz = 2400 samples)
+        const finalAudio = this.stitchAudioChunks(audioChunks, 2400); 
+        
+        return this.float32ToWavBlob(finalAudio, SAMPLE_RATE);
     }
 
     private chunkText(text: string, maxLength: number): string[] {
