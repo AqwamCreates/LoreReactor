@@ -3,8 +3,7 @@ import * as ort from 'onnxruntime-web';
 import type { deviceType } from '../types';
 import { uploadCharacterVoice } from '../storages/serverStorage';
 
-// Speaker verification model for extracting voice embeddings (e.g., WavLM)
-// FIX: Switched from onnx-community (gated/restricted) to Xenova (public, web-optimized)
+// MIT Licensed WavLM speaker verification model (Xenova mirror is ungated and public)
 const SPEAKER_ENCODER_MODEL_URL = 'https://huggingface.co/Xenova/wavlm-base-plus-sv/resolve/main/onnx/model_quantized.onnx';
 
 interface QueueTask {
@@ -110,8 +109,6 @@ class VoiceCloningEngine {
                 const arrayBuffer = await task.file.arrayBuffer();
                 const audioContext = new AudioContext({ sampleRate: 16000 });
                 
-                // Note: OGG files are not supported by decodeAudioData in WebKit/Safari (macOS Tauri).
-                // If this throws on macOS, the user must provide a WAV, MP3, or FLAC file.
                 const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
                 const float32Data = audioBuffer.getChannelData(0);
                 
@@ -130,7 +127,7 @@ class VoiceCloningEngine {
         }
 
         this.isProcessing = false;
-        this.unload(); // Auto-unload to free VRAM/RAM
+        this.unload(); 
     }
 
     private async extractVoicepack(audioBuffer: Float32Array, sampleRate: number): Promise<Float32Array | null> {
@@ -154,11 +151,11 @@ class VoiceCloningEngine {
             }
 
             const inputTensor = new ort.Tensor('float32', inputBuffer, [1, inputBuffer.length]);
-            const attentionMask = new ort.Tensor('int64', new BigInt64Array(inputBuffer.length).fill(1n), [1, inputBuffer.length]);
 
+            // Xenova's WavLM ONNX export only accepts input_values. 
+            // Passing attention_mask will throw "invalid input" errors.
             const results = await this.session.run({
-                input_values: inputTensor,
-                attention_mask: attentionMask
+                input_values: inputTensor
             });
 
             const outputKey = Object.keys(results)[0];
@@ -166,6 +163,7 @@ class VoiceCloningEngine {
             const data = outputTensor.data as Float32Array;
             const dims = outputTensor.dims;
 
+            // Mean pooling + L2 normalization to extract the final embedding vector
             if (dims.length === 3) {
                 const seqLen = dims[1] as number;
                 const hiddenDim = dims[2] as number;
