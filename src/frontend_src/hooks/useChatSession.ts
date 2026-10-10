@@ -276,11 +276,11 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         const currentLocId = getCurrentLocationId(base, p.character) || 'global';
         const newHistories = { ...base.interactionHistories };
-        if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
+        const currentLocMessages = newHistories[currentLocId] || [];
 
         const chatMessage = createChatMessage(base, p.character, dt);
         chatMessage.processedTextContent = dt;
-        newHistories[currentLocId].push(chatMessage);
+        newHistories[currentLocId] = [...currentLocMessages, chatMessage];
 
         return { ...base, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
     }, []);
@@ -471,8 +471,8 @@ export function useChatSession(options: UseChatSessionOptions) {
                     if (streamingMessageIdRef.current) fallbackMsg.id = streamingMessageIdRef.current;
                     fallbackMsg.processedTextContent = liveText;
                     const newHistories = { ...ud.interactionHistories };
-                    if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
-                    newHistories[currentLocId].push(fallbackMsg);
+                    const currentLocMessages = newHistories[currentLocId] || [];
+                    newHistories[currentLocId] = [...currentLocMessages, fallbackMsg];
                     ud = { ...ud, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
                 }
             }
