@@ -58,6 +58,7 @@ export function StandaloneOverlayProfileEditor({ profile, onClose, onSave }: Sta
     const [speechVolumeActivationThreshold, setSpeechVolumeActivationThreshold] = useState<number>(ep?.speechVolumeActivationThreshold ?? 18);
     const [speechSilenceVolumeActivationThreshold, setSpeechSilenceVolumeActivationThreshold] = useState<number>(ep?.speechSilenceVolumeActivationThreshold ?? 8);
     const [speechSilenceThresholdMs, setSpeechSilenceThresholdMs] = useState<number>(ep?.speechSilenceThresholdMs ?? 1400);
+    const [voiceActivityProbabilityThreshold, setVoiceActivityProbabilityThreshold] = useState<number>(ep?.voiceActivityProbabilityThreshold ?? 0.5);
 
     const [forceNameReveal, setForceNameReveal] = useState(ep?.forceNameReveal ?? false);
     const [enableAmbientNarration, setEnableAmbientNarration] = useState(ep?.enableAmbientNarration ?? false);
@@ -77,7 +78,11 @@ export function StandaloneOverlayProfileEditor({ profile, onClose, onSave }: Sta
             ...ep,
             name, description: description.trim() || undefined,
             autonomousMode, autonomousInteractionIntervalMs,
-            enableAutoSpeechDetection, speechVolumeActivationThreshold, speechSilenceVolumeActivationThreshold, speechSilenceThresholdMs,
+            enableAutoSpeechDetection, 
+            speechVolumeActivationThreshold, 
+            speechSilenceVolumeActivationThreshold, 
+            speechSilenceThresholdMs,
+            voiceActivityProbabilityThreshold,
             forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, enableCharacterExpression,
             volume, stripThinkTokens, narrateTexts: { ...narrateTexts },
             lastUpdatedTimestamp: Date.now(),
@@ -145,6 +150,22 @@ export function StandaloneOverlayProfileEditor({ profile, onClose, onSave }: Sta
                                         <span className="slider-value-display">{(speechSilenceThresholdMs / 1000).toFixed(1)}s</span>
                                     </div>
                                     <SliderInput label="" value={speechSilenceThresholdMs} minimumValue={500} maximumValue={5000} stepValue={100} decimals={0} onChange={(val) => setSpeechSilenceThresholdMs(Math.round(val))} description="Duration of silence below the cutoff before final transcription is fired." />
+                                </div>
+                                <div className="editor-nested-field">
+                                    <div className="slider-header-row">
+                                        <label className="editor-label editor-label-small editor-label-no-margin">VAD Probability Threshold</label>
+                                        <span className="slider-value-display">{voiceActivityProbabilityThreshold.toFixed(2)}</span>
+                                    </div>
+                                    <SliderInput 
+                                        label="" 
+                                        value={voiceActivityProbabilityThreshold} 
+                                        minimumValue={0.10} 
+                                        maximumValue={0.90} 
+                                        stepValue={0.05} 
+                                        decimals={2} 
+                                        onChange={(val) => setVoiceActivityProbabilityThreshold(Number(val.toFixed(2)))} 
+                                        description="Minimum confidence score (0.0-1.0) from ML VAD to confirm speech." 
+                                    />
                                 </div>
                             </>
                         )}

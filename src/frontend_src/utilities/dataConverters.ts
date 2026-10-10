@@ -424,6 +424,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         speechVolumeActivationThreshold: (p.speechVolumeActivationThreshold as number) ?? 18,
         speechSilenceVolumeActivationThreshold: (p.speechSilenceVolumeActivationThreshold as number) ?? 8,
         speechSilenceThresholdMs: (p.speechSilenceThresholdMs as number) ?? 1400,
+        voiceActivityProbabilityThreshold: (p.voiceActivityProbabilityThreshold as number) ?? 0.5,
         volume: (p.volume as number) ?? -1,
         forceNameReveal: (p.forceNameReveal as boolean) ?? false,
         enableAmbientNarration: (p.enableAmbientNarration as boolean) ?? false,

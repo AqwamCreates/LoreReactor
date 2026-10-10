@@ -672,6 +672,8 @@ function App() {
                 const actThreshold = profile?.speechVolumeActivationThreshold ?? 15;
                 const silThreshold = profile?.speechSilenceVolumeActivationThreshold ?? 8;
                 const silenceMs = profile?.speechSilenceThresholdMs ?? 1500;
+                const vadProbThreshold = profile?.voiceActivityProbabilityThreshold ?? 0.5;
+                const vadDevice = profile?.voiceActivityDetectionDeviceType ?? 'auto';
 
                 const started = await speechToTextEngine.startAutoListening(
                     (partialText: string) => {
@@ -687,7 +689,9 @@ function App() {
                     { 
                         volumeActivationThresholdPercent: actThreshold,
                         silenceVolumeActivationThresholdPercent: silThreshold,
-                        silenceThresholdMs: silenceMs 
+                        silenceThresholdMs: silenceMs,
+                        voiceActivityProbabilityThreshold: vadProbThreshold,
+                        vadDevicePreference: vadDevice
                     }
                 );
 

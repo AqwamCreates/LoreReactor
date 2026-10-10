@@ -733,6 +733,7 @@ export interface Profile extends ObjectData {
   speechVolumeActivationThreshold?: number; // Volume Gate: 1 to 100 (Default: 18)
   speechSilenceVolumeActivationThreshold?: number; // Volume Gate: 1 to 100 (Default: 8)
   speechSilenceThresholdMs?: number; // Default ~1400ms of silence to trigger send
+  voiceActivityProbabilityThreshold?: number; // Probability Gate: 0 to 1 (Default: 0.5)
   randomizeTextCharacterInjection: boolean; 
   randomizeTextCharacterInjectionOnRetry: boolean; // Only randomize if the initial randomization fails. Default is true. This setting get revealed when randomizeTextCharacterInjection is true.
   maximumNumberOfTextCharacterRandomizationPerModel: number; // Number of retries to get the text generated per model. Default is 1. This setting get revealed when randomizeTextCharacterInjection is true.
@@ -790,6 +791,7 @@ export interface RawProfile extends RawData {
   speechVolumeActivationThreshold?: number; // Volume Gate: 1 to 100 (Default: 18)
   speechSilenceVolumeActivationThreshold?: number; // Volume Gate: 1 to 100 (Default: 8)
   speechSilenceThresholdMs?: number; // Default ~1400ms of silence to trigger send
+  voiceActivityProbabilityThreshold?: number; // Probability Gate: 0 to 1 (Default: 0.5)
   randomizeTextCharacterInjection: boolean;
   randomizeTextCharacterInjectionOnRetry: boolean; // Only randomize if the initial randomization fails. Default is true. This setting get revealed when randomizeTextCharacterInjection is true.
   maximumNumberOfTextCharacterRandomizationPerModel: number; // Number of retries to get the text generated per model. Default is 1. This setting get revealed when randomizeTextCharacterInjection is true.

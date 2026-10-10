@@ -902,6 +902,7 @@ const profileRepo = createRepository<Profile, RawProfile>({
         speechVolumeActivationThreshold: 18,
         speechSilenceVolumeActivationThreshold: 8,
         speechSilenceThresholdMs: 1400,
+        voiceActivityProbabilityThreshold: 0.5,
         // ─────────────────────────────────────────────────────────────
 
         randomizeTextCharacterInjection: false,

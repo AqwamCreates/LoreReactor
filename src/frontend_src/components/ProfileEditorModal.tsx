@@ -131,7 +131,7 @@ const STEP_DESC_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6, font
 const INPUT_RIGHT_STYLE: CSSProperties = { textAlign: 'right' as const };
 const FIELD_HINT_STYLE: CSSProperties = { fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' };
 
-type ProfileTabId = 'general' | 'injection' | 'behaviour' | 'tools' | 'pipeline' | 'cache' | 'model';
+type ProfileTabId = 'general' | 'injection' | 'behaviour' | 'tools' | 'pipeline' | 'cache' | 'models';
 
 function ProfileCheckbox({ checked, onChange, label, hint, spaced = false }: { checked: boolean; onChange: (checked: boolean) => void; label: string; hint?: string; spaced?: boolean }) {
     return (
@@ -187,6 +187,9 @@ export function ProfileEditorModal({
     );
     const [speechSilenceThresholdMs, setSpeechSilenceThresholdMs] = useState<number>(
         ep?.speechSilenceThresholdMs ?? 1400
+    );
+    const [voiceActivityProbabilityThreshold, setVoiceActivityProbabilityThreshold] = useState<number>(
+        ep?.voiceActivityProbabilityThreshold ?? 0.5
     );
 
     const [forceNameReveal, setForceNameReveal] = useState(ep?.forceNameReveal ?? false);
@@ -332,6 +335,7 @@ export function ProfileEditorModal({
             speechVolumeActivationThreshold,
             speechSilenceVolumeActivationThreshold,
             speechSilenceThresholdMs,
+            voiceActivityProbabilityThreshold,
             forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, enableCharacterExpression,
             randomizeTextCharacterInjection,
             randomizeTextCharacterInjectionOnRetry,
@@ -435,7 +439,7 @@ export function ProfileEditorModal({
         { id: 'tools', label: 'Tools', icon: '🔧' },
         { id: 'pipeline', label: 'Pipeline', icon: '🔄' },
         { id: 'cache', label: 'Cache', icon: '⚡' },
-        { id: 'model', label: 'Model', icon: '🤖' },
+        { id: 'models', label: 'Models', icon: '🤖' },
     ];
 
     const cacheCategories: cacheEfficiencyConfigurationType[] = ['Character Name', 'System Prompt', 'Think Prompt'];
@@ -550,6 +554,27 @@ export function ProfileEditorModal({
                                                 decimals={0} 
                                                 onChange={(val) => setSpeechSilenceThresholdMs(Math.round(val))} 
                                                 description="Duration of silence below the cutoff before final transcription is fired." 
+                                            />
+                                        </div>
+
+                                        <div style={{ marginTop: '12px' }}>
+                                            <div style={SLIDER_HEADER_STYLE}>
+                                                <label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>
+                                                    VAD Probability Threshold (Speech Confidence)
+                                                </label>
+                                                <span style={SLIDER_VALUE_STYLE}>
+                                                    {voiceActivityProbabilityThreshold.toFixed(2)}
+                                                </span>
+                                            </div>
+                                            <SliderInput 
+                                                label="" 
+                                                value={voiceActivityProbabilityThreshold} 
+                                                minimumValue={0.10} 
+                                                maximumValue={0.90} 
+                                                stepValue={0.05} 
+                                                decimals={2} 
+                                                onChange={(val) => setVoiceActivityProbabilityThreshold(Number(val.toFixed(2)))} 
+                                                description="The minimum confidence score (0.0 to 1.0) required from the ML VAD model to confirm speech. Higher values reduce false positives from background noise but may cut off quiet speech." 
                                             />
                                         </div>
                                     </>
@@ -767,7 +792,7 @@ export function ProfileEditorModal({
                         </>
                     )}
 
-                    {activeTab === 'model' && (
+                    {activeTab === 'models' && (
                         <>
                             <div className="editor-section">
                                 <span className="editor-section-title">Language Model Handling</span>
@@ -823,7 +848,7 @@ export function ProfileEditorModal({
 
                                 <div className="editor-row" style={{ marginTop: '12px' }}>
                                     <div>
-                                        <label className="editor-label editor-label-small">Voice Activity Detection (VAD)</label>
+                                        <label className="editor-label editor-label-small">Voice Activity Detection (Silero)</label>
                                         <select 
                                             value={voiceActivityDetectionDeviceType} 
                                             onChange={(e) => setVoiceActivityDetectionDeviceType(e.target.value as deviceType)} 
@@ -833,7 +858,7 @@ export function ProfileEditorModal({
                                             <option value="gpu">Force GPU (WebGPU)</option>
                                             <option value="cpu">Force CPU (WASM)</option>
                                         </select>
-                                        <div style={FIELD_HINT_STYLE}>Used for detecting speech boundaries (Silero VAD).</div>
+                                        <div style={FIELD_HINT_STYLE}>Used for detecting speech boundaries.</div>
                                     </div>
                                     <div></div>
                                 </div>

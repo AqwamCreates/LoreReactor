@@ -1,5 +1,6 @@
 // frontend_src/services/SpeechToTextEngine.ts
 import type { deviceType } from '../types';
+import { voiceActivityDetectionEngine } from './VoiceActivityDetectionEngine';
 
 const HF_MODEL_ID = 'Xenova/whisper-tiny.en';
 const IDLE_UNLOAD_MS = 3 * 60 * 1000; // 3 minutes
@@ -49,7 +50,7 @@ class SpeechToTextEngine {
     private onPartialTranscription: ((text: string) => void) | null = null;
     private transcriptionInterval: ReturnType<typeof setInterval> | null = null;
 
-    // Dual-Threshold Hysteresis & VAD State (Layer 1 RMS Pre-Filter)
+    // Dual-Threshold Hysteresis & VAD State
     private isAutoListening = false;
     private silenceTimer: ReturnType<typeof setTimeout> | null = null;
     private hasDetectedSpeech = false;
@@ -57,9 +58,13 @@ class SpeechToTextEngine {
     private silenceThresholdMs = 1400;
     private activationRmsThreshold = sliderToRms(18); // ~ -51 dBFS (Conversational entry)
     private silenceRmsThreshold = sliderToRms(8);     // ~ -56 dBFS (Silence floor cutoff)
+    
+    // Layer 2: ML VAD State
+    private useVad = false;
+    private vadProbabilityThreshold = 0.5;
 
     /**
-     * Updates the target execution device.
+     * Updates the target execution device for the Whisper STT pipeline.
      * Implements immediate hot-swapping: nukes the ML pipeline to free VRAM/RAM,
      * but leaves the Web Audio API hardware stream completely untouched so the 
      * microphone doesn't drop or desync. The audio buffer acts as a shock absorber
@@ -178,6 +183,10 @@ class SpeechToTextEngine {
         this.loading = null;
         this.loadError = null;
         this.usingWebGpu = false;
+        
+        // Also unload VAD engine to free memory
+        await voiceActivityDetectionEngine.unload();
+        
         console.log('[STTEngine] Unloaded.');
     }
 
@@ -200,10 +209,9 @@ class SpeechToTextEngine {
     }
 
     /**
-     * Start continuous auto-listening mode with Logarithmic Hysteresis Noise Gate.
-     * @param onPartial Callback receiving real-time transcription fragments
-     * @param onAutoSend Callback invoked when speech finishes and is ready to send
-     * @param options Configuration for activation, silence cutoffs, and pause duration
+     * Start continuous auto-listening mode with Dual-Layer Gating:
+     * Layer 1: RMS Volume Pre-Filter (Compute Saver)
+     * Layer 2: Silero VAD ML Model (Speech Confirmation)
      */
     async startAutoListening(
         onPartial: (text: string) => void,
@@ -212,6 +220,8 @@ class SpeechToTextEngine {
             volumeActivationThresholdPercent?: number; 
             silenceVolumeActivationThresholdPercent?: number;
             silenceThresholdMs?: number;
+            voiceActivityProbabilityThreshold?: number;
+            vadDevicePreference?: deviceType;
         }
     ): Promise<boolean> {
         const loaded = await this.ensureLoaded();
@@ -221,16 +231,24 @@ class SpeechToTextEngine {
             this.stopRecordingSync();
         }
 
-        // Acoustic defaults: 18% activation gate, 8% silence cutoff, 1400ms duration
+        // Acoustic defaults
         const actPct = options?.volumeActivationThresholdPercent ?? 18;
         const silPct = options?.silenceVolumeActivationThresholdPercent ?? 8;
 
         this.activationRmsThreshold = sliderToRms(actPct);
         const targetSilRms = sliderToRms(silPct);
-
-        // Enforce acoustic hysteresis: silence threshold is guaranteed below activation
         this.silenceRmsThreshold = Math.min(targetSilRms, this.activationRmsThreshold * 0.7);
         this.silenceThresholdMs = options?.silenceThresholdMs ?? 1400;
+        
+        // VAD Configuration
+        this.vadProbabilityThreshold = options?.voiceActivityProbabilityThreshold ?? 0.5;
+        this.useVad = true;
+        
+        // Initialize VAD Engine
+        if (options?.vadDevicePreference) {
+            voiceActivityDetectionEngine.setDevicePreference(options.vadDevicePreference);
+        }
+        await voiceActivityDetectionEngine.initialize();
 
         this.isAutoListening = true;
         this.hasDetectedSpeech = false;
@@ -249,6 +267,7 @@ class SpeechToTextEngine {
         if (this.isRecording) return true;
 
         this.isAutoListening = false;
+        this.useVad = false;
         this.onAutoSend = null;
         return this.initAudioStream(onPartialTranscription, transcriptionIntervalMs);
     }
@@ -271,37 +290,69 @@ class SpeechToTextEngine {
             this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
             this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
 
-            this.processorNode.onaudioprocess = (event) => {
+            this.processorNode.onaudioprocess = async (event) => {
                 if (!this.isRecording) return;
                 const inputData = event.inputBuffer.getChannelData(0);
                 this.audioChunks.push(new Float32Array(inputData));
 
-                // Layer 1: Dual-Threshold Hysteresis (Schmitt Trigger) RMS Pre-Filter
                 if (this.isAutoListening) {
+                    // Layer 1: RMS Pre-Filter
                     let sumSquares = 0;
                     for (let i = 0; i < inputData.length; i++) {
                         sumSquares += inputData[i] * inputData[i];
                     }
                     const rms = Math.sqrt(sumSquares / inputData.length);
 
-                    // 1. High Gate: Crossed activation volume -> Speaking started
-                    if (rms >= this.activationRmsThreshold) {
-                        this.hasDetectedSpeech = true;
-                        if (this.silenceTimer) {
-                            clearTimeout(this.silenceTimer);
-                            this.silenceTimer = null;
+                    if (rms < this.silenceRmsThreshold) {
+                        // Below silence floor. If we were speaking, start the countdown.
+                        if (this.hasDetectedSpeech && !this.silenceTimer) {
+                            this.silenceTimer = setTimeout(() => {
+                                this.triggerAutoSend();
+                            }, this.silenceThresholdMs);
                         }
-                    } else if (this.hasDetectedSpeech) {
-                        // 2. Low Gate: Sound dropped below silence cutoff -> Start countdown
-                        if (rms < this.silenceRmsThreshold) {
-                            if (!this.silenceTimer) {
+                        return; // Skip ML inference to save compute
+                    }
+
+                    if (rms >= this.activationRmsThreshold) {
+                        let confirmedSpeech = false;
+                        
+                        // Layer 2: ML VAD (Silero)
+                        if (this.useVad && voiceActivityDetectionEngine.isReady()) {
+                            let maxProb = 0;
+                            // Silero VAD strictly requires 512-sample chunks at 16kHz
+                            for (let i = 0; i < inputData.length; i += 512) {
+                                const chunk = inputData.slice(i, i + 512);
+                                if (chunk.length === 512) {
+                                    const prob = await voiceActivityDetectionEngine.processChunk(chunk);
+                                    if (prob > maxProb) maxProb = prob;
+                                }
+                            }
+                            if (maxProb >= this.vadProbabilityThreshold) {
+                                confirmedSpeech = true;
+                            }
+                        } else {
+                            // Fallback if VAD is not ready/used: rely purely on RMS activation gate
+                            confirmedSpeech = true;
+                        }
+
+                        if (confirmedSpeech) {
+                            this.hasDetectedSpeech = true;
+                            if (this.silenceTimer) {
+                                clearTimeout(this.silenceTimer);
+                                this.silenceTimer = null;
+                            }
+                        } else {
+                            // Loud noise, but ML says it's not speech (e.g. door slam). Treat as silence.
+                            if (this.hasDetectedSpeech && !this.silenceTimer) {
                                 this.silenceTimer = setTimeout(() => {
                                     this.triggerAutoSend();
                                 }, this.silenceThresholdMs);
                             }
-                        } else {
-                            // 3. Deadband / Hysteresis: Between Low and High gates
-                            // Keeps the turn active and cancels timer to prevent cutting off trailing consonants
+                        }
+                    } else {
+                        // Deadband: RMS between silence and activation.
+                        // If we already detected speech, keep the turn active (cancel timer).
+                        if (this.hasDetectedSpeech) {
                             if (this.silenceTimer) {
                                 clearTimeout(this.silenceTimer);
                                 this.silenceTimer = null;
@@ -351,6 +402,7 @@ class SpeechToTextEngine {
         this.isRecording = false;
         this.isAutoListening = false;
         this.hasDetectedSpeech = false;
+        this.useVad = false;
 
         if (this.silenceTimer) {
             clearTimeout(this.silenceTimer);
@@ -361,6 +413,9 @@ class SpeechToTextEngine {
             clearInterval(this.transcriptionInterval);
             this.transcriptionInterval = null;
         }
+        
+        // Reset VAD RNN state tensors for the next session
+        voiceActivityDetectionEngine.resetState?.();
 
         const finalText = await this.transcribeAccumulated();
         this.cleanupAudio();
@@ -377,6 +432,7 @@ class SpeechToTextEngine {
         this.isRecording = false;
         this.isAutoListening = false;
         this.hasDetectedSpeech = false;
+        this.useVad = false;
 
         if (this.silenceTimer) {
             clearTimeout(this.silenceTimer);
@@ -387,6 +443,8 @@ class SpeechToTextEngine {
             clearInterval(this.transcriptionInterval);
             this.transcriptionInterval = null;
         }
+        
+        voiceActivityDetectionEngine.resetState?.();
 
         this.cleanupAudio();
         this.onPartialTranscription = null;
@@ -397,9 +455,7 @@ class SpeechToTextEngine {
         if (this.audioChunks.length === 0) return null;
 
         // Shock Absorber: If a hot-swap is mid-flight, wait for the new pipeline to finish loading
-        if (this.loading) {
-            await this.loading;
-        }
+        if (this.loading) await this.loading;
         
         if (!this.pipeline) return null;
 
