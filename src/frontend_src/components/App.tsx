@@ -372,7 +372,7 @@ function App() {
             // If no narration is enabled, aggressively unload the TTS model to free VRAM/RAM.
             textToSpeechModelEngine.unload();
         }
-    }, [interactionData?.profile?.narrateTexts, interactionData?.profile?.textToSpeechDeviceType]);
+    }, [interactionData]);
 
     // ─── Chat Auto-Save ──────────────────────────────────────────────
     useChatAutoSave({
