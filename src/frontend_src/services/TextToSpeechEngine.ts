@@ -19,8 +19,14 @@ class TextToSpeechEngine {
 
     constructor() {
         ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/';
-        // FIX: Allow WASM to use background threads to prevent main thread blocking during inference
-        ort.env.wasm.numThreads = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
+        
+        // WebAssembly multi-threading requires SharedArrayBuffer (enabled via COOP/COEP headers in Tauri/Vite).
+        // We check crossOriginIsolated to prevent console warnings if headers are missing.
+        const canUseThreads = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated;
+        ort.env.wasm.numThreads = canUseThreads 
+            ? Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1)) 
+            : 1;
+            
         ort.env.wasm.simd = true;
     }
 
@@ -114,6 +120,7 @@ class TextToSpeechEngine {
             const arrayBuffer = await response.arrayBuffer();
             const uint8View = new Uint8Array(arrayBuffer);
             
+            // Check if the payload is actually JSON (starts with '{' which is 0x7B)
             if (uint8View.length > 0 && uint8View[0] === 0x7B) {
                 const text = new TextDecoder().decode(uint8View);
                 const json = JSON.parse(text);
@@ -125,6 +132,7 @@ class TextToSpeechEngine {
                 }
                 voicepack = new Float32Array(bytes.buffer);
             } else {
+                // Standard raw binary response (application/octet-stream)
                 voicepack = new Float32Array(arrayBuffer);
             }
         } catch (e) {
@@ -145,6 +153,7 @@ class TextToSpeechEngine {
             const chunk = chunks[i];
             if (chunk.length === 0) continue;
 
+            // Fallback tokenization: Map characters to integer IDs.
             const inputIds = new BigInt64Array(chunk.length + 2);
             inputIds[0] = 0n; // BOS
             for (let j = 0; j < chunk.length; j++) {
@@ -154,6 +163,7 @@ class TextToSpeechEngine {
 
             const inputIdsTensor = new ort.Tensor('int64', inputIds, [1, inputIds.length]);
 
+            // Kokoro strictly expects a 256-dim style vector.
             let styleData = voicepack;
             if (voicepack.length > 256) {
                 styleData = voicepack.slice(0, 256);
@@ -181,7 +191,7 @@ class TextToSpeechEngine {
                     audioChunks.push(audioTensor.data as Float32Array);
                 }
                 
-                // FIX: Yield to the main thread between chunks to prevent UI stuttering/freezing
+                // Yield to the main thread between chunks to prevent UI stuttering
                 if (i < chunks.length - 1) {
                     await new Promise(resolve => setTimeout(resolve, 0));
                 }
@@ -270,14 +280,14 @@ class TextToSpeechEngine {
         writeString(36, 'data');
         view.setUint32(40, samples.length * 2, true);
 
-        // FIX: Use Int16Array for massively faster conversion, avoiding the slow DataView.setInt16 loop
+        // Use Int16Array for massively faster conversion
         const int16 = new Int16Array(samples.length);
         for (let i = 0; i < samples.length; i++) {
             const s = Math.max(-1, Math.min(1, samples[i]));
             int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
         }
         
-        // Memcpy the Int16 buffer directly into the WAV buffer instantly
+        // Memcpy the Int16 buffer directly into the WAV buffer
         new Uint8Array(buffer, 44).set(new Uint8Array(int16.buffer));
 
         return new Blob([buffer], { type: 'audio/wav' });
