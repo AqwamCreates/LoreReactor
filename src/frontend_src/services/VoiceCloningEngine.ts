@@ -4,7 +4,8 @@ import type { deviceType } from '../types';
 import { uploadCharacterVoice } from '../storages/serverStorage';
 
 // Speaker verification model for extracting voice embeddings (e.g., WavLM)
-const SPEAKER_ENCODER_MODEL_URL = 'https://huggingface.co/onnx-community/wavlm-base-plus-sv/resolve/main/onnx/model_quantized.onnx';
+// FIX: Switched from onnx-community (gated/restricted) to Xenova (public, web-optimized)
+const SPEAKER_ENCODER_MODEL_URL = 'https://huggingface.co/Xenova/wavlm-base-plus-sv/resolve/main/onnx/model_quantized.onnx';
 
 interface QueueTask {
     characterId: string;
@@ -19,7 +20,6 @@ class VoiceCloningEngine {
     private loadError: string | null = null;
     private usingWebGpu = false;
     private currentDevicePreference: deviceType = 'auto';
-    
     private queue: QueueTask[] = [];
     private isProcessing = false;
 
@@ -109,25 +109,26 @@ class VoiceCloningEngine {
             try {
                 const arrayBuffer = await task.file.arrayBuffer();
                 const audioContext = new AudioContext({ sampleRate: 16000 });
+                
+                // Note: OGG files are not supported by decodeAudioData in WebKit/Safari (macOS Tauri).
+                // If this throws on macOS, the user must provide a WAV, MP3, or FLAC file.
                 const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
                 const float32Data = audioBuffer.getChannelData(0);
                 
                 const tensor = await this.extractVoicepack(float32Data, audioBuffer.sampleRate);
                 
                 if (tensor) {
-                    // FIX: Wrap tensor.buffer in Uint8Array to prevent SharedArrayBuffer type collision
-                    // Cast to ArrayBuffer to satisfy strict TS 5.2+ BlobPart typing
-                    // Uploads strictly as 'voicepack.bin' via serverStorage
                     await uploadCharacterVoice(task.characterId, tensor);
                     task.resolve(true);
                 } else {
                     task.resolve(false);
                 }
             } catch (err) {
+                console.error('[VoiceCloningEngine] Queue task failed:', err);
                 task.reject(err);
             }
         }
-        
+
         this.isProcessing = false;
         this.unload(); // Auto-unload to free VRAM/RAM
     }
@@ -159,34 +160,34 @@ class VoiceCloningEngine {
                 input_values: inputTensor,
                 attention_mask: attentionMask
             });
-            
+
             const outputKey = Object.keys(results)[0];
             const outputTensor = results[outputKey];
             const data = outputTensor.data as Float32Array;
             const dims = outputTensor.dims;
-            
+
             if (dims.length === 3) {
                 const seqLen = dims[1] as number;
                 const hiddenDim = dims[2] as number;
                 const pooled = new Float32Array(hiddenDim);
-                
+
                 for (let t = 0; t < seqLen; t++) {
                     for (let d = 0; d < hiddenDim; d++) {
                         pooled[d] += data[t * hiddenDim + d];
                     }
                 }
                 for (let d = 0; d < hiddenDim; d++) pooled[d] /= seqLen;
-                
+
                 let norm = 0;
                 for (let d = 0; d < hiddenDim; d++) norm += pooled[d] * pooled[d];
                 norm = Math.sqrt(norm);
                 if (norm > 0) {
                     for (let d = 0; d < hiddenDim; d++) pooled[d] /= norm;
                 }
-                
+
                 return pooled;
             }
-            
+
             return data as Float32Array;
         } catch (e) {
             console.warn('[VoiceCloningEngine] Extraction failed:', e);
