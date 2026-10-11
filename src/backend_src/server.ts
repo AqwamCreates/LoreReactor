@@ -22,6 +22,7 @@ import findDevices from 'local-devices';
 import trash from 'trash';
 import robot from '@jitsi/robotjs';
 import sharp from 'sharp';
+import { pipeline, env } from '@huggingface/transformers';
 
 // --- Configuration ---
 const app = express();
@@ -1788,134 +1789,6 @@ app.use('/user_data', (req, response) => {
   response.status(405).json({ error: 'Method Not Allowed' });
 });
 
-// ─── Kokoro Inno-Clone Automated Provisioner ────────────────────────
-async function ensureKokoroInnoEnvironment(): Promise<string> {
-    const backendSrcDir = path.join(ROOT_DIR, 'src', 'backend_src');
-    const venvDir = path.join(backendSrcDir, 'venv_kokoro_inno');
-    const venvPy = IS_WINDOWS ? path.join(venvDir, 'Scripts', 'python.exe') : path.join(venvDir, 'bin', 'python');
-
-    // 1. Check if the environment exists AND is complete (torch + inno_kokoro can be imported)
-    if (fs.existsSync(venvPy)) {
-        try {
-            execSync(`"${venvPy}" -c "import torch, inno_kokoro"`, { stdio: 'ignore' });
-            return venvPy; // Valid and complete!
-        } catch {
-            log.warn('[KokoroInno] Existing venv_kokoro_inno is incomplete or missing packages. Reinstalling...');
-        }
-    }
-
-    const uvBin = await ensureUv();
-    ensureDirectory(backendSrcDir);
-
-    // 2. Create the virtual environment if python.exe doesn't exist
-    if (!fs.existsSync(venvPy)) {
-        broadcastNotify('kokoro-inno', 'installing', 20, 'Provisioning isolated Python 3.11 environment...');
-        execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
-        execSync(`"${uvBin}" venv "${venvDir}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
-    }
-
-    // 3. Install PyTorch with explicit interpreter target
-    broadcastNotify('kokoro-inno', 'installing', 40, 'Installing PyTorch (this may take a few minutes)...');
-    try {
-        log.info('[KokoroInno] Installing PyTorch with auto backend detection...');
-        execSync(`"${uvBin}" pip install --python "${venvPy}" -U torch torchaudio --torch-backend=auto`, {
-            stdio: 'inherit', cwd: backendSrcDir, timeout: 1800000,
-        });
-    } catch (err: any) {
-        log.warn(`[KokoroInno] Auto-backend install failed (${err.message}). Falling back to official PyTorch wheel index...`);
-        
-        // Detect GPU vendor for Windows fallback index
-        const indexUrl = (IS_WINDOWS && detectedGpuVendor === 'nvidia')
-            ? 'https://download.pytorch.org/whl/cu124'
-            : (IS_WINDOWS ? 'https://download.pytorch.org/whl/cpu' : '');
-
-        const indexArg = indexUrl ? `--index-url ${indexUrl}` : '';
-        execSync(`"${uvBin}" pip install --python "${venvPy}" -U torch torchaudio ${indexArg}`, {
-            stdio: 'inherit', cwd: backendSrcDir, timeout: 1800000,
-        });
-    }
-
-    // 4. Install inno-kokoro, kokoro, and numpy directly into the venv
-    broadcastNotify('kokoro-inno', 'installing', 70, 'Installing inno-kokoro voice tuner...');
-    execSync(`"${uvBin}" pip install --python "${venvPy}" -U inno-kokoro kokoro numpy`, {
-        stdio: 'inherit', cwd: backendSrcDir, timeout: 600000,
-    });
-
-    // 5. Final verification check
-    try {
-      execSync(`"${venvPy}" -c "import torch, inno_kokoro"`, { stdio: 'pipe' });
-    } catch (err: unknown) {
-      throw new Error(
-          `Kokoro Inno environment validation failed: ${err instanceof Error ? err.message : String(err)}`,
-          { cause: err }
-      );
-    }
-
-    broadcastNotify('kokoro-inno', 'ready', 100, 'Kokoro Inno-Clone environment ready.');
-    return venvPy;
-}
-
-// ─── Kokoro Voice Cloning Endpoint ──────────────────────────────────
-app.post('/api/clone-voice', async (req, res) => {
-  const { characterId, audioBase64, device = 'auto' } = req.body;
-  if (!audioBase64 || !characterId) {
-    return res.status(400).json({ error: 'Missing audioBase64 or characterId' });
-  }
-
-  // Map frontend deviceType ('auto' | 'cpu' | 'gpu') to PyTorch devices
-  let pytorchDevice = device;
-  if (device === 'gpu') {
-    pytorchDevice = IS_MACOS ? 'mps' : 'cuda';
-  }
-
-  const tempDir = path.join(ROOT_DIR, 'temp_audio');
-  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-
-  const tempInputPath = path.join(tempDir, `${characterId}_input.wav`);
-  const targetVoiceDir = path.join(ROOT_DIR, 'user_data', 'character_voices', characterId);
-  const finalOutputPath = path.join(targetVoiceDir, 'voicepack.bin');
-
-  try {
-    // 1. Decode Base64 and save to temporary file
-    const base64Data = audioBase64.replace(/^data:[^;]+;base64,/, '');
-    const audioBuffer = Buffer.from(base64Data, 'base64');
-    fs.writeFileSync(tempInputPath, audioBuffer);
-
-    // 2. Ensure target directory exists
-    if (!fs.existsSync(targetVoiceDir)) fs.mkdirSync(targetVoiceDir, { recursive: true });
-
-    // 3. AUTOMATED SETUP: Ensure repo and venv are downloaded/installed
-    const venvPy = await ensureKokoroInnoEnvironment();
-
-    // 4. Call Python script using the provisioned venv
-    const pythonScript = path.join(ROOT_DIR, 'src', 'backend_src', 'kokoro_inno.py');
-    
-    const result = await new Promise<string>((resolve, reject) => {
-      exec(`"${venvPy}" "${pythonScript}" "${tempInputPath}" "${finalOutputPath}" --device ${pytorchDevice}`, 
-          { timeout: 120000 }, 
-          (error, stdout, stderr) => {
-              if (error) reject(new Error(stderr || error.message));
-              else resolve(stdout);
-          }
-      );
-    });
-
-    if (!result.includes('SUCCESS')) {
-      throw new Error('Python script did not report success');
-    }
-
-    // 5. Cleanup temp file
-    try { fs.unlinkSync(tempInputPath); } catch {}
-
-    res.json({ success: true, message: `Voice cloned on ${pytorchDevice} and saved as voicepack.bin` });
-  } catch (e: any) {
-    log.error(`[VoiceClone] Failed: ${e.message}`);
-    // Cleanup on failure
-    try { fs.unlinkSync(tempInputPath); } catch {}
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // --- Language Model Management ---
 
 const LANGUAGE_MODEL_ROUTE = '/language_models';
@@ -2921,6 +2794,127 @@ app.post('/tool/hardware/send', async (req, res) => {
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
+});
+
+// ─── Advanced Text-to-Speech Pipeline (Model-Agnostic) ─────────────
+
+env.allowLocalModels = false;
+env.useFSCache = true;
+
+let advancedTtsPipeline: any = null;
+let advancedTtsLoading: Promise<any> | null = null;
+let currentAdvancedTtsDevice: string = 'auto';
+
+async function getAdvancedTtsPipeline(device: string) {
+    if (advancedTtsPipeline && currentAdvancedTtsDevice !== device) {
+        log.info(`[AdvancedTTS] Device changed to ${device}. Reloading pipeline...`);
+        advancedTtsPipeline = null;
+        advancedTtsLoading = null;
+    }
+
+    if (advancedTtsPipeline) return advancedTtsPipeline;
+    if (advancedTtsLoading) return advancedTtsLoading;
+
+    currentAdvancedTtsDevice = device;
+
+    advancedTtsLoading = (async () => {
+        let hfDevice: any = 'cpu';
+        let hfDtype: any = 'fp32';
+
+        if (device === 'gpu') {
+            hfDevice = process.platform === 'win32' ? 'dml' : 'cuda';
+            hfDtype = 'fp16'; 
+        }
+
+        log.info(`[AdvancedTTS] Initializing pipeline on [Device: ${hfDevice}]...`);
+        
+        const modelId = process.env.ADVANCED_TTS_MODEL_ID; 
+        if (!modelId) throw new Error("ADVANCED_TTS_MODEL_ID is not set in environment variables.");
+        
+        const pipe = await pipeline('text-to-speech', modelId, {
+            device: hfDevice,
+            dtype: hfDtype,
+        });
+        
+        advancedTtsPipeline = pipe;
+        log.success('[AdvancedTTS] Pipeline ready.');
+        return pipe;
+    })();
+
+    return advancedTtsLoading;
+}
+
+app.post('/api/text-to-speech', async (req, res) => {
+    const { text, audioBase64, transcript, device = 'auto', characterId } = req.body;
+
+    if (!text) return res.status(400).json({ error: 'Missing text' });
+
+    if (audioBase64 && transcript) {
+        try {
+            const pipe = await getAdvancedTtsPipeline(device);
+
+            const base64Data = audioBase64.replace(/^data:[^;]+;base64,/, '');
+            const audioBuffer = Buffer.from(base64Data, 'base64');
+            
+            const tempDir = path.join(ROOT_DIR, 'temp_audio');
+            if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+            const tempRefPath = path.join(tempDir, `${characterId || 'advanced'}_ref.wav`);
+            fs.writeFileSync(tempRefPath, audioBuffer);
+
+            log.info(`[AdvancedTTS] Synthesizing. Target: "${text.substring(0, 30)}..."`);
+
+            const audio = await pipe(text, {
+                reference_audio: tempRefPath,
+                reference_text: transcript,
+            });
+
+            try { fs.unlinkSync(tempRefPath); } catch {}
+
+            let wavBuffer: Buffer;
+            if (audio && typeof audio.toWav === 'function') {
+                wavBuffer = Buffer.from(audio.toWav());
+            } else if (audio && audio.audio && audio.sampling_rate) {
+                const floatData = audio.audio;
+                const sampleRate = audio.sampling_rate;
+                const intData = new Int16Array(floatData.length);
+                for (let i = 0; i < floatData.length; i++) {
+                    let val = Math.max(-1, Math.min(1, floatData[i]));
+                    intData[i] = val < 0 ? val * 0x8000 : val * 0x7FFF;
+                }
+                const buffer = new ArrayBuffer(44 + intData.length * 2);
+                const view = new DataView(buffer);
+                const writeString = (offset: number, str: string) => {
+                    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+                };
+                writeString(0, 'RIFF');
+                view.setUint32(4, 36 + intData.length * 2, true);
+                writeString(8, 'WAVE');
+                writeString(12, 'fmt ');
+                view.setUint32(16, 16, true);
+                view.setUint16(20, 1, true);
+                view.setUint16(22, 1, true);
+                view.setUint32(24, sampleRate, true);
+                view.setUint32(28, sampleRate * 2, true);
+                view.setUint16(32, 2, true);
+                view.setUint16(34, 16, true);
+                writeString(36, 'data');
+                view.setUint32(40, intData.length * 2, true);
+                new Int16Array(buffer, 44).set(intData);
+                wavBuffer = Buffer.from(buffer);
+            } else {
+                wavBuffer = Buffer.from(audio);
+            }
+            
+            res.set('Content-Type', 'audio/wav');
+            return res.send(wavBuffer);
+
+        } catch (e: any) {
+            log.error(`[AdvancedTTS] Synthesis failed: ${e.message}`);
+            return res.status(500).json({ error: e.message });
+        }
+    }
+
+    res.status(400).json({ error: 'Missing audioBase64 or transcript for advanced TTS' });
 });
 
 // --- Startup ---

@@ -2,10 +2,11 @@
 import type { deviceType } from '../types';
 import { voiceActivityDetectionEngine } from './VoiceActivityDetectionEngine';
 
-const HF_MODEL_ID = 'Xenova/whisper-tiny.en';
+// ✅ CHANGED: Use the multilingual whisper-tiny model instead of .en
+const HF_MODEL_ID = 'Xenova/whisper-tiny'; 
 const IDLE_UNLOAD_MS = 3 * 60 * 1000; // 3 minutes
 
-type AutomaticSpeechRecognitionPipeline = (audio: Float32Array | Float32Array[]) => Promise<{ text: string }>;
+type AutomaticSpeechRecognitionPipeline = (audio: Float32Array | Float32Array[], options?: any) => Promise<{ text: string }>;
 
 async function isWebGpuAvailable(): Promise<boolean> {
     if (typeof navigator === 'undefined' || !('gpu' in navigator)) return false;
@@ -204,6 +205,44 @@ class SpeechToTextEngine {
             return result.text?.trim() || null;
         } catch (e) {
             console.warn('[STTEngine] Buffer transcription failed:', e);
+            return null;
+        }
+    }
+
+    /**
+     * Transcribes an uploaded audio file directly in the browser.
+     * Uses the Web Audio API to decode and resample to 16kHz mono Float32Array.
+     */
+    async transcribeFile(file: File, language?: string): Promise<string | null> {
+        const loaded = await this.load();
+        if (!loaded || !this.pipeline) return null;
+
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const audioContext = new AudioContext({ sampleRate: 16000 });
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            
+            // Mix down to mono if stereo
+            let float32Array = audioBuffer.getChannelData(0);
+            if (audioBuffer.numberOfChannels > 1) {
+                const ch1 = audioBuffer.getChannelData(1);
+                const mixed = new Float32Array(float32Array.length);
+                for (let i = 0; i < mixed.length; i++) {
+                    mixed[i] = (float32Array[i] + ch1[i]) / 2;
+                }
+                float32Array = mixed;
+            }
+            
+            const options: any = {};
+            if (language) options.language = language;
+            
+            // Run Whisper
+            const result = await this.pipeline(float32Array, options);
+            await audioContext.close();
+            
+            return result.text?.trim() || null;
+        } catch (e) {
+            console.error('[STTEngine] File transcription failed:', e);
             return null;
         }
     }

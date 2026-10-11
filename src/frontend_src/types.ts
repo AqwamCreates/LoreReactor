@@ -205,6 +205,11 @@ export interface RawLanguageModel extends RawData {
   outputGenerationCostPerOneMillionOfTokens?: number;
 }
 
+export interface Voice {
+  voiceFilename?: string;
+  textContent?: string;
+}
+
 export interface Memory extends ObjectData {
   content: string;
   interactionData: InteractionData;
@@ -258,6 +263,7 @@ export interface TextCharacterInjection extends ObjectData {
 export interface Character extends ObjectData {
   aliases?: string[],
   images?: Record<string, string>;
+  voice?: Voice;
   useFrontCameraImage?: boolean; // Default is false.
   systemPrompt?: string;
   thinkPrompt?: string;
@@ -292,6 +298,7 @@ export interface Character extends ObjectData {
 export interface RawCharacter extends RawData {
   aliases?: string[],
   images?: Record<string, string>;
+  voice?: Voice;
   useFrontCameraImage?: boolean; // Default is false.
   systemPrompt?: string;
   thinkPrompt?: string;
@@ -765,7 +772,6 @@ export interface Profile extends ObjectData {
   enableSpeculativeMarkov: boolean;
   sentimentalAnalysisDeviceType: deviceType; // Default is auto.
   textToSpeechDeviceType: deviceType; // Default is auto.
-  voiceCloningDeviceType: deviceType; // Default is auto.
   speechToTextDeviceType: deviceType; // Default is auto.
   voiceActivityDetectionDeviceType: deviceType; // Default is auto.
   autoResumeSignals: AutoResumeSignal[]; // When empty, the models will determine the natural stop. Otherwise, if the partially-generated text does not end with these signals, it will auto-resume until this signal is hit.
@@ -825,7 +831,6 @@ export interface RawProfile extends RawData {
   enableSpeculativeMarkov: boolean;
   sentimentalAnalysisDeviceType: deviceType; // Default is auto.
   textToSpeechDeviceType: deviceType; // Default is auto.
-  voiceCloningDeviceType: deviceType; // Default is auto.
   speechToTextDeviceType: deviceType; // Default is auto.
   voiceActivityDetectionDeviceType: deviceType; // Default is auto.
   autoResumeSignals: AutoResumeSignal[]; // When empty, the models will determine the natural stop. Otherwise, if the partially-generated text does not end with these signals and has visited the activating, it will auto-resume until this signal is hit.

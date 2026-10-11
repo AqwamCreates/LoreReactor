@@ -3,8 +3,7 @@ import type React from 'react';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, tool, InteractionData } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { uploadCharacterImage, getCharacterImageUrl, getCharacterVoice } from '../storages/serverStorage';
-// ✅ REMOVED: voiceCloningEngine import is no longer needed here
+import { uploadCharacterImage, getCharacterImageUrl, getCharacterVoiceURL } from '../storages/serverStorage';
 import { 
     getInitiativeWeightValueFromText, 
     getChatProbabilityValue, 
@@ -58,8 +57,8 @@ interface CharacterEditorModalProps {
     isReadOnly?: boolean;
     onClose: () => void;
     onSave: (character: Character) => void;
-    // ✅ ADDED: Callback to trigger background cloning after modal closes
-    onVoiceCloneRequested?: (characterId: string, file: File) => void;
+    // ✅ ADDED: Callback to trigger background transcription after modal closes
+    onVoiceTranscribeRequested?: (characterId: string, file: File) => void;
     existingCharacter?: Character | null;
     allSamplers: Sampler[];
     allCharacters: Character[];
@@ -72,7 +71,7 @@ interface CharacterEditorModalProps {
 }
 
 export function CharacterEditorModal({ 
-    isReadOnly = false, onClose, onSave, onVoiceCloneRequested, existingCharacter,
+    isReadOnly = false, onClose, onSave, onVoiceTranscribeRequested, existingCharacter,
     allSamplers, allCharacters, isLoadingSamplers = false,
     selectedModel, runningModels,
     chatNameMap, interactionData, localProtagonistId,
@@ -85,7 +84,7 @@ export function CharacterEditorModal({
             key={modalKey}
             onClose={onClose}
             onSave={onSave}
-            onVoiceCloneRequested={onVoiceCloneRequested} // ✅ PASSED DOWN
+            onVoiceTranscribeRequested={onVoiceTranscribeRequested} // ✅ PASSED DOWN
             existingCharacter={existingCharacter}
             allSamplers={allSamplers}
             allCharacters={allCharacters}
@@ -101,7 +100,7 @@ export function CharacterEditorModal({
 }
 
 function CharacterEditorModalInner({
-    onClose, onSave, onVoiceCloneRequested, existingCharacter, // ✅ ADDED TO DESTRUCTURING
+    onClose, onSave, onVoiceTranscribeRequested, existingCharacter, // ✅ ADDED TO DESTRUCTURING
     allSamplers, allCharacters, isLoadingSamplers = false,
     selectedModel, runningModels,
     chatNameMap, interactionData, localProtagonistId,
@@ -145,7 +144,7 @@ function CharacterEditorModalInner({
     useEffect(() => {
         if (!existingCharacter) return;
 
-        const url = getCharacterVoice(existingCharacter.id);
+        const url = getCharacterVoiceURL(existingCharacter.id);
         if (!url) return;
 
         let isSubscribed = true;
@@ -696,9 +695,9 @@ function CharacterEditorModalInner({
 
         // ✅ REPLACED BLOCKING UPLOAD WITH NON-BLOCKING HANDOFF
         // We no longer await the upload here. The modal closes immediately.
-        // The parent component will handle the background cloning via onVoiceCloneRequested.
-        if (voiceFile && onVoiceCloneRequested) {
-            onVoiceCloneRequested(targetCharacterId, voiceFile);
+        // The parent component will handle the background transcription via onVoiceTranscribeRequested.
+        if (voiceFile && onVoiceTranscribeRequested) {
+            onVoiceTranscribeRequested(targetCharacterId, voiceFile);
         }
 
         const rawIW = Number.parseFloat(initiativeWeightStr);

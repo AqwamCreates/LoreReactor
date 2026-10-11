@@ -948,7 +948,6 @@ const profileRepo = createRepository<Profile, RawProfile>({
         enableSpeculativeMarkov: false,
         sentimentalAnalysisDeviceType: 'auto',
         textToSpeechDeviceType: 'auto',
-        voiceCloningDeviceType: 'auto',
         speechToTextDeviceType: 'auto',
         voiceActivityDetectionDeviceType: 'auto',
     }, {
@@ -1523,14 +1522,13 @@ export async function uploadCharacterImage(characterId: string, file: File): Pro
     return upload('characterImages', characterId, file);
 }
 
-export function getCharacterVoice(characterId: string): string | null {
-  return getURL('characterVoices', characterId, "voicepack.bin");
+export function getCharacterVoiceURL(characterId: string, voiceFileName: string | undefined): string | null {
+  if (!voiceFileName) return null;
+  return getURL('characterVoices', characterId, voiceFileName);
 }
 
-export async function uploadCharacterVoice(characterId: string, tensor: Float32Array): Promise<string> {
-  const tensorBlob = new Blob([tensor.buffer as ArrayBuffer], { type: 'application/octet-stream' });
-  const tensorFile = new File([tensorBlob], 'voicepack.bin', { type: 'application/octet-stream' });
-  return upload('characterVoices', characterId, tensorFile);
+export async function uploadCharacterVoice(characterId: string, file: File): Promise<string> {
+  return upload('characterVoices', characterId, file);
 }
 
 export function getContextImageUrl(contextId: string, imageFilename: string | undefined): string | null {

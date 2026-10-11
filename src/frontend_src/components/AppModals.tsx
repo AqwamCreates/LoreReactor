@@ -47,7 +47,7 @@ import { AlternateTimelinesModal } from './AlternateTimelinesModal';
 import { ChatInspectionModal } from './ChatInspectionModal';
 import { SuperSearchModal } from './SuperSearchModal';
 import { LanguageModelInferenceManagerModal } from './LanguageModelInferenceManager';
-import { voiceCloningEngine } from '../services/VoiceCloningEngine'; // ✅ ADDED IMPORT
+import { voiceTranscriptionEngine } from '../services/VoiceTranscriptionEngine'; // ✅ UPDATED IMPORT
 
 interface EntityModalController {
     isOpen: boolean;
@@ -269,21 +269,21 @@ export function AppModals({
 
     const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
 
-    // ✅ ADDED: Background Voice Cloning Handler
-    const handleBackgroundVoiceClone = useCallback((characterId: string, file: File) => {
-        addToast(`🎙️ Cloning voice in background...`, 'info');
+    // ✅ UPDATED: Background Voice Transcription Handler
+    const handleBackgroundVoiceTranscribe = useCallback((characterId: string, file: File) => {
+        addToast(`🎙️ Transcribing voice in background...`, 'info');
         
-        voiceCloningEngine.enqueueUpload(characterId, file)
+        voiceTranscriptionEngine.enqueueTranscription(characterId, file)
             .then(success => {
                 if (success) {
-                    addToast('✅ Voice cloned successfully!', 'success');
+                    addToast('✅ Voice transcribed and saved!', 'success');
                 } else {
-                    addToast('❌ Voice cloning failed.', 'error');
+                    addToast('❌ Voice transcription failed.', 'error');
                 }
             })
             .catch(err => {
-                console.error('[AppModals] Background voice clone failed:', err);
-                addToast(`❌ Voice cloning error: ${err.message}`, 'error');
+                console.error('[AppModals] Background voice transcribe failed:', err);
+                addToast(`❌ Transcription error: ${err.message}`, 'error');
             });
     }, [addToast]);
 
@@ -939,7 +939,7 @@ export function AppModals({
                             characterModalProperties.save(character); 
                         } 
                     }}
-                    onVoiceCloneRequested={handleBackgroundVoiceClone} // ✅ WIRED UP BACKGROUND CLONING
+                    onVoiceTranscribeRequested={handleBackgroundVoiceTranscribe} // ✅ WIRED UP BACKGROUND TRANSCRIPTION
                     existingCharacter={characterModalProperties.item} 
                     allSamplers={allSamplers} 
                     allCharacters={allCharacters}

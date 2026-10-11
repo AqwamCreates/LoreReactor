@@ -456,7 +456,6 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         enableSpeculativeMarkov: (p.enableSpeculativeMarkov as boolean) ?? false,
         sentimentalAnalysisDeviceType: (p.sentimentalAnalysisDeviceType as deviceType) ?? 'auto',
         textToSpeechDeviceType: (p.textToSpeechDeviceType as deviceType) ?? 'auto',
-        voiceCloningDeviceType: (p.voiceCloningDeviceType as deviceType) ?? 'auto',
         speechToTextDeviceType: (p.speechToTextDeviceType as deviceType) ?? 'auto',
         voiceActivityDetectionDeviceType: (p.voiceActivityDetectionDeviceType as deviceType) ?? 'auto',
         autoResumeSignals: Array.isArray(p.autoResumeSignals) ? (p.autoResumeSignals as AutoResumeSignal[]) : [],

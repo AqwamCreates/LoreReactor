@@ -9,7 +9,6 @@ import { useDisplayNameCache } from '../utilities/immersionLogic';
 import { getCharacterStarterMessage } from '../utilities/characterLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { textToSpeechEngine  } from '../services/TextToSpeechEngine';
-import { voiceCloningEngine } from '../services/VoiceCloningEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { buildModelLoadArguments } from '../utilities/modelLoadArguments';
 import { localURL } from '../../configurations';
@@ -343,16 +342,6 @@ function App() {
         } else {
             sentimentEngine.unload();
         }
-    }, [interactionData]);
-
-    // ─── TTS & Voice Cloning Engine Device Preferences ───────────────
-    useEffect(() => {
-        const profile = interactionData?.profile;
-        const ttsDevice = profile?.textToSpeechDeviceType ?? 'auto';
-        const vcDevice = profile?.voiceCloningDeviceType ?? 'auto';
-        
-        textToSpeechEngine .setDevicePreference(ttsDevice);
-        voiceCloningEngine.setDevicePreference(vcDevice);
     }, [interactionData]);
 
     // ─── Chat Auto-Save ──────────────────────────────────────────────

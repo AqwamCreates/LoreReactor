@@ -224,7 +224,6 @@ export function ProfileEditorModal({
     
     const [sentimentalAnalysisDeviceType, setSentimentalAnalysisDeviceType] = useState<deviceType>(ep?.sentimentalAnalysisDeviceType ?? 'auto');
     const [textToSpeechDeviceType, setTextToSpeechDeviceType] = useState<deviceType>(ep?.textToSpeechDeviceType ?? 'auto');
-    const [voiceCloningDeviceType, setVoiceCloningDeviceType] = useState<deviceType>(ep?.voiceCloningDeviceType ?? 'auto');
     const [speechToTextDeviceType, setSpeechToTextDeviceType] = useState<deviceType>(ep?.speechToTextDeviceType ?? 'auto');
     const [voiceActivityDetectionDeviceType, setVoiceActivityDetectionDeviceType] = useState<deviceType>(ep?.voiceActivityDetectionDeviceType ?? 'auto');
 
@@ -355,7 +354,6 @@ export function ProfileEditorModal({
             enableSpeculativeMarkov,
             sentimentalAnalysisDeviceType,
             textToSpeechDeviceType,
-            voiceCloningDeviceType,
             speechToTextDeviceType,
             voiceActivityDetectionDeviceType,
             volume, stripThinkTokens, tools: { ...tools },
@@ -820,13 +818,14 @@ export function ProfileEditorModal({
                                 <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>
                                     Control which hardware backend is used for local browser-side AI models. Auto attempts WebGPU and falls back to CPU. Forcing CPU saves VRAM for the main LLM backend.
                                 </div>
-                                
+
                                 <div className="editor-row">
                                     <div>
-                                        <label className="editor-label editor-label-small">Sentiment Analysis (DistilBERT)</label>
-                                        <select 
-                                            value={sentimentalAnalysisDeviceType} 
-                                            onChange={(e) => setSentimentalAnalysisDeviceType(e.target.value as deviceType)} 
+                                        <label htmlFor="sentimental-analysis-device-type" className="editor-label editor-label-small">Sentiment Analysis (DistilBERT)</label>
+                                        <select
+                                            id="sentimental-analysis-device-type"
+                                            value={sentimentalAnalysisDeviceType}
+                                            onChange={(e) => setSentimentalAnalysisDeviceType(e.target.value as deviceType)}
                                             className="editor-select"
                                         >
                                             <option value="auto">Auto</option>
@@ -836,10 +835,11 @@ export function ProfileEditorModal({
                                         <div style={FIELD_HINT_STYLE}>Used for character expression swapping.</div>
                                     </div>
                                     <div>
-                                        <label className="editor-label editor-label-small">Text-To-Speech (Kokoro 82M)</label>
-                                        <select 
-                                            value={textToSpeechDeviceType} 
-                                            onChange={(e) => setTextToSpeechDeviceType(e.target.value as deviceType)} 
+                                        <label htmlFor="text-to-speech-device-type" className="editor-label editor-label-small">Text-To-Speech (Kokoro 82M)</label>
+                                        <select
+                                            id="text-to-speech-device-type"
+                                            value={textToSpeechDeviceType}
+                                            onChange={(e) => setTextToSpeechDeviceType(e.target.value as deviceType)}
                                             className="editor-select"
                                         >
                                             <option value="auto">Auto</option>
@@ -852,23 +852,11 @@ export function ProfileEditorModal({
 
                                 <div className="editor-row" style={{ marginTop: '12px' }}>
                                     <div>
-                                        <label className="editor-label editor-label-small">Voice Cloning (Speaker Encoder)</label>
-                                        <select 
-                                            value={voiceCloningDeviceType} 
-                                            onChange={(e) => setVoiceCloningDeviceType(e.target.value as deviceType)} 
-                                            className="editor-select"
-                                        >
-                                            <option value="auto">Auto</option>
-                                            <option value="gpu">GPU (WebGPU)</option>
-                                            <option value="cpu">CPU (WASM)</option>
-                                        </select>
-                                        <div style={FIELD_HINT_STYLE}>Used for extracting voice from audio.</div>
-                                    </div>
-                                    <div>
-                                        <label className="editor-label editor-label-small">Speech-To-Text (Whisper Tiny)</label>
-                                        <select 
+                                        <label htmlFor="speech-to-text-device-type" className="editor-label editor-label-small">Speech-To-Text (Whisper Tiny)</label>
+                                        <select
+                                            id="speech-to-text-device-type"
                                             value={speechToTextDeviceType}
-                                            onChange={(e) => setSpeechToTextDeviceType(e.target.value as deviceType)} 
+                                            onChange={(e) => setSpeechToTextDeviceType(e.target.value as deviceType)}
                                             className="editor-select"
                                         >
                                             <option value="auto">Auto</option>
@@ -877,14 +865,12 @@ export function ProfileEditorModal({
                                         </select>
                                         <div style={FIELD_HINT_STYLE}>Used for voice input transcription.</div>
                                     </div>
-                                </div>
-
-                                <div className="editor-row" style={{ marginTop: '12px' }}>
                                     <div>
-                                        <label className="editor-label editor-label-small">Voice Activity Detection (Silero)</label>
-                                        <select 
-                                            value={voiceActivityDetectionDeviceType} 
-                                            onChange={(e) => setVoiceActivityDetectionDeviceType(e.target.value as deviceType)} 
+                                        <label htmlFor="voice-activity-detection-device-type" className="editor-label editor-label-small">Voice Activity Detection (Silero)</label>
+                                        <select
+                                            id="voice-activity-detection-device-type"
+                                            value={voiceActivityDetectionDeviceType}
+                                            onChange={(e) => setVoiceActivityDetectionDeviceType(e.target.value as deviceType)}
                                             className="editor-select"
                                         >
                                             <option value="auto">Auto</option>
@@ -893,7 +879,6 @@ export function ProfileEditorModal({
                                         </select>
                                         <div style={FIELD_HINT_STYLE}>Used for detecting speech boundaries.</div>
                                     </div>
-                                    <div></div>
                                 </div>
                             </div>
 

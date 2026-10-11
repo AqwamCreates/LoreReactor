@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
-    "@huggingface/transformers": "^4.2.0",
+    "@huggingface/transformers": "^4.3.1",
     "@jitsi/robotjs": "^0.6.24",
     "@photostructure/tz-lookup": "^11.7.0",
     "@tauri-apps/api": "^2.12.1",
@@ -29,6 +29,7 @@
     "loudness": "^0.4.2",
     "luxon": "^3.7.2",
     "node-notifier": "^10.0.1",
+    "onnxruntime-node": "^1.30.0",
     "onnxruntime-web": "^1.29.0",
     "open": "^11.0.4",
     "peerjs": "^1.5.5",
