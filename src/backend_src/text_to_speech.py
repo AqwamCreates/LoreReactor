@@ -4,7 +4,7 @@ import base64
 import io
 import torch
 import soundfile
-import librosa
+import torchaudio
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -13,10 +13,9 @@ from contextlib import asynccontextmanager
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 os.environ["DISABLE_TELEMETRY"] = "YES"
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
-os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 
+# ✅ Force torchaudio to use soundfile backend to completely bypass SoX
 try:
-    import torchaudio
     torchaudio.set_audio_backend("soundfile")
 except Exception:
     pass
@@ -29,23 +28,38 @@ class SynthesizeRequest(BaseModel):
     language: str
     reference_audio_base64: str
     reference_text: str
-    device: str = "auto" # ✅ Receives 'auto', 'cpu', or 'gpu' from Node.js
+    device: str = "auto"
 
 def load_model(target_device: str):
     global text_to_speech_model, current_loaded_device
     
+    print(f"[Text To Speech] PyTorch version: {torch.__version__}", flush=True)
+    print(f"[Text To Speech] CUDA available: {torch.cuda.is_available()}", flush=True)
+    
+    if hasattr(torch, 'version') and hasattr(torch.version, 'cuda'):
+        print(f"[Text To Speech] PyTorch CUDA version: {torch.version.cuda}", flush=True)
+    else:
+        print(f"[Text To Speech] PyTorch CUDA version: None", flush=True)
+        
+    if torch.backends.mps.is_available():
+        print(f"[Text To Speech] Apple MPS available", flush=True)
+
     # Map frontend device preference to PyTorch device
     if target_device in ["gpu", "auto"]:
-        device_map = "cuda:0" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            device_map = "cuda:0"
+        elif torch.backends.mps.is_available():
+            device_map = "mps"
+        else:
+            device_map = "cpu"
     else:
         device_map = "cpu"
         
-    # Skip reloading if the model is already on the correct device
     if current_loaded_device == device_map and text_to_speech_model is not None:
+        print(f"[Text To Speech] Model already loaded on {device_map}, skipping reload", flush=True)
         return
 
-    # bfloat16 is stable on both CPU and GPU, and halves memory bandwidth usage
-    data_type = torch.bfloat16 
+    data_type = torch.bfloat16 if device_map != "cpu" else torch.float32
     
     print(f"[Text To Speech] Loading Qwen3 model on {device_map} with {data_type}...", flush=True)
     
@@ -53,7 +67,7 @@ def load_model(target_device: str):
     text_to_speech_model = Qwen3TTSModel.from_pretrained(
         "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
         device_map=device_map,
-        dtype=data_type,
+        torch_dtype=data_type,
         low_cpu_mem_usage=True
     )
     current_loaded_device = device_map
@@ -61,7 +75,6 @@ def load_model(target_device: str):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Pre-load on auto/cuda by default on startup to save the first request latency
     load_model("auto")
     yield
     global text_to_speech_model
@@ -88,16 +101,26 @@ async def generate(request: SynthesizeRequest):
 
     try:
         audio_bytes = base64.b64decode(request.reference_audio_base64)
-        audio_array, _ = librosa.load(io.BytesIO(audio_bytes), sr=24000, mono=True)
         
+        # ✅ FIX: Use torchaudio instead of librosa to avoid numba crashes entirely
+        waveform, sample_rate = torchaudio.load(io.BytesIO(audio_bytes))
+        
+        # Resample to 24kHz mono for Qwen3-TTS
+        if sample_rate != 24000:
+            resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=24000)
+            waveform = resampler(waveform)
+            
+        if waveform.shape[0] > 1:
+            waveform = torch.mean(waveform, dim=0, keepdim=True)
+            
         temp_ref_path = "temp_ref_audio.wav"
-        soundfile.write(temp_ref_path, audio_array, 24000)
+        torchaudio.save(temp_ref_path, waveform, 24000)
 
         print(f"[Text To Speech] Starting generation for: {request.text[:30]}...", flush=True)
         
-        device_type = "cuda" if current_loaded_device == "cuda:0" else "cpu"
-        with torch.inference_mode(), torch.autocast(device_type=device_type, dtype=torch.bfloat16):
-            waveforms, sample_rate = text_to_speech_model.generate_voice_clone(
+        device_type = current_loaded_device.split(':')[0] if ':' in current_loaded_device else current_loaded_device
+        with torch.inference_mode(), torch.autocast(device_type=device_type, dtype=torch.bfloat16, enabled=(device_type != "cpu")):
+            waveforms, out_sr = text_to_speech_model.generate_voice_clone(
                 text=request.text,
                 language=language,
                 ref_audio=temp_ref_path,
@@ -108,13 +131,12 @@ async def generate(request: SynthesizeRequest):
         
         print("[Text To Speech] Generation complete. Encoding WAV.", flush=True)
 
-        # Safely handle both numpy arrays and PyTorch tensors
         audio_data = waveforms[0]
         if hasattr(audio_data, "cpu"):
             audio_data = audio_data.float().cpu().numpy()
 
         buffer = io.BytesIO()
-        soundfile.write(buffer, audio_data, sample_rate, format='WAV')
+        soundfile.write(buffer, audio_data, out_sr, format='WAV')
         buffer.seek(0)
         
         return {"audio_base64": base64.b64encode(buffer.read()).decode('utf-8')}

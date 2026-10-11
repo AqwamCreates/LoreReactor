@@ -2819,21 +2819,54 @@ async function ensureTextToSpeechServerIsRunning(device: string) {
             execSync(`"${uvBinary}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
             execSync(`"${uvBinary}" venv "${virtualEnvironmentDirectory}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
             
-            // 1. Install qwen-tts and dependencies FIRST
+            // 1. Install qwen-tts and dependencies (✅ Removed librosa to prevent numba crashes)
             broadcastNotify('text-to-speech', 'installing', 40, 'Installing Qwen Text To Speech dependencies...');
-            execSync(`"${uvBinary}" pip install -U qwen-tts soundfile fastapi uvicorn librosa packaging ninja`, {
+            execSync(`"${uvBinary}" pip install -U qwen-tts soundfile fastapi uvicorn packaging ninja torchaudio`, {
                 stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
                 env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
             });
             
-            // 2. Install CUDA PyTorch LAST to overwrite any CPU wheels qwen-tts pulled
+            // 2. ✅ AUTO-DETECT GPU VENDOR AND INSTALL CORRECT PYTORCH WHEELS
             if (detectedGpuVendor === 'nvidia') {
-                broadcastNotify('text-to-speech', 'installing', 60, 'Installing PyTorch with CUDA support...');
-                execSync(`"${uvBinary}" pip install -U torch torchaudio --index-url https://download.pytorch.org/whl/cu124`, {
+                broadcastNotify('text-to-speech', 'installing', 60, 'Installing PyTorch with CUDA 12.1 support...');
+                execSync(`"${uvBinary}" pip install --force-reinstall torch torchaudio --index-url https://download.pytorch.org/whl/cu121`, {
                     stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
                     env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
                 });
-                
+            } else if (detectedGpuVendor === 'apple' && IS_MACOS) {
+                broadcastNotify('text-to-speech', 'installing', 60, 'Installing PyTorch with Apple MPS support...');
+                execSync(`"${uvBinary}" pip install --force-reinstall torch torchaudio`, {
+                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
+                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
+                });
+            } else if (detectedGpuVendor === 'amd' && !IS_WINDOWS) {
+                broadcastNotify('text-to-speech', 'installing', 60, 'Installing PyTorch with AMD ROCm support...');
+                execSync(`"${uvBinary}" pip install --force-reinstall torch torchaudio --index-url https://download.pytorch.org/whl/rocm6.1`, {
+                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
+                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
+                });
+            } else if ((detectedGpuVendor === 'amd' || detectedGpuVendor === 'intel') && IS_WINDOWS) {
+                broadcastNotify('text-to-speech', 'installing', 60, 'Installing PyTorch with DirectML for Windows AMD/Intel...');
+                execSync(`"${uvBinary}" pip install --force-reinstall torch torchaudio torch-directml`, {
+                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
+                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
+                });
+            } else if (detectedGpuVendor === 'intel' && !IS_WINDOWS) {
+                broadcastNotify('text-to-speech', 'installing', 60, 'Installing PyTorch with Intel XPU support...');
+                execSync(`"${uvBinary}" pip install --force-reinstall torch torchaudio --index-url https://download.pytorch.org/whl/xpu`, {
+                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
+                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
+                });
+            } else {
+                broadcastNotify('text-to-speech', 'installing', 60, 'Installing PyTorch CPU-only...');
+                execSync(`"${uvBinary}" pip install --force-reinstall torch torchaudio`, {
+                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
+                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
+                });
+            }
+            
+            // 3. Flash Attention (Only works on NVIDIA)
+            if (detectedGpuVendor === 'nvidia') {
                 broadcastNotify('text-to-speech', 'installing', 80, 'Attempting to compile and install Flash Attention...');
                 try {
                     execSync(`"${uvBinary}" pip install -U flash-attn --no-build-isolation`, {

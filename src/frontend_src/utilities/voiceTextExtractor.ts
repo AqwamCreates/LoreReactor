@@ -16,13 +16,69 @@ const CATEGORY_TO_TEXT_TYPE: Record<FormatCategory, textType | null> = {
 const BRACED_REGEX = /\{([^}]+)\}/g;
 
 export function extractNarratableText(text: string, narrateTexts: Record<textType, boolean>): string {
+    // 1. Strip tool calls
     const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const toolRegex = new RegExp(
         `(${escapeRegex(toolCallStartString)}[\\s\\S]*?${escapeRegex(toolCallEndString)}|${escapeRegex(toolResultStartString)}[\\s\\S]*?${escapeRegex(toolResultEndString)})`,
         'g'
     );
-    const cleanText = text.replace(toolRegex, '');
+    let cleanText = text.replace(toolRegex, '');
 
+    // 2. ✅ STREAMING FIX: Detect unclosed formatting markers.
+    // If a format is disabled and its marker is unclosed (odd count), 
+    // truncate the text right before that last unclosed marker to prevent 
+    // it from being incorrectly treated as plain text.
+    
+    let truncatePos = cleanText.length;
+
+    // Check Bold (**)
+    let boldCount = 0;
+    let lastBoldPos = -1;
+    for (let i = 0; i < cleanText.length - 1; i++) {
+        if (cleanText[i] === '*' && cleanText[i + 1] === '*') {
+            boldCount++;
+            lastBoldPos = i;
+            i++; // Skip next *
+        }
+    }
+    if (boldCount % 2 !== 0 && !narrateTexts.bolded && lastBoldPos !== -1) {
+        truncatePos = Math.min(truncatePos, lastBoldPos);
+    }
+
+    // Check Italic (*) - must not be part of **
+    let italicCount = 0;
+    let lastItalicPos = -1;
+    for (let i = 0; i < cleanText.length; i++) {
+        if (cleanText[i] === '*') {
+            const prev = i > 0 ? cleanText[i - 1] : '';
+            const next = i < cleanText.length - 1 ? cleanText[i + 1] : '';
+            if (prev !== '*' && next !== '*') {
+                italicCount++;
+                lastItalicPos = i;
+            }
+        }
+    }
+    if (italicCount % 2 !== 0 && !narrateTexts.italicized && lastItalicPos !== -1) {
+        truncatePos = Math.min(truncatePos, lastItalicPos);
+    }
+
+    // Check Quotes (", ", ")
+    let quoteCount = 0;
+    let lastQuotePos = -1;
+    for (let i = 0; i < cleanText.length; i++) {
+        if (cleanText[i] === '"' || cleanText[i] === '"' || cleanText[i] === '"') {
+            quoteCount++;
+            lastQuotePos = i;
+        }
+    }
+    if (quoteCount % 2 !== 0 && !narrateTexts.quoted && lastQuotePos !== -1) {
+        truncatePos = Math.min(truncatePos, lastQuotePos);
+    }
+
+    // Truncate at the earliest unclosed disabled marker
+    cleanText = cleanText.substring(0, truncatePos);
+
+    // 3. Process segments on the now-safe text
     const segments = detectFormatSegments(cleanText);
     const parts: string[] = [];
 
