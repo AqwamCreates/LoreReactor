@@ -1788,6 +1788,73 @@ app.use('/user_data', (req, response) => {
   response.status(405).json({ error: 'Method Not Allowed' });
 });
 
+// ─── Kokoro Inno-Clone Automated Provisioner ────────────────────────
+async function ensureKokoroInnoEnvironment(): Promise<string> {
+    const backendSrcDir = path.join(ROOT_DIR, 'src', 'backend_src');
+    const venvDir = path.join(backendSrcDir, 'venv_kokoro_inno');
+    const venvPy = IS_WINDOWS ? path.join(venvDir, 'Scripts', 'python.exe') : path.join(venvDir, 'bin', 'python');
+
+    // 1. Check if the environment exists AND is complete (torch + inno_kokoro can be imported)
+    if (fs.existsSync(venvPy)) {
+        try {
+            execSync(`"${venvPy}" -c "import torch, inno_kokoro"`, { stdio: 'ignore' });
+            return venvPy; // Valid and complete!
+        } catch {
+            log.warn('[KokoroInno] Existing venv_kokoro_inno is incomplete or missing packages. Reinstalling...');
+        }
+    }
+
+    const uvBin = await ensureUv();
+    ensureDirectory(backendSrcDir);
+
+    // 2. Create the virtual environment if python.exe doesn't exist
+    if (!fs.existsSync(venvPy)) {
+        broadcastNotify('kokoro-inno', 'installing', 20, 'Provisioning isolated Python 3.11 environment...');
+        execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
+        execSync(`"${uvBin}" venv "${venvDir}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
+    }
+
+    // 3. Install PyTorch with explicit interpreter target
+    broadcastNotify('kokoro-inno', 'installing', 40, 'Installing PyTorch (this may take a few minutes)...');
+    try {
+        log.info('[KokoroInno] Installing PyTorch with auto backend detection...');
+        execSync(`"${uvBin}" pip install --python "${venvPy}" -U torch torchaudio --torch-backend=auto`, {
+            stdio: 'inherit', cwd: backendSrcDir, timeout: 1800000,
+        });
+    } catch (err: any) {
+        log.warn(`[KokoroInno] Auto-backend install failed (${err.message}). Falling back to official PyTorch wheel index...`);
+        
+        // Detect GPU vendor for Windows fallback index
+        const indexUrl = (IS_WINDOWS && detectedGpuVendor === 'nvidia')
+            ? 'https://download.pytorch.org/whl/cu124'
+            : (IS_WINDOWS ? 'https://download.pytorch.org/whl/cpu' : '');
+
+        const indexArg = indexUrl ? `--index-url ${indexUrl}` : '';
+        execSync(`"${uvBin}" pip install --python "${venvPy}" -U torch torchaudio ${indexArg}`, {
+            stdio: 'inherit', cwd: backendSrcDir, timeout: 1800000,
+        });
+    }
+
+    // 4. Install inno-kokoro, kokoro, and numpy directly into the venv
+    broadcastNotify('kokoro-inno', 'installing', 70, 'Installing inno-kokoro voice tuner...');
+    execSync(`"${uvBin}" pip install --python "${venvPy}" -U inno-kokoro kokoro numpy`, {
+        stdio: 'inherit', cwd: backendSrcDir, timeout: 600000,
+    });
+
+    // 5. Final verification check
+    try {
+      execSync(`"${venvPy}" -c "import torch, inno_kokoro"`, { stdio: 'pipe' });
+    } catch (err: unknown) {
+      throw new Error(
+          `Kokoro Inno environment validation failed: ${err instanceof Error ? err.message : String(err)}`,
+          { cause: err }
+      );
+    }
+
+    broadcastNotify('kokoro-inno', 'ready', 100, 'Kokoro Inno-Clone environment ready.');
+    return venvPy;
+}
+
 // ─── Kokoro Voice Cloning Endpoint ──────────────────────────────────
 app.post('/api/clone-voice', async (req, res) => {
   const { characterId, audioBase64, device = 'auto' } = req.body;
@@ -1817,13 +1884,15 @@ app.post('/api/clone-voice', async (req, res) => {
     // 2. Ensure target directory exists
     if (!fs.existsSync(targetVoiceDir)) fs.mkdirSync(targetVoiceDir, { recursive: true });
 
-    // 3. Call Python script (kokoro_inno.py)
+    // 3. AUTOMATED SETUP: Ensure repo and venv are downloaded/installed
+    const venvPy = await ensureKokoroInnoEnvironment();
+
+    // 4. Call Python script using the provisioned venv
     const pythonScript = path.join(ROOT_DIR, 'src', 'backend_src', 'kokoro_inno.py');
-    const pythonBinCmd = process.platform === 'win32' ? 'python' : 'python3';
     
     const result = await new Promise<string>((resolve, reject) => {
-      exec(`${pythonBinCmd} "${pythonScript}" "${tempInputPath}" "${finalOutputPath}" --device ${pytorchDevice}`, 
-          { timeout: 60000 }, 
+      exec(`"${venvPy}" "${pythonScript}" "${tempInputPath}" "${finalOutputPath}" --device ${pytorchDevice}`, 
+          { timeout: 120000 }, 
           (error, stdout, stderr) => {
               if (error) reject(new Error(stderr || error.message));
               else resolve(stdout);
@@ -1835,7 +1904,7 @@ app.post('/api/clone-voice', async (req, res) => {
       throw new Error('Python script did not report success');
     }
 
-    // 4. Cleanup temp file
+    // 5. Cleanup temp file
     try { fs.unlinkSync(tempInputPath); } catch {}
 
     res.json({ success: true, message: `Voice cloned on ${pytorchDevice} and saved as voicepack.bin` });
