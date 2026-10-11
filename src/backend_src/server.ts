@@ -2815,28 +2815,40 @@ async function ensureTextToSpeechServerIsRunning(device: string) {
 
         if (!fs.existsSync(pythonExecutable)) {
             const uvBinary = await ensureUv();
-            broadcastNotify('text-to-speech', 'installing', 20, 'Provisioning isolated Python environment for Text To Speech...');
+            broadcastNotify('text-to-speech', 'installing', 10, 'Provisioning isolated Python environment for Text To Speech...');
             execSync(`"${uvBinary}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
             execSync(`"${uvBinary}" venv "${virtualEnvironmentDirectory}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
             
+            // ✅ FIX: Explicitly install CUDA-enabled PyTorch on Windows/NVIDIA before qwen-tts
+            if (detectedGpuVendor === 'nvidia') {
+                broadcastNotify('text-to-speech', 'installing', 30, 'Installing PyTorch with CUDA support...');
+                // PyTorch official Windows CUDA wheels are hosted on a separate index
+                execSync(`"${uvBinary}" pip install -U torch torchaudio --index-url https://download.pytorch.org/whl/cu124`, {
+                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
+                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
+                });
+            }
+
             broadcastNotify('text-to-speech', 'installing', 60, 'Installing Qwen Text To Speech dependencies...');
-            // Added packaging and ninja which are strict requirements for flash-attn to build
-            execSync(`"${uvBinary}" pip install -U qwen-tts soundfile fastapi uvicorn librosa torchaudio packaging ninja`, {
+            // Now that CUDA PyTorch is installed, uv will not overwrite it with the CPU version
+            execSync(`"${uvBinary}" pip install -U qwen-tts soundfile fastapi uvicorn librosa packaging ninja`, {
                 stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
                 env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
             });
             
-            broadcastNotify('text-to-speech', 'installing', 80, 'Attempting to compile and install Flash Attention...');
-            try {
-                // flash-attn compiles from source and can take several minutes. 
-                // We use --no-build-isolation so it uses the torch version we just installed.
-                execSync(`"${uvBinary}" pip install -U flash-attn --no-build-isolation`, {
-                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 3600000, // 1 hour timeout for compilation
-                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
-                });
-                log.success('[Text To Speech] Flash Attention installed successfully.');
-            } catch (flashAttnError: any) {
-                log.warn('[Text To Speech] Flash Attention installation failed. This is completely normal on native Windows without WSL2. Falling back to standard PyTorch attention.');
+            if (detectedGpuVendor === 'nvidia') {
+                broadcastNotify('text-to-speech', 'installing', 80, 'Attempting to compile and install Flash Attention...');
+                try {
+                    execSync(`"${uvBinary}" pip install -U flash-attn --no-build-isolation`, {
+                        stdio: 'pipe', cwd: backendSourceDirectory, timeout: 3600000,
+                        env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
+                    });
+                    log.success('[Text To Speech] Flash Attention installed successfully.');
+                } catch (flashAttnError: any) {
+                    // Flash Attention almost always fails to compile on native Windows. 
+                    // PyTorch 2.4+ uses native Scaled Dot Product Attention (SDPA) which is nearly as fast.
+                    log.warn('[Text To Speech] Flash Attention compilation failed (Normal on native Windows). Falling back to standard PyTorch SDPA.');
+                }
             }
 
             broadcastNotify('text-to-speech', 'ready', 100, 'Text To Speech environment ready.');

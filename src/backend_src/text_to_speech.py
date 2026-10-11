@@ -107,8 +107,13 @@ async def generate(request: SynthesizeRequest):
         
         print("[Text To Speech] Generation complete. Encoding WAV.", flush=True)
 
+        # Safely handle both numpy arrays and PyTorch tensors
+        audio_data = waveforms[0]
+        if hasattr(audio_data, "cpu"):
+            audio_data = audio_data.float().cpu().numpy()
+
         buffer = io.BytesIO()
-        soundfile.write(buffer, waveforms[0].float().cpu().numpy(), sample_rate, format='WAV')
+        soundfile.write(buffer, audio_data, sample_rate, format='WAV')
         buffer.seek(0)
         
         return {"audio_base64": base64.b64encode(buffer.read()).decode('utf-8')}
