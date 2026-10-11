@@ -22,7 +22,6 @@ import findDevices from 'local-devices';
 import trash from 'trash';
 import robot from '@jitsi/robotjs';
 import sharp from 'sharp';
-import { pipeline, env } from '@huggingface/transformers';
 
 // --- Configuration ---
 const app = express();
@@ -1174,9 +1173,6 @@ function cleanupVirtualController() {
     x360Controller = null;
   }
 }
-process.on('SIGINT', () => { cleanupVirtualController(); process.exit(0); });
-process.on('SIGTERM', () => { cleanupVirtualController(); process.exit(0); });
-process.on('exit', () => { cleanupVirtualController(); });
 
 // ─── GPU Monitoring ─────────────────────────────────────────────────
 
@@ -2144,7 +2140,7 @@ app.post('/fetch', async (req, response) => {
 app.post('/tool/text_to_speech/start', (req, res) => {
   const { text, voice, speed = 1.0 } = req.body;
   if (!text) return res.status(400).json({ error: 'Missing text' });
-  say.speak(text, voice || undefined, speed, (err) => { if (err) log.error(`TTS failed: ${err}`); });
+  say.speak(text, voice || undefined, speed, (err) => { if (err) log.error(`Text To Speech failed: ${err}`); });
   res.json({ success: true, message: 'Speech queued' });
 });
 
@@ -2796,128 +2792,125 @@ app.post('/tool/hardware/send', async (req, res) => {
   }
 });
 
-// ─── Advanced Text-to-Speech Pipeline (Model-Agnostic) ─────────────
+// ─── Advanced Text To Speech Pipeline ─────────────
 
-env.allowLocalModels = false;
-env.useFSCache = true;
+let textToSpeechServerProcess: ChildProcess | null = null;
+let textToSpeechServerPort: number | null = null;
+let textToSpeechServerReady: boolean = false;
+let currentTextToSpeechDevice: string = 'auto';
 
-let advancedTtsPipeline: any = null;
-let advancedTtsLoading: Promise<any> | null = null;
-let currentAdvancedTtsDevice: string = 'auto';
+async function ensureTextToSpeechServerIsRunning(device: string) {
+    if (textToSpeechServerReady && textToSpeechServerPort) return textToSpeechServerPort;
 
-async function getAdvancedTtsPipeline(device: string) {
-    if (advancedTtsPipeline && currentAdvancedTtsDevice !== device) {
-        log.info(`[AdvancedTTS] Device changed to ${device}. Reloading pipeline...`);
-        advancedTtsPipeline = null;
-        advancedTtsLoading = null;
+    currentTextToSpeechDevice = device;
+    const backendSourceDirectory = path.join(ROOT_DIR, 'src', 'backend_src');
+    const virtualEnvironmentDirectory = path.join(backendSourceDirectory, 'venv_text_to_speech');
+    const pythonExecutable = IS_WINDOWS 
+        ? path.join(virtualEnvironmentDirectory, 'Scripts', 'python.exe') 
+        : path.join(virtualEnvironmentDirectory, 'bin', 'python');
+
+    if (!fs.existsSync(pythonExecutable)) {
+        const uvBinary = await ensureUv();
+        broadcastNotify('text-to-speech', 'installing', 20, 'Provisioning isolated Python environment for Text To Speech...');
+        execSync(`"${uvBinary}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
+        execSync(`"${uvBinary}" venv "${virtualEnvironmentDirectory}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
+        
+        broadcastNotify('text-to-speech', 'installing', 60, 'Installing Qwen Text To Speech dependencies...');
+        // Note: 'qwen-tts' is the mandatory PyPI registry name to download the package.
+        execSync(`"${uvBinary}" pip --python "${pythonExecutable}" install -U qwen-tts soundfile fastapi uvicorn`, {
+            stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
+        });
+        broadcastNotify('text-to-speech', 'ready', 100, 'Text To Speech environment ready.');
     }
 
-    if (advancedTtsPipeline) return advancedTtsPipeline;
-    if (advancedTtsLoading) return advancedTtsLoading;
+    textToSpeechServerPort = await getFreePort();
+    const pythonScript = path.join(backendSourceDirectory, 'text_to_speech.py');
 
-    currentAdvancedTtsDevice = device;
+    log.info(`[Text To Speech] Starting persistent server on port ${textToSpeechServerPort}...`);
+    
+    textToSpeechServerProcess = spawn(pythonExecutable, [pythonScript, String(textToSpeechServerPort)], {
+        cwd: backendSourceDirectory,
+        env: { ...process.env, PYTHONUNBUFFERED: '1' }
+    });
 
-    advancedTtsLoading = (async () => {
-        let hfDevice: any = 'cpu';
-        let hfDtype: any = 'fp32';
-
-        if (device === 'gpu') {
-            hfDevice = process.platform === 'win32' ? 'dml' : 'cuda';
-            hfDtype = 'fp16'; 
-        }
-
-        log.info(`[AdvancedTTS] Initializing pipeline on [Device: ${hfDevice}]...`);
-        
-        const modelId = process.env.ADVANCED_TTS_MODEL_ID; 
-        if (!modelId) throw new Error("ADVANCED_TTS_MODEL_ID is not set in environment variables.");
-        
-        const pipe = await pipeline('text-to-speech', modelId, {
-            device: hfDevice,
-            dtype: hfDtype,
+    return new Promise<number>((resolve, reject) => {
+        textToSpeechServerProcess!.stdout?.on('data', (data: Buffer) => {
+            const output = data.toString();
+            log.info(`[Text To Speech] ${output.trim()}`);
+            if (output.includes('Model loaded and ready')) {
+                textToSpeechServerReady = true;
+                resolve(textToSpeechServerPort!);
+            }
         });
-        
-        advancedTtsPipeline = pipe;
-        log.success('[AdvancedTTS] Pipeline ready.');
-        return pipe;
-    })();
-
-    return advancedTtsLoading;
+        textToSpeechServerProcess!.stderr?.on('data', (data: Buffer) => {
+            const errOutput = data.toString().trim();
+            if (errOutput) log.warn(`[Text To Speech] ${errOutput}`);
+        });
+        textToSpeechServerProcess!.on('exit', (code) => {
+            textToSpeechServerReady = false;
+            textToSpeechServerProcess = null;
+            reject(new Error(`Text To Speech server exited with code ${code}`));
+        });
+    });
 }
 
-app.post('/api/text-to-speech', async (req, res) => {
-    const { text, audioBase64, transcript, device = 'auto', characterId } = req.body;
+app.post('/api/text-to-speech', async (request, response) => {
+    const { text, audioBase64, transcript, language, device = 'auto', characterId } = request.body;
 
-    if (!text) return res.status(400).json({ error: 'Missing text' });
-
-    if (audioBase64 && transcript) {
-        try {
-            const pipe = await getAdvancedTtsPipeline(device);
-
-            const base64Data = audioBase64.replace(/^data:[^;]+;base64,/, '');
-            const audioBuffer = Buffer.from(base64Data, 'base64');
-            
-            const tempDir = path.join(ROOT_DIR, 'temp_audio');
-            if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-            const tempRefPath = path.join(tempDir, `${characterId || 'advanced'}_ref.wav`);
-            fs.writeFileSync(tempRefPath, audioBuffer);
-
-            log.info(`[AdvancedTTS] Synthesizing. Target: "${text.substring(0, 30)}..."`);
-
-            const audio = await pipe(text, {
-                reference_audio: tempRefPath,
-                reference_text: transcript,
-            });
-
-            try { fs.unlinkSync(tempRefPath); } catch {}
-
-            let wavBuffer: Buffer;
-            if (audio && typeof audio.toWav === 'function') {
-                wavBuffer = Buffer.from(audio.toWav());
-            } else if (audio && audio.audio && audio.sampling_rate) {
-                const floatData = audio.audio;
-                const sampleRate = audio.sampling_rate;
-                const intData = new Int16Array(floatData.length);
-                for (let i = 0; i < floatData.length; i++) {
-                    let val = Math.max(-1, Math.min(1, floatData[i]));
-                    intData[i] = val < 0 ? val * 0x8000 : val * 0x7FFF;
-                }
-                const buffer = new ArrayBuffer(44 + intData.length * 2);
-                const view = new DataView(buffer);
-                const writeString = (offset: number, str: string) => {
-                    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-                };
-                writeString(0, 'RIFF');
-                view.setUint32(4, 36 + intData.length * 2, true);
-                writeString(8, 'WAVE');
-                writeString(12, 'fmt ');
-                view.setUint32(16, 16, true);
-                view.setUint16(20, 1, true);
-                view.setUint16(22, 1, true);
-                view.setUint32(24, sampleRate, true);
-                view.setUint32(28, sampleRate * 2, true);
-                view.setUint16(32, 2, true);
-                view.setUint16(34, 16, true);
-                writeString(36, 'data');
-                view.setUint32(40, intData.length * 2, true);
-                new Int16Array(buffer, 44).set(intData);
-                wavBuffer = Buffer.from(buffer);
-            } else {
-                wavBuffer = Buffer.from(audio);
-            }
-            
-            res.set('Content-Type', 'audio/wav');
-            return res.send(wavBuffer);
-
-        } catch (e: any) {
-            log.error(`[AdvancedTTS] Synthesis failed: ${e.message}`);
-            return res.status(500).json({ error: e.message });
-        }
+    if (!text || !audioBase64 || !transcript) {
+        return response.status(400).json({ error: 'Missing text, audioBase64, or transcript' });
     }
 
-    res.status(400).json({ error: 'Missing audioBase64 or transcript for advanced TTS' });
+    try {
+        const port = await ensureTextToSpeechServerIsRunning(device);
+        
+        const base64Data = audioBase64.replace(/^data:[^;]+;base64,/, '');
+
+        log.info(`[Text To Speech] Synthesizing via persistent server. Target: "${text.substring(0, 30)}..."`);
+
+        const generateResponse = await fetch(`http://127.0.0.1:${port}/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text,
+                language: language || 'en',
+                reference_audio_base64: base64Data,
+                reference_text: transcript
+            })
+        });
+
+        if (!generateResponse.ok) {
+            const errorData = await generateResponse.json().catch(() => ({}));
+            throw new Error(errorData.detail || `HTTP ${generateResponse.status}`);
+        }
+
+        const result = await generateResponse.json();
+        const waveformBuffer = Buffer.from(result.audio_base64, 'base64');
+
+        response.set('Content-Type', 'audio/wav');
+        return response.send(waveformBuffer);
+
+    } catch (error: any) {
+        log.error(`[Text To Speech] Synthesis failed: ${error.message}`);
+        return response.status(500).json({ error: error.message });
+    }
 });
 
-// --- Startup ---
+// --- Startup & Cleanup ---
+
+process.on('SIGINT', () => { 
+    cleanupVirtualController(); 
+    if (textToSpeechServerProcess) textToSpeechServerProcess.kill(); 
+    process.exit(0); 
+});
+process.on('SIGTERM', () => { 
+    cleanupVirtualController(); 
+    if (textToSpeechServerProcess) textToSpeechServerProcess.kill(); 
+    process.exit(0); 
+});
+process.on('exit', () => { 
+    cleanupVirtualController(); 
+});
 
 const startServer = () => {
   detectedGpuVendor = detectGpuVendor();

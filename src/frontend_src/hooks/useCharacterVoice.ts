@@ -18,8 +18,9 @@ const TEXT_EXTRACTORS: Record<textType, (text: string) => string[]> = {
 export function useCharacterVoice() {
     const speakMessage = useCallback((text: string, character: Character) => {
         // 1. Extract and validate voice data upfront to satisfy TypeScript narrowing inside closures
-        const voiceFilename = character.voice?.voiceFilename;
-        const transcript = character.voice?.textContent;
+        const voice = character.voice;
+        const voiceFilename = voice?.voiceFilename;
+        const transcript = voice?.textContent;
 
         if (!voiceFilename || !transcript) {
             return; 
