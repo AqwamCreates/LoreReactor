@@ -208,6 +208,7 @@ export interface RawLanguageModel extends RawData {
 export interface Voice {
   voiceFilename?: string;
   textContent?: string;
+  language?: string;
 }
 
 export interface Memory extends ObjectData {

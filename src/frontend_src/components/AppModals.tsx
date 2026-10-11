@@ -269,13 +269,30 @@ export function AppModals({
 
     const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
 
-    // ✅ UPDATED: Background Voice Transcription Handler
-    const handleBackgroundVoiceTranscribe = useCallback((characterId: string, file: File) => {
-        addToast(`🎙️ Transcribing voice in background...`, 'info');
+    // ✅ UPDATED: Background Voice Transcription Handler (State-Compliant)
+    const handleBackgroundVoiceTranscribe = useCallback((characterId: string, file: File, language?: string) => {
+        addToast("Transcribing voice in background...", 'info');
         
-        voiceTranscriptionEngine.enqueueTranscription(characterId, file)
-            .then(success => {
-                if (success) {
+        voiceTranscriptionEngine.enqueueTranscription(characterId, file, language)
+            .then(result => {
+                if (result.success && result.voiceFilename) {
+                    // 1. Find the character in the current React state
+                    const character = allCharacters.find(c => c.id === characterId);
+                    if (character) {
+                        // 2. Create the updated character object
+                        const updatedCharacter: Character = {
+                            ...character,
+                            voice: {
+                                voiceFilename: result.voiceFilename,
+                                textContent: result.transcript || '',
+                                language: result.language
+                            }
+                        };
+                        
+                        // 3. Push it through the proper App.tsx save pipeline!
+                        // This updates Zustand, saves to backend, and broadcasts to multiplayer peers.
+                        onSaveCharacter(updatedCharacter); 
+                    }
                     addToast('✅ Voice transcribed and saved!', 'success');
                 } else {
                     addToast('❌ Voice transcription failed.', 'error');
@@ -285,7 +302,7 @@ export function AppModals({
                 console.error('[AppModals] Background voice transcribe failed:', err);
                 addToast(`❌ Transcription error: ${err.message}`, 'error');
             });
-    }, [addToast]);
+    }, [addToast, allCharacters, onSaveCharacter]);
 
     // ─── Active World IDs from Interaction Data ───
     const currentWorldIds = useMemo(() => {

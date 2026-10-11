@@ -57,8 +57,8 @@ interface CharacterEditorModalProps {
     isReadOnly?: boolean;
     onClose: () => void;
     onSave: (character: Character) => void;
-    // ✅ ADDED: Callback to trigger background transcription after modal closes
-    onVoiceTranscribeRequested?: (characterId: string, file: File) => void;
+    // ✅ UPDATED: Added language parameter
+    onVoiceTranscribeRequested?: (characterId: string, file: File, language?: string) => void;
     existingCharacter?: Character | null;
     allSamplers: Sampler[];
     allCharacters: Character[];
@@ -84,7 +84,7 @@ export function CharacterEditorModal({
             key={modalKey}
             onClose={onClose}
             onSave={onSave}
-            onVoiceTranscribeRequested={onVoiceTranscribeRequested} // ✅ PASSED DOWN
+            onVoiceTranscribeRequested={onVoiceTranscribeRequested}
             existingCharacter={existingCharacter}
             allSamplers={allSamplers}
             allCharacters={allCharacters}
@@ -100,7 +100,7 @@ export function CharacterEditorModal({
 }
 
 function CharacterEditorModalInner({
-    onClose, onSave, onVoiceTranscribeRequested, existingCharacter, // ✅ ADDED TO DESTRUCTURING
+    onClose, onSave, onVoiceTranscribeRequested, existingCharacter,
     allSamplers, allCharacters, isLoadingSamplers = false,
     selectedModel, runningModels,
     chatNameMap, interactionData, localProtagonistId,
@@ -140,12 +140,22 @@ function CharacterEditorModalInner({
 
     const [voiceFile, setVoiceFile] = useState<File | null>(null);
     const [hasExistingVoice, setHasExistingVoice] = useState<boolean>(false);
+    
+    // ✅ ADDED: Voice Language State
+    const [voiceLanguage, setVoiceLanguage] = useState<string>(existingCharacter?.voice?.language || '');
 
+    // ✅ FIXED: Properly check the specific voice filename instead of a hardcoded path
     useEffect(() => {
-        if (!existingCharacter) return;
+        if (!existingCharacter || !existingCharacter.voice?.voiceFilename) {
+            setHasExistingVoice(false);
+            return;
+        }
 
-        const url = getCharacterVoiceURL(existingCharacter.id);
-        if (!url) return;
+        const url = getCharacterVoiceURL(existingCharacter.id, existingCharacter.voice.voiceFilename);
+        if (!url) {
+            setHasExistingVoice(false);
+            return;
+        }
 
         let isSubscribed = true;
 
@@ -529,6 +539,7 @@ function CharacterEditorModalInner({
     const handleRemoveVoice = () => { 
         setVoiceFile(null); 
         setHasExistingVoice(false); 
+        setVoiceLanguage(''); // ✅ Reset language when removing voice
         if (voiceInputRef.current) voiceInputRef.current.value = ''; 
     };
 
@@ -693,11 +704,9 @@ function CharacterEditorModalInner({
             delete finalImages.neutral;
         }
 
-        // ✅ REPLACED BLOCKING UPLOAD WITH NON-BLOCKING HANDOFF
-        // We no longer await the upload here. The modal closes immediately.
-        // The parent component will handle the background transcription via onVoiceTranscribeRequested.
+        // ✅ UPDATED: Pass the selected language to the background transcriber
         if (voiceFile && onVoiceTranscribeRequested) {
-            onVoiceTranscribeRequested(targetCharacterId, voiceFile);
+            onVoiceTranscribeRequested(targetCharacterId, voiceFile, voiceLanguage || undefined);
         }
 
         const rawIW = Number.parseFloat(initiativeWeightStr);
@@ -992,13 +1001,45 @@ function CharacterEditorModalInner({
                                         </div>
                                     </div>
 
+                                    {/* ✅ UPDATED: Voice Section with Language Dropdown */}
                                     <div className="editor-section editor-voice-section">
                                         <span className="editor-section-title">Voice</span>
                                         <div className="editor-voice-hint">Used for reading character's text. Maximum 5MB.</div>
+                                        
+                                        {!isReadOnly && !hasVoice && (
+                                            <select 
+                                                value={voiceLanguage} 
+                                                onChange={(e) => setVoiceLanguage(e.target.value)} 
+                                                className="editor-select" 
+                                                style={{ marginBottom: '6px', fontSize: '0.7rem', padding: '4px 6px', width: '100%' }}
+                                                disabled={isUploading}
+                                            >
+                                                <option value="">Select audio language...</option>
+                                                <option value="ja">Japanese (ja)</option>
+                                                <option value="en">English (en)</option>
+                                                <option value="zh">Chinese (zh)</option>
+                                                <option value="ko">Korean (ko)</option>
+                                                <option value="es">Spanish (es)</option>
+                                                <option value="fr">French (fr)</option>
+                                                <option value="de">German (de)</option>
+                                                <option value="ru">Russian (ru)</option>
+                                            </select>
+                                        )}
+
                                         {hasVoice ? (
-                                            <div className="editor-voice-chip"><span className="editor-voice-chip-name">🎙️ {voiceFile ? voiceFile.name : 'voicepack.bin'}</span>{!isReadOnly && <button type="button" onClick={handleRemoveVoice} disabled={isUploading} className="editor-voice-remove-button" title="Remove voice">×</button>}</div>
+                                            <div className="editor-voice-chip">
+                                                <span className="editor-voice-chip-name">
+                                                    🎙️ {voiceFile ? voiceFile.name : (existingCharacter?.voice?.voiceFilename || 'audio')}
+                                                    {voiceLanguage && <span style={{marginLeft: '4px', opacity: 0.7, fontSize: '0.6rem'}}>({voiceLanguage})</span>}
+                                                </span>
+                                                {!isReadOnly && <button type="button" onClick={handleRemoveVoice} disabled={isUploading} className="editor-voice-remove-button" title="Remove voice">×</button>}
+                                            </div>
                                         ) : (
-                                            !isReadOnly && <button type="button" onClick={() => !isUploading && voiceInputRef.current?.click()} disabled={isUploading} className={`toolbar-button editor-voice-upload-button ${isUploading ? 'uploading' : ''}`}>{isUploading ? '⏳ Uploading...' : '🎙️ Upload Voice Sample'}</button>
+                                            !isReadOnly && voiceLanguage && (
+                                                <button type="button" onClick={() => !isUploading && voiceInputRef.current?.click()} disabled={isUploading} className={`toolbar-button editor-voice-upload-button ${isUploading ? 'uploading' : ''}`}>
+                                                    {isUploading ? '⏳ Uploading...' : '🎙️ Upload Voice Sample'}
+                                                </button>
+                                            )
                                         )}
                                         <input ref={voiceInputRef} type="file" accept="audio/*,.wav,.mp3,.flac,.ogg" hidden onChange={handleVoiceChange} disabled={isUploading || isReadOnly} />
                                     </div>
