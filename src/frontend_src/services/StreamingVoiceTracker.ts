@@ -1,9 +1,15 @@
-// frontend_src/services/StreamingVoiceTracker.ts
 import { StreamingVoicePlayer } from './StreamingVoicePlayer';
 import { textToSpeechEngine, fetchVoiceReference, type TextToSpeechContext } from './TextToSpeechEngine';
 import { extractNarratableText } from '../utilities/voiceTextExtractor';
 import { useSessionStore } from '../hooks/useSessionStore';
 import type { Character } from '../types';
+
+interface SentenceJob {
+    sequenceNumber: number;
+    text: string;
+    promise: Promise<void>;
+    completed: boolean;
+}
 
 export class StreamingVoiceTracker {
     private buffer: string = '';
@@ -12,7 +18,11 @@ export class StreamingVoiceTracker {
     private character: Character;
     private isActive: boolean = false;
     private referenceBase64: string | null = null;
-    private pendingPromises: Promise<void>[] = [];
+    
+    // ✅ NEW: Ordered queue system
+    private sequenceCounter: number = 0;
+    private nextEnqueueSequence: number = 0;
+    private jobs: Map<number, SentenceJob> = new Map();
 
     constructor(character: Character) {
         this.character = character;
@@ -32,7 +42,6 @@ export class StreamingVoiceTracker {
     feed(text: string) {
         if (!this.isActive) return;
 
-        // ✅ Read profile dynamically from current session
         const profile = useSessionStore.getState().interactionData?.profile;
         const narrateTexts = profile?.narrateTexts;
         
@@ -45,7 +54,8 @@ export class StreamingVoiceTracker {
         this.buffer += newText;
         this.lastCleanLength = cleanText.length;
 
-        const boundaryRegex = /([.!?]+\s+|\n+)/g;
+        // ✅ FIX: Better sentence boundary detection
+        const boundaryRegex = /([.!?]+)(?:\s+|$)/g;
         let match;
 
         while ((match = boundaryRegex.exec(this.buffer)) !== null) {
@@ -68,32 +78,83 @@ export class StreamingVoiceTracker {
         
         if (!base64 || !transcript) return;
 
-        // ✅ Read device preference dynamically from current session
         const profile = useSessionStore.getState().interactionData?.profile;
         const context: TextToSpeechContext = {
             devicePreference: profile?.textToSpeechDeviceType ?? 'auto'
         };
 
-        const promise = (async () => {
-            try {
-                const blob = await textToSpeechEngine.synthesize(
-                    sentence,
-                    base64,
-                    transcript,
-                    language,
-                    context
-                );
+        // ✅ Assign sequence number for ordering
+        const sequenceNumber = this.sequenceCounter++;
+        
+        const job: SentenceJob = {
+            sequenceNumber,
+            text: sentence,
+            completed: false,
+            promise: (async () => {
+                try {
+                    const blob = await textToSpeechEngine.synthesize(
+                        sentence,
+                        base64,
+                        transcript,
+                        language,
+                        context
+                    );
 
-                if (blob && this.isActive) {
-                    const arrayBuffer = await blob.arrayBuffer();
-                    await this.player.enqueue(arrayBuffer);
+                    if (blob && this.isActive) {
+                        const arrayBuffer = await blob.arrayBuffer();
+                        job.completed = true;
+                        
+                        // ✅ Enqueue in order
+                        await this.enqueueInOrder(sequenceNumber, arrayBuffer);
+                    }
+                } catch (e) {
+                    console.warn("[StreamingVoiceTracker] Generation failed for sentence:", e);
+                    job.completed = true;
+                    await this.processQueue();
                 }
-            } catch (e) {
-                console.warn("[StreamingVoiceTracker] Generation failed for sentence:", e);
-            }
-        })();
+            })()
+        };
 
-        this.pendingPromises.push(promise);
+        this.jobs.set(sequenceNumber, job);
+    }
+
+    // ✅ NEW: Ensures sentences are enqueued in sequence order
+        private async enqueueInOrder(sequenceNumber: number, audioBuffer: ArrayBuffer) {
+        const waitStart = Date.now();
+        
+        // Wait until it's this sentence's turn
+        while (this.nextEnqueueSequence < sequenceNumber && this.isActive) {
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        
+        const waitTime = Date.now() - waitStart;
+        console.log(`[StreamingVoiceTracker] Sentence ${sequenceNumber} waited ${waitTime}ms before enqueue`);
+        
+        // Enqueue this sentence
+        if (this.isActive) {
+            await this.player.enqueue(audioBuffer);
+            console.log(`[StreamingVoiceTracker] Sentence ${sequenceNumber} enqueued`);
+        }
+        
+        // Mark as processed
+        this.nextEnqueueSequence++;
+        this.jobs.delete(sequenceNumber);
+        
+        // Process any queued sentences that are now ready
+        await this.processQueue();
+    }
+
+    // ✅ NEW: Process completed sentences in order
+    private async processQueue() {
+        while (this.jobs.has(this.nextEnqueueSequence)) {
+            const job = this.jobs.get(this.nextEnqueueSequence)!;
+            if (job.completed) {
+                this.nextEnqueueSequence++;
+                this.jobs.delete(job.sequenceNumber);
+            } else {
+                break; // Wait for this sentence to complete
+            }
+        }
     }
 
     async flushAndStop() {
@@ -101,7 +162,9 @@ export class StreamingVoiceTracker {
             this.triggerVoiceGeneration(this.buffer.trim());
         }
 
-        await Promise.all(this.pendingPromises);
+        // Wait for all jobs to complete
+        const allPromises = Array.from(this.jobs.values()).map(job => job.promise);
+        await Promise.all(allPromises);
 
         setTimeout(() => {
             this.player.stop();
@@ -112,5 +175,8 @@ export class StreamingVoiceTracker {
     stopImmediate() {
         this.isActive = false;
         this.player.stop();
+        this.jobs.clear();
+        this.sequenceCounter = 0;
+        this.nextEnqueueSequence = 0;
     }
 }

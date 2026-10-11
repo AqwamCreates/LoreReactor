@@ -2,6 +2,7 @@ import os
 import sys
 import base64
 import io
+import uuid
 import torch
 import soundfile
 import torchaudio
@@ -14,7 +15,6 @@ os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 os.environ["DISABLE_TELEMETRY"] = "YES"
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
-# ✅ Force torchaudio to use soundfile backend to completely bypass SoX
 try:
     torchaudio.set_audio_backend("soundfile")
 except Exception:
@@ -44,7 +44,6 @@ def load_model(target_device: str):
     if torch.backends.mps.is_available():
         print(f"[Text To Speech] Apple MPS available", flush=True)
 
-    # Map frontend device preference to PyTorch device
     if target_device in ["gpu", "auto"]:
         if torch.cuda.is_available():
             device_map = "cuda:0"
@@ -102,18 +101,18 @@ async def generate(request: SynthesizeRequest):
     try:
         audio_bytes = base64.b64decode(request.reference_audio_base64)
         
-        # ✅ FIX: Use torchaudio instead of librosa to avoid numba crashes entirely
         waveform, sample_rate = torchaudio.load(io.BytesIO(audio_bytes))
         
-        # Resample to 24kHz mono for Qwen3-TTS
         if sample_rate != 24000:
             resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=24000)
             waveform = resampler(waveform)
             
         if waveform.shape[0] > 1:
             waveform = torch.mean(waveform, dim=0, keepdim=True)
-            
-        temp_ref_path = "temp_ref_audio.wav"
+        
+        # ✅ FIX: Use unique filename for each concurrent request
+        request_id = str(uuid.uuid4())
+        temp_ref_path = f"temp_ref_audio_{request_id}.wav"
         torchaudio.save(temp_ref_path, waveform, 24000)
 
         print(f"[Text To Speech] Starting generation for: {request.text[:30]}...", flush=True)
@@ -127,6 +126,7 @@ async def generate(request: SynthesizeRequest):
                 ref_text=request.reference_text,
             )
         
+        # Clean up the unique temp file
         os.remove(temp_ref_path)
         
         print("[Text To Speech] Generation complete. Encoding WAV.", flush=True)

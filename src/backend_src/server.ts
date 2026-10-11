@@ -2874,7 +2874,7 @@ async function ensureTextToSpeechServerIsRunning(device: string) {
                         env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
                     });
                     log.success('[Text To Speech] Flash Attention installed successfully.');
-                } catch (flashAttnError: any) {
+                } catch {
                     log.warn('[Text To Speech] Flash Attention compilation failed (Normal on native Windows). Falling back to standard PyTorch SDPA.');
                 }
             }

@@ -1,108 +1,160 @@
 // frontend_src/utilities/voiceTextExtractor.ts
 import type { textType } from '../types';
-import { detectFormatSegments, type FormatCategory } from './textDisplayReformatter';
 import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
-
-const CATEGORY_TO_TEXT_TYPE: Record<FormatCategory, textType | null> = {
-    plain: 'normal',
-    quotes: 'quoted',
-    bold: 'bolded',
-    italics: 'italicized',
-    parentheses: 'parenthesized',
-    brackets: 'bracketed',
-    strikethrough: 'normal',
-};
 
 const BRACED_REGEX = /\{([^}]+)\}/g;
 
 export function extractNarratableText(text: string, narrateTexts: Record<textType, boolean>): string {
-    // 1. Strip tool calls
+    // Remove all tool calls and tool results from the text
     const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const toolRegex = new RegExp(
         `(${escapeRegex(toolCallStartString)}[\\s\\S]*?${escapeRegex(toolCallEndString)}|${escapeRegex(toolResultStartString)}[\\s\\S]*?${escapeRegex(toolResultEndString)})`,
         'g'
     );
-    let cleanText = text.replace(toolRegex, '');
+    const cleanText = text.replace(toolRegex, '');
 
-    // 2. ✅ STREAMING FIX: Detect unclosed formatting markers.
-    // If a format is disabled and its marker is unclosed (odd count), 
-    // truncate the text right before that last unclosed marker to prevent 
-    // it from being incorrectly treated as plain text.
+    // State machine to track which formatting context we are currently inside
+    let result = '';
+    let i = 0;
     
-    let truncatePos = cleanText.length;
+    // Track whether we are currently inside each type of formatting marker
+    let insideItalic = false;
+    let insideBold = false;
+    let insideQuote = false;
+    let insideParenthesis = false;
+    let insideBracket = false;
+    let insideBrace = false;
 
-    // Check Bold (**)
-    let boldCount = 0;
-    let lastBoldPos = -1;
-    for (let i = 0; i < cleanText.length - 1; i++) {
-        if (cleanText[i] === '*' && cleanText[i + 1] === '*') {
-            boldCount++;
-            lastBoldPos = i;
-            i++; // Skip next *
-        }
-    }
-    if (boldCount % 2 !== 0 && !narrateTexts.bolded && lastBoldPos !== -1) {
-        truncatePos = Math.min(truncatePos, lastBoldPos);
-    }
+    while (i < cleanText.length) {
+        const currentCharacter = cleanText[i];
+        const nextCharacter = cleanText[i + 1];
+        const previousCharacter = cleanText[i - 1];
 
-    // Check Italic (*) - must not be part of **
-    let italicCount = 0;
-    let lastItalicPos = -1;
-    for (let i = 0; i < cleanText.length; i++) {
-        if (cleanText[i] === '*') {
-            const prev = i > 0 ? cleanText[i - 1] : '';
-            const next = i < cleanText.length - 1 ? cleanText[i + 1] : '';
-            if (prev !== '*' && next !== '*') {
-                italicCount++;
-                lastItalicPos = i;
+        // ✅ FIX: Helper function to check for sentence-ending punctuation
+        const isSentenceEndingPunctuation = (char: string | undefined): boolean => {
+            return char === ',' || char === '!' || char === '?' || char === '.';
+        };
+
+        // Check for bold marker (**)
+        if (currentCharacter === '*' && nextCharacter === '*') {
+            // Check if this is closing a bold section
+            if (insideBold && isSentenceEndingPunctuation(previousCharacter)) {
+                // Replace the comma/exclamation/question with a period for sentence boundary
+                result = result.slice(0, -1) + '.';
             }
+            insideBold = !insideBold;
+            i += 2;
+            continue;
         }
-    }
-    if (italicCount % 2 !== 0 && !narrateTexts.italicized && lastItalicPos !== -1) {
-        truncatePos = Math.min(truncatePos, lastItalicPos);
-    }
 
-    // Check Quotes (", ", ")
-    let quoteCount = 0;
-    let lastQuotePos = -1;
-    for (let i = 0; i < cleanText.length; i++) {
-        if (cleanText[i] === '"' || cleanText[i] === '"' || cleanText[i] === '"') {
-            quoteCount++;
-            lastQuotePos = i;
+        // Check for italic marker (*) - must not be part of bold marker
+        if (currentCharacter === '*' && previousCharacter !== '*' && nextCharacter !== '*') {
+            // Check if this is closing an italic section
+            if (insideItalic && isSentenceEndingPunctuation(previousCharacter)) {
+                // Replace the comma/exclamation/question with a period for sentence boundary
+                result = result.slice(0, -1) + '.';
+            }
+            insideItalic = !insideItalic;
+            i += 1;
+            continue;
         }
-    }
-    if (quoteCount % 2 !== 0 && !narrateTexts.quoted && lastQuotePos !== -1) {
-        truncatePos = Math.min(truncatePos, lastQuotePos);
-    }
 
-    // Truncate at the earliest unclosed disabled marker
-    cleanText = cleanText.substring(0, truncatePos);
-
-    // 3. Process segments on the now-safe text
-    const segments = detectFormatSegments(cleanText);
-    const parts: string[] = [];
-
-    for (const segment of segments) {
-        const textType = CATEGORY_TO_TEXT_TYPE[segment.category];
+        // Check for quote closing markers
+        if ((currentCharacter === '"' || currentCharacter === '"' || currentCharacter === '"') && insideQuote) {
+            insideQuote = false;
+            
+            // ✅ FIX: Check if there's punctuation before the closing quote
+            if (isSentenceEndingPunctuation(previousCharacter)) {
+                // Replace comma/exclamation/question with period for sentence boundary
+                result = result.slice(0, -1) + '.';
+            }
+            
+            i += 1;
+            continue;
+        }
         
-        if (segment.category === 'plain') {
-            let plainText = segment.innerText;
-            
-            if (narrateTexts.braced) {
-                const bracedMatches = plainText.matchAll(BRACED_REGEX);
-                for (const match of bracedMatches) {
-                    if (match[1]) parts.push(match[1].trim());
-                }
-                plainText = plainText.replace(BRACED_REGEX, '');
-            }
-            
-            if (narrateTexts.normal && plainText.trim()) {
-                parts.push(plainText.trim());
-            }
-        } else if (textType && narrateTexts[textType]) {
-            parts.push(segment.innerText.trim());
+        // Check for quote opening markers
+        if (currentCharacter === '"' || currentCharacter === '"' || currentCharacter === '"') {
+            insideQuote = !insideQuote;
+            i += 1;
+            continue;
         }
+
+        // Check for parenthesis markers
+        if (currentCharacter === '(') {
+            insideParenthesis = true;
+            i += 1;
+            continue;
+        }
+        if (currentCharacter === ')') {
+            // ✅ FIX: Handle closing parenthesis with punctuation
+            if (isSentenceEndingPunctuation(previousCharacter)) {
+                result = result.slice(0, -1) + '.';
+            }
+            insideParenthesis = false;
+            i += 1;
+            continue;
+        }
+
+        // Check for bracket markers
+        if (currentCharacter === '[') {
+            insideBracket = true;
+            i += 1;
+            continue;
+        }
+        if (currentCharacter === ']') {
+            // ✅ FIX: Handle closing bracket with punctuation
+            if (isSentenceEndingPunctuation(previousCharacter)) {
+                result = result.slice(0, -1) + '.';
+            }
+            insideBracket = false;
+            i += 1;
+            continue;
+        }
+
+        // Check for brace markers
+        if (currentCharacter === '{') {
+            insideBrace = true;
+            i += 1;
+            continue;
+        }
+        if (currentCharacter === '}') {
+            // ✅ FIX: Handle closing brace with punctuation
+            if (isSentenceEndingPunctuation(previousCharacter)) {
+                result = result.slice(0, -1) + '.';
+            }
+            insideBrace = false;
+            i += 1;
+            continue;
+        }
+
+        // Determine whether this character should be included in the narration output
+        let shouldIncludeCharacter = false;
+        
+        if (insideItalic && narrateTexts.italicized) {
+            shouldIncludeCharacter = true;
+        } else if (insideBold && narrateTexts.bolded) {
+            shouldIncludeCharacter = true;
+        } else if (insideQuote && narrateTexts.quoted) {
+            shouldIncludeCharacter = true;
+        } else if (insideParenthesis && narrateTexts.parenthesized) {
+            shouldIncludeCharacter = true;
+        } else if (insideBracket && narrateTexts.bracketed) {
+            shouldIncludeCharacter = true;
+        } else if (insideBrace && narrateTexts.braced) {
+            shouldIncludeCharacter = true;
+        } else if (!insideItalic && !insideBold && !insideQuote && !insideParenthesis && !insideBracket && !insideBrace && narrateTexts.normal) {
+            // This is plain text with no active formatting
+            shouldIncludeCharacter = true;
+        }
+
+        if (shouldIncludeCharacter) {
+            result += currentCharacter;
+        }
+        
+        i += 1;
     }
 
-    return parts.join(' ').replace(/\s+/g, ' ').trim();
+    // Normalize multiple spaces into single spaces and trim leading/trailing whitespace
+    return result.replace(/\s+/g, ' ').trim();
 }
