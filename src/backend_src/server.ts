@@ -2798,11 +2798,11 @@ let textToSpeechServerProcess: ChildProcess | null = null;
 let textToSpeechServerPort: number | null = null;
 let textToSpeechServerReady: boolean = false;
 let currentTextToSpeechDevice: string = 'auto';
-let textToSpeechServerLock: Promise<number> | null = null; // ✅ Strict Lock
+let textToSpeechServerLock: Promise<number> | null = null;
 
 async function ensureTextToSpeechServerIsRunning(device: string) {
     if (textToSpeechServerReady && textToSpeechServerPort) return textToSpeechServerPort;
-    if (textToSpeechServerLock) return textToSpeechServerLock; // Wait for existing spawn
+    if (textToSpeechServerLock) return textToSpeechServerLock;
 
     currentTextToSpeechDevice = device;
     
@@ -2820,11 +2820,25 @@ async function ensureTextToSpeechServerIsRunning(device: string) {
             execSync(`"${uvBinary}" venv "${virtualEnvironmentDirectory}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
             
             broadcastNotify('text-to-speech', 'installing', 60, 'Installing Qwen Text To Speech dependencies...');
-            // Added librosa to bypass SoX/torchaudio Windows issues
-            execSync(`"${uvBinary}" pip install -U qwen-tts soundfile fastapi uvicorn librosa torchaudio`, {
+            // Added packaging and ninja which are strict requirements for flash-attn to build
+            execSync(`"${uvBinary}" pip install -U qwen-tts soundfile fastapi uvicorn librosa torchaudio packaging ninja`, {
                 stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
                 env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
             });
+            
+            broadcastNotify('text-to-speech', 'installing', 80, 'Attempting to compile and install Flash Attention...');
+            try {
+                // flash-attn compiles from source and can take several minutes. 
+                // We use --no-build-isolation so it uses the torch version we just installed.
+                execSync(`"${uvBinary}" pip install -U flash-attn --no-build-isolation`, {
+                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 3600000, // 1 hour timeout for compilation
+                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
+                });
+                log.success('[Text To Speech] Flash Attention installed successfully.');
+            } catch (flashAttnError: any) {
+                log.warn('[Text To Speech] Flash Attention installation failed. This is completely normal on native Windows without WSL2. Falling back to standard PyTorch attention.');
+            }
+
             broadcastNotify('text-to-speech', 'ready', 100, 'Text To Speech environment ready.');
         }
 
@@ -2856,7 +2870,7 @@ async function ensureTextToSpeechServerIsRunning(device: string) {
             textToSpeechServerProcess!.on('exit', (code) => {
                 textToSpeechServerReady = false;
                 textToSpeechServerProcess = null;
-                textToSpeechServerLock = null; // Reset lock on crash so it can retry
+                textToSpeechServerLock = null;
                 if (!resolved) {
                     resolved = true;
                     reject(new Error(`Text To Speech server exited with code ${code}`));
