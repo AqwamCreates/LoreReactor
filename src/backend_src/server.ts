@@ -2816,9 +2816,13 @@ async function ensureTextToSpeechServerIsRunning(device: string) {
         execSync(`"${uvBinary}" venv "${virtualEnvironmentDirectory}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
         
         broadcastNotify('text-to-speech', 'installing', 60, 'Installing Qwen Text To Speech dependencies...');
-        // Note: 'qwen-tts' is the mandatory PyPI registry name to download the package.
-        execSync(`"${uvBinary}" pip --python "${pythonExecutable}" install -U qwen-tts soundfile fastapi uvicorn`, {
-            stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
+        
+        // ✅ FIX: Use VIRTUAL_ENV environment variable to target the venv reliably
+        execSync(`"${uvBinary}" pip install -U qwen-tts soundfile fastapi uvicorn`, {
+            stdio: 'pipe', 
+            cwd: backendSourceDirectory, 
+            timeout: 1800000,
+            env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
         });
         broadcastNotify('text-to-speech', 'ready', 100, 'Text To Speech environment ready.');
     }
@@ -2855,7 +2859,7 @@ async function ensureTextToSpeechServerIsRunning(device: string) {
 }
 
 app.post('/api/text-to-speech', async (request, response) => {
-    const { text, audioBase64, transcript, language, device = 'auto', characterId } = request.body;
+    const { text, audioBase64, transcript, language, device = 'auto' } = request.body;
 
     if (!text || !audioBase64 || !transcript) {
         return response.status(400).json({ error: 'Missing text, audioBase64, or transcript' });
