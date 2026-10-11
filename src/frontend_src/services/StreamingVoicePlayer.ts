@@ -3,6 +3,10 @@ export class StreamingVoicePlayer {
     private context: AudioContext | null = null;
     private nextStartTime: number = 0;
     private isPlaying: boolean = false;
+    
+    // Internal queue and processing lock to prevent concurrent Web Audio scheduling
+    private playbackQueue: ArrayBuffer[] = [];
+    private isProcessingQueue: boolean = false;
 
     async init() {
         if (!this.context) {
@@ -15,30 +19,45 @@ export class StreamingVoicePlayer {
         this.isPlaying = true;
     }
 
-    async enqueue(wavBuffer: ArrayBuffer) {
+    enqueue(wavBuffer: ArrayBuffer) {
         if (!this.context || !this.isPlaying) return;
+        this.playbackQueue.push(wavBuffer);
+        this.processQueue();
+    }
 
-        try {
-            const voiceBuffer = await this.context.decodeAudioData(wavBuffer.slice(0));
-            if (!this.isPlaying) return;
+    private async processQueue() {
+        // Lock prevents multiple loops from decoding and scheduling out of order
+        if (this.isProcessingQueue) return;
+        this.isProcessingQueue = true;
 
-            const source = this.context.createBufferSource();
-            source.buffer = voiceBuffer;
-            source.connect(this.context.destination);
+        while (this.playbackQueue.length > 0 && this.isPlaying && this.context) {
+            const wavBuffer = this.playbackQueue.shift()!;
+            
+            try {
+                const voiceBuffer = await this.context.decodeAudioData(wavBuffer.slice(0));
+                if (!this.isPlaying) break; 
 
-            if (this.nextStartTime < this.context.currentTime) {
-                this.nextStartTime = this.context.currentTime;
+                const source = this.context.createBufferSource();
+                source.buffer = voiceBuffer;
+                source.connect(this.context.destination);
+
+                if (this.nextStartTime < this.context.currentTime) {
+                    this.nextStartTime = this.context.currentTime;
+                }
+
+                source.start(this.nextStartTime);
+                this.nextStartTime += voiceBuffer.duration;
+            } catch (e) {
+                console.warn("[StreamingVoicePlayer] Decode failed:", e);
             }
-
-            source.start(this.nextStartTime);
-            this.nextStartTime += voiceBuffer.duration;
-        } catch (e) {
-            console.warn("[StreamingVoicePlayer] Decode failed:", e);
         }
+
+        this.isProcessingQueue = false;
     }
 
     stop() {
         this.isPlaying = false;
+        this.playbackQueue = [];
         if (this.context) {
             this.context.close().catch(() => {});
             this.context = null;

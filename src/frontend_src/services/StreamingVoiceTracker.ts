@@ -1,14 +1,13 @@
+// frontend_src/services/StreamingVoiceTracker.ts
 import { StreamingVoicePlayer } from './StreamingVoicePlayer';
 import { textToSpeechEngine, fetchVoiceReference, type TextToSpeechContext } from './TextToSpeechEngine';
 import { extractNarratableText } from '../utilities/voiceTextExtractor';
 import { useSessionStore } from '../hooks/useSessionStore';
 import type { Character } from '../types';
 
-interface SentenceJob {
-    sequenceNumber: number;
-    text: string;
-    promise: Promise<void>;
-    completed: boolean;
+interface PendingJob {
+    sequenceId: number;
+    sentence: string;
 }
 
 export class StreamingVoiceTracker {
@@ -19,10 +18,18 @@ export class StreamingVoiceTracker {
     private isActive: boolean = false;
     private referenceBase64: string | null = null;
     
-    // ✅ NEW: Ordered queue system
-    private sequenceCounter: number = 0;
-    private nextEnqueueSequence: number = 0;
-    private jobs: Map<number, SentenceJob> = new Map();
+    // Strict sequence tracking
+    private nextSequenceId: number = 0;
+    private nextPlaySequenceId: number = 0;
+    
+    // Temporary storage for out-of-order network responses
+    private completedAudioBuffers: Map<number, ArrayBuffer> = new Map();
+    private inFlightPromises: Promise<void>[] = [];
+
+    // ✅ CONCURRENCY CONTROL: Prevents GPU OOM crashes on 6GB VRAM cards
+    private readonly MAX_CONCURRENT_REQUESTS = 2;
+    private activeRequests: number = 0;
+    private pendingSentences: PendingJob[] = [];
 
     constructor(character: Character) {
         this.character = character;
@@ -37,6 +44,12 @@ export class StreamingVoiceTracker {
 
         await this.player.init();
         this.isActive = true;
+        this.nextSequenceId = 0;
+        this.nextPlaySequenceId = 0;
+        this.completedAudioBuffers.clear();
+        this.inFlightPromises = [];
+        this.activeRequests = 0;
+        this.pendingSentences = [];
     }
 
     feed(text: string) {
@@ -54,7 +67,6 @@ export class StreamingVoiceTracker {
         this.buffer += newText;
         this.lastCleanLength = cleanText.length;
 
-        // ✅ FIX: Better sentence boundary detection
         const boundaryRegex = /([.!?]+)(?:\s+|$)/g;
         let match;
 
@@ -63,7 +75,7 @@ export class StreamingVoiceTracker {
             const sentence = this.buffer.substring(0, sentenceEnd).trim();
 
             if (sentence.length > 0) {
-                this.triggerVoiceGeneration(sentence);
+                this.queueSentence(sentence);
             }
 
             this.buffer = this.buffer.substring(sentenceEnd);
@@ -71,112 +83,110 @@ export class StreamingVoiceTracker {
         }
     }
 
-    private triggerVoiceGeneration(sentence: string) {
+    private queueSentence(sentence: string) {
+        const currentSequenceId = this.nextSequenceId++;
+        this.pendingSentences.push({ sequenceId: currentSequenceId, sentence });
+        this.processPendingQueue();
+    }
+
+    private processPendingQueue() {
+        while (this.pendingSentences.length > 0 && this.activeRequests < this.MAX_CONCURRENT_REQUESTS && this.isActive) {
+            const job = this.pendingSentences.shift()!;
+            this.activeRequests++;
+            
+            const promise = this.executeSynthesis(job.sequenceId, job.sentence);
+            this.inFlightPromises.push(promise);
+            
+            promise.finally(() => {
+                this.activeRequests--;
+                this.processPendingQueue();
+            });
+        }
+    }
+
+    private async executeSynthesis(sequenceId: number, sentence: string) {
         const base64 = this.referenceBase64;
         const transcript = this.character.voice?.textContent;
         const language = this.character.voice?.language;
         
-        if (!base64 || !transcript) return;
+        if (!base64 || !transcript) {
+            this.completedAudioBuffers.set(sequenceId, new ArrayBuffer(0));
+            this.processPlaybackQueue();
+            return;
+        }
 
         const profile = useSessionStore.getState().interactionData?.profile;
         const context: TextToSpeechContext = {
             devicePreference: profile?.textToSpeechDeviceType ?? 'auto'
         };
 
-        // ✅ Assign sequence number for ordering
-        const sequenceNumber = this.sequenceCounter++;
-        
-        const job: SentenceJob = {
-            sequenceNumber,
-            text: sentence,
-            completed: false,
-            promise: (async () => {
-                try {
-                    const blob = await textToSpeechEngine.synthesize(
-                        sentence,
-                        base64,
-                        transcript,
-                        language,
-                        context
-                    );
+        try {
+            const blob = await textToSpeechEngine.synthesize(
+                sentence,
+                base64,
+                transcript,
+                language,
+                context
+            );
 
-                    if (blob && this.isActive) {
-                        const arrayBuffer = await blob.arrayBuffer();
-                        job.completed = true;
-                        
-                        // ✅ Enqueue in order
-                        await this.enqueueInOrder(sequenceNumber, arrayBuffer);
-                    }
-                } catch (e) {
-                    console.warn("[StreamingVoiceTracker] Generation failed for sentence:", e);
-                    job.completed = true;
-                    await this.processQueue();
-                }
-            })()
-        };
-
-        this.jobs.set(sequenceNumber, job);
-    }
-
-    // ✅ NEW: Ensures sentences are enqueued in sequence order
-        private async enqueueInOrder(sequenceNumber: number, audioBuffer: ArrayBuffer) {
-        const waitStart = Date.now();
-        
-        // Wait until it's this sentence's turn
-        while (this.nextEnqueueSequence < sequenceNumber && this.isActive) {
-            await new Promise(resolve => setTimeout(resolve, 10));
-        }
-        
-        const waitTime = Date.now() - waitStart;
-        console.log(`[StreamingVoiceTracker] Sentence ${sequenceNumber} waited ${waitTime}ms before enqueue`);
-        
-        // Enqueue this sentence
-        if (this.isActive) {
-            await this.player.enqueue(audioBuffer);
-            console.log(`[StreamingVoiceTracker] Sentence ${sequenceNumber} enqueued`);
-        }
-        
-        // Mark as processed
-        this.nextEnqueueSequence++;
-        this.jobs.delete(sequenceNumber);
-        
-        // Process any queued sentences that are now ready
-        await this.processQueue();
-    }
-
-    // ✅ NEW: Process completed sentences in order
-    private async processQueue() {
-        while (this.jobs.has(this.nextEnqueueSequence)) {
-            const job = this.jobs.get(this.nextEnqueueSequence)!;
-            if (job.completed) {
-                this.nextEnqueueSequence++;
-                this.jobs.delete(job.sequenceNumber);
+            if (blob && this.isActive) {
+                const arrayBuffer = await blob.arrayBuffer();
+                this.completedAudioBuffers.set(sequenceId, arrayBuffer);
             } else {
-                break; // Wait for this sentence to complete
+                this.completedAudioBuffers.set(sequenceId, new ArrayBuffer(0));
+            }
+        } catch (e) {
+            console.warn(`[StreamingVoiceTracker] Generation failed for Sequence ID ${sequenceId}:`, e);
+            this.completedAudioBuffers.set(sequenceId, new ArrayBuffer(0));
+        } finally {
+            this.processPlaybackQueue();
+        }
+    }
+
+    // Checks the Map sequentially and feeds the Audio Player strictly in order
+    private processPlaybackQueue() {
+        while (this.completedAudioBuffers.has(this.nextPlaySequenceId)) {
+            const audioBuffer = this.completedAudioBuffers.get(this.nextPlaySequenceId)!;
+            this.completedAudioBuffers.delete(this.nextPlaySequenceId);
+            this.nextPlaySequenceId++;
+            
+            if (audioBuffer.byteLength > 0 && this.isActive) {
+                this.player.enqueue(audioBuffer);
             }
         }
     }
 
     async flushAndStop() {
         if (this.buffer.trim().length > 0 && this.isActive) {
-            this.triggerVoiceGeneration(this.buffer.trim());
+            this.queueSentence(this.buffer.trim());
         }
 
-        // Wait for all jobs to complete
-        const allPromises = Array.from(this.jobs.values()).map(job => job.promise);
-        await Promise.all(allPromises);
+        // ✅ FIX: Wait until the ENTIRE queue is drained (both pending and active)
+        while (this.pendingSentences.length > 0 || this.activeRequests > 0) {
+            if (this.inFlightPromises.length > 0) {
+                await Promise.allSettled(this.inFlightPromises);
+                this.inFlightPromises = []; // Clear settled promises to prevent memory leak
+            } else {
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+        }
+        
+        // Push any remaining completed audio to the player
+        this.processPlaybackQueue();
 
-        setTimeout(() => {
-            this.player.stop();
-            this.isActive = false;
-        }, 500);
+        // Wait for the Web Audio API to finish scheduling/playing before destroying the context
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        this.player.stop();
+        this.isActive = false;
     }
 
     stopImmediate() {
         this.isActive = false;
         this.player.stop();
-        this.jobs.clear();
-        this.sequenceCounter = 0;
-        this.nextEnqueueSequence = 0;
+        this.completedAudioBuffers.clear();
+        this.inFlightPromises = [];
+        this.pendingSentences = [];
+        this.activeRequests = 0;
     }
 }
