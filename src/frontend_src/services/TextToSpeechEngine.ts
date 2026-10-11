@@ -11,6 +11,7 @@ class TextToSpeechEngine {
         text: string,
         audioBase64: string,
         transcript: string,
+        language?: string, 
         context?: TextToSpeechContext
     ): Promise<Blob | null> {
         try {
@@ -21,6 +22,7 @@ class TextToSpeechEngine {
                     text,
                     audioBase64,
                     transcript,
+                    language, 
                     device: context?.devicePreference ?? 'auto'
                 })
             });
@@ -32,7 +34,7 @@ class TextToSpeechEngine {
 
             return await response.blob();
         } catch (e) {
-            console.error('[TTSEngine] Backend synthesis failed:', e);
+            console.error('[Text To Speech] Backend synthesis failed:', e);
             return null;
         }
     }

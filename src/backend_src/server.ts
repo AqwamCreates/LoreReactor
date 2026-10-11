@@ -2798,64 +2798,78 @@ let textToSpeechServerProcess: ChildProcess | null = null;
 let textToSpeechServerPort: number | null = null;
 let textToSpeechServerReady: boolean = false;
 let currentTextToSpeechDevice: string = 'auto';
+let textToSpeechServerLock: Promise<number> | null = null; // ✅ Strict Lock
 
 async function ensureTextToSpeechServerIsRunning(device: string) {
     if (textToSpeechServerReady && textToSpeechServerPort) return textToSpeechServerPort;
+    if (textToSpeechServerLock) return textToSpeechServerLock; // Wait for existing spawn
 
     currentTextToSpeechDevice = device;
-    const backendSourceDirectory = path.join(ROOT_DIR, 'src', 'backend_src');
-    const virtualEnvironmentDirectory = path.join(backendSourceDirectory, 'venv_text_to_speech');
-    const pythonExecutable = IS_WINDOWS 
-        ? path.join(virtualEnvironmentDirectory, 'Scripts', 'python.exe') 
-        : path.join(virtualEnvironmentDirectory, 'bin', 'python');
-
-    if (!fs.existsSync(pythonExecutable)) {
-        const uvBinary = await ensureUv();
-        broadcastNotify('text-to-speech', 'installing', 20, 'Provisioning isolated Python environment for Text To Speech...');
-        execSync(`"${uvBinary}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
-        execSync(`"${uvBinary}" venv "${virtualEnvironmentDirectory}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
-        
-        broadcastNotify('text-to-speech', 'installing', 60, 'Installing Qwen Text To Speech dependencies...');
-        
-        // ✅ FIX: Use VIRTUAL_ENV environment variable to target the venv reliably
-        execSync(`"${uvBinary}" pip install -U qwen-tts soundfile fastapi uvicorn`, {
-            stdio: 'pipe', 
-            cwd: backendSourceDirectory, 
-            timeout: 1800000,
-            env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
-        });
-        broadcastNotify('text-to-speech', 'ready', 100, 'Text To Speech environment ready.');
-    }
-
-    textToSpeechServerPort = await getFreePort();
-    const pythonScript = path.join(backendSourceDirectory, 'text_to_speech.py');
-
-    log.info(`[Text To Speech] Starting persistent server on port ${textToSpeechServerPort}...`);
     
-    textToSpeechServerProcess = spawn(pythonExecutable, [pythonScript, String(textToSpeechServerPort)], {
-        cwd: backendSourceDirectory,
-        env: { ...process.env, PYTHONUNBUFFERED: '1' }
-    });
+    textToSpeechServerLock = (async () => {
+        const backendSourceDirectory = path.join(ROOT_DIR, 'src', 'backend_src');
+        const virtualEnvironmentDirectory = path.join(backendSourceDirectory, 'venv_text_to_speech');
+        const pythonExecutable = IS_WINDOWS 
+            ? path.join(virtualEnvironmentDirectory, 'Scripts', 'python.exe') 
+            : path.join(virtualEnvironmentDirectory, 'bin', 'python');
 
-    return new Promise<number>((resolve, reject) => {
-        textToSpeechServerProcess!.stdout?.on('data', (data: Buffer) => {
-            const output = data.toString();
-            log.info(`[Text To Speech] ${output.trim()}`);
-            if (output.includes('Model loaded and ready')) {
-                textToSpeechServerReady = true;
-                resolve(textToSpeechServerPort!);
-            }
+        if (!fs.existsSync(pythonExecutable)) {
+            const uvBinary = await ensureUv();
+            broadcastNotify('text-to-speech', 'installing', 20, 'Provisioning isolated Python environment for Text To Speech...');
+            execSync(`"${uvBinary}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
+            execSync(`"${uvBinary}" venv "${virtualEnvironmentDirectory}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
+            
+            broadcastNotify('text-to-speech', 'installing', 60, 'Installing Qwen Text To Speech dependencies...');
+            // Added librosa to bypass SoX/torchaudio Windows issues
+            execSync(`"${uvBinary}" pip install -U qwen-tts soundfile fastapi uvicorn librosa torchaudio`, {
+                stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
+                env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
+            });
+            broadcastNotify('text-to-speech', 'ready', 100, 'Text To Speech environment ready.');
+        }
+
+        textToSpeechServerPort = await getFreePort();
+        const pythonScript = path.join(backendSourceDirectory, 'text_to_speech.py');
+
+        log.info(`[Text To Speech] Starting persistent server on port ${textToSpeechServerPort}...`);
+        
+        textToSpeechServerProcess = spawn(pythonExecutable, [pythonScript, String(textToSpeechServerPort)], {
+            cwd: backendSourceDirectory,
+            env: { ...process.env, PYTHONUNBUFFERED: '1' }
         });
-        textToSpeechServerProcess!.stderr?.on('data', (data: Buffer) => {
-            const errOutput = data.toString().trim();
-            if (errOutput) log.warn(`[Text To Speech] ${errOutput}`);
+
+        return new Promise<number>((resolve, reject) => {
+            let resolved = false;
+            textToSpeechServerProcess!.stdout?.on('data', (data: Buffer) => {
+                const output = data.toString();
+                log.info(`[Text To Speech] ${output.trim()}`);
+                if (output.includes('Model loaded and ready') && !resolved) {
+                    textToSpeechServerReady = true;
+                    resolved = true;
+                    resolve(textToSpeechServerPort!);
+                }
+            });
+            textToSpeechServerProcess!.stderr?.on('data', (data: Buffer) => {
+                const errOutput = data.toString().trim();
+                if (errOutput) log.warn(`[Text To Speech] ${errOutput}`);
+            });
+            textToSpeechServerProcess!.on('exit', (code) => {
+                textToSpeechServerReady = false;
+                textToSpeechServerProcess = null;
+                textToSpeechServerLock = null; // Reset lock on crash so it can retry
+                if (!resolved) {
+                    resolved = true;
+                    reject(new Error(`Text To Speech server exited with code ${code}`));
+                }
+            });
         });
-        textToSpeechServerProcess!.on('exit', (code) => {
-            textToSpeechServerReady = false;
-            textToSpeechServerProcess = null;
-            reject(new Error(`Text To Speech server exited with code ${code}`));
-        });
-    });
+    })();
+
+    try {
+        return await textToSpeechServerLock;
+    } finally {
+        textToSpeechServerLock = null;
+    }
 }
 
 app.post('/api/text-to-speech', async (request, response) => {
@@ -2879,7 +2893,8 @@ app.post('/api/text-to-speech', async (request, response) => {
                 text,
                 language: language || 'en',
                 reference_audio_base64: base64Data,
-                reference_text: transcript
+                reference_text: transcript,
+                device
             })
         });
 
