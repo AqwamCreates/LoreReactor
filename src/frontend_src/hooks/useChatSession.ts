@@ -18,6 +18,7 @@ import type { RequestMetadata } from '../services/BudgetStrategyEngine';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { MultiplayerEvents } from '../services/MultiplayerEvents';
+import { StreamingVoiceTracker } from '../services/StreamingVoiceTracker';
 
 import {
     hasTextContent,
@@ -150,6 +151,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     const resumeGenerationRef = useRef<((messageId: string, allPromptBlocks?: PromptBlock[]) => Promise<void>) | null>(null);
     const streamingMessageIdRef = useRef<string | null>(null);
     const streamingCharacterRef = useRef<Character | null>(null);
+    const currentVoiceTrackerRef = useRef<StreamingVoiceTracker | null>(null);
 
     const pendingHostResponseRef = useRef(false);
     const triggerHostResponseRef = useRef<(() => Promise<void>) | null>(null);
@@ -411,6 +413,11 @@ export function useChatSession(options: UseChatSessionOptions) {
         streamingCharacterRef.current = respondingChar ?? null;
         streamingMessageIdRef.current = `gen-${respondingChar?.id || 'ai'}-${Date.now()}`;
 
+        // ✅ Initialize Streaming Voice
+        const voiceTracker = new StreamingVoiceTracker(respondingChar);
+        currentVoiceTrackerRef.current = voiceTracker;
+        voiceTracker.start(); // Fire and forget (loads reference sample)
+
         useSessionStore.setState({
             isLoading: true,
             streamingCharacter: respondingChar ?? null,
@@ -434,7 +441,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 );
             }
 
-            const turnResult = await chatEngine.runTurn(data, ctrl, allPromptBlocks, metadata, existingCharacterText);
+            const turnResult = await chatEngine.runTurn(data, ctrl, allPromptBlocks, metadata, existingCharacterText, voiceTracker);
             let ud = turnResult.interactionData;
 
             if (ud === data) {
@@ -507,11 +514,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                     setInteractionData,
                     addToast,
                 });
-
-                const lm = getGlobalMessageHistory(ud)[getGlobalMessageHistory(ud).length - 1];
-                if (lm && hasTextContent(lm) && !isProtagonist(lm.character.id)) {
-                    ui.playVoice(lm.textContent, lm.character);
-                }
             } else {
                 const enableAmbientNarration = ud?.profile?.enableAmbientNarration ?? false;
                 if (enableAmbientNarration) {
@@ -534,6 +536,12 @@ export function useChatSession(options: UseChatSessionOptions) {
             isSpeculatingRef.current = false;
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
+
+            // ✅ Flush remaining voice queue and close context
+            if (currentVoiceTrackerRef.current) {
+                await currentVoiceTrackerRef.current.flushAndStop();
+                currentVoiceTrackerRef.current = null;
+            }
 
             resetStream();
 
@@ -560,7 +568,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         acquireLock, getState, isModelReadyForGeneration, addToast, releaseLock,
         resetStream, setStreamingState, setStats, getRequestsLastHour, chatEngine,
         applyPendingPartial, setInteractionData, broadcastNewMessages,
-        autoResumeOnCutoff, ui, generateAmbientNarration, isMultiplayerClient, isSpeculatingRef, streamingTextRef, extractAndScheduleResponses
+        autoResumeOnCutoff, generateAmbientNarration, isMultiplayerClient, isSpeculatingRef, streamingTextRef, extractAndScheduleResponses
     ]);
 
     const triggerDelayedResponse = useCallback(async (characterId: string, thought?: string) => {
@@ -654,6 +662,12 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         abortControllerRef.current?.abort();
         abortControllerRef.current = null;
+
+        // ✅ Instantly kill streaming voice if user clicks Stop
+        if (currentVoiceTrackerRef.current) {
+            currentVoiceTrackerRef.current.stopImmediate();
+            currentVoiceTrackerRef.current = null;
+        }
 
         if (resumeId && currentData) {
             const streamedText = streamingTextRef.current || resumingExistingTextRef.current;
@@ -824,9 +838,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 streamingCharacter: null,
                 streamingText: '',
             });
-
-            const protagonistIds = new Set(currentInteractionData.protagonistIds || []);
-            if (!protagonistIds.has(char.id)) ui.playVoice(finalText, char);
         } catch (e) {
             if ((e as Error).name !== 'AbortError') {
                 console.error('Resume failed:', e);
@@ -852,7 +863,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, [
         getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration,
         setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine,
-        throttledSetStreamingTextWithBroadcast, ui, setStreamingState, setStats, isMultiplayerClient, isSpeculatingRef
+        throttledSetStreamingTextWithBroadcast, setStreamingState, setStats, isMultiplayerClient, isSpeculatingRef
     ]);
 
     useEffect(() => {

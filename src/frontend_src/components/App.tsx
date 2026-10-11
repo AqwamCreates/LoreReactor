@@ -8,7 +8,6 @@ import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { useDisplayNameCache } from '../utilities/immersionLogic';
 import { getCharacterStarterMessage } from '../utilities/characterLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
-import { textToSpeechEngine  } from '../services/TextToSpeechEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { buildModelLoadArguments } from '../utilities/modelLoadArguments';
 import { localURL } from '../../configurations';

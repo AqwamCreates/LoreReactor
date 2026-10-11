@@ -261,7 +261,7 @@ const log = {
 
 app.use(cors({ origin: '*', credentials: true }));
 
-app.use((req, res, next) => {
+app.use((_req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
 });
@@ -2819,24 +2819,21 @@ async function ensureTextToSpeechServerIsRunning(device: string) {
             execSync(`"${uvBinary}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
             execSync(`"${uvBinary}" venv "${virtualEnvironmentDirectory}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
             
-            // ✅ FIX: Explicitly install CUDA-enabled PyTorch on Windows/NVIDIA before qwen-tts
-            if (detectedGpuVendor === 'nvidia') {
-                broadcastNotify('text-to-speech', 'installing', 30, 'Installing PyTorch with CUDA support...');
-                // PyTorch official Windows CUDA wheels are hosted on a separate index
-                execSync(`"${uvBinary}" pip install -U torch torchaudio --index-url https://download.pytorch.org/whl/cu124`, {
-                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
-                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
-                });
-            }
-
-            broadcastNotify('text-to-speech', 'installing', 60, 'Installing Qwen Text To Speech dependencies...');
-            // Now that CUDA PyTorch is installed, uv will not overwrite it with the CPU version
+            // 1. Install qwen-tts and dependencies FIRST
+            broadcastNotify('text-to-speech', 'installing', 40, 'Installing Qwen Text To Speech dependencies...');
             execSync(`"${uvBinary}" pip install -U qwen-tts soundfile fastapi uvicorn librosa packaging ninja`, {
                 stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
                 env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
             });
             
+            // 2. Install CUDA PyTorch LAST to overwrite any CPU wheels qwen-tts pulled
             if (detectedGpuVendor === 'nvidia') {
+                broadcastNotify('text-to-speech', 'installing', 60, 'Installing PyTorch with CUDA support...');
+                execSync(`"${uvBinary}" pip install -U torch torchaudio --index-url https://download.pytorch.org/whl/cu124`, {
+                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
+                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
+                });
+                
                 broadcastNotify('text-to-speech', 'installing', 80, 'Attempting to compile and install Flash Attention...');
                 try {
                     execSync(`"${uvBinary}" pip install -U flash-attn --no-build-isolation`, {
@@ -2845,8 +2842,6 @@ async function ensureTextToSpeechServerIsRunning(device: string) {
                     });
                     log.success('[Text To Speech] Flash Attention installed successfully.');
                 } catch (flashAttnError: any) {
-                    // Flash Attention almost always fails to compile on native Windows. 
-                    // PyTorch 2.4+ uses native Scaled Dot Product Attention (SDPA) which is nearly as fast.
                     log.warn('[Text To Speech] Flash Attention compilation failed (Normal on native Windows). Falling back to standard PyTorch SDPA.');
                 }
             }
@@ -2898,7 +2893,30 @@ async function ensureTextToSpeechServerIsRunning(device: string) {
     }
 }
 
-app.post('/api/text-to-speech', async (request, response) => {
+app.post('/api/text-to-speech/load', async (req, res) => {
+    const { device = 'auto' } = req.body;
+    
+    try {
+        await ensureTextToSpeechServerIsRunning(device);
+        res.json({ success: true, loaded: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/text-to-speech/unload', (req, res) => {
+    if (textToSpeechServerProcess) {
+        log.info('[Text To Speech] Shutting down persistent server to free resources...');
+        textToSpeechServerProcess.kill('SIGTERM');
+        textToSpeechServerProcess = null;
+        textToSpeechServerReady = false;
+        textToSpeechServerPort = null;
+        textToSpeechServerLock = null;
+    }
+    res.json({ success: true, loaded: false });
+});
+
+app.post('/api/text-to-speech/synthesize', async (request, response) => {
     const { text, audioBase64, transcript, language, device = 'auto' } = request.body;
 
     if (!text || !audioBase64 || !transcript) {

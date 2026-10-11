@@ -27,7 +27,7 @@ import {
     type GenerationTurnOptions,
 } from '../utilities/chatSessionLogic';
 import { learnFromUserMessage } from '../services/ActionFormatEngine';
-import { textToSpeechEngine  } from '../services/TextToSpeechEngine'; // ✅ ADD THIS
+import { textToSpeechEngine } from '../services/TextToSpeechEngine';
 
 interface UseChatSenderOptions {
     isMultiplayerClient: boolean;
@@ -74,9 +74,9 @@ export function useChatSender(opts: UseChatSenderOptions) {
             : false;
 
         if (isNarrationEnabled) {
-            textToSpeechEngine .load(); 
+            textToSpeechEngine.load(); 
         } else {
-            textToSpeechEngine .unload();
+            textToSpeechEngine.unload();
         }
 
         const slashInvocation = parseSlashCommand(text);

@@ -7,6 +7,7 @@ import { CharacterSoul } from '../services/CharacterSoul';
 import { getBudgetStrategyEngine, type RequestMetadata } from '../services/BudgetStrategyEngine';
 import { updatePartialMessageInInteractionData } from '../utilities/chatLogic';
 import type { ToolExecutionContext } from '../services/ToolExecutor';
+import type { StreamingVoiceTracker } from '../services/StreamingVoiceTracker';
 
 const characterActor = new CharacterActor();
 const characterSoul = new CharacterSoul();
@@ -51,6 +52,7 @@ export function useChatEngine(deps: EngineDependencies) {
         existingCharacterText?: string,
         allPromptBlocks?: PromptBlock[],
         metadata?: RequestMetadata,
+        voiceTracker?: StreamingVoiceTracker,
     ): Promise<HandleServerResponseResult | null> => {
         const selectedModel = getState().selectedModel;
         const runningModels = getState().runningModels;
@@ -97,6 +99,7 @@ export function useChatEngine(deps: EngineDependencies) {
             borrowedModel,
             metadata,
             toolContext: deps.getToolContext?.(),
+            voiceTracker,
         });
 
         if ('error' in outcome) {
@@ -154,12 +157,13 @@ export function useChatEngine(deps: EngineDependencies) {
         promptBlocks?: PromptBlock[],
         metadata?: RequestMetadata,
         existingCharacterText?: string,
+        voiceTracker?: StreamingVoiceTracker,
     ): Promise<{ interactionData: InteractionData; isCompleted: boolean; promptText?: string }> => {
         let lastPromptText: string | undefined = undefined;
 
         const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken?: (t: string) => void) => {
             setStreamingState(c, '');
-            const result = await handleServerResponse(d, c, s, onToken, undefined, existingCharacterText || '', promptBlocks, metadata);
+            const result = await handleServerResponse(d, c, s, onToken, undefined, existingCharacterText || '', promptBlocks, metadata, voiceTracker);
             
             if (result?.promptText) {
                 lastPromptText = result.promptText;

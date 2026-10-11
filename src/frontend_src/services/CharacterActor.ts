@@ -14,6 +14,7 @@ import { defaultBudgetData } from '../dictionaries/defaults';
 import { executeTools, formatToolDisplay, type ToolExecutionContext } from './ToolExecutor';
 import { findLatestMessage } from '../utilities/messageLogic';
 import { toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
+import type { StreamingVoiceTracker } from './StreamingVoiceTracker';
 
 // ─── Result Types ───────────────────────────────────────────────────
 
@@ -64,6 +65,7 @@ export interface TurnExecutionParams {
     borrowedModel?: LanguageModel | null;
     metadata?: RequestMetadata;
     toolContext?: ToolExecutionContext;
+    voiceTracker?: StreamingVoiceTracker; // ✅ ADDED
 }
 
 export interface ProcessedReplacements {
@@ -328,6 +330,8 @@ export class CharacterActor {
                     const lastLen = acc.getLastRawLen();
                     const delta = s.fullText.slice(lastLen);
                     acc.setLastRawLen(s.fullText.length);
+
+                    if (params.voiceTracker) params.voiceTracker.feed(s.fullText);
 
                     const parsed = parser.processChunk(delta);
                     acc.setRaw(acc.raw + delta);
