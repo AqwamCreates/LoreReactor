@@ -9,11 +9,11 @@
     "final": "npm run build && vite preview --host 0.0.0.0 --port 4444",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "dev": "concurrently --kill-others \"npm run server\" \"npm run preview\"",
+    "development": "concurrently --kill-others \"npm run server\" \"npm run preview\"",
     "start": "concurrently --kill-others \"npm run server\" \"npm run final\"",
-    "build:sidecars": "powershell -ExecutionPolicy Bypass -File build-all-sidecars.ps1",
+    "sidecars": "powershell -ExecutionPolicy Bypass -File build-all-sidecars.ps1",
     "tauri": "tauri",
-    "tauri:release": "npm run build:sidecars && npm run tauri build"
+    "release": "npm run sidecars && npm run tauri build"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
