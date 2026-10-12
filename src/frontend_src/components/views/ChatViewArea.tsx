@@ -1,7 +1,7 @@
 // frontend_src/components/views/ChatViewArea.tsx
 import { useMemo } from 'react';
 import type { ViewModeProps, viewMode } from './types';
-import type { ChatMessage, WhisperMessage } from '../../types';
+import type { ChatMessage, TextMessage, WhisperMessage } from '../../types';
 import { useSessionStore } from '../../hooks/useSessionStore';
 import { formatDisplayMessageText } from '../../utilities/textDisplayFormatter';
 import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
@@ -12,7 +12,7 @@ import { VisualNovelView } from './VisualNovelView';
 interface ChatViewAreaProps {
     viewMode: viewMode;
     baseProps: ViewModeProps;
-    safeMessages: (ChatMessage | WhisperMessage)[];
+    safeMessages: TextMessage[];
     displayNameCache: any;
     isMultiplayerChat: boolean;
 }
@@ -60,7 +60,7 @@ export function ChatViewArea({
                     ...last,
                     textContent: streamingText,
                     character: { ...last.character, name },
-                } as ChatMessage | WhisperMessage;
+                } as TextMessage;
             } else if (!last || last.character.id !== streamingCharacter.id) {
                 const name = resolveDelayedDisplayNameFromCache(displayNameCache, base.length, streamingCharacter.id);
                 const now = Date.now();

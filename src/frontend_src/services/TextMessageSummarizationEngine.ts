@@ -1,9 +1,9 @@
-// frontend_src/services/ChatMessageSummarizationEngine.ts
+// frontend_src/services/TextMessageSummarizationEngine.ts
 import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock, cacheEfficiencyConfigurationType, Profile, SummarizationStep, StopPattern } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { createChatHistoryPrompt, getParticipantTag, replacePlaceholders, getUniversalMessageFilterFlags, getFilteredChatMessages, deriveDelimiters } from '../utilities/promptLogic';
+import { createChatHistoryPrompt, getParticipantTag, replacePlaceholders, getUniversalMessageFilterFlags, getFilteredTextMessages, deriveDelimiters } from '../utilities/promptLogic';
 import { detectName } from '../utilities/nameDetection';
 import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
 import { getCoLocatedProtagonists, getCoLocatedParticipants } from '../utilities/locationLogic';
@@ -96,7 +96,7 @@ export async function generateCharacterMemory(
     const stopPattern = interactionData.profile?.characterStopPattern;
 
     const allPromptBlocks: PromptBlock[] = [];
-    const filteredMessages = getFilteredChatMessages(interactionData, character.id, allPromptBlocks);
+    const filteredMessages = getFilteredTextMessages(interactionData, character.id, allPromptBlocks);
     const knownCharacterNames = detectName(character, filteredMessages);
     const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
     const coLocatedParticipants = getCoLocatedParticipants(interactionData, character);
@@ -301,7 +301,7 @@ export async function generateLocationVisitSummary(
     const stopPattern = interactionData.profile?.characterStopPattern;
 
     const allPromptBlocks: PromptBlock[] = [];
-    const filteredMessages = getFilteredChatMessages(interactionData, character.id, allPromptBlocks);
+    const filteredMessages = getFilteredTextMessages(interactionData, character.id, allPromptBlocks);
     const knownCharacterNames = detectName(character, filteredMessages);
 
     const activeModel = getLanguageModelEngine().getContext();

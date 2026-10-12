@@ -1,6 +1,6 @@
 // frontend_src/hooks/useChatAutoSave.ts
 import { useRef, useEffect } from 'react';
-import type { InteractionData, ChatMessage, RawInteractionData, WhisperMessage } from '../types';
+import type { InteractionData, RawInteractionData, TextMessage } from '../types';
 import { saveRawInteractionData } from '../storages/serverStorage';
 import { isChatSaveable } from '../utilities/chatSaveHelper';
 
@@ -57,7 +57,7 @@ function haveMessagesChanged(prev: InteractionData | null, curr: InteractionData
             if (p.lastUpdatedTimestamp !== c.lastUpdatedTimestamp) return true;
 
             if ('textContent' in p && 'textContent' in c) {
-                if ((p as ChatMessage | WhisperMessage).textContent !== (c as ChatMessage | WhisperMessage).textContent) {
+                if ((p as TextMessage).textContent !== (c as TextMessage).textContent) {
                     return true;
                 }
             }

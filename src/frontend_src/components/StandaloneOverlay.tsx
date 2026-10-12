@@ -12,7 +12,8 @@ import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import type { 
     InteractionData, Character, Context, Location, AudioTrack, LanguageModel, 
     BudgetStrategy, Profile, World, Sampler, StopPattern, PromptBlock, Memory, 
-    Account, MultiplayerData, ChatMessage, WhisperMessage 
+    Account, MultiplayerData, ChatMessage, 
+    TextMessage
 } from '../types';
 import { ActionMenu } from './ActionMenu';
 
@@ -79,7 +80,7 @@ export function StandaloneOverlay() {
         if (!state.interactionData) return [];
         const targetChar = state.localProtagonist || state.interactionData.participants?.[0];
         if (!targetChar) return [];
-        return getLocalMessageHistory(state.interactionData, targetChar, ['chat', 'whisper']) as (ChatMessage | WhisperMessage)[];
+        return getLocalMessageHistory(state.interactionData, targetChar, ['chat', 'whisper']) as TextMessage[];
     }, [state.interactionData, state.localProtagonist]);
 
     const displayedMessage = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1] : null;
@@ -112,7 +113,7 @@ export function StandaloneOverlay() {
         state.charName, state.isLoading, state.streamingCharacter, state.allCharacters
     ]);
 
-    const currentMessage: ChatMessage | WhisperMessage | null = useMemo(() => {
+    const currentMessage: TextMessage | null = useMemo(() => {
         if (state.isLoading) {
             return {
                 id: state.lastMessageId || 'streaming', character: activeSpeaker,

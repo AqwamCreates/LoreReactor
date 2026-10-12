@@ -1,6 +1,6 @@
 // frontend_src/hooks/useSpeculativeStreamHandler.ts
 import { useCallback, useRef, type MutableRefObject } from 'react';
-import type { Character, InteractionData, ChatMessage, WhisperMessage, HistoryMessage, PromptBlock } from '../types';
+import type { Character, InteractionData, ChatMessage, HistoryMessage, PromptBlock, TextMessage } from '../types';
 import { calculateLatencyFactor } from '../utilities/chatSessionLogic';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { createChatMessage } from '../utilities/chatLogic';
@@ -119,7 +119,7 @@ export function useSpeculativeStreamHandler({
                                             ...existingMsg,
                                             processedTextContent: completedText,
                                             lastUpdatedTimestamp: Date.now(),
-                                        } as ChatMessage | WhisperMessage;
+                                        } as TextMessage;
                                         break;
                                     }
                                 }

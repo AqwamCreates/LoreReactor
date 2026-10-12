@@ -401,7 +401,17 @@ export interface WhisperMessage extends BaseMessage {
   kvCacheInteractionTextContentSummaries: Record<string, string>;
 }
 
-export type HistoryMessage = InteractionMessage | ChatMessage | WhisperMessage;
+export interface ToolMessage extends BaseMessage { // Acts like a scratch pad for the characters and wouldn't place this message type to the UI.
+  messageType: 'tool';
+  textContent: string;
+  toolExecutionResults?: ToolExecutionResult[];
+  files?: string[];
+  frontCameraImage?: string;
+}
+
+export type TextMessage = ChatMessage | WhisperMessage
+
+export type HistoryMessage = InteractionMessage | TextMessage | ToolMessage;
 
 export interface RawBaseMessage {
   characterId: string;

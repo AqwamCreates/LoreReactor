@@ -1,6 +1,6 @@
 // frontend_src/components/MessageBubble.tsx
 import React from 'react';
-import type { Character, ChatMessage, WhisperMessage } from '../types';
+import type { Character, TextMessage } from '../types';
 import { MemoizedMessageText } from './MemoizedMessageText';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useSessionStore } from '../hooks/useSessionStore';
@@ -18,7 +18,7 @@ import {
 } from '../utilities/textDisplayReformatter';
 
 interface MessageBubbleProps {
-    message: ChatMessage | WhisperMessage;
+    message: TextMessage;
     index: number;
     viewMode: 'ladder' | 'cinematic';
     protagonistIds: string[];

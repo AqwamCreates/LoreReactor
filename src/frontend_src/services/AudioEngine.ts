@@ -1,5 +1,5 @@
 // frontend_src/services/AudioEngine.ts
-import type { AudioTrack, InteractionData, PromptBlock, Location, RegularExpressionTrigger, Character, ChatMessage, WhisperMessage } from '../types';
+import type { AudioTrack, InteractionData, PromptBlock, Location, RegularExpressionTrigger, Character, TextMessage } from '../types';
 import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
 import { getAudioTrackUrl } from '../storages/serverStorage';
 import { mediaCache } from './MediaCache';
@@ -347,7 +347,7 @@ export class AudioEngine {
         character: Character,
         allPromptBlocks: PromptBlock[],
     ): string {
-        const localHistory = getLocalMessageHistory(interactionData, character, ['chat', 'whisper']) as (ChatMessage | WhisperMessage)[];
+        const localHistory = getLocalMessageHistory(interactionData, character, ['chat', 'whisper']) as TextMessage[];
         if (localHistory.length === 0) return '';
 
         const filterFlags = getUniversalMessageFilterFlags(

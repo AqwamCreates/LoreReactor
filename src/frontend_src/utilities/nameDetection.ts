@@ -1,7 +1,5 @@
 // frontend_src/utilities/nameDetection.ts
-import type { Character, ChatMessage, WhisperMessage } from '../types';
-
-type TextMessage = ChatMessage | WhisperMessage;
+import type { Character, TextMessage } from '../types';
 
 // ─── Normalization Layer ──────────────────────────────────────────
 const INTERNET_SPEAK_MAP: Record<string, string> = {

@@ -6,7 +6,7 @@ import { processPendingToolActions, executeTool, type ToolExecutionContext } fro
 import { parseSlashCommand } from '../services/ToolInvocationParser';
 import { getCurrentLocationId, findReachableLocationByRegularExpression } from '../utilities/locationLogic';
 import { detectName } from '../utilities/nameDetection';
-import { getFilteredChatMessages } from '../utilities/promptLogic';
+import { getFilteredTextMessages } from '../utilities/promptLogic';
 import { getLocalMessageHistory } from '../utilities/timelineLogic';
 import {
     computeModulatedStaminaRegenationAmounts,
@@ -183,7 +183,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
             });
             const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
-            const filteredMessages = getFilteredChatMessages(currentInteractionData, activeCharacter.id, allPromptBlocks || []);
+            const filteredMessages = getFilteredTextMessages(currentInteractionData, activeCharacter.id, allPromptBlocks || []);
             const knownCharacterNames = detectName(activeCharacter, filteredMessages, text);
 
             const chatMessage = createChatMessage(currentInteractionData, activeCharacter, text, {
@@ -297,7 +297,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
             ? (joinProtagonistRef.current || protagonist)
             : protagonist;
 
-        const filteredMessages = getFilteredChatMessages(currentInteractionData, activeProtagonist.id, allPromptBlocksRef.current || []);
+        const filteredMessages = getFilteredTextMessages(currentInteractionData, activeProtagonist.id, allPromptBlocksRef.current || []);
         const knownCharacterNames = detectName(activeProtagonist, filteredMessages);
 
         const chatMessage = createChatMessage(currentInteractionData, activeProtagonist, actionText, { knownCharacterNames });

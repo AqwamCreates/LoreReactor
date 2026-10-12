@@ -6,7 +6,7 @@ import {
     generatePeriodicCompression, 
     generateRecursiveSummary, 
     generateEntropyPruningSummaries 
-} from './ChatMessageSummarizationEngine';
+} from './TextMessageSummarizationEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { getLocalMessageHistory } from '../utilities/timelineLogic';
 

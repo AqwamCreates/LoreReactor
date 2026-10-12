@@ -2,12 +2,12 @@
 import type { ToolInvocation } from './ToolInvocationParser';
 import { fetchLinkContent } from '../utilities/linkFetcher';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from '../utilities/dialoguePromptLogic';
-import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, WhisperMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension, Account, MultiplayerData, toolUsageDisplayMode, HistoryMessage, tool } from '../types';
+import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, WhisperMessage, TextMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension, Account, MultiplayerData, toolUsageDisplayMode, HistoryMessage, tool } from '../types';
 import { findLatestMessage } from '../utilities/messageLogic';
 import { getGlobalMessageHistory } from '../utilities/timelineLogic';
 import { getCurrentLocation, getReachableLocationsByCharacter, isCharacterLockedFromLocation, getCoLocatedParticipants } from '../utilities/locationLogic';
 import { getAudioEngine } from './AudioEngine';
-import { generateCharacterMemory } from './ChatMessageSummarizationEngine';
+import { generateCharacterMemory } from './TextMessageSummarizationEngine';
 import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, setSystemPower, clipboardAction, captureScreenshot, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, captureVirtualHearing, captureVirtualVision, sendVirtualInput, sendVirtualController, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
@@ -2116,7 +2116,7 @@ async function executeScreenshot(
   // Attach real image payload to the message's file array for vision ingestion
   const dataUrl = `data:${res.contentType || 'image/jpeg'};base64,${res.base64}`;
   if ('files' in nextMessage) {
-    const msg = nextMessage as ChatMessage | WhisperMessage;
+    const msg = nextMessage as TextMessage;
     if (!msg.files) msg.files = [];
     msg.files.push(dataUrl);
   }
@@ -2157,7 +2157,7 @@ async function executeFrontCamera(
 
   // Attach real image payload to the message's file array for vision ingestion
   if ('files' in nextMessage) {
-    const msg = nextMessage as ChatMessage | WhisperMessage;
+    const msg = nextMessage as TextMessage;
     if (!msg.files) msg.files = [];
     msg.files.push(dataUrl);
   }

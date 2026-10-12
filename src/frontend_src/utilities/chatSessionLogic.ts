@@ -2,19 +2,18 @@
 import type {
     InteractionData,
     HistoryMessage,
-    ChatMessage,
-    WhisperMessage,
     Profile,
     StopPattern,
     PromptBlock,
     Character,
+    TextMessage,
 } from '../types';
 import { getGlobalMessageHistory } from './timelineLogic';
 
 export const NO_ARG_TOOLS = ['coin', 'calendar', 'dice'];
 export const HOST_ONLY_TOOLS = ['administrator', 'creator', 'destroyer'];
 
-export function hasTextContent(msg: HistoryMessage): msg is ChatMessage | WhisperMessage {
+export function hasTextContent(msg: HistoryMessage): msg is TextMessage {
     return msg.messageType === 'chat' || msg.messageType === 'whisper';
 }
 
@@ -46,7 +45,7 @@ export function finalizeMessageById(
     for (const [locId, msgs] of Object.entries(newHistories) as [string, HistoryMessage[]][]) {
         const idx = msgs.findIndex(m => m.id === messageId && hasTextContent(m));
         if (idx !== -1) {
-            const existingMsg = msgs[idx] as ChatMessage | WhisperMessage;
+            const existingMsg = msgs[idx] as TextMessage;
 
             const finalRawContent = (fallbackRawText && fallbackRawText.length >= existingMsg.textContent.length)
                 ? fallbackRawText
@@ -65,7 +64,7 @@ export function finalizeMessageById(
                 textContent: finalRawContent,
                 processedTextContent: finalProcessedContent,
                 lastUpdatedTimestamp: Date.now(),
-            } as ChatMessage | WhisperMessage;
+            } as TextMessage;
             break;
         }
     }

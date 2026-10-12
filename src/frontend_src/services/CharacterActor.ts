@@ -3,7 +3,7 @@ import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBloc
 import { saveRawBudgetData } from '../storages/serverStorage';
 import { buildChatRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
 import { detectName } from '../utilities/nameDetection';
-import { getFilteredChatMessages } from '../utilities/promptLogic';
+import { getFilteredTextMessages } from '../utilities/promptLogic';
 import { getBudgetStrategyEngine, type RequestMetadata } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { getEffectiveTools, initializeClothingWearingStatuses } from '../utilities/characterLogic';
@@ -259,7 +259,7 @@ export class CharacterActor {
 
         const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
 
-        const filteredMessages = getFilteredChatMessages(data, character.id, allPromptBlocks);
+        const filteredMessages = getFilteredTextMessages(data, character.id, allPromptBlocks);
         const knownCharacterNames = detectName(character, filteredMessages);
 
         let resolvedClothingStatuses: Record<string, boolean> = initializeClothingWearingStatuses(character);

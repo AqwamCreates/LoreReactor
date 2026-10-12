@@ -1,5 +1,5 @@
 // frontend_src/utilities/chatLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, PromptBlock, TextCharacterInjection } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, TextCharacterInjection, TextMessage } from '../types';
 import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
 import { getKnownDisplayName, deriveDelimiters } from './promptLogic';
 import type { EntityImageRef } from './promptLogic';
@@ -192,7 +192,7 @@ export async function buildChatRequestBody(
             const participantExpression = participantMessage?.message.characterExpression;
             let participantImageBase64: string | null = null;
 
-            const textMsg = participantMessage?.message as (ChatMessage | WhisperMessage) | null;
+            const textMsg = participantMessage?.message as TextMessage | null;
             if (protagonistIds.has(participant.id) && effectiveUseFrontCameraImage && (textMsg as ChatMessage)?.frontCameraImage) {
                 participantImageBase64 = (textMsg as ChatMessage).frontCameraImage || null;
             } else {
@@ -221,7 +221,7 @@ export async function buildChatRequestBody(
             const lastMsg = findLatestMessage(interactionData, participant)?.message;
             if (!lastMsg || (lastMsg.messageType !== 'chat' && lastMsg.messageType !== 'whisper')) continue;
             
-            const textMsg = lastMsg as ChatMessage | WhisperMessage;
+            const textMsg = lastMsg as TextMessage;
             if (textMsg.files && textMsg.files.length > 0) {
                 for (const fileBase64 of textMsg.files) {
                     if (!fileBase64) continue;
@@ -503,7 +503,7 @@ export function editInteractionMessageInInteractionData(interactionData: Interac
                     kvCacheTextContentPaths: {}, 
                     kvCacheTextContentSummaryPaths: {}, 
                     kvCacheInteractionTextContentSummaries: {} 
-                } as ChatMessage | WhisperMessage;
+                } as TextMessage;
             }
             found = true;
             break;
@@ -520,7 +520,7 @@ export function editInteractionMessageInInteractionData(interactionData: Interac
             newHistories[locId] = messages.map((m: HistoryMessage) => {
                 const globalIdx = allMessages.findIndex((am: HistoryMessage) => am.id === m.id);
                 if (globalIdx > msgIndex && (m.messageType === 'chat' || m.messageType === 'whisper')) {
-                    return { ...m, kvCacheTextContentPaths: {}, kvCacheTextContentSummaryPaths: {}, kvCacheInteractionTextContentSummaries: {} } as ChatMessage | WhisperMessage;
+                    return { ...m, kvCacheTextContentPaths: {}, kvCacheTextContentSummaryPaths: {}, kvCacheInteractionTextContentSummaries: {} } as TextMessage;
                 }
                 return m;
             });

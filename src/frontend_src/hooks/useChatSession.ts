@@ -35,8 +35,9 @@ import { useChatSender } from './useChatSender';
 
 import type {
     Character, PromptBlock,
-    Profile, InteractionData, ChatMessage, WhisperMessage,
-    HistoryMessage, LanguageModel
+    Profile, InteractionData, ChatMessage,
+    HistoryMessage, LanguageModel,
+    TextMessage
 } from '../types';
 import { useFrontCamera } from './useFrontCamera';
 
@@ -268,7 +269,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                             ...lastMsg,
                             textContent: dt,
                             processedTextContent: dt !== lastMsg.textContent ? dt : undefined
-                        } as ChatMessage | WhisperMessage;
+                        } as TextMessage;
                         break;
                     }
                 }
@@ -442,7 +443,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             const interactionDataId = data.id || 'unknown';
             for (const participant of data.participants) {
-                const charHistory = getLocalMessageHistory(data, participant, ['chat', 'whisper']) as (ChatMessage | WhisperMessage)[];
+                const charHistory = getLocalMessageHistory(data, participant, ['chat', 'whisper']) as TextMessage[];
                 speculativeMarkovEngine.syncMessages(
                     charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })),
                     participant.id,
@@ -690,7 +691,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             for (const [locId, msgs] of Object.entries(updatedHistories) as [string, HistoryMessage[]][]) {
                 const idx = msgs.findIndex((m: HistoryMessage) => m.id === resumeId && hasTextContent(m));
                 if (idx !== -1) {
-                    const targetMsg = msgs[idx] as ChatMessage | WhisperMessage;
+                    const targetMsg = msgs[idx] as TextMessage;
                     const textContent = streamedText || targetMsg.textContent;
                     const paragraphs = (textContent.match(/\n\n/g) || []).length + 1;
 
@@ -702,7 +703,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                         textContent: targetMsg.textContent || textContent,
                         processedTextContent: isProcessed ? textContent : targetMsg.processedTextContent,
                         lastUpdatedTimestamp: Date.now()
-                    } as ChatMessage | WhisperMessage;
+                    } as TextMessage;
 
                     if (paragraphs > 0) consumeChatStaminaForMessage(updatedHistories[locId][idx], paragraphs);
                     break;

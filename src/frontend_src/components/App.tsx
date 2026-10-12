@@ -14,7 +14,7 @@ import { localURL } from '../../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useFrontCamera } from '../hooks/useFrontCamera';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, Account, MultiplayerData, InteractionData, ChatMessage, WhisperMessage, HistoryMessage, RawInteractionData, cloudBackend } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, Account, MultiplayerData, InteractionData, ChatMessage, WhisperMessage, HistoryMessage, RawInteractionData, cloudBackend, TextMessage } from '../types';
 import { useSessionStore } from '../hooks/useSessionStore';
 
 // ─── Manager Hooks ──────────────────────────────────────────────────
@@ -548,7 +548,7 @@ function App() {
     }, [parentInteractionDataId, chatList.rawChatShells]);
 
     const committedMessages = useMemo(() => {
-        let base = safeMessages.filter((m): m is ChatMessage | WhisperMessage => m.messageType === 'chat' || m.messageType === 'whisper');
+        let base = safeMessages.filter((m): m is TextMessage => m.messageType === 'chat' || m.messageType === 'whisper');
         if (isMultiplayerChat && localProtagonist) {
             base = base.filter((msg) => {
                 if (msg.messageType === 'whisper') {

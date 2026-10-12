@@ -1,5 +1,5 @@
 // frontend_src/utilities/promptLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, Context, StopPattern, PromptBlock, promptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger, Clothing, Profile, cacheEfficiencyConfigurationType } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, TextMessage, Context, StopPattern, PromptBlock, promptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger, Clothing, Profile, cacheEfficiencyConfigurationType } from '../types';
 import type { ModelTemplate } from '../dictionaries/modelTemplates';
 import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
 import { fetchMultipleContextUrls } from './linkFetcher';
@@ -10,7 +10,7 @@ import { type TimeData, fetchCurrentWeather, generateSkyViewText, getLocation, g
 import { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter, getCurrentLocationId, } from './locationLogic';
 import { defaultInputStrategy } from '../dictionaries/defaults';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
-import { generateLocationVisitSummary } from '../services/ChatMessageSummarizationEngine';
+import { generateLocationVisitSummary } from '../services/TextMessageSummarizationEngine';
 import { findLatestMessage } from './messageLogic';
 import { getLocalMessageHistory } from './timelineLogic';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from './dialoguePromptLogic';
@@ -154,7 +154,7 @@ function formatTimerDuration(ms: number): string {
     return parts.join(' ');
 }
 
-function selectModelSummary(msg: ChatMessage | WhisperMessage, modelId: string): string {
+function selectModelSummary(msg: TextMessage, modelId: string): string {
     if (msg.modelTextContentSummaries?.[modelId]) {
         return msg.modelTextContentSummaries[modelId];
     }
@@ -260,7 +260,7 @@ function isMessageVisibleTo(msg: HistoryMessage, characterId: string): boolean {
     return false;
 }
 
-function isTextMessage(msg: HistoryMessage): msg is ChatMessage | WhisperMessage {
+function isTextMessage(msg: HistoryMessage): msg is TextMessage {
     return msg.messageType === 'chat' || msg.messageType === 'whisper';
 }
 
@@ -481,13 +481,13 @@ function isEntityActiveWithCache(
 }
 
 function getMessageFilterFlags(
-    chatMessages: (ChatMessage | WhisperMessage)[],
+    textMessages: TextMessage[],
     contexts: Context[],
     locations: Location[],
     promptBlocks: PromptBlock[],
     characterId: string,
 ): boolean[] {
-    const excluded = new Array(chatMessages.length).fill(false);
+    const excluded = new Array(textMessages.length).fill(false);
 
     const applyFilterTriggers = (
         activationTriggers: RegularExpressionTrigger[] | undefined,
@@ -499,8 +499,8 @@ function getMessageFilterFlags(
 
         let including = false;
 
-        for (let i = 0; i < chatMessages.length; i++) {
-            const msg = chatMessages[i];
+        for (let i = 0; i < textMessages.length; i++) {
+            const msg = textMessages[i];
 
             if (including) {
                 if (deactivationRegexes.some((r: RegExp) => r.test(msg.textContent))) {
@@ -545,16 +545,16 @@ function getMessageFilterFlags(
     return excluded;
 }
 
-export function getFilteredChatMessages(
+export function getFilteredTextMessages(
     interactionData: InteractionData,
     characterId: string,
     allPromptBlocks: PromptBlock[],
-): (ChatMessage | WhisperMessage)[] {
+): TextMessage[] {
     const localHistory = getLocalMessageHistory(
         interactionData, 
         interactionData.participants.find(p => p.id === characterId) || { id: characterId, name: 'Unknown' } as Character, 
         ['chat', 'whisper']
-    ) as (ChatMessage | WhisperMessage)[];
+    ) as TextMessage[];
 
     if (localHistory.length === 0) return [];
 
@@ -1234,7 +1234,7 @@ function buildAntiRepetitionNudgeLines(ctx: PromptBuildContext): string[] {
     const windowSize = Math.max(2, ctx.coLocatedParticipants.length * 2);
 
     const localHistory = getLocalMessageHistory(ctx.interactionData, ctx.character, ['chat', 'whisper'], windowSize);
-    const recentAiMessages = localHistory.filter(m => m.character.id === ctx.characterId) as (ChatMessage | WhisperMessage)[];
+    const recentAiMessages = localHistory.filter(m => m.character.id === ctx.characterId) as TextMessage[];
 
     if (recentAiMessages.length < 2) return lines; 
 
@@ -1375,7 +1375,7 @@ export function createChatHistoryPrompt(
     }
 
     const visibleTextMessages = localHistory.filter(
-        (m): m is ChatMessage | WhisperMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
+        (m): m is TextMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
     );
 
     if (visibleTextMessages.length === 0) return { chatHistoryPrompt: '', hasBeenSummarized: false };
@@ -2083,7 +2083,7 @@ export async function buildPrompt(
                 promptLines.length = 0;
                 promptLines.push(resolvedInstructionTemplate.instructionTemplate.replace(/\{instruction\}/g, assembledSoFar).replace(/\{input\}/g, '').replace(/\{system\}/g, ctx.character.systemPrompt || ''));
             } else if (entry === 'Model Chat Template' && resolvedChatTemplate?.chatTemplate) {
-                const chatHistoryForTemplate = ctx.localHistory.filter((m): m is ChatMessage | WhisperMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId));
+                const chatHistoryForTemplate = ctx.localHistory.filter((m): m is TextMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId));
                 for (const msg of chatHistoryForTemplate) {
                     const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
                     const content = replacePlaceholders(selectModelSummary(msg, modelId), ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
@@ -2095,7 +2095,7 @@ export async function buildPrompt(
                 promptLines.length = 0;
                 promptLines.push(resolvedInstructionTemplate.instructionTemplate.replace(/\{instruction\}/g, `Continue the chat dialogue below. Write a single reply for the character "${ctx.characterName}".\n\n${assembledSoFar}`).replace(/\{input\}/g, '').replace(/\{system\}/g, ctx.character.systemPrompt || ''));
                 
-                const chatHistoryForTemplate = ctx.localHistory.filter((m): m is ChatMessage | WhisperMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId));
+                const chatHistoryForTemplate = ctx.localHistory.filter((m): m is TextMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId));
                 for (const msg of chatHistoryForTemplate) {
                     const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
                     const content = replacePlaceholders(selectModelSummary(msg, modelId), ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
@@ -2143,7 +2143,7 @@ export async function buildPrompt(
 // ─── Universal Message Filter ─────────────────────────────────────
 
 function applyFilterTriggersUniversal(
-    chatMessages: (ChatMessage | WhisperMessage)[],
+    textMessages: TextMessage[],
     excluded: boolean[],
     activationTriggers: RegularExpressionTrigger[] | undefined,
     deactivationTriggers: RegularExpressionTrigger[] | undefined,
@@ -2153,8 +2153,8 @@ function applyFilterTriggersUniversal(
     const deactivationRegexes = compileTriggerRegexes(deactivationTriggers);
 
     let including = false;
-    for (let i = 0; i < chatMessages.length; i++) {
-        const msg = chatMessages[i];
+    for (let i = 0; i < textMessages.length; i++) {
+        const msg = textMessages[i];
         if (including) {
             if (deactivationRegexes.some((r: RegExp) => r.test(msg.textContent))) return;
         } else {
@@ -2168,17 +2168,17 @@ function applyFilterTriggersUniversal(
 }
 
 export function getUniversalMessageFilterFlags(
-    chatMessages: (ChatMessage | WhisperMessage)[],
+    textMessages: TextMessage[],
     contexts: Context[],
     locations: Location[],
     promptBlocks: PromptBlock[],
 ): boolean[] {
-    const excluded = new Array(chatMessages.length).fill(false);
+    const excluded = new Array(textMessages.length).fill(false);
 
     for (const context of contexts) {
         if (context.characterBindings && context.characterBindings.length > 0) continue;
         applyFilterTriggersUniversal(
-            chatMessages,
+            textMessages,
             excluded,
             context.messageFilterRegularExpressionActivationTriggers,
             context.messageFilterRegularExpressionDeactivationTriggers,
@@ -2188,7 +2188,7 @@ export function getUniversalMessageFilterFlags(
     for (const location of locations) {
         if (location.characterBindings && location.characterBindings.length > 0) continue;
         applyFilterTriggersUniversal(
-            chatMessages,
+            textMessages,
             excluded,
             location.messageFilterRegularExpressionActivationTriggers,
             location.messageFilterRegularExpressionDeactivationTriggers,
@@ -2198,7 +2198,7 @@ export function getUniversalMessageFilterFlags(
     for (const block of promptBlocks) {
         if (block.characterBindings && block.characterBindings.length > 0) continue;
         applyFilterTriggersUniversal(
-            chatMessages,
+            textMessages,
             excluded,
             block.messageFilterRegularExpressionActivationTriggers,
             block.messageFilterRegularExpressionDeactivationTriggers,
