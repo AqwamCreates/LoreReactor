@@ -12,7 +12,8 @@
     "dev": "concurrently --kill-others \"npm run server\" \"npm run preview\"",
     "start": "concurrently --kill-others \"npm run server\" \"npm run final\"",
     "build:sidecars": "powershell -ExecutionPolicy Bypass -File build-all-sidecars.ps1",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:release": "npm run build:sidecars && npm run tauri build"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
