@@ -416,6 +416,12 @@ export function useChatSession(options: UseChatSessionOptions) {
         streamingCharacterRef.current = respondingChar ?? null;
         streamingMessageIdRef.current = `gen-${respondingChar?.id || 'ai'}-${Date.now()}`;
 
+        // Stop any previous voice tracker if still playing
+        if (currentVoiceTrackerRef.current) {
+            currentVoiceTrackerRef.current.stopImmediate();
+            currentVoiceTrackerRef.current = null;
+        }
+
         // ✅ Initialize Streaming Voice with safe start
         const voiceTracker = new StreamingVoiceTracker(respondingChar);
         currentVoiceTrackerRef.current = voiceTracker;
@@ -540,18 +546,16 @@ export function useChatSession(options: UseChatSessionOptions) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
-            // ✅ Safe flush with timeout fallback to guarantee the UI unfreezes
+            // ✅ Flush remaining voice queue in the background so the UI unfreezes immediately
             if (currentVoiceTrackerRef.current) {
                 const tracker = currentVoiceTrackerRef.current;
-                currentVoiceTrackerRef.current = null;
-                try {
-                    await Promise.race([
-                        tracker.flushAndStop(),
-                        new Promise(resolve => setTimeout(resolve, 8000)),
-                    ]);
-                } catch (e) {
-                    console.warn('[useChatSession] VoiceTracker flush error:', e);
-                }
+                tracker.flushAndStop()
+                    .catch(e => console.warn('[useChatSession] VoiceTracker flush error:', e))
+                    .finally(() => {
+                        if (currentVoiceTrackerRef.current === tracker) {
+                            currentVoiceTrackerRef.current = null;
+                        }
+                    });
             }
 
             resetStream();

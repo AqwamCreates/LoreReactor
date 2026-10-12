@@ -11,28 +11,32 @@ interface PendingJob {
 }
 
 export class StreamingVoiceTracker {
-    private buffer = '';
-    private lastCleanLength = 0;
+    private buffer: string = '';
+    private sentenceAccumulator: string = '';
+    private lastCleanLength: number = 0;
     private player: StreamingVoicePlayer;
     private character: Character;
-    private isActive = false;
-    private isKilled = false;
-    private isFlushing = false;
-    private hasVoiceConfigured = false;
+    private isActive: boolean = false;
+    private isKilled: boolean = false;
+    private isFlushing: boolean = false;
+    private hasVoiceConfigured: boolean = false;
     private startPromise: Promise<boolean> | null = null;
     private referenceBase64: string | null = null;
     
-    // Strict sequence tracking
-    private nextSequenceId = 0;
-    private nextPlaySequenceId = 0;
+    // Strict sequence tracking for seamless in-order playback
+    private nextSequenceId: number = 0;
+    private nextPlaySequenceId: number = 0;
     
-    // Storage for out-of-order network responses
+    // Storage for completed audio buffers (handles out-of-order responses)
     private completedAudioBuffers: Map<number, ArrayBuffer> = new Map();
     private inFlightPromises: Promise<void>[] = [];
 
     // Concurrency control to avoid GPU/VRAM thrashing
     private readonly MAX_CONCURRENT_REQUESTS = 2;
-    private activeRequests = 0;
+    // Minimum characters for a sentence chunk to avoid 1-word subprocess spawns
+    private readonly MIN_CHUNK_LENGTH = 35;
+
+    private activeRequests: number = 0;
     private pendingSentences: PendingJob[] = [];
 
     constructor(character: Character) {
@@ -74,10 +78,6 @@ export class StreamingVoiceTracker {
         return this.startPromise;
     }
 
-    /**
-     * Resets the stream accumulator offset.
-     * Called by CharacterActor between tool execution passes.
-     */
     resetPass(): void {
         this.lastCleanLength = 0;
     }
@@ -94,7 +94,7 @@ export class StreamingVoiceTracker {
 
         const cleanText = extractNarratableText(text, effectiveNarrateTexts);
 
-        // Auto-detect multi-pass stream resets (when Pass 2 starts fresh after a tool execution)
+        // Auto-detect multi-pass stream resets (e.g., after tool execution)
         if (cleanText.length < this.lastCleanLength) {
             this.lastCleanLength = 0;
         }
@@ -111,21 +111,31 @@ export class StreamingVoiceTracker {
 
         while ((match = boundaryRegex.exec(this.buffer)) !== null) {
             const sentenceEnd = match.index + match[1].length;
-            const sentence = this.buffer.substring(0, sentenceEnd).trim();
-
-            if (sentence.length > 0) {
-                this.queueSentence(sentence);
-            }
-
+            const rawSentence = this.buffer.substring(0, sentenceEnd).trim();
             this.buffer = this.buffer.substring(sentenceEnd);
             boundaryRegex.lastIndex = 0;
+
+            if (!rawSentence) continue;
+
+            // Micro-sentence consolidation: combine very short phrases like "Yahho!" or "Nyufufu."
+            if (this.sentenceAccumulator) {
+                this.sentenceAccumulator += ' ' + rawSentence;
+            } else {
+                this.sentenceAccumulator = rawSentence;
+            }
+
+            // Only dispatch once the accumulated sentence reaches a reasonable length
+            if (this.sentenceAccumulator.length >= this.MIN_CHUNK_LENGTH) {
+                this.queueSentence(this.sentenceAccumulator.trim());
+                this.sentenceAccumulator = '';
+            }
         }
     }
 
     private queueSentence(sentence: string): void {
-        if (this.isKilled || !this.hasVoiceConfigured) return;
+        if (this.isKilled || !this.hasVoiceConfigured || !sentence.trim()) return;
         const currentSequenceId = this.nextSequenceId++;
-        this.pendingSentences.push({ sequenceId: currentSequenceId, sentence });
+        this.pendingSentences.push({ sequenceId: currentSequenceId, sentence: sentence.trim() });
         this.processPendingQueue();
     }
 
@@ -198,33 +208,42 @@ export class StreamingVoiceTracker {
         }
     }
 
+    /**
+     * Called when text generation completes.
+     * Flushes remaining buffered fragments into the queue and drains in background without cutoff.
+     */
     async flushAndStop(): Promise<void> {
         this.isFlushing = true;
 
-        // If reference audio is still being downloaded/initialized, wait for it
         if (this.startPromise) {
             await this.startPromise;
         }
 
-        // If voice configuration is absent or failed, release queue and return immediately
         if (!this.hasVoiceConfigured || !this.isActive) {
             this.pendingSentences = [];
             this.buffer = '';
+            this.sentenceAccumulator = '';
             this.isActive = false;
             return;
         }
 
-        // Enqueue any remaining trailing text that did not conclude with sentence punctuation
+        // Flush any accumulated short sentence (e.g., trailing dialogue, "Nyufufu.")
+        let remaining = this.sentenceAccumulator;
         if (this.buffer.trim().length > 0) {
-            this.queueSentence(this.buffer.trim());
+            remaining = (remaining ? remaining + ' ' : '') + this.buffer.trim();
+        }
+
+        if (remaining.trim().length > 0) {
+            this.queueSentence(remaining.trim());
+            this.sentenceAccumulator = '';
             this.buffer = '';
         }
 
         this.processPendingQueue();
 
-        // Safety timeout to prevent network stalls from hanging the session
-        const startTime = Date.now();
-        while ((this.pendingSentences.length > 0 || this.activeRequests > 0) && (Date.now() - startTime < 15000)) {
+        // Drain in background until completely finished (no premature cutoff)
+        while (this.pendingSentences.length > 0 || this.activeRequests > 0) {
+            if (this.isKilled) break;
             if (this.inFlightPromises.length > 0) {
                 await Promise.allSettled([...this.inFlightPromises]);
             } else {
@@ -246,5 +265,6 @@ export class StreamingVoiceTracker {
         this.pendingSentences = [];
         this.activeRequests = 0;
         this.buffer = '';
+        this.sentenceAccumulator = '';
     }
 }
