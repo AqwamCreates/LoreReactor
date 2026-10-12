@@ -22,6 +22,7 @@ import findDevices from 'local-devices';
 import trash from 'trash';
 import robot from '@jitsi/robotjs';
 import sharp from 'sharp';
+import { v4 as uuidv4 } from 'uuid';
 
 // --- Configuration ---
 const app = express();
@@ -29,7 +30,7 @@ const PORT = 8448;
 const ROOT_DIR = process.cwd();
 const APP_NAME = "LoreReactor";
 
-const LOCAL_LANGUAGE_MODEL_BACKENDS_PATH = 'local_language_model_backends';
+const LOCAL_MODEL_BACKENDS_PATH = 'local_model_backends';
 
 // ── Platform helpers ────────────────────────────────────────────────
 const IS_WINDOWS = process.platform === 'win32';
@@ -45,12 +46,12 @@ function bin(name: string): string {
  * Checks root and venv subdirectories.
  */
 function pythonBin(backendDir: string): string {
-  const direct = path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, backendDir, bin('python'));
+  const direct = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, backendDir, bin('python'));
   if (fs.existsSync(direct)) return direct;
 
   const venvScript = IS_WINDOWS
-    ? path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, backendDir, 'venv', 'Scripts', 'python.exe')
-    : path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, backendDir, 'venv', 'bin', 'python');
+    ? path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, backendDir, 'venv', 'Scripts', 'python.exe')
+    : path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, backendDir, 'venv', 'bin', 'python');
   if (fs.existsSync(venvScript)) return venvScript;
 
   return direct;
@@ -84,12 +85,12 @@ interface BackendConfig {
 const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
 
   'Llama.cpp': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'llama', bin('llama-server')),
+    binaryPath: path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'llama', bin('llama-server')),
     buildArgs: (modelPath, port, extraArgs) => [
       '-m', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/health`,
-    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'llama'),
+    cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'llama'),
     logLabel: 'LLAMA',
     readyPattern: /HTTP server listening/i,
   },
@@ -97,7 +98,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
   'Transformers': {
     binaryPath: path.join(
       ROOT_DIR,
-      LOCAL_LANGUAGE_MODEL_BACKENDS_PATH,
+      LOCAL_MODEL_BACKENDS_PATH,
       'transformers',
       IS_WINDOWS ? 'text-generation-launcher-docker.cmd' : 'text-generation-launcher-docker.sh'
     ),
@@ -105,7 +106,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
       '--model-id', modelPath, '--port', port.toString(), '--hostname', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/health`,
-    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'transformers'),
+    cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'transformers'),
     logLabel: 'TGI',
     readyPattern: /Connected/i,
   },
@@ -116,7 +117,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
       'start.py', '--model-dir', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
-    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'exllamav3'),
+    cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'exllamav3'),
     logLabel: 'EXLV3',
     readyPattern: /Uvicorn running/i,
   },
@@ -127,7 +128,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
       'start.py', '--model-dir', modelPath, '--port', port.toString(), '--host', '0.0.0.0', '--hf-model', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
-    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'exllamav3_hf'),
+    cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'exllamav3_hf'),
     logLabel: 'EXLV3HF',
     readyPattern: /Uvicorn running/i,
   },
@@ -138,7 +139,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
       'start.py', '--model-dir', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
-    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'exllamav2'),
+    cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'exllamav2'),
     logLabel: 'EXLV2',
     readyPattern: /Uvicorn running/i,
   },
@@ -146,7 +147,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
   'TensorRT-LLM': {
     binaryPath: path.join(
       ROOT_DIR,
-      LOCAL_LANGUAGE_MODEL_BACKENDS_PATH,
+      LOCAL_MODEL_BACKENDS_PATH,
       'tensorrt-llm',
       IS_WINDOWS ? 'tritonserver-docker.cmd' : 'tritonserver-docker.sh'
     ),
@@ -154,16 +155,16 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
       '--model-repository', modelPath, '--http-port', port.toString(), ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/v2/health/ready`,
-    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'tensorrt-llm'),
+    cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'tensorrt-llm'),
     logLabel: 'TRTLLM',
     readyPattern: /Started HTTPService/i,
   },
 
   'Ollama': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'ollama', 'bin', bin('ollama')),
+    binaryPath: path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'ollama', 'bin', bin('ollama')),
     buildArgs: (_modelPath, _port, _extraArgs) => ['serve'],
     healthUrl: (port) => `http://127.0.0.1:${port}/`,
-    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'ollama'),
+    cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'ollama'),
     logLabel: 'OLLAMA',
     readyPattern: /listening on/i,
     envOverrides: (port) => ({ OLLAMA_HOST: `0.0.0.0:${port}` }),
@@ -177,7 +178,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
       '--model', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/health`,
-    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'vllm'),
+    cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'vllm'),
     logLabel: 'VLLM',
     readyPattern: /Application startup complete/i,
   },
@@ -189,42 +190,42 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
       '--model-path', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/health`,
-    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'sglang'),
+    cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'sglang'),
     logLabel: 'SGLANG',
     readyPattern: /The server is fired up and ready/i,
   },
 
   'LM Studio': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'lmstudio', bin('lms')),
+    binaryPath: path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'lmstudio', bin('lms')),
     buildArgs: (_modelPath, port, extraArgs) => [
       'server', 'start', '--port', port.toString(), ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
-    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'lmstudio'),
+    cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'lmstudio'),
     logLabel: 'LMS',
     readyPattern: /Server started/i,
     modelNameNotPath: true,
   },
 
   'LocalAI': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'localai', bin('local-ai')),
+    binaryPath: path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'localai', bin('local-ai')),
     buildArgs: (_modelPath, port, extraArgs) => [
       '--address', `0.0.0.0:${port}`, ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/readyz`,
-    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'localai'),
+    cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'localai'),
     logLabel: 'LOCAI',
     readyPattern: /LocalAI is ready|listening on/i,
     modelNameNotPath: true,
   },
 
   'mistral.rs': {
-    binaryPath: path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'mistral-rs', bin('mistralrs-server')),
+    binaryPath: path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'mistral-rs', bin('mistralrs-server')),
     buildArgs: (modelPath, port, extraArgs) => [
       '--model-id', modelPath, '--port', port.toString(), '--host', '0.0.0.0', ...extraArgs,
     ],
     healthUrl: (port) => `http://127.0.0.1:${port}/v1/models`,
-    cwd: path.join(LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'mistral-rs'),
+    cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'mistral-rs'),
     logLabel: 'MRSSV',
     readyPattern: /Started HTTP server/i,
   },
@@ -580,7 +581,7 @@ function hoistBinaryIfExists(searchDir: string, binaryName: string, targetDest: 
  * Bootstrap Astral's standalone `uv` executable.
  */
 async function ensureUv(): Promise<string> {
-  const uvDir = path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH, 'tools', 'uv');
+  const uvDir = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'tools', 'uv');
   const uvBinary = path.join(uvDir, bin('uv'));
 
   if (fs.existsSync(uvBinary)) return uvBinary;
@@ -706,6 +707,10 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     }
 
     hoistBinaryIfExists(destDir, bin('llama-server'), config.binaryPath);
+    
+    // ✅ Hoist the llama-tts binary for native C++ Text-to-Speech
+    const llamaTtsPath = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'llama', bin('llama-tts'));
+    hoistBinaryIfExists(destDir, bin('llama-tts'), llamaTtsPath);
 
     if (!IS_WINDOWS && fs.existsSync(config.binaryPath)) {
       fs.chmodSync(config.binaryPath, 0o755);
@@ -716,7 +721,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
   else if (backend === 'mistral.rs') {
     if (!IS_WINDOWS) {
       broadcastNotify(backend, 'installing', 10, 'Running official mistral.rs installer...');
-      execSync('curl -fsSL https://mistralrs.dev/install.sh | sh', {
+      execSync('curl -fsSL https://mistral.rs.dev/install.sh | sh', {
         cwd: destDir,
         stdio: 'inherit',
         timeout: 1800000,
@@ -1871,7 +1876,7 @@ app.post(LANGUAGE_MODEL_DELETE_ROUTE, async (req, res) => {
   try {
     const normalizedDest = path.resolve(destDir);
     const normalizedRoot = path.resolve(ROOT_DIR);
-    const normalizedBackendsRoot = path.resolve(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH);
+    const normalizedBackendsRoot = path.resolve(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH);
 
     if (normalizedDest === normalizedRoot || normalizedDest === normalizedBackendsRoot) {
       return res.status(400).json({ error: 'Cannot delete shared or root directories.' });
@@ -2792,216 +2797,274 @@ app.post('/tool/hardware/send', async (req, res) => {
   }
 });
 
-// ─── Advanced Text To Speech Pipeline ─────────────
+// ─── Native C++ Text To Speech Pipeline (llama-tts + Q8_0 GGUF) ─────────────
 
-let textToSpeechServerProcess: ChildProcess | null = null;
-let textToSpeechServerPort: number | null = null;
-let textToSpeechServerReady: boolean = false;
-let currentTextToSpeechDevice: string = 'auto';
-let textToSpeechServerLock: Promise<number> | null = null;
+const LLAMA_TTS_BINARY = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'llama', bin('llama-tts'));
+const LLAMA_DIR = path.dirname(LLAMA_TTS_BINARY);
+const TTS_DIR = path.join(ROOT_DIR, 'user_data', 'text_to_speech_models');
+// ✅ Use mradermacher's correctly converted GGUF (OpenVoiceOS metadata is broken)
+const textToSpeechModelFile = 'Qwen3-TTS-12Hz-0.6B-Base.Q8_0.gguf';
+const textToSpeechVocoderFile = 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-F16.gguf';
+const TTS_MODEL_PATH = path.join(TTS_DIR, textToSpeechModelFile);
+const TTS_MMPROJ_PATH = path.join(TTS_DIR, textToSpeechVocoderFile);
 
-async function ensureTextToSpeechServerIsRunning(device: string) {
-    if (textToSpeechServerReady && textToSpeechServerPort) return textToSpeechServerPort;
-    if (textToSpeechServerLock) return textToSpeechServerLock;
+// ✅ Portable FFmpeg for decoding speaker audio
+const FFMPEG_DIR = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'tools', 'ffmpeg');
+const FFMPEG_BIN = path.join(FFMPEG_DIR, bin('ffmpeg'));
+const FFPROBE_BIN = path.join(FFMPEG_DIR, bin('ffprobe'));
 
-    currentTextToSpeechDevice = device;
-    
-    textToSpeechServerLock = (async () => {
-        const backendSourceDirectory = path.join(ROOT_DIR, 'src', 'backend_src');
-        const virtualEnvironmentDirectory = path.join(backendSourceDirectory, 'venv_text_to_speech');
-        const pythonExecutable = IS_WINDOWS 
-            ? path.join(virtualEnvironmentDirectory, 'Scripts', 'python.exe') 
-            : path.join(virtualEnvironmentDirectory, 'bin', 'python');
+// ─── Sequential Queue to Prevent GPU/VRAM & CPU Contention ──────────────────
+let ttsQueue: Promise<any> = Promise.resolve();
 
-        if (!fs.existsSync(pythonExecutable)) {
-            const uvBinary = await ensureUv();
-            broadcastNotify('text-to-speech', 'installing', 10, 'Provisioning isolated Python environment for Text To Speech...');
-            execSync(`"${uvBinary}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
-            execSync(`"${uvBinary}" venv "${virtualEnvironmentDirectory}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
-            
-            // 1. Install qwen-tts and dependencies (✅ Removed librosa to prevent numba crashes)
-            broadcastNotify('text-to-speech', 'installing', 40, 'Installing Qwen Text To Speech dependencies...');
-            execSync(`"${uvBinary}" pip install -U qwen-tts soundfile fastapi uvicorn packaging ninja torchaudio`, {
-                stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
-                env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
-            });
-            
-            // 2. ✅ AUTO-DETECT GPU VENDOR AND INSTALL CORRECT PYTORCH WHEELS
-            if (detectedGpuVendor === 'nvidia') {
-                broadcastNotify('text-to-speech', 'installing', 60, 'Installing PyTorch with CUDA 12.1 support...');
-                execSync(`"${uvBinary}" pip install --force-reinstall torch torchaudio --index-url https://download.pytorch.org/whl/cu121`, {
-                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
-                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
-                });
-            } else if (detectedGpuVendor === 'apple' && IS_MACOS) {
-                broadcastNotify('text-to-speech', 'installing', 60, 'Installing PyTorch with Apple MPS support...');
-                execSync(`"${uvBinary}" pip install --force-reinstall torch torchaudio`, {
-                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
-                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
-                });
-            } else if (detectedGpuVendor === 'amd' && !IS_WINDOWS) {
-                broadcastNotify('text-to-speech', 'installing', 60, 'Installing PyTorch with AMD ROCm support...');
-                execSync(`"${uvBinary}" pip install --force-reinstall torch torchaudio --index-url https://download.pytorch.org/whl/rocm6.1`, {
-                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
-                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
-                });
-            } else if ((detectedGpuVendor === 'amd' || detectedGpuVendor === 'intel') && IS_WINDOWS) {
-                broadcastNotify('text-to-speech', 'installing', 60, 'Installing PyTorch with DirectML for Windows AMD/Intel...');
-                execSync(`"${uvBinary}" pip install --force-reinstall torch torchaudio torch-directml`, {
-                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
-                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
-                });
-            } else if (detectedGpuVendor === 'intel' && !IS_WINDOWS) {
-                broadcastNotify('text-to-speech', 'installing', 60, 'Installing PyTorch with Intel XPU support...');
-                execSync(`"${uvBinary}" pip install --force-reinstall torch torchaudio --index-url https://download.pytorch.org/whl/xpu`, {
-                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
-                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
-                });
-            } else {
-                broadcastNotify('text-to-speech', 'installing', 60, 'Installing PyTorch CPU-only...');
-                execSync(`"${uvBinary}" pip install --force-reinstall torch torchaudio`, {
-                    stdio: 'pipe', cwd: backendSourceDirectory, timeout: 1800000,
-                    env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
-                });
-            }
-            
-            // 3. Flash Attention (Only works on NVIDIA)
-            if (detectedGpuVendor === 'nvidia') {
-                broadcastNotify('text-to-speech', 'installing', 80, 'Attempting to compile and install Flash Attention...');
-                try {
-                    execSync(`"${uvBinary}" pip install -U flash-attn --no-build-isolation`, {
-                        stdio: 'pipe', cwd: backendSourceDirectory, timeout: 3600000,
-                        env: { ...process.env, VIRTUAL_ENV: virtualEnvironmentDirectory }
-                    });
-                    log.success('[Text To Speech] Flash Attention installed successfully.');
-                } catch {
-                    log.warn('[Text To Speech] Flash Attention compilation failed (Normal on native Windows). Falling back to standard PyTorch SDPA.');
-                }
-            }
+function enqueueTts<T>(task: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    ttsQueue = ttsQueue
+      .catch(() => {}) // Don't let a prior failure block subsequent requests
+      .then(() => task())
+      .then(resolve, reject);
+  });
+}
 
-            broadcastNotify('text-to-speech', 'ready', 100, 'Text To Speech environment ready.');
-        }
-
-        textToSpeechServerPort = await getFreePort();
-        const pythonScript = path.join(backendSourceDirectory, 'text_to_speech.py');
-
-        log.info(`[Text To Speech] Starting persistent server on port ${textToSpeechServerPort}...`);
-        
-        textToSpeechServerProcess = spawn(pythonExecutable, [pythonScript, String(textToSpeechServerPort)], {
-            cwd: backendSourceDirectory,
-            env: { ...process.env, PYTHONUNBUFFERED: '1' }
-        });
-
-        return new Promise<number>((resolve, reject) => {
-            let resolved = false;
-            textToSpeechServerProcess!.stdout?.on('data', (data: Buffer) => {
-                const output = data.toString();
-                log.info(`[Text To Speech] ${output.trim()}`);
-                if (output.includes('Model loaded and ready') && !resolved) {
-                    textToSpeechServerReady = true;
-                    resolved = true;
-                    resolve(textToSpeechServerPort!);
-                }
-            });
-            textToSpeechServerProcess!.stderr?.on('data', (data: Buffer) => {
-                const errOutput = data.toString().trim();
-                if (errOutput) log.warn(`[Text To Speech] ${errOutput}`);
-            });
-            textToSpeechServerProcess!.on('exit', (code) => {
-                textToSpeechServerReady = false;
-                textToSpeechServerProcess = null;
-                textToSpeechServerLock = null;
-                if (!resolved) {
-                    resolved = true;
-                    reject(new Error(`Text To Speech server exited with code ${code}`));
-                }
-            });
-        });
-    })();
-
-    try {
-        return await textToSpeechServerLock;
-    } finally {
-        textToSpeechServerLock = null;
+function syncFfmpegToLlamaDir(): void {
+  // Hoist binaries next to llama-tts.exe so Windows CreateProcess finds them natively
+  if (fs.existsSync(FFMPEG_BIN)) {
+    const targetFfmpeg = path.join(LLAMA_DIR, bin('ffmpeg'));
+    if (!fs.existsSync(targetFfmpeg)) {
+      try { fs.copyFileSync(FFMPEG_BIN, targetFfmpeg); } catch {}
     }
+  }
+  if (fs.existsSync(FFPROBE_BIN)) {
+    const targetFfprobe = path.join(LLAMA_DIR, bin('ffprobe'));
+    if (!fs.existsSync(targetFfprobe)) {
+      try { fs.copyFileSync(FFPROBE_BIN, targetFfprobe); } catch {}
+    }
+  }
+}
+
+async function ensureFfmpeg() {
+  if (fs.existsSync(FFMPEG_BIN) && fs.existsSync(FFPROBE_BIN)) {
+    syncFfmpegToLlamaDir();
+    return;
+  }
+    
+  ensureDirectory(FFMPEG_DIR);
+  log.info('[Text To Speech] Downloading portable FFmpeg...');
+  broadcastNotify('ffmpeg', 'downloading', 10, 'Downloading portable FFmpeg for audio decoding...');
+    
+  let zipUrl = '';
+  if (IS_WINDOWS) {
+    zipUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip';
+  } else {
+    log.warn('[Text To Speech] Non-Windows OS detected. Please ensure ffmpeg and ffprobe are installed in your system PATH.');
+    return;
+  }
+
+  const zipPath = path.join(FFMPEG_DIR, 'ffmpeg.zip');
+  await downloadFileWithProgress(zipUrl, zipPath, (loaded, total) => {
+    const pct = Math.round((loaded / total) * 100);
+    broadcastNotify('ffmpeg', 'downloading', pct, `Downloading FFmpeg: ${pct}%`);
+  }, 'ffmpeg');
+    
+  extractArchive(zipPath, FFMPEG_DIR);
+  try { fs.unlinkSync(zipPath); } catch {}
+    
+  hoistBinaryIfExists(FFMPEG_DIR, bin('ffmpeg'), FFMPEG_BIN);
+  hoistBinaryIfExists(FFMPEG_DIR, bin('ffprobe'), FFPROBE_BIN);
+  syncFfmpegToLlamaDir();
+    
+  log.success('[Text To Speech] FFmpeg ready.');
+  broadcastNotify('ffmpeg', 'ready', 100, 'FFmpeg ready.');
+}
+
+async function ensureTtsModelsDownloaded() {
+  ensureDirectory(TTS_DIR);
+  const baseUrl = 'https://huggingface.co/mradermacher/Qwen3-TTS-12Hz-0.6B-Base-GGUF/resolve/main';
+    
+  // 1. Download Main Model (646 MB)
+  if (!fs.existsSync(TTS_MODEL_PATH)) {
+    log.info('[Text To Speech] Downloading Qwen3-TTS Main Model...');
+    let lastLoggedPct = -1;
+    await downloadFileWithProgress(`${baseUrl}/${textToSpeechModelFile}`, TTS_MODEL_PATH, (loaded, total) => {
+      const pct = Math.round((loaded / total) * 100);
+      if (pct % 10 === 0 && pct !== lastLoggedPct) {
+        log.info(`[Text To Speech] Main Model: ${pct}%`);
+        lastLoggedPct = pct;
+      }
+    }, 'text-to-speech-model');
+    log.success('[Text To Speech] Main Model downloaded.');
+  }
+    
+  // 2. Download MMProj / Vocoder (401 MB)
+  if (!fs.existsSync(TTS_MMPROJ_PATH)) {
+    log.info('[Text To Speech] Downloading Qwen3-TTS MMProj...');
+    let lastLoggedPct = -1;
+    await downloadFileWithProgress(`${baseUrl}/${textToSpeechVocoderFile}`, TTS_MMPROJ_PATH, (loaded, total) => {
+      const pct = Math.round((loaded / total) * 100);
+      if (pct % 10 === 0 && pct !== lastLoggedPct) {
+        log.info(`[Text To Speech] MMProj: ${pct}%`);
+        lastLoggedPct = pct;
+      }
+    }, 'text-to-speech-mmproj');
+    log.success('[Text To Speech] MMProj downloaded.');
+  }
 }
 
 app.post('/api/text-to-speech/load', async (req, res) => {
-    const { device = 'auto' } = req.body;
-    
-    try {
-        await ensureTextToSpeechServerIsRunning(device);
-        res.json({ success: true, loaded: true });
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
+  try {
+    if (!fs.existsSync(LLAMA_TTS_BINARY)) {
+      return res.status(500).json({ error: 'llama-tts binary not found. Please install Llama.cpp first.' });
     }
+    await ensureTtsModelsDownloaded();
+    await ensureFfmpeg();
+    res.json({ success: true, loaded: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post('/api/text-to-speech/unload', (req, res) => {
-    if (textToSpeechServerProcess) {
-        log.info('[Text To Speech] Shutting down persistent server to free resources...');
-        textToSpeechServerProcess.kill('SIGTERM');
-        textToSpeechServerProcess = null;
-        textToSpeechServerReady = false;
-        textToSpeechServerPort = null;
-        textToSpeechServerLock = null;
-    }
-    res.json({ success: true, loaded: false });
+  res.json({ success: true, loaded: false });
 });
 
 app.post('/api/text-to-speech/synthesize', async (request, response) => {
-    const { text, audioBase64, transcript, language, device = 'auto' } = request.body;
+  const { text, audioBase64, transcript, language } = request.body;
 
-    if (!text || !audioBase64 || !transcript) {
-        return response.status(400).json({ error: 'Missing text, audioBase64, or transcript' });
-    }
+  if (!text || !audioBase64 || !transcript) {
+    return response.status(400).json({ error: 'Missing text, audioBase64, or transcript' });
+  }
 
-    try {
-        const port = await ensureTextToSpeechServerIsRunning(device);
-        
-        const base64Data = audioBase64.replace(/^data:[^;]+;base64,/, '');
+  if (!fs.existsSync(LLAMA_TTS_BINARY)) {
+    return response.status(500).json({ error: 'llama-tts binary not found.' });
+  }
 
-        log.info(`[Text To Speech] Synthesizing via persistent server. Target: "${text.substring(0, 30)}..."`);
+  try {
+    await ensureTtsModelsDownloaded(); 
+    await ensureFfmpeg();
 
-        const generateResponse = await fetch(`http://127.0.0.1:${port}/generate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                text,
-                language: language || 'en',
-                reference_audio_base64: base64Data,
-                reference_text: transcript,
-                device
-            })
-        });
+    const snippet = text.length > 30 ? `${text.substring(0, 30)}...` : text;
+    log.info(`[Text To Speech] Enqueuing synthesis for: "${snippet}"`);
 
-        if (!generateResponse.ok) {
-            const errorData = await generateResponse.json().catch(() => ({}));
-            throw new Error(errorData.detail || `HTTP ${generateResponse.status}`);
+    // Serialize calls through the FIFO queue
+    const wavBuffer = await enqueueTts(async () => {
+      const requestId = uuidv4();
+      const tempDir = path.join(ROOT_DIR, 'temp');
+      ensureDirectory(tempDir);
+
+      // 1. Decode base64 reference audio
+      const base64Data = audioBase64.replace(/^data:[^;]+;base64,/, '');
+      const audioBuffer = Buffer.from(base64Data, 'base64');
+
+      let ext = '.raw';
+      if (audioBuffer.length >= 12 && audioBuffer.toString('ascii', 0, 4) === 'RIFF') ext = '.wav';
+      else if (audioBuffer.length >= 3 && audioBuffer.toString('ascii', 0, 3) === 'ID3') ext = '.mp3';
+      else if (audioBuffer.length >= 4 && audioBuffer.toString('ascii', 0, 4) === 'OggS') ext = '.ogg';
+      else if (audioBuffer.length >= 4 && audioBuffer.toString('ascii', 0, 4) === 'fLaC') ext = '.flac';
+
+      const tempRawPath = path.join(tempDir, `raw_${requestId}${ext}`);
+      const tempRefWavPath = path.join(tempDir, `ref_${requestId}.wav`);
+      const tempOutPath = path.join(tempDir, `out_${requestId}.wav`);
+
+      try {
+        fs.writeFileSync(tempRawPath, audioBuffer);
+
+        // 2. Standardize reference audio to canonical 16-bit 24kHz mono RIFF WAV
+        const ffmpegBinToUse = fs.existsSync(FFMPEG_BIN) ? `"${FFMPEG_BIN}"` : 'ffmpeg';
+        try {
+          execSync(`${ffmpegBinToUse} -y -i "${tempRawPath}" -ar 24000 -ac 1 -c:a pcm_s16le "${tempRefWavPath}"`, {
+            stdio: 'pipe',
+            timeout: 10000,
+          });
+        } catch (convErr: any) {
+          log.warn(`[Text To Speech] Reference conversion warning: ${convErr.message}. Fallback to direct raw copy.`);
+          fs.copyFileSync(tempRawPath, tempRefWavPath);
         }
 
-        const result = await generateResponse.json();
-        const waveformBuffer = Buffer.from(result.audio_base64, 'base64');
+        const langMap: Record<string, string> = {
+          ja: 'ja', en: 'en', zh: 'zh', ko: 'ko', es: 'es', fr: 'fr', de: 'de', ru: 'ru', pt: 'pt', it: 'it',
+        };
+        const ttsLang = langMap[language] || 'en';
 
-        response.set('Content-Type', 'audio/wav');
-        return response.send(waveformBuffer);
+        // 3. Build arguments with Flash Attention, thread clamp, and video fallback path
+        const llamaTtsArgs = [
+          '-m', TTS_MODEL_PATH,
+          '--mmproj', TTS_MMPROJ_PATH, 
+          '-p', text,
+          '--tts-speaker-file', tempRefWavPath,
+          '--tts-lang', ttsLang,
+          '--output', tempOutPath,
+          '-ngl', '99',
+          '-fa', 'on',
+          '--video-ffmpeg-dir', FFMPEG_DIR,
+        ];
 
-    } catch (error: any) {
-        log.error(`[Text To Speech] Synthesis failed: ${error.message}`);
-        return response.status(500).json({ error: error.message });
-    }
+        log.info(`[Text To Speech] Spawning llama-tts for: "${snippet}"`);
+
+        // 4. Configure environment with both PATH and Path synchronized
+        const env: Record<string, string> = { ...process.env as Record<string, string> };
+
+        const extraDirs = [FFMPEG_DIR, LLAMA_DIR].join(path.delimiter);
+        const existingPath = env.PATH || env.Path || '';
+        const fullPath = `${extraDirs}${path.delimiter}${existingPath}`;
+
+        env.PATH = fullPath;
+        if (IS_WINDOWS) {
+          env.Path = fullPath;
+        }
+
+        await new Promise<void>((resolve, reject) => {
+          const proc = spawn(LLAMA_TTS_BINARY, llamaTtsArgs, { 
+            cwd: LLAMA_DIR,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env,
+          });
+          
+          proc.stdout?.on('data', (data) => { log.backend('LLAMA-TTS', data.toString().trim()); });
+          proc.stderr?.on('data', (data) => { 
+            const line = data.toString().trim();
+            if (line.includes('error') || line.includes('failed')) {
+              log.error(`[llama-tts stderr] ${line}`);
+            } else {
+              log.backend('LLAMA-TTS', line);
+            }
+          });
+          
+          proc.on('exit', (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`llama-tts exited with code ${code}`));
+          });
+          proc.on('error', reject);
+        });
+
+        if (!fs.existsSync(tempOutPath)) {
+          throw new Error('llama-tts did not produce an output file.');
+        }
+
+        return fs.readFileSync(tempOutPath);
+      } finally {
+        // 5. Clean up temp files safely in all scenarios
+        try { if (fs.existsSync(tempRawPath)) fs.unlinkSync(tempRawPath); } catch {}
+        try { if (fs.existsSync(tempRefWavPath)) fs.unlinkSync(tempRefWavPath); } catch {}
+        try { if (fs.existsSync(tempOutPath)) fs.unlinkSync(tempOutPath); } catch {}
+      }
+    });
+
+    response.set('Content-Type', 'audio/wav');
+    return response.send(wavBuffer);
+
+  } catch (error: any) {
+    log.error(`[Text To Speech] Synthesis failed: ${error.message}`);
+    return response.status(500).json({ error: error.message });
+  }
 });
 
 // --- Startup & Cleanup ---
 
 process.on('SIGINT', () => { 
     cleanupVirtualController(); 
-    if (textToSpeechServerProcess) textToSpeechServerProcess.kill(); 
     process.exit(0); 
 });
 process.on('SIGTERM', () => { 
     cleanupVirtualController(); 
-    if (textToSpeechServerProcess) textToSpeechServerProcess.kill(); 
     process.exit(0); 
 });
 process.on('exit', () => { 
@@ -3022,7 +3085,7 @@ const startServer = () => {
   console.log(border);
   console.log(`  ${title}`);
   console.log(`  🖥️  Platform : ${Colors.Dim}${platLabel}${Colors.Reset}`);
-  console.log(`  📂 Backends  : ${Colors.Dim}${path.join(ROOT_DIR, LOCAL_LANGUAGE_MODEL_BACKENDS_PATH)}${Colors.Reset}`);
+  console.log(`  📂 Backends  : ${Colors.Dim}${path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH)}${Colors.Reset}`);
 
   for (const [name, cfg] of Object.entries(BACKEND_CONFIGS)) {
     const exists = fs.existsSync(cfg.binaryPath);
@@ -3033,7 +3096,7 @@ const startServer = () => {
   console.log(border);
   console.log(`  📡 API Port  : ${Colors.FgGreen}http://127.0.0.1:${PORT}${Colors.Reset}`);
   console.log(`  💾 Data Path : ${Colors.Dim}/user_data/${Colors.Reset}`);
-  console.log(`  🎮 GPU Monitor: ${Colors.FgGreen}${detectedGpuVendor}${Colors.Reset} ${Colors.Dim}(GET /gpu/status)${Colors.Reset}`);
+  console.log(`  🎮 GPU: ${Colors.FgGreen}${detectedGpuVendor}${Colors.Reset} ${Colors.Dim}(GET /gpu/status)${Colors.Reset}`);
   console.log(border);
   console.log(`  ${Colors.FgGreen}●${Colors.Reset} System Ready.`);
   console.log(`  ${Colors.FgMagenta}●${Colors.Reset} Multi-Backend Model Control Enabled.`);
