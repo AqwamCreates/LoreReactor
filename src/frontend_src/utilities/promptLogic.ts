@@ -1624,8 +1624,8 @@ export function createChatHistoryPrompt(
 // ─── Volatile Section Classification ─────────────────────────────
 
 const VOLATILE_BLOCK_TYPES: ReadonlySet<string> = new Set([
-    'Context',
     'Location',
+    'Context',
     'Inventory',
     'Weather',
     'Date',
