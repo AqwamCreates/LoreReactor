@@ -311,49 +311,42 @@ function filterArrayBasedOnTarget(
     protagonistIds: string[],
 ): { characterIdArray: string[]; textContentArray: string[] } {
     const length = characterIdArray.length;
-    if (length === 0) return { characterIdArray: [], textContentArray: [] };
-    if (targetType === "everyone") return { characterIdArray, textContentArray };
+    if (length === 0 || targetType === "everyone") {
+        return { characterIdArray, textContentArray };
+    }
+
+    // Listener represents only the most recent message from someone else
+    if (targetType === "listener") {
+        for (let i = length - 1; i >= 0; i--) {
+            if (characterIdArray[i] !== selectedCharacterId) {
+                return {
+                    characterIdArray: [characterIdArray[i]],
+                    textContentArray: [textContentArray[i]],
+                };
+            }
+        }
+        return { characterIdArray: [], textContentArray: [] };
+    }
 
     const protagonistIdSet = new Set(protagonistIds);
+
+    const matchesTarget: Record<Exclude<regularExpressionTarget, 'everyone' | 'listener'>, (id: string) => boolean> = {
+        'self': (id) => id === selectedCharacterId,
+        'protagonist': (id) => protagonistIdSet.has(id),
+        'non-protagonist': (id) => !protagonistIdSet.has(id) && id !== '___ambient_narrator___',
+        'narrator': (id) => id === '___ambient_narrator___',
+    };
+
+    const predicate = matchesTarget[targetType];
+    if (!predicate) return { characterIdArray: [], textContentArray: [] };
 
     const extractedCharacterIdArray: string[] = [];
     const extractedTextContentArray: string[] = [];
 
-    if (targetType === "self") {
-        for (let i = 0; i < length; i++) {
-            if (characterIdArray[i] === selectedCharacterId) {
-                extractedCharacterIdArray.push(characterIdArray[i]);
-                extractedTextContentArray.push(textContentArray[i]);
-            }
-        }
-    } else if (targetType === "listener") {
-        for (let i = length - 1; i >= 0; i--) {
-            if (characterIdArray[i] !== selectedCharacterId) {
-                extractedCharacterIdArray.push(characterIdArray[i]);
-                extractedTextContentArray.push(textContentArray[i]);
-                break;
-            }
-        }
-    } else if (targetType === "protagonist") {
-        for (let i = 0; i < length; i++) {
-            if (protagonistIdSet.has(characterIdArray[i])) {
-                extractedCharacterIdArray.push(characterIdArray[i]);
-                extractedTextContentArray.push(textContentArray[i]);
-            }
-        }
-    } else if (targetType === "non-protagonist") {
-        for (let i = 0; i < length; i++) {
-            if (!protagonistIdSet.has(characterIdArray[i]) && characterIdArray[i] !== '___ambient_narrator___') {
-                extractedCharacterIdArray.push(characterIdArray[i]);
-                extractedTextContentArray.push(textContentArray[i]);
-            }
-        }
-    } else if (targetType === "narrator") {
-        for (let i = 0; i < length; i++) {
-            if (characterIdArray[i] === '___ambient_narrator___') {
-                extractedCharacterIdArray.push(characterIdArray[i]);
-                extractedTextContentArray.push(textContentArray[i]);
-            }
+    for (let i = 0; i < length; i++) {
+        if (predicate(characterIdArray[i])) {
+            extractedCharacterIdArray.push(characterIdArray[i]);
+            extractedTextContentArray.push(textContentArray[i]);
         }
     }
 
@@ -1354,7 +1347,6 @@ function buildTextInjectionLines(ctx: PromptBuildContext, hasBeenSummarized: boo
     const callingOtherCharacterInstructions = `If the other character's name is provided, I must use their name. Otherwise I will use generic names or terms that ${ctx.characterParticipantTag} will likely use. I will never use 'Character #' or 'Character # (Name)' unless ${ctx.characterParticipantTag} requires it.`;
     const characterResponsePriming = `${ctx.delimiters.blockStart('system')}${noRepeatInstructions} ${noRestrictionsInstructions} ${callingOtherCharacterInstructions} ${formatInstructions} I am now responding as ${ctx.characterParticipantTag} with the format I am given and I will follow all the prompts given to me.${ctx.delimiters.blockEnd}`;
     const characterTextInjection = `${ctx.delimiters.turnStart(ctx.characterParticipantTag)}{{text}}`;
-    //const characterTextInjection = '{{text}}';
 
     lines.push(characterResponsePriming);
     lines.push(characterTextInjection);
