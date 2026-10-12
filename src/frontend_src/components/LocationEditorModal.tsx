@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { Location, Character, AudioTrack, RegularExpressionTrigger } from '../types';
-import { uploadLocationImage } from '../storages/serverStorage';
+import { uploadLocationImage, cloneLocationImage } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useSessionStore } from '../hooks/useSessionStore';
@@ -28,7 +28,6 @@ type ImageEntry =
     | { type: 'staged'; file: File; previewUrl: string };
 
 export function LocationEditorModal({
-    
     isReadOnly = false,
     onClose,
     onSave,
@@ -287,27 +286,42 @@ function LocationEditorModalInner({
 
         const locationId = isNewClone ? uuidv4() : (existingLocation?.id || uuidv4());
 
-        const existingFilenames = isNewClone 
-            ? [] 
-            : images.filter((img): img is ImageEntry & { type: 'existing' } => img.type === 'existing').map(img => img.filename);
+        let finalImageFilenames: string[] = [];
 
-        const filesToUpload = images.filter((img): img is ImageEntry & { type: 'staged' } => img.type === 'staged').map(img => img.file);
+        setIsUploading(true);
+        try {
+            // ─── CLONE EXISTING ASSETS IF CLONING ───────────────────────────
+            if (isNewClone && existingLocation) {
+                for (const img of images) {
+                    if (img.type === 'existing') {
+                        const cloned = await cloneLocationImage(existingLocation.id, locationId, img.filename);
+                        if (cloned) {
+                            finalImageFilenames.push(cloned);
+                        }
+                    }
+                }
+            } else {
+                finalImageFilenames = images
+                    .filter((img): img is ImageEntry & { type: 'existing' } => img.type === 'existing')
+                    .map(img => img.filename);
+            }
 
-        let finalImageFilenames: string[] = [...existingFilenames];
+            // ─── UPLOAD NEWLY STAGED FILES ──────────────────────────────────
+            const filesToUpload = images
+                .filter((img): img is ImageEntry & { type: 'staged' } => img.type === 'staged')
+                .map(img => img.file);
 
-        if (filesToUpload.length > 0) {
-            setIsUploading(true);
-            try {
+            if (filesToUpload.length > 0) {
                 const uploadedFilenames = await Promise.all(
                     filesToUpload.map(file => uploadLocationImage(locationId, file))
                 );
                 finalImageFilenames = [...finalImageFilenames, ...uploadedFilenames];
-            } catch (error) {
-                console.error("Failed to upload images:", error);
-                alert("Failed to upload images. Location not saved.");
-                setIsUploading(false);
-                return null;
             }
+        } catch (error) {
+            console.error("Failed to process location images:", error);
+            alert("Failed to upload/clone images. Location not saved.");
+            return null;
+        } finally {
             setIsUploading(false);
         }
 
@@ -598,7 +612,7 @@ function LocationEditorModalInner({
                                     {!isReadOnly && (
                                         <select onChange={(e) => { const val = e.target.value; if (val && !(val in characterWeights)) setCharacterWeights(prev => ({ ...prev, [val]: globalWeight })); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading}>
                                             <option value="" disabled>+ Add character weight override</option>
-                                            {allCharacters.filter(c => !(c.id in characterWeights)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                            {allCharacters.filter(c => !(c.id in characterWeights)).map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
                                         </select>
                                     )}
                                 </div>

@@ -30,7 +30,7 @@ export async function fetchVoiceReference(character: Character): Promise<string 
 }
 
 class TextToSpeechEngine {
-    private isLoaded: boolean = false;
+    private isLoaded = false;
 
     /**
      * Warms up the backend TTS server (spawns Python process if not running).

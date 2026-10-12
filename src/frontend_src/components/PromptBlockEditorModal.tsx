@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { PromptBlock, Character, Context, Location, RegularExpressionTrigger } from '../types';
-import { uploadPromptBlockImage } from '../storages/serverStorage';
+import { uploadPromptBlockImage, clonePromptBlockImage } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useSessionStore } from '../hooks/useSessionStore';
@@ -27,7 +27,6 @@ type ImageEntry =
     | { type: 'staged'; file: File; previewUrl: string };
 
 export function PromptBlockEditorModal({
-    
     onClose,
     onSave,
     existingBlock,
@@ -192,27 +191,42 @@ function PromptBlockEditorModalInner({
 
         const blockId = isNewClone ? uuidv4() : (existingBlock?.id || uuidv4());
 
-        const existingFilenames = isNewClone 
-            ? [] 
-            : images.filter((img): img is ImageEntry & { type: 'existing' } => img.type === 'existing').map(img => img.filename);
+        let finalImageFilenames: string[] = [];
 
-        const filesToUpload = images.filter((img): img is ImageEntry & { type: 'staged' } => img.type === 'staged').map(img => img.file);
+        setIsUploading(true);
+        try {
+            // ─── CLONE EXISTING ASSETS IF CLONING ───────────────────────────
+            if (isNewClone && existingBlock) {
+                for (const img of images) {
+                    if (img.type === 'existing') {
+                        const cloned = await clonePromptBlockImage(existingBlock.id, blockId, img.filename);
+                        if (cloned) {
+                            finalImageFilenames.push(cloned);
+                        }
+                    }
+                }
+            } else {
+                finalImageFilenames = images
+                    .filter((img): img is ImageEntry & { type: 'existing' } => img.type === 'existing')
+                    .map(img => img.filename);
+            }
 
-        let finalImageFilenames: string[] = [...existingFilenames];
+            // ─── UPLOAD NEWLY STAGED FILES ──────────────────────────────────
+            const filesToUpload = images
+                .filter((img): img is ImageEntry & { type: 'staged' } => img.type === 'staged')
+                .map(img => img.file);
 
-        if (filesToUpload.length > 0) {
-            setIsUploading(true);
-            try {
+            if (filesToUpload.length > 0) {
                 const uploaded = await Promise.all(
                     filesToUpload.map(f => uploadPromptBlockImage(blockId, f))
                 );
                 finalImageFilenames = [...finalImageFilenames, ...uploaded];
-            } catch (error) {
-                console.error('Failed to upload images:', error);
-                alert('Failed to upload images. Prompt block not saved.');
-                setIsUploading(false);
-                return null;
             }
+        } catch (error) {
+            console.error('Failed to process prompt block images:', error);
+            alert('Failed to upload/clone images. Prompt block not saved.');
+            return null;
+        } finally {
             setIsUploading(false);
         }
 
@@ -296,18 +310,18 @@ function PromptBlockEditorModalInner({
                         <>
                             <div className="context-field-group">
                                 <label className="editor-label">Name <span className="context-required-asterisk">*</span></label>
-                                <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Combat Rules, Magic System" />
+                                <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Combat Rules, Magic System" disabled={isUploading} />
                                 {errors.name && <div className="editor-error-message">{errors.name}</div>}
                             </div>
 
                             <div className="context-field-group">
                                 <label className="editor-label">Description</label>
-                                <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Brief description (display only)" rows={2} />
+                                <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Brief description (display only)" rows={2} disabled={isUploading} />
                             </div>
 
                             <div className="context-field-group">
                                 <label className="editor-label">Text Content {textRequiresAsterisk && <span className="context-required-asterisk">*</span>}</label>
-                                <textarea value={textContent} onChange={(e) => { setTextContent(e.target.value); if (errors.textContent) setErrors({ ...errors, textContent: undefined }); }} className={`editor-textarea ${errors.textContent ? 'error' : ''}`} placeholder="Prompt block text content (optional if using images)" rows={6} />
+                                <textarea value={textContent} onChange={(e) => { setTextContent(e.target.value); if (errors.textContent) setErrors({ ...errors, textContent: undefined }); }} className={`editor-textarea ${errors.textContent ? 'error' : ''}`} placeholder="Prompt block text content (optional if using images)" rows={6} disabled={isUploading} />
                                 <div className="context-token-count">~{textTokenCount} token(s)</div>
                                 {errors.textContent && <div className="editor-error-message">{errors.textContent}</div>}
                             </div>
@@ -318,7 +332,7 @@ function PromptBlockEditorModalInner({
                                     {images.map((entry, index) => (
                                         <div key={`${entry.previewUrl}-${index}`} className="editor-image-square active">
                                             <img src={entry.previewUrl} alt={`Block image ${index + 1}`} />
-                                            <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-button">×</button>
+                                            <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-button" disabled={isUploading}>×</button>
                                         </div>
                                     ))}
                                     <div className={`editor-image-square editor-upload-square ${isUploading ? 'disabled' : ''}`} onClick={() => !isUploading && fileInputRef.current?.click()}>
@@ -420,12 +434,12 @@ function PromptBlockEditorModalInner({
                                             return (
                                                 <div key={id} className="context-character-binding-chip">
                                                     <span className="context-character-binding-name">{char.name}</span>
-                                                    <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
+                                                    <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isUploading}>×</button>
                                                 </div>
                                             );
                                         })}
                                     </div>
-                                    <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ''; }} className="editor-select" defaultValue="">
+                                    <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
                                         <option value="" disabled>+ Bind to a character</option>
                                         {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                                     </select>
@@ -443,12 +457,12 @@ function PromptBlockEditorModalInner({
                                             return (
                                                 <div key={id} className="context-character-binding-chip">
                                                     <span className="context-character-binding-name">{context.name}</span>
-                                                    <button type="button" onClick={() => setContextBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
+                                                    <button type="button" onClick={() => setContextBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isUploading}>×</button>
                                                 </div>
                                             );
                                         })}
                                     </div>
-                                    <select onChange={(e) => { const val = e.target.value; if (val && !contextBindings.includes(val)) setContextBindings(prev => [...prev, val]); e.target.value = ''; }} className="editor-select" defaultValue="">
+                                    <select onChange={(e) => { const val = e.target.value; if (val && !contextBindings.includes(val)) setContextBindings(prev => [...prev, val]); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
                                         <option value="" disabled>+ Bind to a context</option>
                                         {allContexts.filter(c => !contextBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                                     </select>
@@ -466,12 +480,12 @@ function PromptBlockEditorModalInner({
                                             return (
                                                 <div key={id} className="context-character-binding-chip">
                                                     <span className="context-character-binding-name">{loc.name}</span>
-                                                    <button type="button" onClick={() => setLocationBindings(prev => prev.filter(lid => lid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>
+                                                    <button type="button" onClick={() => setLocationBindings(prev => prev.filter(lid => lid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isUploading}>×</button>
                                                 </div>
                                             );
                                         })}
                                     </div>
-                                    <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ''; }} className="editor-select" defaultValue="">
+                                    <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
                                         <option value="" disabled>+ Bind to a location</option>
                                         {allLocations.filter(l => !locationBindings.includes(l.id)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
                                     </select>

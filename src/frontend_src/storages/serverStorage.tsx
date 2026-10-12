@@ -364,6 +364,18 @@ function getCleanFileName(file: { name: string }): string {
   return file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
+export async function urlToFile(url: string, filename: string): Promise<File | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+  } catch (error) {
+    console.warn(`Failed to fetch file from ${url}:`, error);
+    return null;
+  }
+}
+
 // =============================================================================
 // GENERIC HYDRATION UTILITY
 // =============================================================================
@@ -1610,6 +1622,20 @@ export async function uploadCharacterImage(characterId: string, file: File): Pro
     return upload('characterImages', characterId, file);
 }
 
+export async function cloneCharacterImage(sourceCharacterId: string, targetCharacterId: string, characterExpression: string): Promise<string | null> {
+    const sourceImageUrl = getCharacterImageUrl(sourceCharacterId, characterExpression);
+    if (!sourceImageUrl) return null;
+
+    const filename = characterExpression?.trim()
+        ? (characterExpression.includes('.') ? characterExpression : `${characterExpression}.png`)
+        : `clone-${targetCharacterId}.png`;
+
+    const file = await urlToFile(sourceImageUrl, filename);
+    if (!file) return null;
+
+    return uploadCharacterImage(targetCharacterId, file);
+}
+
 export function getCharacterVoiceURL(characterId: string, voiceFileName: string | undefined): string | null {
   if (!voiceFileName) return null;
   return getURL('characterVoices', characterId, voiceFileName);
@@ -1617,6 +1643,17 @@ export function getCharacterVoiceURL(characterId: string, voiceFileName: string 
 
 export async function uploadCharacterVoice(characterId: string, file: File): Promise<string> {
   return upload('characterVoices', characterId, file);
+}
+
+export async function cloneCharacterVoice(sourceCharacterId: string, targetCharacterId: string, voiceFileName: string): Promise<string | null> {
+    const sourceVoiceUrl = getCharacterVoiceURL(sourceCharacterId, voiceFileName);
+    if (!sourceVoiceUrl) return null;
+
+    const filename = voiceFileName?.trim() || `voice-${targetCharacterId}.wav`;
+    const file = await urlToFile(sourceVoiceUrl, filename);
+    if (!file) return null;
+
+    return uploadCharacterVoice(targetCharacterId, file);
 }
 
 export function getContextImageUrl(contextId: string, imageFilename: string | undefined): string | null {
@@ -1628,6 +1665,17 @@ export async function uploadContextImage(contextId: string, file: File): Promise
   return upload('contextImages', contextId, file);
 }
 
+export async function cloneContextImage(sourceContextId: string, targetContextId: string, imageFilename: string): Promise<string | null> {
+    const sourceImageUrl = getContextImageUrl(sourceContextId, imageFilename);
+    if (!sourceImageUrl) return null;
+
+    const filename = imageFilename?.trim() || `image-${targetContextId}.png`;
+    const file = await urlToFile(sourceImageUrl, filename);
+    if (!file) return null;
+
+    return uploadContextImage(targetContextId, file);
+}
+
 export function getLocationImageUrl(locationId: string, imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
   return getURL('locationImages', locationId, imageFilename);
@@ -1635,6 +1683,17 @@ export function getLocationImageUrl(locationId: string, imageFilename: string | 
 
 export async function uploadLocationImage(locationId: string, file: File): Promise<string> {
   return upload('locationImages', locationId, file);
+}
+
+export async function cloneLocationImage(sourceLocationId: string, targetLocationId: string, imageFilename: string): Promise<string | null> {
+    const sourceImageUrl = getLocationImageUrl(sourceLocationId, imageFilename);
+    if (!sourceImageUrl) return null;
+
+    const filename = imageFilename?.trim() || `image-${targetLocationId}.png`;
+    const file = await urlToFile(sourceImageUrl, filename);
+    if (!file) return null;
+
+    return uploadLocationImage(targetLocationId, file);
 }
 
 export function getAudioTrackUrl(audioTrackId: string, imageFilename: string | undefined): string | null {
@@ -1646,6 +1705,17 @@ export async function uploadAudioTrack(audioTrackId: string, file: File): Promis
     return upload('audioTrackAudios', audioTrackId, file);
 }
 
+export async function cloneAudioTrack(sourceAudioTrackId: string, targetAudioTrackId: string, audioFilename: string): Promise<string | null> {
+    const sourceAudioUrl = getAudioTrackUrl(sourceAudioTrackId, audioFilename);
+    if (!sourceAudioUrl) return null;
+
+    const filename = audioFilename?.trim() || `track-${targetAudioTrackId}.mp3`;
+    const file = await urlToFile(sourceAudioUrl, filename);
+    if (!file) return null;
+
+    return uploadAudioTrack(targetAudioTrackId, file);
+}
+
 export function getPromptBlockImageUrl(promptBlockId: string, imageFilename: string | undefined): string | null {
   if (!imageFilename) return null;
   return getURL('promptBlockImages', promptBlockId, imageFilename);
@@ -1653,6 +1723,17 @@ export function getPromptBlockImageUrl(promptBlockId: string, imageFilename: str
 
 export async function uploadPromptBlockImage(promptBlockId: string, file: File): Promise<string> {
   return upload('promptBlockImages', promptBlockId, file);
+}
+
+export async function clonePromptBlockImage(sourcePromptBlockId: string, targetPromptBlockId: string, imageFilename: string): Promise<string | null> {
+    const sourceImageUrl = getPromptBlockImageUrl(sourcePromptBlockId, imageFilename);
+    if (!sourceImageUrl) return null;
+
+    const filename = imageFilename?.trim() || `prompt-image-${targetPromptBlockId}.png`;
+    const file = await urlToFile(sourceImageUrl, filename);
+    if (!file) return null;
+
+    return uploadPromptBlockImage(targetPromptBlockId, file);
 }
 
 // --- Isolated Multiplayer Character Assets ---
@@ -1665,6 +1746,20 @@ export async function uploadMultiplayerCharacterImage(characterId: string, file:
     return upload('multiplayerCharacterImages', characterId, file);
 }
 
+export async function cloneMultiplayerCharacterImage(sourceCharacterId: string, targetCharacterId: string, characterExpression: string): Promise<string | null> {
+    const sourceImageUrl = getMultiplayerCharacterImageUrl(sourceCharacterId, characterExpression);
+    if (!sourceImageUrl) return null;
+
+    const filename = characterExpression?.trim()
+        ? (characterExpression.includes('.') ? characterExpression : `${characterExpression}.png`)
+        : `clone-${targetCharacterId}.png`;
+
+    const file = await urlToFile(sourceImageUrl, filename);
+    if (!file) return null;
+
+    return uploadMultiplayerCharacterImage(targetCharacterId, file);
+}
+
 export function getMultiplayerCharacterVoiceUrl(characterId: string, voiceFileName: string | undefined): string | null {
   if (!voiceFileName) return null;
   return getURL('multiplayerCharacterVoices', characterId, voiceFileName);
@@ -1672,6 +1767,17 @@ export function getMultiplayerCharacterVoiceUrl(characterId: string, voiceFileNa
 
 export async function uploadMultiplayerCharacterVoice(characterId: string, file: File): Promise<string> {
   return upload('multiplayerCharacterVoices', characterId, file);
+}
+
+export async function cloneMultiplayerCharacterVoice(sourceCharacterId: string, targetCharacterId: string, voiceFileName: string): Promise<string | null> {
+    const sourceVoiceUrl = getMultiplayerCharacterVoiceUrl(sourceCharacterId, voiceFileName);
+    if (!sourceVoiceUrl) return null;
+
+    const filename = voiceFileName?.trim() || `voice-${targetCharacterId}.wav`;
+    const file = await urlToFile(sourceVoiceUrl, filename);
+    if (!file) return null;
+
+    return uploadMultiplayerCharacterVoice(targetCharacterId, file);
 }
 
 export async function loadRawFactorizationMachine(name: string): Promise<FMSerialized | null> {

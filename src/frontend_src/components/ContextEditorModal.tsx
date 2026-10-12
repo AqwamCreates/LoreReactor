@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { Context, Character, searchEngine, linkFetchMode, RegularExpressionTrigger } from '../types';
-import { uploadContextImage } from '../storages/serverStorage';
+import { uploadContextImage, cloneContextImage } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { parseCharacterCard, type ParsedCharacterCardExtended } from '../utilities/characterCardParser';
@@ -29,7 +29,6 @@ type ImageEntry =
     | { type: 'staged'; file: File; previewUrl: string };
 
 export function ContextEditorModal({
-    
     isReadOnly = false,
     onClose,
     onSave,
@@ -263,27 +262,42 @@ function ContextEditorModalInner({
 
         const contextId = isNewClone ? uuidv4() : (existingContext?.id || uuidv4());
 
-        const existingFilenames = isNewClone 
-            ? [] 
-            : images.filter((img): img is ImageEntry & { type: 'existing' } => img.type === 'existing').map(img => img.filename);
+        let finalImageFilenames: string[] = [];
 
-        const filesToUpload = images.filter((img): img is ImageEntry & { type: 'staged' } => img.type === 'staged').map(img => img.file);
+        setIsUploading(true);
+        try {
+            // ─── CLONE EXISTING ASSETS IF CLONING ───────────────────────────
+            if (isNewClone && existingContext) {
+                for (const img of images) {
+                    if (img.type === 'existing') {
+                        const cloned = await cloneContextImage(existingContext.id, contextId, img.filename);
+                        if (cloned) {
+                            finalImageFilenames.push(cloned);
+                        }
+                    }
+                }
+            } else {
+                finalImageFilenames = images
+                    .filter((img): img is ImageEntry & { type: 'existing' } => img.type === 'existing')
+                    .map(img => img.filename);
+            }
 
-        let finalImageFilenames: string[] = [...existingFilenames];
+            // ─── UPLOAD NEWLY STAGED FILES ──────────────────────────────────
+            const filesToUpload = images
+                .filter((img): img is ImageEntry & { type: 'staged' } => img.type === 'staged')
+                .map(img => img.file);
 
-        if (filesToUpload.length > 0) {
-            setIsUploading(true);
-            try {
+            if (filesToUpload.length > 0) {
                 const uploadedFilenames = await Promise.all(
                     filesToUpload.map(file => uploadContextImage(contextId, file))
                 );
                 finalImageFilenames = [...finalImageFilenames, ...uploadedFilenames];
-            } catch (error) {
-                console.error("Failed to upload images:", error);
-                alert("Failed to upload images. Context not saved.");
-                setIsUploading(false);
-                return null;
             }
+        } catch (error) {
+            console.error("Failed to process context images:", error);
+            alert("Failed to upload/clone images. Context not saved.");
+            return null;
+        } finally {
             setIsUploading(false);
         }
 

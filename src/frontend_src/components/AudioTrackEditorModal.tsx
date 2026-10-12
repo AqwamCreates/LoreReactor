@@ -1,7 +1,7 @@
 // frontend_src/components/AudioTrackEditorModal.tsx
 import { useState, useEffect, useRef } from 'react';
 import type { AudioTrack, Character, Context, Location, audioCategory, RegularExpressionTrigger } from '../types';
-import { uploadAudioTrack, getAudioTrackUrl } from '../storages/serverStorage';
+import { uploadAudioTrack, getAudioTrackUrl, cloneAudioTrack } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
 import '../main.css';
@@ -25,7 +25,6 @@ const AUDIO_CATEGORIES: { value: audioCategory; label: string; icon: string }[] 
 type AudioTabId = 'general' | 'detection' | 'bindings';
 
 export function AudioTrackEditorModal({
-    
     isReadOnly = false,
     onClose,
     onSave,
@@ -169,18 +168,26 @@ function AudioTrackEditorModalInner({
 
         let finalFilename = filename.trim();
 
-        if (audioFile) {
-            setIsUploading(true);
-            try {
+        setIsUploading(true);
+        try {
+            // ─── CLONE AUDIO TRACK FILE IF CLONING ───────────────────────────
+            if (isNewClone && existingTrack?.filename && !audioFile) {
+                const sourceFilename = existingTrack.filename;
+                const cloned = await cloneAudioTrack(existingTrack.id, trackId, sourceFilename);
+                if (cloned) {
+                    finalFilename = cloned;
+                }
+            } else if (audioFile) {
+                // ─── UPLOAD NEWLY STAGED AUDIO FILE ─────────────────────────
                 finalFilename = await uploadAudioTrack(trackId, audioFile);
-            } catch (error) {
-                console.error('Failed to upload audio file:', error);
-                setErrors(prev => ({ ...prev, filename: 'Upload failed.' }));
-                setIsUploading(false);
-                return null;
+                setAudioFile(null);
             }
+        } catch (error) {
+            console.error('Failed to process audio track file:', error);
+            setErrors(prev => ({ ...prev, filename: 'Upload/clone failed.' }));
+            return null;
+        } finally {
             setIsUploading(false);
-            setAudioFile(null);
         }
 
         if (!finalFilename) {

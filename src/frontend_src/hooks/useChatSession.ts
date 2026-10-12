@@ -593,7 +593,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         
         const rawCharacter = currentData.participants.find(p => p.id === characterId);
         if (!rawCharacter) return;
-        const character = allCharactersRef.current.find(c => c.id === rawCharacter.id) || rawCharacter;
 
         if (!acquireLock()) return;
         

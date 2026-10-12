@@ -1,4 +1,3 @@
-// frontend_src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { 
@@ -7,7 +6,14 @@ import type {
     tool, InteractionData, StopPattern, Voice 
 } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { uploadCharacterImage, getCharacterImageUrl, getCharacterVoiceURL } from '../storages/serverStorage';
+import { 
+    uploadCharacterImage, 
+    getCharacterImageUrl, 
+    getCharacterVoiceURL,
+    uploadCharacterVoice,
+    cloneCharacterImage,
+    cloneCharacterVoice,
+} from '../storages/serverStorage';
 import { 
     getInitiativeWeightValueFromText, 
     getChatProbabilityValue, 
@@ -699,18 +705,71 @@ function CharacterEditorModalInner({
 
         const finalImages: Record<string, string> = { ...emotionImages };
 
-        if (imageFile) {
-            setIsUploading(true);
-            try { 
-                finalImages.neutral = await uploadCharacterImage(targetCharacterId, imageFile); 
-            } catch { 
-                setSubmitError("Failed to upload image."); 
-                setIsUploading(false); 
-                return null; 
+        let finalVoice: Voice | undefined = (!isVoiceRemoved && existingCharacter?.voice) 
+            ? { ...existingCharacter.voice } 
+            : undefined;
+
+        if (finalVoice && voiceLanguage) {
+            finalVoice.language = voiceLanguage;
+        }
+
+        setIsUploading(true);
+        try {
+            // ─── CLONE EXTERNAL ASSETS (IMAGES & VOICE) ─────────────────────
+            if (isNewClone && existingCharacter) {
+                for (const [expr, filename] of Object.entries(emotionImages)) {
+                    if (expr === 'neutral' && imageFile) continue;
+                    const clonedFilename = await cloneCharacterImage(existingCharacter.id, targetCharacterId, filename);
+                    if (clonedFilename) {
+                        finalImages[expr] = clonedFilename;
+                    }
+                }
+
+                if (!isVoiceRemoved && existingCharacter.voice?.voiceFilename && !voiceFile) {
+                    const clonedVoiceFilename = await cloneCharacterVoice(
+                        existingCharacter.id,
+                        targetCharacterId,
+                        existingCharacter.voice.voiceFilename
+                    );
+                    if (clonedVoiceFilename) {
+                        if (!finalVoice) {
+                            finalVoice = { voiceFilename: clonedVoiceFilename, language: voiceLanguage || undefined };
+                        } else {
+                            finalVoice.voiceFilename = clonedVoiceFilename;
+                        }
+                    }
+                }
             }
+
+            // ─── USER-UPLOADED REPLACEMENTS ─────────────────────────────────
+            if (imageFile) {
+                try { 
+                    finalImages.neutral = await uploadCharacterImage(targetCharacterId, imageFile); 
+                } catch { 
+                    setSubmitError("Failed to upload image."); 
+                    return null; 
+                }
+            } else if (!imagePreview) {
+                delete finalImages.neutral;
+            }
+
+            if (voiceFile) {
+                try {
+                    const uploadedVoice = await uploadCharacterVoice(targetCharacterId, voiceFile);
+                    if (finalVoice) {
+                        finalVoice.voiceFilename = uploadedVoice;
+                    } else {
+                        finalVoice = {
+                            voiceFilename: uploadedVoice,
+                            language: voiceLanguage || undefined,
+                        };
+                    }
+                } catch (e) {
+                    console.warn("Failed to upload voice file:", e);
+                }
+            }
+        } finally {
             setIsUploading(false);
-        } else if (!imagePreview) {
-            delete finalImages.neutral;
         }
 
         if (voiceFile && onVoiceTranscribeRequested) {
@@ -799,15 +858,6 @@ function CharacterEditorModalInner({
             .map(id => getStopPatternById(id))
             .filter((sp): sp is StopPattern => sp !== null);
 
-        // ✅ PRESERVE VOICE METADATA
-        const finalVoice: Voice | undefined = (!isVoiceRemoved && existingCharacter?.voice) 
-            ? { ...existingCharacter.voice } 
-            : undefined;
-
-        if (finalVoice && voiceLanguage) {
-            finalVoice.language = voiceLanguage;
-        }
-
         const now = Date.now();
         return {
             id: targetCharacterId,
@@ -821,7 +871,7 @@ function CharacterEditorModalInner({
             memoryPrompts: Object.keys(memoryPrompts).length > 0 ? memoryPrompts : undefined,
             aliases: aliases.length > 0 ? aliases : undefined,
             images: Object.keys(finalImages).length > 0 ? finalImages : undefined,
-            voice: finalVoice, // ✅ PRESERVED AND NEVER DROPPED
+            voice: finalVoice, // ✅ PRESERVED AND PROPERLY CLONED
             useFrontCameraImage: useFrontCameraImage || undefined,
             languageModelSampler: finalLanguageModelSampler,
             textToSpeechModelSampler: finalTextToSpeechModelSampler,
@@ -1460,7 +1510,7 @@ function CharacterEditorModalInner({
                                     </div>
 
                                     {!hasSession && (
-                                        <div style={{ fontSize: '0.65rem', opacity: 0.8, fontStyle: 'italic', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                        <div style={{ fontSize: '0.65rem', opacity: 0.8, fontStyle: 'italic', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,255,205,0.08)' }}>
                                             ℹ️ Start a chat session to enable protagonist and participant shortcuts.
                                         </div>
                                     )}

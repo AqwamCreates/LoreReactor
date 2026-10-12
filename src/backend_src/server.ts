@@ -359,7 +359,6 @@ app.get('/sync', (req, res) => {
 
   syncSseClients.add(res);
   
-  // Keep-alive ping every 15 seconds to prevent proxy timeouts
   const ping = setInterval(() => res.write(':ping\n\n'), 15000);
 
   req.on('close', () => {
@@ -694,7 +693,6 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     extractArchive(tempPath, destDir);
     try { fs.unlinkSync(tempPath); } catch {}
 
-    // Companion CUDA DLL package on Windows so llama-server.exe doesn't crash on cudart64
     if (isCudaWindows) {
       const cudartAsset = release.assets.find((a: any) => /cudart-llama-bin-win-cuda-.*-x64\.zip$/i.test(a.name));
       if (cudartAsset?.browser_download_url) {
@@ -708,7 +706,6 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
 
     hoistBinaryIfExists(destDir, bin('llama-server'), config.binaryPath);
     
-    // ✅ Hoist the llama-tts binary for native C++ Text-to-Speech
     const llamaTtsPath = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'llama', bin('llama-tts'));
     hoistBinaryIfExists(destDir, bin('llama-tts'), llamaTtsPath);
 
@@ -3194,4 +3191,4 @@ const startServer = () => {
   app.listen(PORT, '0.0.0.0', () => {});
 };
 
-startServer();
+startServer()
