@@ -341,6 +341,13 @@ function filterArrayBasedOnTarget(
                 extractedTextContentArray.push(textContentArray[i]);
             }
         }
+    } else if (targetType === "non-protagonist") {
+        for (let i = 0; i < length; i++) {
+            if (!protagonistIdSet.has(characterIdArray[i]) && characterIdArray[i] !== '___ambient_narrator___') {
+                extractedCharacterIdArray.push(characterIdArray[i]);
+                extractedTextContentArray.push(textContentArray[i]);
+            }
+        }
     } else if (targetType === "narrator") {
         for (let i = 0; i < length; i++) {
             if (characterIdArray[i] === '___ambient_narrator___') {

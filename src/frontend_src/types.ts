@@ -4,7 +4,7 @@ export type tristateInteger = -1 | 0 | 1
 
 export type regularExpressionContext = 'global' | 'local' | 'previous';
 
-export type regularExpressionTarget = 'everyone' | 'listener' | 'self' | 'protagonist' | 'narrator';
+export type regularExpressionTarget = 'everyone' | 'listener' | 'self' | 'protagonist' | 'non-protagonist' | 'narrator';
 export interface ObjectData {
   id: string;
   name: string;

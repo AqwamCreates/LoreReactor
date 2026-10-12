@@ -13,6 +13,7 @@ const TARGET_OPTIONS: { value: regularExpressionTarget; label: string }[] = [
     { value: 'listener', label: 'Listener' },
     { value: 'self', label: 'Self' },
     { value: 'protagonist', label: 'Protagonist' },
+    { value: 'non-protagonist', label: 'Non-Protagonist' },
     { value: 'narrator', label: 'Narrator' },
 ];
 
