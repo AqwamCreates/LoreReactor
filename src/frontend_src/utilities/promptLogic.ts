@@ -1625,6 +1625,7 @@ export function createChatHistoryPrompt(
 
 const VOLATILE_BLOCK_TYPES: ReadonlySet<string> = new Set([
     'Location',
+    'Context',
     'Inventory',
     'Weather',
     'Date',
@@ -1682,7 +1683,7 @@ function buildStructuredMessages(
             triggerLines.push(...lines);
         } else if (VOLATILE_BLOCK_TYPES.has(entry)) {
             volatileLines.push(...lines);
-        } else if (entry === 'Context' || entry === 'Starter Prompt') {
+        } else if (entry === 'Starter Prompt' || entry === 'Sky View') {
             semiStableLines.push(...lines);
         } else {
             staticLines.push(...lines);
