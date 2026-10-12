@@ -75,8 +75,6 @@ echo ""
 echo "  ========================================"
 echo "    LoreReactor is starting!"
 echo ""
-echo "    API Server: http://localhost:8448"
-echo ""
 echo "    Press Ctrl + C to stop all servers."
 echo "  ========================================"
 echo ""
@@ -94,4 +92,4 @@ npx concurrently \
     --kill-signal SIGTERM \
     --names "WEB,API" \
     --prefix-colors "cyan,magenta" \
-    "npm run start"
+    "npm run website"

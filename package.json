@@ -6,11 +6,11 @@
   "scripts": {
     "server": "tsx src/backend_src/server.ts",
     "preview": "vite --host 0.0.0.0 --port 4444",
-    "final": "npm run build && vite preview --host 0.0.0.0 --port 4444",
+    "start": "npm run build && vite preview --host 0.0.0.0 --port 4444",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "development": "concurrently --kill-others \"npm run server\" \"npm run preview\"",
-    "start": "concurrently --kill-others \"npm run server\" \"npm run final\"",
+    "website": "concurrently --kill-others \"npm run server\" \"npm run start\"",
     "sidecars": "powershell -ExecutionPolicy Bypass -File build-all-sidecars.ps1",
     "tauri": "tauri",
     "release": "npm run sidecars && npm run tauri build"
