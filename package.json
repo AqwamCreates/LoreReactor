@@ -10,7 +10,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "dev": "concurrently --kill-others \"npm run server\" \"npm run preview\"",
-    "start": "concurrently --kill-others \"npm run server\" \"npm run final\""
+    "start": "concurrently --kill-others \"npm run server\" \"npm run final\"",
+    "build:sidecars": "powershell -ExecutionPolicy Bypass -File build-all-sidecars.ps1",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
@@ -18,6 +20,7 @@
     "@jitsi/robotjs": "^0.6.24",
     "@photostructure/tz-lookup": "^11.7.0",
     "@tauri-apps/api": "^2.12.1",
+    "@tauri-apps/plugin-shell": "^2.5.0",
     "@types/tz-lookup": "^6.1.2",
     "@xyflow/react": "^12.11.6",
     "chokidar": "^5.0.0",
@@ -58,6 +61,7 @@
     "@types/screenshot-desktop": "^1.15.0",
     "@types/sharp": "^0.31.1",
     "@vitejs/plugin-react": "^6.0.3",
+    "@yao-pkg/pkg": "^6.23.0",
     "body-parser": "^2.3.0",
     "concurrently": "^10.0.4",
     "cors": "^2.8.6",

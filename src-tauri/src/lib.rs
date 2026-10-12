@@ -1,6 +1,9 @@
+use tauri_plugin_shell::ShellExt;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    .plugin(tauri_plugin_shell::init())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -9,6 +12,13 @@ pub fn run() {
             .build(),
         )?;
       }
+
+      // Automatically spawn the compiled Express backend sidecar on boot
+      let sidecar_command = app.handle().shell().sidecar("server")?;
+      let (_rx, _child) = sidecar_command
+          .spawn()
+          .expect("Failed to spawn Express backend sidecar");
+
       Ok(())
     })
     .run(tauri::generate_context!())
