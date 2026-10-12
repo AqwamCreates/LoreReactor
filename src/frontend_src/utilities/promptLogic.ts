@@ -1807,7 +1807,7 @@ const PROMPT_BUILDERS: Record<string, (b: BuilderContext) => Promise<string[]>> 
     },
     'Weather': async (b) => {
         const { currentLocation, profile } = b.ctx;
-        if (!currentLocation?.hasWeather) return [];
+        if (!currentLocation || !currentLocation?.hasWeather) return [];
         if (profile?.weatherApiKey && b.latitude && b.longitude) {
             const weatherLine = await fetchCurrentWeather(b.latitude, b.longitude, profile.weatherApiKey);
             if (weatherLine) {
