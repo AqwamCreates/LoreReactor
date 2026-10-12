@@ -52,9 +52,10 @@ export function renderProfileSubtext(profile: Profile): React.ReactNode {
     const flags: string[] = [];
     if (profile.forceNameReveal) flags.push('Force Names');
     if (profile.enableCharacterExpression) flags.push('Expressions');
-    if (inputStrategy.includes('Time')) flags.push('Time');
-    if (inputStrategy.includes('Date')) flags.push('Date');
+    if (inputStrategy.includes('Sky View')) flags.push('Sky View');
     if (inputStrategy.includes('Weather')) flags.push('Weather');
+    if (inputStrategy.includes('Date')) flags.push('Date');
+    if (inputStrategy.includes('Time')) flags.push('Time');
     if (inputStrategy.includes('Time Elapsed')) flags.push('Time Elapsed');
     if (enableWebSearchText) flags.push(enableWebSearchText as string);
     if (enableCalculatorText) flags.push(enableCalculatorText as string);
