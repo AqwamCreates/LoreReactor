@@ -11,20 +11,20 @@ interface PendingJob {
 }
 
 export class StreamingVoiceTracker {
-    private buffer: string = '';
-    private lastCleanLength: number = 0;
+    private buffer = '';
+    private lastCleanLength = 0;
     private player: StreamingVoicePlayer;
     private character: Character;
-    private isActive: boolean = false;
-    private isKilled: boolean = false;
-    private isFlushing: boolean = false;
-    private hasVoiceConfigured: boolean = false;
+    private isActive = false;
+    private isKilled = false;
+    private isFlushing = false;
+    private hasVoiceConfigured = false;
     private startPromise: Promise<boolean> | null = null;
     private referenceBase64: string | null = null;
     
     // Strict sequence tracking
-    private nextSequenceId: number = 0;
-    private nextPlaySequenceId: number = 0;
+    private nextSequenceId = 0;
+    private nextPlaySequenceId = 0;
     
     // Storage for out-of-order network responses
     private completedAudioBuffers: Map<number, ArrayBuffer> = new Map();
@@ -32,7 +32,7 @@ export class StreamingVoiceTracker {
 
     // Concurrency control to avoid GPU/VRAM thrashing
     private readonly MAX_CONCURRENT_REQUESTS = 2;
-    private activeRequests: number = 0;
+    private activeRequests = 0;
     private pendingSentences: PendingJob[] = [];
 
     constructor(character: Character) {
@@ -74,8 +74,16 @@ export class StreamingVoiceTracker {
         return this.startPromise;
     }
 
-    feed(text: string) {
-        if (this.isKilled || !this.hasVoiceConfigured) return;
+    /**
+     * Resets the stream accumulator offset.
+     * Called by CharacterActor between tool execution passes.
+     */
+    resetPass(): void {
+        this.lastCleanLength = 0;
+    }
+
+    feed(text: string): void {
+        if (this.isKilled || this.isFlushing || !this.hasVoiceConfigured) return;
 
         const profile = useSessionStore.getState().interactionData?.profile;
         const narrateTexts = profile?.narrateTexts;
@@ -85,14 +93,21 @@ export class StreamingVoiceTracker {
             : { normal: true, quoted: true, bolded: true, italicized: true, parenthesized: true, bracketed: true, braced: true } as Record<textType, boolean>;
 
         const cleanText = extractNarratableText(text, effectiveNarrateTexts);
+
+        // Auto-detect multi-pass stream resets (when Pass 2 starts fresh after a tool execution)
+        if (cleanText.length < this.lastCleanLength) {
+            this.lastCleanLength = 0;
+        }
+
         if (cleanText.length <= this.lastCleanLength) return;
 
         const newText = cleanText.slice(this.lastCleanLength);
         this.buffer += newText;
         this.lastCleanLength = cleanText.length;
 
-        const boundaryRegex = /([.!?]+)(?:\s+|$)/g;
-        let match;
+        // Support standard (.!?) and East Asian (。！？…) sentence boundaries
+        const boundaryRegex = /([.!?。！？…]+)(?:\s+|$)/gu;
+        let match: RegExpExecArray | null;
 
         while ((match = boundaryRegex.exec(this.buffer)) !== null) {
             const sentenceEnd = match.index + match[1].length;
@@ -107,14 +122,14 @@ export class StreamingVoiceTracker {
         }
     }
 
-    private queueSentence(sentence: string) {
+    private queueSentence(sentence: string): void {
         if (this.isKilled || !this.hasVoiceConfigured) return;
         const currentSequenceId = this.nextSequenceId++;
         this.pendingSentences.push({ sequenceId: currentSequenceId, sentence });
         this.processPendingQueue();
     }
 
-    private processPendingQueue() {
+    private processPendingQueue(): void {
         if (!this.isActive || this.isKilled) return;
 
         while (this.pendingSentences.length > 0 && this.activeRequests < this.MAX_CONCURRENT_REQUESTS) {
@@ -132,7 +147,7 @@ export class StreamingVoiceTracker {
         }
     }
 
-    private async executeSynthesis(sequenceId: number, sentence: string) {
+    private async executeSynthesis(sequenceId: number, sentence: string): Promise<void> {
         const base64 = this.referenceBase64;
         const transcript = this.character.voice?.textContent;
         const language = this.character.voice?.language;
@@ -171,7 +186,7 @@ export class StreamingVoiceTracker {
         }
     }
 
-    private processPlaybackQueue() {
+    private processPlaybackQueue(): void {
         while (this.completedAudioBuffers.has(this.nextPlaySequenceId)) {
             const audioBuffer = this.completedAudioBuffers.get(this.nextPlaySequenceId)!;
             this.completedAudioBuffers.delete(this.nextPlaySequenceId);
@@ -183,15 +198,15 @@ export class StreamingVoiceTracker {
         }
     }
 
-    async flushAndStop() {
+    async flushAndStop(): Promise<void> {
         this.isFlushing = true;
 
-        // If start was still in-flight, await its completion
+        // If reference audio is still being downloaded/initialized, wait for it
         if (this.startPromise) {
             await this.startPromise;
         }
 
-        // If character has no voice, exit immediately without hanging
+        // If voice configuration is absent or failed, release queue and return immediately
         if (!this.hasVoiceConfigured || !this.isActive) {
             this.pendingSentences = [];
             this.buffer = '';
@@ -199,16 +214,15 @@ export class StreamingVoiceTracker {
             return;
         }
 
-        // Enqueue any remainder sentence that didn't end with [.!?]
+        // Enqueue any remaining trailing text that did not conclude with sentence punctuation
         if (this.buffer.trim().length > 0) {
             this.queueSentence(this.buffer.trim());
             this.buffer = '';
         }
 
-        // Process remaining queue
         this.processPendingQueue();
 
-        // Safety timeout to prevent any deadlock from blocking the UI thread
+        // Safety timeout to prevent network stalls from hanging the session
         const startTime = Date.now();
         while ((this.pendingSentences.length > 0 || this.activeRequests > 0) && (Date.now() - startTime < 15000)) {
             if (this.inFlightPromises.length > 0) {
@@ -222,7 +236,7 @@ export class StreamingVoiceTracker {
         this.isActive = false;
     }
 
-    stopImmediate() {
+    stopImmediate(): void {
         this.isKilled = true;
         this.isActive = false;
         this.hasVoiceConfigured = false;

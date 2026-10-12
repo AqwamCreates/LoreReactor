@@ -65,7 +65,7 @@ export interface TurnExecutionParams {
     borrowedModel?: LanguageModel | null;
     metadata?: RequestMetadata;
     toolContext?: ToolExecutionContext;
-    voiceTracker?: StreamingVoiceTracker; // ✅ ADDED
+    voiceTracker?: StreamingVoiceTracker;
 }
 
 export interface ProcessedReplacements {
@@ -460,6 +460,11 @@ export class CharacterActor {
                     applyToolReplacements(accState, toolResult, callbacks);
                     isFirstChunkAfterTool = true;
 
+                    // ✅ Reset voice tracker offset for next stream pass
+                    if (params.voiceTracker) {
+                        params.voiceTracker.resetPass();
+                    }
+
                     streamToolParser.reset();
                     accState.clearPending();
                     currentExistingText = accState.getRaw();
@@ -523,6 +528,11 @@ export class CharacterActor {
                     applyToolReplacements(accState, toolResult, callbacks);
                     isFirstChunkAfterTool = true;
 
+                    // ✅ Reset voice tracker offset for next stream pass
+                    if (params.voiceTracker) {
+                        params.voiceTracker.resetPass();
+                    }
+
                     streamToolParser.reset();
                     accState.clearPending();
                     currentExistingText = accState.getRaw();
@@ -562,6 +572,11 @@ export class CharacterActor {
 
                     applyToolReplacements(accState, toolResult, callbacks);
                     isFirstChunkAfterTool = true;
+
+                    // ✅ Reset voice tracker offset for next stream pass
+                    if (params.voiceTracker) {
+                        params.voiceTracker.resetPass();
+                    }
 
                     streamToolParser.reset();
                     accState.clearPending();

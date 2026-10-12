@@ -3,10 +3,15 @@ import type { textType } from '../types';
 import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 
 export function extractNarratableText(text: string, narrateTexts: Record<textType, boolean>): string {
-    // Remove all tool calls and tool results from the text
+    if (!text) return '';
+
     const escapeRegex = (stringToEscape: string) => stringToEscape.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // ✅ Match completed tool calls/results AND in-flight unclosed tool calls/results, plus think tags
     const toolRegex = new RegExp(
-        `(${escapeRegex(toolCallStartString)}[\\s\\S]*?${escapeRegex(toolCallEndString)}|${escapeRegex(toolResultStartString)}[\\s\\S]*?${escapeRegex(toolResultEndString)})`,
+        `(${escapeRegex(toolCallStartString)}[\\s\\S]*?(${escapeRegex(toolCallEndString)}|$)|` +
+        `${escapeRegex(toolResultStartString)}[\\s\\S]*?(${escapeRegex(toolResultEndString)}|$)|` +
+        `<think>[\\s\\S]*?(<\\/think>|$))`,
         'g'
     );
     const cleanText = text.replace(toolRegex, '');
@@ -21,8 +26,6 @@ export function extractNarratableText(text: string, narrateTexts: Record<textTyp
     let insideBracket = false;
     let insideBrace = false;
 
-    // Helper to convert trailing commas, exclamation marks, or question marks into periods.
-    // This enforces sentence boundaries at formatting transitions (e.g., dialogue to action).
     const fixTrailingPunctuation = () => {
         result = result.replace(/([,!?])(\s*)$/, '.$2');
     };
@@ -62,8 +65,16 @@ export function extractNarratableText(text: string, narrateTexts: Record<textTyp
             continue;
         }
 
-        // Check for quote markers (" “ ”)
-        if (currentCharacter === '"' || currentCharacter === '"' || currentCharacter === '"') {
+        // ✅ Check for straight and curly double quote markers, plus dialogue brackets
+        const isQuoteMarker = (
+            currentCharacter === '"' || 
+            currentCharacter === '\u201C' || // “
+            currentCharacter === '\u201D' || // ”
+            currentCharacter === '「' || 
+            currentCharacter === '」'
+        );
+
+        if (isQuoteMarker) {
             const wasInsideQuote = insideQuote;
             insideQuote = !insideQuote;
             
@@ -122,7 +133,7 @@ export function extractNarratableText(text: string, narrateTexts: Record<textTyp
             continue;
         }
 
-        // Determine whether this character should be included in the narration output
+        // Determine whether this character should be included
         let shouldIncludeCharacter = false;
         
         if (insideItalic && narrateTexts.italicized) {
