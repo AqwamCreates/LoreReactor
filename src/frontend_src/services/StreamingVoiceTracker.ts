@@ -23,11 +23,11 @@ export class StreamingVoiceTracker {
     private startPromise: Promise<boolean> | null = null;
     private referenceBase64: string | null = null;
     
-    // Strict sequence tracking for seamless in-order playback
+    // Strict sequence tracking for in-order playback
     private nextSequenceId: number = 0;
     private nextPlaySequenceId: number = 0;
     
-    // Storage for completed audio buffers (handles out-of-order responses)
+    // Storage for completed audio buffers (handles out-of-order network responses)
     private completedAudioBuffers: Map<number, ArrayBuffer> = new Map();
     private inFlightPromises: Promise<void>[] = [];
 
@@ -94,7 +94,7 @@ export class StreamingVoiceTracker {
 
         const cleanText = extractNarratableText(text, effectiveNarrateTexts);
 
-        // Auto-detect multi-pass stream resets (e.g., after tool execution)
+        // Auto-detect multi-pass stream resets (e.g. after tool execution)
         if (cleanText.length < this.lastCleanLength) {
             this.lastCleanLength = 0;
         }
@@ -105,26 +105,30 @@ export class StreamingVoiceTracker {
         this.buffer += newText;
         this.lastCleanLength = cleanText.length;
 
-        // Support standard (.!?) and East Asian (。！？…) sentence boundaries
-        const boundaryRegex = /([.!?。！？…]+)(?:\s+|$)/gu;
+        // ✅ Context-aware boundary matcher supporting:
+        // 1. Single period (ignores ..., .., and spaced . . .)
+        // 2. [!?！？]+ and 。
+        // 3. Ellipses (… / ‥ / ... / . . .) ONLY when followed by a capital letter
+        const boundaryRegex = /(?:((?<!\.\s*)\.(?!\s*\.)|[!?！？]+|。)|([…‥]|(?:\.\s*){2,})\s+(?=[A-ZÀ-ÖØ-ßА-Я]))(?:\s+|$)/gu;
         let match: RegExpExecArray | null;
 
         while ((match = boundaryRegex.exec(this.buffer)) !== null) {
-            const sentenceEnd = match.index + match[1].length;
+            const punctuation = match[1] || match[2] || '';
+            const sentenceEnd = match.index + punctuation.length;
             const rawSentence = this.buffer.substring(0, sentenceEnd).trim();
             this.buffer = this.buffer.substring(sentenceEnd);
             boundaryRegex.lastIndex = 0;
 
             if (!rawSentence) continue;
 
-            // Micro-sentence consolidation: combine very short phrases like "Yahho!" or "Nyufufu."
+            // Micro-sentence consolidation: combine very short phrases
             if (this.sentenceAccumulator) {
                 this.sentenceAccumulator += ' ' + rawSentence;
             } else {
                 this.sentenceAccumulator = rawSentence;
             }
 
-            // Only dispatch once the accumulated sentence reaches a reasonable length
+            // Only dispatch once accumulated sentence reaches a natural length
             if (this.sentenceAccumulator.length >= this.MIN_CHUNK_LENGTH) {
                 this.queueSentence(this.sentenceAccumulator.trim());
                 this.sentenceAccumulator = '';
@@ -227,7 +231,7 @@ export class StreamingVoiceTracker {
             return;
         }
 
-        // Flush any accumulated short sentence (e.g., trailing dialogue, "Nyufufu.")
+        // Flush any remaining text (including trailing phrases and ending ellipses of any style)
         let remaining = this.sentenceAccumulator;
         if (this.buffer.trim().length > 0) {
             remaining = (remaining ? remaining + ' ' : '') + this.buffer.trim();
@@ -241,7 +245,7 @@ export class StreamingVoiceTracker {
 
         this.processPendingQueue();
 
-        // Drain in background until completely finished (no premature cutoff)
+        // Drain in background until completely finished
         while (this.pendingSentences.length > 0 || this.activeRequests > 0) {
             if (this.isKilled) break;
             if (this.inFlightPromises.length > 0) {
