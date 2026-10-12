@@ -231,12 +231,39 @@ function fillStopPatternDefaults(sp: Record<string, unknown>): StopPattern {
     };
 }
 
+// ✅ NEW: Properly parse Sampler objects instead of incorrectly using fillStopPatternDefaults
+function fillSamplerDefaults(s: Record<string, unknown>): Sampler {
+    const now = Date.now();
+    const rawStopPatterns = Array.isArray(s.stopPatterns) ? s.stopPatterns as Record<string, unknown>[] : [];
+    return {
+        id: ensureId(s),
+        name: (s.name as string) || 'Unnamed Sampler',
+        description: (s.description as string) || undefined,
+        parameters: (s.parameters && typeof s.parameters === 'object' && !Array.isArray(s.parameters)) ? s.parameters as Record<string, unknown> : undefined,
+        stopPatterns: rawStopPatterns.map(item => fillStopPatternDefaults(item)),
+        maximumNumberOfTokens: typeof s.maximumNumberOfTokens === 'number' ? s.maximumNumberOfTokens : undefined,
+        firstCreatedTimestamp: (s.firstCreatedTimestamp as number) || now,
+        lastUpdatedTimestamp: (s.lastUpdatedTimestamp as number) || now,
+    };
+}
+
 function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]): Character {
     const now = Date.now();
     const rawClothings = Array.isArray(c.clothings) ? c.clothings as Record<string, unknown>[] : [];
     const rawTextInjections = Array.isArray(c.textCharacterInjections) ? c.textCharacterInjections as Record<string, unknown>[] : [];
     const rawDialoguePrompts = Array.isArray(c.dialoguePrompts) ? c.dialoguePrompts as Record<string, unknown>[] : [];
     const rawKnowledgePrompts = Array.isArray(c.knowledgePrompts) ? c.knowledgePrompts as Record<string, unknown>[] : [];
+    const rawStopPatterns = Array.isArray(c.stopPatterns) ? c.stopPatterns as Record<string, unknown>[] : [];
+
+    // ✅ UPDATED: Parse dual samplers, fallback to first available sampler if not embedded
+    const parsedLanguageModelSampler = (c.languageModelSampler && typeof c.languageModelSampler === 'object') 
+        ? fillSamplerDefaults(c.languageModelSampler as Record<string, unknown>) 
+        : (samplers.length > 0 ? samplers[0] : undefined);
+        
+    const parsedTextToSpeechModelSampler = (c.textToSpeechModelSampler && typeof c.textToSpeechModelSampler === 'object') 
+        ? fillSamplerDefaults(c.textToSpeechModelSampler as Record<string, unknown>) 
+        : (samplers.length > 0 ? samplers[0] : undefined);
+
     return {
         id: ensureId(c),
         name: (c.name as string) || 'Unnamed',
@@ -251,7 +278,12 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
         knowledgePrompts: rawKnowledgePrompts.map(item => fillKnowledgePromptDefaults(item)),
         starterPrompts: parseStarterPrompts(c.starterPrompts),
         memoryPrompts: parseMemoryPrompts(c.memoryPrompts),
-        sampler: samplers.length > 0 ? samplers[0] : undefined,
+        
+        // ✅ UPDATED: Map to new dual sampler and direct stop patterns schema
+        languageModelSampler: parsedLanguageModelSampler,
+        textToSpeechModelSampler: parsedTextToSpeechModelSampler,
+        stopPatterns: rawStopPatterns.length > 0 ? rawStopPatterns.map(item => fillStopPatternDefaults(item)) : undefined,
+        
         initiativeWeight: (c.initiativeWeight as number) ?? 5,
         chatProbability: (c.chatProbability as number) ?? 0.8,
         maximumChatStamina: (c.maximumChatStamina as number) ?? 5,
@@ -495,14 +527,20 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
             lastUpdatedTimestamp: now,
         })),
         summarizationInstruction: (p.summarizationInstruction as string) || undefined,
-        characterSampler: (p.characterSampler && typeof p.characterSampler === 'object') ? fillStopPatternDefaults(p.characterSampler as Record<string, unknown>) as any : undefined,
-        webSummarizationSampler: (p.webSummarizationSampler && typeof p.webSummarizationSampler === 'object') ? fillStopPatternDefaults(p.webSummarizationSampler as Record<string, unknown>) as any : undefined,
-        interactionDataSummarizationSampler: (p.interactionDataSummarizationSampler && typeof p.interactionDataSummarizationSampler === 'object') ? fillStopPatternDefaults(p.interactionDataSummarizationSampler as Record<string, unknown>) as any : undefined,
-        aiRecommendationSampler: (p.aiRecommendationSampler && typeof p.aiRecommendationSampler === 'object') ? fillStopPatternDefaults(p.aiRecommendationSampler as Record<string, unknown>) as any : undefined,
+        
+        // ✅ UPDATED: Split characterSampler into dual samplers and fix the incorrect fillStopPatternDefaults cast
+        characterLanguageModelSampler: (p.characterLanguageModelSampler && typeof p.characterLanguageModelSampler === 'object') ? fillSamplerDefaults(p.characterLanguageModelSampler as Record<string, unknown>) : undefined,
+        characterTextToSpeechModelSampler: (p.characterTextToSpeechModelSampler && typeof p.characterTextToSpeechModelSampler === 'object') ? fillSamplerDefaults(p.characterTextToSpeechModelSampler as Record<string, unknown>) : undefined,
+        
+        webSummarizationSampler: (p.webSummarizationSampler && typeof p.webSummarizationSampler === 'object') ? fillSamplerDefaults(p.webSummarizationSampler as Record<string, unknown>) : undefined,
+        interactionDataSummarizationSampler: (p.interactionDataSummarizationSampler && typeof p.interactionDataSummarizationSampler === 'object') ? fillSamplerDefaults(p.interactionDataSummarizationSampler as Record<string, unknown>) : undefined,
+        aiRecommendationSampler: (p.aiRecommendationSampler && typeof p.aiRecommendationSampler === 'object') ? fillSamplerDefaults(p.aiRecommendationSampler as Record<string, unknown>) : undefined,
+        
         characterStopPattern: (p.characterStopPattern && typeof p.characterStopPattern === 'object') ? fillStopPatternDefaults(p.characterStopPattern as Record<string, unknown>) : undefined,
         webSummarizationStopPattern: (p.webSummarizationStopPattern && typeof p.webSummarizationStopPattern === 'object') ? fillStopPatternDefaults(p.webSummarizationStopPattern as Record<string, unknown>) : undefined,
         interactionDataSummarizationStopPattern: (p.interactionDataSummarizationStopPattern && typeof p.interactionDataSummarizationStopPattern === 'object') ? fillStopPatternDefaults(p.interactionDataSummarizationStopPattern as Record<string, unknown>) : undefined,
         aiRecommendationStopPattern: (p.aiRecommendationStopPattern && typeof p.aiRecommendationStopPattern === 'object') ? fillStopPatternDefaults(p.aiRecommendationStopPattern as Record<string, unknown>) : undefined,
+        
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
     };

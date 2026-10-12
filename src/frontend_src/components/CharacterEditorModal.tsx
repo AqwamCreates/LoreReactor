@@ -1,7 +1,7 @@
 // frontend_src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, tool, InteractionData } from '../types';
+import type { Character, Sampler, LanguageModel, Memory, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, tool, InteractionData, StopPattern } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { uploadCharacterImage, getCharacterImageUrl, getCharacterVoiceURL } from '../storages/serverStorage';
 import { 
@@ -122,8 +122,14 @@ function CharacterEditorModalInner({
         }
         return null;
     });
-    const [selectedSamplerId, setSelectedSamplerId] = useState<string>(existingCharacter?.sampler?.id || (allSamplers[0]?.id || ''));
-    const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>(existingCharacter?.sampler?.stopPatterns.map(sp => sp.id) || []);
+    
+    // ✅ UPDATED: Dual Sampler States
+    const [selectedLanguageModelSamplerId, setSelectedLanguageModelSamplerId] = useState<string>(existingCharacter?.languageModelSampler?.id || (allSamplers[0]?.id || ''));
+    const [selectedTextToSpeechModelSamplerId, setSelectedTextToSpeechModelSamplerId] = useState<string>(existingCharacter?.textToSpeechModelSampler?.id || (allSamplers[0]?.id || ''));
+    
+    // ✅ UPDATED: Stop patterns are now directly on the Character
+    const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>(existingCharacter?.stopPatterns?.map(sp => sp.id) || []);
+    
     const [isUploading, setIsUploading] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -535,7 +541,6 @@ function CharacterEditorModalInner({
     const handleRemoveVoice = () => { 
         setVoiceFile(null); 
         setHasExistingVoice(false); 
-        // Keep voiceLanguage selected so they can just upload a new file without re-selecting
         if (voiceInputRef.current) voiceInputRef.current.value = ''; 
     };
 
@@ -775,8 +780,16 @@ function CharacterEditorModalInner({
             }
         }
 
-        const baseSampler = allSamplers.find(s => s.id === selectedSamplerId);
-        const finalSampler = baseSampler ? { ...baseSampler, stopPatterns: baseSampler.stopPatterns.filter(sp => selectedStopPatternIds.includes(sp.id)) } : undefined;
+        // ✅ UPDATED: Build dual samplers and direct stop patterns
+        const baseLanguageModelSampler = allSamplers.find(s => s.id === selectedLanguageModelSamplerId);
+        const finalLanguageModelSampler = baseLanguageModelSampler ? { ...baseLanguageModelSampler } : undefined;
+
+        const baseTextToSpeechModelSampler = allSamplers.find(s => s.id === selectedTextToSpeechModelSamplerId);
+        const finalTextToSpeechModelSampler = baseTextToSpeechModelSampler ? { ...baseTextToSpeechModelSampler } : undefined;
+
+        const finalStopPatterns = selectedStopPatternIds
+            .map(id => getStopPatternById(id))
+            .filter((sp): sp is StopPattern => sp !== null);
 
         const now = Date.now();
         return {
@@ -792,7 +805,9 @@ function CharacterEditorModalInner({
             aliases: aliases.length > 0 ? aliases : undefined,
             images: Object.keys(finalImages).length > 0 ? finalImages : undefined,
             useFrontCameraImage: useFrontCameraImage || undefined,
-            sampler: finalSampler,
+            languageModelSampler: finalLanguageModelSampler,
+            textToSpeechModelSampler: finalTextToSpeechModelSampler,
+            stopPatterns: finalStopPatterns.length > 0 ? finalStopPatterns : undefined,
             initiativeWeight: finalIW, chatProbability: finalCP, maximumChatStamina: finalMS,
             nameSensitivity: finalNS, chatImpatienceSensitivity: finalCIS, skipProbability: finalSP,
             memoryRetentionWeight: finalMRW, contextSensitivity: finalCRS,
@@ -1357,11 +1372,23 @@ function CharacterEditorModalInner({
                             </div>
                         )}
 
+                        {/* ✅ UPDATED: Model Tab with Dual Samplers */}
                         {activeTab === 'model' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                 <div className="editor-section">
-                                    <span className="editor-section-title">Sampler</span>
-                                    <select value={selectedSamplerId} onChange={(e) => setSelectedSamplerId(e.target.value)} className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingSamplers || isUploading || isReadOnly}>
+                                    <span className="editor-section-title">Language Model Sampler (Text Generation)</span>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls the psychological profile, vocabulary choice, and text generation logic.</div>
+                                    <select value={selectedLanguageModelSamplerId} onChange={(e) => setSelectedLanguageModelSamplerId(e.target.value)} className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingSamplers || isUploading || isReadOnly}>
+                                        {isLoadingSamplers && <option>Loading samplers...</option>}
+                                        {!isLoadingSamplers && allSamplers.length === 0 && <option>No samplers available</option>}
+                                        {!isLoadingSamplers && allSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
+                                    </select>
+                                </div>
+
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Text-to-Speech Sampler (Voice Generation)</span>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls the vocal cords, prosody, pitch, and acoustic expressiveness of the character's voice.</div>
+                                    <select value={selectedTextToSpeechModelSamplerId} onChange={(e) => setSelectedTextToSpeechModelSamplerId(e.target.value)} className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingSamplers || isUploading || isReadOnly}>
                                         {isLoadingSamplers && <option>Loading samplers...</option>}
                                         {!isLoadingSamplers && allSamplers.length === 0 && <option>No samplers available</option>}
                                         {!isLoadingSamplers && allSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}

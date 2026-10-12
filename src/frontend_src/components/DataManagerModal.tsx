@@ -333,7 +333,15 @@ export function DataManagerModal({
         }
 
         for (const c of allCharacters) {
-            if (c.sampler?.id && samplerIdSet.has(c.sampler.id)) referencedSamplerIds.add(c.sampler.id);
+            if (c.languageModelSampler?.id && samplerIdSet.has(c.languageModelSampler.id)) referencedSamplerIds.add(c.languageModelSampler.id);
+            if (c.textToSpeechModelSampler?.id && samplerIdSet.has(c.textToSpeechModelSampler.id)) referencedSamplerIds.add(c.textToSpeechModelSampler.id);
+            
+            if (c.stopPatterns) {
+                for (const sp of c.stopPatterns) {
+                    if (stopPatternIdSet.has(sp.id)) referencedStopPatternIds.add(sp.id);
+                }
+            }
+
             if (c.memories) {
                 for (const memArr of Object.values(c.memories)) {
                     for (const mem of memArr) {
@@ -342,6 +350,30 @@ export function DataManagerModal({
                 }
             }
         }
+
+        for (const p of allProfiles) {
+            const samplerRefs = [
+                p.characterLanguageModelSampler?.id,
+                p.characterTextToSpeechModelSampler?.id,
+                p.webSummarizationSampler?.id,
+                p.interactionDataSummarizationSampler?.id,
+                p.aiRecommendationSampler?.id
+            ];
+            for (const sId of samplerRefs) {
+                if (sId && samplerIdSet.has(sId)) referencedSamplerIds.add(sId);
+            }
+
+            const stopPatternRefs = [
+                p.characterStopPattern?.id,
+                p.webSummarizationStopPattern?.id,
+                p.interactionDataSummarizationStopPattern?.id,
+                p.aiRecommendationStopPattern?.id
+            ];
+            for (const spId of stopPatternRefs) {
+                if (spId && stopPatternIdSet.has(spId)) referencedStopPatternIds.add(spId);
+            }
+        }
+
         for (const s of allSamplers) {
             if (referencedSamplerIds.has(s.id)) {
                 for (const sp of (s.stopPatterns || [])) {
@@ -504,7 +536,15 @@ export function DataManagerModal({
             if (world.profileId && !profileIdSet.has(world.profileId)) issues.push({ entityType: 'World', entityName: world.name, issue: 'References missing profile', refType: 'profile', refId: world.profileId });
         }
         for (const c of allCharacters) {
-            if (c.sampler?.id && !samplerIdSet.has(c.sampler.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'References missing sampler', refType: 'Sampler', refId: c.sampler.id });
+            if (c.languageModelSampler?.id && !samplerIdSet.has(c.languageModelSampler.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'References missing language model sampler', refType: 'Sampler', refId: c.languageModelSampler.id });
+            if (c.textToSpeechModelSampler?.id && !samplerIdSet.has(c.textToSpeechModelSampler.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'References missing TTS sampler', refType: 'Sampler', refId: c.textToSpeechModelSampler.id });
+            
+            if (c.stopPatterns) {
+                for (const sp of c.stopPatterns) {
+                    if (!stopPatternIdSet.has(sp.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'References missing stop pattern', refType: 'Stop Pattern', refId: sp.id });
+                }
+            }
+
             if (c.memories) {
                 for (const [key, memArr] of Object.entries(c.memories)) {
                     for (const mem of memArr) {
@@ -576,6 +616,33 @@ export function DataManagerModal({
                 for (const cId of cfg.pendingCharacterIds || []) { if (!charIdSet.has(cId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: `Pending character for account ${acctId.slice(0, 8)}... is missing`, refType: 'Character', refId: cId }); }
             }
             for (const chatId of md.interactionDataIds) { if (!chatIdSet.has(chatId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: 'References missing chat session', refType: 'Chat', refId: chatId }); }
+        }
+        
+        for (const p of allProfiles) {
+            const samplerChecks = [
+                { sampler: p.characterLanguageModelSampler, label: 'language model sampler' },
+                { sampler: p.characterTextToSpeechModelSampler, label: 'TTS sampler' },
+                { sampler: p.webSummarizationSampler, label: 'web summarization sampler' },
+                { sampler: p.interactionDataSummarizationSampler, label: 'interaction data sampler' },
+                { sampler: p.aiRecommendationSampler, label: 'AI recommendation sampler' },
+            ];
+            for (const check of samplerChecks) {
+                if (check.sampler?.id && !samplerIdSet.has(check.sampler.id)) {
+                    issues.push({ entityType: 'Profile', entityName: p.name, issue: `References missing ${check.label}`, refType: 'Sampler', refId: check.sampler.id });
+                }
+            }
+
+            const stopPatternChecks = [
+                { sp: p.characterStopPattern, label: 'character stop pattern' },
+                { sp: p.webSummarizationStopPattern, label: 'web summarization stop pattern' },
+                { sp: p.interactionDataSummarizationStopPattern, label: 'interaction data stop pattern' },
+                { sp: p.aiRecommendationStopPattern, label: 'AI recommendation stop pattern' },
+            ];
+            for (const check of stopPatternChecks) {
+                if (check.sp?.id && !stopPatternIdSet.has(check.sp.id)) {
+                    issues.push({ entityType: 'Profile', entityName: p.name, issue: `References missing ${check.label}`, refType: 'Stop Pattern', refId: check.sp.id });
+                }
+            }
         }
 
         setIntegrityIssues(issues);
@@ -718,7 +785,6 @@ export function DataManagerModal({
             if (!shell.id) return false;
             const matchesStale = includeStale && (shell.lastUpdatedTimestamp ?? 0) < staleCutoffMs;
             
-            // FIX: Replaced non-existent interactionIdHistory with spatial interactionHistories reduction
             const msgCount = Object.values(shell.interactionHistories || {}).reduce((sum, msgs) => sum + msgs.length, 0);
             const matchesLow = includeLowMessage && msgCount < minMessagesThreshold;
             
@@ -1035,7 +1101,6 @@ export function DataManagerModal({
                                 {bulkCandidates.length > 0 && (
                                     <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '6px', marginBottom: '10px' }}>
                                         {bulkCandidates.slice(0, 50).map(shell => { 
-                                            // FIX: Replaced non-existent interactionIdHistory with spatial interactionHistories reduction
                                             const msgCount = Object.values(shell.interactionHistories || {}).reduce((sum, msgs) => sum + msgs.length, 0); 
                                             const age = daysAgo(shell.lastUpdatedTimestamp ?? 0); 
                                             return (<div key={shell.id} style={{ padding: '4px 8px', fontSize: '0.65rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: '8px' }}><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{shell.name || 'Untitled'}</span><span style={{ opacity: 0.5, whiteSpace: 'nowrap', flexShrink: 0 }}>{msgCount} msg • {age}d ago</span></div>); 

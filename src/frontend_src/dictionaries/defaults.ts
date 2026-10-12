@@ -100,7 +100,7 @@ export const defaultCharacter: Character = {
 
 }
 
-export const defaultSampler: Sampler = {
+export const defaultLanguageModelSampler: Sampler = {
     id: "default-sampler",
     name: "Default",
     description: "Fallback sampler",

@@ -2797,14 +2797,11 @@ app.post('/tool/hardware/send', async (req, res) => {
 let textToSpeechServerProcess: ChildProcess | null = null;
 let textToSpeechServerPort: number | null = null;
 let textToSpeechServerReady: boolean = false;
-let currentTextToSpeechDevice: string = 'auto';
 let textToSpeechServerLock: Promise<number> | null = null;
 
-async function ensureTextToSpeechServerIsRunning(device: string) {
+async function ensureTextToSpeechServerIsRunning() {
     if (textToSpeechServerReady && textToSpeechServerPort) return textToSpeechServerPort;
     if (textToSpeechServerLock) return textToSpeechServerLock;
-
-    currentTextToSpeechDevice = device;
     
     textToSpeechServerLock = (async () => {
         const backendSourceDirectory = path.join(ROOT_DIR, 'src', 'backend_src');
@@ -2937,7 +2934,7 @@ app.post('/api/text-to-speech/load', async (req, res) => {
     }
 });
 
-app.post('/api/text-to-speech/unload', (req, res) => {
+app.post('/api/text-to-speech/unload', (_req, res) => {
     if (textToSpeechServerProcess) {
         log.info('[Text To Speech] Shutting down persistent server to free resources...');
         textToSpeechServerProcess.kill('SIGTERM');

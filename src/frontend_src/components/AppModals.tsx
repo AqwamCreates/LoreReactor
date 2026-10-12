@@ -462,7 +462,7 @@ export function AppModals({
                     onClose={modals.charList.close}
                     onSelect={async (character: Character, isHosterItem: boolean) => { 
                         const isLocal = allCharacters.some(c => c.id === character.id);
-                        const fullCharacter = (isLocal && character.sampler) ? character : (isLocal ? await onLoadFullCharacter(character.id) : character);
+                        const fullCharacter = (isLocal && character.languageModelSampler) ? character : (isLocal ? await onLoadFullCharacter(character.id) : character);
                         characterModalProperties.open(fullCharacter || character, isHosterItem); 
                     }}
                     onDelete={onDeleteCharacter}

@@ -1,7 +1,7 @@
 // frontend_src/hooks/useCharacterVoice.ts
 import { useCallback } from 'react';
-import type { Character } from '../types';
-import { textToSpeechEngine, fetchVoiceReference, type TextToSpeechContext } from '../services/TextToSpeechEngine';
+import type { Character, Sampler, deviceType } from '../types';
+import { textToSpeechEngine, fetchVoiceReference } from '../services/TextToSpeechEngine';
 import { useSessionStore } from './useSessionStore';
 import { extractNarratableText } from '../utilities/voiceTextExtractor';
 
@@ -20,16 +20,17 @@ export function useCharacterVoice() {
                 const base64 = await fetchVoiceReference(character);
                 if (!base64 || !character.voice?.textContent) return;
 
-                const context: TextToSpeechContext = { 
-                    devicePreference: profile?.textToSpeechDeviceType ?? 'auto' 
-                };
+                // ✅ PRECEDENCE: Profile -> Character -> Default (undefined)
+                const sampler: Sampler | undefined = profile?.characterTextToSpeechModelSampler ?? character.textToSpeechModelSampler;
+                const devicePreference: deviceType = profile?.textToSpeechDeviceType ?? 'auto';
 
                 const blob = await textToSpeechEngine.synthesize(
-                    finalText, 
-                    base64, 
-                    character.voice.textContent, 
-                    character.voice.language,
-                    context
+                    finalText,                     // 1. text
+                    sampler,                       // 2. sampler
+                    base64,                        // 3. audioBase64
+                    character.voice.textContent,   // 4. transcript
+                    character.voice.language,      // 5. language
+                    devicePreference               // 6. devicePreference
                 );
 
                 if (blob) {

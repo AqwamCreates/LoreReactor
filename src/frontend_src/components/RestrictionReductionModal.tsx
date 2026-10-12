@@ -343,11 +343,12 @@ export function RestrictionReductionModal({
         return allCharacters.filter(character => character.id !== selectedCharacterId);
     }, [allCharacters, selectedCharacterId]);
 
+    // ✅ UPDATED: Use languageModelSampler instead of legacy sampler property
     const resolvedSampler = useMemo(() => {
         if (selectedSamplerId) {
             return allSamplers.find(sampler => sampler.id === selectedSamplerId) || null;
         }
-        return selectedCharacter?.sampler || restrictionSampler || allSamplers[0] || null;
+        return selectedCharacter?.languageModelSampler || restrictionSampler || allSamplers[0] || null;
     }, [selectedSamplerId, allSamplers, selectedCharacter, restrictionSampler]);
 
     // Active flagged trigger in Review step
@@ -793,7 +794,7 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
                     }
 
                     if (canKeep) {
-                        workingFlags = workingFlags.map(item => item.id === flag.id ? { ...item, action: 'keep' as const, status: 'safe' as const } : item);
+                        workingFlags = workingFlags.map(item => item.id === flag.id ? { ...item, actionMode: 'keep' as const, status: 'safe' as const } : item);
                     } else {
                         workingFlags = workingFlags.map(item => item.id === flag.id ? { ...item, status: 'problematic' as const } : item);
                     }
@@ -877,9 +878,12 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
         setIsProcessing(true);
         try {
             const finalCharacter = applyModifications(selectedCharacter, flags);
+            
+            // ✅ UPDATED: Assign to languageModelSampler
             if (resolvedSampler) {
-                finalCharacter.sampler = resolvedSampler;
+                finalCharacter.languageModelSampler = resolvedSampler;
             }
+            
             const currentTimestamp = Date.now();
             if (isSaveAsCopy) {
                 finalCharacter.id = uuidv4();
@@ -1015,8 +1019,8 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
                             searchQuery={samplerSearchQuery} 
                             onSearchChange={setSamplerSearchQuery} 
                             allowNone={true}
-                            noneLabel="None (Use character's sampler)"
-                            noneDescription={selectedCharacter?.sampler ? `Default: ${selectedCharacter.sampler.name}` : 'Character has no default sampler'}
+                            noneLabel="None (Use character's language model sampler)"
+                            noneDescription={selectedCharacter?.languageModelSampler? `Default: ${selectedCharacter.languageModelSampler.name}` : 'Character has no default language model sampler'}
                         />
                     </div>
 

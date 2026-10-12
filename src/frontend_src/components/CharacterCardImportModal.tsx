@@ -138,7 +138,7 @@ export function CharacterCardImportModal({
             }
 
             // Assign default sampler if available
-            const defaultSampler = allSamplers.length > 0 ? allSamplers[0] : undefined;
+            const defaultLanguageModelSampler = allSamplers.length > 0 ? allSamplers[0] : undefined;
 
             // Build starterPrompts from firstMes / alternateGreetings
             const starterPrompts: Record<string, number> = {};
@@ -170,7 +170,7 @@ export function CharacterCardImportModal({
                 dialoguePrompts: undefined,
                 starterPrompts: Object.keys(starterPrompts).length > 0 ? starterPrompts : undefined,
                 images: Object.keys(images).length > 0 ? images : undefined,
-                sampler: defaultSampler,
+                languageModelSampler: defaultLanguageModelSampler,
                 stopPatterns: undefined,
                 initiativeWeight,
                 chatProbability,

@@ -36,7 +36,8 @@ export function stripCharacterForSync(char: Character): Character {
         knowledgePrompts: [],
         starterPrompts: {},
         textCharacterInjections: [],
-        sampler: undefined,
+        languageModelSampler: undefined,
+        textToSpeechModelSampler: undefined,
         stopPatterns: [],
     };
 }

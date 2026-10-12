@@ -1980,7 +1980,7 @@ export async function buildPrompt(
 
     // 3. Stop Patterns & Clothing
     const allTextSearchSpace = ctx.textContentArray.join('\n');
-    const allStopPatterns = [...(character.sampler?.stopPatterns || []), ...(character.stopPatterns || [])];
+    const allStopPatterns = [...(character.languageModelSampler?.stopPatterns || []), ...(character.stopPatterns || [])];
     const activeStopPatterns: StopPattern[] = [];
 
     for (const stopPattern of allStopPatterns) {

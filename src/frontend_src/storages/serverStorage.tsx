@@ -29,7 +29,7 @@ import {
     browserListDirectory, isServerAvailable,
 } from './browserStorage';
 
-import { defaultActions, defaultSampler, defaultCharacterTools, defaultInputStrategy, defaultCharacter } from '../dictionaries/defaults';
+import { defaultActions, defaultCharacterTools, defaultInputStrategy, defaultCharacter } from '../dictionaries/defaults';
 import type { FMSerialized } from '../libraries/factorizationMachine';
 
 // =============================================================================
@@ -591,13 +591,23 @@ function createDeletedCharacterStub(id: string): Character {
 const characterRepo = createRepository<Character, RawCharacter>({
   entityKey: 'characters',
   hydrate: async (raw, id) => {
-    const samplerId = raw.samplerId;
-    let sampler: Sampler = defaultSampler;
-    
-    if (samplerId) {
-      const loadedSampler = await loadRawSampler(samplerId);
-      if (loadedSampler) sampler = loadedSampler;
+    const lmSamplerId = raw.languageModelSamplerId;
+    let languageModelSampler: Sampler | undefined = undefined;
+    if (lmSamplerId) {
+      const loaded = await loadRawSampler(lmSamplerId);
+      if (loaded) languageModelSampler = loaded;
     }
+
+    const ttsSamplerId = raw.textToSpeechModelSamplerId;
+    let textToSpeechModelSampler: Sampler | undefined = undefined;
+    if (ttsSamplerId) {
+      const loaded = await loadRawSampler(ttsSamplerId);
+      if (loaded) textToSpeechModelSampler = loaded;
+    }
+
+    const stopPatternIds = raw.stopPatternIds || [];
+    const stopPatternsResults = await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)));
+    const stopPatterns = stopPatternsResults.filter((p): p is StopPattern => p !== null);
 
     const memories = await hydrateMemories(raw.memories);
 
@@ -613,17 +623,21 @@ const characterRepo = createRepository<Character, RawCharacter>({
         tools: { ...defaultCharacterTools },
         memories: {},
     }, {
-        sampler: () => sampler,
+        languageModelSampler: () => languageModelSampler,
+        textToSpeechModelSampler: () => textToSpeechModelSampler,
+        stopPatterns: () => stopPatterns,
         memories: () => memories,
         images: () => images,
     });
   },
   serialize: async (character) => {
-    const { sampler, memories, ...rest } = character;
+    const { languageModelSampler, textToSpeechModelSampler, stopPatterns, memories, ...rest } = character;
     const serializedMemories = await serializeMemories(memories);
     return {
       ...rest,
-      samplerId: sampler?.id,
+      languageModelSamplerId: languageModelSampler?.id,
+      textToSpeechModelSamplerId: textToSpeechModelSampler?.id,
+      stopPatternIds: stopPatterns?.map(sp => sp.id) || [],
       memories: serializedMemories,
       lastUpdatedTimestamp: Date.now(),
     } as RawCharacter;
@@ -652,7 +666,9 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
         images: {},
         tools: { ...defaultCharacterTools },
         memories: {},
-        sampler: undefined,
+        languageModelSampler: undefined,
+        textToSpeechModelSampler: undefined,
+        stopPatterns: [],
     }, {
         memories: () => memories,
         images: () => images,
@@ -672,12 +688,24 @@ export async function loadAllCharacterShells(): Promise<Character[]> {
 const multiplayerCharacterRepo = createRepository<Character, RawCharacter>({
   entityKey: 'multiplayerCharacters',
   hydrate: async (raw, id) => {
-    const samplerId = raw.samplerId;
-    let sampler: Sampler = defaultSampler;
-    if (samplerId) {
-      const loadedSampler = await loadRawSampler(samplerId);
-      if (loadedSampler) sampler = loadedSampler;
+    const lmSamplerId = raw.languageModelSamplerId;
+    let languageModelSampler: Sampler | undefined = undefined;
+    if (lmSamplerId) {
+      const loaded = await loadRawSampler(lmSamplerId);
+      if (loaded) languageModelSampler = loaded;
     }
+
+    const ttsSamplerId = raw.textToSpeechModelSamplerId;
+    let textToSpeechModelSampler: Sampler | undefined = undefined;
+    if (ttsSamplerId) {
+      const loaded = await loadRawSampler(ttsSamplerId);
+      if (loaded) textToSpeechModelSampler = loaded;
+    }
+
+    const stopPatternIds = raw.stopPatternIds || [];
+    const stopPatternsResults = await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)));
+    const stopPatterns = stopPatternsResults.filter((p): p is StopPattern => p !== null);
+
     const memories = await hydrateMemories(raw.memories);
     const images: Record<string, string> = raw.images ?? {};
     const legacyImage = ('image' in raw && typeof raw.image === 'string') ? raw.image : undefined;
@@ -691,17 +719,21 @@ const multiplayerCharacterRepo = createRepository<Character, RawCharacter>({
         tools: { ...defaultCharacterTools },
         memories: {},
     }, {
-        sampler: () => sampler,
+        languageModelSampler: () => languageModelSampler,
+        textToSpeechModelSampler: () => textToSpeechModelSampler,
+        stopPatterns: () => stopPatterns,
         memories: () => memories,
         images: () => images,
     });
   },
   serialize: async (character) => {
-    const { sampler, memories, ...rest } = character;
+    const { languageModelSampler, textToSpeechModelSampler, stopPatterns, memories, ...rest } = character;
     const serializedMemories = await serializeMemories(memories);
     return {
       ...rest,
-      samplerId: sampler?.id,
+      languageModelSamplerId: languageModelSampler?.id,
+      textToSpeechModelSamplerId: textToSpeechModelSampler?.id,
+      stopPatternIds: stopPatterns?.map(sp => sp.id) || [],
       memories: serializedMemories,
       lastUpdatedTimestamp: Date.now(),
     } as RawCharacter;
@@ -872,7 +904,7 @@ export const deleteRawBudgetStrategy = budgetStrategyRepo.remove;
 
 const profileRepo = createRepository<Profile, RawProfile>({
   entityKey: 'profiles',
-  hydrate: (raw, id) => {
+  hydrate: async (raw, id) => {
     const now = Date.now();
 
     const summarizationSteps: SummarizationStep[] = raw.summarizationSteps != null
@@ -901,6 +933,30 @@ const profileRepo = createRepository<Profile, RawProfile>({
       }))
       : getDefaultSummarizationSteps();
 
+    // Resolve Samplers
+    let characterLanguageModelSampler: Sampler | undefined = undefined;
+    let characterTextToSpeechModelSampler: Sampler | undefined = undefined;
+    let webSummarizationSampler: Sampler | undefined = undefined;
+    let interactionDataSummarizationSampler: Sampler | undefined = undefined;
+    let aiRecommendationSampler: Sampler | undefined = undefined;
+
+    if (raw.characterLanguageModelSamplerId) characterLanguageModelSampler = await loadRawSampler(raw.characterLanguageModelSamplerId) ?? undefined;
+    if (raw.characterTextToSpeechModelSamplerId) characterTextToSpeechModelSampler = await loadRawSampler(raw.characterTextToSpeechModelSamplerId) ?? undefined;
+    if (raw.webSummarizationSamplerId) webSummarizationSampler = await loadRawSampler(raw.webSummarizationSamplerId) ?? undefined;
+    if (raw.interactionDataSummarizationSamplerId) interactionDataSummarizationSampler = await loadRawSampler(raw.interactionDataSummarizationSamplerId) ?? undefined;
+    if (raw.aiRecommendationSamplerId) aiRecommendationSampler = await loadRawSampler(raw.aiRecommendationSamplerId) ?? undefined;
+
+    // Resolve Stop Patterns
+    let characterStopPattern: StopPattern | undefined = undefined;
+    let webSummarizationStopPattern: StopPattern | undefined = undefined;
+    let interactionDataSummarizationStopPattern: StopPattern | undefined = undefined;
+    let aiRecommendationStopPattern: StopPattern | undefined = undefined;
+
+    if (raw.characterStopPatternId) characterStopPattern = await loadRawStopPattern(raw.characterStopPatternId) ?? undefined;
+    if (raw.webSummarizationStopPatternId) webSummarizationStopPattern = await loadRawStopPattern(raw.webSummarizationStopPatternId) ?? undefined;
+    if (raw.interactionDataSummarizationStopPatternId) interactionDataSummarizationStopPattern = await loadRawStopPattern(raw.interactionDataSummarizationStopPatternId) ?? undefined;
+    if (raw.aiRecommendationStopPatternId) aiRecommendationStopPattern = await loadRawStopPattern(raw.aiRecommendationStopPatternId) ?? undefined;
+
     return hydrateEntity<Profile, RawProfile>(raw, id, {
         name: 'Unknown profile',
         autonomousMode: false,
@@ -911,13 +967,11 @@ const profileRepo = createRepository<Profile, RawProfile>({
         toolUsageDisplayMode: 'none',
         enableCharacterExpression: false,
         
-        // ─── ADD THESE DEFAULTS FOR VAD AUTO-SEND ────────────────────
         enableAutoSpeechDetection: false,
         speechVolumeActivationThreshold: 18,
         speechSilenceVolumeActivationThreshold: 8,
         speechSilenceThresholdMs: 1400,
         voiceActivityProbabilityThreshold: 0.5,
-        // ─────────────────────────────────────────────────────────────
 
         randomizeTextCharacterInjection: false,
         randomizeTextCharacterInjectionOnRetry: true,
@@ -950,16 +1004,50 @@ const profileRepo = createRepository<Profile, RawProfile>({
         textToSpeechDeviceType: 'auto',
         speechToTextDeviceType: 'auto',
         voiceActivityDetectionDeviceType: 'auto',
+        summarizationInstruction: '',
+        autoResumeSignals: [],
     }, {
         summarizationSteps: () => summarizationSteps,
+        characterLanguageModelSampler: () => characterLanguageModelSampler,
+        characterTextToSpeechModelSampler: () => characterTextToSpeechModelSampler,
+        webSummarizationSampler: () => webSummarizationSampler,
+        interactionDataSummarizationSampler: () => interactionDataSummarizationSampler,
+        aiRecommendationSampler: () => aiRecommendationSampler,
+        characterStopPattern: () => characterStopPattern,
+        webSummarizationStopPattern: () => webSummarizationStopPattern,
+        interactionDataSummarizationStopPattern: () => interactionDataSummarizationStopPattern,
+        aiRecommendationStopPattern: () => aiRecommendationStopPattern,
     });
   },
   serialize: (profile) => {
-    const { summarizationSteps, ...rest } = profile;
+    const { 
+      summarizationSteps, 
+      characterLanguageModelSampler, 
+      characterTextToSpeechModelSampler,
+      webSummarizationSampler,
+      interactionDataSummarizationSampler,
+      aiRecommendationSampler,
+      characterStopPattern,
+      webSummarizationStopPattern,
+      interactionDataSummarizationStopPattern,
+      aiRecommendationStopPattern,
+      ...rest 
+    } = profile;
+    
     const rawSteps: RawSummarizationStep[] = summarizationSteps.map(({ ...stepRest }) => stepRest);
+    
     return {
       ...rest,
       summarizationSteps: rawSteps,
+      characterLanguageModelSamplerId: characterLanguageModelSampler?.id,
+      characterTextToSpeechModelSamplerId: characterTextToSpeechModelSampler?.id,
+      webSummarizationSamplerId: webSummarizationSampler?.id,
+      interactionDataSummarizationSamplerId: interactionDataSummarizationSampler?.id,
+      aiRecommendationSamplerId: aiRecommendationSampler?.id,
+      characterStopPatternId: characterStopPattern?.id,
+      webSummarizationStopPatternId: webSummarizationStopPattern?.id,
+      interactionDataSummarizationStopPatternId: interactionDataSummarizationStopPattern?.id,
+      aiRecommendationStopPatternId: aiRecommendationStopPattern?.id,
       lastUpdatedTimestamp: Date.now(),
     } as RawProfile;
   },
@@ -1135,7 +1223,7 @@ async function buildInteractionDataShell(
     parentInteractionDataId: rawInteractionData.parentInteractionDataId || null, 
     parentMessageId: rawInteractionData.parentMessageId || null,
     profile: profile,
-    worldIds: rawInteractionData.worldIds || [], // ✅ ADD THIS
+    worldIds: rawInteractionData.worldIds || [],
   };
 }
 
@@ -1332,7 +1420,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     parentInteractionDataId: parentInteractionDataId || null, 
     parentMessageId: parentMessageId || null,
     profileId: profile?.id,
-    worldIds: interactionData.worldIds || [], // ✅ ADD THIS
+    worldIds: interactionData.worldIds || [],
     lastUpdatedTimestamp: Date.now(),
   };
   await putJson(`${PATHS.interactionData}/${id}.json`, payload);
@@ -1381,7 +1469,7 @@ export async function branchRawInteractionData(parentInteractionDataId: string, 
     parentInteractionDataId, 
     parentMessageId,
     profileId: sourceChat.profile?.id,
-    worldIds: sourceChat.worldIds || [], // ✅ ADD THIS
+    worldIds: sourceChat.worldIds || [],
   };
   await putJson(`${PATHS.interactionData}/${newChatId}.json`, newPayload);
   await updateManifest('interactionData', newChatId, 'add');

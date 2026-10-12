@@ -2797,16 +2797,20 @@ app.post('/tool/hardware/send', async (req, res) => {
   }
 });
 
-// ─── Native C++ Text To Speech Pipeline (llama-tts + Q8_0 GGUF) ─────────────
+// ─── Native C++ Text To Speech Pipeline (llama-tts) ─────────────
 
 const LLAMA_TTS_BINARY = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'llama', bin('llama-tts'));
 const LLAMA_DIR = path.dirname(LLAMA_TTS_BINARY);
 const TTS_DIR = path.join(ROOT_DIR, 'user_data', 'text_to_speech_models');
-// ✅ Use mradermacher's correctly converted GGUF (OpenVoiceOS metadata is broken)
-const textToSpeechModelFile = 'Qwen3-TTS-12Hz-0.6B-Base.Q8_0.gguf';
+
+const textToSpeechModelFile = 'Qwen3-TTS-12Hz-0.6B-Base.IQ4_XS.gguf';
 const textToSpeechVocoderFile = 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-F16.gguf';
 const TTS_MODEL_PATH = path.join(TTS_DIR, textToSpeechModelFile);
 const TTS_MMPROJ_PATH = path.join(TTS_DIR, textToSpeechVocoderFile);
+
+// ✅ System temp directory outside of OneDrive sync to avoid file-locking (EBUSY)
+const TTS_TEMP_DIR = path.join(os.tmpdir(), 'LoreReactor_Text_To_Speech');
+ensureDirectory(TTS_TEMP_DIR);
 
 // ✅ Portable FFmpeg for decoding speaker audio
 const FFMPEG_DIR = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'tools', 'ffmpeg');
@@ -2823,6 +2827,23 @@ function enqueueTts<T>(task: () => Promise<T>): Promise<T> {
       .then(() => task())
       .then(resolve, reject);
   });
+}
+
+/**
+ * Asynchronous deletion with retries to handle Windows file locks and background indexers.
+ */
+async function safeDelete(filePath: string, retries = 5, delayMs = 100): Promise<void> {
+  if (!filePath || !fs.existsSync(filePath)) return;
+  for (let i = 0; i < retries; i++) {
+    try {
+      fs.unlinkSync(filePath);
+      return;
+    } catch {
+      if (i < retries - 1) {
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+  }
 }
 
 function syncFfmpegToLlamaDir(): void {
@@ -2851,7 +2872,7 @@ async function ensureFfmpeg() {
   log.info('[Text To Speech] Downloading portable FFmpeg...');
   broadcastNotify('ffmpeg', 'downloading', 10, 'Downloading portable FFmpeg for audio decoding...');
     
-  let zipUrl = '';
+  let zipUrl;
   if (IS_WINDOWS) {
     zipUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip';
   } else {
@@ -2880,9 +2901,9 @@ async function ensureTtsModelsDownloaded() {
   ensureDirectory(TTS_DIR);
   const baseUrl = 'https://huggingface.co/mradermacher/Qwen3-TTS-12Hz-0.6B-Base-GGUF/resolve/main';
     
-  // 1. Download Main Model (646 MB)
+  // 1. Download Main Model
   if (!fs.existsSync(TTS_MODEL_PATH)) {
-    log.info('[Text To Speech] Downloading Qwen3-TTS Main Model...');
+    log.info(`[Text To Speech] Downloading Qwen3-TTS Main Model (${textToSpeechModelFile})...`);
     let lastLoggedPct = -1;
     await downloadFileWithProgress(`${baseUrl}/${textToSpeechModelFile}`, TTS_MODEL_PATH, (loaded, total) => {
       const pct = Math.round((loaded / total) * 100);
@@ -2894,9 +2915,9 @@ async function ensureTtsModelsDownloaded() {
     log.success('[Text To Speech] Main Model downloaded.');
   }
     
-  // 2. Download MMProj / Vocoder (401 MB)
+  // 2. Download MMProj / Vocoder
   if (!fs.existsSync(TTS_MMPROJ_PATH)) {
-    log.info('[Text To Speech] Downloading Qwen3-TTS MMProj...');
+    log.info(`[Text To Speech] Downloading Qwen3-TTS MMProj (${textToSpeechVocoderFile})...`);
     let lastLoggedPct = -1;
     await downloadFileWithProgress(`${baseUrl}/${textToSpeechVocoderFile}`, TTS_MMPROJ_PATH, (loaded, total) => {
       const pct = Math.round((loaded / total) * 100);
@@ -2927,7 +2948,7 @@ app.post('/api/text-to-speech/unload', (req, res) => {
 });
 
 app.post('/api/text-to-speech/synthesize', async (request, response) => {
-  const { text, audioBase64, transcript, language } = request.body;
+  const { text, audioBase64, transcript, language, sampler } = request.body;
 
   if (!text || !audioBase64 || !transcript) {
     return response.status(400).json({ error: 'Missing text, audioBase64, or transcript' });
@@ -2947,8 +2968,7 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
     // Serialize calls through the FIFO queue
     const wavBuffer = await enqueueTts(async () => {
       const requestId = uuidv4();
-      const tempDir = path.join(ROOT_DIR, 'temp');
-      ensureDirectory(tempDir);
+      ensureDirectory(TTS_TEMP_DIR);
 
       // 1. Decode base64 reference audio
       const base64Data = audioBase64.replace(/^data:[^;]+;base64,/, '');
@@ -2960,9 +2980,9 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
       else if (audioBuffer.length >= 4 && audioBuffer.toString('ascii', 0, 4) === 'OggS') ext = '.ogg';
       else if (audioBuffer.length >= 4 && audioBuffer.toString('ascii', 0, 4) === 'fLaC') ext = '.flac';
 
-      const tempRawPath = path.join(tempDir, `raw_${requestId}${ext}`);
-      const tempRefWavPath = path.join(tempDir, `ref_${requestId}.wav`);
-      const tempOutPath = path.join(tempDir, `out_${requestId}.wav`);
+      const tempRawPath = path.join(TTS_TEMP_DIR, `raw_${requestId}${ext}`);
+      const tempRefWavPath = path.join(TTS_TEMP_DIR, `ref_${requestId}.wav`);
+      const tempOutPath = path.join(TTS_TEMP_DIR, `out_${requestId}.wav`);
 
       try {
         fs.writeFileSync(tempRawPath, audioBuffer);
@@ -2984,7 +3004,7 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
         };
         const ttsLang = langMap[language] || 'en';
 
-        // 3. Build arguments with Flash Attention, thread clamp, and video fallback path
+        // 3. Build arguments: Flash Attention + thread clamping + video probe path
         const llamaTtsArgs = [
           '-m', TTS_MODEL_PATH,
           '--mmproj', TTS_MMPROJ_PATH, 
@@ -2994,14 +3014,83 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
           '--output', tempOutPath,
           '-ngl', '99',
           '-fa', 'on',
+          '-t', '4',
           '--video-ffmpeg-dir', FFMPEG_DIR,
         ];
 
+        // ✅ INJECT SAMPLER PARAMETERS INTO LLAMA-TTS (Respects UI Order & Enabled Toggles)
+        if (sampler && typeof sampler === 'object' && sampler.parameters) {
+            const params = sampler.parameters;
+            
+            // 1. Get the exact order defined by the UI drag-and-drop
+            const order = Array.isArray(params._parameterOrder) 
+                ? (params._parameterOrder as string[]) 
+                : Object.keys(params).filter(k => !k.startsWith('_'));
+            
+            // 2. Map frontend keys to llama.cpp / llama-tts CLI flags
+            const paramToFlag: Record<string, string> = {
+                temperature: '--temp',
+                top_k: '--top-k',
+                top_p: '--top-p',
+                min_p: '--min-p',
+                typical_p: '--typical',
+                tfs_z: '--tfs',
+                repeat_penalty: '--repeat-penalty',
+                presence_penalty: '--presence-penalty',
+                frequency_penalty: '--frequency-penalty',
+                mirostat: '--mirostat',
+                mirostat_tau: '--mirostat-tau',
+                mirostat_eta: '--mirostat-eta',
+                seed: '--seed',
+                penalty_alpha: '--penalty-alpha',
+                top_a: '--top-a',
+                smoothing_factor: '--smoothing-factor',
+                smoothing_curve: '--smoothing-curve',
+                dry_allowed_length: '--dry-allowed-length',
+                dry_penalty_last_n: '--dry-penalty-last-n',
+                dry_base: '--dry-base',
+                dry_multiplier: '--dry-multiplier',
+                dry_sequence_breaker: '--dry-sequence-breaker',
+                dynamic_temperature: '--dynatemp',
+                dynatemp_low: '--dynatemp-low',
+                dynatemp_high: '--dynatemp-high',
+                dynatemp_exponent: '--dynatemp-exponent',
+                rep_penalty_range: '--repeat-penalty-range',
+                rep_penalty_slope: '--repeat-penalty-slope',
+                encoder_repetition_penalty: '--encoder-repetition-penalty',
+                no_repeat_ngram_size: '--no-repeat-ngram-size',
+                ignore_eos: '--ignore-eos'
+            };
+
+            // 3. Iterate in exact UI order, skipping disabled parameters
+            for (const key of order) {
+                // Skip if explicitly toggled off in the UI
+                if (params[`_enabled_${key}`] === false) continue;
+                
+                const value = params[key];
+                if (value === undefined || value === null || value === '') continue;
+
+                const flag = paramToFlag[key];
+                if (flag) {
+                    // For boolean flags like ignore_eos or dynamic_temperature
+                    if (typeof value === 'boolean') {
+                        if (value) llamaTtsArgs.push(flag);
+                    } else {
+                        llamaTtsArgs.push(flag, String(value));
+                    }
+                }
+            }
+            
+            // 4. Inject Max Tokens from the Sampler configuration
+            if (sampler.maximumNumberOfTokens && sampler.maximumNumberOfTokens > 0) {
+                llamaTtsArgs.push('-n', String(sampler.maximumNumberOfTokens));
+            }
+        }
+
         log.info(`[Text To Speech] Spawning llama-tts for: "${snippet}"`);
 
-        // 4. Configure environment with both PATH and Path synchronized
+        // 4. Configure environment with PATH synchronized
         const env: Record<string, string> = { ...process.env as Record<string, string> };
-
         const extraDirs = [FFMPEG_DIR, LLAMA_DIR].join(path.delimiter);
         const existingPath = env.PATH || env.Path || '';
         const fullPath = `${extraDirs}${path.delimiter}${existingPath}`;
@@ -3041,10 +3130,10 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
 
         return fs.readFileSync(tempOutPath);
       } finally {
-        // 5. Clean up temp files safely in all scenarios
-        try { if (fs.existsSync(tempRawPath)) fs.unlinkSync(tempRawPath); } catch {}
-        try { if (fs.existsSync(tempRefWavPath)) fs.unlinkSync(tempRefWavPath); } catch {}
-        try { if (fs.existsSync(tempOutPath)) fs.unlinkSync(tempOutPath); } catch {}
+        // 5. Clean up temporary files safely using retrying safeDelete
+        await safeDelete(tempRawPath);
+        await safeDelete(tempRefWavPath);
+        await safeDelete(tempOutPath);
       }
     });
 

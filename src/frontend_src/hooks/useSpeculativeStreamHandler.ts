@@ -54,8 +54,8 @@ export function useSpeculativeStreamHandler({
             const outputCost = model?.outputGenerationCostPerOneMillionOfTokens || 3;
             const cacheMissCost = model?.cacheMissCostPerOneMillionOfTokens || 0.3;
 
-            const profileTemp = Number(profile.characterSampler?.parameters?.temperature);
-            const charTemp = Number(char.sampler?.parameters?.temperature);
+            const profileTemp = Number(profile.characterLanguageModelSampler?.parameters?.temperature);
+            const charTemp = Number(char.languageModelSampler?.parameters?.temperature);
 
             let temperature = 1.0;
             if (!Number.isNaN(profileTemp)) {

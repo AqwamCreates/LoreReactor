@@ -261,14 +261,19 @@ export function ProfileEditorModal({
         if (expandedSignalIndex === index) setExpandedSignalIndex(null);
     }, [expandedSignalIndex]);
 
-    const [characterSamplerId, setCharacterSamplerId] = useState<string>(ep?.characterSampler?.id ?? '');
+    // ✅ UPDATED: Split into Language Model and Text-To-Speech samplers
+    const [characterLanguageModelSamplerId, setCharacterLanguageModelSamplerId] = useState<string>(ep?.characterLanguageModelSampler?.id ?? '');
+    const [characterTextToSpeechModelSamplerId, setCharacterTextToSpeechModelSamplerId] = useState<string>(ep?.characterTextToSpeechModelSampler?.id ?? '');
+    
     const [webSummarizationSamplerId, setWebSummarizationSamplerId] = useState<string>(ep?.webSummarizationSampler?.id ?? '');
     const [interactionDataSummarizationSamplerId, setInteractionDataSummarizationSamplerId] = useState<string>(ep?.interactionDataSummarizationSampler?.id ?? '');
     const [aiRecommendationSamplerId, setAiRecommendationSamplerId] = useState<string>(ep?.aiRecommendationSampler?.id ?? '');
+    
     const [characterStopPatternId, setCharacterStopPatternId] = useState<string>(ep?.characterStopPattern?.id ?? '');
     const [webSummarizationStopPatternId, setWebSummarizationStopPatternId] = useState<string>(ep?.webSummarizationStopPattern?.id ?? '');
     const [interactionDataSummarizationStopPatternId, setInteractionDataSummarizationStopPatternId] = useState<string>(ep?.interactionDataSummarizationStopPattern?.id ?? '');
     const [aiRecommendationStopPatternId, setAiRecommendationStopPatternId] = useState<string>(ep?.aiRecommendationStopPattern?.id ?? '');
+    
     const [errors, setErrors] = useState<{ name?: string }>({});
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
     const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
@@ -365,7 +370,9 @@ export function ProfileEditorModal({
             })),
             summarizationInstruction: summarizationInstruction.trim() || undefined,
             autoResumeSignals: [...autoResumeSignals],
-            characterSampler: getSampler(characterSamplerId),
+            // ✅ UPDATED: Map dual samplers
+            characterLanguageModelSampler: getSampler(characterLanguageModelSamplerId),
+            characterTextToSpeechModelSampler: getSampler(characterTextToSpeechModelSamplerId),
             webSummarizationSampler: getSampler(webSummarizationSamplerId),
             interactionDataSummarizationSampler: getSampler(interactionDataSummarizationSamplerId),
             aiRecommendationSampler: getSampler(aiRecommendationSamplerId),
@@ -1018,7 +1025,24 @@ export function ProfileEditorModal({
                                 <span className="editor-section-title">Samplers</span>
                                 <div style={CHECKBOX_HINT_STYLE}>Assign specific samplers for different generation tasks. Leave empty to use system defaults.</div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px', marginTop: '12px' }}>
-                                    <div><label className="editor-label editor-label-small">Character Sampler</label><select value={characterSamplerId} onChange={(e) => setCharacterSamplerId(e.target.value)} className="editor-select"><option value="">(System Default)</option>{allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div style={FIELD_HINT_STYLE}>Used for main character dialogue/actions.</div></div>
+                                    {/* ✅ UPDATED: Split Character Sampler into Language Model and Text-To-Speech */}
+                                    <div>
+                                        <label className="editor-label editor-label-small">Character Language Model Sampler</label>
+                                        <select value={characterLanguageModelSamplerId} onChange={(e) => setCharacterLanguageModelSamplerId(e.target.value)} className="editor-select">
+                                            <option value="">(System Default)</option>
+                                            {allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                        </select>
+                                        <div style={FIELD_HINT_STYLE}>Used for main character text generation (dialogue/actions).</div>
+                                    </div>
+                                    <div>
+                                        <label className="editor-label editor-label-small">Character Text-To-Speech Sampler</label>
+                                        <select value={characterTextToSpeechModelSamplerId} onChange={(e) => setCharacterTextToSpeechModelSamplerId(e.target.value)} className="editor-select">
+                                            <option value="">(System Default)</option>
+                                            {allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                        </select>
+                                        <div style={FIELD_HINT_STYLE}>Used for vocal expressiveness and acoustic token generation.</div>
+                                    </div>
+                                    
                                     <div><label className="editor-label editor-label-small">Web Summarization Sampler</label><select value={webSummarizationSamplerId} onChange={(e) => setWebSummarizationSamplerId(e.target.value)} className="editor-select"><option value="">(System Default)</option>{allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div style={FIELD_HINT_STYLE}>Used for summarizing web search results.</div></div>
                                     <div><label className="editor-label editor-label-small">Interaction Data Sampler</label><select value={interactionDataSummarizationSamplerId} onChange={(e) => setInteractionDataSummarizationSamplerId(e.target.value)} className="editor-select"><option value="">(System Default)</option>{allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div style={FIELD_HINT_STYLE}>Used for summarizing chat history/context.</div></div>
                                     <div><label className="editor-label editor-label-small">AI Recommendation Sampler</label><select value={aiRecommendationSamplerId} onChange={(e) => setAiRecommendationSamplerId(e.target.value)} className="editor-select"><option value="">(System Default)</option>{allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div style={FIELD_HINT_STYLE}>Used for AI recommendation generations.</div></div>

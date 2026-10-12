@@ -1,7 +1,7 @@
 // frontend_src/services/TextToSpeechEngine.ts
 import { localURL } from '../../configurations';
 import { getCharacterVoiceURL } from '../storages/serverStorage';
-import type { Character, deviceType } from '../types';
+import type { Character, deviceType, Sampler } from '../types';
 
 /**
  * Fetches a character's voice reference sample from storage and converts it to Base64.
@@ -27,10 +27,6 @@ export async function fetchVoiceReference(character: Character): Promise<string 
     } catch {
         return null;
     }
-}
-
-export interface TextToSpeechContext {
-    devicePreference?: deviceType;
 }
 
 class TextToSpeechEngine {
@@ -79,10 +75,11 @@ class TextToSpeechEngine {
 
     async synthesize(
         text: string,
+        sampler: Sampler | undefined,
         audioBase64: string,
         transcript: string,
         language?: string,
-        context?: TextToSpeechContext
+        devicePreference?: deviceType,
     ): Promise<Blob | null> {
         try {
             const response = await fetch(`${localURL}/api/text-to-speech/synthesize`, {
@@ -90,10 +87,11 @@ class TextToSpeechEngine {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     text,
+                    sampler,
                     audioBase64,
                     transcript,
                     language,
-                    device: context?.devicePreference ?? 'auto'
+                    device: devicePreference ?? 'auto'
                 })
             });
 

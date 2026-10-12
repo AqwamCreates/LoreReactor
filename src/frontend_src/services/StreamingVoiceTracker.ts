@@ -1,9 +1,9 @@
 // frontend_src/services/StreamingVoiceTracker.ts
 import { StreamingVoicePlayer } from './StreamingVoicePlayer';
-import { textToSpeechEngine, fetchVoiceReference, type TextToSpeechContext } from './TextToSpeechEngine';
+import { textToSpeechEngine, fetchVoiceReference } from './TextToSpeechEngine';
 import { extractNarratableText } from '../utilities/voiceTextExtractor';
 import { useSessionStore } from '../hooks/useSessionStore';
-import type { Character } from '../types';
+import type { Character, Sampler, deviceType } from '../types';
 
 interface PendingJob {
     sequenceId: number;
@@ -26,7 +26,7 @@ export class StreamingVoiceTracker {
     private completedAudioBuffers: Map<number, ArrayBuffer> = new Map();
     private inFlightPromises: Promise<void>[] = [];
 
-    // ✅ CONCURRENCY CONTROL: Prevents GPU OOM crashes on 6GB VRAM cards
+    // CONCURRENCY CONTROL: Prevents GPU OOM crashes on 6GB VRAM cards
     private readonly MAX_CONCURRENT_REQUESTS = 2;
     private activeRequests: number = 0;
     private pendingSentences: PendingJob[] = [];
@@ -116,17 +116,19 @@ export class StreamingVoiceTracker {
         }
 
         const profile = useSessionStore.getState().interactionData?.profile;
-        const context: TextToSpeechContext = {
-            devicePreference: profile?.textToSpeechDeviceType ?? 'auto'
-        };
+        
+        // PRECEDENCE: Profile -> Character -> Default (undefined)
+        const sampler: Sampler | undefined = profile?.characterTextToSpeechModelSampler ?? this.character.textToSpeechModelSampler;
+        const devicePreference: deviceType = profile?.textToSpeechDeviceType ?? 'auto';
 
         try {
             const blob = await textToSpeechEngine.synthesize(
-                sentence,
-                base64,
-                transcript,
-                language,
-                context
+                sentence,          // 1. text (string)
+                sampler,           // 2. sampler (Sampler | undefined)
+                base64,            // 3. audioBase64 (string)
+                transcript,        // 4. transcript (string)
+                language,          // 5. language (string | undefined)
+                devicePreference   // 6. devicePreference (deviceType | undefined)
             );
 
             if (blob && this.isActive) {
@@ -161,20 +163,16 @@ export class StreamingVoiceTracker {
             this.queueSentence(this.buffer.trim());
         }
 
-        // ✅ FIX: Wait until the ENTIRE queue is drained (both pending and active)
         while (this.pendingSentences.length > 0 || this.activeRequests > 0) {
             if (this.inFlightPromises.length > 0) {
                 await Promise.allSettled(this.inFlightPromises);
-                this.inFlightPromises = []; // Clear settled promises to prevent memory leak
+                this.inFlightPromises = []; 
             } else {
                 await new Promise(resolve => setTimeout(resolve, 50));
             }
         }
         
-        // Push any remaining completed audio to the player
         this.processPlaybackQueue();
-
-        // Wait for the Web Audio API to finish scheduling/playing before destroying the context
         await new Promise(resolve => setTimeout(resolve, 500));
         
         this.player.stop();

@@ -147,7 +147,7 @@ export async function buildChatRequestBody(
         fetchErrors 
     } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId);
 
-    const sampler = character.sampler;
+    const languageModelSampler = character.languageModelSampler;
     const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection;
 
     const filesBase64: { data: string; id: number }[] = [];
@@ -299,7 +299,7 @@ export async function buildChatRequestBody(
     }
 
     const finalMessages: OpenAIMessage[] = [...imageInjectionMessages, ...messages];
-    const { stop: paramStops, ...otherParams } = sampler?.parameters || {};
+    const { stop: paramStops, ...otherParams } = languageModelSampler?.parameters || {};
 
     const finalStops = [...(Array.isArray(paramStops) ? paramStops : []), ...stops];
     const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
@@ -307,7 +307,7 @@ export async function buildChatRequestBody(
     const body: Record<string, unknown> = {
         ...otherParams,
         messages: finalMessages,
-        n_predict: sampler?.maximumNumberOfTokens ?? 512,
+        n_predict: languageModelSampler?.maximumNumberOfTokens ?? 512,
         stream: true,
         stop: uniqueStops,
     };

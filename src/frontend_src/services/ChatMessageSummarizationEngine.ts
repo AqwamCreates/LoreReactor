@@ -92,7 +92,7 @@ export async function generateCharacterMemory(
     if (localHistory.length === 0) return null;
 
     const participants = interactionData.participants;
-    const sampler = interactionData.profile?.characterSampler || character.sampler;
+    const languageModelSampler = interactionData.profile?.characterLanguageModelSampler || character.languageModelSampler;
     const stopPattern = interactionData.profile?.characterStopPattern;
 
     const allPromptBlocks: PromptBlock[] = [];
@@ -189,7 +189,7 @@ export async function generateCharacterMemory(
         delimiters.thinkEnd.trim(),
     ].filter(s => s.length > 0);
 
-    const requestBody = buildRequestBody(prompt, maxTokens, sampler, stops);
+    const requestBody = buildRequestBody(prompt, maxTokens, languageModelSampler, stops);
 
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
@@ -238,10 +238,12 @@ export async function generateMissingSummaries(
 
     if (toSummarize.length === 0) return results;
 
-    const sampler = interactionData.profile?.interactionDataSummarizationSampler;
+    const profile = interactionData.profile;
+
+    const interactionDataSummarizationSampler = profile?.interactionDataSummarizationSampler;
 
     for (const msg of toSummarize) {
-        const summary = await generateMessageSummary(msg, maxTokens, sampler, interactionData.profile);
+        const summary = await generateMessageSummary(msg, maxTokens, interactionDataSummarizationSampler, profile);
         if (summary) {
             results.set(msg.id, summary);
         }
@@ -295,7 +297,7 @@ export async function generateLocationVisitSummary(
 
     const participants = interactionData.participants;
     const participantTag = getParticipantTag(character, participants);
-    const sampler = interactionData.profile?.characterSampler || character.sampler;
+    const languageModelSampler = interactionData.profile?.characterLanguageModelSampler || character.languageModelSampler;
     const stopPattern = interactionData.profile?.characterStopPattern;
 
     const allPromptBlocks: PromptBlock[] = [];
@@ -385,7 +387,7 @@ export async function generateLocationVisitSummary(
         delimiters.thinkEnd.trim(),
     ].filter(s => s.length > 0);
 
-    const requestBody = buildRequestBody(prompt, maxTokens, sampler, stops);
+    const requestBody = buildRequestBody(prompt, maxTokens, languageModelSampler, stops);
 
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
@@ -408,7 +410,9 @@ export async function generatePeriodicCompression(
     const history = getLocalMessageHistory(interactionData, character);
     const existingContexts = interactionData.contexts || [];
 
-    const sampler = interactionData.profile?.interactionDataSummarizationSampler;
+    const profile = interactionData.profile;
+
+    const interactionDataSummarizationSampler = profile?.interactionDataSummarizationSampler;
 
     const compressedRanges = new Set<string>();
     for (const context of existingContexts) {
@@ -449,7 +453,7 @@ export async function generatePeriodicCompression(
 
         const chunk = visibleChatMessages.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
-        const compressed = await compressChunk(chunk, maxTokens, sampler, interactionData.profile);
+        const compressed = await compressChunk(chunk, maxTokens, interactionDataSummarizationSampler, profile);
         if (!compressed) continue;
         newContexts.push({
             id: `auto-summary-${uuidv4()}`,
@@ -508,7 +512,7 @@ export async function generateRecursiveSummary(
     const now = Date.now();
 
     const profile = interactionData.profile;
-    const sampler = profile?.interactionDataSummarizationSampler;
+    const interactionDataSummarizationSampler = profile?.interactionDataSummarizationSampler;
     const stopPattern = profile?.interactionDataSummarizationStopPattern;
 
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
@@ -532,7 +536,7 @@ export async function generateRecursiveSummary(
         const endIdx = Math.min(startIdx + chunkSize, visibleMessages.length);
         const chunk = visibleMessages.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
-        const compressed = await compressChunk(chunk, maxTokens, sampler, profile);
+        const compressed = await compressChunk(chunk, maxTokens, interactionDataSummarizationSampler, profile);
         if (!compressed) continue;
         layer0Summaries.push(compressed);
         newContexts.push({
@@ -560,7 +564,7 @@ export async function generateRecursiveSummary(
         const nextLayerSummaries: string[] = [];
         for (let i = 0; i < currentLayerSummaries.length; i += 2) {
             const batch = currentLayerSummaries.slice(i, Math.min(i + 2, currentLayerSummaries.length));
-            const merged = await mergeSummaries(batch, maxTokens, sampler, stopPattern);
+            const merged = await mergeSummaries(batch, maxTokens, interactionDataSummarizationSampler, stopPattern);
             if (merged) {
                 nextLayerSummaries.push(merged);
                 newContexts.push({
@@ -582,7 +586,7 @@ export async function generateRecursiveSummary(
     }
 
     if (currentLayerSummaries.length > 1) {
-        const globalSummary = await mergeSummaries(currentLayerSummaries, maxTokens, sampler, stopPattern);
+        const globalSummary = await mergeSummaries(currentLayerSummaries, maxTokens, interactionDataSummarizationSampler, stopPattern);
         if (globalSummary) {
             newContexts.push({
                 id: `auto-recursive-global-${uuidv4()}`,
@@ -698,13 +702,15 @@ export async function generateEntropyPruningSummaries(
         cutoffVisibleIndex = chunkStart;
     }
 
-    const sampler = interactionData.profile?.interactionDataSummarizationSampler;
+    const profile = interactionData.profile;
+
+    const interactionDataSummarizationSampler = profile?.interactionDataSummarizationSampler;
     for (let i = 0; i < cutoffVisibleIndex; i++) {
         const msg = visibleMessages[i];
         if (hasModelSummary(msg, modelId)) continue;
         if (!msg.textContent?.trim()) continue;
 
-        const summary = await generateMessageSummary(msg, maxTokens, sampler, interactionData.profile);
+        const summary = await generateMessageSummary(msg, maxTokens, interactionDataSummarizationSampler, profile);
         if (summary) results.set(msg.id, summary);
     }
 

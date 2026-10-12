@@ -282,7 +282,8 @@ export interface Character extends ObjectData {
   memoryRetentionWeight: number;
   contextSensitivity: number;
   maximumActionStamina: number;
-  sampler?: Sampler | undefined;
+  languageModelSampler?: Sampler | undefined;
+  textToSpeechModelSampler?: Sampler | undefined;
   stopPatterns?: StopPattern[];
   doNotInjectCharacterImage?: boolean;
   numberOfMessagesToDisableThinkPrompt: number;
@@ -317,7 +318,8 @@ export interface RawCharacter extends RawData {
   memoryRetentionWeight: number;
   contextSensitivity: number;
   maximumActionStamina: number;
-  samplerId?: string | undefined;
+  languageModelSamplerId?: string | undefined;
+  textToSpeechModelSamplerId?: string | undefined;
   stopPatternIds?: string[];
   doNotInjectCharacterImage?: boolean;
   numberOfMessagesToDisableThinkPrompt: number;
@@ -776,7 +778,8 @@ export interface Profile extends ObjectData {
   speechToTextDeviceType: deviceType; // Default is auto.
   voiceActivityDetectionDeviceType: deviceType; // Default is auto.
   autoResumeSignals: AutoResumeSignal[]; // When empty, the models will determine the natural stop. Otherwise, if the partially-generated text does not end with these signals, it will auto-resume until this signal is hit.
-  characterSampler?: Sampler;
+  characterLanguageModelSampler?: Sampler;
+  characterTextToSpeechModelSampler?: Sampler;
   webSummarizationSampler?: Sampler;
   interactionDataSummarizationSampler?: Sampler;
   aiRecommendationSampler?: Sampler;
@@ -835,7 +838,8 @@ export interface RawProfile extends RawData {
   speechToTextDeviceType: deviceType; // Default is auto.
   voiceActivityDetectionDeviceType: deviceType; // Default is auto.
   autoResumeSignals: AutoResumeSignal[]; // When empty, the models will determine the natural stop. Otherwise, if the partially-generated text does not end with these signals and has visited the activating, it will auto-resume until this signal is hit.
-  characterSamplerId?: string;
+  characterLanguageModelSamplerId?: string;
+  characterTextToSpeechModelSamplerId?: string;
   webSummarizationSamplerId?: string;
   interactionDataSummarizationSamplerId?: string;
   aiRecommendationSamplerId?: string;
