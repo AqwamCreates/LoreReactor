@@ -1,4 +1,4 @@
-// frontend_src/services/TextToSpeechEngine.ts
+// src/frontend_src/services/TextToSpeechEngine.ts
 import { localURL } from '../../configurations';
 import { getCharacterVoiceURL } from '../storages/serverStorage';
 import type { Character, deviceType, Sampler } from '../types';
@@ -81,6 +81,7 @@ class TextToSpeechEngine {
         language?: string,
         devicePreference?: deviceType,
     ): Promise<Blob | null> {
+        try {
             const response = await fetch(`${localURL}/api/text-to-speech/synthesize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
