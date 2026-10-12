@@ -81,6 +81,9 @@ function LocationEditorModalInner({
 
     const [isUploading, setIsUploading] = useState(false);
 
+    const [hasSkyView, setHasSkyView] = useState<boolean>(existingLocation?.hasSkyView ?? true);
+    const [hasWeather, setHasWeather] = useState<boolean>(existingLocation?.hasWeather ?? true);
+
     const [regexActivationTriggers, setRegexActivationTriggers] = useState<RegularExpressionTrigger[]>(existingLocation?.regularExpressionActivationTriggers ?? []);
     const [regexExclusionActivationTriggers, setRegexExclusionActivationTriggers] = useState<RegularExpressionTrigger[]>(existingLocation?.regularExpressionExclusionActivationTriggers ?? []);
     const [regexExclusionDeactivationTriggers, setRegexExclusionDeactivationTriggers] = useState<RegularExpressionTrigger[]>(existingLocation?.regularExpressionExclusionDeactivationTriggers ?? []);
@@ -340,6 +343,8 @@ function LocationEditorModalInner({
             description: description.trim() || undefined,
             text: text.trim() || undefined,
             images: finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
+            hasSkyView,
+            hasWeather, // ✅ Stored on location
             regularExpressionActivationTriggers: filterTriggers(regexActivationTriggers),
             regularExpressionExclusionActivationTriggers: filterTriggers(regexExclusionActivationTriggers),
             regularExpressionExclusionDeactivationTriggers: filterTriggers(regexExclusionDeactivationTriggers),
@@ -549,6 +554,36 @@ function LocationEditorModalInner({
                                 </div>
                             </div>
 
+                            {/* Sky View */}
+                            <div className="context-field-group">
+                                <label className="editor-checkbox-label">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={hasSkyView} 
+                                        onChange={(e) => setHasSkyView(e.target.checked)} 
+                                        className="editor-checkbox-input" 
+                                        disabled={isUploading || isReadOnly} 
+                                    />
+                                    <span>Has Sky View</span>
+                                </label>
+                                <div className="context-checkbox-hint">Whether the open sky is visible from this location. Uncheck for indoor or subterranean spaces.</div>
+                            </div>
+
+                            {/* Weather Exposure */}
+                            <div className="context-field-group">
+                                <label className="editor-checkbox-label">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={hasWeather} 
+                                        onChange={(e) => setHasWeather(e.target.checked)} 
+                                        className="editor-checkbox-input" 
+                                        disabled={isUploading || isReadOnly} 
+                                    />
+                                    <span>Has Weather Exposure</span>
+                                </label>
+                                <div className="context-checkbox-hint">Whether outdoor weather (rain, wind, temperature) directly affects this location. Uncheck for climate-controlled indoor spaces.</div>
+                            </div>
+
                             {/* Encoding */}
                             <div className="context-field-group">
                                 <label className="editor-checkbox-label">
@@ -684,7 +719,7 @@ function LocationEditorModalInner({
                                     description="Overrides filter — keeps message visible."
                                     triggers={messageFilterExclusionActivationTriggers}
                                     onChange={setMessageFilterExclusionActivationTriggers}
-                                    error={errors.messageFilterExclusionActivationRegex}
+                                    error={errors.messageFilterExclusionRegex}
                                     isReadOnly={isReadOnly}
                                 />
                                 <RegularExpressionTriggerEditor
@@ -771,7 +806,7 @@ function LocationEditorModalInner({
                                     {!isReadOnly && (
                                         <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading}>
                                             <option value="" disabled>+ Restrict to a character</option>
-                                            {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                            {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
                                         </select>
                                     )}
                                 </div>
@@ -788,7 +823,7 @@ function LocationEditorModalInner({
                                     {!isReadOnly && (
                                         <select onChange={(e) => { const val = e.target.value; if (val && !ownerBindings.includes(val)) setOwnerBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading}>
                                             <option value="" disabled>+ Add an owner</option>
-                                            {allCharacters.filter(c => !ownerBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                            {allCharacters.filter(c => !ownerBindings.includes(c.id)).map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
                                         </select>
                                     )}
                                 </div>

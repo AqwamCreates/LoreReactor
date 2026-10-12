@@ -6,7 +6,7 @@ import { fetchMultipleContextUrls } from './linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
 import { toolCallStartString, toolCallEndString } from '../dictionaries/stringList';
-import { type TimeData, fetchCurrentWeather, getLocation, getTimeDataFromCoordinates } from '../services/LocationEngine';
+import { type TimeData, fetchCurrentWeather, generateSkyViewText, getLocation, getTimeDataFromCoordinates } from '../services/LocationEngine';
 import { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter, getCurrentLocationId, } from './locationLogic';
 import { defaultInputStrategy } from '../dictionaries/defaults';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
@@ -1785,8 +1785,29 @@ const PROMPT_BUILDERS: Record<string, (b: BuilderContext) => Promise<string[]>> 
         return result.lines;
     },
     'Inventory': async (b) => buildInventoryLines(b.ctx),
+    'Sky View': async (b) => {
+        const { currentLocation } = b.ctx;
+        const { timeData } = b;
+
+        // 1. Suppress if the location is indoors/underground with no sky view
+        if (!currentLocation || !currentLocation?.hasSkyView) return []
+
+        // 2. Generate celestial description
+        if (timeData) {
+            const skySummary = generateSkyViewText(
+                timeData.rawTimestamp, 
+                b.latitude, 
+                b.longitude
+            );
+            if (skySummary) {
+                return [`${b.ctx.delimiters.blockStart('system')}[Sky & Celestial View]\n${skySummary}${b.ctx.delimiters.blockEnd}`];
+            }
+        }
+        return [];
+    },
     'Weather': async (b) => {
-        const { profile } = b.ctx;
+        const { currentLocation, profile } = b.ctx;
+        if (!currentLocation?.hasWeather) return [];
         if (profile?.weatherApiKey && b.latitude && b.longitude) {
             const weatherLine = await fetchCurrentWeather(b.latitude, b.longitude, profile.weatherApiKey);
             if (weatherLine) {

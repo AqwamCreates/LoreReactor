@@ -147,6 +147,8 @@ ${characterToolsSchema}
     "description": "string (display only, NOT used as AI input)",
     "text": "string",
     "images": ["string array (image filenames for location visuals)"],
+    "hasSkyView": "boolean (default true). If true, the sky view prompt and tool will be available to characters at this location.",
+    "hasWeather": "boolean (default true). If true, the weather prompt and tool will be available to characters at this location.",
     "regularExpressionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
     "regularExpressionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
     "regularExpressionExclusionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},

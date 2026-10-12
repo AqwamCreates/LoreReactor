@@ -266,6 +266,7 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
     { tool: 'coin', label: 'Coin Flip', keywords: ['gamble', 'coin', 'flip', 'fifty fifty', 'toss'], tier: 'in_world_readonly' },
     { tool: 'audio', label: 'In-World Audio Track Control', keywords: ['bard', 'musician', 'singer', 'dj', 'performer', 'music', 'soundtrack'], tier: 'in_world_readonly' },
     { tool: 'calculator', label: 'Math Calculator', keywords: ['mathematician', 'accountant', 'calculator', 'scholar', 'scientist', 'finance'], tier: 'in_world_readonly' },
+    { tool: 'sky_view', label: 'Sky View', keywords: ['sky'], tier: 'in_world_readonly'},
     { tool: 'clock', label: 'In-World Clock', keywords: ['clock', 'time', 'punctual', 'watch', 'timekeeper'], tier: 'in_world_readonly' },
     { tool: 'calendar', label: 'In-World Calendar', keywords: ['calendar', 'date', 'month', 'year', 'day', 'seasons'], tier: 'in_world_readonly' },
     { tool: 'random', label: 'Random Number Generator', keywords: ['random', 'chance', 'rng', 'probability', 'shuffle'], tier: 'in_world_readonly' },

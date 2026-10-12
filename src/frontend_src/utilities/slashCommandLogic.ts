@@ -38,6 +38,7 @@ export const COMMAND_TREE: SlashCmd[] = [
     ]},
     { name: 'think', desc: 'Reasoning step', args: [{ name: 'reasoning', type: 'text', desc: 'Your thought process', example: 'Should I trust this stranger?' }] },
     { name: 'pick', desc: 'Pick from list', args: [{ name: 'options', type: 'text', desc: 'Comma-separated choices', example: 'sword, shield, potion' }] },
+    { name: 'sky_view', desc: "View sky"},
     { name: 'clock', desc: 'Current time', args: [{ name: 'format', type: 'text', desc: 'Time format', example: '24h', optional: true }] },
     { name: 'calendar', desc: 'Current date', args: [{ name: 'format', type: 'text', desc: 'Date format', example: 'iso', optional: true }] },
     { name: 'coin', desc: 'Flip a coin' },

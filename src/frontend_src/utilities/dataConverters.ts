@@ -351,6 +351,8 @@ function fillLocationDefaults(l: Record<string, unknown>): Location {
         description: (l.description as string) || undefined,
         text: (l.text as string) || '',
         images: (l.images as string[]) || [],
+        hasSkyView: (l.hasSkyView as boolean) || true,
+        hasWeather: (l.hasWeather as boolean) || true,
         regularExpressionActivationTriggers: parseRegexTriggers(l.regularExpressionActivationTriggers),
         regularExpressionDeactivationTriggers: parseRegexTriggers(l.regularExpressionDeactivationTriggers),
         regularExpressionExclusionActivationTriggers: parseRegexTriggers(l.regularExpressionExclusionActivationTriggers),

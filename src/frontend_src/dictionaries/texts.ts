@@ -2,7 +2,7 @@ import type { tool } from '../types';
 
 export const toolLabels: Record<tool, string> = {
     whisper: 'Whisper', think: 'Think', 
-    pick: 'Random Pick', clock: 'Clock', calendar: 'Calendar', coin: 'Coin Flip', dice: 'Roll Dice',
+    pick: 'Random Pick', sky_view: 'Sky View', clock: 'Clock', calendar: 'Calendar', coin: 'Coin Flip', dice: 'Roll Dice',
     random: 'Random Number', rng: 'RNG Table', move: 'Move', timer: 'Timer',
     stopwatch: 'Stopwatch', schedule: 'Schedule', calculator: 'Calculator', web: 'Web Search', dialogue: 'Dialogue',
     knowledge: 'Knowledge', memory: 'Memory', lookup: 'Look Up',
@@ -25,6 +25,7 @@ export const characterToolDescriptions: Record<tool, string> = {
     whisper: 'Allow this character to give private messages',
     think: 'Allow this character to think before committing to an output.',
     pick: 'Allow this character to randomly pick from a list of options.',
+    sky_view: 'Allow this character to view the sky.',
     clock: 'Allow this character to check the current time.',
     calendar: 'Allow this character to check the current date.',
     coin: 'Allow this character to flip a coin.',

@@ -120,6 +120,8 @@ export interface Location extends ObjectData {
   regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
   regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
   regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+  hasSkyView?: boolean;
+  hasWeather?: boolean;
   backgroundImageRegularExpressionActivationTriggers?: Record<number, string>
   backgroundImageWeights?: Record<number, number>
   playAudioTrackOnEnterWeights?: Record<string, number>;
@@ -143,6 +145,8 @@ export interface Location extends ObjectData {
 export interface RawLocation extends RawData {
   text?: string;
   images?: string[];
+  hasSkyView?: boolean;
+  hasWeather?: boolean;
   regularExpressionActivationTriggers?: RegularExpressionTrigger[];
   regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
   regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
@@ -221,7 +225,7 @@ export interface RawMemory extends RawData {
   interactionDataId: string;
 }
 
-export type tool = "whisper" | "think" | "pick" | "clock" | "calendar" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "oracle" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer" | 'schedule_response' | 'text_to_speech' | 'gpu' | 'system_info' | 'notify' | 'volume_control' | 'lock_screen' | 'sleep' | 'shutdown' | 'restart' | 'clipboard' | 'front_camera' | 'screenshot' | 'network_scanner' | 'file_watcher' | 'window_monitor' | 'process_monitor' | 'trash' | 'browser' | 'read_file' | 'write_file' | 'shell' | 'virtual_hearing' | 'virtual_vision' | 'virtual_input' | 'virtual_controller' | 'hardware_control'
+export type tool = "whisper" | "think" | "pick" | "sky_view" | "clock" | "calendar" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "oracle" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer" | 'schedule_response' | 'text_to_speech' | 'gpu' | 'system_info' | 'notify' | 'volume_control' | 'lock_screen' | 'sleep' | 'shutdown' | 'restart' | 'clipboard' | 'front_camera' | 'screenshot' | 'network_scanner' | 'file_watcher' | 'window_monitor' | 'process_monitor' | 'trash' | 'browser' | 'read_file' | 'write_file' | 'shell' | 'virtual_hearing' | 'virtual_vision' | 'virtual_input' | 'virtual_controller' | 'hardware_control'
 
 export interface DialoguePrompt extends ObjectData {
   content: string;
@@ -667,6 +671,7 @@ export type promptBlockType =
   | 'Chat History'
   | 'Context'
   | 'Location'
+  | 'Sky View'
   | 'Weather'
   | 'Inventory'
   | 'Date'

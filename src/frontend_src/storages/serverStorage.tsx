@@ -787,6 +787,8 @@ const locationRepo = createRepository<Location, RawLocation>({
   entityKey: 'locations',
   hydrate: (raw, id) => hydrateEntity<Location, RawLocation>(raw, id, {
     name: 'Unknown Location',
+    hasSkyView: true,
+    hasWeather: true,
     backgroundImageRegularExpressionActivationTriggers: {},
     backgroundImageWeights: {},
     playAudioTrackOnEnterWeights: {},

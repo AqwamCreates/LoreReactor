@@ -9,6 +9,7 @@ export const defaultCharacterTools: Record<tool, boolean> = {
     whisper: true,
     think: false,
     pick: true,
+    sky_view: true,
     clock: true,
     calendar: true,
     coin: true,
@@ -164,7 +165,7 @@ export const defaultActions: InterjectableAction[] = [
 
 export const defaultInputStrategy: promptBlockType[] = [
     'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt',
-    'Chat History', 'Context', 'Location', 'Weather', 'Inventory', 'Date', 'Time', 'Time Elapsed',
+    'Chat History', 'Context', 'Location', 'Sky View', 'Weather', 'Inventory', 'Date', 'Time', 'Time Elapsed',
     'Fatigue Information', 'Starter Prompt', 'Tool Instructions', 'Anti-Repetition Nudge', 'Text Injection',
 ];
 

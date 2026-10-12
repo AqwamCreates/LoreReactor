@@ -12,7 +12,7 @@ import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, setSystemPower, clipboardAction, captureScreenshot, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, captureVirtualHearing, captureVirtualVision, sendVirtualInput, sendVirtualController, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
 import { buildSearchUrl } from '../utilities/searchURLBuilder';
-import { getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
+import { generateSkyViewText, getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
 import { getLocationMessageHistory } from '../utilities/timelineLogic';
 import { localURL } from '../../configurations';
 
@@ -267,7 +267,7 @@ function getCharacterTimeData(interactionData: InteractionData, character: Chara
 }
 
 export const TOOL_EMOJI_MAP: Record<tool, string> = {
-    whisper: '🤫', think: '💭', pick: '🎯', clock: '🕰️', calendar: '📅',
+    whisper: '🤫', think: '💭', pick: '🎯', sky_view: '🔭', clock: '🕰️', calendar: '📅',
     coin: '🪙', dice: '🎲', random: '🎲', rng: '🎲', move: '🚶',
     timer: '⏱️', stopwatch: '⏱️', schedule: '📅', calculator: '🧮',
     web: '🌐', dialogue: '💬', knowledge: '🧠', memory: '🧠',
@@ -289,6 +289,7 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
   whisper: executeWhisper,
   think: executeThink,
   pick: executeRandomPick,
+  sky_view: executeSkyView,
   clock: executeClock,
   calendar: executeCalendar,
   coin: executeCoinFlip,
@@ -546,6 +547,31 @@ function executeRandomPick(args: string): ToolResult {
   }
   const picked = options[Math.floor(Math.random() * options.length)];
   return { toolType: 'pick', args, content: picked, displayReplacement: `[🎯 "${picked}"]` };
+}
+
+// ─── Sky View ────────────────────────────────────────────────────────
+function executeSkyView(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+  const location = getCurrentLocation(interactionData, nextMessage.character);
+
+  if (!location || !location?.hasSkyView) {
+    const content = 'You cannot see the sky from here.';
+    return {
+      toolType: 'sky_view',
+      args,
+      content,
+      displayReplacement: '[🔭 No sky view]',
+    };
+  }
+
+  const timeData = getCharacterTimeData(interactionData, nextMessage.character);
+  const skyDescription = generateSkyViewText(timeData.rawTimestamp, location?.latitude, location?.longitude);
+
+  return {
+    toolType: 'sky_view',
+    args,
+    content: skyDescription,
+    displayReplacement: `[🔭 ${skyDescription}]`,
+  };
 }
 
 // ─── Clock ────────────────────────────────────────────────────────────
