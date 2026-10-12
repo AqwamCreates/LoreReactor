@@ -1206,10 +1206,15 @@ function buildToolInstructionLines(ctx: PromptBuildContext): string[] {
 
     if (enabledToolNames.length > 0) {
         const firstTool = enabledToolNames[0];
-        lines.push(`${ctx.delimiters.blockStart('system')}When tools are involved, I must read answers from the tools to get accurate and precise response only before making any sentences. If my initial assumption contradicts the tool result, I will naturally correct myself based on my character's personality. I can call the tool like ${toolCallStartString}${firstTool}()${toolCallEndString} to get direct result or access the help page. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results. Tool invocation markers are completely invisible to the user. Available tools: ${enabledToolNames.join(', ')}.${ctx.delimiters.blockEnd}`);
+        lines.push(`${ctx.delimiters.blockStart('system')}When tools are involved, I must read answers from the tools to get accurate and precise response only before making any sentences. If my initial assumption contradicts the tool result, I will naturally correct myself based on my character's personality. I can call the tool like ${toolCallStartString}${firstTool}()${toolCallEndString} to get direct result or access the help page. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results. Tool invocation markers are only visible to me. Available tools: ${enabledToolNames.join(', ')}.${ctx.delimiters.blockEnd}`);
+        lines.push(`${ctx.delimiters.blockStart('system')}When I use ${toolCallStartString}tool()${toolCallEndString} as my first word, I will activate tool message mode where the whole message text are only visible to me.${ctx.delimiters.blockEnd}`)
     }
 
     return lines;
+}
+
+function buildToolMessageInstructionLines(ctx: PromptBuildContext): string[] {
+    return [`${ctx.delimiters.blockStart('system')}I am currently in tool message mode, where I will only interact with the environment and only talk to myself.${ctx.delimiters.blockEnd}`]
 }
 
 function buildFatigueLines(ctx: PromptBuildContext): string[] {
@@ -1633,6 +1638,7 @@ const VOLATILE_BLOCK_TYPES: ReadonlySet<string> = new Set([
     'Time Elapsed',
     'Fatigue Information',
     'Tool Instructions',
+    'Tool Message Instructions',
     'Anti-Repetition Nudge',
 ]);
 
@@ -1728,6 +1734,7 @@ interface BuilderContext {
     longitude?: number;
     timeData: TimeData | null;
     locationImages: EntityImageRef[];
+    isToolMessage: boolean | undefined,
 }
 
 const PROMPT_BUILDERS: Record<string, (b: BuilderContext) => Promise<string[]>> = {
@@ -1850,8 +1857,9 @@ const PROMPT_BUILDERS: Record<string, (b: BuilderContext) => Promise<string[]>> 
         }
         return [];
     },
-    'Fatigue Information': async (b) => buildFatigueLines(b.ctx),
+    'Fatigue Information': async (b) => !b.isToolMessage ? buildFatigueLines(b.ctx) : [],
     'Tool Instructions': async (b) => buildToolInstructionLines(b.ctx),
+    'Tool Message Instructions': async (b) => b.isToolMessage ? buildToolMessageInstructionLines(b.ctx) : [],
     'Anti-Repetition Nudge': async (b) => buildAntiRepetitionNudgeLines(b.ctx),
     'Text Injection': async (b) => buildTextInjectionLines(b.ctx, b.hasBeenSummarized, b.contextLines),
 };
@@ -1900,6 +1908,7 @@ export async function buildPrompt(
     existingCharacterText: string,
     allPromptBlocks: PromptBlock[],
     modelId: string,
+    isToolMessage?: boolean,
 ): Promise<BuildResult> {
 
     const activeModel = tokenEngine.getContext();
@@ -2032,7 +2041,8 @@ export async function buildPrompt(
 
     const builderCtx: BuilderContext = {
         ctx, activeContextIds, characterClothingWearingStatuses, contextLines,
-        hasBeenSummarized: false, latitude, longitude, timeData, locationImages: []
+        hasBeenSummarized: false, latitude, longitude, timeData, locationImages: [],
+        isToolMessage
     };
 
     // 5. Build blocks on-demand using registry (Lazy Evaluation)

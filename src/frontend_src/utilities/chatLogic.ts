@@ -122,13 +122,14 @@ function generateInitialCharacterText(character: Character): string {
     return result;
 }
 
-export async function buildChatRequestBody(
+export async function buildRequestBody(
     interactionData: InteractionData,
     character: Character,
     knownCharacterNames: Record<string, Record<string, boolean>>,
     existingCharacterText: string,
     allPromptBlocks: PromptBlock[],
     modelId: string,
+    isToolMessage?: boolean
 ): Promise<{ 
     body: Record<string, unknown>; 
     knownCharacterNames: Record<string, Record<string, boolean>>; 
@@ -145,7 +146,7 @@ export async function buildChatRequestBody(
         promptBlockImages, 
         characterClothingWearingStatuses, 
         fetchErrors 
-    } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId);
+    } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId, isToolMessage);
 
     const languageModelSampler = character.languageModelSampler;
     const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection;

@@ -1,7 +1,7 @@
 // frontend_src/services/CharacterActor.ts
 import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile, ToolExecutionResult } from '../types';
 import { saveRawBudgetData } from '../storages/serverStorage';
-import { buildChatRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
+import { buildRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
 import { detectName } from '../utilities/nameDetection';
 import { getFilteredTextMessages } from '../utilities/promptLogic';
 import { getBudgetStrategyEngine, type RequestMetadata } from './BudgetStrategyEngine';
@@ -271,7 +271,7 @@ export class CharacterActor {
                     : (selectedModel?.id || '');
             if (probeModelId) {
                 try {
-                    const probeResult = await buildChatRequestBody(data, character, knownCharacterNames, '', allPromptBlocks, probeModelId);
+                    const probeResult = await buildRequestBody(data, character, knownCharacterNames, '', allPromptBlocks, probeModelId);
                     resolvedClothingStatuses = probeResult.characterClothingWearingStatuses;
                 } catch { /* non-critical */ }
             }
@@ -446,7 +446,7 @@ export class CharacterActor {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
-                    const { body } = await buildChatRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
+                    const { body } = await buildRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
                     await runSingleStreamPass(body, false);
 
                     const pendingInvs = accState.getPending();
@@ -488,7 +488,7 @@ export class CharacterActor {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
-                    const { body: probeBody } = await buildChatRequestBody(
+                    const { body: probeBody } = await buildRequestBody(
                         data, character, knownCharacterNames, currentExistingText, allPromptBlocks, ''
                     );
                     let promptText = '';
@@ -504,7 +504,7 @@ export class CharacterActor {
                     const selection = await bse.selectModelForRequest({ prompt: promptText }, metadata);
                     const activeModelId = selection?.modelId || '';
 
-                    const { body } = await buildChatRequestBody(
+                    const { body } = await buildRequestBody(
                         data, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId
                     );
 
@@ -559,7 +559,7 @@ export class CharacterActor {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
-                    const { body } = await buildChatRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
+                    const { body } = await buildRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
                     await runSingleStreamPass(body, false);
 
                     const pendingInvs = accState.getPending();

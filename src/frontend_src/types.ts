@@ -369,7 +369,6 @@ export interface BaseMessage {
 export interface InteractionMessage extends BaseMessage {
   messageType: 'interaction';
 }
-
 export interface ChatMessage extends BaseMessage {
   messageType: 'chat';
   textContent: string;
@@ -690,6 +689,7 @@ export type promptBlockType =
   | 'Fatigue Information'
   | 'Starter Prompt'
   | 'Tool Instructions'
+  | 'Tool Message Instructions'
   | 'Anti-Repetition Nudge'
   | 'Text Injection'
   | 'Model Chat Template'
