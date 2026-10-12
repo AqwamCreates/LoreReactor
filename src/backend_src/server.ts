@@ -1,4 +1,3 @@
-// frontend_src/server.ts
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';

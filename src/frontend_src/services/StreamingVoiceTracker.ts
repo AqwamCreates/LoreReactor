@@ -35,10 +35,10 @@ export class StreamingVoiceTracker {
     private readonly MAX_CONCURRENT_REQUESTS = 2;
 
     // ─── Asymmetric Pipelining Thresholds (Worst-case 15 frames/s guarantee) ───
-    // Chunk 1: Pacesetter (~55 chars / ~50 frames) -> ~2.3s TTFA, generates ~4.0s of audio buffer
-    private readonly INITIAL_CHUNK_MIN_CHARS = 55;
-    // Chunk 2+: Runway Builder (~80 chars / ~70 frames) -> generates ~5.6s audio, builds surplus cushion
-    private readonly STEADY_CHUNK_MIN_CHARS = 80;
+    // Chunk 1: Pacesetter (~45 chars / ~50 frames) -> ~2.3s TTFA, generates ~4.0s of audio buffer
+    private readonly INITIAL_CHUNK_MIN_CHARS = 45;
+    // Chunk 2+: Runway Builder (~75 chars / ~70 frames) -> generates ~5.6s audio, builds surplus cushion
+    private readonly STEADY_CHUNK_MIN_CHARS = 75;
 
     private isFirstChunkSent: boolean = false;
     private activeRequests: number = 0;
