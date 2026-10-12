@@ -1,5 +1,5 @@
 // frontend_src/utilities/chatLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, TextCharacterInjection, TextMessage } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, TextCharacterInjection, TextMessage, ToolExecutionResult, ToolMessage } from '../types';
 import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
 import { getKnownDisplayName, deriveDelimiters } from './promptLogic';
 import type { EntityImageRef } from './promptLogic';
@@ -12,6 +12,7 @@ import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { findLatestMessage } from './messageLogic';
 import { getGlobalMessageHistory, getLocalMessageHistory } from './timelineLogic';
+import { toolCallStartString, toolCallEndString } from '../dictionaries/stringList';
 
 // ─── Core Functions ────────────────────────────────────────────────
 
@@ -465,6 +466,61 @@ export function createChatMessage(
     } as ChatMessage;
 }
 
+export function createToolMessage(
+    interactionData: InteractionData,
+    character: Character,
+    textContent: string,
+    options?: { files?: string[]; frontCameraImage?: string; knownCharacterNames?: Record<string, Record<string, boolean>>; clothingWearingStatuses?: Record<string, boolean>; toolExecutionResults?: ToolExecutionResult[] }
+): ToolMessage {
+    const latest = findLatestMessage(interactionData, character);
+    const previousMessage = latest?.message;
+    
+    const effectiveMaximumChatStamina = getEffectiveMaximumChatStamina(character, interactionData.profile);
+    const effectiveMaximumActionStamina = getEffectiveMaximumActionStamina(character, interactionData.profile);
+    const remainingChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaximumChatStamina;
+    const remainingActionStamina = previousMessage?.remainingActionStamina ?? effectiveMaximumActionStamina;
+    
+    const globalMessages = getGlobalMessageHistory(interactionData);
+    const lastMessageId = globalMessages.length > 0 ? globalMessages[globalMessages.length - 1].id : null;
+    const now = Date.now();
+
+    const id = uuidv4();
+    const files = options?.files ?? [];
+    const frontCameraImage = options?.frontCameraImage;
+    const toolExecutionResults = options?.toolExecutionResults;
+
+    const knownCharacterNames = options?.knownCharacterNames ??
+        (character.knownCharacterNames
+            ? Object.fromEntries(
+                Object.entries(character.knownCharacterNames).map(([charId, names]) =>
+                    [charId, Object.fromEntries(names.map(n => [n, true] as const))]
+                )
+            )
+            : {});
+    const prevClothingStatuses = (previousMessage as ChatMessage)?.characterClothingWearingStatuses;
+    const clothingWearingStatuses = options?.clothingWearingStatuses ?? prevClothingStatuses ?? initializeClothingWearingStatuses(character);
+    const prevLockedLocations = previousMessage?.characterLockedLocations ?? {};
+
+    return {
+        id,
+        messageType: 'tool',
+        character: { ...character },
+        textContent,
+        isPresent: true,
+        files,
+        frontCameraImage,
+        toolExecutionResults,
+        remainingChatStamina,
+        remainingActionStamina,
+        knownCharacterNames,
+        characterClothingWearingStatuses: clothingWearingStatuses,
+        characterLockedLocations: { ...prevLockedLocations },
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+        parentMessageId: lastMessageId,
+    } as ToolMessage;
+}
+
 export function addMessageToInteractionData(
     interactionData: InteractionData, 
     newInteractionMessage: HistoryMessage,
@@ -562,4 +618,15 @@ export function updatePartialMessageInInteractionData(
     }
 
     return { ...interactionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
+}
+
+function escapeRegExp(string: string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function isToolMessageText(text: string): boolean {
+    const trimmed = text.trim();
+    const bracketedPattern = new RegExp(`^\\s*${escapeRegExp(toolCallStartString)}\\s*tool\\s*\\(\\s*\\)\\s*${escapeRegExp(toolCallEndString)}`, 'i');
+    const plainPattern = /^tool\s*\(\s*\)/i;
+    return bracketedPattern.test(trimmed) || plainPattern.test(trimmed);
 }

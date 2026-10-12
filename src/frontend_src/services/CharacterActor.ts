@@ -1,7 +1,7 @@
 // frontend_src/services/CharacterActor.ts
-import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile, ToolExecutionResult } from '../types';
+import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, ToolMessage, LanguageModel, Profile, ToolExecutionResult } from '../types';
 import { saveRawBudgetData } from '../storages/serverStorage';
-import { buildRequestBody, convertIdsToDisplayNames, createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
+import { buildRequestBody, convertIdsToDisplayNames, createChatMessage, createToolMessage, isToolMessageText, addMessageToInteractionData } from '../utilities/chatLogic';
 import { detectName } from '../utilities/nameDetection';
 import { getFilteredTextMessages } from '../utilities/promptLogic';
 import { getBudgetStrategyEngine, type RequestMetadata } from './BudgetStrategyEngine';
@@ -262,6 +262,10 @@ export class CharacterActor {
         const filteredMessages = getFilteredTextMessages(data, character.id, allPromptBlocks);
         const knownCharacterNames = detectName(character, filteredMessages);
 
+        // Check if the latest message from this character was a ToolMessage (so we know if we are currently in tool message mode)
+        const latestMsg = findLatestMessage(data, character)?.message;
+        const isToolMessage = latestMsg?.messageType === 'tool';
+
         let resolvedClothingStatuses: Record<string, boolean> = initializeClothingWearingStatuses(character);
         if (!isResuming) {
             const probeModelId = borrowedModel
@@ -271,26 +275,10 @@ export class CharacterActor {
                     : (selectedModel?.id || '');
             if (probeModelId) {
                 try {
-                    const probeResult = await buildRequestBody(data, character, knownCharacterNames, '', allPromptBlocks, probeModelId);
+                    const probeResult = await buildRequestBody(data, character, knownCharacterNames, '', allPromptBlocks, probeModelId, isToolMessage);
                     resolvedClothingStatuses = probeResult.characterClothingWearingStatuses;
                 } catch { /* non-critical */ }
             }
-        }
-
-        let targetMessage: ChatMessage;
-        if (isResuming) {
-            const latest = findLatestMessage(data, character);
-            targetMessage = (latest?.message && latest.message.messageType === 'chat'
-                ? latest.message
-                : createChatMessage(data, character, existingCharacterText || '', {
-                    clothingWearingStatuses: resolvedClothingStatuses,
-                    knownCharacterNames,
-                })) as ChatMessage;
-        } else {
-            targetMessage = createChatMessage(data, character, '', {
-                clothingWearingStatuses: resolvedClothingStatuses,
-                knownCharacterNames,
-            });
         }
 
         try {
@@ -446,13 +434,14 @@ export class CharacterActor {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
-                    const { body } = await buildRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
+                    const { body } = await buildRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage);
                     await runSingleStreamPass(body, false);
 
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data, toolContext);
+                    const dummyTargetMsg = createChatMessage(data, character, '', { clothingWearingStatuses: resolvedClothingStatuses, knownCharacterNames });
+                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, data, toolContext);
                     if (!toolResult) break;
 
                     accState.get().addExecutionResults(toolResult.executionResults);
@@ -489,7 +478,7 @@ export class CharacterActor {
 
                     accState.get().setLastRawLen(0);
                     const { body: probeBody } = await buildRequestBody(
-                        data, character, knownCharacterNames, currentExistingText, allPromptBlocks, ''
+                        data, character, knownCharacterNames, currentExistingText, allPromptBlocks, '', isToolMessage
                     );
                     let promptText = '';
                     if (typeof probeBody.prompt === 'string') {
@@ -505,7 +494,7 @@ export class CharacterActor {
                     const activeModelId = selection?.modelId || '';
 
                     const { body } = await buildRequestBody(
-                        data, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId
+                        data, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId, isToolMessage
                     );
 
                     await runSingleStreamPass(body, true);
@@ -520,7 +509,8 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data, toolContext);
+                    const dummyTargetMsg = createChatMessage(data, character, '', { clothingWearingStatuses: resolvedClothingStatuses, knownCharacterNames });
+                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, data, toolContext);
                     if (!toolResult) break;
 
                     accState.get().addExecutionResults(toolResult.executionResults);
@@ -559,13 +549,14 @@ export class CharacterActor {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
-                    const { body } = await buildRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId);
+                    const { body } = await buildRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage);
                     await runSingleStreamPass(body, false);
 
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, targetMessage, data, toolContext);
+                    const dummyTargetMsg = createChatMessage(data, character, '', { clothingWearingStatuses: resolvedClothingStatuses, knownCharacterNames });
+                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, data, toolContext);
                     if (!toolResult) break;
 
                     accState.get().addExecutionResults(toolResult.executionResults);
@@ -593,19 +584,31 @@ export class CharacterActor {
             const finalDisplayText = convertIdsToDisplayNames(cleanDisplay, data, character);
 
             let updatedData: InteractionData;
+            const isTool = isToolMessageText(rawText);
 
             if (isResuming) {
                 updatedData = data;
             } else {
-                targetMessage.textContent = rawText;
+                const msg = isTool
+                    ? createToolMessage(data, character, rawText, {
+                        clothingWearingStatuses: resolvedClothingStatuses,
+                        knownCharacterNames,
+                    })
+                    : createChatMessage(data, character, rawText, {
+                        clothingWearingStatuses: resolvedClothingStatuses,
+                        knownCharacterNames,
+                    });
 
                 const allExecutionResults = accState.getCollectedExecutionResults();
                 if (allExecutionResults.length > 0) {
-                    targetMessage.toolExecutionResults = allExecutionResults;
+                    msg.toolExecutionResults = allExecutionResults;
                 }
 
-                targetMessage.characterExpression = latestExpression ?? undefined;
-                updatedData = addMessageToInteractionData(data, targetMessage);
+                if (!isTool) {
+                    (msg as ChatMessage).characterExpression = latestExpression ?? undefined;
+                }
+
+                updatedData = addMessageToInteractionData(data, msg);
             }
 
             return {
