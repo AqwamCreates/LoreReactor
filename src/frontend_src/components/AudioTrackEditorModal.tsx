@@ -34,11 +34,8 @@ export function AudioTrackEditorModal({
     allLocations = [],
 }: AudioTrackEditorModalProps) {
 
-    const modalKey = `at-${existingTrack?.id ?? 'new'}`;
-
     return (
         <AudioTrackEditorModalInner
-            key={modalKey}
             onClose={onClose}
             onSave={onSave}
             existingTrack={existingTrack}

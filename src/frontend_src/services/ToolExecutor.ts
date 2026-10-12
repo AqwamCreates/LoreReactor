@@ -515,7 +515,6 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
   }
 
   const contextLines = [
-    `You are ${character.name}.`,
     `You were ${wasAddressed ? 'addressed' : 'not addressed'} in recent messages.`,
     `Messages since you last spoke: ${messagesSinceLastSpoke}.`,
     nextMessage.remainingChatStamina !== undefined ? `Remaining chat stamina: ${nextMessage.remainingChatStamina}.` : '',

@@ -37,11 +37,8 @@ export function LocationEditorModal({
     allAudioTracks = [],
 }: LocationEditorModalProps) {
 
-    const modalKey = `loc-${existingLocation?.id ?? 'new'}`;
-
     return (
         <LocationEditorModalInner
-            key={modalKey}
             onClose={onClose}
             onSave={onSave}
             existingLocation={existingLocation}
@@ -103,8 +100,11 @@ function LocationEditorModalInner({
     const [bgImageWeights, setBgImageWeights] = useState<Record<number, number>>(existingLocation?.backgroundImageWeights ?? {});
     const [playAudioTrackOnEnterWeights, setPlayAudioTrackOnEnterWeights] = useState<Record<string, number>>(existingLocation?.playAudioTrackOnEnterWeights ?? {});
     const [messageFilterNonCoLocatedParticipants, setMessageFilterNonCoLocatedParticipants] = useState<boolean>(existingLocation?.messageFilterNonCoLocatedParticipants ?? false);
+    
+    // ✅ Check explicitly for null/undefined so valid 0 coordinates are preserved
     const [latitude, setLatitude] = useState<string>(existingLocation?.latitude != null ? String(existingLocation.latitude) : '');
     const [longitude, setLongitude] = useState<string>(existingLocation?.longitude != null ? String(existingLocation.longitude) : '');
+    
     const [locationDistances, setLocationDistances] = useState<Record<string, number>>(existingLocation?.locationDistances ?? {});
 
     const [bgImageTestTexts, setBgImageTestTexts] = useState<Record<number, string>>({});
@@ -329,8 +329,10 @@ function LocationEditorModalInner({
         }
 
         const now = Date.now();
-        const parsedLat = latitude.trim() ? Number(latitude) : undefined;
-        const parsedLng = longitude.trim() ? Number(longitude) : undefined;
+        
+        // ✅ Explicitly check for empty string so '0' is stored as number 0, and '' is stored as undefined
+        const parsedLat = latitude.trim() !== '' ? Number(latitude) : undefined;
+        const parsedLng = longitude.trim() !== '' ? Number(longitude) : undefined;
 
         const filterTriggers = (trs: RegularExpressionTrigger[]) => {
             const filtered = trs.filter(t => t.trigger.trim());
@@ -344,7 +346,7 @@ function LocationEditorModalInner({
             text: text.trim() || undefined,
             images: finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
             hasSkyView,
-            hasWeather, // ✅ Stored on location
+            hasWeather,
             regularExpressionActivationTriggers: filterTriggers(regexActivationTriggers),
             regularExpressionExclusionActivationTriggers: filterTriggers(regexExclusionActivationTriggers),
             regularExpressionExclusionDeactivationTriggers: filterTriggers(regexExclusionDeactivationTriggers),
@@ -806,7 +808,7 @@ function LocationEditorModalInner({
                                     {!isReadOnly && (
                                         <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading}>
                                             <option value="" disabled>+ Restrict to a character</option>
-                                            {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+                                            {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                                         </select>
                                     )}
                                 </div>
@@ -823,7 +825,7 @@ function LocationEditorModalInner({
                                     {!isReadOnly && (
                                         <select onChange={(e) => { const val = e.target.value; if (val && !ownerBindings.includes(val)) setOwnerBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading}>
                                             <option value="" disabled>+ Add an owner</option>
-                                            {allCharacters.filter(c => !ownerBindings.includes(c.id)).map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+                                            {allCharacters.filter(c => !ownerBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                                         </select>
                                     )}
                                 </div>

@@ -57,11 +57,8 @@ export function MultiplayerEditorModal({
     onRejectJoinRequest,
 }: MultiplayerEditorModalProps) {
 
-    const modalKey = `mp-${existingMultiplayerData?.id ?? 'new'}`;
-
     return (
         <MultiplayerEditorModalInner
-            key={modalKey}
             onClose={onClose}
             onSave={onSave}
             existingMultiplayerData={existingMultiplayerData}

@@ -35,11 +35,8 @@ export function PromptBlockEditorModal({
     allLocations = [],
 }: PromptBlockEditorModalProps) {
 
-    const modalKey = `pb-${existingBlock?.id ?? 'new'}`;
-
     return (
         <PromptBlockEditorModalInner
-            key={modalKey}
             onClose={onClose}
             onSave={onSave}
             existingBlock={existingBlock}

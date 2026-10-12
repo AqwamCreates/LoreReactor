@@ -36,11 +36,8 @@ export function ContextEditorModal({
     allCharacters = [],
 }: ContextEditorModalProps) {
 
-    const modalKey = `ctx-${existingContext?.id ?? 'new'}`;
-
     return (
         <ContextEditorModalInner
-            key={modalKey}
             onClose={onClose}
             onSave={onSave}
             existingContext={existingContext}

@@ -86,11 +86,8 @@ export function CharacterEditorModal({
     chatNameMap, interactionData, localProtagonistId,
 }: CharacterEditorModalProps) {
 
-    const modalKey = `char-${existingCharacter?.id ?? 'new'}`;
-
     return (
         <CharacterEditorModalInner
-            key={modalKey}
             onClose={onClose}
             onSave={onSave}
             onVoiceTranscribeRequested={onVoiceTranscribeRequested}

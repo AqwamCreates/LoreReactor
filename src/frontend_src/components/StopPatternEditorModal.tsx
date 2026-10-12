@@ -19,11 +19,8 @@ export function StopPatternEditorModal({
     existingStopPattern,
 }: StopPatternEditorModalProps) {
 
-    const modalKey = `sp-${existingStopPattern?.id ?? 'new'}`;
-
     return (
         <StopPatternEditorModalInner
-            key={modalKey}
             onClose={onClose}
             onSave={onSave}
             existingStopPattern={existingStopPattern}

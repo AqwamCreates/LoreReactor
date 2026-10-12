@@ -22,11 +22,8 @@ export function AccountEditorModal({
     allLanguageModels,
 }: AccountEditorModalProps) {
 
-    const modalKey = `acct-${existingAccount?.id ?? 'new'}`;
-
     return (
         <AccountEditorModalInner
-            key={modalKey}
             onClose={onClose}
             onSave={onSave}
             existingAccount={existingAccount}

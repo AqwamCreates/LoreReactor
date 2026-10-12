@@ -178,11 +178,9 @@ export function SamplerEditorModal({
     existingSampler,
     allStopPatterns,
 }: SamplerEditorModalProps) {
-    const modalKey = `samp-${existingSampler?.id ?? 'new'}`;
 
     return (
         <SamplerEditorModalInner
-            key={modalKey}
             onClose={onClose}
             onSave={onSave}
             existingSampler={existingSampler}
