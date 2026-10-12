@@ -1,0 +1,73 @@
+name: 'Release'
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers whenever you push a version tag like v1.0.0
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'windows-latest'
+            args: ''
+          - platform: 'ubuntu-22.04'
+            args: ''
+          - platform: 'macos-latest'
+            args: '--target aarch64-apple-darwin'
+          - platform: 'macos-latest'
+            args: '--target x86_64-apple-darwin'
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: setup bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - name: install frontend dependencies
+        run: bun install
+
+      # ── Natively compile the sidecar for the current runner ──
+      - name: build sidecar (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: bun build --compile --external vigemclient --external @mapbox/node-pre-gyp --external mock-aws-s3 --external aws-sdk --external nock ./src/backend_src/server.ts --outfile src-tauri/binaries/server-x86_64-pc-windows-msvc.exe
+
+      - name: build sidecar (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: bun build --compile --external vigemclient --external @mapbox/node-pre-gyp --external mock-aws-s3 --external aws-sdk --external nock ./src/backend_src/server.ts --outfile src-tauri/binaries/server-x86_64-unknown-linux-gnu
+
+      - name: build sidecar (macOS Apple Silicon)
+        if: matrix.platform == 'macos-latest' && contains(matrix.args, 'aarch64')
+        run: bun build --compile --external vigemclient --external @mapbox/node-pre-gyp --external mock-aws-s3 --external aws-sdk --external nock ./src/backend_src/server.ts --outfile src-tauri/binaries/server-aarch64-apple-darwin
+
+      - name: build sidecar (macOS Intel)
+        if: matrix.platform == 'macos-latest' && contains(matrix.args, 'x86_64')
+        run: bun build --compile --external vigemclient --external @mapbox/node-pre-gyp --external mock-aws-s3 --external aws-sdk --external nock ./src/backend_src/server.ts --outfile src-tauri/binaries/server-x86_64-apple-darwin
+
+      # ── Build & Upload via official Tauri Action ──
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: ${{ matrix.args }}
