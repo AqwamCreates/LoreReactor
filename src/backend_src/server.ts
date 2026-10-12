@@ -2930,7 +2930,7 @@ async function ensureTtsModelsDownloaded() {
   }
 }
 
-app.post('/api/text-to-speech/load', async (req, res) => {
+app.post('/api/text-to-speech/load', async (_req, res) => {
   try {
     if (!fs.existsSync(LLAMA_TTS_BINARY)) {
       return res.status(500).json({ error: 'llama-tts binary not found. Please install Llama.cpp first.' });
@@ -2943,7 +2943,7 @@ app.post('/api/text-to-speech/load', async (req, res) => {
   }
 });
 
-app.post('/api/text-to-speech/unload', (req, res) => {
+app.post('/api/text-to-speech/unload', (_req, res) => {
   res.json({ success: true, loaded: false });
 });
 

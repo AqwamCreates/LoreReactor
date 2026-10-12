@@ -86,36 +86,36 @@ const PARAMETER_CONFIGS: Record<string, {
     defaultEnabled: boolean; decimals?: number;
     isString?: boolean; isBoolean?: boolean;
 }> = {
-    temperature: { min: 0, max: 2, step: 0.05, description: 'Controls randomness', label: 'Temperature', category: 'Core', defaultEnabled: true, decimals: 2 },
+    temperature: { min: 0, max: 2, step: 0.01, description: 'Controls randomness', label: 'Temperature', category: 'Core', defaultEnabled: true, decimals: 2 },
     top_k: { min: 0, max: 200, step: 1, description: 'Limits token selection to top K', label: 'Top K', category: 'Core', defaultEnabled: true, decimals: 0 },
-    top_p: { min: 0, max: 1, step: 0.05, description: 'Nucleus sampling', label: 'Top P', category: 'Core', defaultEnabled: true, decimals: 2 },
-    repeat_penalty: { min: 1, max: 2, step: 0.05, description: 'Penalizes repetition', label: 'Repeat Penalty', category: 'Core', defaultEnabled: true, decimals: 2 },
-    frequency_penalty: { min: 0, max: 2, step: 0.05, description: 'Penalizes frequent tokens', label: 'Frequency Penalty', category: 'Core', defaultEnabled: false, decimals: 2 },
-    presence_penalty: { min: 0, max: 2, step: 0.05, description: 'Penalizes tokens that have appeared before', label: 'Presence Penalty', category: 'Core', defaultEnabled: false, decimals: 2 },
-    min_p: { min: 0, max: 1, step: 0.05, description: 'Minimum probability threshold', label: 'Min P', category: 'Advanced', defaultEnabled: false, decimals: 2 },
-    typical_p: { min: 0, max: 1, step: 0.05, description: 'Typical sampling', label: 'Typical P', category: 'Advanced', defaultEnabled: false, decimals: 2 },
-    tfs_z: { min: 0, max: 2, step: 0.05, description: 'Tail-free sampling', label: 'TFS Z', category: 'Advanced', defaultEnabled: false, decimals: 2 },
-    top_a: { min: 0, max: 1, step: 0.05, description: 'Top-A sampling', label: 'Top A', category: 'Advanced', defaultEnabled: false, decimals: 2 },
+    top_p: { min: 0, max: 1, step: 0.01, description: 'Nucleus sampling', label: 'Top P', category: 'Core', defaultEnabled: true, decimals: 2 },
+    repeat_penalty: { min: 1, max: 2, step: 0.01, description: 'Penalizes repetition', label: 'Repeat Penalty', category: 'Core', defaultEnabled: true, decimals: 2 },
+    frequency_penalty: { min: 0, max: 2, step: 0.01, description: 'Penalizes frequent tokens', label: 'Frequency Penalty', category: 'Core', defaultEnabled: false, decimals: 2 },
+    presence_penalty: { min: 0, max: 2, step: 0.01, description: 'Penalizes tokens that have appeared before', label: 'Presence Penalty', category: 'Core', defaultEnabled: false, decimals: 2 },
+    min_p: { min: 0, max: 1, step: 0.01, description: 'Minimum probability threshold', label: 'Min P', category: 'Advanced', defaultEnabled: false, decimals: 2 },
+    typical_p: { min: 0, max: 1, step: 0.01, description: 'Typical sampling', label: 'Typical P', category: 'Advanced', defaultEnabled: false, decimals: 2 },
+    tfs_z: { min: 0, max: 2, step: 0.01, description: 'Tail-free sampling', label: 'TFS Z', category: 'Advanced', defaultEnabled: false, decimals: 2 },
+    top_a: { min: 0, max: 1, step: 0.01, description: 'Top-A sampling', label: 'Top A', category: 'Advanced', defaultEnabled: false, decimals: 2 },
     mirostat: { min: 0, max: 2, step: 1, description: 'Mirostat mode', label: 'Mirostat Mode', category: 'Advanced', defaultEnabled: false, decimals: 0 },
-    mirostat_tau: { min: 0, max: 10, step: 0.1, description: 'Mirostat target entropy', label: 'Mirostat Tau', category: 'Advanced', defaultEnabled: false, decimals: 1 },
-    mirostat_eta: { min: 0, max: 1, step: 0.05, description: 'Mirostat learning rate', label: 'Mirostat Eta', category: 'Advanced', defaultEnabled: false, decimals: 2 },
-    rep_penalty_range: { min: 0, max: 4096, step: 64, description: 'Tokens to consider for repetition penalty', label: 'Rep Penalty Range', category: 'Repetition', defaultEnabled: false, decimals: 0 },
-    rep_penalty_slope: { min: 0, max: 2, step: 0.05, description: 'Slope for repetition penalty curve', label: 'Rep Penalty Slope', category: 'Repetition', defaultEnabled: false, decimals: 2 },
-    encoder_repetition_penalty: { min: 1, max: 2, step: 0.05, description: 'Penalty for tokens from the prompt', label: 'Encoder Rep Penalty', category: 'Repetition', defaultEnabled: false, decimals: 2 },
+    mirostat_tau: { min: 0, max: 10, step: 0.01, description: 'Mirostat target entropy', label: 'Mirostat Tau', category: 'Advanced', defaultEnabled: false, decimals: 2 },
+    mirostat_eta: { min: 0, max: 1, step: 0.01, description: 'Mirostat learning rate', label: 'Mirostat Eta', category: 'Advanced', defaultEnabled: false, decimals: 2 },
+    rep_penalty_range: { min: 0, max: 4096, step: 1, description: 'Tokens to consider for repetition penalty', label: 'Rep Penalty Range', category: 'Repetition', defaultEnabled: false, decimals: 0 },
+    rep_penalty_slope: { min: 0, max: 2, step: 0.01, description: 'Slope for repetition penalty curve', label: 'Rep Penalty Slope', category: 'Repetition', defaultEnabled: false, decimals: 2 },
+    encoder_repetition_penalty: { min: 1, max: 2, step: 0.01, description: 'Penalty for tokens from the prompt', label: 'Encoder Rep Penalty', category: 'Repetition', defaultEnabled: false, decimals: 2 },
     no_repeat_ngram_size: { min: 0, max: 20, step: 1, description: 'Size of n-grams to prevent repetition', label: 'No Repeat N-Gram Size', category: 'Repetition', defaultEnabled: false, decimals: 0 },
-    penalty_alpha: { min: 0, max: 2, step: 0.05, description: 'Penalty alpha for contrastive search', label: 'Penalty Alpha', category: 'Repetition', defaultEnabled: false, decimals: 2 },
-    smoothing_factor: { min: 0, max: 1, step: 0.05, description: 'Smoothing factor', label: 'Smoothing Factor', category: 'Smoothing', defaultEnabled: false, decimals: 2 },
-    smoothing_curve: { min: 0.1, max: 5, step: 0.1, description: 'Curve shape for smoothing', label: 'Smoothing Curve', category: 'Smoothing', defaultEnabled: false, decimals: 1 },
+    penalty_alpha: { min: 0, max: 2, step: 0.01, description: 'Penalty alpha for contrastive search', label: 'Penalty Alpha', category: 'Repetition', defaultEnabled: false, decimals: 2 },
+    smoothing_factor: { min: 0, max: 1, step: 0.01, description: 'Smoothing factor', label: 'Smoothing Factor', category: 'Smoothing', defaultEnabled: false, decimals: 2 },
+    smoothing_curve: { min: 0.1, max: 5, step: 0.01, description: 'Curve shape for smoothing', label: 'Smoothing Curve', category: 'Smoothing', defaultEnabled: false, decimals: 2 },
     dry_allowed_length: { min: 0, max: 20, step: 1, description: 'Maximum allowed repetition length', label: 'DRY Allowed Length', category: 'DRY', defaultEnabled: false, decimals: 0 },
-    dry_penalty_last_n: { min: -1, max: 4096, step: 64, description: 'Tokens to consider for DRY penalty', label: 'DRY Penalty Last N', category: 'DRY', defaultEnabled: false, decimals: 0 },
-    dry_base: { min: 1, max: 3, step: 0.05, description: 'Base for DRY exponential penalty', label: 'DRY Base', category: 'DRY', defaultEnabled: false, decimals: 2 },
-    dry_multiplier: { min: 0, max: 2, step: 0.05, description: 'Multiplier for DRY penalty', label: 'DRY Multiplier', category: 'DRY', defaultEnabled: false, decimals: 2 },
+    dry_penalty_last_n: { min: -1, max: 4096, step: 1, description: 'Tokens to consider for DRY penalty', label: 'DRY Penalty Last N', category: 'DRY', defaultEnabled: false, decimals: 0 },
+    dry_base: { min: 1, max: 3, step: 0.01, description: 'Base for DRY exponential penalty', label: 'DRY Base', category: 'DRY', defaultEnabled: false, decimals: 2 },
+    dry_multiplier: { min: 0, max: 2, step: 0.01, description: 'Multiplier for DRY penalty', label: 'DRY Multiplier', category: 'DRY', defaultEnabled: false, decimals: 2 },
     dry_sequence_breaker: { min: 0, max: 0, step: 0, description: 'Characters that break DRY sequence', label: 'DRY Sequence Breaker', category: 'DRY', defaultEnabled: false, isString: true },
     ignore_eos: { min: 0, max: 1, step: 1, description: 'Ignore End-Of-Sequence token', label: 'Ignore EOS', category: 'Other', defaultEnabled: false, isBoolean: true },
     dynamic_temperature: { min: 0, max: 1, step: 1, description: 'Enable dynamic temperature scaling based on context entropy', label: 'Dynamic Temperature', category: 'Core', defaultEnabled: false, isBoolean: true },
-    dynatemp_low: { min: 0, max: 2, step: 0.05, description: 'Lower bound for dynamic temperature range', label: 'Dynatemp Low', category: 'Core', defaultEnabled: false, decimals: 2 },
-    dynatemp_high: { min: 0, max: 3, step: 0.05, description: 'Upper bound for dynamic temperature range', label: 'Dynatemp High', category: 'Core', defaultEnabled: false, decimals: 2 },
-    dynatemp_exponent: { min: 0.1, max: 5, step: 0.1, description: 'Exponent controlling how aggressively temperature scales', label: 'Dynatemp Exponent', category: 'Core', defaultEnabled: false, decimals: 1 },
+    dynatemp_low: { min: 0, max: 2, step: 0.01, description: 'Lower bound for dynamic temperature range', label: 'Dynatemp Low', category: 'Core', defaultEnabled: false, decimals: 2 },
+    dynatemp_high: { min: 0, max: 3, step: 0.01, description: 'Upper bound for dynamic temperature range', label: 'Dynatemp High', category: 'Core', defaultEnabled: false, decimals: 2 },
+    dynatemp_exponent: { min: 0.1, max: 5, step: 0.01, description: 'Exponent controlling how aggressively temperature scales', label: 'Dynatemp Exponent', category: 'Core', defaultEnabled: false, decimals: 2 },
 };
 
 const getParamValue = (params: Record<string, unknown> | undefined, key: string, defaultValue: number | string | boolean): number | string | boolean => {
@@ -173,13 +173,11 @@ function computeInitialParameters(existingSampler: Sampler | null | undefined): 
 }
 
 export function SamplerEditorModal({
-    
     onClose,
     onSave,
     existingSampler,
     allStopPatterns,
 }: SamplerEditorModalProps) {
-
     const modalKey = `samp-${existingSampler?.id ?? 'new'}`;
 
     return (
@@ -207,7 +205,6 @@ function SamplerEditorModalInner({
     const [maxTokens, setMaxTokens] = useState<number>(existingSampler?.maximumNumberOfTokens || 512);
     const [errors, setErrors] = useState<{ name?: string }>({});
 
-    // Drag state for reordering active params
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
     const handleParameterChange = (key: string, value: number | string | boolean) => {
@@ -272,7 +269,6 @@ function SamplerEditorModalInner({
         onClose();
     };
 
-    // --- Drag & Drop Reorder Handlers ---
     const handleDragStart = (e: React.DragEvent, index: number) => {
         setDraggedIndex(index);
         e.dataTransfer.effectAllowed = 'move';
@@ -301,7 +297,6 @@ function SamplerEditorModalInner({
         setDraggedIndex(null);
     };
 
-    // Available params = all configs minus currently active ones
     const availableParamKeys = Object.keys(PARAMETER_CONFIGS).filter(k => !activeParamKeys.includes(k));
 
     return (
@@ -320,7 +315,6 @@ function SamplerEditorModalInner({
                     </div>
                 </div>
                 <div className="modal-body editor-modal-body">
-                    {/* Name */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Name <span style={{ color: '#ff4444' }}>*</span></label>
                         <input
@@ -333,7 +327,6 @@ function SamplerEditorModalInner({
                         {errors.name && <div className="editor-error-message">{errors.name}</div>}
                     </div>
 
-                    {/* Description */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Description</label>
                         <textarea
@@ -345,7 +338,6 @@ function SamplerEditorModalInner({
                         />
                     </div>
 
-                    {/* Max Tokens */}
                     <div style={{ marginBottom: '16px' }}>
                         <label className="editor-label">Maximum Number Of Tokens</label>
                         <input
@@ -359,14 +351,12 @@ function SamplerEditorModalInner({
                         />
                     </div>
 
-                    {/* Active Sampling Parameters */}
                     <div className="editor-section">
                         <div className="sampler-section-header editor-section-title">
                             <span>Active Parameters ({activeParamKeys.length})</span>
                             <span className="sampler-drag-hint">↕ Drag To Reorder</span>
                         </div>
 
-                        {/* Active parameter list */}
                         <div className="sampler-param-list">
                             {activeParamKeys.length === 0 && (
                                 <div className="sampler-stop-empty">No active parameters. Add some below.</div>
@@ -459,7 +449,6 @@ function SamplerEditorModalInner({
                             })}
                         </div>
 
-                        {/* Add parameter dropdown */}
                         <div style={{ marginTop: '8px' }}>
                             <select
                                 onChange={(e) => {
@@ -480,7 +469,6 @@ function SamplerEditorModalInner({
                         </div>
                     </div>
 
-                    {/* Stop Patterns */}
                     <div className="editor-section">
                         <div className="editor-section-title">Stop Patterns</div>
                         <div className="sampler-stop-patterns-list">

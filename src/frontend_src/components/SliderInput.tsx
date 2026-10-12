@@ -15,7 +15,6 @@ interface SliderInputProps {
     disabled?: boolean;
 }
 
-// Format number to remove trailing zeros
 const formatNumber = (num: number, decimals: number): string => {
     if (decimals === 0) return String(num);
     const formatted = num.toFixed(decimals);
@@ -37,13 +36,9 @@ export function SliderInput({
     const sliderRef = useRef<HTMLDivElement>(null);
     const thumbRef = useRef<HTMLDivElement>(null);
 
-    // Check if we have a valid range (both min and max are defined and min < max)
     const hasValidRange = min !== undefined && max !== undefined && min < max;
-    
-    // If no range, treat as free input (no slider, just number input)
     const isFreeInput = !hasValidRange;
 
-    // For sliders with range
     const clampedValue = hasValidRange ? Math.max(min!, Math.min(max!, value)) : value;
     const steppedValue = hasValidRange ? Math.round(clampedValue / step) * step : value;
     const displayValue = hasValidRange ? Math.max(min!, Math.min(max!, steppedValue)) : value;
@@ -59,7 +54,9 @@ export function SliderInput({
         const steppedVal = Math.round(newValue / step) * step;
         const clampedVal = Math.max(min!, Math.min(max!, steppedVal));
         
-        onChange(clampedVal);
+        // Fix floating point math errors before passing up
+        const fixedVal = parseFloat(clampedVal.toFixed(decimals));
+        onChange(fixedVal);
     };
 
     const handleMouseDown = (e: React.MouseEvent) => {
@@ -116,7 +113,9 @@ export function SliderInput({
             if (hasValidRange) {
                 const clamped = Math.max(min!, Math.min(max!, val));
                 const stepped = Math.round(clamped / step) * step;
-                onChange(stepped);
+                // ✅ CRITICAL FIX: Clean up JS floating point artifacts (e.g. 0.8200000000000001)
+                const fixedStepped = parseFloat(stepped.toFixed(decimals));
+                onChange(fixedStepped);
             } else {
                 onChange(val);
             }
@@ -129,7 +128,6 @@ export function SliderInput({
         }
     };
 
-    // ✅ Shared header row: label left, number input right, baseline-aligned
     const headerRow = (
         <div className="slider-header-row">
             {label && (
@@ -153,7 +151,6 @@ export function SliderInput({
         </div>
     );
 
-    // ✅ FREE INPUT MODE
     if (isFreeInput) {
         return (
             <div className="slider-input-container" style={{ 
@@ -176,7 +173,6 @@ export function SliderInput({
         );
     }
 
-    // ✅ FULL SLIDER MODE
     return (
         <div className="slider-input-container" style={{ 
             display: 'flex', 

@@ -2923,11 +2923,9 @@ async function ensureTextToSpeechServerIsRunning() {
     }
 }
 
-app.post('/api/text-to-speech/load', async (req, res) => {
-    const { device = 'auto' } = req.body;
-    
+app.post('/api/text-to-speech/load', async (_req, res) => {
     try {
-        await ensureTextToSpeechServerIsRunning(device);
+        await ensureTextToSpeechServerIsRunning();
         res.json({ success: true, loaded: true });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -2954,7 +2952,7 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
     }
 
     try {
-        const port = await ensureTextToSpeechServerIsRunning(device);
+        const port = await ensureTextToSpeechServerIsRunning();
         
         const base64Data = audioBase64.replace(/^data:[^;]+;base64,/, '');
 

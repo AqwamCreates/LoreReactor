@@ -261,7 +261,7 @@ export function ProfileEditorModal({
         if (expandedSignalIndex === index) setExpandedSignalIndex(null);
     }, [expandedSignalIndex]);
 
-    // ✅ UPDATED: Split into Language Model and Text-To-Speech samplers
+    // ✅ UPDATED: Split into Language Model and Text-To-Speech Model samplers
     const [characterLanguageModelSamplerId, setCharacterLanguageModelSamplerId] = useState<string>(ep?.characterLanguageModelSampler?.id ?? '');
     const [characterTextToSpeechModelSamplerId, setCharacterTextToSpeechModelSamplerId] = useState<string>(ep?.characterTextToSpeechModelSampler?.id ?? '');
     
@@ -1035,7 +1035,7 @@ export function ProfileEditorModal({
                                         <div style={FIELD_HINT_STYLE}>Used for main character text generation (dialogue/actions).</div>
                                     </div>
                                     <div>
-                                        <label className="editor-label editor-label-small">Character Text-To-Speech Sampler</label>
+                                        <label className="editor-label editor-label-small">Character Text-To-Speech Model Sampler</label>
                                         <select value={characterTextToSpeechModelSamplerId} onChange={(e) => setCharacterTextToSpeechModelSamplerId(e.target.value)} className="editor-select">
                                             <option value="">(System Default)</option>
                                             {allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}

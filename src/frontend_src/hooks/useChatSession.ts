@@ -405,18 +405,21 @@ export function useChatSession(options: UseChatSessionOptions) {
         const allProtagonistIds = new Set(data.protagonistIds || [protagonistId]);
         const isProtagonist = isProtagonistCharId || ((id: string) => allProtagonistIds.has(id));
 
-        const respondingChar = respondingCharacter
+        const rawRespondingChar = respondingCharacter
             || data.participants.find(p => !isProtagonist(p.id))
             || data.participants[0]
             || currentState.localProtagonist;
 
+        // ✅ Hydrate with freshest character object from registry to guarantee voice metadata
+        const respondingChar = allCharactersRef.current.find(c => c.id === rawRespondingChar?.id) || rawRespondingChar;
+
         streamingCharacterRef.current = respondingChar ?? null;
         streamingMessageIdRef.current = `gen-${respondingChar?.id || 'ai'}-${Date.now()}`;
 
-        // ✅ Initialize Streaming Voice
+        // ✅ Initialize Streaming Voice with safe start
         const voiceTracker = new StreamingVoiceTracker(respondingChar);
         currentVoiceTrackerRef.current = voiceTracker;
-        voiceTracker.start(); // Fire and forget (loads reference sample)
+        voiceTracker.start().catch(err => console.warn('[useChatSession] VoiceTracker start failed:', err));
 
         useSessionStore.setState({
             isLoading: true,
@@ -537,10 +540,18 @@ export function useChatSession(options: UseChatSessionOptions) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
-            // ✅ Flush remaining voice queue and close context
+            // ✅ Safe flush with timeout fallback to guarantee the UI unfreezes
             if (currentVoiceTrackerRef.current) {
-                await currentVoiceTrackerRef.current.flushAndStop();
+                const tracker = currentVoiceTrackerRef.current;
                 currentVoiceTrackerRef.current = null;
+                try {
+                    await Promise.race([
+                        tracker.flushAndStop(),
+                        new Promise(resolve => setTimeout(resolve, 8000)),
+                    ]);
+                } catch (e) {
+                    console.warn('[useChatSession] VoiceTracker flush error:', e);
+                }
             }
 
             resetStream();
@@ -576,8 +587,9 @@ export function useChatSession(options: UseChatSessionOptions) {
         const currentData = currentState.interactionData;
         if (!currentData || isLoadingRef.current) return;
         
-        const character = currentData.participants.find(p => p.id === characterId);
-        if (!character) return;
+        const rawCharacter = currentData.participants.find(p => p.id === characterId);
+        if (!rawCharacter) return;
+        const character = allCharactersRef.current.find(c => c.id === rawCharacter.id) || rawCharacter;
 
         if (!acquireLock()) return;
         

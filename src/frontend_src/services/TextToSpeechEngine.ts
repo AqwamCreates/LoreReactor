@@ -81,6 +81,7 @@ class TextToSpeechEngine {
         language?: string,
         devicePreference?: deviceType,
     ): Promise<Blob | null> {
+        console.log(`[TextToSpeechEngine] Synthesizing text: "${text}" with sampler: ${sampler?.name ?? 'default'}, language: ${language ?? 'default'}, device: ${devicePreference ?? 'auto'}`);
         try {
             const response = await fetch(`${localURL}/api/text-to-speech/synthesize`, {
                 method: 'POST',

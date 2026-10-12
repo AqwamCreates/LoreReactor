@@ -25,12 +25,12 @@ export function useCharacterVoice() {
                 const devicePreference: deviceType = profile?.textToSpeechDeviceType ?? 'auto';
 
                 const blob = await textToSpeechEngine.synthesize(
-                    finalText,                     // 1. text
-                    sampler,                       // 2. sampler
-                    base64,                        // 3. audioBase64
-                    character.voice.textContent,   // 4. transcript
-                    character.voice.language,      // 5. language
-                    devicePreference               // 6. devicePreference
+                    finalText,
+                    sampler,
+                    base64,
+                    character.voice.textContent,
+                    character.voice.language,
+                    devicePreference
                 );
 
                 if (blob) {

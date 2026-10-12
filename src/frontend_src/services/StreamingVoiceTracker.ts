@@ -3,7 +3,7 @@ import { StreamingVoicePlayer } from './StreamingVoicePlayer';
 import { textToSpeechEngine, fetchVoiceReference } from './TextToSpeechEngine';
 import { extractNarratableText } from '../utilities/voiceTextExtractor';
 import { useSessionStore } from '../hooks/useSessionStore';
-import type { Character, Sampler, deviceType } from '../types';
+import type { Character, Sampler, deviceType, textType } from '../types';
 
 interface PendingJob {
     sequenceId: number;
@@ -16,17 +16,21 @@ export class StreamingVoiceTracker {
     private player: StreamingVoicePlayer;
     private character: Character;
     private isActive: boolean = false;
+    private isKilled: boolean = false;
+    private isFlushing: boolean = false;
+    private hasVoiceConfigured: boolean = false;
+    private startPromise: Promise<boolean> | null = null;
     private referenceBase64: string | null = null;
     
     // Strict sequence tracking
     private nextSequenceId: number = 0;
     private nextPlaySequenceId: number = 0;
     
-    // Temporary storage for out-of-order network responses
+    // Storage for out-of-order network responses
     private completedAudioBuffers: Map<number, ArrayBuffer> = new Map();
     private inFlightPromises: Promise<void>[] = [];
 
-    // CONCURRENCY CONTROL: Prevents GPU OOM crashes on 6GB VRAM cards
+    // Concurrency control to avoid GPU/VRAM thrashing
     private readonly MAX_CONCURRENT_REQUESTS = 2;
     private activeRequests: number = 0;
     private pendingSentences: PendingJob[] = [];
@@ -34,33 +38,53 @@ export class StreamingVoiceTracker {
     constructor(character: Character) {
         this.character = character;
         this.player = new StreamingVoicePlayer();
+        this.hasVoiceConfigured = Boolean(character?.voice?.voiceFilename && character?.voice?.textContent);
     }
 
-    async start() {
-        if (!this.character.voice?.voiceFilename || !this.character.voice?.textContent) return;
+    start(): Promise<boolean> {
+        if (!this.hasVoiceConfigured) {
+            console.warn('[StreamingVoiceTracker] Character has no voice configured or transcript is missing. TTS disabled.');
+            this.isActive = false;
+            return Promise.resolve(false);
+        }
 
-        this.referenceBase64 = await fetchVoiceReference(this.character);
-        if (!this.referenceBase64) return;
+        this.startPromise = (async () => {
+            try {
+                this.referenceBase64 = await fetchVoiceReference(this.character);
+                if (!this.referenceBase64) {
+                    console.warn('[StreamingVoiceTracker] Failed to fetch voice reference audio. TTS disabled.');
+                    this.isActive = false;
+                    this.hasVoiceConfigured = false;
+                    return false;
+                }
 
-        await this.player.init();
-        this.isActive = true;
-        this.nextSequenceId = 0;
-        this.nextPlaySequenceId = 0;
-        this.completedAudioBuffers.clear();
-        this.inFlightPromises = [];
-        this.activeRequests = 0;
-        this.pendingSentences = [];
+                await this.player.init();
+                this.isActive = true;
+                console.log('[StreamingVoiceTracker] Voice initialized. Processing queue...');
+                this.processPendingQueue();
+                return true;
+            } catch (e) {
+                console.error('[StreamingVoiceTracker] Voice start failed:', e);
+                this.isActive = false;
+                this.hasVoiceConfigured = false;
+                return false;
+            }
+        })();
+
+        return this.startPromise;
     }
 
     feed(text: string) {
-        if (!this.isActive) return;
+        if (this.isKilled || !this.hasVoiceConfigured) return;
 
         const profile = useSessionStore.getState().interactionData?.profile;
         const narrateTexts = profile?.narrateTexts;
         
-        if (!narrateTexts) return;
+        const effectiveNarrateTexts = (narrateTexts && Object.keys(narrateTexts).length > 0)
+            ? narrateTexts 
+            : { normal: true, quoted: true, bolded: true, italicized: true, parenthesized: true, bracketed: true, braced: true } as Record<textType, boolean>;
 
-        const cleanText = extractNarratableText(text, narrateTexts);
+        const cleanText = extractNarratableText(text, effectiveNarrateTexts);
         if (cleanText.length <= this.lastCleanLength) return;
 
         const newText = cleanText.slice(this.lastCleanLength);
@@ -84,13 +108,16 @@ export class StreamingVoiceTracker {
     }
 
     private queueSentence(sentence: string) {
+        if (this.isKilled || !this.hasVoiceConfigured) return;
         const currentSequenceId = this.nextSequenceId++;
         this.pendingSentences.push({ sequenceId: currentSequenceId, sentence });
         this.processPendingQueue();
     }
 
     private processPendingQueue() {
-        while (this.pendingSentences.length > 0 && this.activeRequests < this.MAX_CONCURRENT_REQUESTS && this.isActive) {
+        if (!this.isActive || this.isKilled) return;
+
+        while (this.pendingSentences.length > 0 && this.activeRequests < this.MAX_CONCURRENT_REQUESTS) {
             const job = this.pendingSentences.shift()!;
             this.activeRequests++;
             
@@ -99,6 +126,7 @@ export class StreamingVoiceTracker {
             
             promise.finally(() => {
                 this.activeRequests--;
+                this.inFlightPromises = this.inFlightPromises.filter(p => p !== promise);
                 this.processPendingQueue();
             });
         }
@@ -116,75 +144,93 @@ export class StreamingVoiceTracker {
         }
 
         const profile = useSessionStore.getState().interactionData?.profile;
-        
-        // PRECEDENCE: Profile -> Character -> Default (undefined)
         const sampler: Sampler | undefined = profile?.characterTextToSpeechModelSampler ?? this.character.textToSpeechModelSampler;
         const devicePreference: deviceType = profile?.textToSpeechDeviceType ?? 'auto';
 
         try {
             const blob = await textToSpeechEngine.synthesize(
-                sentence,          // 1. text (string)
-                sampler,           // 2. sampler (Sampler | undefined)
-                base64,            // 3. audioBase64 (string)
-                transcript,        // 4. transcript (string)
-                language,          // 5. language (string | undefined)
-                devicePreference   // 6. devicePreference (deviceType | undefined)
+                sentence,
+                sampler,
+                base64,
+                transcript,
+                language,
+                devicePreference
             );
 
-            if (blob && this.isActive) {
+            if (blob && !this.isKilled) {
                 const arrayBuffer = await blob.arrayBuffer();
                 this.completedAudioBuffers.set(sequenceId, arrayBuffer);
             } else {
                 this.completedAudioBuffers.set(sequenceId, new ArrayBuffer(0));
             }
         } catch (e) {
-            console.warn(`[StreamingVoiceTracker] Generation failed for Sequence ID ${sequenceId}:`, e);
+            console.warn(`[StreamingVoiceTracker] Synthesis failed for sentence #${sequenceId}:`, e);
             this.completedAudioBuffers.set(sequenceId, new ArrayBuffer(0));
         } finally {
             this.processPlaybackQueue();
         }
     }
 
-    // Checks the Map sequentially and feeds the Audio Player strictly in order
     private processPlaybackQueue() {
         while (this.completedAudioBuffers.has(this.nextPlaySequenceId)) {
             const audioBuffer = this.completedAudioBuffers.get(this.nextPlaySequenceId)!;
             this.completedAudioBuffers.delete(this.nextPlaySequenceId);
             this.nextPlaySequenceId++;
             
-            if (audioBuffer.byteLength > 0 && this.isActive) {
+            if (audioBuffer.byteLength > 0 && !this.isKilled) {
                 this.player.enqueue(audioBuffer);
             }
         }
     }
 
     async flushAndStop() {
-        if (this.buffer.trim().length > 0 && this.isActive) {
-            this.queueSentence(this.buffer.trim());
+        this.isFlushing = true;
+
+        // If start was still in-flight, await its completion
+        if (this.startPromise) {
+            await this.startPromise;
         }
 
-        while (this.pendingSentences.length > 0 || this.activeRequests > 0) {
+        // If character has no voice, exit immediately without hanging
+        if (!this.hasVoiceConfigured || !this.isActive) {
+            this.pendingSentences = [];
+            this.buffer = '';
+            this.isActive = false;
+            return;
+        }
+
+        // Enqueue any remainder sentence that didn't end with [.!?]
+        if (this.buffer.trim().length > 0) {
+            this.queueSentence(this.buffer.trim());
+            this.buffer = '';
+        }
+
+        // Process remaining queue
+        this.processPendingQueue();
+
+        // Safety timeout to prevent any deadlock from blocking the UI thread
+        const startTime = Date.now();
+        while ((this.pendingSentences.length > 0 || this.activeRequests > 0) && (Date.now() - startTime < 15000)) {
             if (this.inFlightPromises.length > 0) {
-                await Promise.allSettled(this.inFlightPromises);
-                this.inFlightPromises = []; 
+                await Promise.allSettled([...this.inFlightPromises]);
             } else {
                 await new Promise(resolve => setTimeout(resolve, 50));
             }
         }
         
         this.processPlaybackQueue();
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        this.player.stop();
         this.isActive = false;
     }
 
     stopImmediate() {
+        this.isKilled = true;
         this.isActive = false;
+        this.hasVoiceConfigured = false;
         this.player.stop();
         this.completedAudioBuffers.clear();
         this.inFlightPromises = [];
         this.pendingSentences = [];
         this.activeRequests = 0;
+        this.buffer = '';
     }
 }
