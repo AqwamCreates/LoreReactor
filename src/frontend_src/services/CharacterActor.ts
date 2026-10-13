@@ -13,6 +13,7 @@ import { ToolInvocationParser, type ToolInvocation } from './ToolInvocationParse
 import { defaultBudgetData } from '../dictionaries/defaults';
 import { executeTools, formatToolDisplay, type ToolExecutionContext } from './ToolExecutor';
 import { findLatestMessage } from '../utilities/messageLogic';
+import { getCurrentLocationId } from '../utilities/locationLogic';
 import { toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import type { StreamingVoiceTracker } from './StreamingVoiceTracker';
 
@@ -608,7 +609,9 @@ export class CharacterActor {
                     (msg as ChatMessage).characterExpression = latestExpression ?? undefined;
                 }
 
-                updatedData = addMessageToInteractionData(data, msg);
+                // ✅ FIX: Determine active location so the new message is placed in the character's room rather than orphaned in 'global'
+                const speakerLocationId = getCurrentLocationId(data, character) || 'global';
+                updatedData = addMessageToInteractionData(data, msg, speakerLocationId);
             }
 
             return {

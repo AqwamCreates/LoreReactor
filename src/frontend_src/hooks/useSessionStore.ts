@@ -275,8 +275,7 @@ export const useSessionStore = create<SessionState>()((set, get) => {
             const { interactionData } = get();
             if (!interactionData) return;
             try {
-                await deleteRawMessage(id);
-                // ✅ FIX: Added await since deleteMessage returns a Promise<InteractionData>
+                // ✅ deleteMessage in messageLogic already calls deleteRawMessage and now saves interactionData
                 const updated = await deleteMessage(interactionData, id);
                 set({ interactionData: updated });
             } catch (e) {

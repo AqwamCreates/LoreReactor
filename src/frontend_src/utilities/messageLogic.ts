@@ -83,8 +83,8 @@ export async function clearPartialFlag(interactionData: InteractionData, message
     return updatedChat;
 }
 
-export async function deleteMessage(interactionData: InteractionData, messageId: string): Promise<InteractionData> {
-    const parentInteractionMessageIds = await getParentMessageIds(interactionData.id);
+export async function deleteMessage(currentChat: InteractionData, messageId: string): Promise<InteractionData> {
+    const parentInteractionMessageIds = await getParentMessageIds(currentChat.id);
     
     if (parentInteractionMessageIds.has(messageId)) {
         throw new Error("Cannot delete: Other chat sessions branch from this message.");
@@ -92,7 +92,7 @@ export async function deleteMessage(interactionData: InteractionData, messageId:
 
     await deleteRawMessage(messageId);
     
-    const updatedHistories = { ...interactionData.interactionHistories };
+    const updatedHistories = { ...currentChat.interactionHistories };
     let found = false;
 
     for (const [locId, messages] of Object.entries(updatedHistories)) {
@@ -104,13 +104,19 @@ export async function deleteMessage(interactionData: InteractionData, messageId:
         }
     }
 
-    if (!found) return interactionData;
+    if (!found) return currentChat;
 
-    return {
-        ...interactionData,
+    const updatedChat: InteractionData = {
+        ...currentChat,
         interactionHistories: updatedHistories,
+        numberOfMessages: Object.values(updatedHistories).reduce((acc, curr) => acc + curr.length, 0),
         lastUpdatedTimestamp: Date.now(),
     };
+
+    // ✅ SAVE IMMEDIATELY: Prevents useServerSync from reloading the old chat shell
+    await saveRawInteractionData(updatedChat);
+
+    return updatedChat;
 }
 
 export async function editChatMessage(interactionData: InteractionData, messageId: string, newText: string): Promise<InteractionData> {

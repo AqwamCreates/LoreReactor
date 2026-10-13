@@ -9,7 +9,7 @@ import { runSummarization } from '../services/SummarizationEngine';
 import { consumeChatStaminaForMessage } from '../utilities/characterLogic';
 import { getCurrentLocationId } from '../utilities/locationLogic';
 import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/timelineLogic';
-import { deleteRawMessage } from '../storages/serverStorage';
+import { deleteRawMessage, saveRawInteractionData } from '../storages/serverStorage';
 import { useThrottledStream } from './useThrottledStream';
 import { useCharacterResponseLock } from './useCharacterResponseLock';
 import { useAmbientNarration } from './useAmbientNarration';
@@ -477,6 +477,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 const fd = await applyPendingPartial(ud, protagonistId);
                 setInteractionData(fd);
                 broadcastNewMessages(preTurnCount, fd);
+                saveRawInteractionData(fd).catch(e => console.error('Failed to save partial:', e));
                 return;
             }
 
@@ -502,6 +503,9 @@ export function useChatSession(options: UseChatSessionOptions) {
                 setInteractionData(ud);
                 broadcastNewMessages(preTurnCount, ud);
 
+                // ✅ CRITICAL FIX: Save immediately so useServerSync doesn't reload stale data
+                saveRawInteractionData(ud).catch(e => console.error('Failed to save after turn:', e));
+
                 extractAndScheduleResponses(ud);
 
                 const history = getGlobalMessageHistory(ud);
@@ -514,6 +518,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                     autoResumeCountRef.current += 1;
                     const injectedData = injectStopSignals(ud, evaluation.patternsToInject);
                     setInteractionData(injectedData);
+                    saveRawInteractionData(injectedData).catch(e => console.error('Failed to save stop signals:', e));
                     autoResumeOnCutoff(injectedData, protagonistId, allPromptBlocks);
                     return;
                 }
@@ -531,9 +536,11 @@ export function useChatSession(options: UseChatSessionOptions) {
                     const sd = ad || ud;
                     setInteractionData(sd);
                     broadcastNewMessages(preTurnCount, sd);
+                    saveRawInteractionData(sd).catch(e => console.error('Failed to save ambient narration:', e));
                 } else {
                     setInteractionData(ud);
                     broadcastNewMessages(preTurnCount, ud);
+                    saveRawInteractionData(ud).catch(e => console.error('Failed to save data:', e));
                 }
             }
         } catch (e) {
@@ -710,14 +717,16 @@ export function useChatSession(options: UseChatSessionOptions) {
                 }
             }
 
+            const updatedData = { ...currentData, interactionHistories: updatedHistories, lastUpdatedTimestamp: Date.now() };
             setState({
-                interactionData: { ...currentData, interactionHistories: updatedHistories, lastUpdatedTimestamp: Date.now() },
+                interactionData: updatedData,
                 streamingCharacter: null,
                 streamingText: '',
                 isLoading: false,
                 latency: 0,
                 timeToFirstToken: 0,
             });
+            saveRawInteractionData(updatedData).catch(e => console.error('Failed to save on stop:', e));
             resumingMessageIdRef.current = null;
             resumingExistingTextRef.current = '';
             pendingPartialRef.current = null;
@@ -839,6 +848,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                     streamingCharacter: null,
                     streamingText: '',
                 });
+                saveRawInteractionData(dataToSave).catch(e => console.error('Failed to save on resume stop signals:', e));
                 setTimeout(() => {
                     const allProtagonistIds = new Set(dataToSave.protagonistIds || [char.id]);
                     const reMarkedId = findLastAIMessageId(dataToSave, allProtagonistIds);
@@ -854,6 +864,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 streamingCharacter: null,
                 streamingText: '',
             });
+            saveRawInteractionData(dataToSave).catch(e => console.error('Failed to save on resume completion:', e));
         } catch (e) {
             if ((e as Error).name !== 'AbortError') {
                 console.error('Resume failed:', e);
@@ -935,6 +946,9 @@ export function useChatSession(options: UseChatSessionOptions) {
             lastUpdatedTimestamp: Date.now()
         };
         setInteractionData(td);
+
+        // ✅ CRITICAL FIX: Immediately save the trimmed state so server sync cannot reload deleted messages while regeneration is running
+        await saveRawInteractionData(td).catch(e => console.error('Failed to save trimmed chat before regeneration:', e));
 
         const primaryProtagonistId = protagonistIds[0] ?? '';
         const respondingChar = td.participants.find(p => !protagonistIdSet.has(p.id)) 
