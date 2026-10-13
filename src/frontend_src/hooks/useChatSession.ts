@@ -919,14 +919,14 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
 
         const updatedHistories: Record<string, HistoryMessage[]> = {};
-        for (const [locId, msgs] of Object.entries(currentInteractionData.interactionHistories || {}) as [string, HistoryMessage[]][]) {
+        for (const locId of Object.keys(currentInteractionData.interactionHistories || {})) {
+            const msgs = currentInteractionData.interactionHistories[locId] || [];
             const keptMsgs = msgs.filter((m: { id: string }) => {
                 const globalIdx = sortedHistory.findIndex(hm => hm.id === m.id);
                 return globalIdx !== -1 && globalIdx < trimIdx;
             });
-            if (keptMsgs.length > 0) {
-                updatedHistories[locId] = keptMsgs;
-            }
+            
+            updatedHistories[locId] = keptMsgs;
         }
 
         const td: InteractionData = {

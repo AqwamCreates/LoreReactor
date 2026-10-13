@@ -191,9 +191,8 @@ export async function massDeleteMessages(interactionData: InteractionData, messa
             const globalIdx = globalHistory.findIndex(hm => hm.id === m.id);
             return globalIdx !== -1 && globalIdx < targetGlobalIndex;
         });
-        if (keptMsgs.length > 0) {
-            updatedHistories[locId] = keptMsgs;
-        }
+        
+        updatedHistories[locId] = keptMsgs;
     }
 
     const totalMessages = Object.values(updatedHistories).reduce((acc, curr) => acc + curr.length, 0);
