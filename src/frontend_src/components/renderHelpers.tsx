@@ -43,9 +43,9 @@ export function renderProfileSubtext(profile: Profile): React.ReactNode {
     const tools = profile?.tools
     const enableWebSearchText = getRenderSubTextForTriStates(tools.web, "Web Search");
     const enableCalculatorText = getRenderSubTextForTriStates(tools.calculator, "Calculator");
-    const enableDialogue = getRenderSubTextForTriStates(tools.dialogue, "dialogue")
-    const enableKnowledge = getRenderSubTextForTriStates(tools.knowledge, "knowledge"); 
-    const enableMemory = getRenderSubTextForTriStates(tools.memory, "memory");
+    const enableDialogue = getRenderSubTextForTriStates(tools.dialogue, "Dialogue")
+    const enableKnowledge = getRenderSubTextForTriStates(tools.knowledge, "Knowledge"); 
+    const enableMemory = getRenderSubTextForTriStates(tools.memory, "Memory");
 
     const inputStrategy = profile.inputStrategy as promptBlockType[]
 
@@ -62,6 +62,7 @@ export function renderProfileSubtext(profile: Profile): React.ReactNode {
     if (enableDialogue) flags.push(enableDialogue as string);
     if (enableKnowledge) flags.push(enableKnowledge as string);
     if (enableMemory) flags.push(enableMemory as string);
+    if (profile.narrateTexts && Object.values(profile.narrateTexts).some(Boolean)) flags.push('Narration');
     if (profile.forceEqualInitiative || profile.chatProbability !== -1 || profile.maximumChatStamina !== -1 || profile.nameSensitivity !== -1 || profile.chatImpatienceSensitivity !== -1 || profile.skipProbability !== -1 || profile.memoryRetentionWeight !== -1 || profile.contextSensitivity !== -1) flags.push('Chat Stats Override');
 
     return (
