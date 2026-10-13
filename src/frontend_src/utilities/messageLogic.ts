@@ -54,8 +54,8 @@ export function findLatestMessage(interactionData: InteractionData, character: C
 /**
  * Clears the partial flag on a message after successful resume completion.
  */
-export async function clearPartialFlag(currentChat: InteractionData, messageId: string): Promise<InteractionData> {
-    const updatedHistories = { ...currentChat.interactionHistories };
+export async function clearPartialFlag(interactionData: InteractionData, messageId: string): Promise<InteractionData> {
+    const updatedHistories = { ...interactionData.interactionHistories };
     let found = false;
 
     for (const [locId, messages] of Object.entries(updatedHistories)) {
@@ -71,10 +71,10 @@ export async function clearPartialFlag(currentChat: InteractionData, messageId: 
         }
     }
 
-    if (!found) return currentChat;
+    if (!found) return interactionData;
 
     const updatedChat = {
-        ...currentChat,
+        ...interactionData,
         interactionHistories: updatedHistories,
         lastUpdatedTimestamp: Date.now(),
     };
@@ -83,8 +83,8 @@ export async function clearPartialFlag(currentChat: InteractionData, messageId: 
     return updatedChat;
 }
 
-export async function deleteMessage(currentChat: InteractionData, messageId: string): Promise<InteractionData> {
-    const parentInteractionMessageIds = await getParentMessageIds(currentChat.id);
+export async function deleteMessage(interactionData: InteractionData, messageId: string): Promise<InteractionData> {
+    const parentInteractionMessageIds = await getParentMessageIds(interactionData.id);
     
     if (parentInteractionMessageIds.has(messageId)) {
         throw new Error("Cannot delete: Other chat sessions branch from this message.");
@@ -92,7 +92,7 @@ export async function deleteMessage(currentChat: InteractionData, messageId: str
 
     await deleteRawMessage(messageId);
     
-    const updatedHistories = { ...currentChat.interactionHistories };
+    const updatedHistories = { ...interactionData.interactionHistories };
     let found = false;
 
     for (const [locId, messages] of Object.entries(updatedHistories)) {
@@ -104,34 +104,38 @@ export async function deleteMessage(currentChat: InteractionData, messageId: str
         }
     }
 
-    if (!found) return currentChat;
+    if (!found) return interactionData;
 
     return {
-        ...currentChat,
+        ...interactionData,
         interactionHistories: updatedHistories,
         lastUpdatedTimestamp: Date.now(),
     };
 }
 
-export async function editChatMessage(currentChat: InteractionData, messageId: string, newText: string): Promise<InteractionData> {
-    const parentInteractionMessageIds = await getParentMessageIds(currentChat.id);
+export async function editChatMessage(interactionData: InteractionData, messageId: string, newText: string): Promise<InteractionData> {
+    const parentInteractionMessageIds = await getParentMessageIds(interactionData.id);
 
     if (parentInteractionMessageIds.has(messageId)) {
         throw new Error("Cannot edit: Other chat sessions branch from this message.");
     }
 
-    const updatedHistories = { ...currentChat.interactionHistories };
+    const updatedHistories = { ...interactionData.interactionHistories };
     let found = false;
 
     for (const [locId, messages] of Object.entries(updatedHistories)) {
         const index = messages.findIndex(m => m.id === messageId);
         if (index !== -1) {
-            const msg = messages[index];
-            if (msg.messageType === 'chat') {
+            const msg = messages[index]
+            const messageType = msg.messageType;
+            if (messageType === 'chat' || messageType === "whisper") {
                 updatedHistories[locId] = [...messages];
                 updatedHistories[locId][index] = { 
                     ...msg, 
                     textContent: newText, 
+                    // Clear fields tied to the old text
+                    processedTextContent: undefined, 
+                    toolExecutionResults: [], 
                     lastUpdatedTimestamp: Date.now() 
                 } as ChatMessage;
             }
@@ -140,10 +144,10 @@ export async function editChatMessage(currentChat: InteractionData, messageId: s
         }
     }
 
-    if (!found) return currentChat;
+    if (!found) return interactionData;
 
     const updatedChat = {
-        ...currentChat,
+        ...interactionData,
         interactionHistories: updatedHistories,
         lastUpdatedTimestamp: Date.now(),
     };
@@ -157,11 +161,11 @@ export async function editChatMessage(currentChat: InteractionData, messageId: s
  * Automatically resolves the locationId from the messageId.
  */
 // In src/utilities/messageLogic.ts
-export async function massDeleteMessages(currentChat: InteractionData, messageId: string): Promise<InteractionData> {
-    const parentInteractionMessageIds = await getParentMessageIds(currentChat.id);
+export async function massDeleteMessages(interactionData: InteractionData, messageId: string): Promise<InteractionData> {
+    const parentInteractionMessageIds = await getParentMessageIds(interactionData.id);
     
     // 1. Get the global flattened history to find chronological order
-    const globalHistory = getGlobalMessageHistory(currentChat);
+    const globalHistory = getGlobalMessageHistory(interactionData);
     const targetGlobalIndex = globalHistory.findIndex(m => m.id === messageId);
     
     if (targetGlobalIndex === -1) {
@@ -182,7 +186,7 @@ export async function massDeleteMessages(currentChat: InteractionData, messageId
     
     // 4. Rebuild all location histories keeping only messages BEFORE targetGlobalIndex
     const updatedHistories: Record<string, HistoryMessage[]> = {};
-    for (const [locId, messages] of Object.entries(currentChat.interactionHistories || {})) {
+    for (const [locId, messages] of Object.entries(interactionData.interactionHistories || {})) {
         const keptMsgs = messages.filter(m => {
             const globalIdx = globalHistory.findIndex(hm => hm.id === m.id);
             return globalIdx !== -1 && globalIdx < targetGlobalIndex;
@@ -195,7 +199,7 @@ export async function massDeleteMessages(currentChat: InteractionData, messageId
     const totalMessages = Object.values(updatedHistories).reduce((acc, curr) => acc + curr.length, 0);
 
     return {
-        ...currentChat,
+        ...interactionData,
         interactionHistories: updatedHistories,
         numberOfMessages: totalMessages,
         lastUpdatedTimestamp: Date.now(),
@@ -206,14 +210,14 @@ export async function massDeleteMessages(currentChat: InteractionData, messageId
  * Branches the chat at the target message.
  * Automatically resolves the locationId from the messageId.
  */
-export async function branchMessage(currentChat: InteractionData, messageId: string): Promise<InteractionData> {
-    const target = getMessageById(currentChat, messageId);
+export async function branchMessage(interactionData: InteractionData, messageId: string): Promise<InteractionData> {
+    const target = getMessageById(interactionData, messageId);
     if (!target) {
         throw new Error("Message not found");
     }
     
     const locationId = target.locationId;
-    const messages = currentChat.interactionHistories[locationId] || [];
+    const messages = interactionData.interactionHistories[locationId] || [];
     const branchIndex = messages.findIndex(m => m.id === messageId);
     
     if (branchIndex === -1) {
@@ -222,7 +226,7 @@ export async function branchMessage(currentChat: InteractionData, messageId: str
 
     const branchedHistories: Record<string, HistoryMessage[]> = {};
     
-    for (const [locId, msgs] of Object.entries(currentChat.interactionHistories)) {
+    for (const [locId, msgs] of Object.entries(interactionData.interactionHistories)) {
         if (locId === locationId) {
             branchedHistories[locId] = msgs.slice(0, branchIndex + 1);
         } else {
@@ -231,11 +235,11 @@ export async function branchMessage(currentChat: InteractionData, messageId: str
     }
 
     const branchedChat: InteractionData = {
-        ...currentChat,
+        ...interactionData,
         id: uuidv4(),
-        name: `${currentChat.name} (Branch)`,
+        name: `${interactionData.name} (Branch)`,
         interactionHistories: branchedHistories,
-        parentInteractionDataId: currentChat.id,
+        parentInteractionDataId: interactionData.id,
         parentMessageId: messageId,
         firstCreatedTimestamp: Date.now(),
         lastUpdatedTimestamp: Date.now(),
@@ -249,14 +253,14 @@ export async function branchMessage(currentChat: InteractionData, messageId: str
  * Clones the chat up to the target message.
  * Automatically resolves the locationId from the messageId.
  */
-export async function cloneChatUpToMessage(currentChat: InteractionData, messageId: string): Promise<InteractionData> {
-    const target = getMessageById(currentChat, messageId);
+export async function cloneChatUpToMessage(interactionData: InteractionData, messageId: string): Promise<InteractionData> {
+    const target = getMessageById(interactionData, messageId);
     if (!target) {
         throw new Error("Message not found");
     }
     
     const locationId = target.locationId;
-    const messages = currentChat.interactionHistories[locationId] || [];
+    const messages = interactionData.interactionHistories[locationId] || [];
     const cloneIndex = messages.findIndex(m => m.id === messageId);
     
     if (cloneIndex === -1) {
@@ -266,7 +270,7 @@ export async function cloneChatUpToMessage(currentChat: InteractionData, message
     const now = Date.now();
     const clonedHistories: Record<string, HistoryMessage[]> = {};
 
-    for (const [locId, msgs] of Object.entries(currentChat.interactionHistories)) {
+    for (const [locId, msgs] of Object.entries(interactionData.interactionHistories)) {
         if (locId === locationId) {
             clonedHistories[locId] = msgs.slice(0, cloneIndex + 1).map(msg => ({
                 ...msg,
@@ -290,14 +294,14 @@ export async function cloneChatUpToMessage(currentChat: InteractionData, message
 
     const clonedChat: InteractionData = {
         id: uuidv4(),
-        name: `${currentChat.name} (Clone)`,
-        protagonistIds: [...(currentChat.protagonistIds || [])],
-        participants: currentChat.participants.map(p => ({ ...p })),
-        contexts: (currentChat.contexts || []).map(c => ({ ...c })),
-        locations: (currentChat.locations || []).map(l => ({ ...l })),
-        audioTracks: (currentChat.audioTracks || []).map(a => ({ ...a })),
+        name: `${interactionData.name} (Clone)`,
+        protagonistIds: [...(interactionData.protagonistIds || [])],
+        participants: interactionData.participants.map(p => ({ ...p })),
+        contexts: (interactionData.contexts || []).map(c => ({ ...c })),
+        locations: (interactionData.locations || []).map(l => ({ ...l })),
+        audioTracks: (interactionData.audioTracks || []).map(a => ({ ...a })),
         interactionHistories: clonedHistories,
-        profile: currentChat.profile,
+        profile: interactionData.profile,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
         parentInteractionDataId: null,
