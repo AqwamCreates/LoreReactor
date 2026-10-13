@@ -386,10 +386,25 @@ export async function executeTool(
   context?: ToolExecutionContext,
   displayMode?: toolUsageDisplayMode,
 ): Promise<ToolResult> {
-  const toolType = invocation.toolType;
+  const toolType = invocation.toolType as tool;
   const args = invocation.args;
+
+  // 1. Check if the tool is explicitly disabled for the character
+  if (nextMessage.character.tools && nextMessage.character.tools[toolType] === false) {
+    return {
+      toolType,
+      args,
+      content: "Tool disabled",
+      displayReplacement: ""
+    };
+  }
+
+  // 2. Existing execution logic
   const executeFunction = toolFunctions[toolType as tool];
-  if (executeFunction) return executeFunction(args, nextMessage, interactionData, context, displayMode);
+  if (executeFunction) {
+    return executeFunction(args, nextMessage, interactionData, context, displayMode);
+  }
+
   console.warn(`Unknown tool type: ${toolType}`);
   const errorContent = `[Error: Unknown tool "${toolType}"]`;
   return { toolType, args, content: errorContent, displayReplacement: errorContent };
