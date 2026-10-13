@@ -22,6 +22,7 @@ export interface ViewModeProps {
     onResumeGeneration: (id: string) => void;
     onRegenerateFromMessage: (id: string, protagonistIds: string[]) => void;
     onRegenerateFromEdit: () => void;
+    onPlayVoice: (text: string, character: Character) => void; 
     onSaveEdit: () => void;
     onMassDeleteConfirm: () => void; // <--- ADD THIS
     onTouchStart: (e: React.TouchEvent, id: string) => void;

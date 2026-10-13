@@ -193,7 +193,7 @@ function App() {
         sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage,
         messageEndRef, chatHistoryRef, startNewChat, sendActionAndGetResponse,
         setActiveBudgetStrategy, setSelectedGlobalModel,
-        activeStrategy, budgetData,
+        activeStrategy, budgetData, playVoice,
     } = session;
 
     // ─── Chat Restoration ────────────────────────────────────
@@ -971,10 +971,11 @@ function App() {
         focusedMessageId, 
         setFocusedMessageId,
         onAvatarClick: actionMenu.handleAvatarClick,
-        onSaveEdit: wrappedSaveEdit,
-        onRegenerateFromEdit: messageActions.handleRegenerateFromEdit,
         onResumeGeneration: (id: string) => resumeGeneration(id, promptBlocks.promptBlocks), 
         onRegenerateFromMessage: regenerateFromMessage,
+        onRegenerateFromEdit: messageActions.handleRegenerateFromEdit,
+        onPlayVoice: playVoice,
+        onSaveEdit: wrappedSaveEdit,
         onMassDeleteConfirm: messageActions.handleConfirmMassDelete,
         onTouchStart: messageToolbar.handleBubbleTouchStart,
         onTouchEnd: messageToolbar.handleBubbleTouchEnd,

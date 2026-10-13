@@ -19,7 +19,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         parentMessageId, parentInteractionDataName,
         focusedMessageId, setFocusedMessageId,
         onAvatarClick, onResumeGeneration, 
-        onRegenerateFromMessage, onRegenerateFromEdit, onSaveEdit,
+        onRegenerateFromMessage, onRegenerateFromEdit, onSaveEdit, onPlayVoice,
         onMassDeleteConfirm, // <--- Destructure from props
         onTouchStart, onTouchEnd, onTouchMove,
         suppressNextClickRef, onNavigateToBranchSource,
@@ -219,6 +219,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                             onRegenerateFromEdit={onRegenerateFromEdit}
                             onResumeGeneration={onResumeGeneration}
                             onRegenerateFromMessage={onRegenerateFromMessage}
+                            onPlayVoice={onPlayVoice}
                             onSetMassDelete={onSetMassDelete}
                             onMassDeleteConfirm={onMassDeleteConfirm}
                             onCancelMassDelete={onCancelMassDelete}

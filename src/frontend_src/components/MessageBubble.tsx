@@ -41,6 +41,7 @@ interface MessageBubbleProps {
     onRegenerateFromEdit: () => void;
     onResumeGeneration: (id: string) => void;
     onRegenerateFromMessage: (id: string, protagonistIds: string[]) => void;
+    onPlayVoice: (text: string, character: Character) => void;
     onSetMassDelete: (id: string) => void;
     onMassDeleteConfirm: () => void;
     onCancelMassDelete: () => void;
@@ -62,7 +63,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     activeToolbarId, portraitUrl, displayName, isStem, beforeBranch,
     parentInteractionDataName,
     onAvatarClick, onStartEditing, onCancelEditing, onSaveEdit, onRegenerateFromEdit,
-    onResumeGeneration, onRegenerateFromMessage,
+    onResumeGeneration, onRegenerateFromMessage, onPlayVoice,
     onSetMassDelete,
     onMassDeleteConfirm, onCancelMassDelete,
     onTouchStart, onTouchEnd, onTouchMove,
@@ -81,13 +82,12 @@ export const MessageBubble = React.memo(function MessageBubble({
 
     const isLoading = useSessionStore(s => s.isLoading);
     
-    // Pulled directly from Zustand to eliminate prop drilling
+    // Pulled directly from Zustand
     const copyToClipboard = useSessionStore(s => s.copyToClipboard);
     const deleteMessage = useSessionStore(s => s.deleteMessage);
     const branchChat = useSessionStore(s => s.branchChat);
     const cloneChat = useSessionStore(s => s.cloneChat);
 
-    // Centralized message display text compiler hook (handles displayMode and participants automatically)
     const displayedTextContent = useCompiledMessageText(message);
 
     const [conversions, setConversions] = React.useState<CategoryConversion[]>([]);
@@ -390,7 +390,6 @@ export const MessageBubble = React.memo(function MessageBubble({
                         </div>
                     ) : (
                         <>
-                            {/* DISPLAY LAYER: Centralized compile hook */}
                             <MemoizedMessageText text={displayedTextContent} />
 
                             {message.files && message.files.length > 0 && (
@@ -428,7 +427,15 @@ export const MessageBubble = React.memo(function MessageBubble({
 
                                         <button
                                             type="button"
-                                            // EDIT LAYER: Always passes raw textContent to the editor
+                                            onClick={() => onPlayVoice(message.textContent, message.character)}
+                                            className="toolbar-button"
+                                            title="Narrate with character voice"
+                                        >
+                                            🔊
+                                        </button>
+
+                                        <button
+                                            type="button"
                                             onClick={() => onStartEditing(message.id, message.textContent)}
                                             disabled={isLoading}
                                             className="toolbar-button"

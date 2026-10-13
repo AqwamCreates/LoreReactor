@@ -23,10 +23,8 @@ pub fn run() {
           .expect("Failed to spawn Express backend sidecar");
 
       // 2. Poll indefinitely every 200ms until the backend is fully up and listening
-      println!("Waiting for LoreReactor backend server to start...");
       loop {
         if TcpStream::connect("127.0.0.1:8448").is_ok() {
-          println!("Backend server is up and running!");
           break;
         }
         thread::sleep(Duration::from_millis(300));
@@ -35,5 +33,5 @@ pub fn run() {
       Ok(())
     })
     .run(tauri::generate_context!())
-    .expect("error while building tauri application");
+    .expect("Error while building tauri application");
 }

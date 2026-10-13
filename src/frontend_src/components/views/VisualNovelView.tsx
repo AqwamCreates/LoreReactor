@@ -31,6 +31,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         messageEndRef, editTextAreaRef,
         onSaveEdit,
         onResumeGeneration, onRegenerateFromMessage,
+        onPlayVoice, // Destructured
         onMassDeleteConfirm,
         onNavigateToBranchSource,
         parentInteractionDataName,
@@ -454,6 +455,11 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                 {displayedMessage && (
                                     <>
                                         <button type="button" className="vn-toolbar-btn" onClick={() => onCopyText(displayedTextContent || '')} title="Copy Text">📋</button>
+                                        
+                                        {onPlayVoice && (
+                                            <button type="button" className="vn-toolbar-btn" onClick={() => onPlayVoice(displayedMessage.textContent, displayedMessage.character)} title="Narrate with character voice">🔊</button>
+                                        )}
+
                                         <button type="button" className="vn-toolbar-btn" onClick={() => onResumeGeneration(displayedMessage.id)} title="Continue Generation">▶</button>
                                         <button 
                                             type="button" 

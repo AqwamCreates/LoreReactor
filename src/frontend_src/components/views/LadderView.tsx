@@ -16,7 +16,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
         parentMessageId, parentInteractionDataName,
         focusedMessageId, setFocusedMessageId,
         onAvatarClick, onResumeGeneration, 
-        onRegenerateFromMessage, onRegenerateFromEdit, onSaveEdit,
+        onRegenerateFromMessage, onRegenerateFromEdit, onSaveEdit, onPlayVoice,
         onMassDeleteConfirm, // <--- Destructure from props
         onTouchStart, onTouchEnd, onTouchMove,
         suppressNextClickRef, onNavigateToBranchSource,
@@ -179,6 +179,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
                         onRegenerateFromEdit={onRegenerateFromEdit}
                         onResumeGeneration={onResumeGeneration}
                         onRegenerateFromMessage={onRegenerateFromMessage}
+                        onPlayVoice={onPlayVoice}
                         onSetMassDelete={onSetMassDelete}
                         onMassDeleteConfirm={onMassDeleteConfirm}
                         onCancelMassDelete={onCancelMassDelete}
