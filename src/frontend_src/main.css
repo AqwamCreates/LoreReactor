@@ -443,7 +443,7 @@ SHARED CHAT COMPONENTS (Used by Ladder & Cinematic)
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 2px;
-    z-index: 5;
+    z-index: 10;
 }
 
 .toolbar-button {
@@ -1290,12 +1290,20 @@ SHARED UI COMPONENTS (Context Bar, Input, Modals, etc.)
 /* =============================================================================
 MODE: LADDER (Standard Chat View)
 ============================================================================= */
-.mode-ladder {
-    /* Base styles inherited from .chat-container */
+
+.mode-ladder .bubble-ai .message-toolbar {
+    left: -4px;
+    right: auto;
 }
 
 /* Mobile Ladder Overrides */
 @media (max-width: 768px) {
+
+    .mode-ladder .message-row.message-left .message-toolbar {
+        left: 0;
+        right: auto;
+    }
+
     .mode-ladder .message-row.message-left {
         flex-direction: column;
         align-items: flex-start;
@@ -1463,6 +1471,7 @@ MODE: CINEMATIC (Centered Avatar View)
     flex: none;
     height: 30vh;
     width: 100%;
+    gap: 4rem; 
     max-width: 100%;
     padding: 20px 20px 10px 20px;
     z-index: 10;
@@ -1861,7 +1870,7 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 
 .vn-edit-textarea {
     width: 100%;
-    min-height: 80px;
+    min-height: 300px;
     max-height: 100%;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--accent-border);
@@ -1993,7 +2002,7 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     top: 0;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: 20vh;
     pointer-events: none;
     z-index: 55;
 }
@@ -2174,7 +2183,7 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 }
 
 .mode-vn .vn-dialogue-layer {
-    bottom: calc(75px + env(safe-area-inset-bottom, 0px)) !important;
+    bottom: calc(90px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
 .mode-vn .model-status-banner {

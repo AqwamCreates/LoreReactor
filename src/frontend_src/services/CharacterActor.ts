@@ -1,5 +1,5 @@
 // frontend_src/services/CharacterActor.ts
-import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, ToolMessage, LanguageModel, Profile, ToolExecutionResult } from '../types';
+import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile, ToolExecutionResult } from '../types';
 import { saveRawBudgetData } from '../storages/serverStorage';
 import { buildRequestBody, convertIdsToDisplayNames, createChatMessage, createToolMessage, isToolMessageText, addMessageToInteractionData } from '../utilities/chatLogic';
 import { detectName } from '../utilities/nameDetection';
