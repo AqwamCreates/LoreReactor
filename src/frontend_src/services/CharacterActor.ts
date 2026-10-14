@@ -1,7 +1,7 @@
 // src/frontend_src/services/CharacterActor.ts
 import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile, ToolExecutionResult } from '../types';
 import { saveRawBudgetData } from '../storages/serverStorage';
-import { buildRequestBody, convertIdsToDisplayNames, createChatMessage, createToolMessage, isToolMessageText, addMessageToInteractionData } from '../utilities/chatLogic';
+import { buildRequestBody, convertIdsToDisplayNames, createChatMessage, createToolMessage, isToolMessageText, addMessageToInteractionData } from '../utilities/interactionDataLogic';
 import { detectName } from '../utilities/nameDetection';
 import { getFilteredTextMessages } from '../utilities/promptLogic';
 import { getBudgetStrategyEngine, type RequestMetadata } from './BudgetStrategyEngine';

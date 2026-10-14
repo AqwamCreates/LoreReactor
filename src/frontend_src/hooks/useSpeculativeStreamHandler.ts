@@ -3,7 +3,7 @@ import { useCallback, useRef, type MutableRefObject } from 'react';
 import type { Character, InteractionData, ChatMessage, HistoryMessage, PromptBlock, TextMessage } from '../types';
 import { calculateLatencyFactor } from '../utilities/chatSessionLogic';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
-import { createChatMessage } from '../utilities/chatLogic';
+import { createChatMessage } from '../utilities/interactionDataLogic';
 import { getCurrentLocationId } from '../utilities/locationLogic';
 import { getGlobalMessageHistory } from '../utilities/timelineLogic';
 

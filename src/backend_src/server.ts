@@ -1608,7 +1608,7 @@ app.get('/search', async (req, response) => {
         const raw = fs.readFileSync(path.join(chatsDir, file), 'utf-8');
         const chat = JSON.parse(raw);
         const chatId = file.replace(/\.json$/, '');
-        const chatName = chat.name || 'Untitled Chat';
+        const chatName = chat.name || 'Untitled Session';
 
         if (chatName.toLowerCase().includes(lowerQuery)) {
           chatResults.push({ type: 'chat', id: chatId, name: chatName });

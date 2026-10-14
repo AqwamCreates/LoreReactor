@@ -22,7 +22,7 @@ interface AlternateTimelinesModalProps {
     onSwitchChat: (id: string) => void;
     onDeleteInteractionData: (id: string) => void;
     onInspectChat: (id: string) => void;
-    onRenameChat: (id: string, name: string) => void;
+    onRenameInteractionData: (id: string, name: string) => void;
 }
 
 // ─── Dagre Layout ────────────────────────────────────────────────────
@@ -383,7 +383,7 @@ export function AlternateTimelinesModal({
     onSwitchChat,
     onDeleteInteractionData,
     onInspectChat,
-    onRenameChat,
+    onRenameInteractionData,
 }: AlternateTimelinesModalProps) {
     const [renamingId, setRenamingId] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState('');
@@ -518,7 +518,7 @@ export function AlternateTimelinesModal({
                     onRenameChange: setRenameValue,
                     onRenameSubmit: () => {
                         if (renamingId && renameValue.trim()) {
-                            onRenameChat(renamingId, renameValue.trim());
+                            onRenameInteractionData(renamingId, renameValue.trim());
                             setRenamingId(null);
                             setRenameValue('');
                         }
@@ -565,7 +565,7 @@ export function AlternateTimelinesModal({
         onClose,
         onInspectChat,
         onDeleteInteractionData,
-        onRenameChat,
+        onRenameInteractionData,
     ]);
 
     return (

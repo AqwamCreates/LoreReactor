@@ -232,7 +232,7 @@ export function SuperSearchModal({
 
         for (const shell of allRawInteractionDataShells) {
             if (!shell.id) continue;
-            const chatName = shell.name || 'Untitled Chat';
+            const chatName = shell.name || 'Untitled Session';
             
             const allMsgIds = Object.values(shell.interactionHistories || {}).flat();
             for (const msgId of allMsgIds) {
@@ -249,7 +249,7 @@ export function SuperSearchModal({
 
         if (currentInteractionData?.id) {
             const activeId = currentInteractionData.id;
-            const activeName = currentInteractionData.name || 'Untitled Chat';
+            const activeName = currentInteractionData.name || 'Untitled Session';
             
             const allMessages = Object.values(currentInteractionData.interactionHistories || {}).flat();
             for (const msg of allMessages) {
@@ -342,7 +342,7 @@ export function SuperSearchModal({
 
     const categorizedResults = useMemo<Record<SearchTabId, SearchMatchResult[]>>(() => {
         const emptyMap: Record<SearchTabId, SearchMatchResult[]> = {
-            all: [], message: [], chat: [], interactionDataFolder: [], character: [], context: [],
+            all: [], message: [], interactionData: [], interactionDataFolder: [], character: [], context: [],
             location: [], promptBlock: [], audioTrack: [], world: [], model: [],
             sampler: [], stopPattern: [], budgetStrategy: [], profile: [], memory: [],
             account: [], multiplayerData: []
@@ -404,7 +404,7 @@ export function SuperSearchModal({
         emptyMap.account = scanEntities(allAccounts, 'account', a => `🔑 ${a.name || a.username}`);
         emptyMap.multiplayerData = scanEntities(allMultiplayerData, 'multiplayerData', m => `👥 ${m.name}`);
         emptyMap.interactionDataFolder = scanEntities(allInteractionDataFolders, 'interactionDataFolder', f => `📁 ${f.name}`);
-        emptyMap.chat = scanEntities(allRawInteractionDataShells, 'interactionData', s => `📂 ${s.name || 'Untitled Chat'}`);
+        emptyMap.interactionData = scanEntities(allRawInteractionDataShells, 'interactionData', s => `📂 ${s.name || 'Untitled Session'}`);
 
         const seenMessageIds = new Set<string>();
         const messageResults: SearchMatchResult[] = [];
@@ -412,10 +412,10 @@ export function SuperSearchModal({
         if (currentInteractionData) {
             const allMessages = Object.values(currentInteractionData.interactionHistories || {}).flat();
             for (const msg of allMessages) {
-                if (msg.messageType === 'interactionData' && typeof (msg as ChatMessage).textContent === 'string' && (msg as ChatMessage).textContent.toLowerCase().includes(lowerQuery)) {
+                if (msg.messageType === 'chat' && typeof (msg as ChatMessage).textContent === 'string' && (msg as ChatMessage).textContent.toLowerCase().includes(lowerQuery)) {
                     const chatMsg = msg as ChatMessage;
                     seenMessageIds.add(chatMsg.id);
-                    const chats = messageToChatsMap.get(chatMsg.id) || [{ chatId: currentInteractionData.id, chatName: currentInteractionData.name || 'Untitled Chat' }];
+                    const chats = messageToChatsMap.get(chatMsg.id) || [{ chatId: currentInteractionData.id, chatName: currentInteractionData.name || 'Untitled Session' }];
                     messageResults.push({
                         tabId: 'message',
                         id: chatMsg.id,
@@ -461,7 +461,7 @@ export function SuperSearchModal({
 
         emptyMap.all = [
             ...emptyMap.message.slice(0, 10),
-            ...emptyMap.chat.slice(0, 5),
+            ...emptyMap.interactionData.slice(0, 5),
             ...emptyMap.interactionDataFolder.slice(0, 5),
             ...emptyMap.character.slice(0, 5),
             ...emptyMap.context.slice(0, 5),

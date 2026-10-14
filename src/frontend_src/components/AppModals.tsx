@@ -1,10 +1,12 @@
 // src/frontend_src/components/AppModals.tsx
 import { useMemo, useState, useEffect, useCallback } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import type {
     Character, Context, Location, Sampler, StopPattern,
     LanguageModel, BudgetStrategy, Profile, Extension,
     InteractionData, World, AudioTrack, PromptBlock,
     RawInteractionData, Memory, MultiplayerData, Account,
+    InteractionDataFolder,
     cloudBackend, entityType
 } from '../types';
 import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';
@@ -13,8 +15,7 @@ import { loadRawInteractionData } from '../storages/serverStorage';
 import { isChatSaveable } from '../utilities/chatSaveHelper';
 import { ManagerModal } from './ManagerModal';
 import {
-    renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext,
-    renderChatSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext
+    renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext
 } from './renderHelpers';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useSessionStore } from '../hooks/useSessionStore';
@@ -44,10 +45,11 @@ import { DataImportModal } from './DataImportModal';
 import { DataExportModal } from './DataExportModal';
 import { DataManagerModal } from './DataManagerModal';
 import { AlternateTimelinesModal } from './AlternateTimelinesModal';
-import { ChatInspectionModal } from './ChatInspectionModal';
+import { InteractionDataInspectionModal } from './InteractionDataInspectionModal';
 import { SuperSearchModal } from './SuperSearchModal';
 import { LanguageModelInferenceManagerModal } from './LanguageModelInferenceManager';
-import { voiceTranscriptionEngine } from '../services/VoiceTranscriptionEngine'; // ✅ UPDATED IMPORT
+import { voiceTranscriptionEngine } from '../services/VoiceTranscriptionEngine';
+import { InteractionDataManagerModal } from './InteractionDataManagerModal';
 
 interface EntityModalController {
     isOpen: boolean;
@@ -82,10 +84,13 @@ interface ApplicationModalsProperties {
     allMemories: Memory[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
+    allInteractionDataFolders: InteractionDataFolder[];
     onSwitchChat: (identifier: string) => void;
     onDeleteInteractionData: (identifier: string) => void;
-    onNewChat: () => void;
-    onRenameChat: (identifier: string, name: string) => void;
+    onDeleteInteractionDataFolder: (identifier: string) => void;
+    onSaveInteractionDataFolder: (folder: InteractionDataFolder) => Promise<boolean>;
+    onNewInteractionData: () => void;
+    onRenameInteractionData: (identifier: string, name: string) => void;
     onDeleteCharacter: (identifier: string) => void;
     onLoadFullCharacter: (identifier: string) => Promise<Character | null>;
     onToggleParticipant: (identifier: string) => void;
@@ -179,10 +184,13 @@ export function AppModals({
     allMemories,
     allAccounts,
     allMultiplayerData,
+    allInteractionDataFolders,
     onSwitchChat,
     onDeleteInteractionData,
-    onNewChat,
-    onRenameChat,
+    onDeleteInteractionDataFolder,
+    onSaveInteractionDataFolder,
+    onNewInteractionData,
+    onRenameInteractionData,
     onDeleteCharacter,
     onLoadFullCharacter,
     onToggleParticipant,
@@ -269,17 +277,14 @@ export function AppModals({
 
     const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
 
-    // ✅ UPDATED: Background Voice Transcription Handler (State-Compliant)
     const handleBackgroundVoiceTranscribe = useCallback((characterId: string, file: File, language?: string) => {
         addToast("Transcribing voice in background...", 'info');
         
         voiceTranscriptionEngine.enqueueTranscription(characterId, file, language)
             .then(result => {
                 if (result.success && result.voiceFilename) {
-                    // 1. Find the character in the current React state
                     const character = allCharacters.find(c => c.id === characterId);
                     if (character) {
-                        // 2. Create the updated character object
                         const updatedCharacter: Character = {
                             ...character,
                             voice: {
@@ -288,9 +293,6 @@ export function AppModals({
                                 language: result.language
                             }
                         };
-                        
-                        // 3. Push it through the proper App.tsx save pipeline!
-                        // This updates Zustand, saves to backend, and broadcasts to multiplayer peers.
                         onSaveCharacter(updatedCharacter); 
                     }
                     addToast('✅ Voice transcribed and saved!', 'success');
@@ -304,14 +306,10 @@ export function AppModals({
             });
     }, [addToast, allCharacters, onSaveCharacter]);
 
-    // ─── Active World IDs from Interaction Data ───
     const currentWorldIds = useMemo(() => {
-        // ✅ FIX: Cast to `any` because `worldIds` is dynamically injected into InteractionData 
-        // by the Worlds Management system but not formally declared in the base InteractionData interface.
         return interactionData?.worldIds || [];
     }, [interactionData]);
 
-    // ─── Toggle World in/out of Interaction Data ───
     const handleToggleWorld = useCallback((worldId: string) => {
         const isCurrentlyActive = currentWorldIds.includes(worldId);
         const nextWorldIds: string[] = isCurrentlyActive
@@ -329,15 +327,13 @@ export function AppModals({
         }
     }, [currentWorldIds, allWorlds, onToggleWorlds, addToast]);
 
-    // Include the active chat session in the list only if it is saveable according to isChatSaveable
     const chatShellsWithIdentifiers = useMemo(() => {
         const list = allRawInteractionDataShells.filter((shell): shell is ChatShellWithIdentifier => !!shell.id);
 
-        // If the active chat meets isChatSaveable, inject it with all required shell fields
         if (isChatSaveable(interactionData) && interactionData?.id && !list.some(shell => shell.id === interactionData.id)) {
             list.unshift({
                 id: interactionData.id,
-                name: interactionData.name || 'Untitled Chat',
+                name: interactionData.name || 'Untitled Session',
                 firstCreatedTimestamp: interactionData.firstCreatedTimestamp,
                 lastUpdatedTimestamp: interactionData.lastUpdatedTimestamp,
                 numberOfMessages: interactionData.numberOfMessages ?? 0,
@@ -360,10 +356,10 @@ export function AppModals({
     const chatNameMap = useMemo(() => {
         const map = new Map<string, string>();
         for (const shell of chatShellsWithIdentifiers) {
-            map.set(shell.id, shell.name || 'Untitled Chat');
+            map.set(shell.id, shell.name || 'Untitled Session');
         }
         if (activeChatId) {
-            map.set(activeChatId, activeChatName || 'Untitled Chat');
+            map.set(activeChatId, activeChatName || 'Untitled Session');
         }
         return map;
     }, [chatShellsWithIdentifiers, activeChatId, activeChatName]);
@@ -378,7 +374,6 @@ export function AppModals({
         return set;
     }, [activeStrategy]);
 
-    // ─── Multiplayer Hoster-Owned Entities & Permissions ─────────────
     const isAdministrator = useMemo(() => {
         if (!multiplayerData || !currentAccountId) return false;
         return multiplayerData.multiplayerDataAccountConfigurations?.[currentAccountId]?.isAdministrator;
@@ -402,12 +397,12 @@ export function AppModals({
     const hosterOwnedAudioTracks = useMemo(() => isMultiplayerClient ? interactionData?.audioTracks : undefined, [isMultiplayerClient, interactionData]);
 
     useEffect(() => {
-        if (modals.interactionDatas.isOpen) {
+        if (modals.interactionDataList.isOpen) {
             ensureChatsLoaded();
         }
-    }, [modals.interactionDatas.isOpen, ensureChatsLoaded]);
+    }, [modals.interactionDataList.isOpen, ensureChatsLoaded]);
 
-    const handleOpenChatInspection = useCallback(async (chatId: string) => {
+    const handleOpenInteractionDataInspectionModal = useCallback(async (chatId: string) => {
         if (interactionData && interactionData.id === chatId) {
             setInspectionStack([interactionData]);
             modals.chatInspection?.open();
@@ -433,33 +428,65 @@ export function AppModals({
         return loaded;
     }, [interactionData, allCharacters]);
 
+    // ─── Folder Management Handlers ────────────────────────────────────
+    const handleMoveChatToFolder = useCallback(async (chatId: string, targetFolderId: string | null) => {
+        const updatedFolders = allInteractionDataFolders.map(f => {
+            const hasChat = f.interactionDataIds.includes(chatId);
+            const isTarget = f.id === targetFolderId;
+            if (hasChat && !isTarget) return { ...f, interactionDataIds: f.interactionDataIds.filter(id => id !== chatId), lastUpdatedTimestamp: Date.now() };
+            if (!hasChat && isTarget) return { ...f, interactionDataIds: [...f.interactionDataIds, chatId], lastUpdatedTimestamp: Date.now() };
+            return f;
+        });
+        for (let i = 0; i < allInteractionDataFolders.length; i++) {
+            if (updatedFolders[i] !== allInteractionDataFolders[i]) {
+                await onSaveInteractionDataFolder(updatedFolders[i]);
+            }
+        }
+        addToast(targetFolderId ? 'Moved to folder.' : 'Moved to root.', 'success');
+    }, [allInteractionDataFolders, onSaveInteractionDataFolder, addToast]);
+
+    const handleCreateNewFolder = useCallback(async (name: string) => {
+        const newFolder: InteractionDataFolder = {
+            id: uuidv4(),
+            name,
+            interactionDataIds: [],
+            firstCreatedTimestamp: Date.now(),
+            lastUpdatedTimestamp: Date.now(),
+        };
+        const success = await onSaveInteractionDataFolder(newFolder);
+        if (success) addToast(`Folder "${name}" created.`, 'success');
+    }, [onSaveInteractionDataFolder, addToast]);
+
     return (
         <>
             {/* ─── Manager Lists ─── */}
 
-            {modals.interactionDatas.isOpen && (
-                <ManagerModal
-                    title="Chat Sessions"
-                    localLibraryItems={chatShellsWithIdentifiers}
-                    onClose={modals.interactionDatas.close}
-                    onSelect={(item) => { handleOpenChatInspection(item.id); modals.interactionDatas.close(); }}
-                    onDelete={(identifier: string) => onDeleteInteractionData(identifier)}
-                    onCreateNew={onNewChat}
-                    renderSubtext={renderChatSubtext}
-                    emptyMessage="No saved chat sessions found."
-                    onSelectItem={(item) => onSwitchChat(item.id)}
-                    specialActionTooltip={(item) => interactionData?.id === item.id ? `✓ Active — "${item.name}"` : `Activate "${item.name}"`}
-                    selectedId={interactionData?.id}
+            {modals.interactionDataList.isOpen && (
+                <InteractionDataManagerModal
+                    onClose={modals.interactionDataList.close}
+                    allRawInteractionDataShells={chatShellsWithIdentifiers}
+                    allInteractionDataFolders={allInteractionDataFolders}
+                    onSwitchInteractionData={onSwitchChat}
+                    onDeleteInteractionData={onDeleteInteractionData}
+                    onDeleteInteractionDataFolder={onDeleteInteractionDataFolder}
+                    onInspectChat={handleOpenInteractionDataInspectionModal}
+                    onRenameInteractionData={onRenameInteractionData}
+                    onNewInteractionData={onNewInteractionData}
+                    onCreateNewFolder={handleCreateNewFolder}
+                    onSaveFolder={onSaveInteractionDataFolder}
+                    onMoveChatToFolder={handleMoveChatToFolder}
+                    activeInteractionDataId={interactionData?.id ?? null}
+                    addToast={addToast}
                 />
             )}
 
-            {modals.charList.isOpen && (
+            {modals.characterList.isOpen && (
                 <ManagerModal
                     title="Characters"
                     localLibraryItems={allCharacters}
                     hosterOwnedItems={hosterOwnedCharacters}
                     isAdministrator={isAdministrator}
-                    onClose={modals.charList.close}
+                    onClose={modals.characterList.close}
                     onSelect={async (character: Character, isHosterItem: boolean) => { 
                         const isLocal = allCharacters.some(c => c.id === character.id);
                         const fullCharacter = (isLocal && character.languageModelSampler) ? character : (isLocal ? await onLoadFullCharacter(character.id) : character);
@@ -536,11 +563,11 @@ export function AppModals({
                 />
             )}
 
-            {modals.worldManager.isOpen && (
+            {modals.worldList.isOpen && (
                 <ManagerModal 
                     title="Worlds" 
                     localLibraryItems={allWorlds} 
-                    onClose={modals.worldManager.close}
+                    onClose={modals.worldList.close}
                     onSelect={(world: World) => worldModalProperties.open(world)} 
                     onDelete={onDeleteWorld} 
                     onCreateNew={() => worldModalProperties.open()}
@@ -801,8 +828,8 @@ export function AppModals({
                     allRawInteractionDataShells={chatShellsWithIdentifiers}
                     onSwitchChat={onSwitchChat} 
                     onDeleteInteractionData={onDeleteInteractionData} 
-                    onInspectChat={handleOpenChatInspection} 
-                    onRenameChat={onRenameChat} 
+                    onInspectChat={handleOpenInteractionDataInspectionModal} 
+                    onRenameInteractionData={onRenameInteractionData} 
                 />
             )}
 
@@ -847,6 +874,7 @@ export function AppModals({
                     allMemories={allMemories} 
                     allAccounts={allAccounts} 
                     allMultiplayerData={allMultiplayerData} 
+                    allInteractionDataFolders={allInteractionDataFolders}
                     allRawInteractionDataShells={chatShellsWithIdentifiers}
                     onDeleteCharacter={onDeleteCharacter} 
                     onDeleteContext={onDeleteContext} 
@@ -862,7 +890,8 @@ export function AppModals({
                     onDeleteMemory={onDeleteMemory}
                     onDeleteAccount={onDeleteAccount} 
                     onDeleteMultiplayerData={onDeleteMultiplayerData} 
-                    onDeleteInteractionData={onDeleteInteractionData} 
+                    onDeleteInteractionDataFolder={onDeleteInteractionDataFolder}
+                    onDeleteInteractionData={onDeleteInteractionData}
                 />
             )}
 
@@ -884,6 +913,7 @@ export function AppModals({
                     allMemories={allMemories}
                     allAccounts={allAccounts}
                     allMultiplayerData={allMultiplayerData}
+                    allInteractionDataFolders={allInteractionDataFolders}
                     allRawInteractionDataShells={chatShellsWithIdentifiers}
                     currentInteractionData={interactionData}
                     onSelectEntity={(tabId, entity, parentEntity, isReadOnly = false) => {
@@ -901,7 +931,10 @@ export function AppModals({
                             case 'profile': profileModalProperties.open(entity, isReadOnly); break;
                             case 'account': accountModalProperties.open(entity, isReadOnly); break;
                             case 'multiplayerData': multiplayerDataModalProperties.open(entity, isReadOnly); break;
-                            case 'chat': onSwitchChat(entity.id); break;
+                            case 'interactionData': onSwitchChat(entity.id); break;
+                            case 'interactionDataFolder':
+                                addToast(`Folder selected: ${entity.name}`, 'info');
+                                break;
                             case 'memory':
                                 addToast('Memories are managed inside Character settings.', 'info');
                                 characterModalProperties.open(parentEntity, isReadOnly);
@@ -956,7 +989,7 @@ export function AppModals({
                             characterModalProperties.save(character); 
                         } 
                     }}
-                    onVoiceTranscribeRequested={handleBackgroundVoiceTranscribe} // ✅ WIRED UP BACKGROUND TRANSCRIPTION
+                    onVoiceTranscribeRequested={handleBackgroundVoiceTranscribe}
                     existingCharacter={characterModalProperties.item} 
                     allSamplers={allSamplers} 
                     allCharacters={allCharacters}
@@ -1144,7 +1177,7 @@ export function AppModals({
 
             {/* ─── Chat Inspection Modal ─── */}
             {modals.chatInspection?.isOpen && (
-                <ChatInspectionModal
+                <InteractionDataInspectionModal
                     onClose={() => { 
                         modals.chatInspection.close(); 
                         setInspectionStack([]); 

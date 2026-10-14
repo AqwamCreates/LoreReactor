@@ -1,4 +1,4 @@
-// src/frontend_src/hooks/useChatOperations.ts
+// src/frontend_src/hooks/useInteractionDataOperations.ts
 import { useState, useCallback, useRef } from 'react';
 import type { Character, InteractionData, RawInteractionData, TextMessage } from '../types';
 import { saveRawInteractionData, loadRawInteractionData, saveRawSessionData } from '../storages/serverStorage';
@@ -25,7 +25,7 @@ interface UseChatOperationsOptions {
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
-export function useChatOperations(options: UseChatOperationsOptions) {
+export function useInteractionDataOperations(options: UseChatOperationsOptions) {
     const {
         interactionData, currentCharacter, selectedCharacterId,
         allCharacters, loadFullCharacter,
@@ -44,11 +44,11 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         try { 
             await saveRawInteractionData(data); 
         } catch (e) { 
-            console.error('[useChatOperations] Auto-save failed:', e); 
+            console.error('[useInteractionDataOperations] Auto-save failed:', e); 
         }
     }, []);
 
-    const handleSwitchChat = useCallback(async (id: string) => {
+    const handleSwitchInteractionData = useCallback(async (id: string) => {
         if (interactionData?.id === id) return;
 
         const currentSeq = ++switchSeqRef.current;
@@ -61,7 +61,7 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         try {
             chat = await loadRawInteractionData(id, allCharacters);
         } catch (e) {
-            console.warn('[useChatOperations] Failed to load chat:', e);
+            console.warn('[useInteractionDataOperations] Failed to load chat:', e);
         }
 
         // If another switch request was initiated while loading, discard this stale result
@@ -124,7 +124,7 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         }
     }, [allCharacters, interactionData, loadFullCharacter, setInteractionData, setSelectedCharacter, addToast, safeAutoSave]);
 
-    const handleNewChat = useCallback(async () => {
+    const handleNewInteractionData = useCallback(async () => {
         await safeAutoSave(interactionData);
         clearFetchCache();
         
@@ -143,7 +143,7 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         }
     }, [interactionData, currentCharacter, selectedCharacterId, allCharacters, startNewChat, safeAutoSave, addToast]);
 
-    const handleDeleteChat = useCallback(async (e: React.MouseEvent, id: string) => {
+    const handleDeleteInteractionData = useCallback(async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
         await safeAutoSave(interactionData);
 
@@ -172,7 +172,7 @@ export function useChatOperations(options: UseChatOperationsOptions) {
 
     const handleSaveTitle = useCallback(async () => {
         if (!interactionData) return;
-        const newTitle = editTitleValue.trim() || 'Untitled Chat';
+        const newTitle = editTitleValue.trim() || 'Untitled Session';
         const updatedChat = { 
             ...interactionData, 
             name: newTitle, 
@@ -187,7 +187,7 @@ export function useChatOperations(options: UseChatOperationsOptions) {
             refreshChatList();
             addToast('Chat title updated', 'success');
         } catch (e) {
-            console.error('[useChatOperations] Failed to save title:', e);
+            console.error('[useInteractionDataOperations] Failed to save title:', e);
             addToast('Failed to save title update.', 'error');
         }
     }, [interactionData, editTitleValue, setInteractionData, refreshChatList, addToast]);
@@ -200,9 +200,9 @@ export function useChatOperations(options: UseChatOperationsOptions) {
         isEditingTitle, setIsEditingTitle,
         editTitleValue, setEditTitleValue,
         safeAutoSave,
-        handleSwitchChat,
-        handleNewChat,
-        handleDeleteChat,
+        handleSwitchInteractionData,
+        handleNewInteractionData,
+        handleDeleteInteractionData,
         handleStartEditTitle,
         handleSaveTitle,
         cancelEditTitle,

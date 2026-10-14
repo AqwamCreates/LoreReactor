@@ -26,7 +26,7 @@ interface UseChatRestorationOptions {
 function createEmptyChat(): InteractionData {
     return {
         id: uuidv4(),
-        name: 'Untitled Chat',
+        name: 'Untitled Session',
         protagonistIds: [],
         participants: [],
         contexts: [],

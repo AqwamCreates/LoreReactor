@@ -1,7 +1,7 @@
 // src/frontend_src/hooks/useAmbientNarration.ts
 import { useCallback } from 'react';
 import type { Character, InteractionData, ChatMessage } from '../types';
-import { createChatMessage, addMessageToInteractionData } from '../utilities/chatLogic';
+import { createChatMessage, addMessageToInteractionData } from '../utilities/interactionDataLogic';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { useSessionStore } from './useSessionStore';

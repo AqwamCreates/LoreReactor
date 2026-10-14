@@ -1,4 +1,4 @@
-// src/frontend_src/components/ChatInspectionModal.tsx
+// src/frontend_src/components/InteractionDataInspectionModal.tsx
 import type React from 'react';
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import type { InteractionData, Location, Character } from '../types';
@@ -17,7 +17,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import '../main.css';
 
-interface ChatInspectionModalProps {
+interface InteractionDataInspectionModalProps {
     onClose: () => void;
     inspectionStack: InteractionData[];
     onInspectingParentInteractionData: (parentId: string) => Promise<InteractionData>;
@@ -190,12 +190,12 @@ function useCharacterPortraits(characters: Character[]): Map<string, string | nu
 
 // ─── Component ───────────────────────────────────────────────────────
 
-export function ChatInspectionModal({
+export function InteractionDataInspectionModal({
     onClose,
     inspectionStack,
     onInspectingParentInteractionData,
     onSaveInteractionData,
-}: ChatInspectionModalProps) {
+}: InteractionDataInspectionModalProps) {
     const [initializedFromStack, setInitializedFromStack] = useState<InteractionData[] | null>(null);
     const [userNavStack, setUserNavStack] = useState<InteractionData[]>([]);
     const [sessionIdCopied, setSessionIdCopied] = useState(false);
@@ -617,7 +617,7 @@ export function ChatInspectionModal({
                         ) : (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', minWidth: 0 }}>
                                 <h2 style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0, cursor: 'pointer' }} onClick={() => setIsEditingName(true)} title="Click to rename">
-                                    {chat?.name || 'Untitled Chat'}
+                                    {chat?.name || 'Untitled Session'}
                                 </h2>
                                 <button
                                     type="button"
@@ -976,4 +976,4 @@ export function ChatInspectionModal({
     );
 }
 
-export default ChatInspectionModal;
+export default InteractionDataInspectionModal;

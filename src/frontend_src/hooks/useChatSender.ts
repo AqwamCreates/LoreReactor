@@ -1,7 +1,7 @@
 // src/frontend_src/hooks/useChatSender.ts
 import { useCallback } from 'react';
 import type { Character, PromptBlock, InteractionData, HistoryMessage, InterjectableAction, ToolExecutionResult } from '../types';
-import { createChatMessage } from '../utilities/chatLogic';
+import { createChatMessage } from '../utilities/interactionDataLogic';
 import { processPendingToolActions, executeTool, type ToolExecutionContext } from '../services/ToolExecutor';
 import { parseSlashCommand } from '../services/ToolInvocationParser';
 import { getCurrentLocationId, findReachableLocationByRegularExpression } from '../utilities/locationLogic';

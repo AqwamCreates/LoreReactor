@@ -1241,7 +1241,7 @@ async function buildInteractionDataShell(
 
   return {
     id, 
-    name: rawInteractionData.name || "Untitled Chat", 
+    name: rawInteractionData.name || "Untitled Session", 
     protagonistIds, 
     participants, 
     contexts,

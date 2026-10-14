@@ -39,7 +39,7 @@ function formatActionString(label: string, targetName: string, wrap: ActionWrap,
 }
 
 interface UseActionMenuOptions {
-    actionManager: ReturnType<typeof useActionManager>;
+    actions: ReturnType<typeof useActionManager>;
     interactionData: InteractionData | null;
     currentCharacter: Character | null;
     isLoading: boolean;
@@ -52,11 +52,11 @@ interface UseActionMenuOptions {
 
 export function useActionMenu(options: UseActionMenuOptions) {
     const {
-        actionManager, interactionData, currentCharacter, isLoading, isModelReady,
+        actions, interactionData, currentCharacter, isLoading, isModelReady,
         stopGeneration, sendActionAndGetResponse, addToast,
     } = options;
 
-    const {allActions, actionsLoading, incrementActionCount, handleAddAction, handleDeleteAction } = actionManager;
+    const {allActions, actionsLoading, incrementActionCount, handleAddAction, handleDeleteAction } = actions;
 
     const [actionMenuTarget, setActionMenuTarget] = useState<{ messageId: string; charId: string; x: number; y: number } | null>(null);
     const [menuSearchQuery, setMenuSearchQuery] = useState('');

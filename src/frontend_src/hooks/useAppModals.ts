@@ -2,12 +2,12 @@
 import { useState, useCallback, useMemo } from 'react';
 
 export type ModalName =
-    | 'interactionDatas'
-    | 'charList'
+    | 'interactionDataList'
+    | 'characterList'
     | 'contextList'
     | 'locationList'
     | 'audioTrackList'
-    | 'worldManager'
+    | 'worldList'
     | 'promptBlockList'
     | 'modelList'
     | 'samplerList'
@@ -63,8 +63,8 @@ export function useAppModals() {
 
     const modals = useMemo(() => {
         const names: ModalName[] = [
-            'interactionDatas', 'charList', 'contextList', 'locationList', 'audioTrackList',
-            'worldManager', 'promptBlockList', 'modelList', 'samplerList', 'stopList',
+            'interactionDataList', 'characterList', 'contextList', 'locationList', 'audioTrackList',
+            'worldList', 'promptBlockList', 'modelList', 'samplerList', 'stopList',
             'budgetStrategyList', 'profileList', 'extensionList', 'accountList', 'multiplayerDataList',
             'settings', 'budgetControl', 'participantControl', 'alternateTimelines',
             'aiRecommendation', 'restrictionReduction', 'cardImport', 'importData',

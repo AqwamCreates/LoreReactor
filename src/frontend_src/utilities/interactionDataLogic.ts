@@ -392,7 +392,7 @@ export function createNewInteractionData(character: Character): InteractionData 
     const now = Date.now();
     return {
         id: uuidv4(),
-        name: "Untitled Chat",
+        name: "Untitled Session",
         protagonistIds: [character.id],
         participants: [character],
         contexts: [],

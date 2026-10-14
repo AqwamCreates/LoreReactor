@@ -4,7 +4,7 @@ import type { viewMode } from './views/types';
 
 interface ContextBarProps {
     viewMode: viewMode;
-    onOpenChatList: () => void;
+    onOpenInteractionDataList: () => void;
     onOpenCharacters: () => void;
     onOpenContexts: () => void;
     onOpenLocations: () => void;
@@ -28,7 +28,7 @@ function NavButton({ icon, label, onClick }: { icon: string; label: string; onCl
 
 export function ContextBar({
     viewMode,
-    onOpenChatList, onOpenCharacters, onOpenContexts, onOpenLocations, onOpenAudioTracks, onOpenWorlds,
+    onOpenInteractionDataList, onOpenCharacters, onOpenContexts, onOpenLocations, onOpenAudioTracks, onOpenWorlds,
     onOpenPromptBlocks, onOpenModels, onOpenSamplers, onOpenStopPatterns, onOpenBudgets, onOpenProfiles,
 }: ContextBarProps) {
     const [expanded, setExpanded] = useState(false);
@@ -61,7 +61,7 @@ export function ContextBar({
 
             {/* Core narrative buttons — always visible */}
             <div className="context-bar-core-row">
-                <NavButton icon="💬" label="Chat List" onClick={onOpenChatList} />
+                <NavButton icon="💬" label="Chat List" onClick={onOpenInteractionDataList} />
                 <NavButton icon="🎭" label="Characters" onClick={onOpenCharacters} />
                 <NavButton icon="📜" label="Contexts" onClick={onOpenContexts} />
                 <NavButton icon="📍" label="Locations" onClick={onOpenLocations} />

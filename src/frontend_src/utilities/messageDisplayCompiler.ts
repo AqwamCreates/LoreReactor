@@ -6,7 +6,7 @@ import {
     toolResultStartString,
     toolResultEndString,
 } from '../dictionaries/stringList';
-import { convertIdsToDisplayNames } from './chatLogic';
+import { convertIdsToDisplayNames } from './interactionDataLogic';
 import { formatToolDisplay, getFallbackToolResult, type ToolResult } from '../services/ToolExecutor';
 
 /**

@@ -5,7 +5,7 @@ import { CharacterActor } from '../services/CharacterActor';
 import { runTurnSequence } from '../services/InteractionOrchestrator';
 import { CharacterSoul } from '../services/CharacterSoul';
 import { getBudgetStrategyEngine, type RequestMetadata } from '../services/BudgetStrategyEngine';
-import { updatePartialMessageInInteractionData } from '../utilities/chatLogic';
+import { updatePartialMessageInInteractionData } from '../utilities/interactionDataLogic';
 import type { ToolExecutionContext } from '../services/ToolExecutor';
 import type { StreamingVoiceTracker } from '../services/StreamingVoiceTracker';
 

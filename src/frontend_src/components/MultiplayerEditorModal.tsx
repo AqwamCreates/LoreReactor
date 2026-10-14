@@ -291,7 +291,7 @@ function MultiplayerEditorModalInner({
                 : 0;
             return {
                 id: s.id!,
-                name: s.name || 'Untitled Chat',
+                name: s.name || 'Untitled Session',
                 description: `${totalMessages} messages`,
                 lastUpdatedTimestamp: s.lastUpdatedTimestamp,
             };
