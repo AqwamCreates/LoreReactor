@@ -18,17 +18,30 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
     const [showTopButton, setShowTopButton] = useState(false);
     const [showBottomButton, setShowBottomButton] = useState(false);
 
-    // Refs for direct DOM manipulation to bypass React re-render lag during context bar animation
     const topButtonRef = useRef<HTMLButtonElement>(null);
     const bottomButtonRef = useRef<HTMLButtonElement>(null);
+    const prevClientHeightRef = useRef<number>(0);
 
     const updatePositionsAndVisibility = useCallback(() => {
         const container = containerRef.current;
         if (!container) return;
 
         const { scrollTop, scrollHeight, clientHeight } = container;
-        setShowTopButton(scrollTop > 100);
-        setShowBottomButton(scrollHeight - scrollTop - clientHeight > 100);
+        const prevHeight = prevClientHeightRef.current;
+
+        // ✅ If the container height changes (e.g., ContextBar expands/retracts)
+        // and the user was already at/near the bottom, keep them pinned to the bottom.
+        if (prevHeight && prevHeight !== clientHeight) {
+            const distanceToBottom = scrollHeight - scrollTop - prevHeight;
+            if (distanceToBottom <= 100) {
+                container.scrollTop = scrollHeight - clientHeight;
+            }
+        }
+        prevClientHeightRef.current = clientHeight;
+
+        const currentScrollTop = container.scrollTop;
+        setShowTopButton(currentScrollTop > 100);
+        setShowBottomButton(scrollHeight - currentScrollTop - clientHeight > 100);
 
         if (!useViewportBounds) {
             const rect = container.getBoundingClientRect();
@@ -36,7 +49,6 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
             const bottomPos = window.innerHeight - rect.bottom + BUTTON_GAP + VERTICAL_GAP;
             const rightPos = window.innerWidth - rect.right + BUTTON_GAP;
 
-            // Mutate styles directly for instant, 60fps tracking without state re-renders
             if (topButtonRef.current) {
                 topButtonRef.current.style.top = `${topPos}px`;
                 topButtonRef.current.style.right = `${rightPos}px`;
@@ -52,9 +64,9 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
         const container = containerRef.current;
         if (!container) return;
 
+        prevClientHeightRef.current = container.clientHeight;
         updatePositionsAndVisibility();
 
-        // Use ResizeObserver synced with requestAnimationFrame for smooth frame-locked positioning
         const resizeObserver = new ResizeObserver(() => {
             requestAnimationFrame(updatePositionsAndVisibility);
         });
