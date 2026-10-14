@@ -15,7 +15,7 @@ interface InteractionDataManagerModalProps {
     
     onDeleteInteractionDataFolder: (id: string) => void;
     onCreateNewFolder?: (name: string) => void;
-    onSaveFolder: (folder: InteractionDataFolder) => Promise<boolean> | void;
+    onSaveInteractionDataFolder: (folder: InteractionDataFolder) => Promise<boolean> | void;
     
     onMoveInteractionDataToFolder: (id: string, folderId: string | null) => void;
     onInspectInteractionData?: (id: string) => void;
@@ -38,7 +38,7 @@ export function InteractionDataManagerModal({
     onNewInteractionData,
     onDeleteInteractionDataFolder,
     onCreateNewFolder,
-    onSaveFolder,
+    onSaveInteractionDataFolder,
     onMoveInteractionDataToFolder,
     onInspectInteractionData,
     activeInteractionDataId,
@@ -195,7 +195,7 @@ export function InteractionDataManagerModal({
         if (!trimmed) { setRenamingId(null); return; }
         if (folderMap.has(id)) {
             const folder = folderMap.get(id)!;
-            onSaveFolder({ ...folder, name: trimmed, lastUpdatedTimestamp: Date.now() });
+            onSaveInteractionDataFolder({ ...folder, name: trimmed, lastUpdatedTimestamp: Date.now() });
         } else {
             onRenameInteractionData(id, trimmed);
         }

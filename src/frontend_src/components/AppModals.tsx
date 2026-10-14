@@ -469,12 +469,12 @@ export function AppModals({
                     onSwitchInteractionData={onSwitchChat}
                     onDeleteInteractionData={onDeleteInteractionData}
                     onDeleteInteractionDataFolder={onDeleteInteractionDataFolder}
-                    onInspectChat={handleOpenInteractionDataInspectionModal}
+                    onInspectInteractionData={handleOpenInteractionDataInspectionModal}
                     onRenameInteractionData={onRenameInteractionData}
                     onNewInteractionData={onNewInteractionData}
                     onCreateNewFolder={handleCreateNewFolder}
-                    onSaveFolder={onSaveInteractionDataFolder}
-                    onMoveChatToFolder={handleMoveChatToFolder}
+                    onSaveInteractionDataFolder={onSaveInteractionDataFolder}
+                    onMoveInteractionDataToFolder={handleMoveChatToFolder}
                     activeInteractionDataId={interactionData?.id ?? null}
                     addToast={addToast}
                 />
