@@ -37,7 +37,7 @@ interface DataManagerModalProps {
     onDeleteMemory: (id: string) => void;
     onDeleteAccount: (id: string) => void;
     onDeleteMultiplayerData: (id: string) => void;
-    onDeleteChat: (id: string) => void;
+    onDeleteInteractionData: (id: string) => void;
     onDeleteInteractionDataFolder: (id: string) => void;
 }
 
@@ -240,7 +240,7 @@ export function DataManagerModal({
     onDeleteAccount,
     onDeleteMultiplayerData,
     onDeleteInteractionDataFolder,
-    onDeleteChat,
+    onDeleteInteractionData,
 }: DataManagerModalProps) {
     const [activeTab, setActiveTab] = useState<TabId>('storage');
     const [cleanupItems, setCleanupItems] = useState<CleanupItem[]>([]);
@@ -814,7 +814,7 @@ export function DataManagerModal({
 
     const handleBulkDeleteCandidates = () => {
         let deletedCount = 0;
-        for (const shell of bulkCandidates) { if (shell.id) { onDeleteChat(shell.id); deletedCount++; } }
+        for (const shell of bulkCandidates) { if (shell.id) { onDeleteInteractionData(shell.id); deletedCount++; } }
         addToast(`Deleted ${deletedCount} chat${deletedCount === 1 ? '' : 's'}.`, 'success');
         setConfirmBulkDelete(false);
     };
@@ -889,7 +889,7 @@ export function DataManagerModal({
             case 'accounts': for (const a of allAccounts) { onDeleteAccount(a.id); count++; } break;
             case 'multiplayerData': for (const md of allMultiplayerData) { onDeleteMultiplayerData(md.id); count++; } break;
             case 'folders': for (const f of allInteractionDataFolders) { onDeleteInteractionDataFolder(f.id); count++; } break;
-            case 'chats': for (const s of allRawInteractionDataShells) { if (s.id) { onDeleteChat(s.id); count++; } } break;
+            case 'chats': for (const s of allRawInteractionDataShells) { if (s.id) { onDeleteInteractionData(s.id); count++; } } break;
         }
         addToast(`Wiped ${count} ${entityType}.`, 'success');
         setConfirmDangerAction(null);

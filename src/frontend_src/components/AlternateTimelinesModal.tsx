@@ -20,7 +20,7 @@ interface AlternateTimelinesModalProps {
     currentInteractionId: string;
     allRawInteractionDataShells: RawInteractionData[];
     onSwitchChat: (id: string) => void;
-    onDeleteChat: (id: string) => void;
+    onDeleteInteractionData: (id: string) => void;
     onInspectChat: (id: string) => void;
     onRenameChat: (id: string, name: string) => void;
 }
@@ -381,7 +381,7 @@ export function AlternateTimelinesModal({
     currentInteractionId,
     allRawInteractionDataShells,
     onSwitchChat,
-    onDeleteChat,
+    onDeleteInteractionData,
     onInspectChat,
     onRenameChat,
 }: AlternateTimelinesModalProps) {
@@ -500,7 +500,7 @@ export function AlternateTimelinesModal({
                         if (!canDelete) return;
 
                         if (confirmDeleteId === id) {
-                            onDeleteChat(id);
+                            onDeleteInteractionData(id);
                             setConfirmDeleteId(null);
                         } else {
                             setConfirmDeleteId(id);
@@ -564,7 +564,7 @@ export function AlternateTimelinesModal({
         onSwitchChat,
         onClose,
         onInspectChat,
-        onDeleteChat,
+        onDeleteInteractionData,
         onRenameChat,
     ]);
 

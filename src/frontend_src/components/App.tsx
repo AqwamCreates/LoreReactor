@@ -825,7 +825,7 @@ function App() {
         }
     }, [interactionData, mp.isMultiplayerClient, addToast, setInteractionData, isMultiplayerChat, mp.multiplayerSync.isConnected, handleBroadcastMessage]);
 
-    const onDeleteChatForModals = useCallback((id: string) => {
+    const onDeleteInteractionDataForModals = useCallback((id: string) => {
         chatOps.handleDeleteChat({ stopPropagation: () => {} } as React.MouseEvent, id);
     }, [chatOps]);
 
@@ -1292,7 +1292,7 @@ function App() {
                     allSamplers={samplers.Samplers} allPromptBlocks={promptBlocks.promptBlocks} allStopPatterns={stopPatterns.stopPatterns}
                     allBudgetStrategies={budgetStrategies.strategies} allProfiles={profiles.profiles} allExtensions={extensions.extensions}
                     allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDataManager.multiplayerData}
-                    onSwitchChat={chatOps.handleSwitchChat} onDeleteChat={onDeleteChatForModals} onNewChat={chatOps.handleNewChat}
+                    onSwitchChat={chatOps.handleSwitchChat} onDeleteInteractionData={onDeleteInteractionDataForModals} onNewChat={chatOps.handleNewChat}
                     onRenameChat={handleRenameChat}
                     onDeleteCharacter={entityModals.getModalProperties('character').delete}
                     onLoadFullCharacter={characters.loadFullCharacter} 

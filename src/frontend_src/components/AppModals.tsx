@@ -83,7 +83,7 @@ interface ApplicationModalsProperties {
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
     onSwitchChat: (identifier: string) => void;
-    onDeleteChat: (identifier: string) => void;
+    onDeleteInteractionData: (identifier: string) => void;
     onNewChat: () => void;
     onRenameChat: (identifier: string, name: string) => void;
     onDeleteCharacter: (identifier: string) => void;
@@ -180,7 +180,7 @@ export function AppModals({
     allAccounts,
     allMultiplayerData,
     onSwitchChat,
-    onDeleteChat,
+    onDeleteInteractionData,
     onNewChat,
     onRenameChat,
     onDeleteCharacter,
@@ -443,7 +443,7 @@ export function AppModals({
                     localLibraryItems={chatShellsWithIdentifiers}
                     onClose={modals.chatList.close}
                     onSelect={(item) => { handleOpenChatInspection(item.id); modals.chatList.close(); }}
-                    onDelete={(identifier: string) => onDeleteChat(identifier)}
+                    onDelete={(identifier: string) => onDeleteInteractionData(identifier)}
                     onCreateNew={onNewChat}
                     renderSubtext={renderChatSubtext}
                     emptyMessage="No saved chat sessions found."
@@ -800,7 +800,7 @@ export function AppModals({
                     currentInteractionId={interactionData?.id ?? ''} 
                     allRawInteractionDataShells={chatShellsWithIdentifiers}
                     onSwitchChat={onSwitchChat} 
-                    onDeleteChat={onDeleteChat} 
+                    onDeleteInteractionData={onDeleteInteractionData} 
                     onInspectChat={handleOpenChatInspection} 
                     onRenameChat={onRenameChat} 
                 />
@@ -862,7 +862,7 @@ export function AppModals({
                     onDeleteMemory={onDeleteMemory}
                     onDeleteAccount={onDeleteAccount} 
                     onDeleteMultiplayerData={onDeleteMultiplayerData} 
-                    onDeleteChat={onDeleteChat} 
+                    onDeleteInteractionData={onDeleteInteractionData} 
                 />
             )}
 
