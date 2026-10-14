@@ -28,7 +28,7 @@ export interface FormatPreferenceData {
 }
 
 const ALL_CATEGORIES: FormatCategory[] = [
-    'plain', 'italics', 'bold', 'strikethrough',
+    'plain', 'italics', 'bold', 'underline', 'strikethrough',
     'quotes', 'parentheses', 'brackets',
 ];
 
@@ -41,7 +41,7 @@ export class FormatPreferenceEngine {
     private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     constructor(initialData?: FormatPreferenceData) {
-        this.data = initialData ?? this.createEmptyData();
+        this.data = initialData ? this.ensureCategoryIntegrity(initialData) : this.createEmptyData();
     }
 
     private createEmptyData(): FormatPreferenceData {
@@ -59,6 +59,34 @@ export class FormatPreferenceEngine {
             featureTargetCounts: {},
             lastUpdatedTimestamp: Date.now(),
         };
+    }
+
+    private ensureCategoryIntegrity(data: FormatPreferenceData): FormatPreferenceData {
+        if (!data.globalTransitions) data.globalTransitions = {} as any;
+        
+        for (const cat of ALL_CATEGORIES) {
+            if (!data.globalTransitions[cat]) {
+                data.globalTransitions[cat] = {} as any;
+            }
+            for (const target of ALL_CATEGORIES) {
+                if (typeof data.globalTransitions[cat][target] !== 'number') {
+                    data.globalTransitions[cat][target] = 0;
+                }
+            }
+        }
+
+        if (!data.featureCounts) data.featureCounts = {};
+        if (!data.featureTargetCounts) data.featureTargetCounts = {};
+
+        for (const feat of Object.keys(data.featureTargetCounts)) {
+            for (const cat of ALL_CATEGORIES) {
+                if (typeof data.featureTargetCounts[feat][cat] !== 'number') {
+                    data.featureTargetCounts[feat][cat] = 0;
+                }
+            }
+        }
+
+        return data;
     }
 
     extractContext(
@@ -112,7 +140,7 @@ export class FormatPreferenceEngine {
         const segmentText = text.slice(segmentStart, segmentEnd).trim();
         let punctuation: punctuationType = 'none';
         
-        const trimmedForPunct = segmentText.replace(/[\*_\)\"\]”\s]+$/, '');
+        const trimmedForPunct = segmentText.replace(/[\*_\)\"\]”\}\s]+$/, '');
         
         if (trimmedForPunct.endsWith('...') || trimmedForPunct.endsWith('…')) punctuation = 'ellipsis';
         else if (trimmedForPunct.endsWith('—') || trimmedForPunct.endsWith('--') || trimmedForPunct.endsWith('-')) punctuation = 'dash';
@@ -187,14 +215,12 @@ export class FormatPreferenceEngine {
 
         const logScores: Record<FormatCategory, number> = {} as any;
         
-        // 1. Initialize Result_0 with Global Prior
         for (const target of ALL_CATEGORIES) {
             const globalCount = this.data.globalTransitions[detected][target];
             const prior = (globalCount + LAPLACE_ALPHA) / (totalGlobal + LAPLACE_ALPHA * NUM_CATEGORIES);
             logScores[target] = Math.log(prior);
         }
 
-        // 2. Multiplicative Chain (Calculated in Log-Space to prevent IEEE 754 underflow)
         for (const target of ALL_CATEGORIES) {
             for (const feature of activeFeatures) {
                 const featCount = this.data.featureCounts[feature] ?? 0;
@@ -205,7 +231,6 @@ export class FormatPreferenceEngine {
             }
         }
 
-        // 3. Normalize (Log-Sum-Exp trick to retrieve accurate probabilities)
         const maxLogScore = Math.max(...Object.values(logScores));
         let sumExp = 0;
         for (const target of ALL_CATEGORIES) {

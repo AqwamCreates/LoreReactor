@@ -5,7 +5,7 @@ const LEFT_DOUBLE_QUOTE = '\u201C'; // “
 const RIGHT_DOUBLE_QUOTE = '\u201D'; // ”
 
 interface MatchCandidate {
-    type: 'bold_italic' | 'bold' | 'italic' | 'quote' | 'curly_quote' | 'newline' | 'list_item';
+    type: 'bold_italic' | 'bold' | 'italic' | 'underline' | 'strikethrough' | 'quote' | 'curly_quote' | 'newline' | 'list_item';
     index: number;
     length: number;
     innerContent?: string;
@@ -13,9 +13,8 @@ interface MatchCandidate {
     indent?: number;
 }
 
-/**
- * Recursively parses formatting tokens so formatting can be nested/merged.
- */
+const NO_PARAGRAPH_BREAK = '(?:[^\r\n]|(?<!\r?\n)\r?\n(?!\r?\n))+?';
+
 function parseFormattedText(
     text: string,
     isTopLevel: boolean,
@@ -29,7 +28,7 @@ function parseFormattedText(
     while (remaining.length > 0) {
         const candidates: MatchCandidate[] = [];
 
-        // 1. List Item (-, *, +, •, or 1., 2), up to 3 digits) at start of string or newline
+        // 1. List Item
         const listMatch = remaining.match(/(?:^|\r?\n)([ \t]*)([-*+•]|\d{1,3}[.)])[ \t]+([^\r\n]*)/);
         if (listMatch && listMatch.index !== undefined) {
             const indentStr = listMatch[1] ?? '';
@@ -54,8 +53,8 @@ function parseFormattedText(
             });
         }
 
-        // 3. Bold + Italic (***text***) - no space after opening, no space before closing
-        const biMatch = remaining.match(/(?<!\*)\*\*\*(?!\s|\*)(.+?)(?<!\s|\*)\*\*\*(?!\*)/s);
+        // 3. Bold + Italic (***text*** ONLY)
+        const biMatch = remaining.match(new RegExp(`(?<!\\*)\\*\\*\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*\\*\\*(?!\\*)`));
         if (biMatch && biMatch.index !== undefined) {
             candidates.push({
                 type: 'bold_italic',
@@ -65,8 +64,8 @@ function parseFormattedText(
             });
         }
 
-        // 4. Bold (**text**) - no space after opening, no space before closing
-        const boldMatch = remaining.match(/(?<!\*)\*\*(?!\s|\*)(.+?)(?<!\s|\*)\*\*(?!\*)/s);
+        // 4. Bold (**text** ONLY)
+        const boldMatch = remaining.match(new RegExp(`(?<!\\*)\\*\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*\\*(?!\\*)`));
         if (boldMatch && boldMatch.index !== undefined) {
             candidates.push({
                 type: 'bold',
@@ -76,8 +75,8 @@ function parseFormattedText(
             });
         }
 
-        // 5. Italic (*text*) - no space after opening, no space before closing
-        const italicMatch = remaining.match(/(?<!\*)\*(?!\s|\*)(.+?)(?<!\s|\*)\*(?!\*)/s);
+        // 5. Italic (*text* ONLY)
+        const italicMatch = remaining.match(new RegExp(`(?<!\\*)\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*(?!\\*)`));
         if (italicMatch && italicMatch.index !== undefined) {
             candidates.push({
                 type: 'italic',
@@ -87,8 +86,30 @@ function parseFormattedText(
             });
         }
 
-        // 6. Straight Quote ("text")
-        const quoteMatch = remaining.match(/"([^"]*)"/s);
+        // 6. Underline (_text_ ONLY)
+        const underlineMatch = remaining.match(new RegExp(`(?<!\\w)_(?!\\s|_)(${NO_PARAGRAPH_BREAK})(?<!\\s|_)_(?!\\w)`));
+        if (underlineMatch && underlineMatch.index !== undefined) {
+            candidates.push({
+                type: 'underline',
+                index: underlineMatch.index,
+                length: underlineMatch[0].length,
+                innerContent: underlineMatch[1],
+            });
+        }
+
+        // 7. Strikethrough (~~text~~)
+        const strikeMatch = remaining.match(new RegExp(`~~(?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)~~`));
+        if (strikeMatch && strikeMatch.index !== undefined) {
+            candidates.push({
+                type: 'strikethrough',
+                index: strikeMatch.index,
+                length: strikeMatch[0].length,
+                innerContent: strikeMatch[1],
+            });
+        }
+
+        // 8. Straight Quote ("text")
+        const quoteMatch = remaining.match(new RegExp(`"(?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)"`));
         if (quoteMatch && quoteMatch.index !== undefined) {
             candidates.push({
                 type: 'quote',
@@ -98,8 +119,8 @@ function parseFormattedText(
             });
         }
 
-        // 7. Curly Quotes (“text”)
-        const curlyMatch = remaining.match(/\u201C([^\u201D]*)\u201D/s);
+        // 9. Curly Quotes (“text”)
+        const curlyMatch = remaining.match(new RegExp(`\\u201C(${NO_PARAGRAPH_BREAK})\\u201D`));
         if (curlyMatch && curlyMatch.index !== undefined) {
             candidates.push({
                 type: 'curly_quote',
@@ -109,7 +130,6 @@ function parseFormattedText(
             });
         }
 
-        // If no more formatting matches exist, render remaining text
         if (candidates.length === 0) {
             if (isTopLevel) {
                 nodes.push(
@@ -118,17 +138,14 @@ function parseFormattedText(
                     </span>
                 );
             } else {
-                // In nested mode, plain text inherits parent span's color directly
                 nodes.push(remaining);
             }
             break;
         }
 
-        // Pick earliest match in string (longest match on ties)
         candidates.sort((a, b) => a.index - b.index || b.length - a.length);
         const match = candidates[0];
 
-        // Process any unformatted text before the matched token
         if (match.index > 0) {
             const before = remaining.slice(0, match.index);
             if (isTopLevel) {
@@ -142,7 +159,6 @@ function parseFormattedText(
             }
         }
 
-        // Process the matched token recursively
         switch (match.type) {
             case 'list_item': {
                 const isBullet = /^[-*+•]$/.test(match.bullet ?? '');
@@ -190,6 +206,36 @@ function parseFormattedText(
                 );
                 break;
 
+            case 'underline':
+                nodes.push(
+                    <span
+                        key={keyGen.next()}
+                        style={{
+                            textDecoration: 'underline',
+                            textDecorationColor: 'inherit',
+                            color: 'inherit',
+                        }}
+                    >
+                        {parseFormattedText(match.innerContent ?? '', isTopLevel, keyGen)}
+                    </span>
+                );
+                break;
+
+            case 'strikethrough':
+                nodes.push(
+                    <span
+                        key={keyGen.next()}
+                        style={{
+                            textDecoration: 'line-through',
+                            textDecorationColor: 'inherit',
+                            color: 'inherit',
+                        }}
+                    >
+                        {parseFormattedText(match.innerContent ?? '', isTopLevel, keyGen)}
+                    </span>
+                );
+                break;
+
             case 'quote':
                 nodes.push(
                     <span key={keyGen.next()} className="fmt-quote">
@@ -209,7 +255,6 @@ function parseFormattedText(
                 break;
         }
 
-        // Advance cursor past the matched token
         remaining = remaining.slice(match.index + match.length);
     }
 

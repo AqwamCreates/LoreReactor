@@ -7,7 +7,7 @@ import {
     toolResultEndString,
 } from '../dictionaries/stringList';
 
-export type FormatCategory = 'plain' | 'italics' | 'bold' | 'strikethrough' | 'quotes' | 'parentheses' | 'brackets';
+export type FormatCategory = 'plain' | 'italics' | 'bold' | 'underline' | 'strikethrough' | 'quotes' | 'parentheses' | 'brackets';
 
 export interface DetectedSegment {
     start: number;
@@ -28,6 +28,7 @@ export const CATEGORY_LABELS: Record<FormatCategory, string> = {
     plain: 'Plain Text',
     italics: 'Italics',
     bold: 'Bold',
+    underline: 'Underline',
     strikethrough: 'Strikethrough',
     quotes: 'Quotation Marks',
     parentheses: 'Parentheses',
@@ -37,21 +38,23 @@ export const CATEGORY_LABELS: Record<FormatCategory, string> = {
 export const TARGET_OPTIONS: { value: FormatCategory; label: string }[] = [
     { value: 'plain', label: 'Plain Text' },
     { value: 'italics', label: 'Italics' },
+    { value: 'bold', label: 'Bold' },
+    { value: 'underline', label: 'Underline' },
+    { value: 'strikethrough', label: 'Strikethrough' },
+    { value: 'quotes', label: 'Quotation Marks' },
     { value: 'parentheses', label: 'Parentheses' },
     { value: 'brackets', label: 'Square Brackets' },
-    { value: 'quotes', label: 'Quotation Marks' },
-    { value: 'bold', label: 'Bold' },
-    { value: 'strikethrough', label: 'Strikethrough' },
 ];
 
 export const DEFAULT_CONVERSIONS: Record<FormatCategory, FormatCategory> = {
     plain: 'plain',
     italics: 'italics',
+    bold: 'bold',
+    underline: 'underline',
+    strikethrough: 'strikethrough',
+    quotes: 'quotes',
     parentheses: 'parentheses',
     brackets: 'brackets',
-    quotes: 'quotes',
-    bold: 'bold',
-    strikethrough: 'strikethrough',
 };
 
 interface RawMatch {
@@ -62,15 +65,30 @@ interface RawMatch {
     rawMatch: string;
 }
 
+const NO_PARAGRAPH_BREAK = '(?:[^\r\n]|(?<!\r?\n)\r?\n(?!\r?\n))+?';
+
 const PATTERNS: { regex: RegExp; category: FormatCategory; innerGroup: number }[] = [
-    { regex: /(?<!\*)\*\*(?!\s|\*)(.+?)(?<!\s|\*)\*\*/gs, category: 'bold', innerGroup: 1 },
-    { regex: /___(.+?)___/gs, category: 'bold', innerGroup: 1 },
-    { regex: /~~(.+?)~~/gs, category: 'strikethrough', innerGroup: 1 },
-    { regex: /(?<!\*)\*(?!\s|\*)(.+?)(?<!\s|\*)\*/gs, category: 'italics', innerGroup: 1 },
-    { regex: /_(.+?)_/gs, category: 'italics', innerGroup: 1 },
-    { regex: /["\u201C](.+?)["\u201D]/gs, category: 'quotes', innerGroup: 1 },
-    { regex: /\(([^)]+)\)/gs, category: 'parentheses', innerGroup: 1 },
-    { regex: /\[([^\]]+)\]/gs, category: 'brackets', innerGroup: 1 },
+    // Bold: **text** ONLY
+    { regex: new RegExp(`(?<!\\*)\\*\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*\\*(?!\\*)`, 'g'), category: 'bold', innerGroup: 1 },
+    
+    // Italics: *text* ONLY
+    { regex: new RegExp(`(?<!\\*)\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*(?!\\*)`, 'g'), category: 'italics', innerGroup: 1 },
+    
+    // Underline: _text_ ONLY (ignoring intra-word underscores like FOX_2)
+    { regex: new RegExp(`(?<!\\w)_(?!\\s|_)(${NO_PARAGRAPH_BREAK})(?<!\\s|_)_(?!\\w)`, 'g'), category: 'underline', innerGroup: 1 },
+    
+    // Strikethrough: ~~text~~
+    { regex: new RegExp(`~~(?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)~~`, 'g'), category: 'strikethrough', innerGroup: 1 },
+
+    // Quotes: straight quotes and curly quotes ONLY
+    { regex: new RegExp(`"(?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)"`, 'g'), category: 'quotes', innerGroup: 1 },
+    { regex: new RegExp(`\\u201C(${NO_PARAGRAPH_BREAK})\\u201D`, 'g'), category: 'quotes', innerGroup: 1 },
+    
+    // Parentheses: (text)
+    { regex: new RegExp(`\\((?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)\\)`, 'g'), category: 'parentheses', innerGroup: 1 },
+    
+    // Brackets: [text]
+    { regex: new RegExp(`\\[(?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)\\]`, 'g'), category: 'brackets', innerGroup: 1 },
 ];
 
 function findToolRanges(text: string): Array<{ start: number; end: number }> {
@@ -80,7 +98,6 @@ function findToolRanges(text: string): Array<{ start: number; end: number }> {
     const resStartEsc = escapeRegex(toolResultStartString);
     const resEndEsc = escapeRegex(toolResultEndString);
 
-    // Protect both ⟪...⟫ tool calls and ⟦...⟧ observations from reformatting
     const toolRegex = new RegExp(
         `(${callStartEsc}[\\s\\S]*?${callEndEsc}|${resStartEsc}[\\s\\S]*?${resEndEsc})`,
         'g'
@@ -101,6 +118,7 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
     const allMatches: RawMatch[] = [];
 
     for (const { regex, category, innerGroup } of PATTERNS) {
+        regex.lastIndex = 0;
         let match: RegExpExecArray | null = regex.exec(text);
 
         while (match !== null) {
@@ -249,6 +267,8 @@ export function wrapCoreText(core: string, target: FormatCategory): string {
             return `*${core}*`;
         case 'bold':
             return `**${core}**`;
+        case 'underline':
+            return `_${core}_`;
         case 'strikethrough':
             return `~~${core}~~`;
         case 'quotes':
@@ -287,7 +307,15 @@ export function convertPlainSegmentPreservingSpacing(raw: string, target: Format
 export function convertFormattedSegmentPreservingSpacing(seg: DetectedSegment, target: FormatCategory): string {
     if (target === seg.category) return seg.rawMatch;
     if (target === 'plain') return seg.innerText;
-    return wrapCoreText(seg.innerText, target);
+
+    const match = seg.innerText.match(/^(\s*)([\s\S]*?)(\s*)$/);
+    if (!match) return wrapCoreText(seg.innerText, target);
+
+    const leading = match[1] ?? '';
+    const core = match[2] ?? '';
+    const trailing = match[3] ?? '';
+
+    return `${leading}${wrapCoreText(core, target)}${trailing}`;
 }
 
 export function applyConversions(
@@ -325,13 +353,13 @@ export function applyConversions(
 
 export function buildCategoryConversions(segments: DetectedSegment[]): CategoryConversion[] {
     const counts: Record<FormatCategory, number> = {
-        plain: 0, italics: 0, bold: 0, strikethrough: 0,
-        quotes: 0, parentheses: 0, brackets: 0,
+        plain: 0, italics: 0, bold: 0, underline: 0,
+        strikethrough: 0, quotes: 0, parentheses: 0, brackets: 0,
     };
 
     for (const seg of segments) counts[seg.category]++;
 
-    const order: FormatCategory[] = ['plain', 'italics', 'bold', 'strikethrough', 'quotes', 'parentheses', 'brackets'];
+    const order: FormatCategory[] = ['plain', 'italics', 'bold', 'underline', 'strikethrough', 'quotes', 'parentheses', 'brackets'];
 
     return order
         .filter(category => counts[category] > 0)
@@ -342,8 +370,6 @@ export function buildCategoryConversions(segments: DetectedSegment[]): CategoryC
             count: counts[category],
         }));
 }
-
-// ─── Bayesian Learning UI Bridges ───────────────────────────────────
 
 export function buildCategoryConversionsWithLearning(
     text: string, 

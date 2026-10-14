@@ -7,24 +7,31 @@ export function extractNarratableText(text: string, narrateTexts: Record<textTyp
 
     const escapeRegex = (stringToEscape: string) => stringToEscape.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    // ✅ Match completed tool calls/results AND in-flight unclosed tool calls/results, plus think tags
+    // 1. Strip tool calls/results and in-flight think tags from audio
     const toolRegex = new RegExp(
         `(${escapeRegex(toolCallStartString)}[\\s\\S]*?(${escapeRegex(toolCallEndString)}|$)|` +
         `${escapeRegex(toolResultStartString)}[\\s\\S]*?(${escapeRegex(toolResultEndString)}|$)|` +
         `<think>[\\s\\S]*?(<\\/think>|$))`,
         'g'
     );
-    const cleanText = text.replace(toolRegex, '');
+    let cleanText = text.replace(toolRegex, '');
+
+    // 2. Strip bullet point markers at line starts (-, *, +, •) followed by spaces
+    cleanText = cleanText.replace(/(?:^|\r?\n)[ \t]*[-*+•][ \t]+/g, '\n');
 
     let result = '';
     let i = 0;
     
+    // Formatting state flags
     let insideItalic = false;
     let insideBold = false;
+    let insideUnderline = false;
     let insideQuote = false;
-    let insideParenthesis = false;
-    let insideBracket = false;
-    let insideBrace = false;
+
+    // Depth counters for nested enclosures to prevent underflow from rogue closers
+    let parenthesisDepth = 0;
+    let bracketDepth = 0;
+    let braceDepth = 0;
 
     const fixTrailingPunctuation = () => {
         result = result.replace(/([,!?])(\s*)$/, '.$2');
@@ -33,122 +40,236 @@ export function extractNarratableText(text: string, narrateTexts: Record<textTyp
     while (i < cleanText.length) {
         const currentCharacter = cleanText[i];
         const nextCharacter = cleanText[i + 1];
+        const nextNextCharacter = cleanText[i + 2];
         const previousCharacter = cleanText[i - 1];
 
-        // Check for bold marker (**)
+        // ─── 1. PARAGRAPH BREAK QUARANTINE ─────────────────────────────────────
+        if (currentCharacter === '\n') {
+            let lookAheadIdx = i + 1;
+            while (
+                lookAheadIdx < cleanText.length && 
+                (cleanText[lookAheadIdx] === ' ' || cleanText[lookAheadIdx] === '\t' || cleanText[lookAheadIdx] === '\r')
+            ) {
+                lookAheadIdx++;
+            }
+            if (lookAheadIdx < cleanText.length && cleanText[lookAheadIdx] === '\n') {
+                if (insideItalic && narrateTexts.italicized) fixTrailingPunctuation();
+                if (insideBold && narrateTexts.bolded) fixTrailingPunctuation();
+                if (insideUnderline && narrateTexts.underlined) fixTrailingPunctuation();
+                if (insideQuote && narrateTexts.quoted) fixTrailingPunctuation();
+                if (parenthesisDepth > 0 && narrateTexts.parenthesized) fixTrailingPunctuation();
+                if (bracketDepth > 0 && narrateTexts.bracketed) fixTrailingPunctuation();
+                if (braceDepth > 0 && narrateTexts.braced) fixTrailingPunctuation();
+
+                insideItalic = false;
+                insideBold = false;
+                insideUnderline = false;
+                insideQuote = false;
+                parenthesisDepth = 0;
+                bracketDepth = 0;
+                braceDepth = 0;
+            }
+        }
+
+        // ─── 2. BOLD MARKERS (** ONLY) ─────────────────────────────────────────
         if (currentCharacter === '*' && nextCharacter === '*') {
-            const wasInsideBold = insideBold;
-            insideBold = !insideBold;
-            
-            if (wasInsideBold && narrateTexts.bolded) {
-                fixTrailingPunctuation();
-            } else if (!wasInsideBold && !narrateTexts.bolded) {
-                fixTrailingPunctuation();
+            const canOpen = !insideBold && nextNextCharacter !== undefined && !/\s/.test(nextNextCharacter);
+            const canClose = insideBold && previousCharacter !== undefined && !/\s/.test(previousCharacter);
+
+            if (canOpen || canClose) {
+                const wasInsideBold = insideBold;
+                insideBold = !insideBold;
+                
+                if (wasInsideBold && narrateTexts.bolded) {
+                    fixTrailingPunctuation();
+                } else if (!wasInsideBold && !narrateTexts.bolded) {
+                    fixTrailingPunctuation();
+                }
+                
+                i += 2;
+                continue;
             }
-            
-            i += 2;
-            continue;
         }
 
-        // Check for italic marker (*)
+        // ─── 3. ITALIC MARKERS (* ONLY) ────────────────────────────────────────
         if (currentCharacter === '*' && previousCharacter !== '*' && nextCharacter !== '*') {
-            const wasInsideItalic = insideItalic;
-            insideItalic = !insideItalic;
-            
-            if (wasInsideItalic && narrateTexts.italicized) {
-                fixTrailingPunctuation();
-            } else if (!wasInsideItalic && !narrateTexts.italicized) {
-                fixTrailingPunctuation();
+            const canOpen = nextCharacter !== undefined && !/\s/.test(nextCharacter);
+            const canClose = previousCharacter !== undefined && !/\s/.test(previousCharacter);
+
+            if (insideItalic && canClose) {
+                insideItalic = false;
+                if (narrateTexts.italicized) fixTrailingPunctuation();
+                i += 1;
+                continue;
+            } else if (!insideItalic && canOpen) {
+                insideItalic = true;
+                if (!narrateTexts.italicized) fixTrailingPunctuation();
+                i += 1;
+                continue;
+            } else if (insideItalic && !canClose && canOpen) {
+                insideItalic = true;
+                i += 1;
+                continue;
             }
-            
+        }
+
+        // ─── 4. UNDERLINE MARKERS (_ ONLY) ─────────────────────────────────────
+        if (currentCharacter === '_' && previousCharacter !== '_' && nextCharacter !== '_') {
+            const isIntraWord = previousCharacter !== undefined && /\w/.test(previousCharacter) &&
+                               nextCharacter !== undefined && /\w/.test(nextCharacter);
+
+            if (!isIntraWord) {
+                const canOpen = nextCharacter !== undefined && !/\s/.test(nextCharacter);
+                const canClose = previousCharacter !== undefined && !/\s/.test(previousCharacter);
+
+                if (insideUnderline && canClose) {
+                    insideUnderline = false;
+                    if (narrateTexts.underlined) fixTrailingPunctuation();
+                    i += 1;
+                    continue;
+                } else if (!insideUnderline && canOpen) {
+                    insideUnderline = true;
+                    if (!narrateTexts.underlined) fixTrailingPunctuation();
+                    i += 1;
+                    continue;
+                } else if (insideUnderline && !canClose && canOpen) {
+                    insideUnderline = true;
+                    i += 1;
+                    continue;
+                }
+            }
+        }
+
+        // ─── 5. CURLY DOUBLE QUOTES (“ ”) ──────────────────────────────────────
+        if (currentCharacter === '\u201C') { // “
+            if (!insideQuote) {
+                insideQuote = true;
+                if (!narrateTexts.quoted) fixTrailingPunctuation();
+            }
             i += 1;
             continue;
         }
 
-        // ✅ Check for straight and curly double quote markers, plus dialogue brackets
-        const isQuoteMarker = (
-            currentCharacter === '"' || 
-            currentCharacter === '\u201C' || // “
-            currentCharacter === '\u201D' || // ”
-            currentCharacter === '「' || 
-            currentCharacter === '」'
-        );
-
-        if (isQuoteMarker) {
-            const wasInsideQuote = insideQuote;
-            insideQuote = !insideQuote;
-            
-            if (wasInsideQuote && narrateTexts.quoted) {
-                fixTrailingPunctuation();
-            } else if (!wasInsideQuote && !narrateTexts.quoted) {
-                fixTrailingPunctuation();
+        if (currentCharacter === '\u201D') { // ”
+            if (insideQuote) {
+                insideQuote = false;
+                if (narrateTexts.quoted) fixTrailingPunctuation();
             }
-            
             i += 1;
             continue;
         }
 
-        // Check for parenthesis markers
+        // ─── 6. STRAIGHT DOUBLE QUOTES (") ─────────────────────────────────────
+        if (currentCharacter === '"') {
+            const canOpen = nextCharacter !== undefined && !/\s/.test(nextCharacter);
+            const canClose = previousCharacter !== undefined && !/\s/.test(previousCharacter);
+
+            if (insideQuote && canClose) {
+                insideQuote = false;
+                if (narrateTexts.quoted) fixTrailingPunctuation();
+                i += 1;
+                continue;
+            } else if (!insideQuote && canOpen) {
+                insideQuote = true;
+                if (!narrateTexts.quoted) fixTrailingPunctuation();
+                i += 1;
+                continue;
+            } else if (insideQuote && !canClose && canOpen) {
+                insideQuote = true;
+                i += 1;
+                continue;
+            } else {
+                const wasInsideQuote = insideQuote;
+                insideQuote = !insideQuote;
+                if (wasInsideQuote && narrateTexts.quoted) {
+                    fixTrailingPunctuation();
+                } else if (!wasInsideQuote && !narrateTexts.quoted) {
+                    fixTrailingPunctuation();
+                }
+                i += 1;
+                continue;
+            }
+        }
+
+        // ─── 7. PARENTHESES () ─────────────────────────────────────────────────
         if (currentCharacter === '(') {
-            insideParenthesis = true;
-            if (!narrateTexts.parenthesized) fixTrailingPunctuation();
+            if (parenthesisDepth === 0 && !narrateTexts.parenthesized) fixTrailingPunctuation();
+            parenthesisDepth++;
             i += 1;
             continue;
         }
         if (currentCharacter === ')') {
-            const wasInsideParenthesis = insideParenthesis;
-            insideParenthesis = false;
-            if (wasInsideParenthesis && narrateTexts.parenthesized) fixTrailingPunctuation();
+            if (parenthesisDepth > 0) {
+                parenthesisDepth--;
+                if (parenthesisDepth === 0 && narrateTexts.parenthesized) fixTrailingPunctuation();
+            }
             i += 1;
             continue;
         }
 
-        // Check for bracket markers
+        // ─── 8. BRACKETS [] ────────────────────────────────────────────────────
         if (currentCharacter === '[') {
-            insideBracket = true;
-            if (!narrateTexts.bracketed) fixTrailingPunctuation();
+            if (bracketDepth === 0 && !narrateTexts.bracketed) fixTrailingPunctuation();
+            bracketDepth++;
             i += 1;
             continue;
         }
         if (currentCharacter === ']') {
-            const wasInsideBracket = insideBracket;
-            insideBracket = false;
-            if (wasInsideBracket && narrateTexts.bracketed) fixTrailingPunctuation();
+            if (bracketDepth > 0) {
+                bracketDepth--;
+                if (bracketDepth === 0 && narrateTexts.bracketed) fixTrailingPunctuation();
+            }
             i += 1;
             continue;
         }
 
-        // Check for brace markers
+        // ─── 9. BRACES {} ──────────────────────────────────────────────────────
         if (currentCharacter === '{') {
-            insideBrace = true;
-            if (!narrateTexts.braced) fixTrailingPunctuation();
+            if (braceDepth === 0 && !narrateTexts.braced) fixTrailingPunctuation();
+            braceDepth++;
             i += 1;
             continue;
         }
         if (currentCharacter === '}') {
-            const wasInsideBrace = insideBrace;
-            insideBrace = false;
-            if (wasInsideBrace && narrateTexts.braced) fixTrailingPunctuation();
+            if (braceDepth > 0) {
+                braceDepth--;
+                if (braceDepth === 0 && narrateTexts.braced) fixTrailingPunctuation();
+            }
             i += 1;
             continue;
         }
 
-        // Determine whether this character should be included
+        // ─── 10. TEXT INCLUSION EVALUATION ─────────────────────────────────────
+        const isInsideParenthesis = parenthesisDepth > 0;
+        const isInsideBracket = bracketDepth > 0;
+        const isInsideBrace = braceDepth > 0;
+
         let shouldIncludeCharacter = false;
         
         if (insideItalic && narrateTexts.italicized) {
             shouldIncludeCharacter = true;
         } else if (insideBold && narrateTexts.bolded) {
             shouldIncludeCharacter = true;
+        } else if (insideUnderline && narrateTexts.underlined) {
+            shouldIncludeCharacter = true;
         } else if (insideQuote && narrateTexts.quoted) {
             shouldIncludeCharacter = true;
-        } else if (insideParenthesis && narrateTexts.parenthesized) {
+        } else if (isInsideParenthesis && narrateTexts.parenthesized) {
             shouldIncludeCharacter = true;
-        } else if (insideBracket && narrateTexts.bracketed) {
+        } else if (isInsideBracket && narrateTexts.bracketed) {
             shouldIncludeCharacter = true;
-        } else if (insideBrace && narrateTexts.braced) {
+        } else if (isInsideBrace && narrateTexts.braced) {
             shouldIncludeCharacter = true;
-        } else if (!insideItalic && !insideBold && !insideQuote && !insideParenthesis && !insideBracket && !insideBrace && narrateTexts.normal) {
+        } else if (
+            !insideItalic && 
+            !insideBold && 
+            !insideUnderline && 
+            !insideQuote && 
+            !isInsideParenthesis && 
+            !isInsideBracket && 
+            !isInsideBrace && 
+            narrateTexts.normal
+        ) {
             shouldIncludeCharacter = true;
         }
 

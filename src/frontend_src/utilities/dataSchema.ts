@@ -270,7 +270,8 @@ ${characterToolsSchema}
     "voiceActivityDetectionDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "narrateTexts": {
       "normal": "boolean (default false)", "quoted": "boolean (default false)", "bolded": "boolean (default false)",
-      "italicized": "boolean (default false)", "parenthesized": "boolean (default false)", "bracketed": "boolean (default false)",
+      "italicized": "boolean (default false)", "underlined": "boolean (default false)",
+      "parenthesized": "boolean (default false)", "bracketed": "boolean (default false)",
       "braced": "boolean (default false)"
     },
     "stripThinkTokens": "boolean (default true)",

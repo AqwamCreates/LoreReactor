@@ -728,7 +728,7 @@ export interface RawPromptBlock extends RawData {
   locationBindings: string[]
 }
 
-export type textType = "normal" | "quoted" | "bolded" | "italicized" | "parenthesized" | "bracketed" | "braced"
+export type textType = "normal" | "quoted" | "bolded" | "italicized" | "underlined" | "parenthesized" | "bracketed" | "braced"
 
 export type toolUsageDisplayMode = "none" | "icon" | "simple" | "detailed" | "full" | "raw" // Default is none.
 

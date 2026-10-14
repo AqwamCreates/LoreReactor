@@ -50,14 +50,25 @@ const ALL_STRATEGY_TYPES: SummarizationStrategyType[] = [
 ];
 
 const NARRATE_TEXT_LABELS: Record<textType, string> = {
-    normal: 'Normal Text', quoted: 'Quoted Text', bolded: 'Bolded Text',
-    italicized: 'Italicized Text', parenthesized: 'Parenthesized Text',
-    bracketed: 'Bracketed Text', braced: 'Braced Text',
+    normal: 'Normal Text', 
+    quoted: 'Quoted Text', 
+    bolded: 'Bolded Text',
+    italicized: 'Italicized Text', 
+    underlined: 'Underlined Text', // ✅ Placed after italics
+    parenthesized: 'Parenthesized Text',
+    bracketed: 'Bracketed Text', 
+    braced: 'Braced Text',
 };
 
 const DEFAULT_NARRATE_TEXTS: Record<textType, boolean> = {
-    normal: false, quoted: false, bolded: false, italicized: false,
-    parenthesized: false, bracketed: false, braced: false,
+    normal: false, 
+    quoted: false, 
+    bolded: false, 
+    italicized: false,
+    underlined: false, // ✅ Placed after italics
+    parenthesized: false, 
+    bracketed: false, 
+    braced: false,
 };
 
 const TOOL_USAGE_DISPLAY_MODES: { value: toolUsageDisplayMode; label: string; description: string }[] = [
@@ -104,6 +115,7 @@ function migrateNarrateTexts(profile: Profile): Record<textType, boolean> {
         quoted: (p.narrateQuotedText as boolean) ?? DEFAULT_NARRATE_TEXTS.quoted,
         bolded: (p.narrateBoldedText as boolean) ?? DEFAULT_NARRATE_TEXTS.bolded,
         italicized: (p.narrateItalicizedText as boolean) ?? DEFAULT_NARRATE_TEXTS.italicized,
+        underlined: (p.narrateUnderlinedText as boolean) ?? DEFAULT_NARRATE_TEXTS.underlined, // ✅ Migrated fallback
         parenthesized: DEFAULT_NARRATE_TEXTS.parenthesized,
         bracketed: DEFAULT_NARRATE_TEXTS.bracketed,
         braced: DEFAULT_NARRATE_TEXTS.braced,
@@ -261,7 +273,6 @@ export function ProfileEditorModal({
         if (expandedSignalIndex === index) setExpandedSignalIndex(null);
     }, [expandedSignalIndex]);
 
-    // ✅ UPDATED: Split into Language Model and Text-To-Speech Model samplers
     const [characterLanguageModelSamplerId, setCharacterLanguageModelSamplerId] = useState<string>(ep?.characterLanguageModelSampler?.id ?? '');
     const [characterTextToSpeechModelSamplerId, setCharacterTextToSpeechModelSamplerId] = useState<string>(ep?.characterTextToSpeechModelSampler?.id ?? '');
     
@@ -370,7 +381,6 @@ export function ProfileEditorModal({
             })),
             summarizationInstruction: summarizationInstruction.trim() || undefined,
             autoResumeSignals: [...autoResumeSignals],
-            // ✅ UPDATED: Map dual samplers
             characterLanguageModelSampler: getSampler(characterLanguageModelSamplerId),
             characterTextToSpeechModelSampler: getSampler(characterTextToSpeechModelSamplerId),
             webSummarizationSampler: getSampler(webSummarizationSamplerId),
@@ -613,7 +623,22 @@ export function ProfileEditorModal({
                                 <ProfileCheckbox checked={enableCharacterExpression} onChange={setEnableCharacterExpression} label="Enable Character Expression" hint="Use sentiment analysis to swap character images based on emotional tone. Disable to always use the neutral character images." />
                             </div>
 
-                            <div className="editor-section"><span className="editor-section-title">Voice Narration</span><div className="voice-narration-grid">{narrateTextKeys.map(type => (<label key={type} className="voice-narration-toggle"><input type="checkbox" checked={narrateTexts[type]} onChange={(e) => handleNarrateToggle(type, e.target.checked)} className="editor-checkbox-input" /><span>{NARRATE_TEXT_LABELS[type]}</span></label>))}</div></div>
+                            <div className="editor-section">
+                                <span className="editor-section-title">Voice Narration</span>
+                                <div className="voice-narration-grid">
+                                    {narrateTextKeys.map(type => (
+                                        <label key={type} className="voice-narration-toggle">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={narrateTexts[type]} 
+                                                onChange={(e) => handleNarrateToggle(type, e.target.checked)} 
+                                                className="editor-checkbox-input" 
+                                            />
+                                            <span>{NARRATE_TEXT_LABELS[type]}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
 
                             <div className="editor-section"><span className="editor-section-title">Output Processing</span><ProfileCheckbox checked={stripThinkTokens} onChange={setStripThinkTokens} label="Strip Think Tokens" hint="Remove thinking tokens from displayed output. The model still uses them internally." /></div>
                         </>
@@ -1055,7 +1080,7 @@ export function ProfileEditorModal({
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px', marginTop: '12px' }}>
                                     <StopPatternSelect label="Character Stop Pattern" value={characterStopPatternId} onChange={setCharacterStopPatternId} allStopPatterns={allStopPatterns} />
                                     <StopPatternSelect label="Web Summarization Stop Pattern" value={webSummarizationStopPatternId} onChange={setWebSummarizationStopPatternId} allStopPatterns={allStopPatterns} />
-                                    <StopPatternSelect label="Interaction Data Stop Pattern" value={interactionDataSummarizationStopPatternId} onChange={setInteractionDataSummarizationStopPatternId} allStopPatterns={allStopPatterns} />
+                                    <StopPatternSelect label="Interaction Data Stop Pattern" value={interactionDataStopPatternId} onChange={setInteractionDataStopPatternId} allStopPatterns={allStopPatterns} />
                                     <StopPatternSelect label="AI Recommendation Stop Pattern" value={aiRecommendationStopPatternId} onChange={setAiRecommendationStopPatternId} allStopPatterns={allStopPatterns} />
                                 </div>
                             </div>

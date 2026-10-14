@@ -10,14 +10,25 @@ interface StandaloneOverlayProfileEditorProps {
 }
 
 const NARRATE_TEXT_LABELS: Record<textType, string> = {
-    normal: 'Normal Text', quoted: 'Quoted Text', bolded: 'Bolded Text',
-    italicized: 'Italicized Text', parenthesized: 'Parenthesized Text',
-    bracketed: 'Bracketed Text', braced: 'Braced Text',
+    normal: 'Normal Text', 
+    quoted: 'Quoted Text', 
+    bolded: 'Bolded Text',
+    italicized: 'Italicized Text', 
+    underlined: 'Underlined Text', // ✅ Placed after italics
+    parenthesized: 'Parenthesized Text',
+    bracketed: 'Bracketed Text', 
+    braced: 'Braced Text',
 };
 
 const DEFAULT_NARRATE_TEXTS: Record<textType, boolean> = {
-    normal: false, quoted: false, bolded: false, italicized: false,
-    parenthesized: false, bracketed: false, braced: false,
+    normal: false, 
+    quoted: false, 
+    bolded: false, 
+    italicized: false,
+    underlined: false, // ✅ Placed after italics
+    parenthesized: false, 
+    bracketed: false, 
+    braced: false,
 };
 
 const TOOL_USAGE_DISPLAY_MODES: { value: toolUsageDisplayMode; label: string; description: string }[] = [
@@ -67,7 +78,12 @@ export function StandaloneOverlayProfileEditor({ profile, onClose, onSave }: Sta
     
     const [volume, setVolume] = useState<number>(ep?.volume ?? -1);
     const [stripThinkTokens, setStripThinkTokens] = useState(ep?.stripThinkTokens ?? false);
-    const [narrateTexts, setNarrateTexts] = useState<Record<textType, boolean>>(ep?.narrateTexts ?? { ...DEFAULT_NARRATE_TEXTS });
+    
+    // ✅ Merged with DEFAULT_NARRATE_TEXTS to safely hydrate older profiles lacking 'underlined'
+    const [narrateTexts, setNarrateTexts] = useState<Record<textType, boolean>>({
+        ...DEFAULT_NARRATE_TEXTS,
+        ...(ep?.narrateTexts ?? {}),
+    });
 
     const handleNarrateToggle = (type: textType, checked: boolean) => setNarrateTexts(prev => ({ ...prev, [type]: checked }));
     const selectedToolUsageDisplayMode = TOOL_USAGE_DISPLAY_MODES.find(m => m.value === toolUsageDisplayMode) ?? TOOL_USAGE_DISPLAY_MODES[0];
@@ -204,7 +220,12 @@ export function StandaloneOverlayProfileEditor({ profile, onClose, onSave }: Sta
                         <div className="voice-narration-grid">
                             {(Object.keys(NARRATE_TEXT_LABELS) as textType[]).map(type => (
                                 <label key={type} className="voice-narration-toggle">
-                                    <input type="checkbox" checked={narrateTexts[type]} onChange={(e) => handleNarrateToggle(type, e.target.checked)} className="editor-checkbox-input" />
+                                    <input 
+                                        type="checkbox" 
+                                        checked={narrateTexts[type]} 
+                                        onChange={(e) => handleNarrateToggle(type, e.target.checked)} 
+                                        className="editor-checkbox-input" 
+                                    />
                                     <span className="voice-narration-label">{NARRATE_TEXT_LABELS[type]}</span>
                                 </label>
                             ))}
