@@ -22,7 +22,7 @@ import type {
 
 import type { FormatPreferenceData } from '../services/FormatPreferenceEngine';
 
-import { localURL } from '../../configurations';
+import { localURL, clientId } from '../../configurations';
 import { v4 as uuidv4 } from 'uuid';
 import {
     browserReadJson, browserWriteJson, browserDeleteFile,
@@ -170,7 +170,13 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 
   try {
     const targetUrl = `${localURL}${normalizeUrl(url)}`;
-    const response = await fetch(targetUrl);
+    const response = await fetch(targetUrl, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+      },
+    });
     
     if (!response.ok) {
       if (response.status === 404) return null;
@@ -209,10 +215,14 @@ async function putJson<T>(url: string, data: T): Promise<void> {
   }
 
   try {
-    const targetUrl = `${localURL}${normalizeUrl(url)}`;
+    const separator = url.includes('?') ? '&' : '?';
+    const targetUrl = `${localURL}${normalizeUrl(url)}${separator}clientId=${encodeURIComponent(clientId)}`;
     const response = await fetch(targetUrl, { 
       method: 'PUT', 
-      headers: { 'Content-Type': 'application/json' }, 
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Client-Id': clientId,
+      }, 
       body: JSON.stringify(data) 
     });
     if (!response.ok) throw new Error(`Failed to save data to ${targetUrl}: HTTP ${response.status}`);
@@ -234,8 +244,14 @@ async function deleteResource(url: string): Promise<void> {
   }
 
   try {
-    const targetUrl = `${localURL}${normalizeUrl(url)}`;
-    const response = await fetch(targetUrl, { method: 'DELETE' });
+    const separator = url.includes('?') ? '&' : '?';
+    const targetUrl = `${localURL}${normalizeUrl(url)}${separator}clientId=${encodeURIComponent(clientId)}`;
+    const response = await fetch(targetUrl, { 
+      method: 'DELETE',
+      headers: {
+        'X-Client-Id': clientId,
+      },
+    });
     if (!response.ok && response.status !== 404) throw new Error(`Failed to delete resource at ${targetUrl}: HTTP ${response.status}`);
   } catch (e) {
     if ((e as Error).message.includes('Failed to fetch') || (e as Error).message.includes('NetworkError')) {
