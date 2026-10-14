@@ -1,5 +1,6 @@
 // src/frontend_src/components/InteractionDataManagerModal.tsx
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import type React from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import type { RawInteractionData, InteractionDataFolder } from '../types';
 import '../main.css';
 
@@ -15,7 +16,7 @@ interface InteractionDataManagerModalProps {
     
     onDeleteInteractionDataFolder: (id: string) => void;
     onCreateNewFolder?: (name: string) => void;
-    onSaveInteractionDataFolder: (folder: InteractionDataFolder) => Promise<boolean> | void;
+    onSaveInteractionDataFolder: (folder: InteractionDataFolder) => Promise<boolean>;
     
     onMoveInteractionDataToFolder: (id: string, folderId: string | null) => void;
     onInspectInteractionData?: (id: string) => void;
@@ -171,7 +172,7 @@ export function InteractionDataManagerModal({
             onDeleteInteractionData(id);
         } else {
             const folder = folderMap.get(id);
-            if (folder && folder.interactionDataIds.some(dataId => isInteractionDataABranchStem(dataId))) {
+            if (folder?.interactionDataIds.some(dataId => isInteractionDataABranchStem(dataId))) {
                 addToast('Cannot delete folder: It contains interaction data that other sessions branch from.', 'error');
                 setConfirmDeleteId(null);
                 return;
