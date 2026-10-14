@@ -1425,8 +1425,8 @@ MODE: LADDER (Standard Chat View)
     }
 
     .mode-ladder .context-bar-extended-row .nav-button {
-        flex: 0 0 auto;
-        min-width: clamp(50px, 15vw, 80px);
+        flex: 1 1 0;
+        min-width: clamp(45px, 12vw, 70px);
     }
 }
 
