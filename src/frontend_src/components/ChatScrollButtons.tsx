@@ -1,5 +1,5 @@
 // frontend_src/components/ChatScrollButtons.tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 
 interface ChatScrollButtonsProps {
     containerRef: React.RefObject<HTMLDivElement | null>;
@@ -17,51 +17,68 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
 }: ChatScrollButtonsProps) {
     const [showTopButton, setShowTopButton] = useState(false);
     const [showBottomButton, setShowBottomButton] = useState(false);
-    const [containerRect, setContainerRect] = useState<{ top: number; bottom: number; right: number } | null>(null);
 
-    const measure = useCallback(() => {
+    // Refs for direct DOM manipulation to bypass React re-render lag during context bar animation
+    const topButtonRef = useRef<HTMLButtonElement>(null);
+    const bottomButtonRef = useRef<HTMLButtonElement>(null);
+
+    const updatePositionsAndVisibility = useCallback(() => {
         const container = containerRef.current;
         if (!container) return;
+
         const { scrollTop, scrollHeight, clientHeight } = container;
         setShowTopButton(scrollTop > 100);
         setShowBottomButton(scrollHeight - scrollTop - clientHeight > 100);
 
-        const rect = container.getBoundingClientRect();
-        setContainerRect({ top: rect.top, bottom: rect.bottom, right: rect.right });
-    }, [containerRef]);
+        if (!useViewportBounds) {
+            const rect = container.getBoundingClientRect();
+            const topPos = rect.top + BUTTON_GAP + VERTICAL_GAP;
+            const bottomPos = window.innerHeight - rect.bottom + BUTTON_GAP + VERTICAL_GAP;
+            const rightPos = window.innerWidth - rect.right + BUTTON_GAP;
+
+            // Mutate styles directly for instant, 60fps tracking without state re-renders
+            if (topButtonRef.current) {
+                topButtonRef.current.style.top = `${topPos}px`;
+                topButtonRef.current.style.right = `${rightPos}px`;
+            }
+            if (bottomButtonRef.current) {
+                bottomButtonRef.current.style.bottom = `${bottomPos}px`;
+                bottomButtonRef.current.style.right = `${rightPos}px`;
+            }
+        }
+    }, [containerRef, useViewportBounds]);
 
     useEffect(() => {
         const container = containerRef.current;
         if (!container) return;
 
-        measure();
+        updatePositionsAndVisibility();
 
-        // ✅ Observe the chat container's dimensions directly
-        // Whenever ContextBar expands or collapses, this observer triggers immediately
+        // Use ResizeObserver synced with requestAnimationFrame for smooth frame-locked positioning
         const resizeObserver = new ResizeObserver(() => {
-            measure();
+            requestAnimationFrame(updatePositionsAndVisibility);
         });
         resizeObserver.observe(container);
 
         const handleScroll = (e: Event) => {
             if (e.target === container) {
-                measure();
+                updatePositionsAndVisibility();
             }
         };
 
         container.addEventListener('scroll', handleScroll, { passive: true });
-        window.addEventListener('resize', measure);
+        window.addEventListener('resize', updatePositionsAndVisibility);
 
         return () => {
             resizeObserver.disconnect();
             container.removeEventListener('scroll', handleScroll);
-            window.removeEventListener('resize', measure);
+            window.removeEventListener('resize', updatePositionsAndVisibility);
         };
-    }, [containerRef, measure]);
+    }, [containerRef, updatePositionsAndVisibility]);
 
     useEffect(() => {
-        measure();
-    }, [messageCount, measure]);
+        updatePositionsAndVisibility();
+    }, [messageCount, updatePositionsAndVisibility]);
 
     const scrollToTop = () => {
         containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -73,28 +90,13 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
         container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
     };
 
-    if (!containerRect || (!showTopButton && !showBottomButton)) return null;
-
-    let topPosition: number;
-    let bottomPosition: number;
-    let rightPosition: number;
-
-    if (useViewportBounds) {
-        // Anchor to viewport edges for Cinematic mode
-        topPosition = 100;
-        bottomPosition = 100;
-        rightPosition = 20;
-    } else {
-        // Anchor to the chat-history container for Ladder mode
-        topPosition = containerRect.top + BUTTON_GAP + VERTICAL_GAP;
-        bottomPosition = window.innerHeight - containerRect.bottom + BUTTON_GAP + VERTICAL_GAP;
-        rightPosition = window.innerWidth - containerRect.right + BUTTON_GAP;
-    }
+    if (!showTopButton && !showBottomButton) return null;
 
     return (
         <>
             {showTopButton && (
                 <button
+                    ref={topButtonRef}
                     type="button"
                     tabIndex={-1}
                     className="chat-scroll-button"
@@ -103,10 +105,8 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
                     title="Scroll to top"
                     style={{
                         position: 'fixed',
-                        top: `${topPosition}px`,
-                        right: `${rightPosition}px`,
-                        // Smoothly interpolate position shifts
-                        transition: 'top 0.25s cubic-bezier(0.25, 0.8, 0.25, 1), bottom 0.25s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.2s ease, background 0.2s ease',
+                        ...(useViewportBounds ? { top: '100px', right: '20px' } : {}),
+                        transition: 'opacity 0.2s ease, background 0.2s ease',
                     }}
                 >
                     ↑
@@ -114,6 +114,7 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
             )}
             {showBottomButton && (
                 <button
+                    ref={bottomButtonRef}
                     type="button"
                     tabIndex={-1}
                     className="chat-scroll-button"
@@ -122,10 +123,8 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
                     title="Scroll to latest"
                     style={{
                         position: 'fixed',
-                        bottom: `${bottomPosition}px`,
-                        right: `${rightPosition}px`,
-                        // Smoothly slide up when context bar expands, and back down when it retracts
-                        transition: 'bottom 0.25s cubic-bezier(0.25, 0.8, 0.25, 1), top 0.25s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.2s ease, background 0.2s ease',
+                        ...(useViewportBounds ? { bottom: '100px', right: '20px' } : {}),
+                        transition: 'opacity 0.2s ease, background 0.2s ease',
                     }}
                 >
                     ↓
