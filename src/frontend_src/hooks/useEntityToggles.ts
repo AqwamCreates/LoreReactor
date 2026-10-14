@@ -20,6 +20,7 @@ interface UseEntityTogglesOptions {
     setSelectedBudgetStrategyId: (id: string | null) => void;
     setSelectedCharacterId: (id: string | null) => void;
     setSelectedModelId?: (id: string | null) => void;
+    unloadAllRunningModels?: () => Promise<void>; // ✅ Wired to unloadAllRunningModels
     loadFullCharacter: (id: string) => Promise<Character | null>;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
@@ -33,6 +34,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         selectedBudgetStrategyId,
         setSelectedBudgetStrategyId, setSelectedCharacterId,
         setSelectedModelId,
+        unloadAllRunningModels,
         loadFullCharacter, addToast,
     } = options;
 
@@ -298,8 +300,8 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         addToast('Extensions updated.', 'info');
     }, [activeExtensionIds, setActiveExtensionIds, addToast]);
 
-    // ─── MUTUALLY EXCLUSIVE: Activating a Budget Strategy deselects any direct model ───
-    const handleActivateBudgetStrategy = useCallback((sid: string | null) => {
+    // ─── MUTUALLY EXCLUSIVE: Activating a Budget Strategy deselects & unloads any direct model ───
+    const handleActivateBudgetStrategy = useCallback(async (sid: string | null) => {
         if (!sid || selectedBudgetStrategyId === sid) {
             setSelectedBudgetStrategyId(null);
             setActiveBudgetStrategy(null);
@@ -311,14 +313,19 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             setActiveBudgetStrategy(strategy ?? null);
             saveRawSessionData({ selectedBudgetStrategyId: sid });
 
-            // Deselect any active model
+            // Deselect any active model from session state
             setSelectedModelId?.(null);
             useSessionStore.setState({ selectedModel: null, selectedModelId: null });
             saveRawSessionData({ selectedModelId: null });
 
+            // ✅ CRITICAL FIX: Unload all currently running local models from VRAM
+            if (unloadAllRunningModels) {
+                await unloadAllRunningModels();
+            }
+
             addToast(`Budget strategy "${strategy?.name || sid}" activated!`, 'success');
         }
-    }, [selectedBudgetStrategyId, allBudgetStrategies, setSelectedBudgetStrategyId, setActiveBudgetStrategy, setSelectedModelId, addToast]);
+    }, [selectedBudgetStrategyId, allBudgetStrategies, setSelectedBudgetStrategyId, setActiveBudgetStrategy, setSelectedModelId, unloadAllRunningModels, addToast]);
 
     const handleActivateProfile = useCallback((pid: string) => {
         if (!interactionData) return;

@@ -429,6 +429,7 @@ function App() {
         setSelectedBudgetStrategyId: storeSetSelectedBudgetStrategyId,
         setSelectedCharacterId: storeSetSelectedCharacterId,
         setSelectedModelId: models.setSelectedModelId,
+        unloadAllRunningModels: models.unloadAllRunningModels, // ✅ WIRE HERE
         loadFullCharacter: characters.loadFullCharacter, addToast,
     });
 

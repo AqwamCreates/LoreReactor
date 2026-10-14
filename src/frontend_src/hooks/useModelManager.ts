@@ -183,7 +183,7 @@ export function useModelManager() {
         }
     }, []);
 
-    const unloadModelInternal = useCallback(async (id: string): Promise<boolean> => {
+    const unloadModel = useCallback(async (id: string): Promise<boolean> => {
         try {
             const response = await fetch(`${API_BASE}/language_models/unload`, {
                 method: 'POST',
@@ -216,9 +216,22 @@ export function useModelManager() {
         for (const otherId of otherRunningIds) {
             const otherName = modelsRef.current.find(m => m.id === otherId)?.name || otherId;
             addToastRef.current(`Switching models: Stopping ${otherName} to free resources...`, "info");
-            await unloadModelInternal(otherId);
+            await unloadModel(otherId);
         }
-    }, [unloadModelInternal]);
+    }, [unloadModel]);
+
+    // ✅ Bulk unload for Budget Strategy activation
+    const unloadAllRunningModels = useCallback(async () => {
+        const runningIds = Object.entries(runningModelsRef.current)
+            .filter(([, st]) => st.isRunning)
+            .map(([rid]) => rid);
+
+        for (const id of runningIds) {
+            const name = modelsRef.current.find(m => m.id === id)?.name || id;
+            addToastRef.current(`Stopping ${name} to free resources for budget strategy...`, "info");
+            await unloadModel(id);
+        }
+    }, [unloadModel]);
 
     // ─── MUTUALLY EXCLUSIVE: Selecting a Model deactivates any active Budget Strategy ───
     const deactivateActiveBudgetStrategy = useCallback(() => {
@@ -252,7 +265,7 @@ export function useModelManager() {
         if (isCurrentlyRunning && !forceUnload) {
             try {
                 addToastRef.current("Stopping model...", "info");
-                const success = await unloadModelInternal(id);
+                const success = await unloadModel(id);
                 if (success) {
                     addToastRef.current("Model stopped successfully", "success");
                     setSelectedModelId(prev => prev === id ? null : prev);
@@ -295,11 +308,11 @@ export function useModelManager() {
             deactivateActiveBudgetStrategy();
             addToastRef.current(`Model ${model.name} selected`, "success");
         }
-    }, [API_BASE, unloadModelInternal, unloadOtherRunningModels, setRunningModels, deactivateActiveBudgetStrategy]);
+    }, [API_BASE, unloadModel, unloadOtherRunningModels, setRunningModels, deactivateActiveBudgetStrategy]);
 
     const deleteModel = useCallback(async (id: string) => {
         if (runningModelsRef.current[id]?.isRunning) {
-            await unloadModelInternal(id);
+            await unloadModel(id);
         }
         try {
             await deleteRawModel(id);
@@ -309,7 +322,7 @@ export function useModelManager() {
         } catch {
             return false;
         }
-    }, [unloadModelInternal]);
+    }, [unloadModel]);
 
     useEffect(() => {
         let cancelled = false;
@@ -346,6 +359,8 @@ export function useModelManager() {
         refresh: loadModels,
         runningModels,
         toggleModelLoad,
+        unloadModel,
+        unloadAllRunningModels,
         selectedModelId,
         setSelectedModelId
     };
