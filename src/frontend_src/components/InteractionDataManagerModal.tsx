@@ -369,16 +369,15 @@ export function InteractionDataManagerModal({
                                                 )}
                                             </li>
                                         );
-                                    } else {
-                                        return (
-                                            <li key={item.data.id} className={`manager-item ${item.data.id === activeInteractionDataId ? 'selected-item' : ''}`}>
-                                                <div className="manager-item-main manager-item-main-clickable" onClick={() => { onSwitchInteractionData(item.data.id!); onClose(); }}>
-                                                    <div className="manager-item-info"><div className="manager-item-title">{item.data.name || 'Untitled Session'}</div></div>
-                                                </div>
-                                                {renderActions(item.data.id!, item.data.name || 'Untitled Session', 'interactionData')}
-                                            </li>
-                                        );
                                     }
+                                    return (
+                                        <li key={item.data.id} className={`manager-item ${item.data.id === activeInteractionDataId ? 'selected-item' : ''}`}>
+                                            <div className="manager-item-main manager-item-main-clickable" onClick={() => { onSwitchInteractionData(item.data.id!); onClose(); }}>
+                                                <div className="manager-item-info"><div className="manager-item-title">{item.data.name || 'Untitled Session'}</div></div>
+                                            </div>
+                                            {renderActions(item.data.id!, item.data.name || 'Untitled Session', 'interactionData')}
+                                        </li>
+                                    );
                                 })}
                             </ul>
                         )
