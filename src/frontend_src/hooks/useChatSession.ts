@@ -789,7 +789,21 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
 
         const existingText = msg.textContent;
-        const char = msg.character;
+        const rawChar = msg.character;
+        // ✅ Hydrate with freshest character object from registry to guarantee voice metadata
+        const char = allCharactersRef.current.find(c => c.id === rawChar?.id) || rawChar;
+
+        // ✅ STOP prior voice tracker drainage to eliminate background race conditions
+        if (currentVoiceTrackerRef.current) {
+            currentVoiceTrackerRef.current.stopImmediate();
+            currentVoiceTrackerRef.current = null;
+        }
+
+        // ✅ INITIALIZE voice tracker for the resumed turn
+        const voiceTracker = new StreamingVoiceTracker(char);
+        currentVoiceTrackerRef.current = voiceTracker;
+        voiceTracker.start().catch(err => console.warn('[useChatSession] Resume VoiceTracker start failed:', err));
+
         resumingMessageIdRef.current = messageId;
         resumingExistingTextRef.current = existingText;
         wasStoppedRef.current = false;
@@ -813,9 +827,11 @@ export function useChatSession(options: UseChatSessionOptions) {
         isAtBottomRef.current = true;
 
         try {
+            // ✅ Pass voiceTracker as the 9th parameter to handleServerResponse:
             const result = await chatEngine.handleServerResponse(
                 currentInteractionData, char, ctrl.signal,
-                throttledSetStreamingTextWithBroadcast, undefined, existingText, allPromptBlocks
+                throttledSetStreamingTextWithBroadcast, undefined, existingText, allPromptBlocks,
+                undefined, voiceTracker
             );
 
             const liveStreamedText = streamingTextRef.current || existingText;
@@ -879,6 +895,20 @@ export function useChatSession(options: UseChatSessionOptions) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
+            // ✅ Flush voice queue on resume completion
+            if (currentVoiceTrackerRef.current) {
+                const tracker = currentVoiceTrackerRef.current;
+                tracker.flushAndStop()
+                    .catch(e => console.warn('[useChatSession] VoiceTracker flush error in resume:', e))
+                    .finally(() => {
+                        if (currentVoiceTrackerRef.current === tracker) {
+                            currentVoiceTrackerRef.current = null;
+                        }
+                    });
+            }
+
+            resetStream();
+
             useSessionStore.setState({
                 isLoading: false,
                 streamingCharacter: null,
@@ -890,7 +920,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, [
         getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration,
         setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine,
-        throttledSetStreamingTextWithBroadcast, setStreamingState, setStats, isMultiplayerClient, isSpeculatingRef
+        throttledSetStreamingTextWithBroadcast, setStreamingState, setStats, isMultiplayerClient, isSpeculatingRef, resetStream
     ]);
 
     useEffect(() => {

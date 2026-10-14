@@ -588,7 +588,32 @@ export class CharacterActor {
             const isTool = isToolMessageText(rawText);
 
             if (isResuming) {
-                updatedData = data;
+                // ✅ FIX: Preserve any tool results executed during the resumed pass
+                const allExecutionResults = accState.getCollectedExecutionResults();
+                if (allExecutionResults.length > 0) {
+                    const newHistories = { ...data.interactionHistories };
+                    for (const [locId, msgs] of Object.entries(newHistories)) {
+                        const targetIdx = latestMsg 
+                            ? msgs.findIndex(m => m.id === latestMsg.id)
+                            : msgs.findIndex(m => m.character.id === character.id && (m.messageType === 'chat' || m.messageType === 'whisper'));
+                        if (targetIdx !== -1) {
+                            newHistories[locId] = [...msgs];
+                            const targetMsg = { ...msgs[targetIdx] } as ChatMessage;
+                            targetMsg.toolExecutionResults = [
+                                ...(targetMsg.toolExecutionResults || []),
+                                ...allExecutionResults,
+                            ];
+                            if (latestExpression) {
+                                targetMsg.characterExpression = latestExpression;
+                            }
+                            newHistories[locId][targetIdx] = targetMsg;
+                            break;
+                        }
+                    }
+                    updatedData = { ...data, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
+                } else {
+                    updatedData = data;
+                }
             } else {
                 const msg = isTool
                     ? createToolMessage(data, character, rawText, {
