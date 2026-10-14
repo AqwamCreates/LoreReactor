@@ -1,8 +1,8 @@
 // src/frontend_src/components/InteractionDataInspectionModal.tsx
 import type React from 'react';
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
-import type { InteractionData, Location, Character } from '../types';
-import { getCharacterImageUrlWithFallBack } from '../storages/serverStorage';
+import type { InteractionData, Location, Character, HistoryMessage } from '../types';
+import { getCharacterImageUrlWithFallBack, getCharacterImageUrl } from '../storages/serverStorage';
 import { getCurrentLocation } from '../utilities/locationLogic';
 import {
     ReactFlow,
@@ -167,23 +167,72 @@ function getLocationDistanceKm(locA: Location, locB: Location): number | null {
     return null;
 }
 
-function useCharacterPortraits(characters: Character[]): Map<string, string | null> {
+// ✅ UPDATED: Concurrent fetching + Latest Expression Resolution
+function useCharacterPortraits(characters: Character[], interactionData: InteractionData | null): Map<string, string | null> {
     const [portraits, setPortraits] = useState<Map<string, string | null>>(new Map());
+    
+    // Stable key prevents effect cancellation from volatile Zustand/React object references
+    const characterIdsKey = useMemo(() => characters.map(c => c.id).sort().join(','), [characters]);
 
     useEffect(() => {
         let cancelled = false;
-        const resolved = new Map<string, string | null>();
+        if (!characterIdsKey) {
+            setPortraits(new Map());
+            return;
+        }
 
         (async () => {
-            for (const c of characters) {
-                const url = await getCharacterImageUrlWithFallBack(c.id);
-                if (!cancelled) resolved.set(c.id, url);
+            // Fetch ALL portraits concurrently using Promise.all
+            const results = await Promise.all(
+                characters.map(async (c) => {
+                    let expression = 'neutral';
+                    
+                    // Find the globally latest message for this character to extract their current expression
+                    if (interactionData?.interactionHistories) {
+                        let latestMsg: HistoryMessage | undefined;
+                        let maxTime = -1;
+                        for (const messages of Object.values(interactionData.interactionHistories)) {
+                            for (let i = messages.length - 1; i >= 0; i--) {
+                                const msg = messages[i];
+                                if (msg.character.id === c.id && msg.firstCreatedTimestamp > maxTime) {
+                                    maxTime = msg.firstCreatedTimestamp;
+                                    latestMsg = msg;
+                                }
+                            }
+                        }
+                        if (latestMsg?.characterExpression) {
+                            expression = latestMsg.characterExpression;
+                        }
+                    }
+                    
+                    // Resolve the specific image filename for the expression
+                    const filename = c.images?.[expression] || c.images?.['neutral'] || (c.images ? Object.values(c.images)[0] : undefined);
+                    let url: string | null = null;
+                    
+                    try {
+                        if (filename) {
+                            url = await getCharacterImageUrl(c.id, filename);
+                        } else {
+                            url = await getCharacterImageUrlWithFallBack(c.id);
+                        }
+                    } catch {
+                        url = null;
+                    }
+                    return { id: c.id, url };
+                })
+            );
+            
+            if (!cancelled) {
+                const resolved = new Map<string, string | null>();
+                for (const res of results) {
+                    resolved.set(res.id, res.url);
+                }
+                setPortraits(resolved);
             }
-            if (!cancelled) setPortraits(new Map(resolved));
         })();
 
         return () => { cancelled = true; };
-    }, [characters]);
+    }, [characterIdsKey, interactionData, characters]);
 
     return portraits;
 }
@@ -246,7 +295,6 @@ export function InteractionDataInspectionModal({
     const chat = localChat ?? baseChat;
     const canGoBack = internalStack.length > 1;
 
-    // ✅ FIX: Resolve protagonistIds directly, and map protagonists from participants
     const protagonistIds = useMemo(() => new Set(chat?.protagonistIds || []), [chat]);
     const protagonists = useMemo(() => {
         if (!chat?.protagonistIds || !chat.participants) return [];
@@ -276,7 +324,8 @@ export function InteractionDataInspectionModal({
         return Array.from(map.values());
     }, [protagonists, participants]);
 
-    const portraits = useCharacterPortraits(allVisibleCharacters);
+    // ✅ Pass `chat` to resolve latest expressions
+    const portraits = useCharacterPortraits(allVisibleCharacters, chat);
 
     // ─── Save Handlers ───
     const handleSaveChanges = useCallback(async () => {
@@ -352,7 +401,6 @@ export function InteractionDataInspectionModal({
 
     const handleToggleProtagonist = useCallback((character: Character) => {
         if (!localChat) return;
-        // ✅ FIX: Manipulate protagonistIds string array instead of Character array
         const currentProtagIds = localChat.protagonistIds || [];
         const isCurrentlyProtag = currentProtagIds.includes(character.id);
 
@@ -376,7 +424,6 @@ export function InteractionDataInspectionModal({
         setLocalChat({
             ...localChat,
             participants: (localChat.participants || []).filter(p => p.id !== characterId),
-            // ✅ FIX: Filter protagonistIds instead of protagonists
             protagonistIds: (localChat.protagonistIds || []).filter(id => id !== characterId),
             lastUpdatedTimestamp: Date.now(),
         });
@@ -413,7 +460,6 @@ export function InteractionDataInspectionModal({
         }
 
         let currentLoc: Location | undefined;
-        // ✅ FIX: Use resolved protagonists array
         if (protagonists.length > 0) {
             currentLoc = getCurrentLocation(chat, protagonists[0]);
         }
