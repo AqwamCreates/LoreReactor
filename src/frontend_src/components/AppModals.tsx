@@ -1,6 +1,5 @@
 // src/frontend_src/components/AppModals.tsx
 import { useMemo, useState, useEffect, useCallback } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import type {
     Character, Context, Location, Sampler, StopPattern,
     LanguageModel, BudgetStrategy, Profile, Extension,
