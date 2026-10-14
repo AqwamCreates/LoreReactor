@@ -68,7 +68,7 @@ function haveMessagesChanged(prev: InteractionData | null, curr: InteractionData
 
 interface UseChatAutoSaveOptions {
     interactionData: InteractionData | null;
-    rawChatShells: RawInteractionData[];
+    allRawInteractionDataShells: RawInteractionData[];
     refreshChatList: () => Promise<unknown>;
 }
 

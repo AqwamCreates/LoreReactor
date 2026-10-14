@@ -12,7 +12,7 @@ interface UseChatRestorationOptions {
     locationsLoading: boolean;
     profilesLoading: boolean;
     allCharacters: Character[];
-    rawChatShells: RawInteractionData[];
+    allRawInteractionDataShells: RawInteractionData[];
     sessionLoaded: boolean;
     loadFullCharacter: (id: string) => Promise<Character | null>;
     setInteractionData: (data: InteractionData) => void;
@@ -43,7 +43,7 @@ function createEmptyChat(): InteractionData {
 export function useChatRestoration(options: UseChatRestorationOptions) {
     const {
         charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading,
-        allCharacters, rawChatShells, loadFullCharacter,
+        allCharacters, allRawInteractionDataShells, loadFullCharacter,
         setInteractionData, setSelectedCharacter, setSelectedModelId, startNewChat,
         skipRestoration = false,
     } = options;
@@ -115,8 +115,8 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
 
         /** Fallback chain: first chat shell → first character → empty chat */
         const fallbackRestore = async () => {
-            if (rawChatShells.length > 0) {
-                const firstChatId = rawChatShells[0].id;
+            if (allRawInteractionDataShells.length > 0) {
+                const firstChatId = allRawInteractionDataShells[0].id;
                 if (firstChatId) {
                     const loaded = await loadRawInteractionData(firstChatId, allCharacters);
                     if (loaded) {
@@ -188,7 +188,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
         restore();
     }, [
         charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading, 
-        allCharacters, rawChatShells, loadFullCharacter, setInteractionData, 
+        allCharacters, allRawInteractionDataShells, loadFullCharacter, setInteractionData, 
         setSelectedCharacter, setSelectedModelId, startNewChat, skipRestoration
     ]);
 

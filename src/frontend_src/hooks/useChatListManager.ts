@@ -7,7 +7,7 @@ import { loadAllRawInteractionDataShells, deleteRawInteractionData } from '../st
 const MIN_LOADING_MS = 400; 
 
 export function useChatListManager() {
-    const [rawChatShells, setRawChatShells] = useState<RawInteractionData[]>([]);
+    const [allRawInteractionDataShells, setallRawInteractionDataShells] = useState<RawInteractionData[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const loadedRef = useRef(false);
 
@@ -20,7 +20,7 @@ export function useChatListManager() {
         try {
             const rawShells = await loadAllRawInteractionDataShells();
             const sorted = [...rawShells].sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp);
-            setRawChatShells(sorted);
+            setallRawInteractionDataShells(sorted);
             loadedRef.current = true;
         } catch (error) {
             console.error("Failed to load chats", error);
@@ -47,7 +47,7 @@ export function useChatListManager() {
     const refresh = useCallback(() => loadChats(true), [loadChats]);
 
     return { 
-        rawChatShells, 
+        allRawInteractionDataShells, 
         isLoading, 
         deleteChat, 
         refresh, 

@@ -205,7 +205,7 @@ function App() {
         locationsLoading: locations.isLoading,
         profilesLoading: profiles.isLoading,
         allCharacters: characters.characters,
-        rawChatShells: chatList.rawChatShells,
+        allRawInteractionDataShells: chatList.allRawInteractionDataShells,
         loadFullCharacter: characters.loadFullCharacter,
         setInteractionData, setSelectedCharacter,
         setSelectedModelId: models.setSelectedModelId,
@@ -346,7 +346,7 @@ function App() {
     // ─── Chat Auto-Save ──────────────────────────────────────────────
     useChatAutoSave({
         interactionData,
-        rawChatShells: chatList.rawChatShells,
+        allRawInteractionDataShells: chatList.allRawInteractionDataShells,
         refreshChatList: chatList.refresh,
     });
 
@@ -410,7 +410,7 @@ function App() {
 
     const chatOps = useChatOperations({
         interactionData, currentCharacter, localProtagonistId, selectedCharacterId,
-        allCharacters: characters.characters, rawChatShells: chatList.rawChatShells,
+        allCharacters: characters.characters, allRawInteractionDataShells: chatList.allRawInteractionDataShells,
         loadFullCharacter: characters.loadFullCharacter,
         setInteractionData, setSelectedCharacter,
         refreshChatList: chatList.refresh, startNewChat,
@@ -545,8 +545,8 @@ function App() {
 
     const parentChatName = useMemo(() => {
         if (!parentInteractionDataId) return null;
-        return chatList.rawChatShells.find((s: RawInteractionData) => s.id === parentInteractionDataId)?.name ?? null;
-    }, [parentInteractionDataId, chatList.rawChatShells]);
+        return chatList.allRawInteractionDataShells.find((s: RawInteractionData) => s.id === parentInteractionDataId)?.name ?? null;
+    }, [parentInteractionDataId, chatList.allRawInteractionDataShells]);
 
     const committedMessages = useMemo(() => {
         let base = safeMessages.filter((m): m is TextMessage => m.messageType === 'chat' || m.messageType === 'whisper');
@@ -1286,7 +1286,7 @@ function App() {
                 <AppModals
                     isMultiplayerClient={mp.isMultiplayerClient}
                     modals={modals} entityModals={entityModals}
-                    runningModels={models.runningModels} rawChatShells={chatList.rawChatShells}
+                    runningModels={models.runningModels} allRawInteractionDataShells={chatList.allRawInteractionDataShells}
                     allCharacters={characters.characters} allContexts={contexts.contexts} allLocations={locations.locations}
                     allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allLanguageModels={allLanguageModels}
                     allSamplers={samplers.Samplers} allPromptBlocks={promptBlocks.promptBlocks} allStopPatterns={stopPatterns.stopPatterns}

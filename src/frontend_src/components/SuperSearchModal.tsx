@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import type { 
     Character, Context, Location, AudioTrack, World, PromptBlock, 
     LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, 
-    Memory, Account, MultiplayerData, RawInteractionData, InteractionData, 
+    Memory, Account, MultiplayerData, InteractionDataFolder, RawInteractionData, InteractionData, 
     ObjectData, ChatMessage
 } from '../types';
 import { localURL } from '../../configurations';
@@ -12,7 +12,8 @@ import '../main.css';
 export type SearchTabId = 
     | 'all' 
     | 'message' 
-    | 'chat' 
+    | 'chat'
+    | 'interactionDataFolder'
     | 'character' 
     | 'context' 
     | 'location' 
@@ -26,7 +27,7 @@ export type SearchTabId =
     | 'profile' 
     | 'memory' 
     | 'account' 
-    | 'multiplayerData';
+    | 'multiplayerData'
 
 export interface SuperSearchModalProps {
     onClose: () => void;
@@ -45,7 +46,8 @@ export interface SuperSearchModalProps {
     allMemories: Memory[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
-    rawChatShells: RawInteractionData[];
+    allRawInteractionDataShells: RawInteractionData[];
+    allInteractionDataFolders: InteractionDataFolder[];
     currentInteractionData: InteractionData | null;
 
     onSelectEntity?: (tabId: SearchTabId, entity: ObjectData, parentEntity?: ObjectData, isReadOnly?: boolean) => void;
@@ -84,6 +86,7 @@ const TAB_CONFIG: { id: SearchTabId; label: string; icon: string }[] = [
     { id: 'all', label: 'All', icon: '🔍' },
     { id: 'message', label: 'Messages', icon: '💬' },
     { id: 'chat', label: 'Chats', icon: '📂' },
+    { id: 'interactionDataFolder', label: 'Folders', icon: '📁' },
     { id: 'character', label: 'Characters', icon: '🎭' },
     { id: 'context', label: 'Contexts', icon: '📜' },
     { id: 'location', label: 'Locations', icon: '📍' },
@@ -196,7 +199,8 @@ export function SuperSearchModal({
     allMemories,
     allAccounts,
     allMultiplayerData,
-    rawChatShells,
+    allInteractionDataFolders,
+    allRawInteractionDataShells,
     currentInteractionData,
     onSelectEntity,
 }: Omit<SuperSearchModalProps, 'isOpen'>) {
@@ -226,11 +230,10 @@ export function SuperSearchModal({
     const messageToChatsMap = useMemo(() => {
         const map = new Map<string, Array<{ chatId: string; chatName: string }>>();
 
-        for (const shell of rawChatShells) {
+        for (const shell of allRawInteractionDataShells) {
             if (!shell.id) continue;
             const chatName = shell.name || 'Untitled Chat';
             
-            // FIX: Replaced non-existent interactionIdHistory with flattened spatial interactionHistories Record
             const allMsgIds = Object.values(shell.interactionHistories || {}).flat();
             for (const msgId of allMsgIds) {
                 let list = map.get(msgId);
@@ -248,7 +251,6 @@ export function SuperSearchModal({
             const activeId = currentInteractionData.id;
             const activeName = currentInteractionData.name || 'Untitled Chat';
             
-            // FIX: Replaced non-existent interactionHistory with flattened spatial interactionHistories Record
             const allMessages = Object.values(currentInteractionData.interactionHistories || {}).flat();
             for (const msg of allMessages) {
                 let list = map.get(msg.id);
@@ -263,7 +265,7 @@ export function SuperSearchModal({
         }
 
         return map;
-    }, [rawChatShells, currentInteractionData]);
+    }, [allRawInteractionDataShells, currentInteractionData]);
 
     useEffect(() => {
         if (!lowerQuery) return;
@@ -340,7 +342,7 @@ export function SuperSearchModal({
 
     const categorizedResults = useMemo<Record<SearchTabId, SearchMatchResult[]>>(() => {
         const emptyMap: Record<SearchTabId, SearchMatchResult[]> = {
-            all: [], message: [], chat: [], character: [], context: [],
+            all: [], message: [], chat: [], interactionDataFolder: [], character: [], context: [],
             location: [], promptBlock: [], audioTrack: [], world: [], model: [],
             sampler: [], stopPattern: [], budgetStrategy: [], profile: [], memory: [],
             account: [], multiplayerData: []
@@ -401,13 +403,13 @@ export function SuperSearchModal({
 
         emptyMap.account = scanEntities(allAccounts, 'account', a => `🔑 ${a.name || a.username}`);
         emptyMap.multiplayerData = scanEntities(allMultiplayerData, 'multiplayerData', m => `👥 ${m.name}`);
-        emptyMap.chat = scanEntities(rawChatShells, 'chat', s => `📂 ${s.name || 'Untitled Chat'}`);
+        emptyMap.interactionDataFolder = scanEntities(allInteractionDataFolders, 'interactionDataFolder', f => `📁 ${f.name}`);
+        emptyMap.chat = scanEntities(allRawInteractionDataShells, 'chat', s => `📂 ${s.name || 'Untitled Chat'}`);
 
         const seenMessageIds = new Set<string>();
         const messageResults: SearchMatchResult[] = [];
 
         if (currentInteractionData) {
-            // FIX: Replaced non-existent interactionHistory with flattened spatial interactionHistories Record
             const allMessages = Object.values(currentInteractionData.interactionHistories || {}).flat();
             for (const msg of allMessages) {
                 if (msg.messageType === 'chat' && typeof (msg as ChatMessage).textContent === 'string' && (msg as ChatMessage).textContent.toLowerCase().includes(lowerQuery)) {
@@ -440,7 +442,7 @@ export function SuperSearchModal({
                     if (currentInteractionData?.id === chats[0].chatId) {
                         parentChat = currentInteractionData;
                     } else {
-                        parentChat = rawChatShells.find(s => s.id === chats[0].chatId) || { id: chats[0].chatId, name: chats[0].chatName };
+                        parentChat = allRawInteractionDataShells.find(s => s.id === chats[0].chatId) || { id: chats[0].chatId, name: chats[0].chatName };
                     }
                 }
 
@@ -460,6 +462,7 @@ export function SuperSearchModal({
         emptyMap.all = [
             ...emptyMap.message.slice(0, 10),
             ...emptyMap.chat.slice(0, 5),
+            ...emptyMap.interactionDataFolder.slice(0, 5),
             ...emptyMap.character.slice(0, 5),
             ...emptyMap.context.slice(0, 5),
             ...emptyMap.location.slice(0, 5),
@@ -481,7 +484,7 @@ export function SuperSearchModal({
         lowerQuery, searchableCharacters, searchableContexts, searchableLocations, 
         searchableAudioTracks, allPromptBlocks, allWorlds, allLanguageModels, 
         allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, 
-        allMemories, allAccounts, allMultiplayerData, rawChatShells, 
+        allMemories, allAccounts, allMultiplayerData, allInteractionDataFolders, allRawInteractionDataShells, 
         currentInteractionData, messageToChatsMap, serverMessages, characterMap
     ]);
 
@@ -675,9 +678,11 @@ export function SuperSearchModal({
                                                 >
                                                     {item.tabId === 'chat' 
                                                         ? 'Open Chat' 
-                                                        : item.isReadOnly 
-                                                            ? 'View Entity' 
-                                                            : 'Edit Entity'}
+                                                        : item.tabId === 'interactionDataFolder'
+                                                            ? 'View Folder'
+                                                            : item.isReadOnly 
+                                                                ? 'View Entity' 
+                                                                : 'Edit Entity'}
                                                 </button>
                                             </div>
                                         )}

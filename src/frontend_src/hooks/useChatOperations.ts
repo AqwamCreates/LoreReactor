@@ -15,7 +15,7 @@ interface UseChatOperationsOptions {
     localProtagonistId: string | null; // ✅ FIX: Changed from Character object to string ID
     selectedCharacterId: string | null;
     allCharacters: Character[];
-    rawChatShells?: RawInteractionData[];
+    allRawInteractionDataShells?: RawInteractionData[];
     loadFullCharacter?: (id: string) => Promise<Character | null>;
     setInteractionData: (data: InteractionData) => void;
     setSelectedCharacter: (char: Character | null) => void;

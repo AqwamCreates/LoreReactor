@@ -21,7 +21,7 @@ interface DataExportModalProps {
     allMemories: Memory[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
-    rawChatShells: RawInteractionData[];
+    allRawInteractionDataShells: RawInteractionData[];
 }
 
 export function DataExportModal({
@@ -29,7 +29,7 @@ export function DataExportModal({
     allCharacters, allContexts, allLocations, allAudioTracks,
     allWorlds, allLanguageModels, allSamplers, allPromptBlocks, allStopPatterns,
     allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData,
-    rawChatShells,
+    allRawInteractionDataShells,
 }: DataExportModalProps) {
     const [isExporting, setIsExporting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -140,7 +140,7 @@ export function DataExportModal({
         } finally { setIsExporting(false); }
     };
 
-    const validChatShells = rawChatShells.filter((s): s is RawInteractionData & { id: string } => !!s.id);
+    const validChatShells = allRawInteractionDataShells.filter((s): s is RawInteractionData & { id: string } => !!s.id);
 
     return (
         <div className="modal-overlay" onClick={handleClose}>

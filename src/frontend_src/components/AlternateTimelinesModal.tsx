@@ -18,7 +18,7 @@ import '../main.css';
 interface AlternateTimelinesModalProps {
     onClose: () => void;
     currentInteractionId: string;
-    rawChatShells: RawInteractionData[];
+    allRawInteractionDataShells: RawInteractionData[];
     onSwitchChat: (id: string) => void;
     onDeleteChat: (id: string) => void;
     onInspectChat: (id: string) => void;
@@ -379,7 +379,7 @@ export function AlternateTimelinesModal({
     
     onClose,
     currentInteractionId,
-    rawChatShells,
+    allRawInteractionDataShells,
     onSwitchChat,
     onDeleteChat,
     onInspectChat,
@@ -390,7 +390,7 @@ export function AlternateTimelinesModal({
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
     const { childMap, ancestorIds, relevantShells } = useMemo(() => {
-        const shellMap = new Map(rawChatShells.map(s => [s.id, s]));
+        const shellMap = new Map(allRawInteractionDataShells.map(s => [s.id, s]));
 
         let rootId = currentInteractionId;
         let current = shellMap.get(currentInteractionId);
@@ -402,7 +402,7 @@ export function AlternateTimelinesModal({
 
         const fullChildMap = new Map<string, string[]>();
 
-        for (const shell of rawChatShells) {
+        for (const shell of allRawInteractionDataShells) {
             if (!shell.id) continue;
             if (!fullChildMap.has(shell.id)) {
                 fullChildMap.set(shell.id, []);
@@ -438,15 +438,15 @@ export function AlternateTimelinesModal({
             filteredChildMap.set(id, children);
         }
 
-        const ancestors = getAncestorIds(rawChatShells, currentInteractionId);
-        const relevant = rawChatShells.filter(s => s.id && treeIds.has(s.id));
+        const ancestors = getAncestorIds(allRawInteractionDataShells, currentInteractionId);
+        const relevant = allRawInteractionDataShells.filter(s => s.id && treeIds.has(s.id));
 
         return {
             childMap: filteredChildMap,
             ancestorIds: ancestors,
             relevantShells: relevant,
         };
-    }, [rawChatShells, currentInteractionId]);
+    }, [allRawInteractionDataShells, currentInteractionId]);
 
     const { nodes, edges } = useMemo(() => {
         if (relevantShells.length === 0) {

@@ -1,6 +1,6 @@
 // src/frontend_src/components/DataManagerModal.tsx
 import { useState, useCallback, useMemo } from 'react';
-import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData } from '../types';
+import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData, InteractionDataFolder } from '../types';
 import { useToast } from '../context/ToastContext';
 import { saveRawSessionData, deleteSessionData, deleteMultiplayerJoinData, deleteActionFormatData, clearPreferencesCache, clearSaveQueue, deleteFormatPreferences } from '../storages/serverStorage';
 import '../main.css';
@@ -21,7 +21,8 @@ interface DataManagerModalProps {
     allMemories: Memory[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
-    rawChatShells: RawInteractionData[];
+    allRawInteractionDataShells: RawInteractionData[];
+    allInteractionDataFolders: InteractionDataFolder[];
     onDeleteCharacter: (id: string) => void;
     onDeleteContext: (id: string) => void;
     onDeleteLocation: (id: string) => void;
@@ -37,11 +38,12 @@ interface DataManagerModalProps {
     onDeleteAccount: (id: string) => void;
     onDeleteMultiplayerData: (id: string) => void;
     onDeleteChat: (id: string) => void;
+    onDeleteInteractionDataFolder: (id: string) => void;
 }
 
 type TabId = 'storage' | 'cleanup' | 'integrity' | 'cache' | 'bulk' | 'danger';
 
-type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'model' | 'sampler' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'memory' | 'account' | 'multiplayerData';
+type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'model' | 'sampler' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'memory' | 'account' | 'multiplayerData' | 'interactionDataFolder';
 
 type SortField = 'name' | 'type' | 'lastUpdated' | 'flags';
 type SortDirection = 'asc' | 'desc';
@@ -94,6 +96,7 @@ const ENTITY_TYPE_META: Record<EntityType, { icon: string; label: string }> = {
     memory: { icon: '🧠', label: 'Memories' },
     account: { icon: '🔑', label: 'Accounts' },
     multiplayerData: { icon: '👥', label: 'Multiplayer Data' },
+    interactionDataFolder: { icon: '📁', label: 'Folders' },
 };
 
 const EXCLUSION_TYPE_META: Record<ExclusionEntityType, { icon: string; label: string }> = {
@@ -184,6 +187,10 @@ function isEntityHollow(
             const md = entity as MultiplayerData;
             return !(md.interactionDataIds?.length) && !(md.pendingAccountIds?.length) && Object.keys(md.multiplayerDataAccountConfigurations || {}).length === 0;
         }
+        case 'interactionDataFolder': {
+            const f = entity as InteractionDataFolder;
+            return !f.interactionDataIds?.length;
+        }
         case 'profile':
             return false;
     }
@@ -201,7 +208,6 @@ function daysAgo(ts: number): number {
 }
 
 export function DataManagerModal({
-    
     onClose,
     allCharacters,
     allContexts,
@@ -217,7 +223,8 @@ export function DataManagerModal({
     allMemories,
     allAccounts,
     allMultiplayerData,
-    rawChatShells,
+    allInteractionDataFolders,
+    allRawInteractionDataShells,
     onDeleteCharacter,
     onDeleteContext,
     onDeleteLocation,
@@ -232,6 +239,7 @@ export function DataManagerModal({
     onDeleteMemory,
     onDeleteAccount,
     onDeleteMultiplayerData,
+    onDeleteInteractionDataFolder,
     onDeleteChat,
 }: DataManagerModalProps) {
     const [activeTab, setActiveTab] = useState<TabId>('storage');
@@ -283,9 +291,10 @@ export function DataManagerModal({
             { label: 'Memories', icon: '🧠', count: allMemories.length, estimatedSizeKb: estimateKb(allMemories, 1024) },
             { label: 'Accounts', icon: '🔑', count: allAccounts.length, estimatedSizeKb: estimateKb(allAccounts, 512) },
             { label: 'Multiplayer Data', icon: '👥', count: allMultiplayerData.length, estimatedSizeKb: estimateKb(allMultiplayerData, 1024) },
-            { label: 'Chat Sessions', icon: '💬', count: rawChatShells.length, estimatedSizeKb: estimateKb(rawChatShells, 8192) },
+            { label: 'Folders', icon: '📁', count: allInteractionDataFolders.length, estimatedSizeKb: estimateKb(allInteractionDataFolders, 1024) },
+            { label: 'Chat Sessions', icon: '💬', count: allRawInteractionDataShells.length, estimatedSizeKb: estimateKb(allRawInteractionDataShells, 8192) },
         ];
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, rawChatShells]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allInteractionDataFolders, allRawInteractionDataShells]);
 
     // ─── Cleanup Scan ───────────────────────────────────────────────
     const scanCleanup = useCallback(() => {
@@ -301,7 +310,7 @@ export function DataManagerModal({
         const profileIdSet = new Set(allProfiles.map(p => p.id));
         const memoryIdSet = new Set(allMemories.map(m => m.id));
         const accountIdSet = new Set(allAccounts.map(a => a.id));
-        const chatIdSet = new Set(rawChatShells.filter(s => s.id).map(s => s.id));
+        const chatIdSet = new Set(allRawInteractionDataShells.filter(s => s.id).map(s => s.id));
 
         const referencedCharIds = new Set<string>();
         const referencedCtxIds = new Set<string>();
@@ -324,7 +333,7 @@ export function DataManagerModal({
             if (world.profileId && profileIdSet.has(world.profileId)) referencedProfileIds.add(world.profileId);
         }
 
-        for (const shell of rawChatShells) {
+        for (const shell of allRawInteractionDataShells) {
             for (const id of (shell.participantIds || [])) if (charIdSet.has(id)) referencedCharIds.add(id);
             for (const id of (shell.contextIds || [])) if (ctxIdSet.has(id)) referencedCtxIds.add(id);
             for (const id of (shell.locationIds || [])) if (locIdSet.has(id)) referencedLocIds.add(id);
@@ -453,12 +462,13 @@ export function DataManagerModal({
         for (const m of allMemories) check('memory', m.id, m.name, m.lastUpdatedTimestamp, referencedMemoryIds.has(m.id), m);
         for (const a of allAccounts) check('account', a.id, a.name, a.lastUpdatedTimestamp, referencedAccountIds.has(a.id), a);
         for (const md of allMultiplayerData) check('multiplayerData', md.id, md.name, md.lastUpdatedTimestamp, referencedMultiplayerDataIds.has(md.id), md);
+        for (const f of allInteractionDataFolders) check('interactionDataFolder', f.id, f.name, f.lastUpdatedTimestamp, true, f);
 
         setCleanupItems(found);
         setSelectedIds(new Set());
         setSearchQuery('');
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, rawChatShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allInteractionDataFolders, allRawInteractionDataShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
 
     // ─── Integrity Check ────────────────────────────────────────────
     const scanIntegrity = useCallback(() => {
@@ -474,7 +484,7 @@ export function DataManagerModal({
         const profileIdSet = new Set(allProfiles.map(p => p.id));
         const memoryIdSet = new Set(allMemories.map(m => m.id));
         const accountIdSet = new Set(allAccounts.map(a => a.id));
-        const chatIdSet = new Set(rawChatShells.filter(s => s.id).map(s => s.id));
+        const chatIdSet = new Set(allRawInteractionDataShells.filter(s => s.id).map(s => s.id));
 
         for (const ctx of allContexts) {
             for (const binding of (ctx.characterBindings || [])) {
@@ -617,6 +627,13 @@ export function DataManagerModal({
             }
             for (const chatId of md.interactionDataIds) { if (!chatIdSet.has(chatId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: 'References missing chat session', refType: 'Chat', refId: chatId }); }
         }
+        for (const folder of allInteractionDataFolders) {
+            for (const chatId of folder.interactionDataIds) {
+                if (!chatIdSet.has(chatId)) {
+                    issues.push({ entityType: 'Folder', entityName: folder.name, issue: 'References missing chat session', refType: 'Chat', refId: chatId });
+                }
+            }
+        }
         
         for (const p of allProfiles) {
             const samplerChecks = [
@@ -647,7 +664,7 @@ export function DataManagerModal({
 
         setIntegrityIssues(issues);
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, rawChatShells]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allInteractionDataFolders, allRawInteractionDataShells]);
 
     // ─── Filtered + sorted cleanup items ────────────────────────────
     const filteredAndSorted = useMemo(() => {
@@ -708,6 +725,7 @@ export function DataManagerModal({
                 case 'memory': onDeleteMemory(item.id); break;
                 case 'account': onDeleteAccount(item.id); break;
                 case 'multiplayerData': onDeleteMultiplayerData(item.id); break;
+                case 'interactionDataFolder': onDeleteInteractionDataFolder(item.id); break;
             }
             deletedCount++;
         }
@@ -781,7 +799,7 @@ export function DataManagerModal({
     // ─── Bulk: Candidate list ────────────────────────────────────────
     const bulkCandidates = useMemo(() => {
         if (!includeStale && !includeLowMessage) return [];
-        return rawChatShells.filter(shell => {
+        return allRawInteractionDataShells.filter(shell => {
             if (!shell.id) return false;
             const matchesStale = includeStale && (shell.lastUpdatedTimestamp ?? 0) < staleCutoffMs;
             
@@ -792,7 +810,7 @@ export function DataManagerModal({
             if (isShellExcluded(shell)) return false;
             return true;
         });
-    }, [rawChatShells, includeStale, includeLowMessage, staleCutoffMs, minMessagesThreshold, isShellExcluded]);
+    }, [allRawInteractionDataShells, includeStale, includeLowMessage, staleCutoffMs, minMessagesThreshold, isShellExcluded]);
 
     const handleBulkDeleteCandidates = () => {
         let deletedCount = 0;
@@ -813,7 +831,6 @@ export function DataManagerModal({
         import('../services/LanguageModelEngine').then(({ getLanguageModelEngine }) => { getLanguageModelEngine().clearTokenCache(); addToast('Token cache cleared.', 'success'); });
     };
 
-    // ─── NEW: Clear Action Format Preferences ───────────────────────
     const handleClearActionFormatPreferences = async () => {
         try {
             await deleteActionFormatData();
@@ -827,7 +844,6 @@ export function DataManagerModal({
     // ─── Danger zone ────────────────────────────────────────────────
     const handleFactoryReset = async () => {
         try {
-            // Clear server-backed session and preferences
             await saveRawSessionData({
                 selectedCharacterId: null,
                 selectedModelId: null,
@@ -841,11 +857,9 @@ export function DataManagerModal({
             await deleteActionFormatData();
             await deleteFormatPreferences();
 
-            // Clear in-memory caches so stale data doesn't persist after reload
             clearPreferencesCache();
             clearSaveQueue();
 
-            // Clear any legacy localStorage keys that may still exist from before migration
             try {
                 for (const key of Object.keys(localStorage).filter(k => k.startsWith('loreReactor_'))) {
                     localStorage.removeItem(key);
@@ -874,7 +888,8 @@ export function DataManagerModal({
             case 'memories': for (const m of allMemories) { onDeleteMemory(m.id); count++; } break;
             case 'accounts': for (const a of allAccounts) { onDeleteAccount(a.id); count++; } break;
             case 'multiplayerData': for (const md of allMultiplayerData) { onDeleteMultiplayerData(md.id); count++; } break;
-            case 'chats': for (const s of rawChatShells) { if (s.id) { onDeleteChat(s.id); count++; } } break;
+            case 'folders': for (const f of allInteractionDataFolders) { onDeleteInteractionDataFolder(f.id); count++; } break;
+            case 'chats': for (const s of allRawInteractionDataShells) { if (s.id) { onDeleteChat(s.id); count++; } } break;
         }
         addToast(`Wiped ${count} ${entityType}.`, 'success');
         setConfirmDangerAction(null);
@@ -1000,7 +1015,7 @@ export function DataManagerModal({
                     {/* ─── INTEGRITY TAB ─── */}
                     {activeTab === 'integrity' && (
                         <div>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '12px', lineHeight: 1.5 }}>Cross-reference integrity check. Finds broken bindings where entities reference deleted characters, contexts, locations, audio tracks, worlds, prompt blocks, models, samplers, stop patterns, memories, chat sessions, accounts, or profiles.</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '12px', lineHeight: 1.5 }}>Cross-reference integrity check. Finds broken bindings where entities reference deleted characters, contexts, locations, audio tracks, worlds, prompt blocks, models, samplers, stop patterns, memories, chat sessions, accounts, folders, or profiles.</div>
                             <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
                                 <button type="button" className="editor-button editor-button-save" onClick={scanIntegrity} disabled={isScanning} style={{ fontSize: '0.75rem', padding: '8px 16px' }}>{isScanning ? 'Checking...' : 'Run Integrity Check'}</button>
                             </div>
@@ -1029,7 +1044,6 @@ export function DataManagerModal({
                             <div className="editor-section" style={{ margin: 0 }}><div className="editor-section-title">Image Cache</div><div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '8px' }}>Cached character, context, location, and prompt block images.</div><button type="button" className="editor-button editor-button-cancel" onClick={handleClearImageCache} style={{ fontSize: '0.75rem', width: '100%' }}>🧹 Clear Image Cache</button></div>
                             <div className="editor-section" style={{ margin: 0 }}><div className="editor-section-title">Token Cache</div><div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '8px' }}>In-memory token counting cache used by the language model engine.</div><button type="button" className="editor-button editor-button-cancel" onClick={handleClearTokenCache} style={{ fontSize: '0.75rem', width: '100%' }}>🧹 Clear Token Cache</button></div>
                             
-                            {/* NEW: Action Format Preferences Cache */}
                             <div className="editor-section" style={{ margin: 0, borderColor: 'rgba(239,68,68,0.2)' }}>
                                 <div className="editor-section-title" style={{ color: '#ef4444' }}>Action Format Preferences</div>
                                 <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '8px' }}>
@@ -1094,7 +1108,7 @@ export function DataManagerModal({
                                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap' }}>
                                     <div style={{ flex: 1, minWidth: '150px' }}>
                                         <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: bulkCandidates.length > 0 ? '#ef4444' : 'var(--text-h)' }}>{bulkCandidates.length}</div>
-                                        <div style={{ fontSize: '0.65rem', opacity: 0.5 }}>chat{bulkCandidates.length !== 1 ? 's' : ''} will be deleted{exclusions.length > 0 && (<span> ({rawChatShells.filter(s => s.id && isShellExcluded(s)).length} excluded)</span>)}</div>
+                                        <div style={{ fontSize: '0.65rem', opacity: 0.5 }}>chat{bulkCandidates.length !== 1 ? 's' : ''} will be deleted{exclusions.length > 0 && (<span> ({allRawInteractionDataShells.filter(s => s.id && isShellExcluded(s)).length} excluded)</span>)}</div>
                                     </div>
                                     {(!includeStale && !includeLowMessage) && (<div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic' }}>Enable at least one inclusion criterion.</div>)}
                                 </div>
@@ -1138,7 +1152,8 @@ export function DataManagerModal({
                                         { key: 'memories', label: 'All Memories', count: allMemories.length },
                                         { key: 'accounts', label: 'All Accounts', count: allAccounts.length },
                                         { key: 'multiplayerData', label: 'All Multiplayer Data', count: allMultiplayerData.length },
-                                        { key: 'chats', label: 'All Chats', count: rawChatShells.length },
+                                        { key: 'folders', label: 'All Folders', count: allInteractionDataFolders.length },
+                                        { key: 'chats', label: 'All Chats', count: allRawInteractionDataShells.length },
                                     ].map(entity => (
                                         <button key={entity.key} type="button" className="editor-button"
                                             onClick={() => confirmDangerAction === `wipe-${entity.key}` ? handleSelectiveWipe(entity.key) : setConfirmDangerAction(`wipe-${entity.key}`)}

@@ -66,7 +66,7 @@ interface ApplicationModalsProperties {
         getModalProperties: (entityType: entityType) => EntityModalController;
     };
     runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
-    rawChatShells: RawInteractionData[];
+    allRawInteractionDataShells: RawInteractionData[];
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
@@ -163,7 +163,7 @@ export function AppModals({
     modals,
     entityModals,
     runningModels,
-    rawChatShells,
+    allRawInteractionDataShells,
     allCharacters,
     allContexts,
     allLocations,
@@ -331,7 +331,7 @@ export function AppModals({
 
     // Include the active chat session in the list only if it is saveable according to isChatSaveable
     const chatShellsWithIdentifiers = useMemo(() => {
-        const list = rawChatShells.filter((shell): shell is ChatShellWithIdentifier => !!shell.id);
+        const list = allRawInteractionDataShells.filter((shell): shell is ChatShellWithIdentifier => !!shell.id);
 
         // If the active chat meets isChatSaveable, inject it with all required shell fields
         if (isChatSaveable(interactionData) && interactionData?.id && !list.some(shell => shell.id === interactionData.id)) {
@@ -352,7 +352,7 @@ export function AppModals({
             } as unknown as ChatShellWithIdentifier);
         }
         return list;
-    }, [rawChatShells, interactionData]);
+    }, [allRawInteractionDataShells, interactionData]);
 
     const activeChatId = interactionData?.id;
     const activeChatName = interactionData?.name;
@@ -798,7 +798,7 @@ export function AppModals({
                 <AlternateTimelinesModal 
                     onClose={modals.alternateTimelines.close}
                     currentInteractionId={interactionData?.id ?? ''} 
-                    rawChatShells={chatShellsWithIdentifiers}
+                    allRawInteractionDataShells={chatShellsWithIdentifiers}
                     onSwitchChat={onSwitchChat} 
                     onDeleteChat={onDeleteChat} 
                     onInspectChat={handleOpenChatInspection} 
@@ -826,7 +826,7 @@ export function AppModals({
                     allWorlds={allWorlds} allLanguageModels={allLanguageModels} allSamplers={allSamplers} allPromptBlocks={allPromptBlocks}
                     allStopPatterns={allStopPatterns} allBudgetStrategies={allBudgetStrategies} allProfiles={allProfiles}
                     allMemories={allMemories} allAccounts={allAccounts} allMultiplayerData={allMultiplayerData}
-                    rawChatShells={chatShellsWithIdentifiers} 
+                    allRawInteractionDataShells={chatShellsWithIdentifiers} 
                 />
             )}
 
@@ -847,7 +847,7 @@ export function AppModals({
                     allMemories={allMemories} 
                     allAccounts={allAccounts} 
                     allMultiplayerData={allMultiplayerData} 
-                    rawChatShells={chatShellsWithIdentifiers}
+                    allRawInteractionDataShells={chatShellsWithIdentifiers}
                     onDeleteCharacter={onDeleteCharacter} 
                     onDeleteContext={onDeleteContext} 
                     onDeleteLocation={onDeleteLocation}
@@ -884,7 +884,7 @@ export function AppModals({
                     allMemories={allMemories}
                     allAccounts={allAccounts}
                     allMultiplayerData={allMultiplayerData}
-                    rawChatShells={chatShellsWithIdentifiers}
+                    allRawInteractionDataShells={chatShellsWithIdentifiers}
                     currentInteractionData={interactionData}
                     onSelectEntity={(tabId, entity, parentEntity, isReadOnly = false) => {
                         switch (tabId) {
@@ -1127,7 +1127,7 @@ export function AppModals({
                     onSave={multiplayerDataModalProperties.save}
                     existingMultiplayerData={multiplayerDataModalProperties.item}
                     allCharacters={allCharacters}
-                    rawChatShells={chatShellsWithIdentifiers}
+                    allRawInteractionDataShells={chatShellsWithIdentifiers}
                     pendingJoinRequests={pendingJoinRequests}
                     onAcceptJoinRequest={onAcceptJoinRequest}
                     onRejectJoinRequest={onRejectJoinRequest}

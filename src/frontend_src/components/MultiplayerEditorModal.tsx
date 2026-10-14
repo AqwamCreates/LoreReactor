@@ -14,7 +14,7 @@ interface MultiplayerEditorModalProps {
     onSave: (data: MultiplayerData) => void;
     existingMultiplayerData?: MultiplayerData | null;
     allCharacters: Character[];
-    rawChatShells: RawInteractionData[];
+    allRawInteractionDataShells: RawInteractionData[];
     pendingJoinRequests?: PendingJoinRequest[];
     onAcceptJoinRequest?: (accountId: string) => void;
     onRejectJoinRequest?: (accountId: string) => void;
@@ -51,7 +51,7 @@ export function MultiplayerEditorModal({
     onSave,
     existingMultiplayerData,
     allCharacters,
-    rawChatShells,
+    allRawInteractionDataShells,
     pendingJoinRequests = [],
     onAcceptJoinRequest,
     onRejectJoinRequest,
@@ -63,7 +63,7 @@ export function MultiplayerEditorModal({
             onSave={onSave}
             existingMultiplayerData={existingMultiplayerData}
             allCharacters={allCharacters}
-            rawChatShells={rawChatShells}
+            allRawInteractionDataShells={allRawInteractionDataShells}
             pendingJoinRequests={pendingJoinRequests}
             onAcceptJoinRequest={onAcceptJoinRequest}
             onRejectJoinRequest={onRejectJoinRequest}
@@ -76,7 +76,7 @@ function MultiplayerEditorModalInner({
     onSave,
     existingMultiplayerData,
     allCharacters,
-    rawChatShells,
+    allRawInteractionDataShells,
     pendingJoinRequests = [],
     onAcceptJoinRequest,
     onRejectJoinRequest,
@@ -285,7 +285,7 @@ function MultiplayerEditorModalInner({
 
     // FIXED: Calculate total messages from the new interactionHistories Record
     const chatShellItems = useMemo(() => {
-        return rawChatShells.filter(s => s.id).map(s => {
+        return allRawInteractionDataShells.filter(s => s.id).map(s => {
             const totalMessages = s.interactionHistories 
                 ? Object.values(s.interactionHistories).reduce((acc, curr) => acc + curr.length, 0)
                 : 0;
@@ -296,7 +296,7 @@ function MultiplayerEditorModalInner({
                 lastUpdatedTimestamp: s.lastUpdatedTimestamp,
             };
         });
-    }, [rawChatShells]);
+    }, [allRawInteractionDataShells]);
 
     const filteredAccountConfigs = useMemo(() => {
         const entries = Object.entries(accountConfigs);
