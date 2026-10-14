@@ -31,6 +31,12 @@ export function useServerSync({ refreshers }: SyncProps) {
           const activeChatId = currentInteractionData?.id ?? null;
 
           if (changedChatId && changedChatId === activeChatId) {
+            // ✅ CRITICAL GUARD: Never overwrite active generation or resume in progress
+            const isGenerating = useSessionStore.getState().isLoading;
+            if (isGenerating) {
+              return;
+            }
+
             try {
               const freshChat = await loadRawInteractionData(changedChatId);
               if (freshChat) {
@@ -46,12 +52,12 @@ export function useServerSync({ refreshers }: SyncProps) {
         else if (path.startsWith('character_data/')) refreshers.characters?.();
         else if (path.startsWith('context_data/')) refreshers.contexts?.();
         else if (path.startsWith('location_data/')) refreshers.locations?.();
-        else if (path.startsWith('language_model_data/')) refreshers.models?.();
-        else if (path.startsWith('sampler_data/')) refreshers.samplers?.();
+        else if (path.startsWith('audio_track_data/')) refreshers.audioTracks?.();
         else if (path.startsWith('world_data/')) refreshers.worlds?.();
         else if (path.startsWith('profile_data/')) refreshers.profiles?.();
         else if (path.startsWith('prompt_block_data/')) refreshers.promptBlocks?.();
-        else if (path.startsWith('audio_track_data/')) refreshers.audioTracks?.();
+        else if (path.startsWith('language_model_data/')) refreshers.models?.();
+        else if (path.startsWith('sampler_data/')) refreshers.samplers?.();
         else if (path.startsWith('budget_strategies/')) refreshers.budgetStrategies?.();
         else if (path.startsWith('stop_pattern_data/')) refreshers.stopPatterns?.();
         else if (path.startsWith('multiplayer_data/')) refreshers.multiplayerData?.();
