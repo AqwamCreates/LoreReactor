@@ -215,13 +215,13 @@ async function putJson<T>(url: string, data: T): Promise<void> {
   }
 
   try {
-    const separator = url.includes('?') ? '&' : '?';
-    const targetUrl = `${localURL}${normalizeUrl(url)}${separator}clientId=${encodeURIComponent(clientId)}`;
+    // Keep URL clean without query parameters to prevent illegal characters on disk
+    const targetUrl = `${localURL}${normalizeUrl(url)}`;
     const response = await fetch(targetUrl, { 
       method: 'PUT', 
       headers: { 
         'Content-Type': 'application/json',
-        'X-Client-Id': clientId,
+        'X-Client-Id': clientId, // Transmit clientId via header only
       }, 
       body: JSON.stringify(data) 
     });
@@ -244,12 +244,12 @@ async function deleteResource(url: string): Promise<void> {
   }
 
   try {
-    const separator = url.includes('?') ? '&' : '?';
-    const targetUrl = `${localURL}${normalizeUrl(url)}${separator}clientId=${encodeURIComponent(clientId)}`;
+    // Keep URL clean without query parameters
+    const targetUrl = `${localURL}${normalizeUrl(url)}`;
     const response = await fetch(targetUrl, { 
       method: 'DELETE',
       headers: {
-        'X-Client-Id': clientId,
+        'X-Client-Id': clientId, // Transmit clientId via header only
       },
     });
     if (!response.ok && response.status !== 404) throw new Error(`Failed to delete resource at ${targetUrl}: HTTP ${response.status}`);
