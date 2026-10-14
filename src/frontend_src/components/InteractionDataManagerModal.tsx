@@ -1,5 +1,7 @@
 // src/frontend_src/components/InteractionDataManagerModal.tsx
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import type React from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import type { RawInteractionData, InteractionDataFolder } from '../types';
 import '../main.css';
 
@@ -14,10 +16,8 @@ interface InteractionDataManagerModalProps {
     onNewInteractionData?: () => void;
     
     onDeleteInteractionDataFolder: (id: string) => void;
-    onCreateNewFolder?: (name: string) => void;
-    onSaveFolder: (folder: InteractionDataFolder) => Promise<boolean> | void;
+    onSaveInteractionDataFolder: (folder: InteractionDataFolder) => Promise<boolean>;
     
-    onMoveInteractionDataToFolder: (id: string, folderId: string | null) => void;
     onInspectInteractionData?: (id: string) => void;
     
     activeInteractionDataId?: string | null;
@@ -37,9 +37,7 @@ export function InteractionDataManagerModal({
     onRenameInteractionData,
     onNewInteractionData,
     onDeleteInteractionDataFolder,
-    onCreateNewFolder,
-    onSaveFolder,
-    onMoveInteractionDataToFolder,
+    onSaveInteractionDataFolder,
     onInspectInteractionData,
     activeInteractionDataId,
     addToast,
@@ -195,13 +193,13 @@ export function InteractionDataManagerModal({
         setRenameValue(currentName);
     };
 
-    const handleRenameSubmit = (e: React.FormEvent | React.KeyboardEvent, id: string) => {
+    const handleRenameSubmit = async (e: React.FormEvent | React.KeyboardEvent, id: string) => {
         e.preventDefault(); e.stopPropagation();
         const trimmed = renameValue.trim();
         if (!trimmed) { setRenamingId(null); return; }
         if (folderMap.has(id)) {
             const folder = folderMap.get(id)!;
-            onSaveFolder({ ...folder, name: trimmed, lastUpdatedTimestamp: Date.now() });
+            await onSaveInteractionDataFolder({ ...folder, name: trimmed, lastUpdatedTimestamp: Date.now() });
         } else {
             onRenameInteractionData(id, trimmed);
         }
@@ -220,18 +218,42 @@ export function InteractionDataManagerModal({
         }
     };
 
-    const handleMoveSelect = (e: React.MouseEvent, id: string, folderId: string | null) => {
+    // ✅ INTERNAL LOGIC: Moving data between folders
+    const handleMoveSelect = async (e: React.MouseEvent, chatId: string, targetFolderId: string | null) => {
         e.stopPropagation();
-        onMoveInteractionDataToFolder(id, folderId);
+        const updatedFolders = allInteractionDataFolders.map(f => {
+            const hasChat = f.interactionDataIds.includes(chatId);
+            const isTarget = f.id === targetFolderId;
+            if (hasChat && !isTarget) return { ...f, interactionDataIds: f.interactionDataIds.filter(id => id !== chatId), lastUpdatedTimestamp: Date.now() };
+            if (!hasChat && isTarget) return { ...f, interactionDataIds: [...f.interactionDataIds, chatId], lastUpdatedTimestamp: Date.now() };
+            return f;
+        });
+        
+        for (let i = 0; i < allInteractionDataFolders.length; i++) {
+            if (updatedFolders[i] !== allInteractionDataFolders[i]) {
+                await onSaveInteractionDataFolder(updatedFolders[i]);
+            }
+        }
+        addToast(targetFolderId ? 'Moved to folder.' : 'Moved to root.', 'success');
+        
         setMovingInteractionDataId(null);
         setMoveDropdownRect(null);
     };
 
-    const handleCreateFolderSubmit = (e: React.FormEvent) => {
+    // ✅ INTERNAL LOGIC: Creating a new folder
+    const handleCreateFolderSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const trimmed = newFolderName.trim();
-        if (trimmed && onCreateNewFolder) {
-            onCreateNewFolder(trimmed);
+        if (trimmed) {
+            const newFolder: InteractionDataFolder = {
+                id: uuidv4(),
+                name: trimmed,
+                interactionDataIds: [],
+                firstCreatedTimestamp: Date.now(),
+                lastUpdatedTimestamp: Date.now(),
+            };
+            const success = await onSaveInteractionDataFolder(newFolder);
+            if (success) addToast(`Folder "${trimmed}" created.`, 'success');
             setIsCreatingFolder(false);
             setNewFolderName('');
         }
@@ -310,7 +332,7 @@ export function InteractionDataManagerModal({
                     <h2>Interaction Data</h2>
                     <div className="modal-header-actions">
                         {onNewInteractionData && <button type="button" className="create-new-button" onClick={onNewInteractionData}>➕ Session</button>}
-                        {onCreateNewFolder && <button type="button" className="create-new-button" onClick={() => setIsCreatingFolder(true)}>📁 Folder</button>}
+                        <button type="button" className="create-new-button" onClick={() => setIsCreatingFolder(true)}>📁 Folder</button>
                         <button type="button" className="close-button close-button-spaced" onClick={onClose}>×</button>
                     </div>
                 </div>

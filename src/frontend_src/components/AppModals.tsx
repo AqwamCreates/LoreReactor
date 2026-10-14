@@ -428,35 +428,6 @@ export function AppModals({
         return loaded;
     }, [interactionData, allCharacters]);
 
-    // ─── Folder Management Handlers ────────────────────────────────────
-    const handleMoveChatToFolder = useCallback(async (chatId: string, targetFolderId: string | null) => {
-        const updatedFolders = allInteractionDataFolders.map(f => {
-            const hasChat = f.interactionDataIds.includes(chatId);
-            const isTarget = f.id === targetFolderId;
-            if (hasChat && !isTarget) return { ...f, interactionDataIds: f.interactionDataIds.filter(id => id !== chatId), lastUpdatedTimestamp: Date.now() };
-            if (!hasChat && isTarget) return { ...f, interactionDataIds: [...f.interactionDataIds, chatId], lastUpdatedTimestamp: Date.now() };
-            return f;
-        });
-        for (let i = 0; i < allInteractionDataFolders.length; i++) {
-            if (updatedFolders[i] !== allInteractionDataFolders[i]) {
-                await onSaveInteractionDataFolder(updatedFolders[i]);
-            }
-        }
-        addToast(targetFolderId ? 'Moved to folder.' : 'Moved to root.', 'success');
-    }, [allInteractionDataFolders, onSaveInteractionDataFolder, addToast]);
-
-    const handleCreateNewFolder = useCallback(async (name: string) => {
-        const newFolder: InteractionDataFolder = {
-            id: uuidv4(),
-            name,
-            interactionDataIds: [],
-            firstCreatedTimestamp: Date.now(),
-            lastUpdatedTimestamp: Date.now(),
-        };
-        const success = await onSaveInteractionDataFolder(newFolder);
-        if (success) addToast(`Folder "${name}" created.`, 'success');
-    }, [onSaveInteractionDataFolder, addToast]);
-
     return (
         <>
             {/* ─── Manager Lists ─── */}
@@ -472,9 +443,7 @@ export function AppModals({
                     onInspectInteractionData={handleOpenInteractionDataInspectionModal}
                     onRenameInteractionData={onRenameInteractionData}
                     onNewInteractionData={onNewInteractionData}
-                    onCreateNewFolder={handleCreateNewFolder}
                     onSaveInteractionDataFolder={onSaveInteractionDataFolder}
-                    onMoveInteractionDataToFolder={handleMoveChatToFolder}
                     activeInteractionDataId={interactionData?.id ?? null}
                     addToast={addToast}
                 />
