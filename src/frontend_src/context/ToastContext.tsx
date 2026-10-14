@@ -12,7 +12,7 @@ interface Toast {
 interface ToastContextType {
     addToast: (message: string, type?: ToastType) => void;
     removeToast: (id: string) => void;
-    toasts: Toast[]; // ✅ Must be here
+    toasts: Toast[];
 }
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
@@ -43,8 +43,6 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
 export function useToast() {
     const context = useContext(ToastContext);
-    if (!context) {
-        throw new Error('useToast must be used within a ToastProvider');
-    }
+    if (!context) throw new Error('useToast must be used within a ToastProvider');
     return context;
 }
