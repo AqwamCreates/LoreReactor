@@ -1,4 +1,4 @@
-// frontend_src/services/ToolExecutor.ts
+// src/frontend_src/services/ToolExecutor.ts
 import type { ToolInvocation } from './ToolInvocationParser';
 import { fetchLinkContent } from '../utilities/linkFetcher';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from '../utilities/dialoguePromptLogic';

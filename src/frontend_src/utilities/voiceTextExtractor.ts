@@ -1,4 +1,4 @@
-// frontend_src/utilities/voiceTextExtractor.ts
+// src/frontend_src/utilities/voiceTextExtractor.ts
 import type { textType } from '../types';
 import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 

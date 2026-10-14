@@ -1,4 +1,4 @@
-// frontend_src/hooks/useChatRestoration.ts
+// src/frontend_src/hooks/useChatRestoration.ts
 import { useState, useRef, useEffect } from 'react';
 import type { Character, InteractionData, RawInteractionData, TextMessage } from '../types';
 import { loadRawInteractionData, loadRawSessionData, saveRawSessionData } from '../storages/serverStorage';

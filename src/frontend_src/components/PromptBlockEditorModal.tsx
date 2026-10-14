@@ -1,4 +1,4 @@
-// frontend_src/components/PromptBlockEditorModal.tsx
+// src/frontend_src/components/PromptBlockEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { PromptBlock, Character, Context, Location, RegularExpressionTrigger } from '../types';

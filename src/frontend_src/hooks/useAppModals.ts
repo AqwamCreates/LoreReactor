@@ -1,4 +1,4 @@
-// frontend_src/hooks/useAppModals.ts
+// src/frontend_src/hooks/useAppModals.ts
 import { useState, useCallback, useMemo } from 'react';
 
 export type ModalName =

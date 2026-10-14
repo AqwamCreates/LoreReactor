@@ -1,4 +1,4 @@
-// frontend_src/components/BudgetStrategyEditorModal.tsx
+// src/frontend_src/components/BudgetStrategyEditorModal.tsx
 import { useState } from 'react';
 import type { BudgetStrategy, LanguageModel } from '../types';
 import { EntitySelectList } from './EntitySelectList';

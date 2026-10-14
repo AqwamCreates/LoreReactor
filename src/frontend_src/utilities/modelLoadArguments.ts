@@ -1,4 +1,4 @@
-// frontend_src/utilities/modelLoadArguments.ts
+// src/frontend_src/utilities/modelLoadArguments.ts
 import type { LanguageModel } from '../types';
 
 /**

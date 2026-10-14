@@ -1,4 +1,4 @@
-// frontend_src/utilities/dataConverters.ts
+// src/frontend_src/utilities/dataConverters.ts
 import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StopPattern, tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal, deviceType } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';

@@ -1,4 +1,4 @@
-// frontend_src/hooks/useWorldManager.ts
+// src/frontend_src/hooks/useWorldManager.ts
 import { useState, useCallback } from 'react';
 import type { World } from '../types';
 import { loadAllRawWorlds, saveRawWorld, deleteRawWorld } from '../storages/serverStorage';

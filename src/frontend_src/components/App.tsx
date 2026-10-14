@@ -1,4 +1,4 @@
-// frontend_src/components/App.tsx
+// src/frontend_src/components/App.tsx
 import type React from 'react';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '../context/ToastContext';

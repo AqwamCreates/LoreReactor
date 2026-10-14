@@ -1,4 +1,4 @@
-// frontend_src/utilities/serverTools.ts
+// src/frontend_src/utilities/serverTools.ts
 import { localURL } from '../../configurations';
 
 export interface SystemInfoResult {

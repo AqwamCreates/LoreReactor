@@ -1,4 +1,4 @@
-// frontend_src/utilities/nameDetection.ts
+// src/frontend_src/utilities/nameDetection.ts
 import type { Character, TextMessage } from '../types';
 
 // ─── Normalization Layer ──────────────────────────────────────────

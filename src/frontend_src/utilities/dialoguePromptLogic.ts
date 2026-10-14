@@ -1,4 +1,4 @@
-// frontend_src/utilities/dialoguePromptLogic.ts
+// src/frontend_src/utilities/dialoguePromptLogic.ts
 import type { DialoguePrompt } from '../types';
 
 /**

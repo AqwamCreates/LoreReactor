@@ -1,4 +1,4 @@
-// frontend_src/components/MemoizedMessageText.tsx
+// src/frontend_src/components/MemoizedMessageText.tsx
 import React from 'react';
 import { formatDisplayMessageText } from '../utilities/textDisplayFormatter';
 

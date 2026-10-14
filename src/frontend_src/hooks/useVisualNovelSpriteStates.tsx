@@ -1,4 +1,4 @@
-// frontend_src/hooks/useVisualNovelSpriteStates.ts
+// src/frontend_src/hooks/useVisualNovelSpriteStates.ts
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import type { ChatMessage } from '../types';
 

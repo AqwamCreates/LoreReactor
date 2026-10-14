@@ -1,4 +1,4 @@
-// frontend_src/services/ProviderCachingStrategy.ts
+// src/frontend_src/services/ProviderCachingStrategy.ts
 import type { backend } from "../types";
 
 // ─── Types ──────────────────────────────────────────────────────────

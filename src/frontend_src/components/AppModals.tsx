@@ -1,4 +1,4 @@
-// frontend_src/components/AppModals.tsx
+// src/frontend_src/components/AppModals.tsx
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import type {
     Character, Context, Location, Sampler, StopPattern,

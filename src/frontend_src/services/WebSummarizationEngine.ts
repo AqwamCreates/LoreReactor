@@ -1,4 +1,4 @@
-// frontend_src/services/WebpageSummarizationEngine.ts
+// src/frontend_src/services/WebpageSummarizationEngine.ts
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { getModelTemplate } from '../dictionaries/modelTemplates';

@@ -1,4 +1,4 @@
-// frontend_src/hooks/useChatAutoSave.ts
+// src/frontend_src/hooks/useChatAutoSave.ts
 import { useRef, useEffect } from 'react';
 import type { InteractionData, RawInteractionData, TextMessage } from '../types';
 import { saveRawInteractionData } from '../storages/serverStorage';

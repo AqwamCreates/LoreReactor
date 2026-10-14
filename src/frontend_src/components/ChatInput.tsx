@@ -1,4 +1,4 @@
-// frontend_src/components/ChatInput.tsx
+// src/frontend_src/components/ChatInput.tsx
 import type React from 'react';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import type { BudgetStrategy, InteractionData, Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData, LanguageModel } from '../types';

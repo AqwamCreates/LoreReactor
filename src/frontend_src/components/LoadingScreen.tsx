@@ -1,4 +1,4 @@
-// frontend_src/components/LoadingScreen.tsx
+// src/frontend_src/components/LoadingScreen.tsx
 interface LoadStep { id: string; label: string; icon: string; done: boolean }
 
 interface LoadingScreenProps {

@@ -1,4 +1,4 @@
-// frontend_src/utilities/slashCommandLogic.ts
+// src/frontend_src/utilities/slashCommandLogic.ts
 import type { Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData, InteractionData, BudgetStrategy, LanguageModel } from '../types';
 import { getLocalMessageHistory } from './timelineLogic';
 

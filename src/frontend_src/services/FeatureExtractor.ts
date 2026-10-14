@@ -1,4 +1,4 @@
-// frontend_src/services/FeatureExtractor.ts
+// src/frontend_src/services/FeatureExtractor.ts
 
 import type { LanguageModel } from "../types";
 

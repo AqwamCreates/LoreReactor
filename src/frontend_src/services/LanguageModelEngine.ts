@@ -1,4 +1,4 @@
-// frontend_src/services/LanguageModelEngine.ts
+// src/frontend_src/services/LanguageModelEngine.ts
 import { localAddress } from "../../configurations";
 import { cloudBackends, cloudEndpoints, cloudTokenizeEndpoints, localBackends, openAiCompatibleLocalBackends } from "../dictionaries/languageModelInformation";
 import type { backend, cloudBackend, LanguageModel, localBackend } from "../types";

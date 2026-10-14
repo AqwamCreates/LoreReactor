@@ -1,4 +1,4 @@
-// frontend_src/utilities/chatSessionLogic.ts
+// src/frontend_src/utilities/chatSessionLogic.ts
 import type {
     InteractionData,
     HistoryMessage,

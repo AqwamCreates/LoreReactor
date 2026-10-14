@@ -1,4 +1,4 @@
-// frontend_src/utilities/traitDetection.ts
+// src/frontend_src/utilities/traitDetection.ts
 
 // --- Modifier System ---
 

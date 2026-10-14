@@ -1,4 +1,4 @@
-// frontend_src/hooks/useServerSync.ts
+// src/frontend_src/hooks/useServerSync.ts
 import { useEffect } from 'react';
 import { clientId, localURL } from '../../configurations';
 import { loadRawInteractionData } from '../storages/serverStorage';

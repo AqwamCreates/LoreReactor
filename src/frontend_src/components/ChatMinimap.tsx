@@ -1,4 +1,4 @@
-// frontend_src/components/ChatMinimap.tsx
+// src/frontend_src/components/ChatMinimap.tsx
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import type { ChatMessage } from '../types';
 import { useCompiledMessageText } from '../hooks/useMessageDisplay';

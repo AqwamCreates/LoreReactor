@@ -1,4 +1,4 @@
-// frontend_src/services/StreamingVoiceTracker.ts
+// src/frontend_src/services/StreamingVoiceTracker.ts
 import { StreamingVoicePlayer } from './StreamingVoicePlayer';
 import { textToSpeechEngine, fetchVoiceReference } from './TextToSpeechEngine';
 import { extractNarratableText } from '../utilities/voiceTextExtractor';

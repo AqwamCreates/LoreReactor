@@ -1,4 +1,4 @@
-// frontend_src/utilities/linkFetcher.ts
+// src/frontend_src/utilities/linkFetcher.ts
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { summarizeWebpageContent, mergeWebpageSummaries, type WebpageImageInfo } from '../services/WebSummarizationEngine';
 import { findWebpageByUrl, saveRawWebpage } from '../storages/serverStorage';

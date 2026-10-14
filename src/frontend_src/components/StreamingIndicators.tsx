@@ -1,4 +1,4 @@
-// frontend_src/components/StreamingIndicators.tsx
+// src/frontend_src/components/StreamingIndicators.tsx
 import type React from 'react';
 import type { Character } from '../types';
 import { getDelayedDisplayName } from '../utilities/immersionLogic';

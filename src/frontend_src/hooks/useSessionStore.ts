@@ -1,4 +1,4 @@
-// frontend_src/hooks/useSessionStore.ts
+// src/frontend_src/hooks/useSessionStore.ts
 import { create } from 'zustand';
 import type { Character, InteractionData, BudgetStrategy, LanguageModel, BudgetData, MultiplayerData } from '../types';
 import { loadRawSessionData, saveRawSessionData, saveRawInteractionData } from '../storages/serverStorage';

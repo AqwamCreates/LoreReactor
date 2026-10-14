@@ -1,4 +1,4 @@
-// frontend_src/dictionaries/stringList.ts
+// src/frontend_src/dictionaries/stringList.ts
 
 // Tool Call delimiters: ⟪ ... ⟫ (U+27EA / U+27EB)
 export const toolCallStartString = '⟪';

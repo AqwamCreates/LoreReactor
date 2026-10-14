@@ -1,4 +1,4 @@
-// frontend_src/ambientNarration/narrator.ts
+// src/frontend_src/ambientNarration/narrator.ts
 import type { Character } from '../types';
 
 const now = Date.now();

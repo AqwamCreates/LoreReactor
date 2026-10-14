@@ -1,4 +1,4 @@
-// frontend_src/services/VoiceTranscriptionEngine.ts
+// src/frontend_src/services/VoiceTranscriptionEngine.ts
 import { speechToTextEngine } from './SpeechToTextEngine';
 import { uploadCharacterVoice } from '../storages/serverStorage';
 
@@ -51,6 +51,7 @@ class VoiceTranscriptionEngine {
             }
         }
         this.isProcessing = false;
+        speechToTextEngine.unloadIfInactive()
     }
 }
 

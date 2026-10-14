@@ -1,4 +1,4 @@
-// frontend_src/dictionaries/languageModelInformation.ts
+// src/frontend_src/dictionaries/languageModelInformation.ts
 
 import type { cloudBackend, localBackend } from "../types";
 

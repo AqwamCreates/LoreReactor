@@ -1,4 +1,4 @@
-// frontend_src/services/TextMessageSummarizationEngine.ts
+// src/frontend_src/services/TextMessageSummarizationEngine.ts
 import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock, cacheEfficiencyConfigurationType, Profile, SummarizationStep, StopPattern } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';

@@ -1,4 +1,4 @@
-// frontend_src/types.ts
+// src/frontend_src/types.ts
 
 export type tristateInteger = -1 | 0 | 1
 

@@ -1,4 +1,4 @@
-// frontend_src/hooks/useMultiplayerBroadcast.ts
+// src/frontend_src/hooks/useMultiplayerBroadcast.ts
 import { useCallback } from 'react';
 import type { Character, Context, Location, AudioTrack, Profile, InteractionData } from '../types';
 

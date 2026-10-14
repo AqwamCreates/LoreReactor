@@ -1,4 +1,4 @@
-// frontend_src/hooks/useChatSession.ts
+// src/frontend_src/hooks/useChatSession.ts
 import { useRef, useCallback, useEffect } from 'react';
 import { useChatEngine } from './useChatEngine';
 import { useChatUI } from './useChatUI';

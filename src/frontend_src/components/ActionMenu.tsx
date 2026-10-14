@@ -1,4 +1,4 @@
-// frontend_src/components/ActionMenu.tsx
+// src/frontend_src/components/ActionMenu.tsx
 import { useState, useRef, useLayoutEffect, useEffect } from 'react';
 import type { Character, InterjectableAction } from '../types';
 

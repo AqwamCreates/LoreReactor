@@ -1,4 +1,4 @@
-// frontend_src/hooks/useMessageDisplay.ts
+// src/frontend_src/hooks/useMessageDisplay.ts
 import { useMemo } from 'react';
 import type { HistoryMessage } from '../types';
 import { useSessionStore } from './useSessionStore';

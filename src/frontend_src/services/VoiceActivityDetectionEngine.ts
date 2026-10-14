@@ -1,4 +1,4 @@
-// frontend_src/services/VoiceActivityDetectionEngine.ts
+// src/frontend_src/services/VoiceActivityDetectionEngine.ts
 import * as ort from 'onnxruntime-web';
 import type { deviceType } from '../types';
 

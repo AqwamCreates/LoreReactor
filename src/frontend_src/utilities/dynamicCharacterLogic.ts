@@ -1,4 +1,4 @@
-// frontend_src/utilities/dynamicCharacterLogic.ts
+// src/frontend_src/utilities/dynamicCharacterLogic.ts
 import type { Character, InteractionData, HistoryMessage, ChatMessage, Location } from '../types';
 import { 
     getEffectiveInitiativeWeight, 

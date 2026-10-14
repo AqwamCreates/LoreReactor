@@ -1,4 +1,4 @@
-// frontend_src/components/MultiplayerEditorModal.tsx
+// src/frontend_src/components/MultiplayerEditorModal.tsx
 import { useState, useCallback, useMemo } from 'react';
 import type { MultiplayerData, Character, RawInteractionData, MultiplayerDataAccountConfiguration, tristateInteger } from '../types';
 import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';

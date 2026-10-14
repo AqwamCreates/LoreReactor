@@ -1,4 +1,4 @@
-// frontend_src/services/MultiplayerEvents.ts
+// src/frontend_src/services/MultiplayerEvents.ts
 import type { HistoryMessage } from '../types';
 import type { MediaResponsePayload } from '../hooks/useMultiplayerConnection';
 

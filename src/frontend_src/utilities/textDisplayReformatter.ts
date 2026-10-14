@@ -1,4 +1,4 @@
-// frontend_src/utilities/textDisplayReformatter.ts
+// src/frontend_src/utilities/textDisplayReformatter.ts
 import { getFormatPreferenceEngine } from '../services/FormatPreferenceEngine';
 import {
     toolCallStartString,

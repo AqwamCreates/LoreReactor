@@ -1,4 +1,4 @@
-// frontend_src/components/JoinSessionModal.tsx
+// src/frontend_src/components/JoinSessionModal.tsx
 import { useState, useCallback } from 'react';
 import { useToast } from '../context/ToastContext';
 import '../main.css';

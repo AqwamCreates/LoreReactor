@@ -1,4 +1,4 @@
-// frontend_src/hooks/useMessageToolbar.ts
+// src/frontend_src/hooks/useMessageToolbar.ts
 import { useRef, useCallback, useEffect } from 'react';
 import { useSessionStore } from './useSessionStore';
 

@@ -1,4 +1,4 @@
-// frontend_src/utilities/immersionLogic.ts
+// src/frontend_src/utilities/immersionLogic.ts
 import { useMemo } from 'react';
 import type { Character, ChatMessage, InteractionData } from "../types";
 import { getLocalMessageHistory } from './timelineLogic';

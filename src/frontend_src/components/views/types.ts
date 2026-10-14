@@ -1,4 +1,4 @@
-// frontend_src/components/views/types.ts
+// src/frontend_src/components/views/types.ts
 import type React from 'react';
 import type { Character, ChatMessage } from '../../types';
 import type { DisplayNameCache } from '../../utilities/immersionLogic';

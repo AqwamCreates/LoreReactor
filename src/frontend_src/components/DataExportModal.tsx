@@ -1,4 +1,4 @@
-// frontend_src/components/DataExportModal.tsx
+// src/frontend_src/components/DataExportModal.tsx
 import { useState } from 'react';
 import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData } from '../types';
 import { exportSelectedData, type LoreReactorExport } from '../services/DataPortabilityEngine';

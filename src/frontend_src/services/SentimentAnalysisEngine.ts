@@ -1,4 +1,4 @@
-// frontend_src/services/SentimentAnalysisEngine.ts
+// src/frontend_src/services/SentimentAnalysisEngine.ts
 import type { deviceType } from '../types';
 
 const EMOTION_LABELS = [

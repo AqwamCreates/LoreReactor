@@ -1,4 +1,4 @@
-// frontend_src/utilities/messageDisplayCompiler.ts
+// src/frontend_src/utilities/messageDisplayCompiler.ts
 import type { Character, HistoryMessage, InteractionData, ToolExecutionResult, toolUsageDisplayMode } from '../types';
 import {
     toolCallStartString,

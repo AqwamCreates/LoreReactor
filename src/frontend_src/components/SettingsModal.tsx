@@ -1,4 +1,4 @@
-// frontend_src/components/SettingsModal.tsx
+// src/frontend_src/components/SettingsModal.tsx
 import { useState } from 'react';
 import '../main.css';
 

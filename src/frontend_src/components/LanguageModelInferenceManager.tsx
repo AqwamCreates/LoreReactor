@@ -1,4 +1,4 @@
-// frontend_src/components/LanguageModelInferenceManagerModal.tsx
+// src/frontend_src/components/LanguageModelInferenceManagerModal.tsx
 import { useState, useEffect, useCallback } from 'react';
 import { localURL } from '../../configurations';
 import '../main.css';

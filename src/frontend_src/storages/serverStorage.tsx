@@ -1,4 +1,4 @@
-// frontend_src/storages/serverStorage.tsx
+// src/frontend_src/storages/serverStorage.tsx
 import type { 
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
   Character, RawCharacter, RawInteractionMessage, RawWhisperMessage, InteractionData, RawInteractionData,

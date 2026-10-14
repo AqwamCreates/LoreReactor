@@ -1,4 +1,4 @@
-// frontend_src/hooks/useMultiplayerSession.ts
+// src/frontend_src/hooks/useMultiplayerSession.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Character, HistoryMessage, LanguageModel, MultiplayerData } from '../types';
 import {

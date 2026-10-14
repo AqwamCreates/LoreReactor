@@ -1,4 +1,4 @@
-// frontend_src/hooks/useCharacterVoice.ts
+// src/frontend_src/hooks/useCharacterVoice.ts
 import { useCallback } from 'react';
 import type { Character, Sampler, deviceType } from '../types';
 import { textToSpeechEngine, fetchVoiceReference } from '../services/TextToSpeechEngine';

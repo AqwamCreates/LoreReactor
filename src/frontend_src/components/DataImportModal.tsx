@@ -1,4 +1,4 @@
-// frontend_src/components/DataImportModal.tsx
+// src/frontend_src/components/DataImportModal.tsx
 import { useState, useRef, useMemo } from 'react';
 import { validateExport, importSelectedData, type LoreReactorExport, type ImportResult } from '../services/DataPortabilityEngine';
 import { buildJsonSchema } from '../utilities/dataSchema';

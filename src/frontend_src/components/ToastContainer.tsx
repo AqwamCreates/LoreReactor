@@ -1,4 +1,4 @@
-// frontend_src/components/ToastContainer.tsx
+// src/frontend_src/components/ToastContainer.tsx
 import { useToast } from '../context/ToastContext';
 
 export function ToastContainer() {

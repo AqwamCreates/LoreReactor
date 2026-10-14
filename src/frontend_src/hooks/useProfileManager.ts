@@ -1,4 +1,4 @@
-// frontend_src/hooks/useProfileManager.ts
+// src/frontend_src/hooks/useProfileManager.ts
 import { useState } from 'react';
 import type { Profile } from '../types';
 import { loadAllRawProfiles, saveRawProfile, deleteRawProfile } from '../storages/serverStorage';

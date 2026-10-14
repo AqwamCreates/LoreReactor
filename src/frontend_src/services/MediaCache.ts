@@ -1,4 +1,4 @@
-// frontend_src/services/MediaCache.ts
+// src/frontend_src/services/MediaCache.ts
 import { MultiplayerEvents } from './MultiplayerEvents';
 import type { MediaResponsePayload } from '../hooks/useMultiplayerConnection';
 

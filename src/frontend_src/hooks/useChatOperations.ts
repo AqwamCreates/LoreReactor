@@ -1,4 +1,4 @@
-// frontend_src/hooks/useChatOperations.ts
+// src/frontend_src/hooks/useChatOperations.ts
 import { useState, useCallback, useRef } from 'react';
 import type { Character, InteractionData, RawInteractionData, TextMessage } from '../types';
 import { saveRawInteractionData, loadRawInteractionData, saveRawSessionData } from '../storages/serverStorage';

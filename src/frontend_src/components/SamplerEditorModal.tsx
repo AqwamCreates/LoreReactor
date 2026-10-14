@@ -1,4 +1,4 @@
-// frontend_src/components/SamplerEditorModal.tsx
+// src/frontend_src/components/SamplerEditorModal.tsx
 import type React from 'react';
 import { useState } from 'react';
 import type { Sampler, StopPattern } from '../types';

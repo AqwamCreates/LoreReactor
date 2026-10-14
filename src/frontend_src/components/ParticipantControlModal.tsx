@@ -1,4 +1,4 @@
-// frontend_src/components/ParticipantControlModal.tsx
+// src/frontend_src/components/ParticipantControlModal.tsx
 import { useState, useMemo } from 'react';
 import type { Character, InteractionData, HistoryMessage } from '../types';
 import { findLatestMessage } from '../utilities/messageLogic';

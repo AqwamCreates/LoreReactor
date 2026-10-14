@@ -1,4 +1,4 @@
-// frontend_src/hooks/useChatEngine.ts
+// src/frontend_src/hooks/useChatEngine.ts
 import { useCallback, useMemo } from 'react';
 import type { Character, InteractionData, PromptBlock, BudgetStrategy, BudgetData, LanguageModel } from '../types';
 import { CharacterActor } from '../services/CharacterActor';

@@ -1,4 +1,4 @@
-// frontend_src/hooks/useActionManager.ts
+// src/frontend_src/hooks/useActionManager.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { InterjectableAction } from '../types';
 import { loadInterjectableActions, saveInterjectableActions } from '../storages/serverStorage';

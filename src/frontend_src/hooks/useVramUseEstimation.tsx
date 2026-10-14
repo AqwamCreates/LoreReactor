@@ -1,4 +1,4 @@
-// frontend_src/hooks/vramUseEstimation.ts
+// src/frontend_src/hooks/vramUseEstimation.ts
 import { useState, useEffect } from 'react';
 
 interface VRAMEstimationParams {

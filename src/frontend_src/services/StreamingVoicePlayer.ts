@@ -1,4 +1,4 @@
-// frontend_src/services/StreamingVoicePlayer.ts
+// src/frontend_src/services/StreamingVoicePlayer.ts
 export class StreamingVoicePlayer {
     private context: AudioContext | null = null;
     private nextStartTime: number = 0;

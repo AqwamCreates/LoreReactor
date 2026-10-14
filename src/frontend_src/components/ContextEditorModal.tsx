@@ -1,4 +1,4 @@
-// frontend_src/components/ContextEditorModal.tsx
+// src/frontend_src/components/ContextEditorModal.tsx
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { Context, Character, searchEngine, linkFetchMode, RegularExpressionTrigger } from '../types';

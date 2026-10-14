@@ -1,4 +1,4 @@
-// frontend_src/components/RegularExpressionTriggerEditor.tsx
+// src/frontend_src/components/RegularExpressionTriggerEditor.tsx
 import { useState, useCallback } from 'react';
 import type { RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget } from '../types';
 

@@ -1,4 +1,4 @@
-// frontend_src/services/SpeechToTextEngine.ts
+// src/frontend_src/services/SpeechToTextEngine.ts
 import type { deviceType } from '../types';
 import { voiceActivityDetectionEngine } from './VoiceActivityDetectionEngine';
 
@@ -28,7 +28,7 @@ function sliderToRms(sliderValue: number): number {
     const minDb = -60; // Quiet room noise floor
     const maxDb = -10; // Loud vocal ceiling
     const db = minDb + (clamped / 100) * (maxDb - minDb);
-    return Math.pow(10, db / 20);
+    return 10 ** (db / 20);
 }
 
 class SpeechToTextEngine {
@@ -189,6 +189,11 @@ class SpeechToTextEngine {
         await voiceActivityDetectionEngine.unload();
         
         console.log('[STTEngine] Unloaded.');
+    }
+
+    async unloadIfInactive(){
+        if (this.isRecording || this.isAutoListening) return
+        await this.unload()
     }
 
     /**

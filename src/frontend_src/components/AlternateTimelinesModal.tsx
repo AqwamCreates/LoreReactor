@@ -1,4 +1,4 @@
-// frontend_src/components/AlternateTimelinesModal.tsx
+// src/frontend_src/components/AlternateTimelinesModal.tsx
 import { useMemo, useState, useRef, useEffect } from 'react';
 import type { RawInteractionData } from '../types';
 import {

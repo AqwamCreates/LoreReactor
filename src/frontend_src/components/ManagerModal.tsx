@@ -1,4 +1,4 @@
-// frontend_src/components/ManagerModal.tsx
+// src/frontend_src/components/ManagerModal.tsx
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import '../main.css';
 

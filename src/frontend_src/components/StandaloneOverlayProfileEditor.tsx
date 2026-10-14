@@ -1,4 +1,4 @@
-// frontend_src/components/StandaloneOverlayProfileEditor.tsx
+// src/frontend_src/components/StandaloneOverlayProfileEditor.tsx
 import { useState } from 'react';
 import type { Profile, textType, toolUsageDisplayMode } from '../types';
 import { SliderInput } from './SliderInput';

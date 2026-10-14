@@ -1,4 +1,4 @@
-// frontend_src/components/BudgetControlModal.tsx
+// src/frontend_src/components/BudgetControlModal.tsx
 import { useMemo, useState } from 'react';
 import type { BudgetStrategy, LanguageModel } from '../types';
 import { useBudgetDataManager } from '../hooks/useBudgetDataManager';

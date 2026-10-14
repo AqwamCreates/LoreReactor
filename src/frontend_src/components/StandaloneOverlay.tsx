@@ -1,4 +1,4 @@
-// frontend_src/components/StandaloneOverlay.tsx
+// src/frontend_src/components/StandaloneOverlay.tsx
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';

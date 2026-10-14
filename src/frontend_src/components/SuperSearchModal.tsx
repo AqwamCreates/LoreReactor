@@ -1,4 +1,4 @@
-// frontend_src/components/SuperSearchModal.tsx
+// src/frontend_src/components/SuperSearchModal.tsx
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { 
     Character, Context, Location, AudioTrack, World, PromptBlock, 
