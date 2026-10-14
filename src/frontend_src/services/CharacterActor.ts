@@ -96,25 +96,39 @@ async function processToolInvocations(
 ): Promise<ProcessedReplacements | null> {
     if (!invocations || invocations.length === 0) return null;
 
-    const effectiveTools = getEffectiveTools(character, profile);
-    const enabledInvocations = invocations.filter(inv => effectiveTools[inv.toolType as tool] ?? false);
-
-    if (enabledInvocations.length === 0) return null;
-
     const displayMode = profile?.toolUsageDisplayMode ?? 'none';
-    const toolResults = await executeTools(enabledInvocations, targetMessage, interactionData, context, displayMode);
+    let toolResults: ToolResult[] = [];
+
+    try {
+        toolResults = await executeTools(invocations, targetMessage, interactionData, context, displayMode);
+    } catch (e) {
+        console.error('[CharacterActor] executeTools failed:', e);
+        toolResults = invocations.map(inv => ({
+            toolType: inv.toolType,
+            args: inv.args,
+            content: 'Something went wrong',
+            displayReplacement: ''
+        }));
+    }
 
     const rawReplacements: { rawMatch: string; resultText: string }[] = [];
     const displayReplacements: { rawMatch: string; displayText: string }[] = [];
     const executionResults: ToolExecutionResult[] = [];
 
-    for (let i = 0; i < enabledInvocations.length; i++) {
-        const toolResult = toolResults[i];
-        const inv = enabledInvocations[i];
+    for (let i = 0; i < invocations.length; i++) {
+        const inv = invocations[i];
+        const toolResult = toolResults[i] || {
+            toolType: inv.toolType,
+            args: inv.args,
+            content: 'Something went wrong',
+            displayReplacement: ''
+        };
+
+        const resultContent = toolResult.content?.trim() ? toolResult.content : 'Something went wrong';
 
         rawReplacements.push({
             rawMatch: inv.rawMatch,
-            resultText: toolResult.content,
+            resultText: resultContent,
         });
 
         displayReplacements.push({
@@ -126,7 +140,7 @@ async function processToolInvocations(
             rawMatch: inv.rawMatch,
             toolType: toolResult.toolType,
             args: toolResult.args,
-            content: toolResult.content,
+            content: resultContent,
             displayReplacement: toolResult.displayReplacement
         });
     }

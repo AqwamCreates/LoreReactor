@@ -399,15 +399,39 @@ export async function executeTool(
     };
   }
 
-  // 2. Existing execution logic
+  // 2. Look up the execution function
   const executeFunction = toolFunctions[toolType as tool];
-  if (executeFunction) {
-    return executeFunction(args, nextMessage, interactionData, context, displayMode);
+  if (!executeFunction) {
+    console.warn(`Unknown tool type: ${toolType}`);
+    return {
+      toolType,
+      args,
+      content: "Something went wrong",
+      displayReplacement: ""
+    };
   }
 
-  console.warn(`Unknown tool type: ${toolType}`);
-  const errorContent = `[Error: Unknown tool "${toolType}"]`;
-  return { toolType, args, content: errorContent, displayReplacement: errorContent };
+  // 3. Execute with error recovery
+  try {
+    const result = await executeFunction(args, nextMessage, interactionData, context, displayMode);
+    if (!result || !result.content || !result.content.trim()) {
+      return {
+        toolType,
+        args,
+        content: "Something went wrong",
+        displayReplacement: result?.displayReplacement || ""
+      };
+    }
+    return result;
+  } catch (error) {
+    console.error(`Tool "${toolType}" execution error:`, error);
+    return {
+      toolType,
+      args,
+      content: "Something went wrong",
+      displayReplacement: ""
+    };
+  }
 }
 
 export async function executeTools(
