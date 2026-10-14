@@ -53,7 +53,7 @@ const ENTITY_REGISTRY = {
   stopPatterns: { dir: 'stop_pattern_data', hasManifest: true },
   interactionMessages: { dir: 'interaction_messages', hasManifest: false },
   interactionData: { dir: 'interaction_data', hasManifest: true },
-  interactionDataFolders: { dir: 'interaction_data_folder', hasManifest: true },
+  interactionDataFolders: { dir: 'interaction_data_folders', hasManifest: true },
   kvCaches: { dir: 'kv_caches', hasManifest: false },
   budgetStrategies: { dir: 'budget_strategies', hasManifest: true },
   profiles: { dir: 'profile_data', hasManifest: true },

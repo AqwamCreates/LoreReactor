@@ -73,6 +73,7 @@ export function useServerSync({ refreshers }: SyncProps) {
         else if (path.startsWith('budget_strategies/')) refreshers.budgetStrategies?.();
         else if (path.startsWith('multiplayer_data/')) refreshers.multiplayerData?.();
         else if (path.startsWith('multiplayer_character_data/')) refreshers.multiplayerCharacters?.();
+        else if (path.startsWith('interaction_data_folders/')) refreshers.interactionDataFolders?.();
         
       } catch (e) {
         console.error('Sync parse error', e);

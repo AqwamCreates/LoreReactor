@@ -352,6 +352,12 @@ function App() {
         refreshChatList: interactionDatas.refresh,
     });
 
+    // ─── Sync Folders to Zustand for Branch/Clone Inheritance ─────────
+    useEffect(() => {
+        useSessionStore.getState().setAllInteractionDataFolders(interactionDataFolders.interactionDataFolders);
+        useSessionStore.getState().setSaveInteractionDataFolder(interactionDataFolders.saveFolder);
+    }, [interactionDataFolders.interactionDataFolders, interactionDataFolders.saveFolder]);
+
     // ─── Server Sync (Multi-Device State Updates) ────────────────────
     useServerSync({
         refreshers: {
@@ -432,7 +438,7 @@ function App() {
         setSelectedBudgetStrategyId: storeSetSelectedBudgetStrategyId,
         setSelectedCharacterId: storeSetSelectedCharacterId,
         setSelectedModelId: models.setSelectedModelId,
-        unloadAllRunningModels: models.unloadAllRunningModels, // ✅ WIRE HERE
+        unloadAllRunningModels: models.unloadAllRunningModels,
         loadFullCharacter: characters.loadFullCharacter, addToast,
     });
 
@@ -1297,6 +1303,7 @@ function App() {
                     allBudgetStrategies={budgetStrategies.strategies} allProfiles={profiles.profiles} allExtensions={extensions.extensions}
                     allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDatas.multiplayerData}
                     allInteractionDataFolders={interactionDataFolders.interactionDataFolders}
+                    onSaveInteractionDataFolder={interactionDataFolders.saveFolder}
                     onSwitchChat={interactionDataOperations.handleSwitchInteractionData} onDeleteInteractionData={onDeleteInteractionDataForModals}
                     onDeleteInteractionDataFolder={interactionDataFolders.deleteFolder}
                     onNewInteractionData={interactionDataOperations.handleNewInteractionData}
