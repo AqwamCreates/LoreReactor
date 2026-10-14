@@ -889,10 +889,20 @@ SHARED UI COMPONENTS (Context Bar, Input, Modals, etc.)
     border-top: 1px solid var(--border);
     flex-shrink: 0;
     align-items: stretch;
-    height: auto;
     box-sizing: border-box;
-    transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
     overflow: hidden;
+}
+
+/* --- Smooth Grid Accordion Wrapper --- */
+.context-bar-extended-wrapper {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    overflow: hidden;
+}
+
+.context-bar.expanded .context-bar-extended-wrapper {
+    grid-template-rows: 1fr;
 }
 
 .context-bar-core-row {
@@ -912,26 +922,28 @@ SHARED UI COMPONENTS (Context Bar, Input, Modals, etc.)
 .context-bar-core-row::-webkit-scrollbar { display: none; }
 
 .context-bar-extended-row {
+    min-height: 0; /* Crucial: allows true 0px collapse without snapping */
     display: flex;
     gap: clamp(4px, 0.6vw, 8px);
     padding: 10px clamp(10px, 1.5vw, 16px) 0 clamp(10px, 1.5vw, 16px);
     align-items: center;
-    min-height: clamp(26px, 3.5vw, 36px);
     box-sizing: border-box;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
     -ms-overflow-style: none;
     -webkit-overflow-scrolling: touch;
-    animation: contextBarSlideDown 0.2s ease-out;
+    opacity: 0;
+    transform: translateY(-8px);
+    transition: opacity 0.25s ease, transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.context-bar.expanded .context-bar-extended-row {
+    opacity: 1;
+    transform: translateY(0);
 }
 
 .context-bar-extended-row::-webkit-scrollbar { display: none; }
-
-@keyframes contextBarSlideDown {
-    from { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; }
-    to { max-height: 44px; opacity: 1; padding-top: 5px; padding-bottom: 0; }
-}
 
 .context-bar-toggle {
     flex-shrink: 0 !important;

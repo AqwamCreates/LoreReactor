@@ -36,27 +36,28 @@ export function ContextBar({
     if (viewMode !== 'ladder') return null;
 
     return (
-        <div className="context-bar">
-            {/* Extended configuration buttons — above core, collapsible */}
-            {expanded && (
+        <div className={`context-bar ${expanded ? 'expanded' : ''}`}>
+            {/* Extended configuration buttons — collapsible grid wrapper for smooth slide */}
+            <div className="context-bar-extended-wrapper">
                 <div className="context-bar-extended-row">
-                     <NavButton icon="🧱" label="Prompt Blocks" onClick={onOpenPromptBlocks} />
+                    <NavButton icon="🧱" label="Prompt Blocks" onClick={onOpenPromptBlocks} />
                     <NavButton icon="🤖" label="Language Models" onClick={onOpenModels} />
                     <NavButton icon="🎚️" label="Samplers" onClick={onOpenSamplers} />
                     <NavButton icon="🛑" label="Stop Patterns" onClick={onOpenStopPatterns} />
                     <NavButton icon="💰" label="Budgets" onClick={onOpenBudgets} />
                     <NavButton icon="👤" label="Profiles" onClick={onOpenProfiles} />
-                    {/* Toggle lives here when expanded — takes up space in the extended row */}
+                    {/* Toggle lives here when expanded */}
                     <button
                         type="button"
                         className="nav-button nav-button-icon-only context-bar-toggle context-bar-toggle-expanded"
                         onClick={() => setExpanded(false)}
                         title="Hide advanced panels"
+                        tabIndex={expanded ? 0 : -1}
                     >
                         <span>⚙️</span>
                     </button>
                 </div>
-            )}
+            </div>
 
             {/* Core narrative buttons — always visible */}
             <div className="context-bar-core-row">
