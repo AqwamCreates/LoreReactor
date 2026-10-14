@@ -38,7 +38,7 @@ function parseFormattedText(
         }
 
         // 2. Bold + Italic (***text***)
-        const biMatch = remaining.match(/\*\*\*(.+?)\*\*\*/s);
+        const biMatch = remaining.match(/(?<!\*)\*\*\*(?!\s|\*)(.+?)(?<!\s|\*)\*\*\*(?!\*)/s);
         if (biMatch && biMatch.index !== undefined) {
             candidates.push({
                 type: 'bold_italic',
@@ -49,7 +49,7 @@ function parseFormattedText(
         }
 
         // 3. Bold (**text**)
-        const boldMatch = remaining.match(/(?<!\*)\*\*(?!\*)(.+?)(?<!\*)\*\*(?!\*)/s);
+        const boldMatch = remaining.match(/(?<!\*)\*\*(?!\s|\*)(.+?)(?<!\s|\*)\*\*(?!\*)/s);
         if (boldMatch && boldMatch.index !== undefined) {
             candidates.push({
                 type: 'bold',
@@ -60,7 +60,7 @@ function parseFormattedText(
         }
 
         // 4. Italic (*text*)
-        const italicMatch = remaining.match(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/s);
+        const italicMatch = remaining.match(/(?<!\*)\*(?!\s|\*)(.+?)(?<!\s|\*)\*(?!\*)/s);
         if (italicMatch && italicMatch.index !== undefined) {
             candidates.push({
                 type: 'italic',
