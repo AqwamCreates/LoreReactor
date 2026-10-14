@@ -3,6 +3,7 @@ import type React from 'react';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { RawInteractionData, InteractionDataFolder } from '../types';
+import { renderInteractionDataSubtext } from './renderHelpers';
 import '../main.css';
 
 interface InteractionDataManagerModalProps {
@@ -158,30 +159,33 @@ export function InteractionDataManagerModal({
 
     const handleConfirmDelete = (e: React.MouseEvent, id: string, type: 'interactionData' | 'folder') => {
         e.stopPropagation();
+        
         if (type === 'interactionData') {
             if (isInteractionDataABranchStem(id)) {
                 addToast('Cannot delete: Other sessions branch from this interaction data.', 'error');
-                setConfirmDeleteId(null);
-                return;
+            } else {
+                onDeleteInteractionData(id);
             }
-            onDeleteInteractionData(id);
-        } else {
-            const folder = folderMap.get(id);
-            if (folder) {
-                let preservedStems = 0;
-                for (const dataId of folder.interactionDataIds) {
-                    if (isInteractionDataABranchStem(dataId)) {
-                        preservedStems++;
-                    } else {
-                        onDeleteInteractionData(dataId);
-                    }
-                }
-                if (preservedStems > 0) {
-                    addToast(`Folder deleted. ${preservedStems} stem session${preservedStems === 1 ? '' : 's'} preserved in root.`, 'info');
-                }
-            }
-            onDeleteInteractionDataFolder(id);
+            setConfirmDeleteId(null);
+            return;
         }
+
+        const folder = folderMap.get(id);
+        if (folder) {
+            let preservedStems = 0;
+            for (const dataId of folder.interactionDataIds) {
+                if (isInteractionDataABranchStem(dataId)) {
+                    preservedStems++;
+                } else {
+                    onDeleteInteractionData(dataId);
+                }
+            }
+            if (preservedStems > 0) {
+                addToast(`Folder deleted. ${preservedStems} stem session${preservedStems === 1 ? '' : 's'} preserved in root.`, 'info');
+            }
+        }
+        
+        onDeleteInteractionDataFolder(id);
         setConfirmDeleteId(null);
     };
 
@@ -218,7 +222,6 @@ export function InteractionDataManagerModal({
         }
     };
 
-    // ✅ INTERNAL LOGIC: Moving data between folders
     const handleMoveSelect = async (e: React.MouseEvent, chatId: string, targetFolderId: string | null) => {
         e.stopPropagation();
         const updatedFolders = allInteractionDataFolders.map(f => {
@@ -240,7 +243,6 @@ export function InteractionDataManagerModal({
         setMoveDropdownRect(null);
     };
 
-    // ✅ INTERNAL LOGIC: Creating a new folder
     const handleCreateFolderSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const trimmed = newFolderName.trim();
@@ -357,7 +359,10 @@ export function InteractionDataManagerModal({
                                         <div className="manager-item-main manager-item-main-clickable" onClick={() => { onSwitchInteractionData(data.id!); onClose(); }}>
                                             <div className="manager-item-info">
                                                 <div className="manager-item-title">{data.name || 'Untitled Session'}</div>
-                                                <div className="manager-item-sub">{getFolderNameForData(data.id!) ? `📁 ${getFolderNameForData(data.id!)}` : '📂 Root'}</div>
+                                                <div className="manager-item-sub">
+                                                    {getFolderNameForData(data.id!) ? `📁 ${getFolderNameForData(data.id!)} • ` : '📂 Root • '}
+                                                    {renderInteractionDataSubtext(data)}
+                                                </div>
                                             </div>
                                         </div>
                                         {renderActions(data.id!, data.name || 'Untitled Session', 'interactionData')}
@@ -377,7 +382,7 @@ export function InteractionDataManagerModal({
                                                     <div className="manager-item-main manager-item-main-clickable">
                                                         <span className="folder-chevron">{isExpanded ? '▼' : '▶'}</span>
                                                         <div className="manager-item-info">
-                                                            <div className="manager-item-title">📁 {item.folder.name}<span className="folder-count-badge">({item.items.length})</span></div>
+                                                            <div className="manager-item-title">📁 {item.folder.name}</div>
                                                         </div>
                                                     </div>
                                                     {renderActions(item.folder.id, item.folder.name, 'folder')}
@@ -387,7 +392,10 @@ export function InteractionDataManagerModal({
                                                         {item.items.map(data => (
                                                             <li key={data.id} className={`manager-item chat-row-nested ${data.id === activeInteractionDataId ? 'selected-item' : ''}`}>
                                                                 <div className="manager-item-main manager-item-main-clickable" onClick={() => { onSwitchInteractionData(data.id!); onClose(); }}>
-                                                                    <div className="manager-item-info"><div className="manager-item-title">{data.name || 'Untitled Session'}</div></div>
+                                                                    <div className="manager-item-info">
+                                                                        <div className="manager-item-title">{data.name || 'Untitled Session'}</div>
+                                                                        <div className="manager-item-sub">{renderInteractionDataSubtext(data)}</div>
+                                                                    </div>
                                                                 </div>
                                                                 {renderActions(data.id!, data.name || 'Untitled Session', 'interactionData')}
                                                             </li>
@@ -400,7 +408,10 @@ export function InteractionDataManagerModal({
                                         return (
                                             <li key={item.data.id} className={`manager-item ${item.data.id === activeInteractionDataId ? 'selected-item' : ''}`}>
                                                 <div className="manager-item-main manager-item-main-clickable" onClick={() => { onSwitchInteractionData(item.data.id!); onClose(); }}>
-                                                    <div className="manager-item-info"><div className="manager-item-title">{item.data.name || 'Untitled Session'}</div></div>
+                                                    <div className="manager-item-info">
+                                                        <div className="manager-item-title">{item.data.name || 'Untitled Session'}</div>
+                                                        <div className="manager-item-sub">{renderInteractionDataSubtext(item.data)}</div>
+                                                    </div>
                                                 </div>
                                                 {renderActions(item.data.id!, item.data.name || 'Untitled Session', 'interactionData')}
                                             </li>

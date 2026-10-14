@@ -74,7 +74,7 @@ export function renderProfileSubtext(profile: Profile): React.ReactNode {
     );
 }
 
-export function renderChatSubtext(c: RawInteractionData): string {
+export function renderInteractionDataSubtext(c: RawInteractionData): string {
     const parts: string[] = [];
     if (c.parentInteractionDataId) parts.push(`Branch of ${c.parentInteractionDataId.substring(0, 8)}...`);
     
@@ -84,15 +84,18 @@ export function renderChatSubtext(c: RawInteractionData): string {
         : 0;
         
     parts.push(`${msgCount} message${msgCount !== 1 ? 's' : ''}`);
-    const charCount = c.participantIds?.length ?? 0;
-    parts.push(`${charCount} character${charCount !== 1 ? 's' : ''}`);
-    const ctxCount = c.contextIds?.length ?? 0;
-    if (ctxCount > 0) parts.push(`${ctxCount} context${ctxCount !== 1 ? 's' : ''}`);
+    const characterCount = c.participantIds?.length ?? 0;
+    parts.push(`${characterCount} character${characterCount !== 1 ? 's' : ''}`);
+    const contextCount = c.contextIds?.length ?? 0;
+    if (contextCount > 0) parts.push(`${contextCount} context${contextCount !== 1 ? 's' : ''}`);
+    const locationCount = c.locationIds?.length ?? 0
+    if (locationCount > 0) parts.push(`${locationCount} location${locationCount !== 1 ? 's' : ''}`);
+    const audioTrackCount = c.audioTrackIds?.length ?? 0
+    if (audioTrackCount > 0) parts.push(`${audioTrackCount} audio track${audioTrackCount !== 1 ? 's' : ''}`);
     return parts.join(' • ');
 }
 
 export function renderContextSubtext(i: {
-    // FIX: Corrected property name to match the actual Context schema (plural, array)
     regularExpressionActivationTriggers?: unknown[];
     images?: unknown[];
     searchTerms?: unknown[];
