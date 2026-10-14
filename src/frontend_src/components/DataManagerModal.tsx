@@ -268,11 +268,13 @@ export function DataManagerModal({
     const [isScanning, setIsScanning] = useState(false);
     const { addToast } = useToast();
 
-    // ─── Anchor timestamp for stale calculations (captured once at mount via lazy initializer) ────
     const [anchorTimeMs] = useState(() => Date.now());
     const staleCutoffMs = anchorTimeMs - staleDaysThreshold * 86400000;
 
-    // ─── Storage Breakdown ──────────────────────────────────────────
+    const isInteractionDataABranchStem = useCallback((id: string) => {
+        return allRawInteractionDataShells.some(shell => shell.parentInteractionDataId === id);
+    }, [allRawInteractionDataShells]);
+
     const storageBreakdown = useMemo<StorageBreakdown[]>(() => {
         const estimateKb = (items: unknown[], avgBytesPerItem: number) =>
             Math.round((items.length * avgBytesPerItem) / 1024);
@@ -292,11 +294,10 @@ export function DataManagerModal({
             { label: 'Accounts', icon: '🔑', count: allAccounts.length, estimatedSizeKb: estimateKb(allAccounts, 512) },
             { label: 'Multiplayer Data', icon: '👥', count: allMultiplayerData.length, estimatedSizeKb: estimateKb(allMultiplayerData, 1024) },
             { label: 'Folders', icon: '📁', count: allInteractionDataFolders.length, estimatedSizeKb: estimateKb(allInteractionDataFolders, 1024) },
-            { label: 'Chat Sessions', icon: '💬', count: allRawInteractionDataShells.length, estimatedSizeKb: estimateKb(allRawInteractionDataShells, 8192) },
+            { label: 'Sessions', icon: '💬', count: allRawInteractionDataShells.length, estimatedSizeKb: estimateKb(allRawInteractionDataShells, 8192) },
         ];
     }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allInteractionDataFolders, allRawInteractionDataShells]);
 
-    // ─── Cleanup Scan ───────────────────────────────────────────────
     const scanCleanup = useCallback(() => {
         setIsScanning(true);
 
@@ -470,7 +471,6 @@ export function DataManagerModal({
         setIsScanning(false);
     }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allInteractionDataFolders, allRawInteractionDataShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
 
-    // ─── Integrity Check ────────────────────────────────────────────
     const scanIntegrity = useCallback(() => {
         setIsScanning(true);
         const issues: IntegrityIssue[] = [];
@@ -613,7 +613,7 @@ export function DataManagerModal({
         for (const mem of allMemories) {
             const interactionId = mem.interactionData?.id;
             if (interactionId && !chatIdSet.has(interactionId)) {
-                issues.push({ entityType: 'Memory', entityName: mem.name, issue: 'References missing chat session', refType: 'Chat', refId: interactionId });
+                issues.push({ entityType: 'Memory', entityName: mem.name, issue: 'References missing session', refType: 'Session', refId: interactionId });
             }
         }
         for (const md of allMultiplayerData) {
@@ -625,12 +625,12 @@ export function DataManagerModal({
                 for (const cId of cfg.blacklistedCharacterIds || []) { if (!charIdSet.has(cId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: `Blacklisted character for account ${acctId.slice(0, 8)}... is missing`, refType: 'Character', refId: cId }); }
                 for (const cId of cfg.pendingCharacterIds || []) { if (!charIdSet.has(cId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: `Pending character for account ${acctId.slice(0, 8)}... is missing`, refType: 'Character', refId: cId }); }
             }
-            for (const chatId of md.interactionDataIds) { if (!chatIdSet.has(chatId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: 'References missing chat session', refType: 'Chat', refId: chatId }); }
+            for (const chatId of md.interactionDataIds) { if (!chatIdSet.has(chatId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: 'References missing session', refType: 'Session', refId: chatId }); }
         }
         for (const folder of allInteractionDataFolders) {
             for (const chatId of folder.interactionDataIds) {
                 if (!chatIdSet.has(chatId)) {
-                    issues.push({ entityType: 'Folder', entityName: folder.name, issue: 'References missing chat session', refType: 'Chat', refId: chatId });
+                    issues.push({ entityType: 'Folder', entityName: folder.name, issue: 'References missing session', refType: 'Session', refId: chatId });
                 }
             }
         }
@@ -666,7 +666,6 @@ export function DataManagerModal({
         setIsScanning(false);
     }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allInteractionDataFolders, allRawInteractionDataShells]);
 
-    // ─── Filtered + sorted cleanup items ────────────────────────────
     const filteredAndSorted = useMemo(() => {
         const query = searchQuery.toLowerCase().trim();
         const filtered = cleanupItems.filter(item => {
@@ -705,11 +704,28 @@ export function DataManagerModal({
         return <span style={{ fontSize: '0.6rem' }}>{sortDirection === 'asc' ? '↑' : '↓'}</span>;
     };
 
-    // ─── Deletion ───────────────────────────────────────────────────
     const handleDeleteSelected = () => {
         let deletedCount = 0;
+        let skippedStems = 0;
         for (const item of cleanupItems) {
             if (!selectedIds.has(item.id)) continue;
+            
+            if (item.type === 'interactionDataFolder') {
+                const folder = allInteractionDataFolders.find(f => f.id === item.id);
+                if (folder) {
+                    for (const dataId of folder.interactionDataIds) {
+                        if (isInteractionDataABranchStem(dataId)) {
+                            skippedStems++;
+                        } else {
+                            onDeleteInteractionData(dataId);
+                        }
+                    }
+                }
+                onDeleteInteractionDataFolder(item.id);
+                deletedCount++;
+                continue;
+            }
+
             switch (item.type) {
                 case 'character': onDeleteCharacter(item.id); break;
                 case 'context': onDeleteContext(item.id); break;
@@ -725,11 +741,14 @@ export function DataManagerModal({
                 case 'memory': onDeleteMemory(item.id); break;
                 case 'account': onDeleteAccount(item.id); break;
                 case 'multiplayerData': onDeleteMultiplayerData(item.id); break;
-                case 'interactionDataFolder': onDeleteInteractionDataFolder(item.id); break;
             }
             deletedCount++;
         }
-        addToast(`Deleted ${deletedCount} entit${deletedCount === 1 ? 'y' : 'ies'}.`, 'success');
+        if (skippedStems > 0) {
+            addToast(`Deleted ${deletedCount} entit${deletedCount === 1 ? 'y' : 'ies'}. Preserved ${skippedStems} stem session${skippedStems === 1 ? '' : 's'} in root.`, 'info');
+        } else {
+            addToast(`Deleted ${deletedCount} entit${deletedCount === 1 ? 'y' : 'ies'}.`, 'success');
+        }
         setSelectedIds(new Set());
         scanCleanup();
     };
@@ -745,7 +764,6 @@ export function DataManagerModal({
         else setSelectedIds(prev => { const next = new Set(prev); for (const id of visibleIds) next.add(id); return next; });
     };
 
-    // ─── Bulk: Exclusion helpers ─────────────────────────────────────
     const exclusionIdSet = useMemo(() => {
         const byType: Record<ExclusionEntityType, Set<string>> = {
             character: new Set(),
@@ -796,11 +814,12 @@ export function DataManagerModal({
         return items.filter(i => !alreadyExcluded.has(i.id) && i.name.toLowerCase().includes(q)).slice(0, 20);
     }, [exclusionSearchQuery, exclusionDropdownType, allCharacters, allContexts, allLocations, allAudioTracks, allProfiles, exclusions]);
 
-    // ─── Bulk: Candidate list ────────────────────────────────────────
     const bulkCandidates = useMemo(() => {
         if (!includeStale && !includeLowMessage) return [];
         return allRawInteractionDataShells.filter(shell => {
             if (!shell.id) return false;
+            if (isInteractionDataABranchStem(shell.id)) return false; 
+            
             const matchesStale = includeStale && (shell.lastUpdatedTimestamp ?? 0) < staleCutoffMs;
             
             const msgCount = Object.values(shell.interactionHistories || {}).reduce((sum, msgs) => sum + msgs.length, 0);
@@ -810,12 +829,17 @@ export function DataManagerModal({
             if (isShellExcluded(shell)) return false;
             return true;
         });
-    }, [allRawInteractionDataShells, includeStale, includeLowMessage, staleCutoffMs, minMessagesThreshold, isShellExcluded]);
+    }, [allRawInteractionDataShells, includeStale, includeLowMessage, staleCutoffMs, minMessagesThreshold, isShellExcluded, isInteractionDataABranchStem]);
 
     const handleBulkDeleteCandidates = () => {
         let deletedCount = 0;
-        for (const shell of bulkCandidates) { if (shell.id) { onDeleteInteractionData(shell.id); deletedCount++; } }
-        addToast(`Deleted ${deletedCount} chat${deletedCount === 1 ? '' : 's'}.`, 'success');
+        for (const shell of bulkCandidates) { 
+            if (shell.id) { 
+                onDeleteInteractionData(shell.id); 
+                deletedCount++; 
+            } 
+        }
+        addToast(`Deleted ${deletedCount} session${deletedCount !== 1 ? 's' : ''}.`, 'success');
         setConfirmBulkDelete(false);
     };
 
@@ -841,7 +865,6 @@ export function DataManagerModal({
         }
     };
 
-    // ─── Danger zone ────────────────────────────────────────────────
     const handleFactoryReset = async () => {
         try {
             await saveRawSessionData({
@@ -888,8 +911,36 @@ export function DataManagerModal({
             case 'memories': for (const m of allMemories) { onDeleteMemory(m.id); count++; } break;
             case 'accounts': for (const a of allAccounts) { onDeleteAccount(a.id); count++; } break;
             case 'multiplayerData': for (const md of allMultiplayerData) { onDeleteMultiplayerData(md.id); count++; } break;
-            case 'folders': for (const f of allInteractionDataFolders) { onDeleteInteractionDataFolder(f.id); count++; } break;
-            case 'chats': for (const s of allRawInteractionDataShells) { if (s.id) { onDeleteInteractionData(s.id); count++; } } break;
+            case 'folders': {
+                let preservedStems = 0;
+                for (const f of allInteractionDataFolders) { 
+                    for (const dataId of f.interactionDataIds) {
+                        if (isInteractionDataABranchStem(dataId)) {
+                            preservedStems++;
+                        } else {
+                            onDeleteInteractionData(dataId);
+                        }
+                    }
+                    onDeleteInteractionDataFolder(f.id); 
+                    count++; 
+                }
+                if (preservedStems > 0) {
+                    addToast(`Wiped ${count} folders. Preserved ${preservedStems} stem session${preservedStems === 1 ? '' : 's'} in root.`, 'info');
+                } else {
+                    addToast(`Wiped ${count} folders.`, 'success');
+                }
+                setConfirmDangerAction(null);
+                return;
+            }
+            case 'chats': {
+                for (const s of allRawInteractionDataShells) { 
+                    if (s.id) { 
+                        onDeleteInteractionData(s.id); 
+                        count++; 
+                    } 
+                }
+                break;
+            }
         }
         addToast(`Wiped ${count} ${entityType}.`, 'success');
         setConfirmDangerAction(null);
@@ -929,7 +980,6 @@ export function DataManagerModal({
                 </div>
 
                 <div className="modal-body editor-modal-body">
-                    {/* ─── STORAGE TAB ─── */}
                     {activeTab === 'storage' && (
                         <div>
                             <div style={{ textAlign: 'center', marginBottom: '16px' }}>
@@ -952,7 +1002,6 @@ export function DataManagerModal({
                         </div>
                     )}
 
-                    {/* ─── CLEANUP TAB ─── */}
                     {activeTab === 'cleanup' && (
                         <div>
                             <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '12px', lineHeight: 1.5 }}>Find entities that are unreferenced (orphans), have no meaningful content (hollow), or haven't been updated recently (stale).</div>
@@ -1012,10 +1061,9 @@ export function DataManagerModal({
                         </div>
                     )}
 
-                    {/* ─── INTEGRITY TAB ─── */}
                     {activeTab === 'integrity' && (
                         <div>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '12px', lineHeight: 1.5 }}>Cross-reference integrity check. Finds broken bindings where entities reference deleted characters, contexts, locations, audio tracks, worlds, prompt blocks, models, samplers, stop patterns, memories, chat sessions, accounts, folders, or profiles.</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '12px', lineHeight: 1.5 }}>Cross-reference integrity check. Finds broken bindings where entities reference deleted characters, contexts, locations, audio tracks, worlds, prompt blocks, models, samplers, stop patterns, memories, sessions, accounts, folders, or profiles.</div>
                             <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
                                 <button type="button" className="editor-button editor-button-save" onClick={scanIntegrity} disabled={isScanning} style={{ fontSize: '0.75rem', padding: '8px 16px' }}>{isScanning ? 'Checking...' : 'Run Integrity Check'}</button>
                             </div>
@@ -1036,7 +1084,6 @@ export function DataManagerModal({
                         </div>
                     )}
 
-                    {/* ─── CACHE TAB ─── */}
                     {activeTab === 'cache' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             <div style={{ fontSize: '0.75rem', opacity: 0.6, lineHeight: 1.5 }}>Purge cached data to free up disk space. Caches will be rebuilt automatically as needed.</div>
@@ -1056,22 +1103,21 @@ export function DataManagerModal({
                         </div>
                     )}
 
-                    {/* ─── BULK OPS TAB ─── */}
                     {activeTab === 'bulk' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.6, lineHeight: 1.5 }}>Bulk delete chat sessions by inclusion criteria. Add exclusions to protect chats containing specific entities.</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.6, lineHeight: 1.5 }}>Bulk delete sessions by inclusion criteria. Add exclusions to protect sessions containing specific entities. Branch stems are automatically protected.</div>
                             <div className="editor-section" style={{ margin: 0 }}>
                                 <div className="editor-section-title">Inclusion Criteria</div>
-                                <div style={{ fontSize: '0.7rem', opacity: 0.5, marginBottom: '10px' }}>Select which chats to include for deletion. At least one must be enabled.</div>
+                                <div style={{ fontSize: '0.7rem', opacity: 0.5, marginBottom: '10px' }}>Select which sessions to include for deletion. At least one must be enabled.</div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${includeStale ? 'var(--accent)' : 'var(--border)'}`, background: includeStale ? 'var(--accent-bg)' : 'transparent', transition: 'all 0.15s' }}>
-                                        <label className="editor-checkbox-label" style={{ margin: 0 }}><input type="checkbox" checked={includeStale} onChange={e => { setIncludeStale(e.target.checked); setConfirmBulkDelete(false); }} className="editor-checkbox-input" /><span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>Stale Chats</span></label>
+                                        <label className="editor-checkbox-label" style={{ margin: 0 }}><input type="checkbox" checked={includeStale} onChange={e => { setIncludeStale(e.target.checked); setConfirmBulkDelete(false); }} className="editor-checkbox-input" /><span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>Stale Sessions</span></label>
                                         <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>— older than</span>
                                         <input type="number" min="1" max="365" value={staleDaysThreshold} onChange={e => { setStaleDaysThreshold(Math.max(1, Math.min(365, Number(e.target.value) || 30))); setConfirmBulkDelete(false); }} className="editor-input" style={{ width: '60px', textAlign: 'right', fontSize: '0.7rem', padding: '4px 6px' }} />
                                         <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>days</span>
                                     </div>
                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${includeLowMessage ? 'var(--accent)' : 'var(--border)'}`, background: includeLowMessage ? 'var(--accent-bg)' : 'transparent', transition: 'all 0.15s' }}>
-                                        <label className="editor-checkbox-label" style={{ margin: 0 }}><input type="checkbox" checked={includeLowMessage} onChange={e => { setIncludeLowMessage(e.target.checked); setConfirmBulkDelete(false); }} className="editor-checkbox-input" /><span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>Low Message Chats</span></label>
+                                        <label className="editor-checkbox-label" style={{ margin: 0 }}><input type="checkbox" checked={includeLowMessage} onChange={e => { setIncludeLowMessage(e.target.checked); setConfirmBulkDelete(false); }} className="editor-checkbox-input" /><span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>Low Message Sessions</span></label>
                                         <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>— fewer than</span>
                                         <input type="number" min="1" max="1000" value={minMessagesThreshold} onChange={e => { setMinMessagesThreshold(Math.max(1, Math.min(1000, Number(e.target.value) || 3))); setConfirmBulkDelete(false); }} className="editor-input" style={{ width: '60px', textAlign: 'right', fontSize: '0.7rem', padding: '4px 6px' }} />
                                         <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>messages</span>
@@ -1080,7 +1126,7 @@ export function DataManagerModal({
                             </div>
                             <div className="editor-section" style={{ margin: 0 }}>
                                 <div className="editor-section-title">Exclusion Criteria</div>
-                                <div style={{ fontSize: '0.7rem', opacity: 0.5, marginBottom: '10px' }}>Chats containing any excluded entity will be protected from deletion.</div>
+                                <div style={{ fontSize: '0.7rem', opacity: 0.5, marginBottom: '10px' }}>Sessions containing any excluded entity will be protected from deletion.</div>
                                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '10px', position: 'relative' }}>
                                     <select value={exclusionDropdownType} onChange={e => { setExclusionDropdownType(e.target.value as ExclusionEntityType); setExclusionSearchQuery(''); setIsExclusionDropdownOpen(false); }} className="editor-input" style={{ width: '140px', fontSize: '0.7rem', padding: '6px 8px' }}>
                                         {(Object.keys(EXCLUSION_TYPE_META) as ExclusionEntityType[]).map(key => (<option key={key} value={key}>{EXCLUSION_TYPE_META[key].icon} {EXCLUSION_TYPE_META[key].label}</option>))}
@@ -1101,14 +1147,14 @@ export function DataManagerModal({
                                         <span onClick={() => { setExclusions([]); setConfirmBulkDelete(false); }} style={{ display: 'inline-flex', alignItems: 'center', fontSize: '0.6rem', padding: '3px 8px', borderRadius: '12px', border: '1px solid var(--border)', cursor: 'pointer', opacity: 0.5, transition: 'opacity 0.15s' }} onMouseEnter={e => (e.currentTarget.style.opacity = '1')} onMouseLeave={e => (e.currentTarget.style.opacity = '0.5')}>Clear All</span>
                                     </div>
                                 )}
-                                {exclusions.length === 0 && (<div style={{ fontSize: '0.65rem', opacity: 0.4, fontStyle: 'italic' }}>No exclusions set — all matching chats will be eligible for deletion.</div>)}
+                                {exclusions.length === 0 && (<div style={{ fontSize: '0.65rem', opacity: 0.4, fontStyle: 'italic' }}>No exclusions set — all matching sessions will be eligible for deletion.</div>)}
                             </div>
                             <div className="editor-section" style={{ margin: 0, borderColor: bulkCandidates.length > 0 ? 'rgba(239,68,68,0.3)' : 'var(--border)' }}>
                                 <div className="editor-section-title">Result</div>
                                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap' }}>
                                     <div style={{ flex: 1, minWidth: '150px' }}>
                                         <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: bulkCandidates.length > 0 ? '#ef4444' : 'var(--text-h)' }}>{bulkCandidates.length}</div>
-                                        <div style={{ fontSize: '0.65rem', opacity: 0.5 }}>chat{bulkCandidates.length !== 1 ? 's' : ''} will be deleted{exclusions.length > 0 && (<span> ({allRawInteractionDataShells.filter(s => s.id && isShellExcluded(s)).length} excluded)</span>)}</div>
+                                        <div style={{ fontSize: '0.65rem', opacity: 0.5 }}>session{bulkCandidates.length !== 1 ? 's' : ''} will be deleted{exclusions.length > 0 && (<span> ({allRawInteractionDataShells.filter(s => s.id && isShellExcluded(s)).length} excluded)</span>)}</div>
                                     </div>
                                     {(!includeStale && !includeLowMessage) && (<div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic' }}>Enable at least one inclusion criterion.</div>)}
                                 </div>
@@ -1123,19 +1169,18 @@ export function DataManagerModal({
                                     </div>
                                 )}
                                 <button type="button" className="editor-button" disabled={bulkCandidates.length === 0} onClick={() => confirmBulkDelete ? handleBulkDeleteCandidates() : setConfirmBulkDelete(true)} style={{ fontSize: '0.75rem', width: '100%', color: confirmBulkDelete ? '#fff' : bulkCandidates.length > 0 ? '#ef4444' : undefined, background: confirmBulkDelete ? '#ef4444' : 'transparent', borderColor: bulkCandidates.length > 0 ? 'rgba(239,68,68,0.3)' : undefined }}>
-                                    {confirmBulkDelete ? `⚠️ Confirm Delete ${bulkCandidates.length} Chat${bulkCandidates.length !== 1 ? 's' : ''}` : `🗑️ Delete ${bulkCandidates.length} Chat${bulkCandidates.length !== 1 ? 's' : ''}`}
+                                    {confirmBulkDelete ? `⚠️ Confirm Delete ${bulkCandidates.length} Session${bulkCandidates.length !== 1 ? 's' : ''}` : `🗑️ Delete ${bulkCandidates.length} Session${bulkCandidates.length !== 1 ? 's' : ''}`}
                                 </button>
                             </div>
                         </div>
                     )}
 
-                    {/* ─── DANGER ZONE TAB ─── */}
                     {activeTab === 'danger' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             <div style={{ padding: '12px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.05)', fontSize: '0.75rem', color: '#ef4444', lineHeight: 1.5 }}>⚠️ These operations are <strong>irreversible</strong>. Data cannot be recovered after deletion. Export your data first.</div>
                             <div className="editor-section" style={{ margin: 0, borderColor: 'rgba(239,68,68,0.2)' }}>
                                 <div className="editor-section-title" style={{ color: '#ef4444' }}>Selective Wipe</div>
-                                <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '8px' }}>Delete all entities of a specific type while preserving everything else.</div>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '8px' }}>Delete all entities of a specific type while preserving everything else. Deleting folders will cascade delete contents, except stem sessions which spill to root.</div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                                     {[
                                         { key: 'characters', label: 'All Characters', count: allCharacters.length },
@@ -1153,7 +1198,7 @@ export function DataManagerModal({
                                         { key: 'accounts', label: 'All Accounts', count: allAccounts.length },
                                         { key: 'multiplayerData', label: 'All Multiplayer Data', count: allMultiplayerData.length },
                                         { key: 'folders', label: 'All Folders', count: allInteractionDataFolders.length },
-                                        { key: 'chats', label: 'All Chats', count: allRawInteractionDataShells.length },
+                                        { key: 'chats', label: 'All Sessions', count: allRawInteractionDataShells.length },
                                     ].map(entity => (
                                         <button key={entity.key} type="button" className="editor-button"
                                             onClick={() => confirmDangerAction === `wipe-${entity.key}` ? handleSelectiveWipe(entity.key) : setConfirmDangerAction(`wipe-${entity.key}`)}

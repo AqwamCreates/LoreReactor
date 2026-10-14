@@ -1,6 +1,5 @@
 // src/frontend_src/components/InteractionDataManagerModal.tsx
-import type React from 'react';
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import type { RawInteractionData, InteractionDataFolder } from '../types';
 import '../main.css';
 
@@ -16,7 +15,7 @@ interface InteractionDataManagerModalProps {
     
     onDeleteInteractionDataFolder: (id: string) => void;
     onCreateNewFolder?: (name: string) => void;
-    onSaveInteractionDataFolder: (folder: InteractionDataFolder) => Promise<boolean>;
+    onSaveFolder: (folder: InteractionDataFolder) => Promise<boolean> | void;
     
     onMoveInteractionDataToFolder: (id: string, folderId: string | null) => void;
     onInspectInteractionData?: (id: string) => void;
@@ -39,7 +38,7 @@ export function InteractionDataManagerModal({
     onNewInteractionData,
     onDeleteInteractionDataFolder,
     onCreateNewFolder,
-    onSaveInteractionDataFolder,
+    onSaveFolder,
     onMoveInteractionDataToFolder,
     onInspectInteractionData,
     activeInteractionDataId,
@@ -56,7 +55,6 @@ export function InteractionDataManagerModal({
     const [isCreatingFolder, setIsCreatingFolder] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
     
-    // Dropdown state uses DOMRect to escape overflow:hidden clipping
     const [movingInteractionDataId, setMovingInteractionDataId] = useState<string | null>(null);
     const [moveDropdownRect, setMoveDropdownRect] = useState<DOMRect | null>(null);
     
@@ -66,7 +64,6 @@ export function InteractionDataManagerModal({
     useEffect(() => { searchInputRef.current?.focus(); }, []);
     useEffect(() => { if (renamingId) renameInputRef.current?.focus(); }, [renamingId]);
 
-    // Global listener to close dropdown on outside click or scroll
     useEffect(() => {
         if (!movingInteractionDataId) return;
 
@@ -172,10 +169,18 @@ export function InteractionDataManagerModal({
             onDeleteInteractionData(id);
         } else {
             const folder = folderMap.get(id);
-            if (folder?.interactionDataIds.some(dataId => isInteractionDataABranchStem(dataId))) {
-                addToast('Cannot delete folder: It contains interaction data that other sessions branch from.', 'error');
-                setConfirmDeleteId(null);
-                return;
+            if (folder) {
+                let preservedStems = 0;
+                for (const dataId of folder.interactionDataIds) {
+                    if (isInteractionDataABranchStem(dataId)) {
+                        preservedStems++;
+                    } else {
+                        onDeleteInteractionData(dataId);
+                    }
+                }
+                if (preservedStems > 0) {
+                    addToast(`Folder deleted. ${preservedStems} stem session${preservedStems === 1 ? '' : 's'} preserved in root.`, 'info');
+                }
             }
             onDeleteInteractionDataFolder(id);
         }
@@ -196,7 +201,7 @@ export function InteractionDataManagerModal({
         if (!trimmed) { setRenamingId(null); return; }
         if (folderMap.has(id)) {
             const folder = folderMap.get(id)!;
-            onSaveInteractionDataFolder({ ...folder, name: trimmed, lastUpdatedTimestamp: Date.now() });
+            onSaveFolder({ ...folder, name: trimmed, lastUpdatedTimestamp: Date.now() });
         } else {
             onRenameInteractionData(id, trimmed);
         }
@@ -369,15 +374,16 @@ export function InteractionDataManagerModal({
                                                 )}
                                             </li>
                                         );
+                                    } else {
+                                        return (
+                                            <li key={item.data.id} className={`manager-item ${item.data.id === activeInteractionDataId ? 'selected-item' : ''}`}>
+                                                <div className="manager-item-main manager-item-main-clickable" onClick={() => { onSwitchInteractionData(item.data.id!); onClose(); }}>
+                                                    <div className="manager-item-info"><div className="manager-item-title">{item.data.name || 'Untitled Session'}</div></div>
+                                                </div>
+                                                {renderActions(item.data.id!, item.data.name || 'Untitled Session', 'interactionData')}
+                                            </li>
+                                        );
                                     }
-                                    return (
-                                        <li key={item.data.id} className={`manager-item ${item.data.id === activeInteractionDataId ? 'selected-item' : ''}`}>
-                                            <div className="manager-item-main manager-item-main-clickable" onClick={() => { onSwitchInteractionData(item.data.id!); onClose(); }}>
-                                                <div className="manager-item-info"><div className="manager-item-title">{item.data.name || 'Untitled Session'}</div></div>
-                                            </div>
-                                            {renderActions(item.data.id!, item.data.name || 'Untitled Session', 'interactionData')}
-                                        </li>
-                                    );
                                 })}
                             </ul>
                         )
@@ -385,7 +391,7 @@ export function InteractionDataManagerModal({
                 </div>
             </div>
 
-            {/* PORTAL DROPDOWN (Escapes overflow:hidden, uses native main.css action-menu styling) */}
+            {/* PORTAL DROPDOWN */}
             {movingInteractionDataId && moveDropdownRect && (
                 <div 
                     className="action-menu-container move-dropdown-portal" 
@@ -393,10 +399,10 @@ export function InteractionDataManagerModal({
                     style={{
                         position: 'fixed',
                         top: moveDropdownRect.bottom + 4,
-                        left: Math.max(8, Math.min(moveDropdownRect.left, window.innerWidth - 260)),
+                        right: Math.max(8, window.innerWidth - moveDropdownRect.right),
                         zIndex: 4000,
-                        minWidth: '200px',
-                        maxWidth: '280px',
+                        minWidth: '180px',
+                        maxWidth: 'calc(100vw - 16px)',
                     }}
                 >
                     <button 
