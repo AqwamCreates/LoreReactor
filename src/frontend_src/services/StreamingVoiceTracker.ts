@@ -69,7 +69,6 @@ export class StreamingVoiceTracker {
 
                 await this.player.init();
                 this.isActive = true;
-                console.log('[StreamingVoiceTracker] Voice initialized. Processing queue...');
                 this.processPendingQueue();
                 return true;
             } catch (e) {
@@ -86,6 +85,8 @@ export class StreamingVoiceTracker {
     resetPass(): void {
         this.lastCleanLength = 0;
         this.isFirstChunkSent = false;
+        this.buffer = '';
+        this.sentenceAccumulator = '';
     }
 
     seed(text: string): void {
@@ -113,9 +114,14 @@ export class StreamingVoiceTracker {
 
         const cleanText = extractNarratableText(text, effectiveNarrateTexts);
 
-        // Auto-detect multi-pass stream resets (e.g. after tool execution)
+        // ✅ FIX: Guard against temporary length shrinkage (e.g. trailing whitespace trim,
+        // abrupt provider cutoff, unclosed quotes). Never reset lastCleanLength to 0 unless
+        // the text was genuinely reset to an empty string.
         if (cleanText.length < this.lastCleanLength) {
-            this.lastCleanLength = 0;
+            if (cleanText.length === 0) {
+                this.lastCleanLength = 0;
+            }
+            return;
         }
 
         if (cleanText.length <= this.lastCleanLength) return;

@@ -7,18 +7,14 @@ export function extractNarratableText(text: string, narrateTexts: Record<textTyp
 
     const escapeRegex = (stringToEscape: string) => stringToEscape.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    // 1. Match completed tool calls/results AND in-flight unclosed tool calls/results, plus think tags
+    // ✅ Match completed tool calls/results AND in-flight unclosed tool calls/results, plus think tags
     const toolRegex = new RegExp(
         `(${escapeRegex(toolCallStartString)}[\\s\\S]*?(${escapeRegex(toolCallEndString)}|$)|` +
         `${escapeRegex(toolResultStartString)}[\\s\\S]*?(${escapeRegex(toolResultEndString)}|$)|` +
         `<think>[\\s\\S]*?(<\\/think>|$))`,
         'g'
     );
-    let cleanText = text.replace(toolRegex, '');
-
-    // 2. Strip bullet point markers at line starts (-, *, +, •) followed by spaces
-    // This stops Qwen TTS from reading "-" as "minus" and removes bullet asterisks before the loop
-    cleanText = cleanText.replace(/(?:^|\r?\n)[ \t]*[-*+•][ \t]+/g, '\n');
+    const cleanText = text.replace(toolRegex, '');
 
     let result = '';
     let i = 0;
@@ -37,52 +33,39 @@ export function extractNarratableText(text: string, narrateTexts: Record<textTyp
     while (i < cleanText.length) {
         const currentCharacter = cleanText[i];
         const nextCharacter = cleanText[i + 1];
-        const nextNextCharacter = cleanText[i + 2];
         const previousCharacter = cleanText[i - 1];
 
-        // Check for bold marker (**) with whitespace rules
-        // Opening ** cannot be followed by space; closing ** cannot be preceded by space
+        // Check for bold marker (**)
         if (currentCharacter === '*' && nextCharacter === '*') {
-            const canOpen = !insideBold && nextNextCharacter !== undefined && !/\s/.test(nextNextCharacter);
-            const canClose = insideBold && previousCharacter !== undefined && !/\s/.test(previousCharacter);
-
-            if (canOpen || canClose) {
-                const wasInsideBold = insideBold;
-                insideBold = !insideBold;
-                
-                if (wasInsideBold && narrateTexts.bolded) {
-                    fixTrailingPunctuation();
-                } else if (!wasInsideBold && !narrateTexts.bolded) {
-                    fixTrailingPunctuation();
-                }
-                
-                i += 2;
-                continue;
+            const wasInsideBold = insideBold;
+            insideBold = !insideBold;
+            
+            if (wasInsideBold && narrateTexts.bolded) {
+                fixTrailingPunctuation();
+            } else if (!wasInsideBold && !narrateTexts.bolded) {
+                fixTrailingPunctuation();
             }
+            
+            i += 2;
+            continue;
         }
 
-        // Check for italic marker (*) with whitespace rules
-        // Opening * cannot be followed by space; closing * cannot be preceded by space
+        // Check for italic marker (*)
         if (currentCharacter === '*' && previousCharacter !== '*' && nextCharacter !== '*') {
-            const canOpen = !insideItalic && nextCharacter !== undefined && !/\s/.test(nextCharacter);
-            const canClose = insideItalic && previousCharacter !== undefined && !/\s/.test(previousCharacter);
-
-            if (canOpen || canClose) {
-                const wasInsideItalic = insideItalic;
-                insideItalic = !insideItalic;
-                
-                if (wasInsideItalic && narrateTexts.italicized) {
-                    fixTrailingPunctuation();
-                } else if (!wasInsideItalic && !narrateTexts.italicized) {
-                    fixTrailingPunctuation();
-                }
-                
-                i += 1;
-                continue;
+            const wasInsideItalic = insideItalic;
+            insideItalic = !insideItalic;
+            
+            if (wasInsideItalic && narrateTexts.italicized) {
+                fixTrailingPunctuation();
+            } else if (!wasInsideItalic && !narrateTexts.italicized) {
+                fixTrailingPunctuation();
             }
+            
+            i += 1;
+            continue;
         }
 
-        // Check for straight and curly double quote markers, plus dialogue brackets
+        // ✅ Check for straight and curly double quote markers, plus dialogue brackets
         const isQuoteMarker = (
             currentCharacter === '"' || 
             currentCharacter === '\u201C' || // “
