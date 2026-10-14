@@ -402,10 +402,10 @@ export function AppModals({
     const hosterOwnedAudioTracks = useMemo(() => isMultiplayerClient ? interactionData?.audioTracks : undefined, [isMultiplayerClient, interactionData]);
 
     useEffect(() => {
-        if (modals.chatList.isOpen) {
+        if (modals.interactionDatas.isOpen) {
             ensureChatsLoaded();
         }
-    }, [modals.chatList.isOpen, ensureChatsLoaded]);
+    }, [modals.interactionDatas.isOpen, ensureChatsLoaded]);
 
     const handleOpenChatInspection = useCallback(async (chatId: string) => {
         if (interactionData && interactionData.id === chatId) {
@@ -437,12 +437,12 @@ export function AppModals({
         <>
             {/* ─── Manager Lists ─── */}
 
-            {modals.chatList.isOpen && (
+            {modals.interactionDatas.isOpen && (
                 <ManagerModal
                     title="Chat Sessions"
                     localLibraryItems={chatShellsWithIdentifiers}
-                    onClose={modals.chatList.close}
-                    onSelect={(item) => { handleOpenChatInspection(item.id); modals.chatList.close(); }}
+                    onClose={modals.interactionDatas.close}
+                    onSelect={(item) => { handleOpenChatInspection(item.id); modals.interactionDatas.close(); }}
                     onDelete={(identifier: string) => onDeleteInteractionData(identifier)}
                     onCreateNew={onNewChat}
                     renderSubtext={renderChatSubtext}

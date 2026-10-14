@@ -2,7 +2,7 @@
 import { useState, useCallback, useMemo } from 'react';
 
 export type ModalName =
-    | 'chatList'
+    | 'interactionDatas'
     | 'charList'
     | 'contextList'
     | 'locationList'
@@ -63,7 +63,7 @@ export function useAppModals() {
 
     const modals = useMemo(() => {
         const names: ModalName[] = [
-            'chatList', 'charList', 'contextList', 'locationList', 'audioTrackList',
+            'interactionDatas', 'charList', 'contextList', 'locationList', 'audioTrackList',
             'worldManager', 'promptBlockList', 'modelList', 'samplerList', 'stopList',
             'budgetStrategyList', 'profileList', 'extensionList', 'accountList', 'multiplayerDataList',
             'settings', 'budgetControl', 'participantControl', 'alternateTimelines',

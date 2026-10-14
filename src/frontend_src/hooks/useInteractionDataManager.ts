@@ -1,4 +1,4 @@
-// src/frontend_src/hooks/useChatListManager.ts
+// src/frontend_src/hooks/useInteractionDataManager.ts
 import { useState, useCallback, useRef } from 'react';
 import type { RawInteractionData } from '../types';
 import { loadAllRawInteractionDataShells, deleteRawInteractionData } from '../storages/serverStorage';
@@ -6,7 +6,7 @@ import { loadAllRawInteractionDataShells, deleteRawInteractionData } from '../st
 // Minimum time the loading bar stays visible to prevent jarring visual flickers on fast fetches
 const MIN_LOADING_MS = 400; 
 
-export function useChatListManager() {
+export function useInteractionDataManager() {
     const [allRawInteractionDataShells, setallRawInteractionDataShells] = useState<RawInteractionData[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const loadedRef = useRef(false);

@@ -18,7 +18,7 @@ import type { Character, Context, Location, AudioTrack, World, LanguageModel, Ac
 import { useSessionStore } from '../hooks/useSessionStore';
 
 // ─── Manager Hooks ──────────────────────────────────────────────────
-import { useChatListManager } from '../hooks/useChatListManager';
+import { useInteractionDataManager } from '../hooks/useInteractionDataManager';
 import { useCharacterManager } from '../hooks/useCharacterManager';
 import { useActionManager } from '../hooks/useActionManager';
 import { useContextManager } from '../hooks/useContextManager';
@@ -99,7 +99,7 @@ function App() {
     const { captureFrontCameraImage } = useFrontCamera(addToast);
 
     // ─── Manager Hooks ───────────────────────────────────────────────
-    const chatList = useChatListManager();
+    const interactionDatas = useInteractionDataManager();
     const characters = useCharacterManager();
     const actionManager = useActionManager(addToast);
     const contexts = useContextManager();
@@ -200,12 +200,12 @@ function App() {
     const { activeChatRestored } = useChatRestoration({
         sessionLoaded,
         charsLoading: characters.isLoading,
-        chatsLoading: chatList.isLoading,
+        chatsLoading: interactionDatas.isLoading,
         contextsLoading: contexts.isLoading,
         locationsLoading: locations.isLoading,
         profilesLoading: profiles.isLoading,
         allCharacters: characters.characters,
-        allRawInteractionDataShells: chatList.allRawInteractionDataShells,
+        allRawInteractionDataShells: interactionDatas.allRawInteractionDataShells,
         loadFullCharacter: characters.loadFullCharacter,
         setInteractionData, setSelectedCharacter,
         setSelectedModelId: models.setSelectedModelId,
@@ -346,15 +346,15 @@ function App() {
     // ─── Chat Auto-Save ──────────────────────────────────────────────
     useChatAutoSave({
         interactionData,
-        allRawInteractionDataShells: chatList.allRawInteractionDataShells,
-        refreshChatList: chatList.refresh,
+        allRawInteractionDataShells: interactionDatas.allRawInteractionDataShells,
+        refreshChatList: interactionDatas.refresh,
     });
 
     // ─── Server Sync (Multi-Device State Updates) ────────────────────
     useServerSync({
         refreshers: {
             characters: characters.refresh,
-            chats: chatList.refresh,
+            chats: interactionDatas.refresh,
             contexts: contexts.refresh,
             locations: locations.refresh,
             models: models.refresh,
@@ -410,11 +410,11 @@ function App() {
 
     const chatOps = useChatOperations({
         interactionData, currentCharacter, localProtagonistId, selectedCharacterId,
-        allCharacters: characters.characters, allRawInteractionDataShells: chatList.allRawInteractionDataShells,
+        allCharacters: characters.characters, allRawInteractionDataShells: interactionDatas.allRawInteractionDataShells,
         loadFullCharacter: characters.loadFullCharacter,
         setInteractionData, setSelectedCharacter,
-        refreshChatList: chatList.refresh, startNewChat,
-        deleteChatFromList: chatList.deleteChat, addToast,
+        refreshChatList: interactionDatas.refresh, startNewChat,
+        deleteChatFromList: interactionDatas.deleteChat, addToast,
     });
 
     const entityToggles = useEntityToggles({
@@ -545,8 +545,8 @@ function App() {
 
     const parentChatName = useMemo(() => {
         if (!parentInteractionDataId) return null;
-        return chatList.allRawInteractionDataShells.find((s: RawInteractionData) => s.id === parentInteractionDataId)?.name ?? null;
-    }, [parentInteractionDataId, chatList.allRawInteractionDataShells]);
+        return interactionDatas.allRawInteractionDataShells.find((s: RawInteractionData) => s.id === parentInteractionDataId)?.name ?? null;
+    }, [parentInteractionDataId, interactionDatas.allRawInteractionDataShells]);
 
     const committedMessages = useMemo(() => {
         let base = safeMessages.filter((m): m is TextMessage => m.messageType === 'chat' || m.messageType === 'whisper');
@@ -575,7 +575,7 @@ function App() {
 
     const loadSteps = useMemo<LoadStep[]>(() => [
         { id: 'session', label: 'Session Data', icon: '⚙️', done: sessionLoaded },
-        { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !chatList.isLoading },
+        { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !interactionDatas.isLoading },
         { id: 'characters', label: 'Characters', icon: '🎭', done: !characters.isLoading },
         { id: 'actions', label: 'Actions', icon: '⚡', done: !actionManager.actionsLoading },
         { id: 'contexts', label: 'Contexts', icon: '📜', done: !contexts.isLoading },
@@ -590,7 +590,7 @@ function App() {
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profiles.isLoading },
         { id: 'accounts', label: 'Accounts', icon: '🔑', done: !accounts.isLoading },
         { id: 'multiplayerData', label: 'Multiplayer Data', icon: '👥', done: !multiplayerDataManager.isLoading },
-    ], [sessionLoaded, chatList, characters, actionManager.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, budgetStrategies, profiles, accounts, multiplayerDataManager]);
+    ], [sessionLoaded, interactionDatas, characters, actionManager.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, budgetStrategies, profiles, accounts, multiplayerDataManager]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
@@ -609,7 +609,7 @@ function App() {
         return () => clearTimeout(timer);
     }, [loadSteps, isInitializing, activeChatRestored, interactionData]);
 
-    const ensureChatsLoaded = chatList.load;
+    const ensureChatsLoaded = interactionDatas.load;
 
     useEffect(() => { 
         if (!isInitializing && activeChatRestored) {
@@ -773,7 +773,7 @@ function App() {
         }, 50);
     };
 
-    const handleImportComplete = useCallback(() => { getLanguageModelEngine().clearTokenCache(); chatList.refresh(); }, [chatList]);
+    const handleImportComplete = useCallback(() => { getLanguageModelEngine().clearTokenCache(); interactionDatas.refresh(); }, [interactionDatas]);
 
     const handleForceFirstMessage = useCallback((char: Character) => {
         if (!interactionData || mp.isMultiplayerClient) return;
@@ -839,12 +839,12 @@ function App() {
         if (!loaded) { addToast('Chat not found.', 'error'); return; }
         const updated = { ...loaded, name, lastUpdatedTimestamp: Date.now() };
         await saveRawInteractionData(updated);
-        chatList.refresh();
+        interactionDatas.refresh();
         if (currentInteractionData?.id === id) {
             useSessionStore.getState().setInteractionData(updated);
         }
         addToast(`Renamed to "${name}"`, 'success');
-    }, [chatList, addToast]);
+    }, [interactionDatas, addToast]);
 
     const handleNavigateToBranchSource = useCallback(async () => {
         if (!parentInteractionDataId) return;
@@ -1257,7 +1257,7 @@ function App() {
 
                         <ContextBar
                             viewMode={viewMode}
-                            onOpenChatList={modals.chatList.open} onOpenCharacters={modals.charList.open}
+                            onOpenChatList={modals.interactionDatas.open} onOpenCharacters={modals.charList.open}
                             onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open}
                             onOpenAudioTracks={modals.audioTrackList.open} onOpenWorlds={modals.worldManager.open}
                             onOpenPromptBlocks={modals.promptBlockList.open} onOpenModels={modals.modelList.open}
@@ -1286,7 +1286,7 @@ function App() {
                 <AppModals
                     isMultiplayerClient={mp.isMultiplayerClient}
                     modals={modals} entityModals={entityModals}
-                    runningModels={models.runningModels} allRawInteractionDataShells={chatList.allRawInteractionDataShells}
+                    runningModels={models.runningModels} allRawInteractionDataShells={interactionDatas.allRawInteractionDataShells}
                     allCharacters={characters.characters} allContexts={contexts.contexts} allLocations={locations.locations}
                     allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allLanguageModels={allLanguageModels}
                     allSamplers={samplers.Samplers} allPromptBlocks={promptBlocks.promptBlocks} allStopPatterns={stopPatterns.stopPatterns}
@@ -1351,7 +1351,7 @@ function App() {
                     onInjectFirstMessage={handleInjectFirst}
                     onImportComplete={handleImportComplete} 
                     addToast={addToast} 
-                    ensureChatsLoaded={chatList.load}
+                    ensureChatsLoaded={interactionDatas.load}
                     pendingJoinRequests={mp.multiplayerSync.pendingJoinRequests}
                     onAcceptJoinRequest={mp.multiplayerSync.acceptJoinRequest}
                     onRejectJoinRequest={mp.multiplayerSync.rejectJoinRequest}
