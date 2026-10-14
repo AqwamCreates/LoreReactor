@@ -553,6 +553,14 @@ export interface RawInteractionData extends RawData {
   worldIds?: string[]; // ✅ ADD THIS
 }
 
+export interface InteractionDataFolder extends ObjectData {
+  interactionDataIds: string[]
+}
+
+export interface RawInteractionDataFolder extends RawData {
+  interactionDataIds: string[]
+}
+
 export type ExtensionType = 'Image Generation API' | 'Accessibility' | 'Extra';
 
 export interface Extension extends ObjectData {

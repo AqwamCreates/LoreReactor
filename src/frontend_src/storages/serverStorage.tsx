@@ -1,7 +1,7 @@
 // src/frontend_src/storages/serverStorage.tsx
 import type { 
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
-  Character, RawCharacter, RawInteractionMessage, RawWhisperMessage, InteractionData, RawInteractionData,
+  Character, RawCharacter, RawInteractionMessage, RawWhisperMessage, InteractionData, RawInteractionData, InteractionDataFolder, RawInteractionDataFolder,
   BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
   SummarizationStep, RawSummarizationStep, Webpage, RawWebpage,
   Memory, RawMemory, Location, RawLocation, World,
@@ -53,6 +53,7 @@ const ENTITY_REGISTRY = {
   stopPatterns: { dir: 'stop_pattern_data', hasManifest: true },
   interactionMessages: { dir: 'interaction_messages', hasManifest: false },
   interactionData: { dir: 'interaction_data', hasManifest: true },
+  interactionDataFolders: { dir: 'interaction_data_folder', hasManifest: true },
   kvCaches: { dir: 'kv_caches', hasManifest: false },
   budgetStrategies: { dir: 'budget_strategies', hasManifest: true },
   profiles: { dir: 'profile_data', hasManifest: true },
@@ -1189,7 +1190,7 @@ export async function deleteRawMessage(id: string): Promise<void> {
 }
 
 // =============================================================================
-// CHAT DATA REPOSITORY
+// INTERACTION  DATA REPOSITORY
 // =============================================================================
 
 export async function loadRawChatManifest(): Promise<string[]> { 
@@ -1511,6 +1512,24 @@ export async function deleteRawInteractionData(id: string): Promise<void> {
   await deleteResource(`${PATHS.interactionData}/${id}.json`);
   await updateManifest('interactionData', id, 'remove');
 }
+
+// =============================================================================
+// INTERACTION DATA FOLDER REPOSITORY
+// =============================================================================
+
+const interactionDataFolderRepo = createRepository<InteractionDataFolder, RawInteractionDataFolder>({
+  entityKey: 'interactionDataFolders',
+  hydrate: (raw, id) => hydrateEntity<InteractionDataFolder, RawInteractionDataFolder>(raw, id, {
+    name: 'Untitled Folder',
+    interactionDataIds: [],
+  }),
+});
+
+export const loadRawInteractionDataFolderManifest = interactionDataFolderRepo.loadManifest;
+export const loadRawInteractionDataFolder = interactionDataFolderRepo.loadRaw;
+export const loadAllRawInteractionDataFolders = interactionDataFolderRepo.loadAll;
+export const saveRawInteractionDataFolder = interactionDataFolderRepo.save;
+export const deleteRawInteractionDataFolder = interactionDataFolderRepo.remove;
 
 // =============================================================================
 // SINGLETON REPOSITORIES
