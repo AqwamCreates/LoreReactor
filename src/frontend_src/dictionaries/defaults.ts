@@ -174,7 +174,7 @@ export const defaultProfileTools: Record<tool, tristateInteger> = Object.fromEnt
 ) as Record<tool, tristateInteger>;
 
 export const defaultNarrateTexts: Record<textType, boolean> = {
-    normal: false, quoted: false, bolded: false, italicized: false,
+    normal: false, quoted: false, bolded: false, italicized: false, underlined: false,
     parenthesized: false, bracketed: false, braced: false,
 };
 

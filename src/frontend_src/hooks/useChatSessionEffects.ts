@@ -105,16 +105,23 @@ export function useChatSessionEffects({
         if (selectedModel) engine.setContext(selectedModel);
     }, [selectedModel, engine]);
 
-    // 5. Context Token Accounting (Debounced to prevent cloud tokenize API spamming)
+    // 5. Context Token Accounting (Batch-count all messages in a single request)
     useEffect(() => {
         if (!interactionData) return;
         let cancelled = false;
         const timer = setTimeout(async () => {
-            let total = 0;
             const history = getGlobalMessageHistory(interactionData);
-            for (const m of history) {
-                if (hasTextContent(m)) total += await engine.countTokens(m.textContent);
+            const fullText = history
+                .filter(hasTextContent)
+                .map(m => m.textContent)
+                .join('\n\n');
+
+            if (!fullText) {
+                if (!cancelled) setNumberOfTokens(0);
+                return;
             }
+
+            const total = await engine.countTokens(fullText);
             if (!cancelled) setNumberOfTokens(total);
         }, 300);
 

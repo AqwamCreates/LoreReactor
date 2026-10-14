@@ -497,6 +497,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
             normal: (rawNarrateTexts.normal as boolean) ?? defaultNarrateTexts.normal,
             quoted: (rawNarrateTexts.quoted as boolean) ?? defaultNarrateTexts.quoted,
             bolded: (rawNarrateTexts.bolded as boolean) ?? defaultNarrateTexts.bolded,
+            underlined: (rawNarrateTexts.underlined as boolean) ?? defaultNarrateTexts.underlined,
             italicized: (rawNarrateTexts.italicized as boolean) ?? defaultNarrateTexts.italicized,
             parenthesized: (rawNarrateTexts.parenthesized as boolean) ?? defaultNarrateTexts.parenthesized,
             bracketed: (rawNarrateTexts.bracketed as boolean) ?? defaultNarrateTexts.bracketed,

@@ -1080,7 +1080,7 @@ export function ProfileEditorModal({
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px', marginTop: '12px' }}>
                                     <StopPatternSelect label="Character Stop Pattern" value={characterStopPatternId} onChange={setCharacterStopPatternId} allStopPatterns={allStopPatterns} />
                                     <StopPatternSelect label="Web Summarization Stop Pattern" value={webSummarizationStopPatternId} onChange={setWebSummarizationStopPatternId} allStopPatterns={allStopPatterns} />
-                                    <StopPatternSelect label="Interaction Data Stop Pattern" value={interactionDataStopPatternId} onChange={setInteractionDataStopPatternId} allStopPatterns={allStopPatterns} />
+                                    <StopPatternSelect label="Interaction Data Stop Pattern" value={interactionDataSummarizationStopPatternId} onChange={setInteractionDataSummarizationStopPatternId} allStopPatterns={allStopPatterns} />
                                     <StopPatternSelect label="AI Recommendation Stop Pattern" value={aiRecommendationStopPatternId} onChange={setAiRecommendationStopPatternId} allStopPatterns={allStopPatterns} />
                                 </div>
                             </div>
