@@ -37,7 +37,17 @@ import type {
     Character, PromptBlock,
     Profile, InteractionData, ChatMessage,
     HistoryMessage, LanguageModel,
-    TextMessage
+    TextMessage,
+    Context,
+    Location,
+    AudioTrack,
+    Sampler,
+    StopPattern,
+    BudgetStrategy,
+    World,
+    Memory,
+    Account,
+    MultiplayerData
 } from '../types';
 import { useFrontCamera } from './useFrontCamera';
 
@@ -47,19 +57,19 @@ interface UseChatSessionOptions {
     isMultiplayerClient?: boolean;
     joinProtagonist?: Character | null;
     allCharacters?: Character[];
-    allContexts?: any[];
-    allLocations?: any[];
-    allAudioTracks?: any[];
+    allContexts?: Context[];
+    allLocations?: Location[];
+    allAudioTracks?: AudioTrack[];
     allPromptBlocks?: PromptBlock[];
-    allSamplers?: any[];
-    allStopPatterns?: any[];
-    allBudgetStrategies?: any[];
+    allSamplers?: Sampler[];
+    allStopPatterns?: StopPattern[];
+    allBudgetStrategies?: BudgetStrategy[];
     allProfiles?: Profile[];
-    allWorlds?: any[];
-    allMemories?: any[];
+    allWorlds?: World[];
+    allMemories?: Memory[];
     allExtensions?: any[];
-    allAccounts?: any[];
-    allMultiplayerData?: any[];
+    allAccounts?: Account[];
+    allMultiplayerData?: MultiplayerData[];
     allActions?: any[];
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
     requestPeerInference?: (peerAccountId: string, modelName: string, promptOrMessages: any, onToken: (token: string) => void, signal?: AbortSignal) => Promise<void>;
@@ -423,8 +433,11 @@ export function useChatSession(options: UseChatSessionOptions) {
             currentVoiceTrackerRef.current = null;
         }
 
-        // ✅ Initialize Streaming Voice with safe start
+        // ✅ Initialize Streaming Voice with safe start and seed if prefix exists
         const voiceTracker = new StreamingVoiceTracker(respondingChar);
+        if (existingCharacterText) {
+            voiceTracker.seed(existingCharacterText);
+        }
         currentVoiceTrackerRef.current = voiceTracker;
         voiceTracker.start().catch(err => console.warn('[useChatSession] VoiceTracker start failed:', err));
 
@@ -799,8 +812,11 @@ export function useChatSession(options: UseChatSessionOptions) {
             currentVoiceTrackerRef.current = null;
         }
 
-        // ✅ INITIALIZE voice tracker for the resumed turn
+        // ✅ INITIALIZE voice tracker for the resumed turn and seed with existingText
         const voiceTracker = new StreamingVoiceTracker(char);
+        if (existingText) {
+            voiceTracker.seed(existingText);
+        }
         currentVoiceTrackerRef.current = voiceTracker;
         voiceTracker.start().catch(err => console.warn('[useChatSession] Resume VoiceTracker start failed:', err));
 

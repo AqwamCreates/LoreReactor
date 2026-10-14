@@ -30,5 +30,5 @@ function getCachedFormat(text: string): React.ReactNode {
 }
 
 export const MemoizedMessageText = React.memo(function MemoizedMessageText({ text }: { text: string }) {
-    return <span className="message-text">{getCachedFormat(text)}</span>;
+    return <div  className="message-text">{getCachedFormat(text)}</div>;
 });

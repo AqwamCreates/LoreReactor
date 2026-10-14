@@ -5,10 +5,12 @@ const LEFT_DOUBLE_QUOTE = '\u201C'; // “
 const RIGHT_DOUBLE_QUOTE = '\u201D'; // ”
 
 interface MatchCandidate {
-    type: 'bold_italic' | 'bold' | 'italic' | 'quote' | 'curly_quote' | 'newline';
+    type: 'bold_italic' | 'bold' | 'italic' | 'quote' | 'curly_quote' | 'newline' | 'list_item';
     index: number;
     length: number;
     innerContent?: string;
+    bullet?: string;
+    indent?: number;
 }
 
 /**
@@ -27,7 +29,22 @@ function parseFormattedText(
     while (remaining.length > 0) {
         const candidates: MatchCandidate[] = [];
 
-        // 1. Newlines
+        // 1. List Item (-, *, +, •, or 1., 2), up to 3 digits) at start of string or newline
+        const listMatch = remaining.match(/(?:^|\r?\n)([ \t]*)([-*+•]|\d{1,3}[.)])[ \t]+([^\r\n]*)/);
+        if (listMatch && listMatch.index !== undefined) {
+            const indentStr = listMatch[1] ?? '';
+            const indentLevel = Math.min(4, Math.floor(indentStr.length / 2));
+            candidates.push({
+                type: 'list_item',
+                index: listMatch.index,
+                length: listMatch[0].length,
+                bullet: listMatch[2],
+                innerContent: listMatch[3] ?? '',
+                indent: indentLevel,
+            });
+        }
+
+        // 2. Newlines
         const nlMatch = remaining.match(/\r?\n/);
         if (nlMatch && nlMatch.index !== undefined) {
             candidates.push({
@@ -37,7 +54,7 @@ function parseFormattedText(
             });
         }
 
-        // 2. Bold + Italic (***text***)
+        // 3. Bold + Italic (***text***) - no space after opening, no space before closing
         const biMatch = remaining.match(/(?<!\*)\*\*\*(?!\s|\*)(.+?)(?<!\s|\*)\*\*\*(?!\*)/s);
         if (biMatch && biMatch.index !== undefined) {
             candidates.push({
@@ -48,7 +65,7 @@ function parseFormattedText(
             });
         }
 
-        // 3. Bold (**text**)
+        // 4. Bold (**text**) - no space after opening, no space before closing
         const boldMatch = remaining.match(/(?<!\*)\*\*(?!\s|\*)(.+?)(?<!\s|\*)\*\*(?!\*)/s);
         if (boldMatch && boldMatch.index !== undefined) {
             candidates.push({
@@ -59,7 +76,7 @@ function parseFormattedText(
             });
         }
 
-        // 4. Italic (*text*)
+        // 5. Italic (*text*) - no space after opening, no space before closing
         const italicMatch = remaining.match(/(?<!\*)\*(?!\s|\*)(.+?)(?<!\s|\*)\*(?!\*)/s);
         if (italicMatch && italicMatch.index !== undefined) {
             candidates.push({
@@ -70,7 +87,7 @@ function parseFormattedText(
             });
         }
 
-        // 5. Straight Quote ("text")
+        // 6. Straight Quote ("text")
         const quoteMatch = remaining.match(/"([^"]*)"/s);
         if (quoteMatch && quoteMatch.index !== undefined) {
             candidates.push({
@@ -81,7 +98,7 @@ function parseFormattedText(
             });
         }
 
-        // 6. Curly Quotes (“text”)
+        // 7. Curly Quotes (“text”)
         const curlyMatch = remaining.match(/\u201C([^\u201D]*)\u201D/s);
         if (curlyMatch && curlyMatch.index !== undefined) {
             candidates.push({
@@ -107,7 +124,7 @@ function parseFormattedText(
             break;
         }
 
-        // Pick earliest match in string
+        // Pick earliest match in string (longest match on ties)
         candidates.sort((a, b) => a.index - b.index || b.length - a.length);
         const match = candidates[0];
 
@@ -127,6 +144,24 @@ function parseFormattedText(
 
         // Process the matched token recursively
         switch (match.type) {
+            case 'list_item': {
+                const isBullet = /^[-*+•]$/.test(match.bullet ?? '');
+                const displayBullet = isBullet ? '•' : match.bullet;
+                nodes.push(
+                    <span
+                        key={keyGen.next()}
+                        className="fmt-list-row"
+                        style={match.indent && match.indent > 0 ? { paddingLeft: `${match.indent * 16}px` } : undefined}
+                    >
+                        <span className="fmt-list-bullet">{displayBullet}</span>
+                        <span className="fmt-list-content">
+                            {parseFormattedText(match.innerContent ?? '', false, keyGen)}
+                        </span>
+                    </span>
+                );
+                break;
+            }
+
             case 'newline':
                 nodes.push(<br key={keyGen.next()} />);
                 break;

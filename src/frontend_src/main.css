@@ -745,6 +745,38 @@ SHARED CHAT COMPONENTS (Used by Ladder & Cinematic)
 .fmt-bold { color: #ffffff; font-weight: 700; text-shadow: 0 0 6px rgba(255, 255, 255, 0.3); }
 .fmt-normal { color: var(--text-h) !important; }
 
+.fmt-list-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 2px 0;
+    text-align: left;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.fmt-list-bullet {
+    color: var(--accent);
+    font-weight: bold;
+    flex-shrink: 0;
+    user-select: none;
+    font-family: var(--mono);
+    min-width: 16px;
+    text-align: right;
+}
+
+.fmt-list-content {
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
+}
+
+/* In Cinematic Mode: Keep list items centered as a block, but left-aligned with each other */
+.mode-cinematic .fmt-list-row {
+    max-width: fit-content;
+    margin: 2px auto;
+}
+
 /* --- Message Attachment Indicator --- */
 .message-attachment-indicator {
     display: inline-flex;

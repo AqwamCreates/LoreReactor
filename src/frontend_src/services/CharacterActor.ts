@@ -11,7 +11,7 @@ import { sentimentEngine } from './SentimentAnalysisEngine';
 import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEngine';
 import { ToolInvocationParser, type ToolInvocation } from './ToolInvocationParser';
 import { defaultBudgetData } from '../dictionaries/defaults';
-import { executeTools, formatToolDisplay, type ToolExecutionContext } from './ToolExecutor';
+import { executeTools, formatToolDisplay, type ToolExecutionContext, type ToolResult } from './ToolExecutor';
 import { findLatestMessage } from '../utilities/messageLogic';
 import { getCurrentLocationId } from '../utilities/locationLogic';
 import { toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
@@ -96,33 +96,44 @@ async function processToolInvocations(
 ): Promise<ProcessedReplacements | null> {
     if (!invocations || invocations.length === 0) return null;
 
+    // ✅ RESTORED: Check effective character & profile tool permissions
+    const effectiveTools = getEffectiveTools(character, profile);
     const displayMode = profile?.toolUsageDisplayMode ?? 'none';
-    let toolResults: ToolResult[] = [];
-
-    try {
-        toolResults = await executeTools(invocations, targetMessage, interactionData, context, displayMode);
-    } catch (e) {
-        console.error('[CharacterActor] executeTools failed:', e);
-        toolResults = invocations.map(inv => ({
-            toolType: inv.toolType,
-            args: inv.args,
-            content: 'Something went wrong',
-            displayReplacement: ''
-        }));
-    }
 
     const rawReplacements: { rawMatch: string; resultText: string }[] = [];
     const displayReplacements: { rawMatch: string; displayText: string }[] = [];
     const executionResults: ToolExecutionResult[] = [];
 
-    for (let i = 0; i < invocations.length; i++) {
-        const inv = invocations[i];
-        const toolResult = toolResults[i] || {
-            toolType: inv.toolType,
-            args: inv.args,
-            content: 'Something went wrong',
-            displayReplacement: ''
-        };
+    for (const inv of invocations) {
+        const isEnabled = effectiveTools[inv.toolType as tool] ?? false;
+
+        let toolResult: ToolResult;
+        if (!isEnabled) {
+            toolResult = {
+                toolType: inv.toolType,
+                args: inv.args,
+                content: "Tool disabled",
+                displayReplacement: ""
+            };
+        } else {
+            try {
+                const results = await executeTools([inv], targetMessage, interactionData, context, displayMode);
+                toolResult = results[0] || {
+                    toolType: inv.toolType,
+                    args: inv.args,
+                    content: 'Something went wrong',
+                    displayReplacement: ''
+                };
+            } catch (e) {
+                console.error('[CharacterActor] executeTools failed:', e);
+                toolResult = {
+                    toolType: inv.toolType,
+                    args: inv.args,
+                    content: 'Something went wrong',
+                    displayReplacement: ''
+                };
+            }
+        }
 
         const resultContent = toolResult.content?.trim() ? toolResult.content : 'Something went wrong';
 
@@ -213,7 +224,7 @@ function createAccState(initialText: string) {
     let displayAcc = initialText;
     let lastRawLen = 0;
     let pendingInvs: ToolInvocation[] = [];
-    let collectedExecutionResults: ToolExecutionResult[] = [];
+    const collectedExecutionResults: ToolExecutionResult[] = [];
 
     return {
         get: () => ({
@@ -467,6 +478,7 @@ export class CharacterActor {
                     // ✅ Reset voice tracker offset for next stream pass
                     if (params.voiceTracker) {
                         params.voiceTracker.resetPass();
+                        params.voiceTracker.seed(accState.getRaw());
                     }
 
                     streamToolParser.reset();
@@ -536,6 +548,7 @@ export class CharacterActor {
                     // ✅ Reset voice tracker offset for next stream pass
                     if (params.voiceTracker) {
                         params.voiceTracker.resetPass();
+                        params.voiceTracker.seed(accState.getRaw());
                     }
 
                     streamToolParser.reset();
@@ -582,6 +595,7 @@ export class CharacterActor {
                     // ✅ Reset voice tracker offset for next stream pass
                     if (params.voiceTracker) {
                         params.voiceTracker.resetPass();
+                        params.voiceTracker.seed(accState.getRaw());
                     }
 
                     streamToolParser.reset();

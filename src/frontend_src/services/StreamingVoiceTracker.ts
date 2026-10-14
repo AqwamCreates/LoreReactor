@@ -88,6 +88,19 @@ export class StreamingVoiceTracker {
         this.isFirstChunkSent = false;
     }
 
+    seed(text: string): void {
+        if (!text) return;
+        const profile = useSessionStore.getState().interactionData?.profile;
+        const narrateTexts = profile?.narrateTexts;
+        
+        const effectiveNarrateTexts = (narrateTexts && Object.keys(narrateTexts).length > 0)
+            ? narrateTexts 
+            : { normal: true, quoted: true, bolded: true, italicized: true, parenthesized: true, bracketed: true, braced: true } as Record<textType, boolean>;
+
+        const cleanText = extractNarratableText(text, effectiveNarrateTexts);
+        this.lastCleanLength = cleanText.length;
+    }
+
     feed(text: string): void {
         if (this.isKilled || this.isFlushing || !this.hasVoiceConfigured) return;
 
