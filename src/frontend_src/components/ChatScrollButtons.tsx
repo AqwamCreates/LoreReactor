@@ -29,19 +29,18 @@ export const ChatScrollButtons = React.memo(function ChatScrollButtons({
         const { scrollTop, scrollHeight, clientHeight } = container;
         const prevHeight = prevClientHeightRef.current;
 
-        // ✅ If the container height changes (e.g., ContextBar expands/retracts)
-        // and the user was already at/near the bottom, keep them pinned to the bottom.
+        // ✅ Keep pinned to bottom if within 50px of the bottom when resizing
         if (prevHeight && prevHeight !== clientHeight) {
             const distanceToBottom = scrollHeight - scrollTop - prevHeight;
-            if (distanceToBottom <= 100) {
+            if (distanceToBottom <= 50) {
                 container.scrollTop = scrollHeight - clientHeight;
             }
         }
         prevClientHeightRef.current = clientHeight;
 
         const currentScrollTop = container.scrollTop;
-        setShowTopButton(currentScrollTop > 100);
-        setShowBottomButton(scrollHeight - currentScrollTop - clientHeight > 100);
+        setShowTopButton(currentScrollTop > 50);
+        setShowBottomButton(scrollHeight - currentScrollTop - clientHeight > 50);
 
         if (!useViewportBounds) {
             const rect = container.getBoundingClientRect();
