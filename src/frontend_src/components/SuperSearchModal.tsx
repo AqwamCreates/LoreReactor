@@ -12,7 +12,7 @@ import '../main.css';
 export type SearchTabId = 
     | 'all' 
     | 'message' 
-    | 'chat'
+    | 'interactionData'
     | 'interactionDataFolder'
     | 'character' 
     | 'context' 
@@ -85,7 +85,7 @@ interface SearchMatchResult {
 const TAB_CONFIG: { id: SearchTabId; label: string; icon: string }[] = [
     { id: 'all', label: 'All', icon: '🔍' },
     { id: 'message', label: 'Messages', icon: '💬' },
-    { id: 'chat', label: 'Chats', icon: '📂' },
+    { id: 'interactionData', label: 'Chats', icon: '📂' },
     { id: 'interactionDataFolder', label: 'Folders', icon: '📁' },
     { id: 'character', label: 'Characters', icon: '🎭' },
     { id: 'context', label: 'Contexts', icon: '📜' },
@@ -404,7 +404,7 @@ export function SuperSearchModal({
         emptyMap.account = scanEntities(allAccounts, 'account', a => `🔑 ${a.name || a.username}`);
         emptyMap.multiplayerData = scanEntities(allMultiplayerData, 'multiplayerData', m => `👥 ${m.name}`);
         emptyMap.interactionDataFolder = scanEntities(allInteractionDataFolders, 'interactionDataFolder', f => `📁 ${f.name}`);
-        emptyMap.chat = scanEntities(allRawInteractionDataShells, 'chat', s => `📂 ${s.name || 'Untitled Chat'}`);
+        emptyMap.chat = scanEntities(allRawInteractionDataShells, 'interactionData', s => `📂 ${s.name || 'Untitled Chat'}`);
 
         const seenMessageIds = new Set<string>();
         const messageResults: SearchMatchResult[] = [];
@@ -412,7 +412,7 @@ export function SuperSearchModal({
         if (currentInteractionData) {
             const allMessages = Object.values(currentInteractionData.interactionHistories || {}).flat();
             for (const msg of allMessages) {
-                if (msg.messageType === 'chat' && typeof (msg as ChatMessage).textContent === 'string' && (msg as ChatMessage).textContent.toLowerCase().includes(lowerQuery)) {
+                if (msg.messageType === 'interactionData' && typeof (msg as ChatMessage).textContent === 'string' && (msg as ChatMessage).textContent.toLowerCase().includes(lowerQuery)) {
                     const chatMsg = msg as ChatMessage;
                     seenMessageIds.add(chatMsg.id);
                     const chats = messageToChatsMap.get(chatMsg.id) || [{ chatId: currentInteractionData.id, chatName: currentInteractionData.name || 'Untitled Chat' }];
@@ -676,7 +676,7 @@ export function SuperSearchModal({
                                                     }}
                                                     style={{ minHeight: '26px', fontSize: '0.7rem', padding: '2px 10px' }}
                                                 >
-                                                    {item.tabId === 'chat' 
+                                                    {item.tabId === 'interactionData' 
                                                         ? 'Open Chat' 
                                                         : item.tabId === 'interactionDataFolder'
                                                             ? 'View Folder'
