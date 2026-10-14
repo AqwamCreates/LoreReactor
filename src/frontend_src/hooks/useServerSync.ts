@@ -31,7 +31,7 @@ export function useServerSync({ refreshers }: SyncProps) {
           const activeChatId = currentInteractionData?.id ?? null;
 
           if (changedChatId && changedChatId === activeChatId) {
-            // ✅ CRITICAL GUARD: Never overwrite active generation or resume in progress
+            // ✅ CRITICAL GUARD 1: Never overwrite active generation or resume in progress
             const isGenerating = useSessionStore.getState().isLoading;
             if (isGenerating) {
               return;
@@ -39,6 +39,17 @@ export function useServerSync({ refreshers }: SyncProps) {
 
             try {
               const freshChat = await loadRawInteractionData(changedChatId);
+              const currentChat = useSessionStore.getState().interactionData;
+
+              // ✅ CRITICAL GUARD 2: Never overwrite local state if local is newer than server
+              if (
+                freshChat && 
+                currentChat && 
+                freshChat.lastUpdatedTimestamp < currentChat.lastUpdatedTimestamp
+              ) {
+                return;
+              }
+
               if (freshChat) {
                 useSessionStore.getState().setInteractionData(freshChat);
               }
@@ -58,8 +69,8 @@ export function useServerSync({ refreshers }: SyncProps) {
         else if (path.startsWith('prompt_block_data/')) refreshers.promptBlocks?.();
         else if (path.startsWith('language_model_data/')) refreshers.models?.();
         else if (path.startsWith('sampler_data/')) refreshers.samplers?.();
-        else if (path.startsWith('budget_strategies/')) refreshers.budgetStrategies?.();
         else if (path.startsWith('stop_pattern_data/')) refreshers.stopPatterns?.();
+        else if (path.startsWith('budget_strategies/')) refreshers.budgetStrategies?.();
         else if (path.startsWith('multiplayer_data/')) refreshers.multiplayerData?.();
         else if (path.startsWith('multiplayer_character_data/')) refreshers.multiplayerCharacters?.();
         
