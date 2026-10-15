@@ -1,5 +1,5 @@
 // src/frontend_src/utilities/messageDisplayCompiler.ts
-import type { Character, HistoryMessage, InteractionData, ToolExecutionResult, toolUsageDisplayMode } from '../types';
+import type { Character, InteractionData, TextMessage, ToolExecutionResult, toolUsageDisplayMode } from '../types';
 import {
     toolCallStartString,
     toolCallEndString,
@@ -9,12 +9,10 @@ import {
 import { convertIdsToDisplayNames } from './interactionDataLogic';
 import { formatToolDisplay, getFallbackToolResult, type ToolResult } from '../services/ToolExecutor';
 
-/**
- * Centralized compiler: Accepts either a HistoryMessage object directly OR a raw string.
- * Automatically checks (message.processedTextContent || message.textContent).
- */
+// Centralized compiler: Accepts either a HistoryMessage object directly OR a raw string.
+
 export function compileMessageDisplayText(
-    target: HistoryMessage | string | null | undefined,
+    target: TextMessage | string | null | undefined,
     displayMode: toolUsageDisplayMode = 'simple',
     participants: Character[] = []
 ): string {
@@ -25,11 +23,8 @@ export function compileMessageDisplayText(
         return compileRawString(target, displayMode, participants, undefined, undefined);
     }
 
-    // It's a HistoryMessage: check processedTextContent override first, then raw textContent
     const character = target.character;
-    const rawText = ('processedTextContent' in target && target.processedTextContent)
-        ? target.processedTextContent
-        : ('textContent' in target ? target.textContent : '');
+    const rawText = ('textContent' in target ? target.textContent : '');
 
     const toolExecutionResults = 'toolExecutionResults' in target ? target.toolExecutionResults : undefined;
 

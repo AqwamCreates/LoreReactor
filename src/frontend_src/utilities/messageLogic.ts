@@ -140,7 +140,6 @@ export async function editChatMessage(interactionData: InteractionData, messageI
                     ...msg, 
                     textContent: newText, 
                     // Clear fields tied to the old text
-                    processedTextContent: undefined, 
                     toolExecutionResults: [], 
                     lastUpdatedTimestamp: Date.now() 
                 } as ChatMessage;

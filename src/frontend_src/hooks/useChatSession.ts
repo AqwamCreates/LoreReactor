@@ -289,7 +289,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                         newHistories[locId][idx] = {
                             ...lastMsg,
                             textContent: dt,
-                            processedTextContent: dt !== lastMsg.textContent ? dt : undefined
                         } as TextMessage;
                         break;
                     }
@@ -303,7 +302,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         const currentLocMessages = newHistories[currentLocId] || [];
 
         const chatMessage = createChatMessage(base, p.character, dt);
-        chatMessage.processedTextContent = dt;
         newHistories[currentLocId] = [...currentLocMessages, chatMessage];
 
         return { ...base, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
@@ -511,7 +509,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                     const currentLocId = getCurrentLocationId(ud, respondingChar) || 'global';
                     const fallbackMsg = createChatMessage(ud, respondingChar, liveText);
                     if (streamingMessageIdRef.current) fallbackMsg.id = streamingMessageIdRef.current;
-                    fallbackMsg.processedTextContent = liveText;
                     const newHistories = { ...ud.interactionHistories };
                     const currentLocMessages = newHistories[currentLocId] || [];
                     newHistories[currentLocId] = [...currentLocMessages, fallbackMsg];
@@ -726,13 +723,10 @@ export function useChatSession(options: UseChatSessionOptions) {
                     const textContent = streamedText || targetMsg.textContent;
                     const paragraphs = (textContent.match(/\n\n/g) || []).length + 1;
 
-                    const isProcessed = streamedText && streamedText !== targetMsg.textContent;
-
                     updatedHistories[locId] = [...msgs];
                     updatedHistories[locId][idx] = {
                         ...targetMsg,
-                        textContent: targetMsg.textContent || textContent,
-                        processedTextContent: isProcessed ? textContent : targetMsg.processedTextContent,
+                        textContent,
                         lastUpdatedTimestamp: Date.now()
                     } as TextMessage;
 
@@ -868,8 +862,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 dataToFinalize,
                 messageId,
                 wasStoppedRef.current,
-                result?.rawText || liveStreamedText,
-                result?.displayText
+                result?.rawText || liveStreamedText
             );
 
             const finalizedMsg = getGlobalMessageHistory(finalized).find(m => m.id === messageId);

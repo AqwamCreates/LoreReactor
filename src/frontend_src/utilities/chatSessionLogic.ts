@@ -30,14 +30,13 @@ export function calculateLatencyFactor(
 
 /**
  * Finalizes a message in history.
- * Supports saving processedTextContent separately from textContent.
+ * Commits the raw text directly to textContent. Display formatting is handled at render time.
  */
 export function finalizeMessageById(
     data: InteractionData,
     messageId: string,
     wasAborted: boolean,
-    fallbackRawText?: string,
-    fallbackDisplayText?: string
+    fallbackRawText?: string
 ): InteractionData {
     if (wasAborted && !fallbackRawText) return data;
 
@@ -51,18 +50,10 @@ export function finalizeMessageById(
                 ? fallbackRawText
                 : existingMsg.textContent;
 
-            let finalProcessedContent: string | undefined = undefined;
-            if (fallbackDisplayText && fallbackDisplayText !== finalRawContent) {
-                finalProcessedContent = fallbackDisplayText;
-            } else if (existingMsg.processedTextContent && existingMsg.processedTextContent !== finalRawContent) {
-                finalProcessedContent = existingMsg.processedTextContent;
-            }
-
             newHistories[locId] = [...msgs];
             newHistories[locId][idx] = {
                 ...existingMsg,
                 textContent: finalRawContent,
-                processedTextContent: finalProcessedContent,
                 lastUpdatedTimestamp: Date.now(),
             } as TextMessage;
             break;

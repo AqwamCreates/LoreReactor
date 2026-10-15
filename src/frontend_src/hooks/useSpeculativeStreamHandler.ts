@@ -102,13 +102,20 @@ export function useSpeculativeStreamHandler({
 
                             if (!existingMsg) {
                                 const currentLocId = getCurrentLocationId(freshData, char) || 'global';
+                                // createChatMessage already assigns completedText to textContent
                                 const speculativeMsg = createChatMessage(freshData, char, completedText);
                                 speculativeMsg.id = msgId;
-                                speculativeMsg.processedTextContent = completedText;
+                                speculativeMsg.textContent = completedText;
+
                                 const newHistories = { ...freshData.interactionHistories };
                                 if (!newHistories[currentLocId]) newHistories[currentLocId] = [];
                                 newHistories[currentLocId].push(speculativeMsg);
-                                updatedData = { ...freshData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
+
+                                updatedData = {
+                                    ...freshData,
+                                    interactionHistories: newHistories,
+                                    lastUpdatedTimestamp: Date.now(),
+                                };
                             } else {
                                 const updatedHistories = { ...freshData.interactionHistories };
                                 for (const [locId, msgs] of Object.entries(updatedHistories) as [string, HistoryMessage[]][]) {
@@ -117,14 +124,19 @@ export function useSpeculativeStreamHandler({
                                         updatedHistories[locId] = [...msgs];
                                         updatedHistories[locId][idx] = {
                                             ...existingMsg,
-                                            processedTextContent: completedText,
+                                            textContent: completedText,
                                             lastUpdatedTimestamp: Date.now(),
                                         } as TextMessage;
                                         break;
                                     }
                                 }
-                                updatedData = { ...freshData, interactionHistories: updatedHistories, lastUpdatedTimestamp: Date.now() };
+                                updatedData = {
+                                    ...freshData,
+                                    interactionHistories: updatedHistories,
+                                    lastUpdatedTimestamp: Date.now(),
+                                };
                             }
+
                             setInteractionData(updatedData);
 
                             setTimeout(() => {
@@ -145,8 +157,7 @@ export function useSpeculativeStreamHandler({
                 id: msgId,
                 messageType: 'chat',
                 character: char,
-                textContent: '',
-                processedTextContent: text,
+                textContent: text,
                 doNotRespond: false,
                 files: [],
                 modelTextContentSummaries: {},
@@ -157,8 +168,8 @@ export function useSpeculativeStreamHandler({
                 characterClothingWearingStatuses: {},
                 characterLockedLocations: {},
                 parentMessageId: null,
-                firstCreatedTimestamp: Date.now(),
-                lastUpdatedTimestamp: Date.now(),
+                firstCreatedTimestamp: now,
+                lastUpdatedTimestamp: now,
             };
             onMessageBroadcastRef.current(partialMsg);
         }
