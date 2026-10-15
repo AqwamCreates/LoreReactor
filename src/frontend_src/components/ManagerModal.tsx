@@ -303,12 +303,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         if (type === 'item') {
             onDelete?.(id);
         } else {
-            const folder = folderMap.get(id);
-            if (folder) {
-                for (const itemId of folder.itemIds) {
-                    onDelete?.(itemId);
-                }
-            }
             onDeleteEntityFolder(id);
         }
         setConfirmDeleteId(null);
@@ -537,7 +531,12 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                             value={searchQuery} 
                             onChange={e => setSearchQuery(e.target.value)} 
                             onClick={e => e.stopPropagation()} 
-                            style={{ paddingRight: searchQuery ? '40px' : '14px' }} 
+                            style={{ 
+                                paddingTop: '12px',
+                                paddingBottom: '12px',
+                                paddingLeft: '14px',
+                                paddingRight: searchQuery ? '40px' : '14px' 
+                            }} 
                         />
                         {searchQuery && (
                             <button 
@@ -546,18 +545,19 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                 style={{ 
                                     position: 'absolute', 
                                     right: '8px', 
-                                    top: '50%', 
-                                    transform: 'translateY(-50%)', 
+                                    top: 0,
+                                    bottom: 0,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
                                     background: 'transparent', 
                                     border: 'none', 
                                     color: 'var(--text-h)', 
                                     cursor: 'pointer', 
                                     fontSize: '1rem', 
                                     opacity: 0.5, 
-                                    padding: '4px 8px', 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    justifyContent: 'center' 
+                                    padding: '0 8px', 
+                                    lineHeight: 1
                                 }}
                                 title="Clear search"
                             >
@@ -617,61 +617,67 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                         maxWidth: 'calc(100vw - 16px)' 
                     }}
                 >
-                    <div style={{ position: 'relative', flexShrink: 0, padding: '8px', borderBottom: '1px solid var(--border)' }}>
-                        <input 
-                            ref={folderSearchInputRef}
-                            type="text" 
-                            className="action-menu-search" 
-                            placeholder="Search or type new & press Enter..." 
-                            value={folderSearchQuery} 
-                            onChange={e => setFolderSearchQuery(e.target.value)} 
-                            onKeyDown={e => {
-                                if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    const query = folderSearchQuery.trim();
-                                    if (!query) return;
-                                    if (exactFolderMatch) {
-                                        handleMoveSelect(e as any, movingItemId, exactFolderMatch.id);
-                                    } else {
-                                        handleCreateAndMove(query);
+                    <div style={{ flexShrink: 0, padding: '8px', borderBottom: '1px solid var(--border)' }}>
+                        <div style={{ position: 'relative' }}>
+                            <input 
+                                ref={folderSearchInputRef}
+                                type="text" 
+                                className="action-menu-search" 
+                                placeholder="Search or type new & press Enter..." 
+                                value={folderSearchQuery} 
+                                onChange={e => setFolderSearchQuery(e.target.value)} 
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        const query = folderSearchQuery.trim();
+                                        if (!query) return;
+                                        if (exactFolderMatch) {
+                                            handleMoveSelect(e as any, movingItemId, exactFolderMatch.id);
+                                        } else {
+                                            handleCreateAndMove(query);
+                                        }
                                     }
-                                }
-                            }}
-                            onClick={e => e.stopPropagation()} 
-                            style={{ 
-                                width: '100%', 
-                                boxSizing: 'border-box',
-                                paddingRight: folderSearchQuery ? '36px' : '12px', 
-                                minHeight: '32px', 
-                                fontSize: '0.75rem', 
-                                padding: '6px 12px',
-                                margin: 0
-                            }} 
-                        />
-                        {folderSearchQuery && (
-                            <button 
-                                type="button" 
-                                onClick={(e) => { e.stopPropagation(); setFolderSearchQuery(''); folderSearchInputRef.current?.focus(); }} 
-                                style={{ 
-                                    position: 'absolute', 
-                                    right: '12px', 
-                                    top: '50%', 
-                                    transform: 'translateY(-50%)', 
-                                    background: 'transparent', 
-                                    border: 'none', 
-                                    color: 'var(--text-h)', 
-                                    cursor: 'pointer', 
-                                    fontSize: '0.9rem', 
-                                    opacity: 0.6, 
-                                    padding: '4px', 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    justifyContent: 'center' 
                                 }}
-                            >
-                                ✕
-                            </button>
-                        )}
+                                onClick={e => e.stopPropagation()} 
+                                style={{ 
+                                    width: '100%', 
+                                    boxSizing: 'border-box',
+                                    paddingTop: '6px',
+                                    paddingBottom: '6px',
+                                    paddingLeft: '12px',
+                                    paddingRight: folderSearchQuery ? '32px' : '12px', 
+                                    minHeight: '32px', 
+                                    fontSize: '0.75rem', 
+                                    margin: 0
+                                }} 
+                            />
+                            {folderSearchQuery && (
+                                <button 
+                                    type="button" 
+                                    onClick={(e) => { e.stopPropagation(); setFolderSearchQuery(''); folderSearchInputRef.current?.focus(); }} 
+                                    style={{ 
+                                        position: 'absolute', 
+                                        right: '8px', 
+                                        top: 0,
+                                        bottom: 0,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        background: 'transparent', 
+                                        border: 'none', 
+                                        color: 'var(--text-h)', 
+                                        cursor: 'pointer', 
+                                        fontSize: '0.9rem', 
+                                        opacity: 0.6, 
+                                        padding: 0,
+                                        width: '20px',
+                                        lineHeight: 1
+                                    }}
+                                >
+                                    ✕
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <div className="action-menu-list" onClick={e => e.stopPropagation()} style={{ maxHeight: '200px', overflowY: 'auto' }}>
                         <button className="action-menu-item" onClick={e => handleMoveSelect(e, movingItemId, null)}>
