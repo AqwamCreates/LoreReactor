@@ -68,6 +68,9 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     
     const [movingItemId, setMovingItemId] = useState<string | null>(null);
     const [moveDropdownRect, setMoveDropdownRect] = useState<DOMRect | null>(null);
+    
+    const [folderSearchQuery, setFolderSearchQuery] = useState('');
+    const folderSearchInputRef = useRef<HTMLInputElement>(null);
 
     const searchInputRef = useRef<HTMLInputElement>(null);
     const renameInputRef = useRef<HTMLInputElement>(null);
@@ -77,6 +80,13 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
 
     useEffect(() => { searchInputRef.current?.focus(); }, []);
     useEffect(() => { if (renamingId) renameInputRef.current?.focus(); }, [renamingId]);
+    
+    useEffect(() => {
+        if (movingItemId) {
+            setFolderSearchQuery('');
+            setTimeout(() => folderSearchInputRef.current?.focus(), 10);
+        }
+    }, [movingItemId]);
 
     const [prevActiveTab, setPrevActiveTab] = useState(activeTab);
     if (activeTab !== prevActiveTab) {
@@ -123,6 +133,12 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
 
     const typeFolders = useMemo(() => allEntityFolders.filter(f => f.entityType === entityType), [allEntityFolders, entityType]);
     
+    const filteredTypeFolders = useMemo(() => {
+        if (!folderSearchQuery.trim()) return typeFolders;
+        const q = folderSearchQuery.toLowerCase();
+        return typeFolders.filter(f => f.name?.toLowerCase().includes(q));
+    }, [typeFolders, folderSearchQuery]);
+
     const folderMap = useMemo(() => {
         const map = new Map<string, EntityFolder>();
         for (const f of typeFolders) map.set(f.id, f);
@@ -154,7 +170,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         return sortedLocalItems.filter(item => !assignedItemIds.has(item.id));
     }, [sortedLocalItems, assignedItemIds]);
 
-    // ✅ RESTORED: Unified sorting that pushes ordered items to the top naturally
     const displayItems = useMemo(() => {
         const combined: Array<{ type: 'folder'; folder: EntityFolder } | { type: 'item'; item: T }> = [
             ...typeFolders.map(f => ({ type: 'folder' as const, folder: f })),
@@ -178,11 +193,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
             return 0;
         });
     }, [typeFolders, rootItems, orderedListMode, currentOrderIds]);
-
-    const getFolderNameForItem = useCallback((id: string) => {
-        for (const f of typeFolders) if (f.itemIds.includes(id)) return f.name;
-        return null;
-    }, [typeFolders]);
 
     const filteredItems = useMemo(() => {
         if (!searchQuery.trim()) return currentItems;
@@ -327,7 +337,8 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                         )
                     )}
 
-                    {activeTab === 'localLibrary' && !searchQuery.trim() && (
+                    {/* ✅ FIX: Removed !searchQuery.trim() so the folder dropdown is ALWAYS visible */}
+                    {activeTab === 'localLibrary' && (
                         <button type="button" onClick={e => handleMoveClick(e, id)} className="manager-item-button" title="Move to folder">📁</button>
                     )}
 
@@ -419,7 +430,43 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                 )}
 
                 <div className="modal-search-container">
-                    <input ref={searchInputRef} type="text" className="modal-search-input" placeholder={`Search ${title.toLowerCase()}...`} value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onClick={e => e.stopPropagation()} />
+                    <div style={{ position: 'relative' }}>
+                        <input 
+                            ref={searchInputRef} 
+                            type="text" 
+                            className="modal-search-input" 
+                            placeholder={`Search ${title.toLowerCase()}...`} 
+                            value={searchQuery} 
+                            onChange={e => setSearchQuery(e.target.value)} 
+                            onClick={e => e.stopPropagation()} 
+                            style={{ paddingRight: searchQuery ? '40px' : '14px' }} 
+                        />
+                        {searchQuery && (
+                            <button 
+                                type="button" 
+                                onClick={() => setSearchQuery('')} 
+                                style={{ 
+                                    position: 'absolute', 
+                                    right: '8px', 
+                                    top: '50%', 
+                                    transform: 'translateY(-50%)', 
+                                    background: 'transparent', 
+                                    border: 'none', 
+                                    color: 'var(--text-h)', 
+                                    cursor: 'pointer', 
+                                    fontSize: '1rem', 
+                                    opacity: 0.5, 
+                                    padding: '4px 8px', 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'center' 
+                                }}
+                                title="Clear search"
+                            >
+                                ✕
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 <div className="modal-body">
@@ -430,32 +477,11 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                         </form>
                     )}
 
+                    {/* ✅ FIX: Search results now use the EXACT SAME renderItemRow layout */}
                     {searchQuery.trim() ? (
                         filteredItems.length === 0 ? <div className="empty-state">No results found for "{searchQuery}"</div> : (
                             <ul className="manager-list">
-                                {filteredItems.map(item => {
-                                    const folderName = activeTab === 'localLibrary' ? getFolderNameForItem(item.id) : null;
-                                    const originalSubtext = renderSubtext ? renderSubtext(item) : null;
-                                    const wrappedSubtext = folderName 
-                                        ? <span>📁 {folderName} • {originalSubtext}</span>
-                                        : activeTab === 'localLibrary' && !assignedItemIds.has(item.id) 
-                                        ? <span>📂 Root • {originalSubtext}</span>
-                                        : originalSubtext;
-                                    
-                                    return (
-                                        <li key={item.id} className={`manager-item ${item.id === activeItemId || item.id === selectedId ? 'selected-item' : ''}`}>
-                                            <div className={`manager-item-main ${onSelectItem ? 'manager-item-main-clickable' : ''}`} onClick={() => onSelectItem?.(item)}>
-                                                <div className="manager-item-info">
-                                                    <div className="manager-item-title">{item.name || 'Untitled'}</div>
-                                                    {renderSubtext && <div className="manager-item-sub">{wrappedSubtext}</div>}
-                                                </div>
-                                            </div>
-                                            <div className="manager-item-actions">
-                                                {onSelect && <button type="button" onClick={e => { e.stopPropagation(); onSelect(item, isHosterOwnedTab); }} className="manager-item-button" title="Edit">✏️</button>}
-                                            </div>
-                                        </li>
-                                    );
-                                })}
+                                {filteredItems.map(item => renderItemRow(item))}
                             </ul>
                         )
                     ) : (
@@ -486,11 +512,59 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
             </div>
 
             {movingItemId && moveDropdownRect && activeTab === 'localLibrary' && (
-                <div className="action-menu-container move-dropdown-portal" onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: moveDropdownRect.bottom + 4, right: Math.max(8, window.innerWidth - moveDropdownRect.right), zIndex: 4000, minWidth: '180px', maxWidth: 'calc(100vw - 16px)' }}>
-                    <button className="action-menu-item" onClick={e => handleMoveSelect(e, movingItemId, null)}><span className="action-menu-item-label">📂 Root (Unassigned)</span></button>
-                    {typeFolders.map(f => (
-                        <button key={f.id} className="action-menu-item" onClick={e => handleMoveSelect(e, movingItemId, f.id)}><span className="action-menu-item-label">📁 {f.name}</span></button>
-                    ))}
+                <div className="action-menu-container move-dropdown-portal" onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: moveDropdownRect.bottom + 4, right: Math.max(8, window.innerWidth - moveDropdownRect.right), zIndex: 4000, minWidth: '220px', maxWidth: 'calc(100vw - 16px)' }}>
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                        <input 
+                            ref={folderSearchInputRef}
+                            type="text" 
+                            className="action-menu-search" 
+                            placeholder="Search folders..." 
+                            value={folderSearchQuery} 
+                            onChange={e => setFolderSearchQuery(e.target.value)} 
+                            onClick={e => e.stopPropagation()} 
+                            style={{ paddingRight: folderSearchQuery ? '36px' : '12px', minHeight: '36px', fontSize: '0.75rem', padding: '8px 12px' }} 
+                        />
+                        {folderSearchQuery && (
+                            <button 
+                                type="button" 
+                                onClick={(e) => { e.stopPropagation(); setFolderSearchQuery(''); folderSearchInputRef.current?.focus(); }} 
+                                style={{ 
+                                    position: 'absolute', 
+                                    right: '8px', 
+                                    top: '50%', 
+                                    transform: 'translateY(-50%)', 
+                                    background: 'transparent', 
+                                    border: 'none', 
+                                    color: 'var(--text-h)', 
+                                    cursor: 'pointer', 
+                                    fontSize: '0.9rem', 
+                                    opacity: 0.6, 
+                                    padding: '4px', 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'center' 
+                                }}
+                            >
+                                ✕
+                            </button>
+                        )}
+                    </div>
+                    <div className="action-menu-list" onClick={e => e.stopPropagation()} style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                        <button className="action-menu-item" onClick={e => handleMoveSelect(e, movingItemId, null)}>
+                            <span className="action-menu-item-label">Root (Unassigned)</span>
+                        </button>
+                        {filteredTypeFolders.length > 0 ? (
+                            filteredTypeFolders.map(f => (
+                                <button key={f.id} className="action-menu-item" onClick={e => handleMoveSelect(e, movingItemId, f.id)}>
+                                    <span className="action-menu-item-label">{f.name}</span>
+                                </button>
+                            ))
+                        ) : (
+                            <div style={{ padding: '12px', fontSize: '0.75rem', opacity: 0.5, textAlign: 'center', color: 'var(--text-h)' }}>
+                                No folders found
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
         </div>

@@ -508,16 +508,44 @@ export function SuperSearchModal({
                     </div>
                 </div>
 
-                {/* Search Bar */}
+                {/* ✅ SEARCH BAR WITH CLEAR BUTTON */}
                 <div className="modal-search-container" style={{ padding: '0 20px 12px 20px' }}>
-                    <input
-                        ref={searchInputRef}
-                        type="text"
-                        placeholder="Search anything across all entities, lore, and messages..."
-                        value={query}
-                        onChange={e => setQuery(e.target.value)}
-                        className="modal-search-input"
-                    />
+                    <div style={{ position: 'relative' }}>
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            placeholder="Search anything across all entities, lore, and messages..."
+                            value={query}
+                            onChange={e => setQuery(e.target.value)}
+                            className="modal-search-input"
+                            style={{ paddingRight: query ? '40px' : '14px' }}
+                        />
+                        {query && (
+                            <button
+                                type="button"
+                                onClick={() => { setQuery(''); searchInputRef.current?.focus(); }}
+                                style={{
+                                    position: 'absolute',
+                                    right: '8px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: 'var(--text-h)',
+                                    cursor: 'pointer',
+                                    fontSize: '1rem',
+                                    opacity: 0.5,
+                                    padding: '4px 8px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}
+                                title="Clear search"
+                            >
+                                ✕
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 {/* Entity Tab Bar */}

@@ -1046,7 +1046,41 @@ export function DataManagerModal({
                             <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
                                 <button type="button" className="editor-button editor-button-save" onClick={scanCleanup} disabled={isScanning} style={{ fontSize: '0.75rem', padding: '8px 16px' }}>{isScanning ? 'Scanning...' : 'Scan'}</button>
                                 {cleanupItems.length > 0 && (<>
-                                    <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search..." className="editor-input" style={{ flex: 1, minWidth: '120px', fontSize: '0.75rem', padding: '8px 12px' }} />
+                                    <div style={{ position: 'relative', flex: 1, minWidth: '120px' }}>
+                                        <input 
+                                            type="text" 
+                                            value={searchQuery} 
+                                            onChange={e => setSearchQuery(e.target.value)} 
+                                            placeholder="Search..." 
+                                            className="editor-input" 
+                                            style={{ width: '100%', fontSize: '0.75rem', padding: '8px 12px', paddingRight: searchQuery ? '36px' : '12px' }} 
+                                        />
+                                        {searchQuery && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setSearchQuery('')}
+                                                style={{
+                                                    position: 'absolute',
+                                                    right: '8px',
+                                                    top: '50%',
+                                                    transform: 'translateY(-50%)',
+                                                    background: 'transparent',
+                                                    border: 'none',
+                                                    color: 'var(--text-h)',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.9rem',
+                                                    opacity: 0.5,
+                                                    padding: '4px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center'
+                                                }}
+                                                title="Clear search"
+                                            >
+                                                ✕
+                                            </button>
+                                        )}
+                                    </div>
                                     <button type="button" className="editor-button editor-button-cancel" onClick={selectAllVisible} style={{ fontSize: '0.75rem', padding: '8px 16px' }}>{filteredAndSorted.length > 0 && filteredAndSorted.every(o => selectedIds.has(o.id)) ? 'Deselect Visible' : 'Select Visible'}</button>
                                     <button type="button" className="editor-button" onClick={handleDeleteSelected} disabled={selectedIds.size === 0} style={{ fontSize: '0.75rem', padding: '8px 16px', background: selectedIds.size > 0 ? '#ef4444' : undefined, color: selectedIds.size > 0 ? '#fff' : undefined, borderColor: selectedIds.size > 0 ? '#ef4444' : undefined }}>Delete Selected ({selectedIds.size})</button>
                                 </>)}
@@ -1154,7 +1188,40 @@ export function DataManagerModal({
                                         {(Object.keys(EXCLUSION_TYPE_META) as ExclusionEntityType[]).map(key => (<option key={key} value={key}>{EXCLUSION_TYPE_META[key].icon} {EXCLUSION_TYPE_META[key].label}</option>))}
                                     </select>
                                     <div style={{ flex: 1, position: 'relative' }}>
-                                        <input type="text" value={exclusionSearchQuery} onChange={e => { setExclusionSearchQuery(e.target.value); setIsExclusionDropdownOpen(true); }} onFocus={() => { if (exclusionSearchQuery.trim()) setIsExclusionDropdownOpen(true); }} placeholder={`Search ${EXCLUSION_TYPE_META[exclusionDropdownType].label.toLowerCase()}...`} className="editor-input" style={{ width: '100%', fontSize: '0.7rem', padding: '6px 8px' }} />
+                                        <input 
+                                            type="text" 
+                                            value={exclusionSearchQuery} 
+                                            onChange={e => { setExclusionSearchQuery(e.target.value); setIsExclusionDropdownOpen(true); }} 
+                                            onFocus={() => { if (exclusionSearchQuery.trim()) setIsExclusionDropdownOpen(true); }} 
+                                            placeholder={`Search ${EXCLUSION_TYPE_META[exclusionDropdownType].label.toLowerCase()}...`} 
+                                            className="editor-input" 
+                                            style={{ width: '100%', fontSize: '0.7rem', padding: '6px 8px', paddingRight: exclusionSearchQuery ? '32px' : '8px' }} 
+                                        />
+                                        {exclusionSearchQuery && (
+                                            <button
+                                                type="button"
+                                                onClick={() => { setExclusionSearchQuery(''); setIsExclusionDropdownOpen(false); }}
+                                                style={{
+                                                    position: 'absolute',
+                                                    right: '8px',
+                                                    top: '50%',
+                                                    transform: 'translateY(-50%)',
+                                                    background: 'transparent',
+                                                    border: 'none',
+                                                    color: 'var(--text-h)',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.8rem',
+                                                    opacity: 0.5,
+                                                    padding: '4px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center'
+                                                }}
+                                                title="Clear search"
+                                            >
+                                                ✕
+                                            </button>
+                                        )}
                                         {isExclusionDropdownOpen && exclusionSearchResults.length > 0 && (
                                             <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, maxHeight: '180px', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '0 0 6px 6px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
                                                 {exclusionSearchResults.map(item => (<div key={item.id} onClick={() => addExclusion(exclusionDropdownType, item.id, item.name)} style={{ padding: '6px 10px', fontSize: '0.7rem', cursor: 'pointer', borderBottom: '1px solid var(--border)', transition: 'background 0.1s' }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-bg)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>{EXCLUSION_TYPE_META[exclusionDropdownType].icon} {item.name}</div>))}
