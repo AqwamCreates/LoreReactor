@@ -611,6 +611,8 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
             states.set(visibleCharacterIds[i], getDistributedState(i, total));
         }
 
+        // If chatMessages is temporarily empty while loading on mount, return empty history/default states
+        // rather than processing invalid states. VisualNovelView handles rendering a blank stage for that 1 frame.
         if (!isReady) {
             return { 
                 movementHistory: history, 

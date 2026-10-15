@@ -1,7 +1,7 @@
 // src/frontend_src/components/views/VisualNovelView.tsx
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import type { ViewModeProps } from './types';
-import type { Character } from '../../types';
+import type { Character, HistoryMessage } from '../../types';
 import { MemoizedMessageText } from '../MemoizedMessageText';
 import { useVisualNovelSpriteStates } from '../../hooks/useVisualNovelSpriteStates';
 import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
@@ -31,7 +31,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         messageEndRef, editTextAreaRef,
         onSaveEdit,
         onResumeGeneration, onRegenerateFromMessage,
-        onPlayVoice, // Destructured
+        onPlayVoice,
         onMassDeleteConfirm,
         onNavigateToBranchSource,
         parentInteractionDataName,
@@ -329,6 +329,16 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         if (displayedTextContent) return displayedTextContent;
         return null;
     }, [isEditingLastSpeaker, viewIndex, displayedTextContent, activeStreamingText]);
+
+    // ✅ ALL HOOKS HAVE COMPLETED ABOVE. NOW SAFE TO DO CONDITIONAL RETURN FOR 1-FRAME HYDRATION GAP.
+    const hasMessages = useMemo(() => {
+        if (!interactionData?.interactionHistories) return false;
+        return Object.values(interactionData.interactionHistories as Record<string, HistoryMessage[]>).some(arr => arr && arr.length > 0);
+    }, [interactionData]);
+
+    if (hasMessages && chatMessages.length === 0) {
+        return <div className="vn-stage-container" style={{ background: 'linear-gradient(to bottom, #1a1a2e, #16213e)' }} />;
+    }
 
     return (
         <div className="vn-stage-container" style={bgStyle}>

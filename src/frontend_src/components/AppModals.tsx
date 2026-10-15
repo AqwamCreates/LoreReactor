@@ -85,7 +85,7 @@ interface ApplicationModalsProperties {
     allMultiplayerData: MultiplayerData[];
     
     allEntityFolders: EntityFolder[];
-    onSaveEntityFolder: (folder: EntityFolder) => Promise<boolean> | void;
+    onSaveEntityFolder: (folder: EntityFolder) => Promise<boolean>;
     onDeleteEntityFolder: (identifier: string) => void;
 
     onSwitchChat: (identifier: string) => void;
