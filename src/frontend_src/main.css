@@ -1788,13 +1788,14 @@ MODE: VISUAL NOVEL (Sprite Stage View)
 
 .vn-sprite {
     height: 50vh;
-    width: auto; /* ✅ Changed from width: calc... to auto */
+    width: auto;
     max-height: 100%;
     max-width: 100%;
-    object-fit: contain; /* ✅ Changed from cover to contain to prevent crop */
+    aspect-ratio: 9 / 16; /* ✅ ADD THIS: Reserves space instantly */
+    object-fit: contain; /* ✅ Ensure the full image fits without cropping */
     object-position: bottom center;
     image-rendering: -webkit-optimize-contrast;
-    display: block; /* ✅ Remove potential ghosting gap */
+    display: block;
 }
 
 @keyframes vn-jump-arc {

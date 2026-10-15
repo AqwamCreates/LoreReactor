@@ -1,5 +1,5 @@
 // src/frontend_src/hooks/useVisualNovelSpriteStates.ts
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import type { ChatMessage } from '../types';
 import { useSessionStore } from './useSessionStore';
 
@@ -597,7 +597,7 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
 
     const hasHistory = useMemo(() => {
         if (!interactionData?.interactionHistories) return false;
-        return Object.values(interactionData.interactionHistories).some(arr => arr.length > 0);
+        return Object.values(interactionData.interactionHistories).some(arr => arr && arr.length > 0);
     }, [interactionData]);
 
     const isReady = !hasHistory || chatMessages.length > 0;
@@ -707,9 +707,29 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
     const [shakingCharacterIds, setShakingCharacterIds] = useState<Set<string>>(new Set());
     const [fallingCharacterIds, setFallingCharacterIds] = useState<Set<string>>(new Set());
 
-    // Jump transient animation trigger (600ms)
+    // Refs to store previous signatures and prevent replaying historical animations on mount/chat switch
+    const lastChatIdRef = useRef<string | null>(interactionData?.id ?? null);
+    const prevJumpSignatureRef = useRef<string>(jumpSignature);
+    const prevShakeSignatureRef = useRef<string>(shakeSignature);
+    const prevFallSignatureRef = useRef<string>(fallSignature);
+
+    // Keep baseline synchronized if the chat session changes
     useEffect(() => {
-        if (!jumpSignature) return;
+        if (lastChatIdRef.current !== interactionData?.id) {
+            lastChatIdRef.current = interactionData?.id ?? null;
+            prevJumpSignatureRef.current = jumpSignature;
+            prevShakeSignatureRef.current = shakeSignature;
+            prevFallSignatureRef.current = fallSignature;
+        }
+    }, [interactionData?.id, jumpSignature, shakeSignature, fallSignature]);
+
+    // Jump transient animation trigger (600ms) - only fires when a new jump message occurs
+    useEffect(() => {
+        if (!jumpSignature || jumpSignature === prevJumpSignatureRef.current) {
+            prevJumpSignatureRef.current = jumpSignature;
+            return;
+        }
+        prevJumpSignatureRef.current = jumpSignature;
 
         const jumpers = new Set<string>();
         for (const entry of movementHistory) {
@@ -728,9 +748,13 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
         };
     }, [jumpSignature, movementHistory]);
 
-    // Shake/shudder/tremble/crash impact transient reaction trigger (600ms)
+    // Shake/shudder/tremble/crash impact transient reaction trigger (600ms) - only fires when a new shake message occurs
     useEffect(() => {
-        if (!shakeSignature) return;
+        if (!shakeSignature || shakeSignature === prevShakeSignatureRef.current) {
+            prevShakeSignatureRef.current = shakeSignature;
+            return;
+        }
+        prevShakeSignatureRef.current = shakeSignature;
 
         const shakers = new Set<string>();
         for (const entry of movementHistory) {
@@ -749,9 +773,13 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
         };
     }, [shakeSignature, movementHistory]);
 
-    // Fall/faint/trip/stumble transient reaction trigger (600ms)
+    // Fall/faint/trip/stumble transient reaction trigger (600ms) - only fires when a new fall message occurs
     useEffect(() => {
-        if (!fallSignature) return;
+        if (!fallSignature || fallSignature === prevFallSignatureRef.current) {
+            prevFallSignatureRef.current = fallSignature;
+            return;
+        }
+        prevFallSignatureRef.current = fallSignature;
 
         const fallers = new Set<string>();
         for (const entry of movementHistory) {
