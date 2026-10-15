@@ -86,7 +86,7 @@ export function EntitySelectList<T extends EntitySelectListItem>({
                     className="editor-input entity-select-search"
                     placeholder={`Search ${label.toLowerCase()}...`}
                     disabled={disabled}
-                    style={{ paddingRight: searchQuery ? '36px' : '12px', width: '100%', boxSizing: 'border-box' }}
+                    style={{ paddingRight: searchQuery ? '36px' : '12px', width: '100%', boxSizing: 'border-box', marginBottom: 0 }}
                 />
                 {searchQuery && !disabled && (
                     <button
