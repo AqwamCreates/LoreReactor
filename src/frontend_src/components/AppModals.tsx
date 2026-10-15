@@ -898,7 +898,8 @@ export function AppModals({
                     allWorlds={allWorlds} allLanguageModels={allLanguageModels} allSamplers={allSamplers} allPromptBlocks={allPromptBlocks}
                     allStopPatterns={allStopPatterns} allBudgetStrategies={allBudgetStrategies} allProfiles={allProfiles}
                     allMemories={allMemories} allAccounts={allAccounts} allMultiplayerData={allMultiplayerData}
-                    allRawInteractionDataShells={chatShellsWithIdentifiers} 
+                    allRawInteractionDataShells={chatShellsWithIdentifiers}
+                    allEntityFolders={allEntityFolders}
                 />
             )}
 

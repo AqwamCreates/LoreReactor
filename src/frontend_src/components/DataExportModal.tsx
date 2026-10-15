@@ -1,6 +1,6 @@
 // src/frontend_src/components/DataExportModal.tsx
 import { useState } from 'react';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData, EntityFolder } from '../types';
 import { exportSelectedData, type LoreReactorExport } from '../services/DataPortabilityEngine';
 import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
@@ -21,15 +21,16 @@ interface DataExportModalProps {
     allMemories: Memory[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
+    allEntityFolders: EntityFolder[];
     allRawInteractionDataShells: RawInteractionData[];
 }
 
 export function DataExportModal({
-     onClose,
+    onClose,
     allCharacters, allContexts, allLocations, allAudioTracks,
     allWorlds, allLanguageModels, allSamplers, allPromptBlocks, allStopPatterns,
     allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData,
-    allRawInteractionDataShells,
+    allEntityFolders, allRawInteractionDataShells,
 }: DataExportModalProps) {
     const [isExporting, setIsExporting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -50,6 +51,7 @@ export function DataExportModal({
     const [selectedMemoryIds, setSelectedMemoryIds] = useState<string[]>([]);
     const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
     const [selectedMultiplayerDataIds, setSelectedMultiplayerDataIds] = useState<string[]>([]);
+    const [selectedEntityFolderIds, setSelectedEntityFolderIds] = useState<string[]>([]);
     
     // STRICT ORDER: Actions -> Action Format -> Format Preferences -> Session -> Budget
     const [includeActions, setIncludeActions] = useState(true);
@@ -73,6 +75,7 @@ export function DataExportModal({
     const [memorySearch, setMemorySearch] = useState('');
     const [accountSearch, setAccountSearch] = useState('');
     const [multiplayerDataSearch, setMultiplayerDataSearch] = useState('');
+    const [entityFolderSearch, setEntityFolderSearch] = useState('');
 
     const reset = () => {
         setSummary(null); setError(null); setIsExporting(false);
@@ -81,6 +84,7 @@ export function DataExportModal({
         setSelectedLanguageModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
         setSelectedStopPatternIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
         setSelectedMemoryIds([]); setSelectedAccountIds([]); setSelectedMultiplayerDataIds([]);
+        setSelectedEntityFolderIds([]);
         setIncludeActions(true);
         setIncludeActionFormatData(true);
         setIncludeFormatPreferences(true);
@@ -89,7 +93,7 @@ export function DataExportModal({
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
         setAudioTrackSearch(''); setWorldSearch(''); setLanguageModelSearch(''); setSamplerSearch('');
         setPromptBlockSearch(''); setStopPatternSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
-        setMemorySearch(''); setAccountSearch(''); setMultiplayerDataSearch('');
+        setMemorySearch(''); setAccountSearch(''); setMultiplayerDataSearch(''); setEntityFolderSearch('');
     };
 
     const handleClose = () => { if (isExporting) return; reset(); onClose(); };
@@ -103,6 +107,7 @@ export function DataExportModal({
         selectedLanguageModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
         selectedStopPatternIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
         selectedMemoryIds.length + selectedAccountIds.length + selectedMultiplayerDataIds.length +
+        selectedEntityFolderIds.length +
         (includeActions ? 1 : 0) + (includeActionFormatData ? 1 : 0) + 
         (includeFormatPreferences ? 1 : 0) + (includeSessionData ? 1 : 0) + (includeBudgetData ? 1 : 0);
 
@@ -119,6 +124,7 @@ export function DataExportModal({
                 stopPatternIds: selectedStopPatternIds, budgetStrategyIds: selectedBudgetStrategyIds,
                 profileIds: selectedProfileIds, memoryIds: selectedMemoryIds,
                 accountIds: selectedAccountIds, multiplayerDataIds: selectedMultiplayerDataIds,
+                entityFolderIds: selectedEntityFolderIds,
                 includeActions,
                 includeActionFormatData,
                 includeFormatPreferences,
@@ -193,6 +199,8 @@ export function DataExportModal({
                                     onToggle={(id) => toggle(selectedAccountIds, setSelectedAccountIds, id)} searchQuery={accountSearch} onSearchChange={setAccountSearch} />
                                 <EntitySelectList label="Multiplayer Data" items={allMultiplayerData} selectedIds={selectedMultiplayerDataIds}
                                     onToggle={(id) => toggle(selectedMultiplayerDataIds, setSelectedMultiplayerDataIds, id)} searchQuery={multiplayerDataSearch} onSearchChange={setMultiplayerDataSearch} />
+                                <EntitySelectList label="Entity Folders" items={allEntityFolders} selectedIds={selectedEntityFolderIds}
+                                    onToggle={(id) => toggle(selectedEntityFolderIds, setSelectedEntityFolderIds, id)} searchQuery={entityFolderSearch} onSearchChange={setEntityFolderSearch} />
 
                                 <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                     <span className="editor-section-title" style={{ fontSize: '0.8rem' }}>Singleton Data</span>
@@ -254,6 +262,7 @@ export function DataExportModal({
                                     <div><strong>Memories:</strong> {summary.memories?.length ?? 0}</div>
                                     <div><strong>Accounts:</strong> {summary.accounts?.length ?? 0}</div>
                                     <div><strong>Multiplayer Data:</strong> {summary.multiplayerData?.length ?? 0}</div>
+                                    <div><strong>Entity Folders:</strong> {summary.entityFolders?.length ?? 0}</div>
                                     <div><strong>Actions:</strong> {summary.interjectableActions.length}</div>
                                     <div><strong>Action Format Data:</strong> {summary.actionFormatData ? 'Included' : 'Excluded'}</div>
                                     <div><strong>Format Preferences:</strong> {summary.formatPreferences ? 'Included' : 'Excluded'}</div>

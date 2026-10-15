@@ -1,5 +1,5 @@
 // src/frontend_src/components/ManagerModal.tsx
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { EntityFolder, entityType } from '../types';
 import '../main.css';
@@ -26,7 +26,7 @@ interface ManagerModalProps<T> {
     secondaryActiveIds?: Set<string>;
     
     allEntityFolders: EntityFolder[];
-    onSaveEntityFolder: (folder: EntityFolder) => Promise<boolean> | void;
+    onSaveEntityFolder: (folder: EntityFolder) => Promise<boolean>;
     onDeleteEntityFolder: (id: string) => void;
     
     activeItemId?: string | null;

@@ -3,6 +3,7 @@ import type {
     Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock,
     StopPattern, BudgetStrategy, Profile, InteractionData, InterjectableAction, Memory,
     Account, MultiplayerData, SessionData, MultiplayerJoinData, ActionFormatData, BudgetData,
+    EntityFolder,
 } from '../types';
 import type { FormatPreferenceData } from './FormatPreferenceEngine';
 import {
@@ -28,10 +29,12 @@ import {
     loadActionFormatData, saveActionFormatData,
     loadRawFormatPreferences, saveRawFormatPreferences,
     loadRawBudgetData, saveRawBudgetData,
+    loadRawEntityFolder, saveRawEntityFolder,
 } from '../storages/serverStorage';
+import { dataPortabilityVersion } from '../dictionaries/versions';
 
 export interface LoreReactorExport {
-    version: 1;
+    version: number;
     exportedAt: number;
     chats: InteractionData[];
     characters: Character[];
@@ -48,6 +51,7 @@ export interface LoreReactorExport {
     memories: Memory[];
     accounts: Account[];
     multiplayerData: MultiplayerData[];
+    entityFolders: EntityFolder[];
     
     // STRICT ORDER: Actions -> Action Format -> Format Preferences -> Session -> Budget
     interjectableActions: InterjectableAction[];
@@ -64,7 +68,7 @@ export interface ImportResult {
         chats: number; characters: number; contexts: number; locations: number; audioTracks: number;
         worlds: number; languageModels: number; samplers: number; promptBlocks: number; stopPatterns: number;
         budgetStrategies: number; profiles: number; memories: number; accounts: number;
-        multiplayerData: number; interjectableActions: number; formatPreferences: number;
+        multiplayerData: number; entityFolders: number; interjectableActions: number; formatPreferences: number;
     };
     errors: string[];
 }
@@ -72,7 +76,7 @@ export interface ImportResult {
 export function validateExport(data: unknown): data is LoreReactorExport {
     if (!data || typeof data !== 'object') return false;
     const d = data as Record<string, unknown>;
-    if (d.version !== 1) return false;
+    if (d.version !== 2) return false;
     if (typeof d.exportedAt !== 'number' && typeof d.exportedAt !== 'string') return false;
     if (!Array.isArray(d.chats)) return false;
     if (!Array.isArray(d.characters)) return false;
@@ -89,6 +93,7 @@ export function validateExport(data: unknown): data is LoreReactorExport {
     if (d.memories !== undefined && !Array.isArray(d.memories)) return false;
     if (d.accounts !== undefined && !Array.isArray(d.accounts)) return false;
     if (d.multiplayerData !== undefined && !Array.isArray(d.multiplayerData)) return false;
+    if (!Array.isArray(d.entityFolders)) return false;
     if (!Array.isArray(d.interjectableActions)) return false;
     return true;
 }
@@ -116,6 +121,7 @@ export async function exportSelectedData(selection: {
     memoryIds: string[];
     accountIds: string[];
     multiplayerDataIds: string[];
+    entityFolderIds: string[];
     includeActions: boolean;
     includeActionFormatData: boolean;
     includeFormatPreferences: boolean;
@@ -123,11 +129,11 @@ export async function exportSelectedData(selection: {
     includeBudgetData: boolean;
 }): Promise<LoreReactorExport> {
     const data: LoreReactorExport = {
-        version: 1, exportedAt: Date.now(),
+        version: dataPortabilityVersion, exportedAt: Date.now(),
         chats: [], characters: [], contexts: [], locations: [], audioTracks: [],
         worlds: [], languageModels: [], samplers: [], promptBlocks: [], stopPatterns: [],
         budgetStrategies: [], profiles: [], memories: [], accounts: [],
-        multiplayerData: [], interjectableActions: [],
+        multiplayerData: [], entityFolders: [], interjectableActions: [],
     };
 
     for (const id of selection.chatIds) {
@@ -198,6 +204,10 @@ export async function exportSelectedData(selection: {
         const full = await loadRawMultiplayerData(id);
         if (full) data.multiplayerData.push(full);
     }
+    for (const id of selection.entityFolderIds) {
+        const full = await loadRawEntityFolder(id);
+        if (full) data.entityFolders.push(full);
+    }
 
     // STRICT ORDER: Actions -> Action Format -> Format Preferences -> Session -> Budget
     if (selection.includeActions) {
@@ -233,7 +243,7 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
             chats: 0, characters: 0, contexts: 0, locations: 0, audioTracks: 0,
             worlds: 0, languageModels: 0, samplers: 0, promptBlocks: 0, stopPatterns: 0,
             budgetStrategies: 0, profiles: 0, memories: 0, accounts: 0,
-            multiplayerData: 0, interjectableActions: 0, formatPreferences: 0,
+            multiplayerData: 0, entityFolders: 0, interjectableActions: 0, formatPreferences: 0,
         },
         errors: [],
     };
@@ -320,6 +330,11 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
     if (data.budgetData) {
         try { await saveRawBudgetData(data.budgetData); result.counts.formatPreferences++; }
         catch (e) { result.errors.push(`Budget Data: ${(e as Error).message}`); }
+    }
+
+    for (const folder of (data.entityFolders ?? [])) {
+        try { await saveRawEntityFolder(folder); result.counts.entityFolders++; }
+        catch (e) { result.errors.push(`Entity Folder "${folder.name || folder.id}": ${(e as Error).message}`); }
     }
 
     // Chats last

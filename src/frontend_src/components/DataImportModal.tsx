@@ -4,6 +4,7 @@ import { validateExport, importSelectedData, type LoreReactorExport, type Import
 import { buildJsonSchema } from '../utilities/dataSchema';
 import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
+import { dataPortabilityVersion } from '../dictionaries/versions';
 
 interface DataImportModalProps {
     onClose: () => void;
@@ -12,7 +13,7 @@ interface DataImportModalProps {
 
 type ImportSource = 'file' | 'paste' | 'schema';
 
-export function DataImportModal({  onClose, onImportComplete }: DataImportModalProps) {
+export function DataImportModal({ onClose, onImportComplete }: DataImportModalProps) {
     const [parsedData, setParsedData] = useState<LoreReactorExport | null>(null);
     const [isImporting, setIsImporting] = useState(false);
     const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -39,6 +40,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
     const [selectedMemoryIds, setSelectedMemoryIds] = useState<string[]>([]);
     const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
     const [selectedMultiplayerDataIds, setSelectedMultiplayerDataIds] = useState<string[]>([]);
+    const [selectedEntityFolderIds, setSelectedEntityFolderIds] = useState<string[]>([]);
     
     // STRICT ORDER: Actions -> Action Format -> Format Preferences -> Session -> Budget
     const [includeActions, setIncludeActions] = useState(true);
@@ -53,7 +55,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
     const [locationSearch, setLocationSearch] = useState('');
     const [audioTrackSearch, setAudioTrackSearch] = useState('');
     const [worldSearch, setWorldSearch] = useState('');
-    const [languagelocalCharacterearch, setLanguagelocalCharacterearch] = useState('');
+    const [languageModelSearch, setLanguageModelSearch] = useState('');
     const [samplerSearch, setSamplerSearch] = useState('');
     const [promptBlockSearch, setPromptBlockSearch] = useState('');
     const [stopPatternSearch, setStopPatternSearch] = useState('');
@@ -62,6 +64,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
     const [memorySearch, setMemorySearch] = useState('');
     const [accountSearch, setAccountSearch] = useState('');
     const [multiplayerDataSearch, setMultiplayerDataSearch] = useState('');
+    const [entityFolderSearch, setEntityFolderSearch] = useState('');
 
     const reset = () => {
         setParsedData(null); setImportResult(null); setError(null); setIsImporting(false);
@@ -70,6 +73,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
         setSelectedLanguageModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
         setSelectedStopPatternIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
         setSelectedMemoryIds([]); setSelectedAccountIds([]); setSelectedMultiplayerDataIds([]);
+        setSelectedEntityFolderIds([]);
         setIncludeActions(true);
         setIncludeActionFormatData(true);
         setIncludeFormatPreferences(true);
@@ -78,9 +82,9 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
         setPasteText('');
         setSchemaCopied(false);
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
-        setAudioTrackSearch(''); setWorldSearch(''); setLanguagelocalCharacterearch(''); setSamplerSearch('');
+        setAudioTrackSearch(''); setWorldSearch(''); setLanguageModelSearch(''); setSamplerSearch('');
         setPromptBlockSearch(''); setStopPatternSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
-        setMemorySearch(''); setAccountSearch(''); setMultiplayerDataSearch('');
+        setMemorySearch(''); setAccountSearch(''); setMultiplayerDataSearch(''); setEntityFolderSearch('');
     };
 
     const handleClose = () => { if (isImporting) return; reset(); onClose(); };
@@ -105,6 +109,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
         setSelectedMemoryIds(json.memories?.map((m: { id: string }) => m.id) ?? []);
         setSelectedAccountIds(json.accounts?.map((a: { id: string }) => a.id) ?? []);
         setSelectedMultiplayerDataIds(json.multiplayerData?.map((md: { id: string }) => md.id) ?? []);
+        setSelectedEntityFolderIds(json.entityFolders?.map((f: { id: string }) => f.id) ?? []);
         
         setIncludeActions(json.interjectableActions.length > 0);
         setIncludeActionFormatData(!!json.actionFormatData);
@@ -147,7 +152,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
         try {
             const entitySchema = buildJsonSchema(schemaEntities as any[]);
             const wrapped = {
-                version: 1,
+                version: dataPortabilityVersion,
                 exportedAt: "ISO timestamp string",
                 chats: [],
                 characters: schemaEntities.includes('Character') ? "/* see _entitySchema */" : [],
@@ -155,15 +160,16 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
                 locations: schemaEntities.includes('Location') ? "/* see _entitySchema */" : [],
                 audioTracks: schemaEntities.includes('AudioTrack') ? "/* see _entitySchema */" : [],
                 worlds: [],
-                localCharacter: [],
+                languageModels: [],
                 samplers: [],
                 promptBlocks: schemaEntities.includes('PromptBlock') ? "/* see _entitySchema */" : [],
                 stopPatterns: [],
                 budgetStrategies: [],
-                profiles: schemaEntities.includes('profile') ? "/* see _entitySchema */" : [],
+                profiles: schemaEntities.includes('Profile') ? "/* see _entitySchema */" : [],
                 memories: [],
                 accounts: [],
                 multiplayerData: [],
+                entityFolders: schemaEntities.includes('EntityFolder') ? "/* see _entitySchema */" : [],
                 interjectableActions: [],
                 actionFormatData: undefined,
                 formatPreferences: undefined,
@@ -195,7 +201,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
 
         // Filter parsed data to only selected items
         const filtered: LoreReactorExport = {
-            version: 1, exportedAt: parsedData.exportedAt,
+            version: dataPortabilityVersion, exportedAt: parsedData.exportedAt,
             chats: parsedData.chats.filter(c => selectedChatIds.includes(c.id)),
             characters: parsedData.characters.filter(c => selectedCharacterIds.includes(c.id)),
             contexts: parsedData.contexts.filter(c => selectedContextIds.includes(c.id)),
@@ -211,6 +217,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
             memories: parsedData.memories?.filter(m => selectedMemoryIds.includes(m.id)) ?? [],
             accounts: parsedData.accounts?.filter(a => selectedAccountIds.includes(a.id)) ?? [],
             multiplayerData: parsedData.multiplayerData?.filter(md => selectedMultiplayerDataIds.includes(md.id)) ?? [],
+            entityFolders: parsedData.entityFolders?.filter(f => selectedEntityFolderIds.includes(f.id)) ?? [],
             
             // STRICT ORDER: Actions -> Action Format -> Format Preferences -> Session -> Budget
             interjectableActions: includeActions ? parsedData.interjectableActions : [],
@@ -234,10 +241,11 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
         selectedLanguageModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
         selectedStopPatternIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
         selectedMemoryIds.length + selectedAccountIds.length + selectedMultiplayerDataIds.length +
+        selectedEntityFolderIds.length +
         (includeActions ? 1 : 0) + (includeActionFormatData ? 1 : 0) + 
         (includeFormatPreferences ? 1 : 0) + (includeSessionData ? 1 : 0) + (includeBudgetData ? 1 : 0);
 
-    const SCHEMA_ENTITY_OPTIONS = ['Character', 'Context', 'Location', 'AudioTrack', 'PromptBlock', 'profile'] as const;
+    const SCHEMA_ENTITY_OPTIONS = ['Character', 'Context', 'Location', 'AudioTrack', 'PromptBlock', 'Profile', 'EntityFolder'] as const;
 
     return (
         <div className="modal-overlay" onClick={handleClose}>
@@ -302,7 +310,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
                                     <textarea
                                         value={pasteText}
                                         onChange={(e) => setPasteText(e.target.value)}
-                                        placeholder='{"version": 1, "exportedAt": "...", "characters": [...], ...}'
+                                        placeholder='{"version": 2, "exportedAt": "...", "characters": [...], ...}'
                                         className="editor-textarea"
                                         rows={12}
                                         style={{ fontFamily: 'monospace', fontSize: '0.7rem', resize: 'vertical' }}
@@ -412,8 +420,8 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
                                         onToggle={(id) => toggle(selectedWorldIds, setSelectedWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
                                 )}
                                 {parsedData.languageModels.length > 0 && (
-                                    <EntitySelectList label="Language localCharacter" items={parsedData.languageModels} selectedIds={selectedLanguageModelIds}
-                                        onToggle={(id) => toggle(selectedLanguageModelIds, setSelectedLanguageModelIds, id)} searchQuery={languagelocalCharacterearch} onSearchChange={setLanguagelocalCharacterearch} />
+                                    <EntitySelectList label="Language Models" items={parsedData.languageModels} selectedIds={selectedLanguageModelIds}
+                                        onToggle={(id) => toggle(selectedLanguageModelIds, setSelectedLanguageModelIds, id)} searchQuery={languageModelSearch} onSearchChange={setLanguageModelSearch} />
                                 )}
                                 {parsedData.samplers.length > 0 && (
                                     <EntitySelectList label="Samplers" items={parsedData.samplers} selectedIds={selectedSamplerIds}
@@ -446,6 +454,10 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
                                 {(parsedData.multiplayerData?.length ?? 0) > 0 && (
                                     <EntitySelectList label="Multiplayer Data" items={parsedData.multiplayerData} selectedIds={selectedMultiplayerDataIds}
                                         onToggle={(id) => toggle(selectedMultiplayerDataIds, setSelectedMultiplayerDataIds, id)} searchQuery={multiplayerDataSearch} onSearchChange={setMultiplayerDataSearch} />
+                                )}
+                                {(parsedData.entityFolders?.length ?? 0) > 0 && (
+                                    <EntitySelectList label="Entity Folders" items={parsedData.entityFolders} selectedIds={selectedEntityFolderIds}
+                                        onToggle={(id) => toggle(selectedEntityFolderIds, setSelectedEntityFolderIds, id)} searchQuery={entityFolderSearch} onSearchChange={setEntityFolderSearch} />
                                 )}
 
                                 <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -521,6 +533,7 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
                                     <div><strong>Memories:</strong> {importResult.counts.memories ?? 0}</div>
                                     <div><strong>Accounts:</strong> {importResult.counts.accounts ?? 0}</div>
                                     <div><strong>Multiplayer Data:</strong> {importResult.counts.multiplayerData ?? 0}</div>
+                                    <div><strong>Entity Folders:</strong> {importResult.counts.entityFolders ?? 0}</div>
                                     <div><strong>Actions:</strong> {importResult.counts.interjectableActions}</div>
                                     <div><strong>Format Preferences:</strong> {importResult.counts.formatPreferences}</div>
                                 </div>
@@ -530,8 +543,8 @@ export function DataImportModal({  onClose, onImportComplete }: DataImportModalP
                                 <div className="editor-section">
                                     <span className="editor-section-title">Errors ({importResult.errors.length})</span>
                                     <div className="entity-error-list">
-                                        {importResult.errors.map((error, i) => (
-                                            <div key={i} className="entity-error-item">• {error}</div>
+                                        {importResult.errors.map((err, i) => (
+                                            <div key={i} className="entity-error-item">• {err}</div>
                                         ))}
                                     </div>
                                 </div>

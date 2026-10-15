@@ -17,7 +17,7 @@ interface StreamingIndicatorsProps {
 
 export function StreamingIndicators({
     formattedStreamingText,
-    viewMode, selectedCharacterId, streamingPortraitUrl,
+    viewMode, streamingPortraitUrl,
     messagesLength, onAvatarClick,
 }: StreamingIndicatorsProps) {
     const isLoading = useSessionStore(s => s.isLoading);
