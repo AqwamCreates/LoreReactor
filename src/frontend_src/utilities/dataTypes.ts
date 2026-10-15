@@ -1,5 +1,5 @@
 // src/frontend_src/services/aiRecommendationTypes.ts
-import type { Character, Context, Location, AudioTrack, PromptBlock, Profile } from '../types';
+import type { Character, Context, Location, AudioTrack, PromptBlock, Profile, EntityFolder } from '../types';
 
 export type EntityType = 'Character' | 'Context' | 'Location' | 'AudioTrack' | 'PromptBlock' | 'profile' | 'World';
 export type ViewTab = 'raw' | 'Character' | 'Context' | 'Location' | 'AudioTrack' | 'PromptBlock' | 'profile' | 'World';
@@ -65,6 +65,7 @@ export interface GeneratedOutput {
         promptBlocks: PromptBlock[];
         profile?: Profile;
     };
+    entityFolders?: EntityFolder[];
 }
 
 export interface JsonHistoryEntry {

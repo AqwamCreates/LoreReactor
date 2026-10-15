@@ -1,5 +1,12 @@
 // src/frontend_src/utilities/dataConverters.ts
-import type { Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StopPattern, tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, regularExpressionTarget, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal, deviceType } from '../types';
+import type { 
+    Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, 
+    Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StopPattern, 
+    EntityFolder, entityType,
+    tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, 
+    regularExpressionTarget, tristateInteger, cacheEfficiencyConfigurationType, 
+    AutoResumeSignal, deviceType 
+} from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';
 import type { GeneratedOutput } from './dataTypes';
@@ -63,10 +70,6 @@ function filterRecordKeysByUuid<T>(record: Record<string, T> | undefined): Recor
     return result;
 }
 
-/**
- * Parse a record with numeric keys (e.g., positional indices for textCharacterWeights).
- * Preserves entries where the key is a valid non-negative integer.
- */
 function filterRecordKeysByNumber<T>(record: Record<string, T> | Record<number, T> | undefined): Record<number, T> {
     if (!record) return {};
     const result: Record<number, T> = {};
@@ -79,10 +82,6 @@ function filterRecordKeysByNumber<T>(record: Record<string, T> | Record<number, 
     return result;
 }
 
-/**
- * Parses starterPrompts: Record<string, number> from AI-generated JSON.
- * Keys are text strings, values are numeric weights.
- */
 function parseStarterPrompts(raw: unknown): Record<string, number> | undefined {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
     const result: Record<string, number> = {};
@@ -94,10 +93,6 @@ function parseStarterPrompts(raw: unknown): Record<string, number> | undefined {
     return Object.keys(result).length > 0 ? result : undefined;
 }
 
-/**
- * Parses memoryPrompts: Record<emotion, string> from AI-generated JSON.
- * Only accepts keys that match the predefined emotions list.
- */
 function parseMemoryPrompts(raw: unknown): Record<string, string> | undefined {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
     const result: Record<string, string> = {};
@@ -111,10 +106,6 @@ function parseMemoryPrompts(raw: unknown): Record<string, string> | undefined {
     return Object.keys(result).length > 0 ? result : undefined;
 }
 
-/**
- * Parse knownCharacterNames: Record<string, string[]> from raw data.
- * Keys are character IDs (UUIDs), values are arrays of name strings.
- */
 function parseKnownCharacterNames(raw: unknown): Record<string, string[]> {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
     const result: Record<string, string[]> = {};
@@ -128,9 +119,6 @@ function parseKnownCharacterNames(raw: unknown): Record<string, string[]> {
     return result;
 }
 
-/**
- * Parse aliases: string[] from raw data.
- */
 function parseAliases(raw: unknown): string[] | undefined {
     if (!Array.isArray(raw)) return undefined;
     const aliases = raw.filter((a): a is string => typeof a === 'string' && a.trim().length > 0);
@@ -144,6 +132,40 @@ function parseToolUsageDisplayMode(raw: unknown): toolUsageDisplayMode {
         return raw as toolUsageDisplayMode;
     }
     return 'none';
+}
+
+const VALID_ENTITY_TYPES: entityType[] = [
+    'character', 'context', 'location', 'audioTrack', 
+    'world', 'interactionData', 'model', 'sampler', 'promptBlock', 
+    'stopPattern', 'budgetStrategy', 'profile', 
+    'account', 'multiplayerData'
+];
+
+function parseEntityType(raw: unknown): entityType {
+    if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        if (VALID_ENTITY_TYPES.includes(trimmed as entityType)) {
+            return trimmed as entityType;
+        }
+        const lower = trimmed.toLowerCase();
+        if (VALID_ENTITY_TYPES.includes(lower as entityType)) {
+            return lower as entityType;
+        }
+    }
+    return 'character';
+}
+
+export function fillEntityFolderDefaults(f: Record<string, unknown>): EntityFolder {
+    const now = Date.now();
+    return {
+        id: ensureId(f),
+        name: (f.name as string) || 'Unnamed Folder',
+        description: (f.description as string) || undefined,
+        entityType: parseEntityType(f.entityType),
+        itemIds: filterValidUuids(f.itemIds as string[] | undefined),
+        firstCreatedTimestamp: (f.firstCreatedTimestamp as number) || now,
+        lastUpdatedTimestamp: (f.lastUpdatedTimestamp as number) || now,
+    };
 }
 
 function fillDialoguePromptDefaults(d: Record<string, unknown>): DialoguePrompt {
@@ -231,7 +253,6 @@ function fillStopPatternDefaults(sp: Record<string, unknown>): StopPattern {
     };
 }
 
-// ✅ NEW: Properly parse Sampler objects instead of incorrectly using fillStopPatternDefaults
 function fillSamplerDefaults(s: Record<string, unknown>): Sampler {
     const now = Date.now();
     const rawStopPatterns = Array.isArray(s.stopPatterns) ? s.stopPatterns as Record<string, unknown>[] : [];
@@ -255,7 +276,6 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
     const rawKnowledgePrompts = Array.isArray(c.knowledgePrompts) ? c.knowledgePrompts as Record<string, unknown>[] : [];
     const rawStopPatterns = Array.isArray(c.stopPatterns) ? c.stopPatterns as Record<string, unknown>[] : [];
 
-    // ✅ UPDATED: Parse dual samplers, fallback to first available sampler if not embedded
     const parsedLanguageModelSampler = (c.languageModelSampler && typeof c.languageModelSampler === 'object') 
         ? fillSamplerDefaults(c.languageModelSampler as Record<string, unknown>) 
         : (samplers.length > 0 ? samplers[0] : undefined);
@@ -278,12 +298,9 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
         knowledgePrompts: rawKnowledgePrompts.map(item => fillKnowledgePromptDefaults(item)),
         starterPrompts: parseStarterPrompts(c.starterPrompts),
         memoryPrompts: parseMemoryPrompts(c.memoryPrompts),
-        
-        // ✅ UPDATED: Map to new dual sampler and direct stop patterns schema
         languageModelSampler: parsedLanguageModelSampler,
         textToSpeechModelSampler: parsedTextToSpeechModelSampler,
         stopPatterns: rawStopPatterns.length > 0 ? rawStopPatterns.map(item => fillStopPatternDefaults(item)) : undefined,
-        
         initiativeWeight: (c.initiativeWeight as number) ?? 5,
         chatProbability: (c.chatProbability as number) ?? 0.8,
         maximumChatStamina: (c.maximumChatStamina as number) ?? 5,
@@ -530,20 +547,15 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
             lastUpdatedTimestamp: now,
         })),
         summarizationInstruction: (p.summarizationInstruction as string) || undefined,
-        
-        // ✅ UPDATED: Split characterSampler into dual samplers and fix the incorrect fillStopPatternDefaults cast
         characterLanguageModelSampler: (p.characterLanguageModelSampler && typeof p.characterLanguageModelSampler === 'object') ? fillSamplerDefaults(p.characterLanguageModelSampler as Record<string, unknown>) : undefined,
         characterTextToSpeechModelSampler: (p.characterTextToSpeechModelSampler && typeof p.characterTextToSpeechModelSampler === 'object') ? fillSamplerDefaults(p.characterTextToSpeechModelSampler as Record<string, unknown>) : undefined,
-        
         webSummarizationSampler: (p.webSummarizationSampler && typeof p.webSummarizationSampler === 'object') ? fillSamplerDefaults(p.webSummarizationSampler as Record<string, unknown>) : undefined,
         interactionDataSummarizationSampler: (p.interactionDataSummarizationSampler && typeof p.interactionDataSummarizationSampler === 'object') ? fillSamplerDefaults(p.interactionDataSummarizationSampler as Record<string, unknown>) : undefined,
         aiRecommendationSampler: (p.aiRecommendationSampler && typeof p.aiRecommendationSampler === 'object') ? fillSamplerDefaults(p.aiRecommendationSampler as Record<string, unknown>) : undefined,
-        
         characterStopPattern: (p.characterStopPattern && typeof p.characterStopPattern === 'object') ? fillStopPatternDefaults(p.characterStopPattern as Record<string, unknown>) : undefined,
         webSummarizationStopPattern: (p.webSummarizationStopPattern && typeof p.webSummarizationStopPattern === 'object') ? fillStopPatternDefaults(p.webSummarizationStopPattern as Record<string, unknown>) : undefined,
         interactionDataSummarizationStopPattern: (p.interactionDataSummarizationStopPattern && typeof p.interactionDataSummarizationStopPattern === 'object') ? fillStopPatternDefaults(p.interactionDataSummarizationStopPattern as Record<string, unknown>) : undefined,
         aiRecommendationStopPattern: (p.aiRecommendationStopPattern && typeof p.aiRecommendationStopPattern === 'object') ? fillStopPatternDefaults(p.aiRecommendationStopPattern as Record<string, unknown>) : undefined,
-        
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
     };
@@ -574,6 +586,9 @@ export function tryParseGeneratedOutput(text: string, samplers: Sampler[]): Gene
         if (Array.isArray(parsed.promptBlocks)) {
             result.promptBlocks = parsed.promptBlocks.map((b: Record<string, unknown>) => fillPromptBlockDefaults(b));
         }
+        if (Array.isArray(parsed.entityFolders)) {
+            result.entityFolders = parsed.entityFolders.map((f: Record<string, unknown>) => fillEntityFolderDefaults(f));
+        }
         if (parsed.profile && typeof parsed.profile === 'object') {
             result.profile = fillProfileDefaults(parsed.profile as Record<string, unknown>);
         }
@@ -591,7 +606,13 @@ export function tryParseGeneratedOutput(text: string, samplers: Sampler[]): Gene
             };
         }
 
-        if (!result.characters && !result.contexts && !result.locations && !result.audioTracks && !result.promptBlocks && !result.profile && !result.world) return null;
+        if (
+            !result.characters && !result.contexts && !result.locations && 
+            !result.audioTracks && !result.promptBlocks && !result.entityFolders && 
+            !result.profile && !result.world
+        ) {
+            return null;
+        }
         return result;
     } catch { return null; }
 }
@@ -604,6 +625,7 @@ export function deriveHistoryLabel(output: GeneratedOutput): string {
     if (output.audioTracks?.length) return `🔊 ${output.audioTracks[0].name}${output.audioTracks.length > 1 ? ` +${output.audioTracks.length - 1}` : ''}`;
     if (output.promptBlocks?.length) return `🧱 ${output.promptBlocks[0].name}${output.promptBlocks.length > 1 ? ` +${output.promptBlocks.length - 1}` : ''}`;
     if (output.profile) return `👤 ${output.profile.name}`;
+    if (output.entityFolders?.length) return `📁 ${output.entityFolders[0].name}${output.entityFolders.length > 1 ? ` +${output.entityFolders.length - 1}` : ''}`;
     return 'Unknown';
 }
 
@@ -611,7 +633,14 @@ export function resolveWorldCrossReferences(
     world: NonNullable<GeneratedOutput['world']>,
     injectLocationImages: boolean,
     allAudioTracks: AudioTrack[],
-): { characters: Character[]; contexts: Context[]; locations: Location[]; audioTracks: AudioTrack[]; promptBlocks: PromptBlock[]; profile?: Profile } {
+): { 
+    characters: Character[]; 
+    contexts: Context[]; 
+    locations: Location[]; 
+    audioTracks: AudioTrack[]; 
+    promptBlocks: PromptBlock[]; 
+    profile?: Profile;
+} {
     const characters = world.characters;
     const contexts = world.contexts;
     const locations = world.locations;
@@ -669,5 +698,12 @@ export function resolveWorldCrossReferences(
         locationBindings: filterValidUuids(b.locationBindings),
     }));
 
-    return { characters, contexts, locations: resolvedLocations, audioTracks, promptBlocks, profile: world.profile };
+    return { 
+        characters, 
+        contexts, 
+        locations: resolvedLocations, 
+        audioTracks, 
+        promptBlocks, 
+        profile: world.profile,
+    };
 }

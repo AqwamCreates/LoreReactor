@@ -15,6 +15,8 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     const includeAudioTrack = selectedEntities.includes('AudioTrack');
     const includePromptBlock = selectedEntities.includes('PromptBlock');
     const includeProfile = selectedEntities.includes('profile');
+    const includeEntityFolder = (selectedEntities as (EntityType | string)[]).includes('EntityFolder') 
+        || (selectedEntities as (EntityType | string)[]).includes('Folder');
 
     // Automatically generate tool schemas from defaults dictionaries
     const characterToolsSchema = Object.entries(defaultCharacterTools)
@@ -315,6 +317,16 @@ ${profileToolsSchema}
     "interactionDataSummarizationStopPattern": "object (StopPattern, optional)",
     "aiRecommendationStopPattern": "object (StopPattern, optional)"
   }`);
+    }
+
+    if (includeEntityFolder) {
+        parts.push(`  "entityFolders": [{
+    "id": "string (UUID)",
+    "name": "string (required, folder name)",
+    "description": "string (display only, optional)",
+    "entityType": "'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'interactionData' | 'model' | 'sampler' | 'promptBlock' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'account' | 'multiplayerData' (required, entity category for this folder)",
+    "itemIds": ["string array of entity UUIDs belonging to this folder"]
+  }]`);
     }
 
     if (hasWorld) {
