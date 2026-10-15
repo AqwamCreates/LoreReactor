@@ -93,8 +93,8 @@ export function EntitySelect<T extends EntitySelectItem>({
                 </div>
             )}
             
-            {/* ✅ SEARCH BAR WITH CLEAR BUTTON */}
-            <div style={{ position: 'relative', marginBottom: '6px' }}>
+            {/* ✅ FIX: Flexbox wrapper eliminates descender gap, margin: 0 forces exact height match */}
+            <div style={{ position: 'relative', marginBottom: '6px', display: 'flex', alignItems: 'center' }}>
                 <input
                     type="text"
                     value={searchQuery}
@@ -102,7 +102,7 @@ export function EntitySelect<T extends EntitySelectItem>({
                     className="editor-input entity-select-search"
                     placeholder={`Search ${label.toLowerCase()}...`}
                     disabled={disabled}
-                    style={{ paddingRight: searchQuery ? '36px' : '12px', width: '100%', boxSizing: 'border-box', marginBottom: 0 }}
+                    style={{ paddingRight: searchQuery ? '36px' : '12px', width: '100%', boxSizing: 'border-box', margin: 0 }}
                 />
                 {searchQuery && !disabled && (
                     <button
@@ -119,10 +119,14 @@ export function EntitySelect<T extends EntitySelectItem>({
                             cursor: 'pointer',
                             fontSize: '0.9rem',
                             opacity: 0.5,
-                            padding: '4px',
+                            padding: 0,
+                            margin: 0,
+                            lineHeight: 1,
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center'
+                            justifyContent: 'center',
+                            width: '20px',
+                            height: '20px'
                         }}
                         title="Clear search"
                     >
