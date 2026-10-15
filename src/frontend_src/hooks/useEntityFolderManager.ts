@@ -19,6 +19,7 @@ export function useEntityFolderManager() {
         }
     };
 
+    // Load on mount without useEffect
     useState(() => { loadFolders(); });
 
     const saveFolder = async (folder: EntityFolder) => {
