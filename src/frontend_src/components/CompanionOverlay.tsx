@@ -51,10 +51,12 @@ export function CompanionOverlay() {
     const inputRef = useRef<HTMLInputElement>(null);
 
     const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+    const [showDialogueBox, setShowDialogueBox] = useState(true);
     const [activeSettingsModal, setActiveSettingsModal] = useState<'profile-list' | 'profile-edit' | 'model' | 'budget' | null>(null);
     const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
     const [modalSearchQuery, setModalSearchQuery] = useState('');
     const settingsMenuRef = useRef<HTMLDivElement>(null);
+    const settingsBtnRef = useRef<HTMLButtonElement>(null);
 
     const [pendingFiles, setPendingFiles] = useState<{ name: string; base64: string }[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -211,7 +213,13 @@ export function CompanionOverlay() {
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target as Node)) setShowSettingsMenu(false);
+            const target = event.target as Node;
+            if (
+                settingsMenuRef.current && !settingsMenuRef.current.contains(target) &&
+                settingsBtnRef.current && !settingsBtnRef.current.contains(target)
+            ) {
+                setShowSettingsMenu(false);
+            }
         };
         if (showSettingsMenu) document.addEventListener('mousedown', handleClickOutside);
         return () => { document.removeEventListener('mousedown', handleClickOutside); };
@@ -437,7 +445,7 @@ export function CompanionOverlay() {
                         <div className={`pip-status-dot ${statusColorClass}`} />
                         <span>{statusLabel}</span>
                     </div>
-                    <button type="button" className="pip-inapp-close pip-settings-btn" onClick={() => setShowSettingsMenu(prev => !prev)} title="Settings">⚙️</button>
+                    <button ref={settingsBtnRef} type="button" className="pip-inapp-close pip-settings-btn" onClick={() => setShowSettingsMenu(prev => !prev)} title="Settings">⚙️</button>
                     <button type="button" className="pip-inapp-close pip-close-btn" onClick={handleClose} title="Close Overlay">✕</button>
                 </div>
             </div>
@@ -452,6 +460,9 @@ export function CompanionOverlay() {
                     </div>
                     <div className="pip-settings-menu-item" onClick={() => { setActiveSettingsModal('budget'); setShowSettingsMenu(false); setModalSearchQuery(''); }}>
                         <span>💰</span> Budget Strategy
+                    </div>
+                    <div className="pip-settings-menu-item" onClick={() => { setShowDialogueBox(prev => !prev); setShowSettingsMenu(false); }}>
+                        <span>{showDialogueBox ? '💬' : '🗨️'}</span> {showDialogueBox ? 'Hide Dialogue' : 'Show Dialogue'}
                     </div>
                 </div>
             )}
@@ -508,46 +519,48 @@ export function CompanionOverlay() {
 
             <div className="pip-content-spacer" />
 
-            <div className="pip-dialogue-box">
-                <div className={`pip-dialogue-name ${isMessageFromUser ? 'user' : ''}`}>{displayedSpeakerName}</div>
-                <div className="pip-dialogue-actions">
-                    {isEditing ? (
-                        <>
-                            <button type="button" className="pip-dialogue-action-btn" onClick={handleCancelEdit} title="Cancel Edit">✕</button>
-                            <button type="button" className="pip-dialogue-action-btn pip-dialogue-action-btn-save" onClick={handleSaveEdit} title="Save Edit">💾</button>
-                        </>
-                    ) : (
-                        <>
-                            {!state.isLoading && (
-                                <button className={`pip-dialogue-action-btn ${isReformatToggled ? 'pip-dialogue-action-btn-active' : ''}`} onClick={() => setIsReformatToggled(prev => !prev)} title={isReformatToggled ? "Revert to Raw Text" : "Apply Auto-Reformat"} disabled={!hasFormats}>✨</button>
-                            )}
-                            {state.isLoading ? (
-                                <button className="pip-dialogue-action-btn pip-dialogue-action-btn-stop" onClick={() => { const c = new BroadcastChannel('lorereactor-companion-sync'); c.postMessage({ type: 'STOP_GENERATION' }); c.close(); }} title="Stop Generation">⏹</button>
-                            ) : (
-                                <button className="pip-dialogue-action-btn" onClick={() => { if (!targetMessageId) return; const c = new BroadcastChannel('lorereactor-companion-sync'); c.postMessage({ type: 'RESUME_GENERATION', messageId: targetMessageId }); c.close(); }} title="Resume Generation" disabled={!targetMessageId}>▶</button>
-                            )}
-                            {!state.isLoading && (
-                                <button className="pip-dialogue-action-btn" onClick={() => { if (!targetMessageId) return; const c = new BroadcastChannel('lorereactor-companion-sync'); c.postMessage({ type: 'RESTART_GENERATION', messageId: targetMessageId }); c.close(); }} title="Regenerate Response" disabled={!targetMessageId}>↻</button>
-                            )}
-                            {!state.isLoading && (
-                                <button className="pip-dialogue-action-btn" onClick={handleStartEdit} title="Edit Message" disabled={!targetMessageId}>✎</button>
-                            )}
-                        </>
-                    )}
-                </div>
+            {showDialogueBox && (
+                <div className="pip-dialogue-box">
+                    <div className={`pip-dialogue-name ${isMessageFromUser ? 'user' : ''}`}>{displayedSpeakerName}</div>
+                    <div className="pip-dialogue-actions">
+                        {isEditing ? (
+                            <>
+                                <button type="button" className="pip-dialogue-action-btn" onClick={handleCancelEdit} title="Cancel Edit">✕</button>
+                                <button type="button" className="pip-dialogue-action-btn pip-dialogue-action-btn-save" onClick={handleSaveEdit} title="Save Edit">💾</button>
+                            </>
+                        ) : (
+                            <>
+                                {!state.isLoading && (
+                                    <button className={`pip-dialogue-action-btn ${isReformatToggled ? 'pip-dialogue-action-btn-active' : ''}`} onClick={() => setIsReformatToggled(prev => !prev)} title={isReformatToggled ? "Revert to Raw Text" : "Apply Auto-Reformat"} disabled={!hasFormats}>✨</button>
+                                )}
+                                {state.isLoading ? (
+                                    <button className="pip-dialogue-action-btn pip-dialogue-action-btn-stop" onClick={() => { const c = new BroadcastChannel('lorereactor-companion-sync'); c.postMessage({ type: 'STOP_GENERATION' }); c.close(); }} title="Stop Generation">⏹</button>
+                                ) : (
+                                    <button className="pip-dialogue-action-btn" onClick={() => { if (!targetMessageId) return; const c = new BroadcastChannel('lorereactor-companion-sync'); c.postMessage({ type: 'RESUME_GENERATION', messageId: targetMessageId }); c.close(); }} title="Resume Generation" disabled={!targetMessageId}>▶</button>
+                                )}
+                                {!state.isLoading && (
+                                    <button className="pip-dialogue-action-btn" onClick={() => { if (!targetMessageId) return; const c = new BroadcastChannel('lorereactor-companion-sync'); c.postMessage({ type: 'RESTART_GENERATION', messageId: targetMessageId }); c.close(); }} title="Regenerate Response" disabled={!targetMessageId}>↻</button>
+                                )}
+                                {!state.isLoading && (
+                                    <button className="pip-dialogue-action-btn" onClick={handleStartEdit} title="Edit Message" disabled={!targetMessageId}>✎</button>
+                                )}
+                            </>
+                        )}
+                    </div>
 
-                <div className={`pip-dialogue-text ${isEditing ? 'pip-dialogue-text-editing' : ''}`} ref={dialogueTextRef}>
-                    {state.isLoading && !state.streamingText ? (
-                        <div className="pip-thinking-dots"><span></span><span></span><span></span></div>
-                    ) : isEditing ? (
-                        <textarea ref={editTextareaRef} value={editDraft} onChange={e => setEditDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); handleCancelEdit(); } }} className="pip-edit-textarea" />
-                    ) : displayedText ? (
-                        displayedText
-                    ) : (
-                        <div className="pip-empty-state">Awaiting interaction...</div>
-                    )}
+                    <div className={`pip-dialogue-text ${isEditing ? 'pip-dialogue-text-editing' : ''}`} ref={dialogueTextRef}>
+                        {state.isLoading && !state.streamingText ? (
+                            <div className="pip-thinking-dots"><span></span><span></span><span></span></div>
+                        ) : isEditing ? (
+                            <textarea ref={editTextareaRef} value={editDraft} onChange={e => setEditDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); handleCancelEdit(); } }} className="pip-edit-textarea" />
+                        ) : displayedText ? (
+                            displayedText
+                        ) : (
+                            <div className="pip-empty-state">Awaiting interaction...</div>
+                        )}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {!isEditing && (
                 <>
