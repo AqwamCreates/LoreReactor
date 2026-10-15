@@ -720,6 +720,7 @@ function App() {
 
         try {
             const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+            const { LogicalSize } = await import('@tauri-apps/api/dpi');
             let overlayWin = await WebviewWindow.getByLabel('companion-overlay');
             if (overlayWin) {
                 const isVisible = await overlayWin.isVisible();
@@ -727,6 +728,9 @@ function App() {
                     await overlayWin.hide();
                     setIsOverlayOpen(false);
                 } else {
+                    try {
+                        await overlayWin.setSize(new LogicalSize(340, 540));
+                    } catch {}
                     await overlayWin.show();
                     try {
                         await overlayWin.setFocus();

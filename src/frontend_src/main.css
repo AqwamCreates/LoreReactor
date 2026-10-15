@@ -5212,13 +5212,17 @@ REGEX TRIGGER EDITOR
 /* =============================================================================
 AI WAIFU / GAMER COMPANION OVERLAY (PiP & TAURI STANDALONE WINDOW)
 ============================================================================= */
-body.overlay-mode,
-html.overlay-mode {
+body.overlay-mode #root,
+.overlay-mode #root {
+    aspect-ratio: 340 / 540;
+    height: 100% !important;
+    max-height: 100% !important;
+    width: 100% !important;       /* <-- Change from 'auto' to '100%' */
+    max-width: 100% !important;
+    margin: 0 !important;          /* <-- Remove '0 auto' centering */
     background: transparent !important;
+    border: none !important;
     overflow: hidden !important;
-    display: flex !important;
-    justify-content: center !important;
-    align-items: center !important;
 }
 
 body.overlay-mode #root,
