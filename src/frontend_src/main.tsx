@@ -4,7 +4,7 @@ import ReactDOM from 'react-dom/client';
 import App from './components/App'; 
 import { ToastProvider } from './context/ToastContext';
 import { ToastContainer } from './components/ToastContainer';
-import { StandaloneOverlay } from './components/StandaloneOverlay';
+import { CompanionOverlay } from './components/CompanionOverlay';
 import './main.css';
 
 const isOverlayWindow = new URLSearchParams(window.location.search).get('overlay') === 'true';
@@ -19,7 +19,7 @@ if (isOverlayWindow) {
 
   ReactDOM.createRoot(root!).render(
     <React.StrictMode>
-      <StandaloneOverlay />
+      <CompanionOverlay />
     </React.StrictMode>
   );
 } else {

@@ -1,4 +1,4 @@
-// src/frontend_src/components/StandaloneOverlay.tsx
+// src/frontend_src/components/CompanionOverlay.tsx
 import type React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -7,7 +7,7 @@ import { compileMessageDisplayText } from '../utilities/messageDisplayCompiler';
 import { getLocalMessageHistory } from '../utilities/timelineLogic';
 import { computeSlashAutocomplete, applySlashSelection } from '../utilities/slashCommandLogic';
 import { detectFormatSegments, buildCategoryConversionsWithLearning, applyConversions } from '../utilities/textDisplayReformatter';
-import { StandaloneOverlayProfileEditor } from './StandaloneOverlayProfileEditor';
+import { CompanionOverlayProfileEditor } from './CompanionOverlayProfileEditor';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import type { 
     InteractionData, Character, Context, Location, AudioTrack, LanguageModel, 
@@ -37,7 +37,7 @@ interface CompanionState {
     streamingCharacter?: Character | null;
 }
 
-export function StandaloneOverlay() {
+export function CompanionOverlay() {
     const containerRef = useRef<HTMLDivElement>(null);
 
     const [state, setState] = useState<CompanionState>({
@@ -623,7 +623,7 @@ export function StandaloneOverlay() {
             )}
 
             {activeSettingsModal === 'profile-edit' && editingProfile && (
-                <StandaloneOverlayProfileEditor profile={editingProfile} onClose={() => { setActiveSettingsModal('profile-list'); setEditingProfile(null); }} onSave={handleSaveProfile} />
+                <CompanionOverlayProfileEditor profile={editingProfile} onClose={() => { setActiveSettingsModal('profile-list'); setEditingProfile(null); }} onSave={handleSaveProfile} />
             )}
 
             {activeSettingsModal === 'model' && (

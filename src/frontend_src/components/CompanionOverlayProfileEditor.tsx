@@ -1,9 +1,9 @@
-// src/frontend_src/components/StandaloneOverlayProfileEditor.tsx
+// src/frontend_src/components/CompanionOverlayProfileEditor.tsx
 import { useState } from 'react';
 import type { Profile, textType, toolUsageDisplayMode } from '../types';
 import { SliderInput } from './SliderInput';
 
-interface StandaloneOverlayProfileEditorProps {
+interface CompanionOverlayProfileEditorProps {
     profile: Profile | null;
     onClose: () => void;
     onSave: (profile: Profile) => void;
@@ -57,7 +57,7 @@ function ProfileCheckbox({ checked, onChange, label, hint, spaced = false }: { c
     );
 }
 
-export function StandaloneOverlayProfileEditor({ profile, onClose, onSave }: StandaloneOverlayProfileEditorProps) {
+export function CompanionOverlayProfileEditor({ profile, onClose, onSave }: CompanionOverlayProfileEditorProps) {
     const ep = profile;
 
     const [name, setName] = useState(ep?.name || '');

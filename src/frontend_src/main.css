@@ -5223,7 +5223,7 @@ html.overlay-mode {
 
 body.overlay-mode #root,
 .overlay-mode #root {
-    aspect-ratio: 9 / 16;
+    aspect-ratio: 340 / 540; /* Directly set whatever ratio you want right here */
     height: 100% !important;
     max-height: 100% !important;
     width: auto !important;
@@ -5384,13 +5384,12 @@ body.overlay-mode #root,
 
 .pip-avatar-img {
     height: 90%;
-    width: auto;
-    max-width: 90%;
+    width: 85%;
     object-fit: contain;
     object-position: center bottom;
     aspect-ratio: 9 / 16;
     position: absolute;
-    bottom: 5vh;
+    bottom: 10vh;
     left: 50%;
     transform: translateX(-50%);
     z-index: 2;

@@ -708,7 +708,16 @@ function App() {
         }
     }, [isRecording, interactionData?.profile, handleSend, addToast]);
 
+    const isRunningInTauri = typeof window !== 'undefined' && Boolean(
+        (window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__
+    );
+
     const handleToggleOverlay = async () => {
+        if (!isRunningInTauri) {
+            addToast('Companion overlay is only available in the PC application version', 'info');
+            return;
+        }
+
         try {
             const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
             let overlayWin = await WebviewWindow.getByLabel('companion-overlay');
@@ -738,6 +747,8 @@ function App() {
             }
         } catch (err) {
             console.warn('[App] Tauri overlay toggle failed:', err);
+            addToast('Companion overlay is only available in the PC application version', 'info');
+            setIsOverlayOpen(false);
         }
     };
 
