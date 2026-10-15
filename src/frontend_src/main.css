@@ -1730,13 +1730,15 @@ MODE: CINEMATIC (Centered Avatar View)
 /* =============================================================================
 MODE: VISUAL NOVEL (Sprite Stage View)
 ============================================================================= */
+
 .vn-stage-container {
-    position: fixed;  /* Changed from absolute to fixed */
+    position: fixed;  
     top: 0;
     left: 0;
-    width: 100vw;  /* Changed from 100% to 100vw */
-    height: 100vh;  /* Changed from 100% to 100vh */
-    overflow: hidden;
+    width: 100vw;  
+    height: 100vh;  
+    overflow-x: visible; /* ✅ Allow horizontal overflow so sprites at edges aren't cut off */
+    overflow-y: hidden;  /* Keep vertical overflow hidden */
     pointer-events: none;
     display: flex;
     flex-direction: column;
@@ -1760,7 +1762,10 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     align-items: flex-end;
     justify-content: center;
     z-index: 10;
-    overflow: hidden;
+    box-sizing: border-box;
+    padding: 0 15%; /* ✅ Insets stage boundaries so sprites never bleed past screen edges */
+    overflow-x: visible;
+    overflow-y: hidden;
 }
 
 .vn-character-layer {
