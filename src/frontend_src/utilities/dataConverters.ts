@@ -463,6 +463,23 @@ function parseCacheEfficiencyLevels(raw: unknown): Record<cacheEfficiencyConfigu
     return result;
 }
 
+function parseNarrateTextCharacterIds(raw: unknown): Record<textType, string> {
+    const defaults: Record<textType, string> = {
+        normal: '', quoted: '', bolded: '', italicized: '',
+        underlined: '', parenthesized: '', bracketed: '', braced: ''
+    };
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
+    const obj = raw as Record<string, unknown>;
+    const result = { ...defaults };
+    for (const key of Object.keys(defaults) as textType[]) {
+        if (key in obj && typeof obj[key] === 'string') {
+            const val = obj[key] as string;
+            result[key] = UUID_REGEX.test(val) ? val : '';
+        }
+    }
+    return result;
+}
+
 function fillProfileDefaults(p: Record<string, unknown>): Profile {
     const now = Date.now();
     const rawNarrateTexts = (p.narrateTexts && typeof p.narrateTexts === 'object') ? p.narrateTexts as Record<string, unknown> : {};
@@ -481,7 +498,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         forceNameReveal: (p.forceNameReveal as boolean) ?? false,
         enableAmbientNarration: (p.enableAmbientNarration as boolean) ?? false,
         toolUsageDisplayMode: parseToolUsageDisplayMode(p.toolUsageDisplayMode),
-        toolUsageDisplayPlacementMode: (p.toolUsageDisplayPlacementMode as toolUsageDisplayPlacementMode) ?? 'before sentence',
+        toolUsageDisplayPlacementMode: (p.toolUsageDisplayPlacementMode as toolUsageDisplayPlacementMode) ?? 'before paragraph',
         enableCharacterExpression: (p.enableCharacterExpression as boolean) ?? false,
         randomizeTextCharacterInjection: (p.randomizeTextCharacterInjection as boolean) ?? false,
         randomizeTextCharacterInjectionOnRetry: (p.randomizeTextCharacterInjectionOnRetry as boolean) ?? true,
@@ -523,7 +540,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
             bracketed: (rawNarrateTexts.bracketed as boolean) ?? defaultNarrateTexts.bracketed,
             braced: (rawNarrateTexts.braced as boolean) ?? defaultNarrateTexts.braced,
         },
-        narrateTextCharacterIds: p.narrateTextCharacterIds ?? {} as Record<textType, string>,
+        narrateTextCharacterIds: parseNarrateTextCharacterIds(p.narrateTextCharacterIds),
         stripThinkTokens: (p.stripThinkTokens as boolean) ?? true,
         tools: parseToolsRecord(p.tools, defaultProfileTools) as Record<tool, tristateInteger>,
         inputStrategy: (p.inputStrategy as Profile['inputStrategy']) || ['System Prompt', 'Chat History', 'Context', 'Location', 'Text Injection'],

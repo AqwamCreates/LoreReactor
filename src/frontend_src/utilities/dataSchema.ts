@@ -1,5 +1,5 @@
 // src/frontend_src/utilities/dataSchema.ts
-import { defaultInputStrategy, defaultCharacterTools, defaultProfileTools } from '../dictionaries/defaults';
+import { defaultInputStrategy, defaultCharacterTools, defaultProfileTools, defaultNarrateTexts } from '../dictionaries/defaults';
 import { emotions } from '../dictionaries/characterPresets';
 import type { EntityType } from './dataTypes';
 
@@ -24,6 +24,14 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
 
     const profileToolsSchema = Object.keys(defaultProfileTools)
         .map(toolName => `      "${toolName}": "number (-1, 0, or 1, default 0)"`)
+        .join(',\n');
+
+    const narrateTextsSchema = Object.entries(defaultNarrateTexts)
+        .map(([key, defaultValue]) => `      "${key}": "boolean (default ${defaultValue})"`)
+        .join(',\n');
+
+    const narrateTextCharacterIdsSchema = Object.keys(defaultNarrateTexts)
+        .map(key => `      "${key}": "string (Character UUID, optional, assigns a specific character to narrate this text type)"`)
         .join(',\n');
 
     if (includeCharacter) {
@@ -271,10 +279,10 @@ ${characterToolsSchema}
     "speechToTextDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "voiceActivityDetectionDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "narrateTexts": {
-      "normal": "boolean (default false)", "quoted": "boolean (default false)", "bolded": "boolean (default false)",
-      "italicized": "boolean (default false)", "underlined": "boolean (default false)",
-      "parenthesized": "boolean (default false)", "bracketed": "boolean (default false)",
-      "braced": "boolean (default false)"
+${narrateTextsSchema}
+    },
+    "narrateTextCharacterIds": {
+${narrateTextCharacterIdsSchema}
     },
     "stripThinkTokens": "boolean (default true)",
     "tools": {
