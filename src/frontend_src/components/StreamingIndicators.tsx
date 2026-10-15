@@ -25,22 +25,41 @@ export function StreamingIndicators({
     const streamingText = useSessionStore(s => s.streamingText);
     const interactionData = useSessionStore(s => s.interactionData);
 
+    // ✅ Use localProtagonistId and protagonistIds instead of selectedCharacterId for protagonist check
+    const localProtagonistId = useSessionStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
+    const protagonistIds = useSessionStore(s => s.interactionData?.protagonistIds || []);
+
     if (!isLoading || !streamingCharacter) return null;
 
-    const isNotProtagOrAmbient = streamingCharacter.id !== selectedCharacterId && streamingCharacter.id !== AMBIENT_NARRATOR_ID;
+    const isProtagonist = localProtagonistId ? streamingCharacter.id === localProtagonistId : protagonistIds.includes(streamingCharacter.id);
+    const isNotProtagOrAmbient = !isProtagonist && streamingCharacter.id !== AMBIENT_NARRATOR_ID;
     
-    // ✅ FIX: Pass selectedCharacterId (which represents the local protagonist ID) 
-    // to getDelayedDisplayName so it uses the correct perspective for name resolution.
+    // ✅ Pass localProtagonistId to getDelayedDisplayName so perspective resolution matches MessageBubble
     const dn = interactionData
-        ? getDelayedDisplayName(interactionData, streamingCharacter, Math.max(0, messagesLength - 1), selectedCharacterId ?? null)
+        ? getDelayedDisplayName(interactionData, streamingCharacter, Math.max(0, messagesLength - 1), localProtagonistId)
         : streamingCharacter.name;
 
     const avatarColumn = isNotProtagOrAmbient && viewMode === 'ladder' && (
         <div className="avatar-column">
             <div style={{ position: 'relative' }}>
                 {streamingPortraitUrl
-                    ? <img src={streamingPortraitUrl} alt={streamingCharacter.name} className="character-avatar" onClick={e => onAvatarClick(e, streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'thinking-message' : 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />
-                    : <div className="character-avatar placeholder" onClick={e => onAvatarClick(e, streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'thinking-message' : 'streaming-message', streamingCharacter)} style={{ cursor: 'pointer', opacity: 0.5 }} />}
+                    ? (
+                        <img
+                            src={streamingPortraitUrl}
+                            alt={streamingCharacter.name}
+                            className="character-avatar"
+                            onClick={e => onAvatarClick(e, streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'thinking-message' : 'streaming-message', streamingCharacter)}
+                            onError={e => { e.currentTarget.style.display = 'none'; }}
+                            style={{ cursor: 'pointer', opacity: 0.5 }}
+                        />
+                    )
+                    : (
+                        <div
+                            className="character-avatar placeholder"
+                            onClick={e => onAvatarClick(e, streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'thinking-message' : 'streaming-message', streamingCharacter)}
+                            style={{ cursor: 'pointer', opacity: 0.5 }}
+                        />
+                    )}
             </div>
             <span className="avatar-name" style={{ opacity: streamingText ? 1 : 0.5 }}>{dn}</span>
         </div>
