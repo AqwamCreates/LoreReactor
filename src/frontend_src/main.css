@@ -1838,7 +1838,7 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     width: 100%;
     box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.5);
     position: relative;
-    max-height: 35vh;
+    max-height: 30vh;
     overflow: visible; /* CHANGED BACK TO visible SO THE NAME PLATE ISN'T CLIPPED */
     box-sizing: border-box;
     display: flex;
