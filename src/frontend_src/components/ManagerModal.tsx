@@ -47,6 +47,19 @@ function extractTextContent(node: React.ReactNode): string {
     return '';
 }
 
+interface FilteredFolderEntry {
+    type: 'folder';
+    folder: EntityFolder;
+    filteredItems: any[];
+}
+
+interface FilteredItemEntry {
+    type: 'item';
+    item: any;
+}
+
+type FilteredDisplayEntry = FilteredFolderEntry | FilteredItemEntry;
+
 export function ManagerModal<T extends { id: string; name?: string; lastUpdatedTimestamp?: number; firstCreatedTimestamp?: number }>({
     title, entityType, localLibraryItems, hosterOwnedItems, isAdministrator, onClose, onSelect, onDelete, onCreateNew,
     renderSubtext, emptyMessage = "No items found.", actionLabel = "Delete",
@@ -74,6 +87,9 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
 
     const searchInputRef = useRef<HTMLInputElement>(null);
     const renameInputRef = useRef<HTMLInputElement>(null);
+    
+    // ✅ Track previous search query to detect transitions
+    const prevSearchQueryRef = useRef('');
 
     const hasHosterOwnedTab = hosterOwnedItems !== undefined;
     const [activeTab, setActiveTab] = useState<'localLibrary' | 'hosterOwned'>('localLibrary');
@@ -194,19 +210,75 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         });
     }, [typeFolders, rootItems, orderedListMode, currentOrderIds]);
 
-    const filteredItems = useMemo(() => {
-        if (!searchQuery.trim()) return currentItems;
-        const query = searchQuery.toLowerCase();
-        return currentItems.filter(item => {
-            if (item.name?.toLowerCase().includes(query)) return true;
+    const searchFilteredDisplayItems = useMemo((): FilteredDisplayEntry[] => {
+        const query = searchQuery.toLowerCase().trim();
+        if (!query) {
+            return displayItems.map(entry => {
+                if (entry.type === 'folder') {
+                    const folderItems = entry.folder.itemIds.map(id => itemMap.get(id)).filter((i): i is T => !!i);
+                    return { type: 'folder', folder: entry.folder, filteredItems: folderItems };
+                }
+                return { type: 'item', item: entry.item };
+            });
+        }
+        
+        const result: FilteredDisplayEntry[] = [];
+        
+        for (const folder of typeFolders) {
+            const folderNameMatches = folder.name?.toLowerCase().includes(query);
+            const folderItems = folder.itemIds.map(id => itemMap.get(id)).filter((i): i is T => !!i);
+            
+            const matchingItems = folderItems.filter(item => {
+                if (folderNameMatches) return true;
+                if (item.name?.toLowerCase().includes(query)) return true;
+                if (renderSubtext) {
+                    const subtextNode = renderSubtext(item);
+                    if (typeof subtextNode === 'string') return subtextNode.toLowerCase().includes(query);
+                    if (subtextNode && typeof subtextNode === 'object') return extractTextContent(subtextNode).toLowerCase().includes(query);
+                }
+                return false;
+            });
+            
+            if (matchingItems.length > 0 || folderNameMatches) {
+                result.push({ type: 'folder', folder, filteredItems: matchingItems });
+            }
+        }
+        
+        for (const item of rootItems) {
+            const nameMatches = item.name?.toLowerCase().includes(query);
+            let subtextMatches = false;
             if (renderSubtext) {
                 const subtextNode = renderSubtext(item);
-                if (typeof subtextNode === 'string') return subtextNode.toLowerCase().includes(query);
-                if (subtextNode && typeof subtextNode === 'object') return extractTextContent(subtextNode).toLowerCase().includes(query);
+                if (typeof subtextNode === 'string') subtextMatches = subtextNode.toLowerCase().includes(query);
+                else if (subtextNode && typeof subtextNode === 'object') subtextMatches = extractTextContent(subtextNode).toLowerCase().includes(query);
             }
-            return false;
-        });
-    }, [currentItems, searchQuery, renderSubtext]);
+            
+            if (nameMatches || subtextMatches) {
+                result.push({ type: 'item', item });
+            }
+        }
+        
+        return result;
+    }, [searchQuery, typeFolders, rootItems, itemMap, renderSubtext, displayItems]);
+
+    // ✅ FIX: Only auto-expand when transitioning from no-search to search, then leave user alone
+    useEffect(() => {
+        const prevQuery = prevSearchQueryRef.current.trim();
+        const currentQuery = searchQuery.trim();
+        
+        // Only expand if we just started searching (transition from empty to non-empty)
+        if (!prevQuery && currentQuery) {
+            const foldersToExpand = new Set<string>();
+            for (const entry of searchFilteredDisplayItems) {
+                if (entry.type === 'folder' && entry.filteredItems.length > 0) {
+                    foldersToExpand.add(entry.folder.id);
+                }
+            }
+            setExpandedFolderIds(foldersToExpand);
+        }
+        
+        prevSearchQueryRef.current = searchQuery;
+    }, [searchQuery, searchFilteredDisplayItems]);
 
     const toggleFolder = (id: string) => {
         setExpandedFolderIds(prev => {
@@ -337,7 +409,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                         )
                     )}
 
-                    {/* ✅ FIX: Removed !searchQuery.trim() so the folder dropdown is ALWAYS visible */}
                     {activeTab === 'localLibrary' && (
                         <button type="button" onClick={e => handleMoveClick(e, id)} className="manager-item-button" title="Move to folder">📁</button>
                     )}
@@ -368,11 +439,11 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         );
     };
 
-    const renderFolderRow = (folder: EntityFolder) => {
+    const renderFolderRow = (folder: EntityFolder, filteredItems?: T[]) => {
         const isExpanded = expandedFolderIds.has(folder.id);
         const isRenaming = renamingId === folder.id;
         const isConfirmingDelete = confirmDeleteId === folder.id && confirmDeleteType === 'folder';
-        const folderItems = folder.itemIds.map(id => itemMap.get(id)).filter((i): i is T => !!i);
+        const itemsToRender = filteredItems ?? folder.itemIds.map(id => itemMap.get(id)).filter((i): i is T => !!i);
 
         return (
             <li key={folder.id} className="folder-container">
@@ -401,9 +472,9 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                         )}
                     </div>
                 </div>
-                {isExpanded && folderItems.length > 0 && (
+                {isExpanded && itemsToRender.length > 0 && (
                     <ul className="folder-children">
-                        {folderItems.map(item => renderItemRow(item))}
+                        {itemsToRender.map(item => renderItemRow(item))}
                     </ul>
                 )}
             </li>
@@ -477,11 +548,13 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                         </form>
                     )}
 
-                    {/* ✅ FIX: Search results now use the EXACT SAME renderItemRow layout */}
                     {searchQuery.trim() ? (
-                        filteredItems.length === 0 ? <div className="empty-state">No results found for "{searchQuery}"</div> : (
+                        searchFilteredDisplayItems.length === 0 ? <div className="empty-state">No results found for "{searchQuery}"</div> : (
                             <ul className="manager-list">
-                                {filteredItems.map(item => renderItemRow(item))}
+                                {searchFilteredDisplayItems.map((entry) => {
+                                    if (entry.type === 'folder') return renderFolderRow(entry.folder, entry.filteredItems);
+                                    return renderItemRow(entry.item);
+                                })}
                             </ul>
                         )
                     ) : (

@@ -76,14 +76,45 @@ export function EntitySelectList<T extends EntitySelectListItem>({
                     {description}
                 </div>
             )}
-            <input
-                type="text"
-                value={searchQuery}
-                onChange={event => onSearchChange(event.target.value)}
-                className="editor-input entity-select-search"
-                placeholder={`Search ${label.toLowerCase()}...`}
-                disabled={disabled}
-            />
+            
+            {/* ✅ SEARCH BAR WITH CLEAR BUTTON */}
+            <div style={{ position: 'relative', marginBottom: '6px' }}>
+                <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={event => onSearchChange(event.target.value)}
+                    className="editor-input entity-select-search"
+                    placeholder={`Search ${label.toLowerCase()}...`}
+                    disabled={disabled}
+                    style={{ paddingRight: searchQuery ? '36px' : '12px', width: '100%', boxSizing: 'border-box' }}
+                />
+                {searchQuery && !disabled && (
+                    <button
+                        type="button"
+                        onClick={() => onSearchChange('')}
+                        style={{
+                            position: 'absolute',
+                            right: '8px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--text-h)',
+                            cursor: 'pointer',
+                            fontSize: '0.9rem',
+                            opacity: 0.5,
+                            padding: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}
+                        title="Clear search"
+                    >
+                        ✕
+                    </button>
+                )}
+            </div>
+
             <div className="entity-select-scroll">
                 {filteredItems.length === 0 && (
                     <div className="entity-select-empty">
