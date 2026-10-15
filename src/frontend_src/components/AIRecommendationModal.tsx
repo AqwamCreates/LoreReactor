@@ -31,7 +31,6 @@ interface AIRecommendationModalProps {
     onOpenProfileEditor?: (profile: Profile | null, onApplyToRecommendation: (p: Profile) => void) => void;
     onOpenPromptBlockEditor?: (block: PromptBlock | null, onApplyToRecommendation: (b: PromptBlock) => void) => void;
     allSamplers: Sampler[];
-    aiRecommendationSampler: Sampler | undefined;
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
@@ -40,12 +39,13 @@ interface AIRecommendationModalProps {
     allEntityFolders: EntityFolder[];
     selectedModel: LanguageModel | null;
     runningModels: Record<string, { isRunning: boolean; port?: number }>;
+    aiRecommendationSampler: Sampler | undefined;
 }
 
 export function AIRecommendationModal({
     onClose, onSaveCharacter, onSaveContext, onSaveLocation, onSaveAudioTrack, onSaveProfile, onSaveWorld, onSavePromptBlock, onSaveEntityFolder,
     onOpenCharacterEditor, onOpenContextEditor, onOpenLocationEditor, onOpenAudioTrackEditor, onOpenProfileEditor, onOpenPromptBlockEditor,
-    allSamplers, aiRecommendationSampler, allCharacters, allContexts, allLocations, allAudioTracks, allPromptBlocks, allEntityFolders = [], selectedModel, runningModels,
+    allSamplers, allCharacters, allContexts, allLocations, allAudioTracks, allPromptBlocks, allEntityFolders = [], selectedModel, runningModels, aiRecommendationSampler
 }: AIRecommendationModalProps) {
     const [selectedEntities, setSelectedEntities] = useState<EntityType[]>(['Character']);
     const [userPrompt, setUserPrompt] = useState('');
