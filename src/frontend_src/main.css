@@ -1778,16 +1778,23 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     will-change: transform, opacity, filter;
     max-height: 85vh;
     transition: all 0.5s ease-out;
+    opacity: 0; /* ✅ Start hidden */
+}
+
+/* ✅ Fade in only after initial positioning is calculated */
+.vn-character-layer:not(.vn-no-transition) {
+    opacity: 1; 
 }
 
 .vn-sprite {
     height: 50vh;
-    width: calc(50vh * 9 / 16);
+    width: auto; /* ✅ Changed from width: calc... to auto */
     max-height: 100%;
     max-width: 100%;
-    object-fit: cover;
-    object-position: top center;
+    object-fit: contain; /* ✅ Changed from cover to contain to prevent crop */
+    object-position: bottom center;
     image-rendering: -webkit-optimize-contrast;
+    display: block; /* ✅ Remove potential ghosting gap */
 }
 
 @keyframes vn-jump-arc {
