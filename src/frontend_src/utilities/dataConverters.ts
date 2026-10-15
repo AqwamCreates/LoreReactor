@@ -5,7 +5,8 @@ import type {
     EntityFolder, entityType,
     tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, 
     regularExpressionTarget, tristateInteger, cacheEfficiencyConfigurationType, 
-    AutoResumeSignal, deviceType 
+    AutoResumeSignal, deviceType, 
+    toolUsageDisplayPlacementMode
 } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';
@@ -479,6 +480,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         forceNameReveal: (p.forceNameReveal as boolean) ?? false,
         enableAmbientNarration: (p.enableAmbientNarration as boolean) ?? false,
         toolUsageDisplayMode: parseToolUsageDisplayMode(p.toolUsageDisplayMode),
+        toolUsageDisplayPlacementMode: (p.toolUsageDisplayPlacementMode as toolUsageDisplayPlacementMode) ?? 'before sentence',
         enableCharacterExpression: (p.enableCharacterExpression as boolean) ?? false,
         randomizeTextCharacterInjection: (p.randomizeTextCharacterInjection as boolean) ?? false,
         randomizeTextCharacterInjectionOnRetry: (p.randomizeTextCharacterInjectionOnRetry as boolean) ?? true,

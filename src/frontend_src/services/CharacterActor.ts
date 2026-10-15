@@ -65,7 +65,7 @@ export interface TurnExecutionParams {
     isMultiplayerClient?: boolean;
     borrowedModel?: LanguageModel | null;
     metadata?: RequestMetadata;
-    toolContext?: ToolExecutionContext;
+    toolContext: ToolExecutionContext;
     voiceTracker?: StreamingVoiceTracker;
 }
 
@@ -92,7 +92,7 @@ async function processToolInvocations(
     profile: Profile | undefined,
     targetMessage: ChatMessage,
     interactionData: InteractionData,
-    context?: ToolExecutionContext,
+    context: ToolExecutionContext,
 ): Promise<ProcessedReplacements | null> {
     if (!invocations || invocations.length === 0) return null;
 
@@ -160,7 +160,7 @@ async function processToolInvocations(
 }
 
 function applyToolReplacements(
-    accState: ReturnType<typeof createAccState>,
+    accState: ReturnType<typeof createTextAccumulationState>,
     replacements: ProcessedReplacements,
     callbacks?: TurnStreamCallbacks,
 ): void {
@@ -219,7 +219,7 @@ function classifyError(error: unknown, signal: AbortSignal): TurnError {
     return { message, type: 'inference' };
 }
 
-function createAccState(initialText: string) {
+function createTextAccumulationState(initialText: string) {
     let rawAcc = initialText;
     let displayAcc = initialText;
     let lastRawLen = 0;
@@ -314,7 +314,7 @@ export class CharacterActor {
             let isFirstChunkAfterTool = false;
 
             const streamToolParser = new ToolInvocationParser();
-            const accState = createAccState(currentExistingText);
+            const accState = createTextAccumulationState(currentExistingText);
 
             const createStreamCallbacks = (
                 parser: ToolInvocationParser,

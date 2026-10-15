@@ -30,7 +30,7 @@ interface EngineDependencies {
     setLastSelectedModelId: (id: string | null) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
-    getToolContext?: () => ToolExecutionContext;
+    getToolContext: () => ToolExecutionContext;
     acquireLock?: () => boolean;
     releaseLock?: () => void;
 }
@@ -98,7 +98,7 @@ export function useChatEngine(deps: EngineDependencies) {
             callbacks,
             borrowedModel,
             metadata,
-            toolContext: deps.getToolContext?.(),
+            toolContext: deps.getToolContext(),
             voiceTracker,
         });
 

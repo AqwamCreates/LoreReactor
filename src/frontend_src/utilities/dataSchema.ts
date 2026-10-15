@@ -14,7 +14,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     const includeLocation = selectedEntities.includes('Location');
     const includeAudioTrack = selectedEntities.includes('AudioTrack');
     const includePromptBlock = selectedEntities.includes('PromptBlock');
-    const includeProfile = selectedEntitiesincludes('Profile');
+    const includeProfile = selectedEntities.includes('Profile');
     const includeEntityFolder = (selectedEntities as string[]).includes('EntityFolder') || (selectedEntities as string[]).includes('entityFolder');
 
     // Automatically generate tool schemas from defaults dictionaries
@@ -235,6 +235,7 @@ ${characterToolsSchema}
     "forceNameReveal": "boolean (default false)",
     "enableAmbientNarration": "boolean (default false). When true and no character responds, generates environmental/atmospheric narration to fill silence.",
     "toolUsageDisplayMode": "'none' | 'icon' | 'simple' | 'detailed' | 'full' | 'raw' (default 'none'). Controls how tool invocations appear in chat output.",
+    "toolUsageDisplayPlacementMode": "'top' | 'before paragraph' | 'before sentence' | 'inline' | 'after sentence' 'after paragraph' | 'bottom' (default 'before paragraph')",
     "enableCharacterExpression": "boolean (default false)",
     "randomizeTextCharacterInjection": "boolean (default false, master toggle for text character injection across all characters)",
     "randomizeTextCharacterInjectionOnRetry": "boolean (default true, only randomize if the initial generation fails. Only relevant when randomizeTextCharacterInjection is true)",

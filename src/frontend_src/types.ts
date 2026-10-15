@@ -741,6 +741,8 @@ export type textType = "normal" | "quoted" | "bolded" | "italicized" | "underlin
 
 export type toolUsageDisplayMode = "none" | "icon" | "simple" | "detailed" | "full" | "raw" // Default is none.
 
+export type toolUsageDisplayPlacementMode = "top" | "before paragraph" | "before sentence" |"inline" | "after sentence" |"after paragraph" | "bottom" // Default is before paragraph.
+
 export type cacheEfficiencyConfigurationType = 'Character Name' | 'System Prompt' | 'Think Prompt' // 0 -> No optimization, 1 -> Limited to co-located participants, 2 -> All participants
 export interface AutoResumeSignal {
 
@@ -760,6 +762,7 @@ export interface Profile extends ObjectData {
   forceNameReveal: boolean;
   enableAmbientNarration: boolean; // Default is false.
   toolUsageDisplayMode: toolUsageDisplayMode;
+  toolUsageDisplayPlacementMode: toolUsageDisplayPlacementMode;
   enableCharacterExpression: boolean;
   enableAutoSpeechDetection?: boolean;
   speechVolumeActivationThreshold?: number; // Volume Gate: 1 to 100 (Default: 18)
@@ -820,6 +823,7 @@ export interface RawProfile extends RawData {
   forceNameReveal: boolean;
   enableAmbientNarration: boolean; // Default is false.
   toolUsageDisplayMode: toolUsageDisplayMode;
+  toolUsageDisplayPlacementMode: toolUsageDisplayPlacementMode;
   enableCharacterExpression: boolean;
   enableAutoSpeechDetection?: boolean;
   speechVolumeActivationThreshold?: number; // Volume Gate: 1 to 100 (Default: 18)
@@ -976,10 +980,34 @@ export interface ActionFormatData {
     matrix?: Record<string, Record<string, number>>;
 }
 
-export type Entity = Character | Context | Location | AudioTrack | World | PromptBlock | LanguageModel | Sampler | StopPattern | Profile | BudgetStrategy | Account | MultiplayerData
+export type Entity = 
+  | Character 
+  | Context 
+  | Location 
+  | AudioTrack 
+  | World 
+  | PromptBlock 
+  | LanguageModel 
+  | Sampler 
+  | StopPattern 
+  | Profile 
+  | BudgetStrategy 
+  | Account 
+  | MultiplayerData
 
 export type entityType = 
-    | 'character' | 'context' | 'location' | 'audioTrack' 
-    | 'world' | 'interactionData' | 'model' | 'sampler' | 'promptBlock' 
-    | 'stopPattern' | 'budgetStrategy' | 'profile' 
-    | 'account' | 'multiplayerData';
+  | 'character' 
+  | 'context' 
+  | 'location' 
+  | 'audioTrack' 
+  | 'world' 
+  | 'interactionData' 
+  | 'model' 
+  | 'sampler' 
+  | 'promptBlock' 
+  | 'stopPattern' 
+  | 'budgetStrategy' 
+  | 'profile' 
+  | 'account' 
+  | 'multiplayerData'
+  | 'entityFolder';

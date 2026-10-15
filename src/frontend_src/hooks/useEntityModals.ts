@@ -8,7 +8,7 @@ interface EntityConfiguration<T> {
     entityLabel: string;
 }
 
-export function useEntityModals(entityConfigurations: Record<entityType, EntityConfiguration<any>>) {
+export function useEntityModals(entityConfigurations: Record<entityType, EntityConfiguration<any>| undefined>) {
     const { addToast } = useToast();
     
     const [activeModal, setActiveModal] = useState<{ 
@@ -28,6 +28,7 @@ export function useEntityModals(entityConfigurations: Record<entityType, EntityC
     const save = useCallback(async (item: Entity) => {
         if (!activeModal) return;
         const configuration = entityConfigurations[activeModal.entityType];
+        if (!configuration) return;
         const isSuccessful = await configuration.saveFunction(item);
         
         if (isSuccessful) {
@@ -42,6 +43,7 @@ export function useEntityModals(entityConfigurations: Record<entityType, EntityC
         const targetEntityType = entityTypeOverride || activeModal?.entityType;
         if (!targetEntityType) return;
         const configuration = entityConfigurations[targetEntityType];
+        if (!configuration) return;
         if (!configuration.deleteFunction) return;
 
         if (!window.confirm(`Delete this ${configuration.entityLabel.toLowerCase()}?`)) return;

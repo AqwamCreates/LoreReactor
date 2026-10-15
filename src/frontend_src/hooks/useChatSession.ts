@@ -47,30 +47,34 @@ import type {
     World,
     Memory,
     Account,
-    MultiplayerData
+    MultiplayerData,
+    EntityFolder,
+    RawInteractionData
 } from '../types';
 import { useFrontCamera } from './useFrontCamera';
 
 interface UseChatSessionOptions {
-    onMessageBroadcast?: (message: HistoryMessage) => void;
-    onStateBroadcast?: (state: Partial<InteractionData>) => void;
-    isMultiplayerClient?: boolean;
-    joinProtagonist?: Character | null;
-    allCharacters?: Character[];
-    allContexts?: Context[];
-    allLocations?: Location[];
-    allAudioTracks?: AudioTrack[];
-    allPromptBlocks?: PromptBlock[];
-    allSamplers?: Sampler[];
-    allStopPatterns?: StopPattern[];
-    allBudgetStrategies?: BudgetStrategy[];
-    allProfiles?: Profile[];
-    allWorlds?: World[];
-    allMemories?: Memory[];
-    allExtensions?: any[];
-    allAccounts?: Account[];
-    allMultiplayerData?: MultiplayerData[];
-    allActions?: any[];
+    onMessageBroadcast: (message: HistoryMessage) => void;
+    onStateBroadcast: (state: Partial<InteractionData>) => void;
+    isMultiplayerClient: boolean;
+    joinProtagonist: Character | null;
+    allCharacters: Character[];
+    allContexts: Context[];
+    allLocations: Location[];
+    allAudioTracks: AudioTrack[];
+    allPromptBlocks: PromptBlock[];
+    allSamplers: Sampler[];
+    allStopPatterns: StopPattern[];
+    allBudgetStrategies: BudgetStrategy[];
+    allProfiles: Profile[];
+    allWorlds: World[];
+    allMemories: Memory[];
+    allExtensions: any[];
+    allAccounts: Account[];
+    allMultiplayerData: MultiplayerData[];
+    allRawInteractionDataShells?: RawInteractionData[]; // ✅ Added
+    allEntityFolders?: EntityFolder[]; // ✅ Consistent
+    allActions: any[];
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
     requestPeerInference?: (peerAccountId: string, modelName: string, promptOrMessages: any, onToken: (token: string) => void, signal?: AbortSignal) => Promise<void>;
 }
@@ -104,6 +108,8 @@ export function useChatSession(options: UseChatSessionOptions) {
     const allExtensionsRef = useRef(options?.allExtensions ?? []);
     const allAccountsRef = useRef(options?.allAccounts ?? []);
     const allMultiplayerDataRef = useRef(options?.allMultiplayerData ?? []);
+    const allRawInteractionDataShellsRef = useRef(options?.allRawInteractionDataShells ?? []);
+    const allEntityFoldersRef = useRef(options?.allEntityFolders ?? []);
     const allActionsRef = useRef(options?.allActions ?? []);
 
     useEffect(() => { allCharactersRef.current = options?.allCharacters ?? []; }, [options?.allCharacters]);
@@ -120,6 +126,8 @@ export function useChatSession(options: UseChatSessionOptions) {
     useEffect(() => { allExtensionsRef.current = options?.allExtensions ?? []; }, [options?.allExtensions]);
     useEffect(() => { allAccountsRef.current = options?.allAccounts ?? []; }, [options?.allAccounts]);
     useEffect(() => { allMultiplayerDataRef.current = options?.allMultiplayerData ?? []; }, [options?.allMultiplayerData]);
+    useEffect(() => { allRawInteractionDataShellsRef.current = options?.allRawInteractionDataShells ?? []; }, [options?.allRawInteractionDataShells]);
+    useEffect(() => { allEntityFoldersRef.current = options?.allEntityFolders ?? []; }, [options?.allEntityFolders]);
     useEffect(() => { allActionsRef.current = options?.allActions ?? []; }, [options?.allActions]);
 
     // ─── Zustand Selectors ───────────────────────────────────────────
@@ -212,7 +220,9 @@ export function useChatSession(options: UseChatSessionOptions) {
         allMemories: allMemoriesRef.current,
         allAccounts: allAccountsRef.current,
         allMultiplayerData: allMultiplayerDataRef.current,
+        allRawInteractionDataShells: allRawInteractionDataShellsRef.current,
         allExtensions: allExtensionsRef.current,
+        allEntityFolders: allEntityFoldersRef.current,
         captureFrontCameraImage,
         addToast,
     }), [captureFrontCameraImage, addToast]);

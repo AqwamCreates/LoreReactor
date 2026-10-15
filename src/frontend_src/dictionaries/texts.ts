@@ -87,3 +87,14 @@ export const characterToolDescriptions: Record<tool, string> = {
     virtual_controller: 'Allow this character to use controller inputs for your device. Enable with caution.',
     hardware_control: 'Allow this character to control your devices. Enable with caution.'
 };
+
+export const narrateTextLabels: Record<textType, string> = {
+    normal: 'Normal Text', 
+    quoted: 'Quoted Text', 
+    bolded: 'Bolded Text',
+    italicized: 'Italicized Text', 
+    underlined: 'Underlined Text', // ✅ Placed after italics
+    parenthesized: 'Parenthesized Text',
+    bracketed: 'Bracketed Text', 
+    braced: 'Braced Text',
+};

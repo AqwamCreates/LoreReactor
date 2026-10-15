@@ -137,6 +137,7 @@ function App() {
         account: { saveFunction: accounts.saveAccount, deleteFunction: accounts.deleteAccount, entityLabel: 'Account' },
         multiplayerData: { saveFunction: multiplayerDatas.saveMultiplayerData, deleteFunction: multiplayerDatas.deleteMultiplayerData, entityLabel: 'Multiplayer Data' },
         interactionData: { saveFunction: interactionDatas.saveInteractionData, deleteFunction: interactionDatas.deleteInteractionData, entityLabel: 'Session' },
+        entityFolder: undefined,
     });
 
     // ─── Session Store Selectors & Actions ───────────────────────────
@@ -186,6 +187,7 @@ function App() {
         allAccounts: accounts.accounts,
         allMultiplayerData: multiplayerDatas.multiplayerData,
         allActions: actions.allActions,
+        allEntityFolders: entityFolders.entityFolders, // ✅ Clean & consistent
         requestBorrowedModel: handleRequestBorrowedModel,
         requestPeerInference: mp.multiplayerSync.requestPeerInference,
     });
