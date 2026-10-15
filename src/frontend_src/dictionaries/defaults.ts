@@ -197,15 +197,4 @@ export function createDefaultMultiplayerData(): MultiplayerData {
     };
 }
 
-export const defaultNarrateTexts: Record<textType, boolean> = {
-    normal: false, 
-    quoted: false, 
-    bolded: false, 
-    italicized: false,
-    underlined: false, // ✅ Placed after italics
-    parenthesized: false, 
-    bracketed: false, 
-    braced: false,
-};
-
 export const defaultContextLength = 8192

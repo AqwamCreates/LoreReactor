@@ -6,7 +6,8 @@ import type {
     tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, 
     regularExpressionTarget, tristateInteger, cacheEfficiencyConfigurationType, 
     AutoResumeSignal, deviceType, 
-    toolUsageDisplayPlacementMode
+    toolUsageDisplayPlacementMode,
+    textType
 } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';
@@ -522,6 +523,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
             bracketed: (rawNarrateTexts.bracketed as boolean) ?? defaultNarrateTexts.bracketed,
             braced: (rawNarrateTexts.braced as boolean) ?? defaultNarrateTexts.braced,
         },
+        narrateTextCharacterIds: p.narrateTextCharacterIds ?? {} as Record<textType, string>,
         stripThinkTokens: (p.stripThinkTokens as boolean) ?? true,
         tools: parseToolsRecord(p.tools, defaultProfileTools) as Record<tool, tristateInteger>,
         inputStrategy: (p.inputStrategy as Profile['inputStrategy']) || ['System Prompt', 'Chat History', 'Context', 'Location', 'Text Injection'],

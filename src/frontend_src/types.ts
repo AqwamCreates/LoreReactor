@@ -794,6 +794,7 @@ export interface Profile extends ObjectData {
   minimalVolatileCacheMode: boolean // A switch that forces the input strategy to be locked to specific configuration to maximize cache efficiency.
   doNotInjectDefaultStopTokens: boolean;
   narrateTexts: Record<textType, boolean>;
+  narrateTextCharacterIds: Record<textType, string>; // Text type -> character Id that will narrate this text type.
   stripThinkTokens: boolean;
   tools: Record<tool, tristateInteger>;
   inputStrategy: (promptBlockType | string)[];
@@ -855,6 +856,7 @@ export interface RawProfile extends RawData {
   minimalVolatileCacheMode: boolean // A switch that forces the input strategy to be locked to specific configuration to maximize cache efficiency.
   doNotInjectDefaultStopTokens: boolean;
   narrateTexts: Record<textType, boolean>;
+  narrateTextCharacterIds: Record<textType, string>; // Text type -> character Id that will narrate this text type.
   stripThinkTokens: boolean;
   tools: Record<tool, tristateInteger>;
   inputStrategy: (promptBlockType | string)[];

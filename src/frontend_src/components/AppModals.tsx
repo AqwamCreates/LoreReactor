@@ -1185,9 +1185,11 @@ export function AppModals({
                             profileModalProperties.save(profile); 
                         } 
                     }}
-                    existingProfile={profileModalProperties.item} 
-                    allPromptBlocks={allPromptBlocks} 
+                    existingProfile={profileModalProperties.item}
+                    allCharacters={allCharacters}
+                    allPromptBlocks={allPromptBlocks}
                     allSamplers={allSamplers} 
+                    allStopPatterns={allStopPatterns}
                 />
             )}
 

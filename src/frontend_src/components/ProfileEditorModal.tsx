@@ -1,7 +1,8 @@
 // src/frontend_src/components/ProfileEditorModal.tsx
 import { useState, useMemo, useCallback, type CSSProperties } from 'react';
-import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal, deviceType } from '../types';
+import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal, deviceType, Character } from '../types';
 import { SliderInput } from './SliderInput';
+import { EntitySelect } from './EntitySelect';
 import '../main.css';
 import { 
     defaultInputStrategy, 
@@ -14,10 +15,11 @@ import { v4 as uuidv4 } from 'uuid';
 interface ProfileEditorModalProps {
     onClose: () => void;
     onSave: (profile: Profile) => void;
-    existingProfile?: Profile | null;
-    allPromptBlocks?: PromptBlock[];
-    allSamplers?: Sampler[];
-    allStopPatterns?: StopPattern[];
+    existingProfile: Profile | null;
+    allCharacters: Character[];
+    allPromptBlocks: PromptBlock[];
+    allSamplers: Sampler[];
+    allStopPatterns: StopPattern[];
 }
 
 const CACHE_EFFICIENCY_DESCRIPTIONS: Record<cacheEfficiencyConfigurationType, string[]> = {
@@ -142,19 +144,79 @@ function StopPatternSelect({
     onChange: (id: string) => void;
     allStopPatterns: StopPattern[];
 }) {
+    const [search, setSearch] = useState('');
     return (
-        <div>
-            <label className="editor-label editor-label-small">{label}</label>
-            <select value={value} onChange={(e) => onChange(e.target.value)} className="editor-select">
-                <option value="">(None)</option>
-                {allStopPatterns.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
-            </select>
-        </div>
+        <EntitySelect
+            label={label}
+            items={allStopPatterns}
+            selectedId={value || null}
+            onSelect={onChange}
+            searchQuery={search}
+            onSearchChange={setSearch}
+            allowNone={true}
+            noneLabel="(None)"
+        />
+    );
+}
+
+function SamplerSelect({
+    label,
+    value,
+    onChange,
+    allSamplers,
+    description,
+}: {
+    label: string;
+    value: string;
+    onChange: (id: string) => void;
+    allSamplers: Sampler[];
+    description?: string;
+}) {
+    const [search, setSearch] = useState('');
+    return (
+        <EntitySelect
+            label={label}
+            items={allSamplers}
+            selectedId={value || null}
+            onSelect={onChange}
+            searchQuery={search}
+            onSearchChange={setSearch}
+            allowNone={true}
+            noneLabel="(System Default)"
+            description={description}
+        />
+    );
+}
+
+function NarratorCharacterSelect({
+    label,
+    value,
+    onChange,
+    allCharacters,
+}: {
+    label: string;
+    value: string;
+    onChange: (id: string) => void;
+    allCharacters: Character[];
+}) {
+    const [search, setSearch] = useState('');
+    return (
+        <EntitySelect
+            label={label}
+            items={allCharacters}
+            selectedId={value || null}
+            onSelect={onChange}
+            searchQuery={search}
+            onSearchChange={setSearch}
+            allowNone={true}
+            noneLabel="System Default Narrator"
+            noneDescription="Use the default TTS voice."
+        />
     );
 }
 
 export function ProfileEditorModal({
-    existingProfile, onClose, onSave, allPromptBlocks = [], allSamplers = [], allStopPatterns = [],
+    existingProfile, onClose, onSave, allPromptBlocks = [], allSamplers = [], allStopPatterns = [], allCharacters = [],
 }: ProfileEditorModalProps) {
     const [activeTab, setActiveTab] = useState<ProfileTabId>('general');
     const ep = existingProfile ?? null;
@@ -165,18 +227,10 @@ export function ProfileEditorModal({
     const [autonomousInteractionIntervalMs, setAutonomousInteractionIntervalMs] = useState<number>(ep?.autonomousInteractionIntervalMs ?? 10000);
 
     const [enableAutoSpeechDetection, setEnableAutoSpeechDetection] = useState<boolean>(ep?.enableAutoSpeechDetection ?? false);
-    const [speechVolumeActivationThreshold, setSpeechVolumeActivationThreshold] = useState<number>(
-        ep?.speechVolumeActivationThreshold ?? 18
-    );
-    const [speechSilenceVolumeActivationThreshold, setSpeechSilenceVolumeActivationThreshold] = useState<number>(
-        ep?.speechSilenceVolumeActivationThreshold ?? 8
-    );
-    const [speechSilenceThresholdMs, setSpeechSilenceThresholdMs] = useState<number>(
-        ep?.speechSilenceThresholdMs ?? 1400
-    );
-    const [voiceActivityProbabilityThreshold, setVoiceActivityProbabilityThreshold] = useState<number>(
-        ep?.voiceActivityProbabilityThreshold ?? 0.5
-    );
+    const [speechVolumeActivationThreshold, setSpeechVolumeActivationThreshold] = useState<number>(ep?.speechVolumeActivationThreshold ?? 18);
+    const [speechSilenceVolumeActivationThreshold, setSpeechSilenceVolumeActivationThreshold] = useState<number>(ep?.speechSilenceVolumeActivationThreshold ?? 8);
+    const [speechSilenceThresholdMs, setSpeechSilenceThresholdMs] = useState<number>(ep?.speechSilenceThresholdMs ?? 1400);
+    const [voiceActivityProbabilityThreshold, setVoiceActivityProbabilityThreshold] = useState<number>(ep?.voiceActivityProbabilityThreshold ?? 0.5);
 
     const [forceNameReveal, setForceNameReveal] = useState(ep?.forceNameReveal ?? false);
     const [enableAmbientNarration, setEnableAmbientNarration] = useState(ep?.enableAmbientNarration ?? false);
@@ -217,6 +271,11 @@ export function ProfileEditorModal({
     const [tools, setTools] = useState<Record<tool, tristateInteger>>(mergeToolsWithDefaults(ep?.tools));
     const [toolSearchQuery, setToolSearchQuery] = useState('');
     const [narrateTexts, setNarrateTexts] = useState<Record<textType, boolean>>({ ...defaultNarrateTexts });
+    
+    const [narrateTextCharacterIds, setNarrateTextCharacterIds] = useState<Record<textType, string>>(
+        ep?.narrateTextCharacterIds ?? ({} as Record<textType, string>)
+    );
+
     const [inputStrategy, setInputStrategy] = useState<(promptBlockType | string)[]>(ep?.inputStrategy?.length ? ep.inputStrategy : [...defaultInputStrategy]);
     const [summarizationSteps, setSummarizationSteps] = useState<SummarizationStep[]>(
         ep?.summarizationSteps != null ? [...ep.summarizationSteps].sort((a, b) => a.order - b.order) : getDefaultSummarizationSteps()
@@ -349,6 +408,7 @@ export function ProfileEditorModal({
             voiceActivityDetectionDeviceType,
             volume, stripThinkTokens, tools: { ...tools },
             narrateTexts: { ...narrateTexts },
+            narrateTextCharacterIds: { ...narrateTextCharacterIds },
             inputStrategy: [...inputStrategy],
             summarizationSteps: summarizationSteps.map((s, i) => ({
                 ...s, id: s.id || `step-${uuidv4()}`, order: i,
@@ -597,7 +657,7 @@ export function ProfileEditorModal({
                                     <div style={FIELD_HINT_STYLE}>{selectedToolUsageDisplayMode.description}</div>
                                 </div>
                                 <div style={{ marginTop: '12px', marginBottom: '12px' }}>
-                                    <label className="editor-label editor-label-small">Tool Usage Placement Mode</label>
+                                    <label className="editor-label editor-label-small">Tool Usage Display Placement Mode</label>
                                     <select value={toolUsageDisplayPlacementMode} onChange={(e) => setToolUsageDisplayPlacementMode(e.target.value as toolUsageDisplayPlacementMode)} className="editor-select" style={{ width: '100%' }}>
                                         {TOOL_USAGE_DISPLAY_PLACEMENT_MODES.map(mode => (<option key={mode.value} value={mode.value}>{mode.label}</option>))}
                                     </select>
@@ -608,7 +668,12 @@ export function ProfileEditorModal({
 
                             <div className="editor-section">
                                 <span className="editor-section-title">Voice Narration</span>
-                                <div className="voice-narration-grid">
+                                <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '12px' }}>
+                                    Enable narration for specific text types and optionally assign a specific character to read them.
+                                </div>
+                                
+                                {/* 1. Checkboxes (Buttons) First */}
+                                <div className="voice-narration-grid" style={{ marginBottom: '16px' }}>
                                     {narrateTextKeys.map(type => (
                                         <label key={type} className="voice-narration-toggle">
                                             <input 
@@ -621,6 +686,18 @@ export function ProfileEditorModal({
                                         </label>
                                     ))}
                                 </div>
+
+                                {/* 2. EntitySelect Dropdowns Strictly BELOW */}
+                                {narrateTextKeys.filter(type => narrateTexts[type]).map(type => (
+                                    <div key={type} style={{ marginBottom: '16px' }}>
+                                        <NarratorCharacterSelect
+                                            label={`Narrator for ${narrateTextLabels[type]}`}
+                                            value={narrateTextCharacterIds[type] || ''}
+                                            onChange={(id) => setNarrateTextCharacterIds(prev => ({ ...prev, [type]: id }))}
+                                            allCharacters={allCharacters}
+                                        />
+                                    </div>
+                                ))}
                             </div>
 
                             <div className="editor-section"><span className="editor-section-title">Output Processing</span><ProfileCheckbox checked={stripThinkTokens} onChange={setStripThinkTokens} label="Strip Think Tokens" hint="Remove thinking tokens from displayed output. The model still uses them internally." /></div>
@@ -692,45 +769,15 @@ export function ProfileEditorModal({
                             <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '8px' }}>-1 = force off for all characters. 0 = defer to each character's own setting. 1 = force on for all characters.</div>
 
                             <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-                                <button
-                                    type="button"
-                                    className="toolbar-button"
-                                    onClick={handleSelectAllTools}
-                                    style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}
-                                >
-                                    Force All On
-                                </button>
-                                <button
-                                    type="button"
-                                    className="toolbar-button"
-                                    onClick={handleResetToolsToDefaults}
-                                    style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}
-                                >
-                                    Reset to Defaults
-                                </button>
-                                <button
-                                    type="button"
-                                    className="toolbar-button"
-                                    onClick={handleDeselectAllTools}
-                                    style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}
-                                >
-                                    Force All Off
-                                </button>
+                                <button type="button" className="toolbar-button" onClick={handleSelectAllTools} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>Force All On</button>
+                                <button type="button" className="toolbar-button" onClick={handleResetToolsToDefaults} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>Reset to Defaults</button>
+                                <button type="button" className="toolbar-button" onClick={handleDeselectAllTools} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>Force All Off</button>
                             </div>
 
-                            <input
-                                type="text"
-                                value={toolSearchQuery}
-                                onChange={e => setToolSearchQuery(e.target.value)}
-                                className="editor-input"
-                                placeholder="Search tools..."
-                                style={{ marginBottom: '12px', fontSize: '0.75rem', padding: '6px 10px' }}
-                            />
+                            <input type="text" value={toolSearchQuery} onChange={e => setToolSearchQuery(e.target.value)} className="editor-input" placeholder="Search tools..." style={{ marginBottom: '12px', fontSize: '0.75rem', padding: '6px 10px' }} />
 
                             {filteredToolKeys.length === 0 && (
-                                <div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic', padding: '8px 0' }}>
-                                    No tools match "{toolSearchQuery}".
-                                </div>
+                                <div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic', padding: '8px 0' }}>No tools match "{toolSearchQuery}".</div>
                             )}
 
                             {filteredToolKeys.map(toolName => (<div key={toolName} style={{ marginBottom: '12px' }}><div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>{toolLabels[toolName]} Override</label><span style={SLIDER_VALUE_STYLE}>{tools[toolName] === -1 ? '(Force Off)' : tools[toolName] === 1 ? '(Force On)' : '(Character default)'}</span></div><SliderInput label="" value={tools[toolName]} minimumValue={-1} maximumValue={1} stepValue={1} decimals={0} onChange={(val) => handleToolChange(toolName, Math.round(val) as tristateInteger)} description="" /></div>))}
@@ -755,13 +802,7 @@ export function ProfileEditorModal({
                                 
                                 <div style={{ marginTop: '16px' }}>
                                     <label className="editor-label editor-label-small">Summarization Instruction</label>
-                                    <textarea 
-                                        value={summarizationInstruction} 
-                                        onChange={(e) => setSummarizationInstruction(e.target.value)} 
-                                        className="editor-textarea" 
-                                        placeholder="Custom instruction for the summarization model. Leave empty to use system default."
-                                        rows={3}
-                                    />
+                                    <textarea value={summarizationInstruction} onChange={(e) => setSummarizationInstruction(e.target.value)} className="editor-textarea" placeholder="Custom instruction for the summarization model. Leave empty to use system default." rows={3} />
                                     <div style={FIELD_HINT_STYLE}>If empty, the system will use the built-in default summarization instruction.</div>
                                 </div>
                             </div>
@@ -772,39 +813,21 @@ export function ProfileEditorModal({
                         <>
                             <div className="editor-section">
                                 <span className="editor-section-title">Cache Efficiency Levels</span>
-                                <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '12px' }}>
-                                    Control how much participant content is frozen into the static prompt prefix for provider-side caching. Each category is independent. Higher levels improve cache hit rates at the cost of including more content upfront.
-                                </div>
+                                <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '12px' }}>Control how much participant content is frozen into the static prompt prefix for provider-side caching.</div>
                                 {cacheCategories.map(category => (
                                     <div key={category} style={{ marginBottom: '16px' }}>
                                         <div style={SLIDER_HEADER_STYLE}>
                                             <label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>{category}</label>
-                                            <span style={SLIDER_VALUE_STYLE}>
-                                                {cacheEfficiencyLevels[category] === 0 ? '(No optimization)' : cacheEfficiencyLevels[category] === 1 ? '(Co-located only)' : '(All participants)'}
-                                            </span>
+                                            <span style={SLIDER_VALUE_STYLE}>{cacheEfficiencyLevels[category] === 0 ? '(No optimization)' : cacheEfficiencyLevels[category] === 1 ? '(Co-located only)' : '(All participants)'}</span>
                                         </div>
-                                        <SliderInput
-                                            label=""
-                                            value={cacheEfficiencyLevels[category]}
-                                            minimumValue={0}
-                                            maximumValue={2}
-                                            stepValue={1}
-                                            decimals={0}
-                                            onChange={(val) => handleCacheLevelChange(category, val)}
-                                            description={CACHE_EFFICIENCY_DESCRIPTIONS[category][Math.round(cacheEfficiencyLevels[category])] || ''}
-                                        />
+                                        <SliderInput label="" value={cacheEfficiencyLevels[category]} minimumValue={0} maximumValue={2} stepValue={1} decimals={0} onChange={(val) => handleCacheLevelChange(category, val)} description={CACHE_EFFICIENCY_DESCRIPTIONS[category][Math.round(cacheEfficiencyLevels[category])] || ''} />
                                     </div>
                                 ))}
                             </div>
 
                             <div className="editor-section">
                                 <span className="editor-section-title">Volatile Section Ordering</span>
-                                <ProfileCheckbox
-                                    checked={minimalVolatileCacheMode}
-                                    onChange={setMinimalVolatileCacheMode}
-                                    label="Minimal Volatile Cache Mode"
-                                    hint="When enabled, volatile sections (date/time, weather, fatigue, inventory, tools, location) are forced to the end of the prompt regardless of input strategy ordering. This maximizes the stable prefix for provider-side caching. When disabled, your configured prompt block order is respected exactly as-is."
-                                />
+                                <ProfileCheckbox checked={minimalVolatileCacheMode} onChange={setMinimalVolatileCacheMode} label="Minimal Volatile Cache Mode" hint="When enabled, volatile sections are forced to the end of the prompt regardless of input strategy ordering." />
                             </div>
                         </>
                     )}
@@ -813,86 +836,39 @@ export function ProfileEditorModal({
                         <>
                             <div className="editor-section">
                                 <span className="editor-section-title">Language Model Handling</span>
-                                <ProfileCheckbox 
-                                    checked={enableSpeculativeMarkov} 
-                                    onChange={setEnableSpeculativeMarkov} 
-                                    label="Enable Speculative Markov" 
-                                    hint="Uses a local Markov chain trained on each character's own message history to predict and append highly confident tokens during streaming, reducing API output costs and perceived latency and may impact reasoning. Only aborts and resumes the stream when token savings exceed the network latency penalty." 
-                                />
-                                <ProfileCheckbox 
-                                    checked={doNotInjectDefaultStopTokens} 
-                                    onChange={setDoNotInjectDefaultStopTokens} 
-                                    label="Do Not Inject Default Stop Tokens" 
-                                    hint="Prevent default stop tokens from being injected into the request. Only custom stop patterns will be used." 
-                                    spaced 
-                                />
+                                <ProfileCheckbox checked={enableSpeculativeMarkov} onChange={setEnableSpeculativeMarkov} label="Enable Speculative Markov" hint="Uses a local Markov chain trained on each character's own message history to predict and append highly confident tokens during streaming." />
+                                <ProfileCheckbox checked={doNotInjectDefaultStopTokens} onChange={setDoNotInjectDefaultStopTokens} label="Do Not Inject Default Stop Tokens" hint="Prevent default stop tokens from being injected into the request. Only custom stop patterns will be used." spaced />
                             </div>
 
                             <div className="editor-section">
                                 <span className="editor-section-title">Hardware Acceleration</span>
-                                <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>
-                                    Control which hardware backend is used for local browser-side AI models. Auto attempts WebGPU and falls back to CPU. Forcing CPU saves VRAM for the main LLM backend.
-                                </div>
-
+                                <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>Control which hardware backend is used for local browser-side AI models.</div>
                                 <div className="editor-row">
                                     <div>
                                         <label htmlFor="sentimental-analysis-device-type" className="editor-label editor-label-small">Sentiment Analysis (DistilBERT)</label>
-                                        <select
-                                            id="sentimental-analysis-device-type"
-                                            value={sentimentalAnalysisDeviceType}
-                                            onChange={(e) => setSentimentalAnalysisDeviceType(e.target.value as deviceType)}
-                                            className="editor-select"
-                                        >
-                                            <option value="auto">Auto</option>
-                                            <option value="gpu">GPU (WebGPU)</option>
-                                            <option value="cpu">CPU (WASM)</option>
+                                        <select id="sentimental-analysis-device-type" value={sentimentalAnalysisDeviceType} onChange={(e) => setSentimentalAnalysisDeviceType(e.target.value as deviceType)} className="editor-select">
+                                            <option value="auto">Auto</option><option value="gpu">GPU (WebGPU)</option><option value="cpu">CPU (WASM)</option>
                                         </select>
-                                        <div style={FIELD_HINT_STYLE}>Used for character expression swapping.</div>
                                     </div>
                                     <div>
                                         <label htmlFor="text-to-speech-device-type" className="editor-label editor-label-small">Text-To-Speech (Kokoro 82M)</label>
-                                        <select
-                                            id="text-to-speech-device-type"
-                                            value={textToSpeechDeviceType}
-                                            onChange={(e) => setTextToSpeechDeviceType(e.target.value as deviceType)}
-                                            className="editor-select"
-                                        >
-                                            <option value="auto">Auto</option>
-                                            <option value="gpu">GPU (WebGPU)</option>
-                                            <option value="cpu">CPU (WASM)</option>
+                                        <select id="text-to-speech-device-type" value={textToSpeechDeviceType} onChange={(e) => setTextToSpeechDeviceType(e.target.value as deviceType)} className="editor-select">
+                                            <option value="auto">Auto</option><option value="gpu">GPU (WebGPU)</option><option value="cpu">CPU (WASM)</option>
                                         </select>
-                                        <div style={FIELD_HINT_STYLE}>Used for generating spoken audio from text.</div>
                                     </div>
                                 </div>
-
                                 <div className="editor-row" style={{ marginTop: '12px' }}>
                                     <div>
                                         <label htmlFor="speech-to-text-device-type" className="editor-label editor-label-small">Speech-To-Text (Whisper Tiny)</label>
-                                        <select
-                                            id="speech-to-text-device-type"
-                                            value={speechToTextDeviceType}
-                                            onChange={(e) => setSpeechToTextDeviceType(e.target.value as deviceType)}
-                                            className="editor-select"
-                                        >
-                                            <option value="auto">Auto</option>
-                                            <option value="gpu">GPU (WebGPU)</option>
-                                            <option value="cpu">CPU (WASM)</option>
+                                        <select id="speech-to-text-device-type" value={speechToTextDeviceType} onChange={(e) => setSpeechToTextDeviceType(e.target.value as deviceType)} className="editor-select">
+                                            <option value="auto">Auto</option><option value="gpu">GPU (WebGPU)</option><option value="cpu">CPU (WASM)</option>
                                         </select>
-                                        <div style={FIELD_HINT_STYLE}>Used for voice input transcription.</div>
                                     </div>
                                     <div>
                                         <label htmlFor="voice-activity-detection-device-type" className="editor-label editor-label-small">Voice Activity Detection (Silero)</label>
-                                        <select
-                                            id="voice-activity-detection-device-type"
-                                            value={voiceActivityDetectionDeviceType}
-                                            onChange={(e) => setVoiceActivityDetectionDeviceType(e.target.value as deviceType)}
-                                            className="editor-select"
-                                        >
-                                            <option value="auto">Auto</option>
-                                            <option value="gpu">GPU (WebGPU)</option>
-                                            <option value="cpu">CPU (WASM)</option>
+                                        <select id="voice-activity-detection-device-type" value={voiceActivityDetectionDeviceType} onChange={(e) => setVoiceActivityDetectionDeviceType(e.target.value as deviceType)} className="editor-select">
+                                            <option value="auto">Auto</option><option value="gpu">GPU (WebGPU)</option><option value="cpu">CPU (WASM)</option>
                                         </select>
-                                        <div style={FIELD_HINT_STYLE}>Used for detecting speech boundaries.</div>
                                     </div>
                                 </div>
                             </div>
@@ -900,119 +876,31 @@ export function ProfileEditorModal({
                             <div className="editor-section">
                                 <div className="sampler-section-header">
                                     <span className="editor-section-title" style={{ marginBottom: 0 }}>Auto-Resume Signals</span>
-                                    <button 
-                                        type="button" 
-                                        className="editor-button editor-button-save" 
-                                        onClick={handleAddAutoResumeSignal} 
-                                        style={{ fontSize: '0.65rem', padding: '4px 12px', minHeight: '28px', height: '28px' }}
-                                    >
-                                        + Add Signal
-                                    </button>
+                                    <button type="button" className="editor-button editor-button-save" onClick={handleAddAutoResumeSignal} style={{ fontSize: '0.65rem', padding: '4px 12px', minHeight: '28px', height: '28px' }}>+ Add Signal</button>
                                 </div>
-                                <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '8px' }}>
-                                    Forces the model to continue generating if the output stops prematurely. Injects the stop pattern dynamically to steer the completion.
-                                </div>
-
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }}>
                                     {autoResumeSignals.map((signal, index) => {
                                         const isExpanded = expandedSignalIndex === index;
                                         const signalName = signal.stopPattern || '(No Stop Pattern Set)';
-                                        
                                         return (
                                             <div key={index}>
-                                                <div 
-                                                    className="sampler-param-row" 
-                                                    style={{ padding: '6px 8px', cursor: 'pointer' }} 
-                                                    onClick={() => setExpandedSignalIndex(isExpanded ? null : index)}
-                                                >
+                                                <div className="sampler-param-row" style={{ padding: '6px 8px', cursor: 'pointer' }} onClick={() => setExpandedSignalIndex(isExpanded ? null : index)}>
                                                     <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={STEP_NAME_STYLE}>
-                                                            {index + 1}. {signalName}
-                                                        </span>
-                                                        {signal.regularExpressionActivationTrigger && (
-                                                            <span style={{ fontSize: '0.6rem', opacity: 0.6, background: 'var(--code-bg)', padding: '1px 4px', borderRadius: '3px' }}>Regex</span>
-                                                        )}
+                                                        <span style={STEP_NAME_STYLE}>{index + 1}. {signalName}</span>
                                                     </div>
                                                     <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-                                                        <span style={{ fontSize: '0.65rem', opacity: 0.6, marginRight: '4px' }}>
-                                                            Maximum Auto-Resumes: {signal.maximumNumberOfAutoResumes ?? 10}
-                                                        </span>
-                                                        <button 
-                                                            type="button" 
-                                                            onClick={() => handleRemoveAutoResumeSignal(index)} 
-                                                            className="toolbar-button" 
-                                                            title="Remove signal" 
-                                                            style={TOOLBAR_BTN_DELETE_STYLE}
-                                                        >×</button>
+                                                        <button type="button" onClick={() => handleRemoveAutoResumeSignal(index)} className="toolbar-button" title="Remove signal" style={TOOLBAR_BTN_DELETE_STYLE}>×</button>
                                                         <span style={{ fontSize: '0.7rem', opacity: 0.5, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
                                                     </div>
                                                 </div>
-                                                
                                                 {isExpanded && (
                                                     <div style={STEP_EXPANDED_STYLE}>
                                                         <div className="editor-row">
-                                                            <div>
-                                                                <label className="editor-label editor-label-small">Activation Trigger (Regex)</label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={signal.regularExpressionActivationTrigger || ''}
-                                                                    onChange={(e) => handleUpdateAutoResumeSignal(index, 'regularExpressionActivationTrigger', e.target.value)}
-                                                                    className="editor-input"
-                                                                    placeholder="e.g., \[Thinking\]"
-                                                                />
-                                                                <div style={FIELD_HINT_STYLE}>Optional. Activates auto-resume if matched.</div>
-                                                            </div>
-                                                            <div>
-                                                                <label className="editor-label editor-label-small">Deactivation Trigger (Regex)</label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={signal.regularExpressionDeactivationTrigger || ''}
-                                                                    onChange={(e) => handleUpdateAutoResumeSignal(index, 'regularExpressionDeactivationTrigger', e.target.value)}
-                                                                    className="editor-input"
-                                                                    placeholder="e.g., \[End\]"
-                                                                />
-                                                                <div style={FIELD_HINT_STYLE}>Optional. Deactivates auto-resume if matched.</div>
-                                                            </div>
+                                                            <div><label className="editor-label editor-label-small">Stop Pattern</label><input type="text" value={signal.stopPattern} onChange={(e) => handleUpdateAutoResumeSignal(index, 'stopPattern', e.target.value)} className="editor-input" placeholder="e.g., \n\n" /></div>
+                                                            <div><label className="editor-label editor-label-small">Minimum Length</label><input type="text" value={signal.minimumLength || '0'} onChange={(e) => handleUpdateAutoResumeSignal(index, 'minimumLength', e.target.value)} className="editor-input" placeholder="0" /></div>
                                                         </div>
-                                                        
                                                         <div className="editor-row">
-                                                            <div>
-                                                                <label className="editor-label editor-label-small">Stop Pattern</label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={signal.stopPattern}
-                                                                    onChange={(e) => handleUpdateAutoResumeSignal(index, 'stopPattern', e.target.value)}
-                                                                    className="editor-input"
-                                                                    placeholder="e.g., \n\n"
-                                                                />
-                                                                <div style={FIELD_HINT_STYLE}>Appended to sampler stop patterns if activated.</div>
-                                                            </div>
-                                                            <div>
-                                                                <label className="editor-label editor-label-small">Minimum Length</label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={signal.minimumLength || '0'}
-                                                                    onChange={(e) => handleUpdateAutoResumeSignal(index, 'minimumLength', e.target.value)}
-                                                                    className="editor-input"
-                                                                    placeholder="0"
-                                                                />
-                                                                <div style={FIELD_HINT_STYLE}>Minimum number of characters after activation before deactivation.</div>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="editor-row">
-                                                            <div>
-                                                                <label className="editor-label editor-label-small">Maximum Number Of Auto-Resumes</label>
-                                                                <input
-                                                                    type="number"
-                                                                    value={signal.maximumNumberOfAutoResumes ?? 10}
-                                                                    onChange={(e) => handleUpdateAutoResumeSignal(index, 'maximumNumberOfAutoResumes', e.target.value)}
-                                                                    className="editor-input"
-                                                                    placeholder="10"
-                                                                    min="0"
-                                                                />
-                                                                <div style={FIELD_HINT_STYLE}>0 = disabled. Default is 10.</div>
-                                                            </div>
+                                                            <div><label className="editor-label editor-label-small">Maximum Auto-Resumes</label><input type="number" value={signal.maximumNumberOfAutoResumes ?? 10} onChange={(e) => handleUpdateAutoResumeSignal(index, 'maximumNumberOfAutoResumes', e.target.value)} className="editor-input" placeholder="10" min="0" /></div>
                                                             <div></div>
                                                         </div>
                                                     </div>
@@ -1020,46 +908,23 @@ export function ProfileEditorModal({
                                             </div>
                                         );
                                     })}
-                                    
-                                    {autoResumeSignals.length === 0 && (
-                                        <div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '12px 0' }}>
-                                            No auto-resume signals configured. The model will rely entirely on natural stop sequences.
-                                        </div>
-                                    )}
+                                    {autoResumeSignals.length === 0 && (<div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '12px 0' }}>No auto-resume signals configured.</div>)}
                                 </div>
                             </div>
 
                             <div className="editor-section">
                                 <span className="editor-section-title">Samplers</span>
-                                <div style={CHECKBOX_HINT_STYLE}>Assign specific samplers for different generation tasks. Leave empty to use system defaults.</div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px', marginTop: '12px' }}>
-                                    {/* ✅ UPDATED: Split Character Sampler into Language Model and Text-To-Speech */}
-                                    <div>
-                                        <label className="editor-label editor-label-small">Character Language Model Sampler</label>
-                                        <select value={characterLanguageModelSamplerId} onChange={(e) => setCharacterLanguageModelSamplerId(e.target.value)} className="editor-select">
-                                            <option value="">(System Default)</option>
-                                            {allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                        </select>
-                                        <div style={FIELD_HINT_STYLE}>Used for main character text generation (dialogue/actions).</div>
-                                    </div>
-                                    <div>
-                                        <label className="editor-label editor-label-small">Character Text-To-Speech Model Sampler</label>
-                                        <select value={characterTextToSpeechModelSamplerId} onChange={(e) => setCharacterTextToSpeechModelSamplerId(e.target.value)} className="editor-select">
-                                            <option value="">(System Default)</option>
-                                            {allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                        </select>
-                                        <div style={FIELD_HINT_STYLE}>Used for vocal expressiveness and acoustic token generation.</div>
-                                    </div>
-                                    
-                                    <div><label className="editor-label editor-label-small">Web Summarization Sampler</label><select value={webSummarizationSamplerId} onChange={(e) => setWebSummarizationSamplerId(e.target.value)} className="editor-select"><option value="">(System Default)</option>{allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div style={FIELD_HINT_STYLE}>Used for summarizing web search results.</div></div>
-                                    <div><label className="editor-label editor-label-small">Interaction Data Sampler</label><select value={interactionDataSummarizationSamplerId} onChange={(e) => setInteractionDataSummarizationSamplerId(e.target.value)} className="editor-select"><option value="">(System Default)</option>{allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div style={FIELD_HINT_STYLE}>Used for summarizing chat history/context.</div></div>
-                                    <div><label className="editor-label editor-label-small">AI Recommendation Sampler</label><select value={aiRecommendationSamplerId} onChange={(e) => setAiRecommendationSamplerId(e.target.value)} className="editor-select"><option value="">(System Default)</option>{allSamplers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select><div style={FIELD_HINT_STYLE}>Used for AI recommendation generations.</div></div>
+                                    <SamplerSelect label="Character Language Model Sampler" value={characterLanguageModelSamplerId} onChange={setCharacterLanguageModelSamplerId} allSamplers={allSamplers} description="Used for main character text generation." />
+                                    <SamplerSelect label="Character Text-To-Speech Model Sampler" value={characterTextToSpeechModelSamplerId} onChange={setCharacterTextToSpeechModelSamplerId} allSamplers={allSamplers} description="Used for vocal expressiveness." />
+                                    <SamplerSelect label="Web Summarization Sampler" value={webSummarizationSamplerId} onChange={setWebSummarizationSamplerId} allSamplers={allSamplers} description="Used for summarizing web search results." />
+                                    <SamplerSelect label="Interaction Data Sampler" value={interactionDataSummarizationSamplerId} onChange={setInteractionDataSummarizationSamplerId} allSamplers={allSamplers} description="Used for summarizing chat history/context." />
+                                    <SamplerSelect label="AI Recommendation Sampler" value={aiRecommendationSamplerId} onChange={setAiRecommendationSamplerId} allSamplers={allSamplers} description="Used for AI recommendation generations." />
                                 </div>
                             </div>
 
                             <div className="editor-section">
                                 <span className="editor-section-title">Stop Patterns</span>
-                                <div style={CHECKBOX_HINT_STYLE}>Assign specific stop patterns for different generation tasks. Leave empty to use sampler defaults.</div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px', marginTop: '12px' }}>
                                     <StopPatternSelect label="Character Stop Pattern" value={characterStopPatternId} onChange={setCharacterStopPatternId} allStopPatterns={allStopPatterns} />
                                     <StopPatternSelect label="Web Summarization Stop Pattern" value={webSummarizationStopPatternId} onChange={setWebSummarizationStopPatternId} allStopPatterns={allStopPatterns} />

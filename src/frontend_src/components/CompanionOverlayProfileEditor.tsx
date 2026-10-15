@@ -1,7 +1,8 @@
 // src/frontend_src/components/CompanionOverlayProfileEditor.tsx
 import { useState } from 'react';
-import type { Profile, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode } from '../types';
+import type { Profile, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Character } from '../types';
 import { SliderInput } from './SliderInput';
+import { EntitySelect } from './EntitySelect';
 import { narrateTextLabels } from '../dictionaries/texts';
 import { defaultNarrateTexts } from '../dictionaries/defaults';
 
@@ -9,6 +10,7 @@ interface CompanionOverlayProfileEditorProps {
     profile: Profile | null;
     onClose: () => void;
     onSave: (profile: Profile) => void;
+    allCharacters?: Character[];
 }
 
 const TOOL_USAGE_DISPLAY_MODES: { value: toolUsageDisplayMode; label: string; description: string }[] = [
@@ -47,7 +49,34 @@ function ProfileCheckbox({ checked, onChange, label, hint, spaced = false }: { c
     );
 }
 
-export function CompanionOverlayProfileEditor({ profile, onClose, onSave }: CompanionOverlayProfileEditorProps) {
+function NarratorCharacterSelect({
+    label,
+    value,
+    onChange,
+    allCharacters,
+}: {
+    label: string;
+    value: string;
+    onChange: (id: string) => void;
+    allCharacters: Character[];
+}) {
+    const [search, setSearch] = useState('');
+    return (
+        <EntitySelect
+            label={label}
+            items={allCharacters}
+            selectedId={value || null}
+            onSelect={onChange}
+            searchQuery={search}
+            onSearchChange={setSearch}
+            allowNone={true}
+            noneLabel="System Default Narrator"
+            noneDescription="Use the default TTS voice."
+        />
+    );
+}
+
+export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCharacters = [] }: CompanionOverlayProfileEditorProps) {
     const ep = profile;
 
     const [name, setName] = useState(ep?.name || '');
@@ -76,6 +105,10 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave }: Comp
         ...(ep?.narrateTexts ?? {}),
     });
 
+    const [narrateTextCharacterIds, setNarrateTextCharacterIds] = useState<Record<textType, string>>(
+        ep?.narrateTextCharacterIds ?? ({} as Record<textType, string>)
+    );
+
     const handleNarrateToggle = (type: textType, checked: boolean) => setNarrateTexts(prev => ({ ...prev, [type]: checked }));
     const selectedToolUsageDisplayMode = TOOL_USAGE_DISPLAY_MODES.find(m => m.value === toolUsageDisplayMode) ?? TOOL_USAGE_DISPLAY_MODES[0];
     const selectedToolUsageDisplayPlacementMode = TOOL_USAGE_DISPLAY_PLACEMENT_MODES.find(m => m.value === toolUsageDisplayPlacementMode) ?? TOOL_USAGE_DISPLAY_PLACEMENT_MODES[1];
@@ -92,7 +125,9 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave }: Comp
             speechSilenceThresholdMs,
             voiceActivityProbabilityThreshold,
             forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, toolUsageDisplayPlacementMode, enableCharacterExpression,
-            volume, stripThinkTokens, narrateTexts: { ...narrateTexts },
+            volume, stripThinkTokens, 
+            narrateTexts: { ...narrateTexts },
+            narrateTextCharacterIds: { ...narrateTextCharacterIds },
             lastUpdatedTimestamp: Date.now(),
         });
         onClose();
@@ -205,7 +240,7 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave }: Comp
                             <div className="editor-field-hint">{selectedToolUsageDisplayMode.description}</div>
                         </div>
                         <div className="editor-field-group">
-                            <label className="editor-label editor-label-small">Tool Usage Placement Mode</label>
+                            <label className="editor-label editor-label-small">Tool Usage Display Placement Mode</label>
                             <select value={toolUsageDisplayPlacementMode} onChange={(e) => setToolUsageDisplayPlacementMode(e.target.value as toolUsageDisplayPlacementMode)} className="editor-select editor-select-full">
                                 {TOOL_USAGE_DISPLAY_PLACEMENT_MODES.map(mode => (<option key={mode.value} value={mode.value}>{mode.label}</option>))}
                             </select>
@@ -229,6 +264,18 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave }: Comp
                                 </label>
                             ))}
                         </div>
+
+                        {/* ✅ EntitySelect Dropdowns Strictly BELOW */}
+                        {(Object.keys(narrateTextLabels) as textType[]).filter(type => narrateTexts[type]).map(type => (
+                            <div key={`narrator-${type}`} style={{ marginTop: '12px' }}>
+                                <NarratorCharacterSelect
+                                    label={`Narrator for ${narrateTextLabels[type]}`}
+                                    value={narrateTextCharacterIds[type] || ''}
+                                    onChange={(id) => setNarrateTextCharacterIds(prev => ({ ...prev, [type]: id }))}
+                                    allCharacters={allCharacters}
+                                />
+                            </div>
+                        ))}
                     </div>
 
                     <div className="editor-section">

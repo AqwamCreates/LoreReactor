@@ -671,7 +671,12 @@ export function CompanionOverlay() {
             )}
 
             {activeSettingsModal === 'profile-edit' && editingProfile && (
-                <CompanionOverlayProfileEditor profile={editingProfile} onClose={() => { setActiveSettingsModal('profile-list'); setEditingProfile(null); }} onSave={handleSaveProfile} />
+                <CompanionOverlayProfileEditor 
+                    profile={editingProfile} 
+                    onClose={() => { setActiveSettingsModal('profile-list'); setEditingProfile(null); }} 
+                    onSave={handleSaveProfile} 
+                    allCharacters={state.allCharacters || []} 
+                />
             )}
 
             {activeSettingsModal === 'model' && (

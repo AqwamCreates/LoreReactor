@@ -1,4 +1,4 @@
-import type { tool } from '../types';
+import type { textType, tool } from '../types';
 
 export const toolLabels: Record<tool, string> = {
     whisper: 'Whisper', think: 'Think', 
