@@ -81,7 +81,7 @@ export class StreamingVoiceTracker {
                     const idsToFetch = new Set(Object.values(narrateTextCharacterIds).filter(id => id && id !== this.character.id));
                     await Promise.all(Array.from(idsToFetch).map(async (id) => {
                         const char = this.allCharacters.find(c => c.id === id);
-                        if (char && char.voice?.voiceFilename && char.voice?.textContent) {
+                        if (char?.voice?.voiceFilename && char.voice?.textContent) {
                             const b64 = await fetchVoiceReference(char);
                             if (b64) this.voiceReferences.set(id, b64);
                         }
