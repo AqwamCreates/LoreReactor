@@ -737,7 +737,7 @@ function App() {
                 overlayWin = new WebviewWindow('companion-overlay', {
                     url: 'index.html',
                     title: 'LoreReactor Companion',
-                    width: 360,
+                    width: 340,
                     height: 540,
                     transparent: true,
                     decorations: false,
