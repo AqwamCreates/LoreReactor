@@ -192,22 +192,23 @@ export function extractNarratableText(
                 checkTypeChange();
                 i += 1;
                 continue;
-            } else if (!insideQuote && canOpen) {
+            }
+            if (!insideQuote && canOpen) {
                 insideQuote = true;
                 checkTypeChange();
                 i += 1;
                 continue;
-            } else if (insideQuote && !canClose && canOpen) {
+            } 
+            if (insideQuote && !canClose && canOpen) {
                 insideQuote = true;
-                checkTypeChange();
-                i += 1;
-                continue;
-            } else {
-                insideQuote = !insideQuote;
                 checkTypeChange();
                 i += 1;
                 continue;
             }
+            insideQuote = !insideQuote;
+            checkTypeChange();
+            i += 1;
+            continue;
         }
 
         if (currentCharacter === '(') {
