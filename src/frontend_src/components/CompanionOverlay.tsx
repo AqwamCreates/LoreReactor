@@ -75,6 +75,7 @@ export function CompanionOverlay() {
             }
         };
         channel.postMessage({ type: 'REQUEST_STATE' });
+        channel.postMessage({ type: 'OVERLAY_OPENED' });
         return () => { channel.close(); };
     }, []);
 
@@ -290,8 +291,42 @@ export function CompanionOverlay() {
     const [actionPunctuation, setActionPunctuation] = useState<ActionPunctuation>('.');
     const [isAutoFormat, setIsAutoFormat] = useState(false);
 
+    // Broadcast overlay closed event to synchronize button glow in App.tsx
     const handleClose = useCallback(async () => {
-        try { await getCurrentWebviewWindow().hide(); } catch {}
+        try {
+            const channel = new BroadcastChannel('lorereactor-companion-sync');
+            channel.postMessage({ type: 'OVERLAY_CLOSED' });
+            channel.close();
+            await getCurrentWebviewWindow().hide();
+        } catch {}
+    }, []);
+
+    // Intercept Alt+F4 or window close requests so it hides and notifies App.tsx cleanly
+    useEffect(() => {
+        let unlisten: (() => void) | undefined;
+        try {
+            getCurrentWebviewWindow().onCloseRequested((event) => {
+                event.preventDefault();
+                handleClose();
+            }).then((fn) => { unlisten = fn; }).catch(() => {});
+        } catch {}
+
+        return () => {
+            if (unlisten) unlisten();
+        };
+    }, [handleClose]);
+
+    // Safety fallback for beforeunload
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            try {
+                const channel = new BroadcastChannel('lorereactor-companion-sync');
+                channel.postMessage({ type: 'OVERLAY_CLOSED' });
+                channel.close();
+            } catch {}
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, []);
 
     const handleActivateProfile = useCallback((profileId: string) => {

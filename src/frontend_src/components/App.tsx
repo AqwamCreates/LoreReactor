@@ -712,6 +712,18 @@ function App() {
         (window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__
     );
 
+    // Sync initial overlay visibility if running in Tauri
+    useEffect(() => {
+        if (!isRunningInTauri) return;
+        import('@tauri-apps/api/webviewWindow').then(({ WebviewWindow }) => {
+            WebviewWindow.getByLabel('companion-overlay').then((win) => {
+                if (win) {
+                    win.isVisible().then((visible) => setIsOverlayOpen(visible)).catch(() => {});
+                }
+            }).catch(() => {});
+        }).catch(() => {});
+    }, [isRunningInTauri]);
+
     const handleToggleOverlay = async () => {
         if (!isRunningInTauri) {
             addToast('Companion overlay is only available in the PC application version', 'info');
@@ -1134,6 +1146,10 @@ function App() {
                     type: 'STATE_UPDATE',
                     data: getCompanionStateSnapshotRef.current(),
                 });
+            } else if (e.data?.type === 'OVERLAY_CLOSED') {
+                setIsOverlayOpen(false);
+            } else if (e.data?.type === 'OVERLAY_OPENED') {
+                setIsOverlayOpen(true);
             } else if (e.data?.type === 'SEND_MESSAGE' && e.data?.text !== undefined) {
                 sendMessage(e.data.text, promptBlocks.promptBlocks, e.data.files || [], undefined);
             } else if (e.data?.type === 'INTERJECT_ACTION' && e.data?.label) {
