@@ -1,6 +1,7 @@
 // src/frontend_src/hooks/useVisualNovelSpriteStates.ts
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import type { ChatMessage } from '../types';
+import { useSessionStore } from './useSessionStore';
 
 const AMBIENT_NARRATOR_ID = '___ambient_narrator___';
 
@@ -592,6 +593,14 @@ function computeStatesAtHistoryIndex(
 
 export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOptions) {
     const { chatMessages, visibleCharacterIds, viewedMessageIndex } = options;
+    const interactionData = useSessionStore(s => s.interactionData);
+
+    const hasHistory = useMemo(() => {
+        if (!interactionData?.interactionHistories) return false;
+        return Object.values(interactionData.interactionHistories).some(arr => arr.length > 0);
+    }, [interactionData]);
+
+    const isReady = !hasHistory || chatMessages.length > 0;
 
     const { movementHistory, finalStates, jumpSignature, shakeSignature, fallSignature } = useMemo(() => {
         const history: VisualNovelMovementEntry[] = [];
@@ -600,6 +609,16 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
 
         for (let i = 0; i < visibleCharacterIds.length; i++) {
             states.set(visibleCharacterIds[i], getDistributedState(i, total));
+        }
+
+        if (!isReady) {
+            return { 
+                movementHistory: history, 
+                finalStates: states, 
+                jumpSignature: '',
+                shakeSignature: '',
+                fallSignature: '',
+            };
         }
 
         let lastJumpMessageId = '';
@@ -656,7 +675,7 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
             shakeSignature: lastShakeMessageId,
             fallSignature: lastFallMessageId,
         };
-    }, [chatMessages, visibleCharacterIds]);
+    }, [chatMessages, visibleCharacterIds, isReady]);
 
     const [rollbackOverride, setRollbackOverride] = useState<{ index: number; chatRef: ChatMessage[] } | null>(null);
 
@@ -678,8 +697,8 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
 
     const [isInitialLoad, setIsInitialLoad] = useState(true);
     useEffect(() => {
-        const id = requestAnimationFrame(() => setIsInitialLoad(false));
-        return () => cancelAnimationFrame(id);
+        const timer = setTimeout(() => setIsInitialLoad(false), 300);
+        return () => clearTimeout(timer);
     }, []);
 
     const [jumpingCharacterIds, setJumpingCharacterIds] = useState<Set<string>>(new Set());
