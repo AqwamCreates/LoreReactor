@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import type { 
     Character, Context, Location, AudioTrack, World, PromptBlock, 
     LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, 
-    Memory, Account, MultiplayerData, InteractionDataFolder, RawInteractionData, InteractionData, 
+    Memory, Account, MultiplayerData, EntityFolder, RawInteractionData, InteractionData, 
     ObjectData, ChatMessage
 } from '../types';
 import { localURL } from '../../configurations';
@@ -13,7 +13,6 @@ export type SearchTabId =
     | 'all' 
     | 'message' 
     | 'interactionData'
-    | 'interactionDataFolder'
     | 'character' 
     | 'context' 
     | 'location' 
@@ -28,6 +27,7 @@ export type SearchTabId =
     | 'memory' 
     | 'account' 
     | 'multiplayerData'
+    | 'entityFolder'
 
 export interface SuperSearchModalProps {
     onClose: () => void;
@@ -47,7 +47,7 @@ export interface SuperSearchModalProps {
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
     allRawInteractionDataShells: RawInteractionData[];
-    allInteractionDataFolders: InteractionDataFolder[];
+    allEntityFolders: EntityFolder[];
     currentInteractionData: InteractionData | null;
 
     onSelectEntity?: (tabId: SearchTabId, entity: ObjectData, parentEntity?: ObjectData, isReadOnly?: boolean) => void;
@@ -85,8 +85,8 @@ interface SearchMatchResult {
 const TAB_CONFIG: { id: SearchTabId; label: string; icon: string }[] = [
     { id: 'all', label: 'All', icon: '🔍' },
     { id: 'message', label: 'Messages', icon: '💬' },
-    { id: 'interactionData', label: 'Chats', icon: '📂' },
-    { id: 'interactionDataFolder', label: 'Folders', icon: '📁' },
+    { id: 'interactionData', label: 'Sessions', icon: '📂' },
+    { id: 'entityFolder', label: 'Folders', icon: '📁' },
     { id: 'character', label: 'Characters', icon: '🎭' },
     { id: 'context', label: 'Contexts', icon: '📜' },
     { id: 'location', label: 'Locations', icon: '📍' },
@@ -199,7 +199,7 @@ export function SuperSearchModal({
     allMemories,
     allAccounts,
     allMultiplayerData,
-    allInteractionDataFolders,
+    allEntityFolders,
     allRawInteractionDataShells,
     currentInteractionData,
     onSelectEntity,
@@ -342,7 +342,7 @@ export function SuperSearchModal({
 
     const categorizedResults = useMemo<Record<SearchTabId, SearchMatchResult[]>>(() => {
         const emptyMap: Record<SearchTabId, SearchMatchResult[]> = {
-            all: [], message: [], interactionData: [], interactionDataFolder: [], character: [], context: [],
+            all: [], message: [], interactionData: [], entityFolder: [], character: [], context: [],
             location: [], promptBlock: [], audioTrack: [], world: [], model: [],
             sampler: [], stopPattern: [], budgetStrategy: [], profile: [], memory: [],
             account: [], multiplayerData: []
@@ -403,7 +403,9 @@ export function SuperSearchModal({
 
         emptyMap.account = scanEntities(allAccounts, 'account', a => `🔑 ${a.name || a.username}`);
         emptyMap.multiplayerData = scanEntities(allMultiplayerData, 'multiplayerData', m => `👥 ${m.name}`);
-        emptyMap.interactionDataFolder = scanEntities(allInteractionDataFolders, 'interactionDataFolder', f => `📁 ${f.name}`);
+        
+        // ✅ UNIFIED FOLDER SEARCH
+        emptyMap.entityFolder = scanEntities(allEntityFolders, 'entityFolder', f => `📁 ${f.name} (${f.entityType})`);
         emptyMap.interactionData = scanEntities(allRawInteractionDataShells, 'interactionData', s => `📂 ${s.name || 'Untitled Session'}`);
 
         const seenMessageIds = new Set<string>();
@@ -462,7 +464,7 @@ export function SuperSearchModal({
         emptyMap.all = [
             ...emptyMap.message.slice(0, 10),
             ...emptyMap.interactionData.slice(0, 5),
-            ...emptyMap.interactionDataFolder.slice(0, 5),
+            ...emptyMap.entityFolder.slice(0, 5),
             ...emptyMap.character.slice(0, 5),
             ...emptyMap.context.slice(0, 5),
             ...emptyMap.location.slice(0, 5),
@@ -480,13 +482,7 @@ export function SuperSearchModal({
         ];
 
         return emptyMap;
-    }, [
-        lowerQuery, searchableCharacters, searchableContexts, searchableLocations, 
-        searchableAudioTracks, allPromptBlocks, allWorlds, allLanguageModels, 
-        allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, 
-        allMemories, allAccounts, allMultiplayerData, allInteractionDataFolders, allRawInteractionDataShells, 
-        currentInteractionData, messageToChatsMap, serverMessages, characterMap
-    ]);
+    }, [lowerQuery, searchableCharacters, searchableContexts, searchableLocations, searchableAudioTracks, allPromptBlocks, allWorlds, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells, currentInteractionData, allCharacters, messageToChatsMap, serverMessages, characterMap]);
 
     const displayedResults = useMemo(() => {
         return categorizedResults[activeTab] || [];
@@ -566,7 +562,7 @@ export function SuperSearchModal({
                 <div className="modal-body editor-modal-body" style={{ flex: 1, padding: '16px 20px' }}>
                     {!lowerQuery ? (
                         <div style={{ textAlign: 'center', padding: '60px 20px', opacity: 0.5, fontSize: '0.85rem' }}>
-                            Type to search across all lore, entities, prompts, and chat sessions.
+                            Type to search across all lore, entities, prompts, and sessions.
                         </div>
                     ) : displayedResults.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '60px 20px', opacity: 0.5, fontSize: '0.85rem' }}>
@@ -677,8 +673,8 @@ export function SuperSearchModal({
                                                     style={{ minHeight: '26px', fontSize: '0.7rem', padding: '2px 10px' }}
                                                 >
                                                     {item.tabId === 'interactionData' 
-                                                        ? 'Open Chat' 
-                                                        : item.tabId === 'interactionDataFolder'
+                                                        ? 'Open Session' 
+                                                        : item.tabId === 'entityFolder'
                                                             ? 'View Folder'
                                                             : item.isReadOnly 
                                                                 ? 'View Entity' 

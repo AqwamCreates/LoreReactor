@@ -19,7 +19,7 @@ import { useSessionStore } from '../hooks/useSessionStore';
 
 // ─── Manager Hooks ──────────────────────────────────────────────────
 import { useInteractionDataManager } from '../hooks/useInteractionDataManager';
-import { useInteractionDataFolderManager } from '../hooks/useInteractionDataFolderManager';
+import { useEntityFolderManager } from '../hooks/useEntityFolderManager';
 import { useCharacterManager } from '../hooks/useCharacterManager';
 import { useActionManager } from '../hooks/useActionManager';
 import { useContextManager } from '../hooks/useContextManager';
@@ -101,7 +101,7 @@ function App() {
 
     // ─── Manager Hooks ───────────────────────────────────────────────
     const interactionDatas = useInteractionDataManager();
-    const interactionDataFolders = useInteractionDataFolderManager();
+    const entityFolders = useEntityFolderManager(); // ✅ UNIFIED
     const characters = useCharacterManager();
     const actions = useActionManager(addToast);
     const contexts = useContextManager();
@@ -136,6 +136,7 @@ function App() {
         profile: { saveFunction: profiles.saveProfile, deleteFunction: profiles.deleteProfile, entityLabel: 'Profile' },
         account: { saveFunction: accounts.saveAccount, deleteFunction: accounts.deleteAccount, entityLabel: 'Account' },
         multiplayerData: { saveFunction: multiplayerDatas.saveMultiplayerData, deleteFunction: multiplayerDatas.deleteMultiplayerData, entityLabel: 'Multiplayer Data' },
+        interactionData: { saveFunction: interactionDatas.saveInteractionData, deleteFunction: interactionDatas.deleteInteractionData, entityLabel: 'Session' },
     });
 
     // ─── Session Store Selectors & Actions ───────────────────────────
@@ -354,16 +355,16 @@ function App() {
 
     // ─── Sync Folders to Zustand for Branch/Clone Inheritance ─────────
     useEffect(() => {
-        useSessionStore.getState().setAllInteractionDataFolders(interactionDataFolders.interactionDataFolders);
-        useSessionStore.getState().setSaveInteractionDataFolder(interactionDataFolders.saveFolder);
-    }, [interactionDataFolders.interactionDataFolders, interactionDataFolders.saveFolder]);
+        useSessionStore.getState().setAllEntityFolders(entityFolders.entityFolders);
+        useSessionStore.getState().setSaveEntityFolder(entityFolders.saveFolder);
+    }, [entityFolders.entityFolders, entityFolders.saveFolder]);
 
     // ─── Server Sync (Multi-Device State Updates) ────────────────────
     useServerSync({
         refreshers: {
             characters: characters.refresh,
             chats: interactionDatas.refresh,
-            folders: interactionDataFolders.refresh,
+            entityFolders: entityFolders.refresh,
             contexts: contexts.refresh,
             locations: locations.refresh,
             models: models.refresh,
@@ -423,7 +424,7 @@ function App() {
         loadFullCharacter: characters.loadFullCharacter,
         setInteractionData, setSelectedCharacter,
         refreshChatList: interactionDatas.refresh, startNewChat,
-        deleteChatFromList: interactionDatas.deleteChat, addToast,
+        deleteChatFromList: interactionDatas.deleteInteractionData, addToast,
     });
 
     const entityToggles = useEntityToggles({
@@ -585,7 +586,7 @@ function App() {
     const loadSteps = useMemo<LoadStep[]>(() => [
         { id: 'session', label: 'Session Data', icon: '⚙️', done: sessionLoaded },
         { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !interactionDatas.isLoading },
-        { id: 'folders', label: 'Folders', icon: '📁', done: !interactionDataFolders.isLoading },
+        { id: 'folders', label: 'Folders', icon: '📁', done: !entityFolders.isLoading }, // ✅ UNIFIED
         { id: 'characters', label: 'Characters', icon: '🎭', done: !characters.isLoading },
         { id: 'actions', label: 'Actions', icon: '⚡', done: !actions.actionsLoading },
         { id: 'contexts', label: 'Contexts', icon: '📜', done: !contexts.isLoading },
@@ -600,7 +601,7 @@ function App() {
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profiles.isLoading },
         { id: 'accounts', label: 'Accounts', icon: '🔑', done: !accounts.isLoading },
         { id: 'multiplayerData', label: 'Multiplayer Data', icon: '👥', done: !multiplayerDatas.isLoading },
-    ], [sessionLoaded, interactionDatas, interactionDataFolders, characters, actions.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, budgetStrategies, profiles, accounts, multiplayerDatas]);
+    ], [sessionLoaded, interactionDatas, entityFolders, characters, actions.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, budgetStrategies, profiles, accounts, multiplayerDatas]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
@@ -1302,10 +1303,11 @@ function App() {
                     allSamplers={samplers.Samplers} allPromptBlocks={promptBlocks.promptBlocks} allStopPatterns={stopPatterns.stopPatterns}
                     allBudgetStrategies={budgetStrategies.strategies} allProfiles={profiles.profiles} allExtensions={extensions.extensions}
                     allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDatas.multiplayerData}
-                    allInteractionDataFolders={interactionDataFolders.interactionDataFolders}
-                    onSaveInteractionDataFolder={interactionDataFolders.saveFolder}
-                    onSwitchChat={interactionDataOperations.handleSwitchInteractionData} onDeleteInteractionData={onDeleteInteractionDataForModals}
-                    onDeleteInteractionDataFolder={interactionDataFolders.deleteFolder}
+                    allEntityFolders={entityFolders.entityFolders} // ✅ UNIFIED
+                    onSaveEntityFolder={entityFolders.saveFolder} // ✅ UNIFIED
+                    onDeleteEntityFolder={entityFolders.deleteFolder} // ✅ UNIFIED
+                    onSwitchChat={interactionDataOperations.handleSwitchInteractionData} 
+                    onDeleteInteractionData={onDeleteInteractionDataForModals}
                     onNewInteractionData={interactionDataOperations.handleNewInteractionData}
                     onRenameInteractionData={handleRenameInteractionData}
                     onDeleteCharacter={entityModals.getModalProperties('character').delete}

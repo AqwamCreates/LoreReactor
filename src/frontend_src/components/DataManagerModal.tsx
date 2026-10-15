@@ -1,6 +1,6 @@
 // src/frontend_src/components/DataManagerModal.tsx
 import { useState, useCallback, useMemo } from 'react';
-import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData, InteractionDataFolder } from '../types';
+import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData, EntityFolder } from '../types';
 import { useToast } from '../context/ToastContext';
 import { saveRawSessionData, deleteSessionData, deleteMultiplayerJoinData, deleteActionFormatData, clearPreferencesCache, clearSaveQueue, deleteFormatPreferences } from '../storages/serverStorage';
 import '../main.css';
@@ -22,7 +22,7 @@ interface DataManagerModalProps {
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
     allRawInteractionDataShells: RawInteractionData[];
-    allInteractionDataFolders: InteractionDataFolder[];
+    allEntityFolders: EntityFolder[];
     onDeleteCharacter: (id: string) => void;
     onDeleteContext: (id: string) => void;
     onDeleteLocation: (id: string) => void;
@@ -38,12 +38,12 @@ interface DataManagerModalProps {
     onDeleteAccount: (id: string) => void;
     onDeleteMultiplayerData: (id: string) => void;
     onDeleteInteractionData: (id: string) => void;
-    onDeleteInteractionDataFolder: (id: string) => void;
+    onDeleteEntityFolder: (id: string) => void;
 }
 
 type TabId = 'storage' | 'cleanup' | 'integrity' | 'cache' | 'bulk' | 'danger';
 
-type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'model' | 'sampler' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'memory' | 'account' | 'multiplayerData' | 'interactionDataFolder';
+type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'model' | 'sampler' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'memory' | 'account' | 'multiplayerData' | 'entityFolder';
 
 type SortField = 'name' | 'type' | 'lastUpdated' | 'flags';
 type SortDirection = 'asc' | 'desc';
@@ -96,7 +96,7 @@ const ENTITY_TYPE_META: Record<EntityType, { icon: string; label: string }> = {
     memory: { icon: '🧠', label: 'Memories' },
     account: { icon: '🔑', label: 'Accounts' },
     multiplayerData: { icon: '👥', label: 'Multiplayer Data' },
-    interactionDataFolder: { icon: '📁', label: 'Folders' },
+    entityFolder: { icon: '📁', label: 'Folders' },
 };
 
 const EXCLUSION_TYPE_META: Record<ExclusionEntityType, { icon: string; label: string }> = {
@@ -187,9 +187,9 @@ function isEntityHollow(
             const md = entity as MultiplayerData;
             return !(md.interactionDataIds?.length) && !(md.pendingAccountIds?.length) && Object.keys(md.multiplayerDataAccountConfigurations || {}).length === 0;
         }
-        case 'interactionDataFolder': {
-            const f = entity as InteractionDataFolder;
-            return !f.interactionDataIds?.length;
+        case 'entityFolder': {
+            const f = entity as EntityFolder;
+            return !f.itemIds?.length;
         }
         case 'profile':
             return false;
@@ -223,7 +223,7 @@ export function DataManagerModal({
     allMemories,
     allAccounts,
     allMultiplayerData,
-    allInteractionDataFolders,
+    allEntityFolders,
     allRawInteractionDataShells,
     onDeleteCharacter,
     onDeleteContext,
@@ -239,7 +239,7 @@ export function DataManagerModal({
     onDeleteMemory,
     onDeleteAccount,
     onDeleteMultiplayerData,
-    onDeleteInteractionDataFolder,
+    onDeleteEntityFolder,
     onDeleteInteractionData,
 }: DataManagerModalProps) {
     const [activeTab, setActiveTab] = useState<TabId>('storage');
@@ -293,10 +293,10 @@ export function DataManagerModal({
             { label: 'Memories', icon: '🧠', count: allMemories.length, estimatedSizeKb: estimateKb(allMemories, 1024) },
             { label: 'Accounts', icon: '🔑', count: allAccounts.length, estimatedSizeKb: estimateKb(allAccounts, 512) },
             { label: 'Multiplayer Data', icon: '👥', count: allMultiplayerData.length, estimatedSizeKb: estimateKb(allMultiplayerData, 1024) },
-            { label: 'Folders', icon: '📁', count: allInteractionDataFolders.length, estimatedSizeKb: estimateKb(allInteractionDataFolders, 1024) },
+            { label: 'Folders', icon: '📁', count: allEntityFolders.length, estimatedSizeKb: estimateKb(allEntityFolders, 1024) },
             { label: 'Sessions', icon: '💬', count: allRawInteractionDataShells.length, estimatedSizeKb: estimateKb(allRawInteractionDataShells, 8192) },
         ];
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allInteractionDataFolders, allRawInteractionDataShells]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells]);
 
     const scanCleanup = useCallback(() => {
         setIsScanning(true);
@@ -463,13 +463,13 @@ export function DataManagerModal({
         for (const m of allMemories) check('memory', m.id, m.name, m.lastUpdatedTimestamp, referencedMemoryIds.has(m.id), m);
         for (const a of allAccounts) check('account', a.id, a.name, a.lastUpdatedTimestamp, referencedAccountIds.has(a.id), a);
         for (const md of allMultiplayerData) check('multiplayerData', md.id, md.name, md.lastUpdatedTimestamp, referencedMultiplayerDataIds.has(md.id), md);
-        for (const f of allInteractionDataFolders) check('interactionDataFolder', f.id, f.name, f.lastUpdatedTimestamp, true, f);
+        for (const f of allEntityFolders) check('entityFolder', f.id, f.name, f.lastUpdatedTimestamp, true, f);
 
         setCleanupItems(found);
         setSelectedIds(new Set());
         setSearchQuery('');
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allInteractionDataFolders, allRawInteractionDataShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
 
     const scanIntegrity = useCallback(() => {
         setIsScanning(true);
@@ -485,6 +485,24 @@ export function DataManagerModal({
         const memoryIdSet = new Set(allMemories.map(m => m.id));
         const accountIdSet = new Set(allAccounts.map(a => a.id));
         const chatIdSet = new Set(allRawInteractionDataShells.filter(s => s.id).map(s => s.id));
+
+        // Global ID pool for unified folder validation
+        const globalEntityIds = new Set<string>();
+        allCharacters.forEach(c => globalEntityIds.add(c.id));
+        allContexts.forEach(c => globalEntityIds.add(c.id));
+        allLocations.forEach(l => globalEntityIds.add(l.id));
+        allAudioTracks.forEach(a => globalEntityIds.add(a.id));
+        allWorlds.forEach(w => globalEntityIds.add(w.id));
+        allPromptBlocks.forEach(p => globalEntityIds.add(p.id));
+        allLanguageModels.forEach(m => globalEntityIds.add(m.id));
+        allSamplers.forEach(s => globalEntityIds.add(s.id));
+        allStopPatterns.forEach(sp => globalEntityIds.add(sp.id));
+        allBudgetStrategies.forEach(bs => globalEntityIds.add(bs.id));
+        allProfiles.forEach(p => globalEntityIds.add(p.id));
+        allMemories.forEach(m => globalEntityIds.add(m.id));
+        allAccounts.forEach(a => globalEntityIds.add(a.id));
+        allMultiplayerData.forEach(md => globalEntityIds.add(md.id));
+        allRawInteractionDataShells.forEach(s => s.id && globalEntityIds.add(s.id));
 
         for (const ctx of allContexts) {
             for (const binding of (ctx.characterBindings || [])) {
@@ -627,14 +645,16 @@ export function DataManagerModal({
             }
             for (const chatId of md.interactionDataIds) { if (!chatIdSet.has(chatId)) issues.push({ entityType: 'Multiplayer Data', entityName: md.name, issue: 'References missing session', refType: 'Session', refId: chatId }); }
         }
-        for (const folder of allInteractionDataFolders) {
-            for (const chatId of folder.interactionDataIds) {
-                if (!chatIdSet.has(chatId)) {
-                    issues.push({ entityType: 'Folder', entityName: folder.name, issue: 'References missing session', refType: 'Session', refId: chatId });
+        
+        // ✅ Unified Folder Integrity Check
+        for (const folder of allEntityFolders) {
+            for (const itemId of folder.itemIds) {
+                if (!globalEntityIds.has(itemId)) {
+                    issues.push({ entityType: 'Folder', entityName: folder.name, issue: `References missing ${folder.entityType} entity`, refType: folder.entityType, refId: itemId });
                 }
             }
         }
-        
+
         for (const p of allProfiles) {
             const samplerChecks = [
                 { sampler: p.characterLanguageModelSampler, label: 'language model sampler' },
@@ -664,7 +684,7 @@ export function DataManagerModal({
 
         setIntegrityIssues(issues);
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allInteractionDataFolders, allRawInteractionDataShells]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells]);
 
     const filteredAndSorted = useMemo(() => {
         const query = searchQuery.toLowerCase().trim();
@@ -710,10 +730,10 @@ export function DataManagerModal({
         for (const item of cleanupItems) {
             if (!selectedIds.has(item.id)) continue;
             
-            if (item.type === 'interactionDataFolder') {
-                const folder = allInteractionDataFolders.find(f => f.id === item.id);
-                if (folder) {
-                    for (const dataId of folder.interactionDataIds) {
+            if (item.type === 'entityFolder') {
+                const folder = allEntityFolders.find(f => f.id === item.id);
+                if (folder && folder.entityType === 'interactionData') {
+                    for (const dataId of folder.itemIds) {
                         if (isInteractionDataABranchStem(dataId)) {
                             skippedStems++;
                         } else {
@@ -721,7 +741,7 @@ export function DataManagerModal({
                         }
                     }
                 }
-                onDeleteInteractionDataFolder(item.id);
+                onDeleteEntityFolder(item.id);
                 deletedCount++;
                 continue;
             }
@@ -913,15 +933,17 @@ export function DataManagerModal({
             case 'multiplayerData': for (const md of allMultiplayerData) { onDeleteMultiplayerData(md.id); count++; } break;
             case 'folders': {
                 let preservedStems = 0;
-                for (const f of allInteractionDataFolders) { 
-                    for (const dataId of f.interactionDataIds) {
-                        if (isInteractionDataABranchStem(dataId)) {
-                            preservedStems++;
-                        } else {
-                            onDeleteInteractionData(dataId);
+                for (const f of allEntityFolders) { 
+                    if (f.entityType === 'interactionData') {
+                        for (const dataId of f.itemIds) {
+                            if (isInteractionDataABranchStem(dataId)) {
+                                preservedStems++;
+                            } else {
+                                onDeleteInteractionData(dataId);
+                            }
                         }
                     }
-                    onDeleteInteractionDataFolder(f.id); 
+                    onDeleteEntityFolder(f.id); 
                     count++; 
                 }
                 if (preservedStems > 0) {
@@ -1197,7 +1219,7 @@ export function DataManagerModal({
                                         { key: 'memories', label: 'All Memories', count: allMemories.length },
                                         { key: 'accounts', label: 'All Accounts', count: allAccounts.length },
                                         { key: 'multiplayerData', label: 'All Multiplayer Data', count: allMultiplayerData.length },
-                                        { key: 'folders', label: 'All Folders', count: allInteractionDataFolders.length },
+                                        { key: 'folders', label: 'All Folders', count: allEntityFolders.length },
                                         { key: 'chats', label: 'All Sessions', count: allRawInteractionDataShells.length },
                                     ].map(entity => (
                                         <button key={entity.key} type="button" className="editor-button"

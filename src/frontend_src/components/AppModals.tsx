@@ -5,7 +5,7 @@ import type {
     LanguageModel, BudgetStrategy, Profile, Extension,
     InteractionData, World, AudioTrack, PromptBlock,
     RawInteractionData, Memory, MultiplayerData, Account,
-    InteractionDataFolder,
+    EntityFolder,
     cloudBackend, entityType
 } from '../types';
 import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';
@@ -14,7 +14,8 @@ import { loadRawInteractionData } from '../storages/serverStorage';
 import { isChatSaveable } from '../utilities/chatSaveHelper';
 import { ManagerModal } from './ManagerModal';
 import {
-    renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext
+    renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, 
+    renderInteractionDataSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext
 } from './renderHelpers';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useSessionStore } from '../hooks/useSessionStore';
@@ -48,7 +49,6 @@ import { InteractionDataInspectionModal } from './InteractionDataInspectionModal
 import { SuperSearchModal } from './SuperSearchModal';
 import { LanguageModelInferenceManagerModal } from './LanguageModelInferenceManager';
 import { voiceTranscriptionEngine } from '../services/VoiceTranscriptionEngine';
-import { InteractionDataManagerModal } from './InteractionDataManagerModal';
 
 interface EntityModalController {
     isOpen: boolean;
@@ -83,11 +83,13 @@ interface ApplicationModalsProperties {
     allMemories: Memory[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
-    allInteractionDataFolders: InteractionDataFolder[];
+    
+    allEntityFolders: EntityFolder[];
+    onSaveEntityFolder: (folder: EntityFolder) => Promise<boolean> | void;
+    onDeleteEntityFolder: (identifier: string) => void;
+
     onSwitchChat: (identifier: string) => void;
     onDeleteInteractionData: (identifier: string) => void;
-    onDeleteInteractionDataFolder: (identifier: string) => void;
-    onSaveInteractionDataFolder: (folder: InteractionDataFolder) => Promise<boolean>;
     onNewInteractionData: () => void;
     onRenameInteractionData: (identifier: string, name: string) => void;
     onDeleteCharacter: (identifier: string) => void;
@@ -183,11 +185,11 @@ export function AppModals({
     allMemories,
     allAccounts,
     allMultiplayerData,
-    allInteractionDataFolders,
+    allEntityFolders,
+    onSaveEntityFolder,
+    onDeleteEntityFolder,
     onSwitchChat,
     onDeleteInteractionData,
-    onDeleteInteractionDataFolder,
-    onSaveInteractionDataFolder,
     onNewInteractionData,
     onRenameInteractionData,
     onDeleteCharacter,
@@ -410,7 +412,7 @@ export function AppModals({
 
         const loaded = await loadRawInteractionData(chatId, allCharacters);
         if (!loaded) { 
-            addToast('Failed to load chat for inspection.', 'error'); 
+            addToast('Failed to load session for inspection.', 'error'); 
             return; 
         }
         setInspectionStack([loaded]);
@@ -423,7 +425,7 @@ export function AppModals({
         }
 
         const loaded = await loadRawInteractionData(parentId, allCharacters);
-        if (!loaded) throw new Error(`Failed to load parent chat ${parentId}`);
+        if (!loaded) throw new Error(`Failed to load parent session ${parentId}`);
         return loaded;
     }, [interactionData, allCharacters]);
 
@@ -431,19 +433,23 @@ export function AppModals({
         <>
             {/* ─── Manager Lists ─── */}
 
+            {/* ✅ FIX: Explicitly defined <ChatShellWithIdentifier> to fix TS generic inference cascade failure */}
             {modals.interactionDataList.isOpen && (
-                <InteractionDataManagerModal
+                <ManagerModal<ChatShellWithIdentifier>
+                    title="Sessions"
+                    entityType={'interactionData' as entityType}
+                    localLibraryItems={chatShellsWithIdentifiers}
                     onClose={modals.interactionDataList.close}
-                    allRawInteractionDataShells={chatShellsWithIdentifiers}
-                    allInteractionDataFolders={allInteractionDataFolders}
-                    onSwitchInteractionData={onSwitchChat}
-                    onDeleteInteractionData={onDeleteInteractionData}
-                    onDeleteInteractionDataFolder={onDeleteInteractionDataFolder}
-                    onInspectInteractionData={handleOpenInteractionDataInspectionModal}
-                    onRenameInteractionData={onRenameInteractionData}
-                    onNewInteractionData={onNewInteractionData}
-                    onSaveInteractionDataFolder={onSaveInteractionDataFolder}
-                    activeInteractionDataId={interactionData?.id ?? null}
+                    onSelect={(data) => handleOpenInteractionDataInspectionModal(data.id)}
+                    onDelete={onDeleteInteractionData}
+                    onCreateNew={onNewInteractionData}
+                    renderSubtext={renderInteractionDataSubtext}
+                    emptyMessage="No sessions found."
+                    actionLabel="Delete"
+                    activeItemId={interactionData?.id ?? null}
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
                     addToast={addToast}
                 />
             )}
@@ -451,6 +457,7 @@ export function AppModals({
             {modals.characterList.isOpen && (
                 <ManagerModal
                     title="Characters"
+                    entityType={'character' as entityType}
                     localLibraryItems={allCharacters}
                     hosterOwnedItems={hosterOwnedCharacters}
                     isAdministrator={isAdministrator}
@@ -471,12 +478,17 @@ export function AppModals({
                     onSelectItem={(character: Character) => onSetProtagonist(character.id)}
                     specialActionTooltip={(character: Character) => `set ${character.name} as the protagonist`}
                     selectedId={localProtagonistId ?? undefined}
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
                 />
             )}
 
             {modals.contextList.isOpen && (
                 <ManagerModal 
                     title="Contexts" 
+                    entityType={'context' as entityType}
                     localLibraryItems={allContexts}
                     hosterOwnedItems={hosterOwnedContexts}
                     isAdministrator={isAdministrator}
@@ -490,12 +502,17 @@ export function AppModals({
                     orderedListMode={true} 
                     currentOrderIds={interactionData?.contexts?.map(context => context.id) || []} 
                     onToggleOrder={onToggleContext} 
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
                 />
             )}
 
             {modals.locationList.isOpen && (
                 <ManagerModal 
                     title="Locations" 
+                    entityType={'location' as entityType}
                     localLibraryItems={allLocations}
                     hosterOwnedItems={hosterOwnedLocations}
                     isAdministrator={isAdministrator}
@@ -509,12 +526,17 @@ export function AppModals({
                     orderedListMode={true} 
                     currentOrderIds={interactionData?.locations?.map(location => location.id) || []} 
                     onToggleOrder={onToggleLocation} 
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
                 />
             )}
 
             {modals.audioTrackList.isOpen && (
                 <ManagerModal 
                     title="Audio Tracks" 
+                    entityType={'audioTrack' as entityType}
                     localLibraryItems={allAudioTracks}
                     hosterOwnedItems={hosterOwnedAudioTracks}
                     isAdministrator={isAdministrator}
@@ -528,12 +550,17 @@ export function AppModals({
                     orderedListMode={true} 
                     currentOrderIds={interactionData?.audioTracks?.map(track => track.id) || []} 
                     onToggleOrder={onToggleAudioTrack} 
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
                 />
             )}
 
             {modals.worldList.isOpen && (
                 <ManagerModal 
                     title="Worlds" 
+                    entityType={'world' as entityType}
                     localLibraryItems={allWorlds} 
                     onClose={modals.worldList.close}
                     onSelect={(world: World) => worldModalProperties.open(world)} 
@@ -555,12 +582,17 @@ export function AppModals({
                     orderedListMode={true}
                     currentOrderIds={currentWorldIds}
                     onToggleOrder={handleToggleWorld}
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
                 />
             )}
 
             {modals.promptBlockList.isOpen && (
                 <ManagerModal 
                     title="Prompt Blocks" 
+                    entityType={'promptBlock' as entityType}
                     localLibraryItems={allPromptBlocks} 
                     onClose={modals.promptBlockList.close}
                     onSelect={(promptBlock: PromptBlock) => promptBlockModalProperties.open(promptBlock)} 
@@ -569,12 +601,17 @@ export function AppModals({
                     renderSubtext={(promptBlock: PromptBlock) => `${promptBlock.textContent ? `📝 ${promptBlock.textContent.length} characters` : ''}${promptBlock.images.length > 0 ? ` • 🖼️ ${promptBlock.images.length}` : ''}${promptBlock.characterBindings.length > 0 ? ` • 🎭${promptBlock.characterBindings.length}` : ''}${promptBlock.contextBindings.length > 0 ? ` • 📜${promptBlock.contextBindings.length}` : ''}${promptBlock.locationBindings.length > 0 ? ` • 📍${promptBlock.locationBindings.length}` : ''}`}
                     emptyMessage="No prompt blocks found." 
                     actionLabel="Delete" 
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
                 />
             )}
 
             {modals.modelList.isOpen && (
                 <ManagerModal 
                     title="Language Models" 
+                    entityType={'model' as entityType}
                     localLibraryItems={allLanguageModels} 
                     onClose={modals.modelList.close}
                     onSelect={(model: LanguageModel) => modelModalProperties.open(model)} 
@@ -600,12 +637,17 @@ export function AppModals({
                         if (selectedModelId === model.id) return '✓ Already Selected — Click to Load';
                         return '▶ Load & Select Model (Overrides Budget)';
                     }} 
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
                 />
             )}
 
             {modals.samplerList.isOpen && (
                 <ManagerModal 
                     title="Samplers" 
+                    entityType={'sampler' as entityType}
                     localLibraryItems={allSamplers} 
                     onClose={modals.samplerList.close}
                     onSelect={(sampler: Sampler) => samplerModalProperties.open(sampler)} 
@@ -614,12 +656,17 @@ export function AppModals({
                     renderSubtext={(sampler: Sampler) => `Temp: ${sampler?.parameters?.temperature}, TopP: ${sampler?.parameters?.top_p}, Tokens: ${sampler?.maximumNumberOfTokens}`}
                     emptyMessage="No samplers found." 
                     actionLabel="Delete" 
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
                 />
             )}
 
             {modals.stopList.isOpen && (
                 <ManagerModal 
                     title="Stop Patterns" 
+                    entityType={'stopPattern' as entityType}
                     localLibraryItems={allStopPatterns} 
                     onClose={modals.stopList.close}
                     onSelect={(stopPattern: StopPattern) => stopPatternModalProperties.open(stopPattern)} 
@@ -632,12 +679,17 @@ export function AppModals({
                     emptyMessage="No stop patterns found." 
                     actionLabel="Delete" 
                     orderedListMode={false} 
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
                 />
             )}
 
             {modals.budgetStrategyList.isOpen && (
                 <ManagerModal 
                     title="Budget Strategies" 
+                    entityType={'budgetStrategy' as entityType}
                     localLibraryItems={allBudgetStrategies} 
                     onClose={modals.budgetStrategyList.close}
                     onSelect={(budgetStrategy: BudgetStrategy) => budgetStrategyModalProperties.open(budgetStrategy)} 
@@ -650,12 +702,17 @@ export function AppModals({
                     selectedId={selectedBudgetStrategyId || undefined} 
                     onSelectItem={(budgetStrategy: BudgetStrategy) => onActivateBudgetStrategy(budgetStrategy.id)}
                     specialActionTooltip={(budgetStrategy: BudgetStrategy) => selectedBudgetStrategyId === budgetStrategy.id ? `Deactivate ${budgetStrategy.name}` : `Activate ${budgetStrategy.name} (Deselects Direct Model)`} 
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
                 />
             )}
 
             {modals.profileList.isOpen && (
                 <ManagerModal 
                     title="Profiles" 
+                    entityType={'profile' as entityType}
                     localLibraryItems={allProfiles} 
                     onClose={modals.profileList.close}
                     onSelect={(profile: Profile) => profileModalProperties.open(profile)} 
@@ -668,12 +725,17 @@ export function AppModals({
                     selectedId={interactionData?.profile?.id || undefined} 
                     onSelectItem={(profile: Profile) => onActivateProfile(profile.id)}
                     specialActionTooltip={(profile: Profile) => interactionData?.profile?.id === profile.id ? `Deactivate ${profile.name}` : `Activate ${profile.name}`} 
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
                 />
             )}
 
             {modals.extensionList.isOpen && (
                 <ManagerModal 
                     title="Extensions" 
+                    entityType={'extension' as entityType}
                     localLibraryItems={allExtensions} 
                     onClose={modals.extensionList.close}
                     onSelect={undefined} 
@@ -684,6 +746,51 @@ export function AppModals({
                     actionLabel="Delete" 
                     orderedListMode={true} 
                     onToggleOrder={onToggleExtension} 
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
+                />
+            )}
+
+            {modals.accountList.isOpen && (
+                <ManagerModal 
+                    title="Accounts" 
+                    entityType={'account' as entityType}
+                    localLibraryItems={allAccounts} 
+                    onClose={modals.accountList.close}
+                    onSelect={(account: Account) => accountModalProperties.open(account)} 
+                    onDelete={accountModalProperties.delete} 
+                    onCreateNew={() => accountModalProperties.open()}
+                    renderSubtext={(account: Account) => `👤 ${account.username}${account.url ? ` • 🔗 ${account.url}` : ''}`}
+                    emptyMessage="No accounts found." 
+                    actionLabel="Delete"
+                    onSelectItem={(account: Account) => onToggleAccount(account.id)}
+                    specialActionTooltip={(account: Account) => currentAccountId === account.id ? `Deactivate ${account.name}` : `Activate ${account.name}`}
+                    selectedId={currentAccountId || undefined} 
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
+                />
+            )}
+
+            {modals.multiplayerDataList.isOpen && (
+                <ManagerModal 
+                    title="Multiplayer Data" 
+                    entityType={'multiplayerData' as entityType}
+                    localLibraryItems={allMultiplayerData} 
+                    onClose={modals.multiplayerDataList.close}
+                    onSelect={(multiplayerDataEntry: MultiplayerData) => multiplayerDataModalProperties.open(multiplayerDataEntry)} 
+                    onDelete={onDeleteMultiplayerData} 
+                    onCreateNew={() => multiplayerDataModalProperties.open()}
+                    renderSubtext={(multiplayerDataEntry: MultiplayerData) => `${multiplayerDataEntry.password ? '🔒' : '🔓'} ${Object.keys(multiplayerDataEntry.multiplayerDataAccountConfigurations || {}).length} accounts • ${multiplayerDataEntry.interactionDataIds.length} sessions`}
+                    emptyMessage="No multiplayer data found." 
+                    actionLabel="Delete" 
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
                 />
             )}
 
@@ -725,37 +832,6 @@ export function AppModals({
                     onSendCustomMessage={onSendCustomMessage} 
                     onInjectCustomMessage={onInjectCustomMessage}
                     onInjectFirstMessage={onInjectFirstMessage}
-                />
-            )}
-
-            {modals.accountList.isOpen && (
-                <ManagerModal 
-                    title="Accounts" 
-                    localLibraryItems={allAccounts} 
-                    onClose={modals.accountList.close}
-                    onSelect={(account: Account) => accountModalProperties.open(account)} 
-                    onDelete={accountModalProperties.delete} 
-                    onCreateNew={() => accountModalProperties.open()}
-                    renderSubtext={(account: Account) => `👤 ${account.username}${account.url ? ` • 🔗 ${account.url}` : ''}`}
-                    emptyMessage="No accounts found." 
-                    actionLabel="Delete"
-                    onSelectItem={(account: Account) => onToggleAccount(account.id)}
-                    specialActionTooltip={(account: Account) => currentAccountId === account.id ? `Deactivate ${account.name}` : `Activate ${account.name}`}
-                    selectedId={currentAccountId || undefined} 
-                />
-            )}
-
-            {modals.multiplayerDataList.isOpen && (
-                <ManagerModal 
-                    title="Multiplayer Data" 
-                    localLibraryItems={allMultiplayerData} 
-                    onClose={modals.multiplayerDataList.close}
-                    onSelect={(multiplayerDataEntry: MultiplayerData) => multiplayerDataModalProperties.open(multiplayerDataEntry)} 
-                    onDelete={onDeleteMultiplayerData} 
-                    onCreateNew={() => multiplayerDataModalProperties.open()}
-                    renderSubtext={(multiplayerDataEntry: MultiplayerData) => `${multiplayerDataEntry.password ? '🔒' : '🔓'} ${Object.keys(multiplayerDataEntry.multiplayerDataAccountConfigurations || {}).length} accounts • ${multiplayerDataEntry.interactionDataIds.length} sessions`}
-                    emptyMessage="No multiplayer data found." 
-                    actionLabel="Delete" 
                 />
             )}
 
@@ -842,7 +918,7 @@ export function AppModals({
                     allMemories={allMemories} 
                     allAccounts={allAccounts} 
                     allMultiplayerData={allMultiplayerData} 
-                    allInteractionDataFolders={allInteractionDataFolders}
+                    allEntityFolders={allEntityFolders}
                     allRawInteractionDataShells={chatShellsWithIdentifiers}
                     onDeleteCharacter={onDeleteCharacter} 
                     onDeleteContext={onDeleteContext} 
@@ -858,7 +934,7 @@ export function AppModals({
                     onDeleteMemory={onDeleteMemory}
                     onDeleteAccount={onDeleteAccount} 
                     onDeleteMultiplayerData={onDeleteMultiplayerData} 
-                    onDeleteInteractionDataFolder={onDeleteInteractionDataFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
                     onDeleteInteractionData={onDeleteInteractionData}
                 />
             )}
@@ -881,7 +957,7 @@ export function AppModals({
                     allMemories={allMemories}
                     allAccounts={allAccounts}
                     allMultiplayerData={allMultiplayerData}
-                    allInteractionDataFolders={allInteractionDataFolders}
+                    allEntityFolders={allEntityFolders}
                     allRawInteractionDataShells={chatShellsWithIdentifiers}
                     currentInteractionData={interactionData}
                     onSelectEntity={(tabId, entity, parentEntity, isReadOnly = false) => {
@@ -900,7 +976,7 @@ export function AppModals({
                             case 'account': accountModalProperties.open(entity, isReadOnly); break;
                             case 'multiplayerData': multiplayerDataModalProperties.open(entity, isReadOnly); break;
                             case 'interactionData': onSwitchChat(entity.id); break;
-                            case 'interactionDataFolder':
+                            case 'entityFolder':
                                 addToast(`Folder selected: ${entity.name}`, 'info');
                                 break;
                             case 'memory':

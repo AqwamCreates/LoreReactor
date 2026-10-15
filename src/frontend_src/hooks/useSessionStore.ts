@@ -1,6 +1,6 @@
 // src/frontend_src/hooks/useSessionStore.ts
 import { create } from 'zustand';
-import type { Character, InteractionData, BudgetStrategy, LanguageModel, BudgetData, MultiplayerData, InteractionDataFolder } from '../types';
+import type { Character, InteractionData, BudgetStrategy, LanguageModel, BudgetData, MultiplayerData, EntityFolder } from '../types';
 import { loadRawSessionData, saveRawSessionData, saveRawInteractionData } from '../storages/serverStorage';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { deleteMessage, branchMessage, cloneChatUpToMessage } from '../utilities/messageLogic';
@@ -57,8 +57,8 @@ interface SessionState {
     activeExtensionIds: string[];
 
     // ── Folder state (For Branch/Clone In-Memory Inheritance) ────────
-    allInteractionDataFolders: InteractionDataFolder[];
-    saveInteractionDataFolder: ((folder: InteractionDataFolder) => Promise<boolean> | void) | null;
+    allEntityFolders: EntityFolder[];
+    saveEntityFolder: ((folder: EntityFolder) => Promise<boolean> | void) | null;
 
     // ── Bootstrap state ──────────────────────────────────────────────
     sessionLoaded: boolean;
@@ -99,8 +99,8 @@ interface SessionState {
     cloneChat: (messageId: string) => Promise<void>;
 
     // ── Folder Actions ───────────────────────────────────────────────
-    setAllInteractionDataFolders: (folders: InteractionDataFolder[]) => void;
-    setSaveInteractionDataFolder: (fn: ((folder: InteractionDataFolder) => Promise<boolean> | void) | null) => void;
+    setAllEntityFolders: (folders: EntityFolder[]) => void;
+    setSaveEntityFolder: (fn: ((folder: EntityFolder) => Promise<boolean> | void) | null) => void;
 
     // ── Preference Actions (Server-Persisted) ─────────────────────────
     setSelectedCharacterId: (id: string | null) => void;
@@ -167,8 +167,8 @@ export const useSessionStore = create<SessionState>()((set, get) => {
         selectedProfileId: null,
         activeExtensionIds: [],
 
-        allInteractionDataFolders: [],
-        saveInteractionDataFolder: null,
+        allEntityFolders: [],
+        saveEntityFolder: null,
 
         sessionLoaded: false,
 
@@ -293,20 +293,20 @@ export const useSessionStore = create<SessionState>()((set, get) => {
         },
 
         branchChat: async (messageId: string) => {
-            const { interactionData, allInteractionDataFolders, saveInteractionDataFolder } = get();
+            const { interactionData, allEntityFolders, saveEntityFolder } = get();
             if (!interactionData) return;
             try {
                 const branchedChat = await branchMessage(interactionData, messageId);
                 await saveRawInteractionData(branchedChat);
                 await saveRawSessionData({ activeChatId: branchedChat.id });
                 
-                // ✅ IN-MEMORY FOLDER INHERITANCE
-                if (saveInteractionDataFolder) {
-                    const parentFolder = allInteractionDataFolders.find(f => f.interactionDataIds.includes(interactionData.id));
+                // ✅ IN-MEMORY FOLDER INHERITANCE (UNIFIED)
+                if (saveEntityFolder) {
+                    const parentFolder = allEntityFolders.find(f => f.entityType === 'interactionData' && f.itemIds.includes(interactionData.id));
                     if (parentFolder) {
-                        await saveInteractionDataFolder({
+                        await saveEntityFolder({
                             ...parentFolder,
-                            interactionDataIds: [...parentFolder.interactionDataIds, branchedChat.id],
+                            itemIds: [...parentFolder.itemIds, branchedChat.id],
                             lastUpdatedTimestamp: Date.now(),
                         });
                     }
@@ -320,20 +320,20 @@ export const useSessionStore = create<SessionState>()((set, get) => {
         },
 
         cloneChat: async (messageId: string) => {
-            const { interactionData, allInteractionDataFolders, saveInteractionDataFolder } = get();
+            const { interactionData, allEntityFolders, saveEntityFolder } = get();
             if (!interactionData) return;
             try {
                 const clonedChat = await cloneChatUpToMessage(interactionData, messageId);
                 await saveRawInteractionData(clonedChat);
                 await saveRawSessionData({ activeChatId: clonedChat.id });
 
-                // ✅ IN-MEMORY FOLDER INHERITANCE
-                if (saveInteractionDataFolder) {
-                    const parentFolder = allInteractionDataFolders.find(f => f.interactionDataIds.includes(interactionData.id));
+                // ✅ IN-MEMORY FOLDER INHERITANCE (UNIFIED)
+                if (saveEntityFolder) {
+                    const parentFolder = allEntityFolders.find(f => f.entityType === 'interactionData' && f.itemIds.includes(interactionData.id));
                     if (parentFolder) {
-                        await saveInteractionDataFolder({
+                        await saveEntityFolder({
                             ...parentFolder,
-                            interactionDataIds: [...parentFolder.interactionDataIds, clonedChat.id],
+                            itemIds: [...parentFolder.itemIds, clonedChat.id],
                             lastUpdatedTimestamp: Date.now(),
                         });
                     }
@@ -347,8 +347,8 @@ export const useSessionStore = create<SessionState>()((set, get) => {
         },
 
         // ── Folder Actions ───────────────────────────────────────────────
-        setAllInteractionDataFolders: (folders) => set({ allInteractionDataFolders: folders }),
-        setSaveInteractionDataFolder: (fn) => set({ saveInteractionDataFolder: fn }),
+        setAllEntityFolders: (folders) => set({ allEntityFolders: folders }),
+        setSaveEntityFolder: (fn) => set({ saveEntityFolder: fn }),
 
         // ── Preference Actions ───────────────────────────────────────
         setSelectedCharacterId: (id) => {

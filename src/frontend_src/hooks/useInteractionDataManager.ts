@@ -1,17 +1,17 @@
 // src/frontend_src/hooks/useInteractionDataManager.ts
 import { useState, useCallback, useRef } from 'react';
-import type { RawInteractionData } from '../types';
-import { loadAllRawInteractionDataShells, deleteRawInteractionData } from '../storages/serverStorage';
+import type { RawInteractionData, InteractionData } from '../types';
+import { loadAllRawInteractionDataShells, deleteRawInteractionData, saveRawInteractionData } from '../storages/serverStorage';
 
 // Minimum time the loading bar stays visible to prevent jarring visual flickers on fast fetches
 const MIN_LOADING_MS = 400; 
 
 export function useInteractionDataManager() {
-    const [allRawInteractionDataShells, setallRawInteractionDataShells] = useState<RawInteractionData[]>([]);
+    const [allRawInteractionDataShells, setAllRawInteractionDataShells] = useState<RawInteractionData[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const loadedRef = useRef(false);
 
-    const loadChats = useCallback(async (force = false) => {
+    const loadInteractionDatas = useCallback(async (force = false) => {
         if (!force && loadedRef.current) return;
         
         setIsLoading(true);
@@ -19,11 +19,11 @@ export function useInteractionDataManager() {
         
         try {
             const rawShells = await loadAllRawInteractionDataShells();
-            const sorted = [...rawShells].sort((a, b) => b.lastUpdatedTimestamp - a.lastUpdatedTimestamp);
-            setallRawInteractionDataShells(sorted);
+            const sorted = [...rawShells].sort((a, b) => (b.lastUpdatedTimestamp ?? 0) - (a.lastUpdatedTimestamp ?? 0));
+            setAllRawInteractionDataShells(sorted);
             loadedRef.current = true;
         } catch (error) {
-            console.error("Failed to load chats", error);
+            console.error("Failed to load interaction data", error);
         } finally {
             const elapsed = Date.now() - startTime;
             if (elapsed < MIN_LOADING_MS) {
@@ -33,24 +33,37 @@ export function useInteractionDataManager() {
         }
     }, []);
 
-    const deleteChat = useCallback(async (id: string) => {
+    // ✅ ENCAPSULATED SAVE (Mirrors saveFolder in useEntityFolderManager)
+    const saveInteractionData = useCallback(async (data: InteractionData) => {
         try {
-            await deleteRawInteractionData(id);
-            await loadChats(true);
+            await saveRawInteractionData(data);
+            await loadInteractionDatas(true);
             return true;
         } catch (error) {
-            console.error("Failed to delete chat", error);
+            console.error("Failed to save interaction data", error);
             return false;
         }
-    }, [loadChats]);
+    }, [loadInteractionDatas]);
 
-    const refresh = useCallback(() => loadChats(true), [loadChats]);
+    const deleteInteractionData = useCallback(async (id: string) => {
+        try {
+            await deleteRawInteractionData(id);
+            await loadInteractionDatas(true);
+            return true;
+        } catch (error) {
+            console.error("Failed to delete interaction data", error);
+            return false;
+        }
+    }, [loadInteractionDatas]);
+
+    const refresh = useCallback(() => loadInteractionDatas(true), [loadInteractionDatas]);
 
     return { 
         allRawInteractionDataShells, 
         isLoading, 
-        deleteChat, 
+        saveInteractionData, // ✅ EXPORTED
+        deleteInteractionData, 
         refresh, 
-        load: loadChats 
+        load: loadInteractionDatas 
     };
 }

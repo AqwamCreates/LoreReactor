@@ -553,14 +553,15 @@ export interface RawInteractionData extends RawData {
   worldIds?: string[]; // ✅ ADD THIS
 }
 
-export interface InteractionDataFolder extends ObjectData {
-  interactionDataIds: string[]
+export interface EntityFolder extends ObjectData {
+    entityType: entityType;
+    itemIds: string[];
 }
 
-export interface RawInteractionDataFolder extends RawData {
-  interactionDataIds: string[]
+export interface RawEntityFolder extends RawData {
+    entityType: entityType;
+    itemIds: string[];
 }
-
 export type ExtensionType = 'Image Generation API' | 'Accessibility' | 'Extra';
 
 export interface Extension extends ObjectData {
@@ -979,6 +980,6 @@ export type Entity = Character | Context | Location | AudioTrack | World | Promp
 
 export type entityType = 
     | 'character' | 'context' | 'location' | 'audioTrack' 
-    | 'world' | 'model' | 'sampler' | 'promptBlock' 
+    | 'world' | 'interactionData' | 'model' | 'sampler' | 'promptBlock' 
     | 'stopPattern' | 'budgetStrategy' | 'profile' 
     | 'account' | 'multiplayerData';
