@@ -488,7 +488,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                     <h2>{title}</h2>
                     <div className="modal-header-actions">
                         {showCreateNew && <button type="button" className="create-new-button" onClick={e => { e.stopPropagation(); onCreateNew!(); }}>➕ New {singularTitle}</button>}
-                        {activeTab === 'localLibrary' && <button type="button" className="create-new-button" onClick={() => setIsCreatingFolder(true)}>📁 Folder</button>}
+                        {activeTab === 'localLibrary' && <button type="button" className="create-new-button" onClick={() => setIsCreatingFolder(true)}>📁 New Folder</button>}
                         <button type="button" className="close-button close-button-spaced" onClick={onClose}>×</button>
                     </div>
                 </div>
