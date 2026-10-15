@@ -153,7 +153,17 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     const showCreateNew = !!onCreateNew && !isHosterOwnedTab;
     const singularTitle = useMemo(() => getSingularNoun(title), [title]);
 
-    const typeFolders = useMemo(() => allEntityFolders.filter(f => f.entityType === entityType), [allEntityFolders, entityType]);
+    // ✅ FIX: Sort folders by lastUpdatedTimestamp descending, just like the items
+    const typeFolders = useMemo(() => {
+        return allEntityFolders
+            .filter(f => f.entityType === entityType)
+            .sort((a, b) => {
+                const aUpdated = a.lastUpdatedTimestamp ?? a.firstCreatedTimestamp ?? 0;
+                const bUpdated = b.lastUpdatedTimestamp ?? b.firstCreatedTimestamp ?? 0;
+                if (aUpdated !== bUpdated) return bUpdated - aUpdated;
+                return (b.firstCreatedTimestamp ?? 0) - (a.firstCreatedTimestamp ?? 0);
+            });
+    }, [allEntityFolders, entityType]);
     
     const filteredTypeFolders = useMemo(() => {
         if (!folderSearchQuery.trim()) return typeFolders;
