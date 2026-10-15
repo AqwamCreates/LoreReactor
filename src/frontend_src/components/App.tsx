@@ -742,6 +742,8 @@ function App() {
                     transparent: true,
                     decorations: false,
                     alwaysOnTop: true,
+                    shadow: false,     // <-- Strips the invisible DWM drop-shadow click buffer
+                    resizable: false,  // <-- Strips the invisible 8px DWM resize grab-border
                 });
                 setIsOverlayOpen(true);
             }
