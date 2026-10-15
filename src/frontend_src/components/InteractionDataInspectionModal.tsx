@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import type { InteractionData, Location, Character, HistoryMessage } from '../types';
-import { getCharacterImageUrlWithFallBack, getCharacterImageUrl } from '../storages/serverStorage';
+import { getCharacterImageUrlWithFallBack } from '../storages/serverStorage';
 import { getCurrentLocation } from '../utilities/locationLogic';
 import {
     ReactFlow,
@@ -167,17 +167,23 @@ function getLocationDistanceKm(locA: Location, locB: Location): number | null {
     return null;
 }
 
-// ✅ UPDATED: Concurrent fetching + Latest Expression Resolution
+// ✅ Concurrent fetching + Latest Expression Resolution
 function useCharacterPortraits(characters: Character[], interactionData: InteractionData | null): Map<string, string | null> {
-    const [portraits, setPortraits] = useState<Map<string, string | null>>(new Map());
-    
-    // Stable key prevents effect cancellation from volatile Zustand/React object references
     const characterIdsKey = useMemo(() => characters.map(c => c.id).sort().join(','), [characters]);
+
+    const [portraits, setPortraits] = useState<Map<string, string | null>>(() => new Map());
+    const [prevCharacterIdsKey, setPrevCharacterIdsKey] = useState(characterIdsKey);
+
+    if (characterIdsKey !== prevCharacterIdsKey) {
+        setPrevCharacterIdsKey(characterIdsKey);
+        if (!characterIdsKey) {
+            setPortraits(new Map());
+        }
+    }
 
     useEffect(() => {
         let cancelled = false;
         if (!characterIdsKey) {
-            setPortraits(new Map());
             return;
         }
 
@@ -206,7 +212,7 @@ function useCharacterPortraits(characters: Character[], interactionData: Interac
                     }
                     
                     // Resolve the specific image filename for the expression
-                    const filename = c.images?.[expression] || c.images?.['neutral'] || (c.images ? Object.values(c.images)[0] : undefined);
+                    const filename = c.images?.[expression] || c.images?.neutral || (c.images ? Object.values(c.images)[0] : undefined);
                     let url: string | null;
                     
                     try {
@@ -245,16 +251,6 @@ export function InteractionDataInspectionModal({
     const [userNavStack, setUserNavStack] = useState<InteractionData[]>([]);
     const [sessionIdCopied, setSessionIdCopied] = useState(false);
 
-    // ─── Local Editing States ───
-    const [localChat, setLocalChat] = useState<InteractionData | null>(null);
-    const [isDirty, setIsDirty] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
-    const [isEditingName, setIsEditingName] = useState(false);
-    const [editedName, setEditedName] = useState('');
-    const [draggedParticipantIndex, setDraggedParticipantIndex] = useState<number | null>(null);
-    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-    const nameInputRef = useRef<HTMLInputElement>(null);
-
     const internalStack = useMemo(() => {
         if (initializedFromStack !== inspectionStack) {
             return inspectionStack.length > 0 ? [...inspectionStack] : [];
@@ -269,17 +265,28 @@ export function InteractionDataInspectionModal({
     }
 
     const baseChat = internalStack[0] ?? null;
+    const baseChatId = baseChat?.id ?? null;
 
-    useEffect(() => {
-        if (baseChat) {
-            setLocalChat(JSON.parse(JSON.stringify(baseChat)));
-            setEditedName(baseChat.name || '');
-            setIsDirty(false);
-            setIsEditingName(false);
-        } else {
-            setLocalChat(null);
-        }
-    }, [baseChat]);
+    // ─── Local Editing States (Adjusted during render when baseChat changes) ───
+    const [prevBaseChatId, setPrevBaseChatId] = useState<string | null>(baseChatId);
+    const [localChat, setLocalChat] = useState<InteractionData | null>(() => 
+        baseChat ? JSON.parse(JSON.stringify(baseChat)) : null
+    );
+    const [isDirty, setIsDirty] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [editedName, setEditedName] = useState<string>(() => baseChat?.name || '');
+    const [draggedParticipantIndex, setDraggedParticipantIndex] = useState<number | null>(null);
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+    const nameInputRef = useRef<HTMLInputElement>(null);
+
+    if (baseChatId !== prevBaseChatId) {
+        setPrevBaseChatId(baseChatId);
+        setLocalChat(baseChat ? JSON.parse(JSON.stringify(baseChat)) : null);
+        setEditedName(baseChat?.name || '');
+        setIsDirty(false);
+        setIsEditingName(false);
+    }
 
     useEffect(() => {
         if (isEditingName) {
@@ -320,7 +327,7 @@ export function InteractionDataInspectionModal({
         return Array.from(map.values());
     }, [protagonists, participants]);
 
-    // ✅ Pass `chat` to resolve latest expressions
+    // Pass `chat` to resolve latest expressions
     const portraits = useCharacterPortraits(allVisibleCharacters, chat);
 
     // ─── Save Handlers ───
@@ -447,7 +454,7 @@ export function InteractionDataInspectionModal({
             setSessionIdCopied(true);
             setTimeout(() => setSessionIdCopied(false), 2000);
         }).catch(() => {});
-    }, [chat?.id]);
+    }, [chat]);
 
     // ─── Flow Graph Computation (Original Read-Only Layout) ───
     const { nodes, edges } = useMemo(() => {
