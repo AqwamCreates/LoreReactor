@@ -207,14 +207,10 @@ function useCharacterPortraits(characters: Character[], interactionData: Interac
                     
                     // Resolve the specific image filename for the expression
                     const filename = c.images?.[expression] || c.images?.['neutral'] || (c.images ? Object.values(c.images)[0] : undefined);
-                    let url: string | null = null;
+                    let url: string | null;
                     
                     try {
-                        if (filename) {
-                            url = await getCharacterImageUrl(c.id, filename);
-                        } else {
-                            url = await getCharacterImageUrlWithFallBack(c.id);
-                        }
+                        url = await getCharacterImageUrlWithFallBack(c.id, filename);
                     } catch {
                         url = null;
                     }
