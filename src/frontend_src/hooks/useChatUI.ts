@@ -5,15 +5,16 @@ import { useCharacterVoice } from './useCharacterVoice';
 import type { Character, InteractionData } from '../types';
 
 export function useChatUI(
-    interactionData: InteractionData | null, 
-    isAtBottomRef: React.MutableRefObject<boolean>
+    interactionData: InteractionData | null,
+    isAtBottomRef: React.MutableRefObject<boolean>,
+    allCharacters: Character[]
 ) {
     const chatHistoryRef = useRef<HTMLDivElement>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
     const hasScrolledToBottomRef = useRef(false);
     const previousChatIdRef = useRef<string | null>(null);
 
-    const { speakMessage } = useCharacterVoice();
+    const { speakMessage } = useCharacterVoice(allCharacters);
 
     const interactionDataId = interactionData?.id ?? null;
 

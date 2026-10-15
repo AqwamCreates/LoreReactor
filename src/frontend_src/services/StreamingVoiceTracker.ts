@@ -1,27 +1,33 @@
 // src/frontend_src/services/StreamingVoiceTracker.ts
 import { StreamingVoicePlayer } from './StreamingVoicePlayer';
 import { textToSpeechEngine, fetchVoiceReference } from './TextToSpeechEngine';
-import { extractNarratableText } from '../utilities/voiceTextExtractor';
+import { extractNarratableText, type NarratableSegment } from '../utilities/voiceTextExtractor';
 import { useSessionStore } from '../hooks/useSessionStore';
 import type { Character, Sampler, deviceType, textType } from '../types';
 
 interface PendingJob {
     sequenceId: number;
     sentence: string;
+    textType: textType;
 }
 
 export class StreamingVoiceTracker {
     private buffer: string = '';
     private sentenceAccumulator: string = '';
-    private lastCleanLength: number = 0;
+    private pendingSegmentType: textType = 'normal';
+    private processedSegments: NarratableSegment[] = [];
+    
     private player: StreamingVoicePlayer;
     private character: Character;
+    private allCharacters: Character[];
+    
     private isActive: boolean = false;
     private isKilled: boolean = false;
     private isFlushing: boolean = false;
     private hasVoiceConfigured: boolean = false;
     private startPromise: Promise<boolean> | null = null;
-    private referenceBase64: string | null = null;
+    
+    private voiceReferences: Map<string, string> = new Map();
     
     // Strict sequence tracking for in-order playback
     private nextSequenceId: number = 0;
@@ -44,8 +50,9 @@ export class StreamingVoiceTracker {
     private activeRequests: number = 0;
     private pendingSentences: PendingJob[] = [];
 
-    constructor(character: Character) {
+    constructor(character: Character, allCharacters: Character[] = []) {
         this.character = character;
+        this.allCharacters = allCharacters;
         this.player = new StreamingVoicePlayer();
         this.hasVoiceConfigured = Boolean(character?.voice?.voiceFilename && character?.voice?.textContent);
     }
@@ -59,12 +66,26 @@ export class StreamingVoiceTracker {
 
         this.startPromise = (async () => {
             try {
-                this.referenceBase64 = await fetchVoiceReference(this.character);
-                if (!this.referenceBase64) {
+                const mainBase64 = await fetchVoiceReference(this.character);
+                if (!mainBase64) {
                     console.warn('[StreamingVoiceTracker] Failed to fetch voice reference audio. TTS disabled.');
                     this.isActive = false;
                     this.hasVoiceConfigured = false;
                     return false;
+                }
+                this.voiceReferences.set(this.character.id, mainBase64);
+
+                const profile = useSessionStore.getState().interactionData?.profile;
+                const narrateTextCharacterIds = profile?.narrateTextCharacterIds;
+                if (narrateTextCharacterIds) {
+                    const idsToFetch = new Set(Object.values(narrateTextCharacterIds).filter(id => id && id !== this.character.id));
+                    await Promise.all(Array.from(idsToFetch).map(async (id) => {
+                        const char = this.allCharacters.find(c => c.id === id);
+                        if (char && char.voice?.voiceFilename && char.voice?.textContent) {
+                            const b64 = await fetchVoiceReference(char);
+                            if (b64) this.voiceReferences.set(id, b64);
+                        }
+                    }));
                 }
 
                 await this.player.init();
@@ -83,10 +104,11 @@ export class StreamingVoiceTracker {
     }
 
     resetPass(): void {
-        this.lastCleanLength = 0;
-        this.isFirstChunkSent = false;
+        this.processedSegments = [];
         this.buffer = '';
         this.sentenceAccumulator = '';
+        this.pendingSegmentType = 'normal';
+        this.isFirstChunkSent = false;
     }
 
     seed(text: string): void {
@@ -98,8 +120,12 @@ export class StreamingVoiceTracker {
             ? narrateTexts 
             : { normal: true, quoted: true, bolded: true, italicized: true, parenthesized: true, bracketed: true, braced: true } as Record<textType, boolean>;
 
-        const cleanText = extractNarratableText(text, effectiveNarrateTexts);
-        this.lastCleanLength = cleanText.length;
+        const segments = extractNarratableText(text, effectiveNarrateTexts);
+        this.processedSegments = segments;
+        
+        if (segments.length > 0) {
+            this.pendingSegmentType = segments[segments.length - 1].textType;
+        }
     }
 
     feed(text: string): void {
@@ -112,24 +138,47 @@ export class StreamingVoiceTracker {
             ? narrateTexts 
             : { normal: true, quoted: true, bolded: true, italicized: true, parenthesized: true, bracketed: true, braced: true } as Record<textType, boolean>;
 
-        const cleanText = extractNarratableText(text, effectiveNarrateTexts);
+        const newSegments = extractNarratableText(text, effectiveNarrateTexts);
 
-        // ✅ FIX: Guard against temporary length shrinkage (e.g. trailing whitespace trim,
-        // abrupt provider cutoff, unclosed quotes). Never reset lastCleanLength to 0 unless
-        // the text was genuinely reset to an empty string.
-        if (cleanText.length < this.lastCleanLength) {
-            if (cleanText.length === 0) {
-                this.lastCleanLength = 0;
+        let i = 0;
+        while (i < this.processedSegments.length && i < newSegments.length) {
+            if (this.processedSegments[i].text === newSegments[i].text) {
+                i++;
+            } else {
+                break;
             }
-            return;
         }
+        
+        if (i < newSegments.length) {
+            if (i < this.processedSegments.length) {
+                const oldText = this.processedSegments[i].text;
+                const newText = newSegments[i].text;
+                const delta = newText.startsWith(oldText) ? newText.slice(oldText.length) : newText;
+                
+                if (delta.length > 0) {
+                    this.processSegmentDelta(delta, newSegments[i].textType);
+                }
+                
+                this.processedSegments[i] = newSegments[i];
+                i++;
+            }
+            
+            for (; i < newSegments.length; i++) {
+                this.processSegmentDelta(newSegments[i].text, newSegments[i].textType);
+                this.processedSegments.push(newSegments[i]);
+            }
+        }
+    }
 
-        if (cleanText.length <= this.lastCleanLength) return;
+    private processSegmentDelta(delta: string, type: textType): void {
+        if (type !== this.pendingSegmentType && this.sentenceAccumulator.length > 0) {
+            this.queueSentence(this.sentenceAccumulator.trim(), this.pendingSegmentType);
+            this.sentenceAccumulator = '';
+        }
+        this.pendingSegmentType = type;
 
-        const newText = cleanText.slice(this.lastCleanLength);
-        this.buffer += newText;
-        this.lastCleanLength = cleanText.length;
-
+        this.buffer += delta;
+        
         // Context-aware boundary matcher:
         // 1. Single period (ignores ..., .., and spaced . . .)
         // 2. [!?！？]+ and Asian full stop 。
@@ -159,17 +208,17 @@ export class StreamingVoiceTracker {
                 : this.INITIAL_CHUNK_MIN_CHARS;
 
             if (this.sentenceAccumulator.length >= targetMinLength) {
-                this.queueSentence(this.sentenceAccumulator.trim());
+                this.queueSentence(this.sentenceAccumulator.trim(), this.pendingSegmentType);
                 this.sentenceAccumulator = '';
                 this.isFirstChunkSent = true;
             }
         }
     }
 
-    private queueSentence(sentence: string): void {
+    private queueSentence(sentence: string, textType: textType): void {
         if (this.isKilled || !this.hasVoiceConfigured || !sentence.trim()) return;
         const currentSequenceId = this.nextSequenceId++;
-        this.pendingSentences.push({ sequenceId: currentSequenceId, sentence: sentence.trim() });
+        this.pendingSentences.push({ sequenceId: currentSequenceId, sentence: sentence.trim(), textType });
         this.processPendingQueue();
     }
 
@@ -180,7 +229,7 @@ export class StreamingVoiceTracker {
             const job = this.pendingSentences.shift()!;
             this.activeRequests++;
             
-            const promise = this.executeSynthesis(job.sequenceId, job.sentence);
+            const promise = this.executeSynthesis(job.sequenceId, job.sentence, job.textType);
             this.inFlightPromises.push(promise);
             
             promise.finally(() => {
@@ -191,10 +240,22 @@ export class StreamingVoiceTracker {
         }
     }
 
-    private async executeSynthesis(sequenceId: number, sentence: string): Promise<void> {
-        const base64 = this.referenceBase64;
-        const transcript = this.character.voice?.textContent;
-        const language = this.character.voice?.language;
+    private async executeSynthesis(sequenceId: number, sentence: string, textType: textType): Promise<void> {
+        const profile = useSessionStore.getState().interactionData?.profile;
+        const narrateTextCharacterIds = profile?.narrateTextCharacterIds;
+        
+        let targetChar = this.character;
+        if (narrateTextCharacterIds && narrateTextCharacterIds[textType]) {
+            const overrideId = narrateTextCharacterIds[textType];
+            const overrideChar = this.allCharacters.find(c => c.id === overrideId);
+            if (overrideChar && overrideChar.voice?.voiceFilename && overrideChar.voice?.textContent) {
+                targetChar = overrideChar;
+            }
+        }
+
+        const base64 = this.voiceReferences.get(targetChar.id);
+        const transcript = targetChar.voice?.textContent;
+        const language = targetChar.voice?.language;
         
         if (!base64 || !transcript) {
             this.completedAudioBuffers.set(sequenceId, new ArrayBuffer(0));
@@ -202,8 +263,7 @@ export class StreamingVoiceTracker {
             return;
         }
 
-        const profile = useSessionStore.getState().interactionData?.profile;
-        const sampler: Sampler | undefined = profile?.characterTextToSpeechModelSampler ?? this.character.textToSpeechModelSampler;
+        const sampler: Sampler | undefined = profile?.characterTextToSpeechModelSampler ?? targetChar.textToSpeechModelSampler;
         const devicePreference: deviceType = profile?.textToSpeechDeviceType ?? 'auto';
 
         try {
@@ -269,7 +329,7 @@ export class StreamingVoiceTracker {
         }
 
         if (remaining.trim().length > 0) {
-            this.queueSentence(remaining.trim());
+            this.queueSentence(remaining.trim(), this.pendingSegmentType);
             this.sentenceAccumulator = '';
             this.buffer = '';
         }
@@ -303,5 +363,6 @@ export class StreamingVoiceTracker {
         this.activeRequests = 0;
         this.buffer = '';
         this.sentenceAccumulator = '';
+        this.processedSegments = [];
     }
 }

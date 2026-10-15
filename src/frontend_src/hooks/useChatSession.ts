@@ -186,7 +186,8 @@ export function useChatSession(options: UseChatSessionOptions) {
         return requestTimestampsRef.current.length;
     }, []);
 
-    const ui = useChatUI(interactionData, isAtBottomRef);
+    // ✅ FIX: Pass the prop directly during render instead of accessing allCharactersRef.current
+    const ui = useChatUI(interactionData, isAtBottomRef, options.allCharacters);
 
     const { throttledSetStreamingText, setStreamingText, streamingTextRef, resetStream } = useThrottledStream();
     const { acquireLock, releaseLock, isLoadingRef } = useCharacterResponseLock();
@@ -444,7 +445,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
 
         // ✅ Initialize Streaming Voice with safe start and seed if prefix exists
-        const voiceTracker = new StreamingVoiceTracker(respondingChar);
+        const voiceTracker = new StreamingVoiceTracker(respondingChar, allCharactersRef.current);
         if (existingCharacterText) {
             voiceTracker.seed(existingCharacterText);
         }
@@ -823,7 +824,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
 
         // ✅ INITIALIZE voice tracker for the resumed turn and seed with existingText
-        const voiceTracker = new StreamingVoiceTracker(char);
+        const voiceTracker = new StreamingVoiceTracker(char, allCharactersRef.current);
         if (existingText) {
             voiceTracker.seed(existingText);
         }
