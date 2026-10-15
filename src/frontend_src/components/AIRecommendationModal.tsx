@@ -1,7 +1,7 @@
 // src/frontend_src/components/AIRecommendationModal.tsx
 import type React from 'react';
-import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World, PromptBlock } from '../types';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World, PromptBlock, EntityFolder } from '../types';
 import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
 import { EntitySelectList } from './EntitySelectList';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -23,6 +23,7 @@ interface AIRecommendationModalProps {
     onSaveProfile: (profile: Profile) => Promise<boolean>;
     onSaveWorld: (world: World) => Promise<boolean>;
     onSavePromptBlock: (block: PromptBlock) => Promise<boolean>;
+    onSaveEntityFolder?: (entityFolder: EntityFolder) => Promise<boolean>;
     onOpenCharacterEditor?: (char: Character | null, onApplyToRecommendation: (c: Character) => void) => void;
     onOpenContextEditor?: (context: Context | null, onApplyToRecommendation: (c: Context) => void) => void;
     onOpenLocationEditor?: (loc: Location | null, onApplyToRecommendation: (l: Location) => void) => void;
@@ -30,20 +31,21 @@ interface AIRecommendationModalProps {
     onOpenProfileEditor?: (profile: Profile | null, onApplyToRecommendation: (p: Profile) => void) => void;
     onOpenPromptBlockEditor?: (block: PromptBlock | null, onApplyToRecommendation: (b: PromptBlock) => void) => void;
     allSamplers: Sampler[];
-    aiRecommendationSampler?: Sampler;
+    aiRecommendationSampler: Sampler | undefined;
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
     allAudioTracks: AudioTrack[];
     allPromptBlocks: PromptBlock[];
+    allEntityFolders: EntityFolder[];
     selectedModel: LanguageModel | null;
     runningModels: Record<string, { isRunning: boolean; port?: number }>;
 }
 
 export function AIRecommendationModal({
-     onClose, onSaveCharacter, onSaveContext, onSaveLocation, onSaveAudioTrack, onSaveProfile, onSaveWorld, onSavePromptBlock,
+    onClose, onSaveCharacter, onSaveContext, onSaveLocation, onSaveAudioTrack, onSaveProfile, onSaveWorld, onSavePromptBlock, onSaveEntityFolder,
     onOpenCharacterEditor, onOpenContextEditor, onOpenLocationEditor, onOpenAudioTrackEditor, onOpenProfileEditor, onOpenPromptBlockEditor,
-    allSamplers, aiRecommendationSampler, allCharacters, allContexts, allLocations, allAudioTracks, allPromptBlocks, selectedModel, runningModels,
+    allSamplers, aiRecommendationSampler, allCharacters, allContexts, allLocations, allAudioTracks, allPromptBlocks, allEntityFolders = [], selectedModel, runningModels,
 }: AIRecommendationModalProps) {
     const [selectedEntities, setSelectedEntities] = useState<EntityType[]>(['Character']);
     const [userPrompt, setUserPrompt] = useState('');
@@ -56,16 +58,22 @@ export function AIRecommendationModal({
     const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null);
     const [editingJsonText, setEditingJsonText] = useState('');
     const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+    
+    // Existing entity selections for prompt reference
     const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
     const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
     const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
     const [selectedAudioTrackIds, setSelectedAudioTrackIds] = useState<string[]>([]);
     const [selectedPromptBlockIds, setSelectedPromptBlockIds] = useState<string[]>([]);
+    const [selectedEntityFolderIds, setSelectedEntityFolderIds] = useState<string[]>([]);
+
     const [charSearch, setCharSearch] = useState('');
     const [ctxSearch, setCtxSearch] = useState('');
     const [locSearch, setLocSearch] = useState('');
     const [audioSearch, setAudioSearch] = useState('');
     const [promptBlockSearch, setPromptBlockSearch] = useState('');
+    const [entityFolderSearch, setEntityFolderSearch] = useState('');
+
     const [referenceImages, setReferenceImages] = useState<File[]>([]);
     const [referenceImagePreviews, setReferenceImagePreviews] = useState<string[]>([]);
     const [isUploadingImages, setIsUploadingImages] = useState(false);
@@ -78,6 +86,18 @@ export function AIRecommendationModal({
     const [resultError, setResultError] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const abortControllerRef = useRef<AbortController | null>(null);
+
+    // Entity options list ensuring EntityFolder is clearly labeled as "Entity Folder"
+    const entityOptions = useMemo(() => {
+        const hasFolderOption = ENTITY_OPTIONS.some(o => o.type === ('EntityFolder' as any));
+        if (hasFolderOption) {
+            return ENTITY_OPTIONS.map(o => o.type === ('EntityFolder' as any) ? { ...o, label: 'Entity Folder' } : o);
+        }
+        return [
+            ...ENTITY_OPTIONS,
+            { type: 'EntityFolder' as EntityType, label: 'Entity Folder', icon: '📁' },
+        ];
+    }, []);
 
     // Token count for user prompt
     const [userPromptTokenCount, setUserPromptTokenCount] = useState(0);
@@ -114,8 +134,9 @@ export function AIRecommendationModal({
         setImageInjectionPriority(['reference', 'character', 'context', 'location', 'promptBlock']);
         setDragIndex(null); setDragOverIndex(null);
         setJsonHistory([]); setEditingHistoryId(null); setEditingJsonText(''); setExpandedHistoryId(null);
-        setSelectedCharacterIds([]); setSelectedContextIds([]); setSelectedLocationIds([]); setSelectedAudioTrackIds([]); setSelectedPromptBlockIds([]);
-        setCharSearch(''); setCtxSearch(''); setLocSearch(''); setAudioSearch(''); setPromptBlockSearch('');
+        setSelectedCharacterIds([]); setSelectedContextIds([]); setSelectedLocationIds([]); 
+        setSelectedAudioTrackIds([]); setSelectedPromptBlockIds([]); setSelectedEntityFolderIds([]);
+        setCharSearch(''); setCtxSearch(''); setLocSearch(''); setAudioSearch(''); setPromptBlockSearch(''); setEntityFolderSearch('');
         setReferenceImages([]);
         setReferenceImagePreviews(prev => {
             for (const p of prev) {
@@ -225,6 +246,15 @@ export function AIRecommendationModal({
             }
             parts.push('');
         }
+        if (selectedEntityFolderIds.length > 0 && allEntityFolders.length > 0) {
+            parts.push('EXISTING ENTITY FOLDERS:');
+            for (let i = 0; i < selectedEntityFolderIds.length; i++) {
+                const id = selectedEntityFolderIds[i];
+                const f = allEntityFolders.find(x => x.id === id);
+                if (f) parts.push(`${i + 1}. ID: ${f.id} | Name: ${f.name} | Type: ${f.entityType} | Items: [${f.itemIds.join(', ')}]${f.description ? ` | ${f.description.substring(0, 200)}` : ''}`);
+            }
+            parts.push('');
+        }
         return parts.join('\n');
     };
 
@@ -324,6 +354,11 @@ export function AIRecommendationModal({
                     if (!await onSavePromptBlock(toSave)) throw new Error(`Failed to save prompt block "${toSave.name}".`);
                 }
             }
+            if (parsedOutput.entityFolders && onSaveEntityFolder) {
+                for (const folder of parsedOutput.entityFolders) {
+                    if (!await onSaveEntityFolder(folder)) throw new Error(`Failed to save entity folder "${folder.name}".`);
+                }
+            }
             if (parsedOutput.profile) {
                 let profileToSave = parsedOutput.profile;
                 if (!injectCharacterImages) profileToSave = { ...profileToSave, forceNoCharacterImageInjection: true };
@@ -371,16 +406,18 @@ export function AIRecommendationModal({
     const hasTracks = (parsedOutput?.audioTracks?.length ?? 0) > 0;
     const hasProf = !!parsedOutput?.profile;
     const hasBlocks = (parsedOutput?.promptBlocks?.length ?? 0) > 0;
+    const hasEntityFolders = (parsedOutput?.entityFolders?.length ?? 0) > 0;
     const hasWorld = !!parsedOutput?.world;
-    const hasAnyParsed = hasChars || hasCtxs || hasLocs || hasTracks || hasProf || hasBlocks || hasWorld;
+    const hasAnyParsed = hasChars || hasCtxs || hasLocs || hasTracks || hasProf || hasBlocks || hasEntityFolders || hasWorld;
     const hasOutput = streamingText.trim().length > 0;
     const availableTabs: ViewTab[] = ['raw'];
     if (hasChars) availableTabs.push('Character');
     if (hasCtxs) availableTabs.push('Context');
     if (hasLocs) availableTabs.push('Location');
     if (hasTracks) availableTabs.push('AudioTrack');
-    if (hasProf) availableTabs.push('profile');
+    if (hasProf) availableTabs.push('Profile');
     if (hasBlocks) availableTabs.push('PromptBlock');
+    if (hasEntityFolders) availableTabs.push('EntityFolder' as ViewTab);
     if (hasWorld) availableTabs.push('World');
     const effectiveTab = availableTabs.includes(activeTab) ? activeTab : 'raw';
     const disabledImageItems = IMAGE_PRIORITY_ITEMS.filter(item => !imageInjectionPriority.includes(item));
@@ -409,6 +446,7 @@ export function AIRecommendationModal({
     const audioTracks = parsedOutput?.audioTracks ?? [];
     const profile = parsedOutput?.profile ?? null;
     const promptBlocks = parsedOutput?.promptBlocks ?? [];
+    const entityFolders = parsedOutput?.entityFolders ?? [];
     const world = parsedOutput?.world ?? null;
 
     return (
@@ -420,10 +458,32 @@ export function AIRecommendationModal({
                     <div className="modal-body editor-modal-body">
                         <div className="editor-section">
                             <span className="editor-section-title">Generate</span>
-                            <div className="entity-type-buttons">{ENTITY_OPTIONS.map(opt => (<button key={opt.type} type="button" onClick={() => toggleEntity(opt.type)} className={`editor-button ${selectedEntities.includes(opt.type) ? 'editor-button-save' : 'editor-button-cancel'} entity-type-button`}>{opt.icon} {opt.label}</button>))}</div>
+                            <div className="entity-type-buttons">
+                                {entityOptions.map(opt => (
+                                    <button 
+                                        key={opt.type} 
+                                        type="button" 
+                                        onClick={() => toggleEntity(opt.type)} 
+                                        className={`editor-button ${selectedEntities.includes(opt.type) ? 'editor-button-save' : 'editor-button-cancel'} entity-type-button`}
+                                    >
+                                        {opt.icon} {opt.label}
+                                    </button>
+                                ))}
+                            </div>
                             <div className="entity-type-hint">Select entity types. Co-selected types with World generate inside the world.</div>
                         </div>
-                        <div className="editor-section"><span className="editor-section-title">Reference Existing Entities (Optional)</span><div className="entity-ref-hint">Select existing entities for consistency.</div><EntitySelectList label="Characters" items={allCharacters} selectedIds={selectedCharacterIds} onToggle={(id) => toggleInOrderedList(selectedCharacterIds, setSelectedCharacterIds, id)} searchQuery={charSearch} onSearchChange={setCharSearch} /><EntitySelectList label="Contexts" items={allContexts} selectedIds={selectedContextIds} onToggle={(id) => toggleInOrderedList(selectedContextIds, setSelectedContextIds, id)} searchQuery={ctxSearch} onSearchChange={setCtxSearch} /><EntitySelectList label="Locations" items={allLocations} selectedIds={selectedLocationIds} onToggle={(id) => toggleInOrderedList(selectedLocationIds, setSelectedLocationIds, id)} searchQuery={locSearch} onSearchChange={setLocSearch} /><EntitySelectList label="Audio Tracks" items={allAudioTracks} selectedIds={selectedAudioTrackIds} onToggle={(id) => toggleInOrderedList(selectedAudioTrackIds, setSelectedAudioTrackIds, id)} searchQuery={audioSearch} onSearchChange={setAudioSearch} /><EntitySelectList label="Prompt Blocks" items={allPromptBlocks} selectedIds={selectedPromptBlockIds} onToggle={(id) => toggleInOrderedList(selectedPromptBlockIds, setSelectedPromptBlockIds, id)} searchQuery={promptBlockSearch} onSearchChange={setPromptBlockSearch} /></div>
+                        <div className="editor-section">
+                            <span className="editor-section-title">Reference Existing Entities (Optional)</span>
+                            <div className="entity-ref-hint">Select existing entities for consistency.</div>
+                            <EntitySelectList label="Characters" items={allCharacters} selectedIds={selectedCharacterIds} onToggle={(id) => toggleInOrderedList(selectedCharacterIds, setSelectedCharacterIds, id)} searchQuery={charSearch} onSearchChange={setCharSearch} />
+                            <EntitySelectList label="Contexts" items={allContexts} selectedIds={selectedContextIds} onToggle={(id) => toggleInOrderedList(selectedContextIds, setSelectedContextIds, id)} searchQuery={ctxSearch} onSearchChange={setCtxSearch} />
+                            <EntitySelectList label="Locations" items={allLocations} selectedIds={selectedLocationIds} onToggle={(id) => toggleInOrderedList(selectedLocationIds, setSelectedLocationIds, id)} searchQuery={locSearch} onSearchChange={setLocSearch} />
+                            <EntitySelectList label="Audio Tracks" items={allAudioTracks} selectedIds={selectedAudioTrackIds} onToggle={(id) => toggleInOrderedList(selectedAudioTrackIds, setSelectedAudioTrackIds, id)} searchQuery={audioSearch} onSearchChange={setAudioSearch} />
+                            <EntitySelectList label="Prompt Blocks" items={allPromptBlocks} selectedIds={selectedPromptBlockIds} onToggle={(id) => toggleInOrderedList(selectedPromptBlockIds, setSelectedPromptBlockIds, id)} searchQuery={promptBlockSearch} onSearchChange={setPromptBlockSearch} />
+                            {allEntityFolders.length > 0 && (
+                                <EntitySelectList label="Entity Folders" items={allEntityFolders} selectedIds={selectedEntityFolderIds} onToggle={(id) => toggleInOrderedList(selectedEntityFolderIds, setSelectedEntityFolderIds, id)} searchQuery={entityFolderSearch} onSearchChange={setEntityFolderSearch} />
+                            )}
+                        </div>
                         <div className="editor-section">
                             <label className="editor-label">Describe what you want <span className="optional-label">(optional)</span></label>
                             <textarea value={userPrompt} onChange={e => setUserPrompt(e.target.value)} className="editor-textarea" placeholder={selectedEntities.includes('World') ? "e.g., A haunted Victorian mansion with 5 NPCs..." : "Leave empty for free generation..."} rows={3} />
@@ -450,8 +510,18 @@ export function AIRecommendationModal({
                                 {hasCtxs && <button type="button" className={`editor-button ${activeTab === 'Context' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('Context')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>📜 Contexts ({contexts.length})</button>}
                                 {hasLocs && <button type="button" className={`editor-button ${activeTab === 'Location' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('Location')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>📍 Locations ({locations.length})</button>}
                                 {hasTracks && <button type="button" className={`editor-button ${activeTab === 'AudioTrack' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('AudioTrack')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>🔊 Audio Tracks ({audioTracks.length})</button>}
-                                {hasProf && profile && <button type="button" className={`editor-button ${activeTab === 'profile' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('profile')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>👤 {profile.name}</button>}
+                                {hasProf && profile && <button type="button" className={`editor-button ${activeTab === 'Profile' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('Profile')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>👤 {profile.name}</button>}
                                 {hasBlocks && <button type="button" className={`editor-button ${activeTab === 'PromptBlock' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('PromptBlock')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>🧱 Prompt Blocks ({promptBlocks.length})</button>}
+                                {hasEntityFolders && (
+                                    <button 
+                                        type="button" 
+                                        className={`editor-button ${activeTab === ('EntityFolder' as ViewTab) ? 'editor-button-save' : 'editor-button-cancel'}`} 
+                                        onClick={() => setActiveTab('EntityFolder' as ViewTab)} 
+                                        style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}
+                                    >
+                                        📁 Entity Folders ({entityFolders.length})
+                                    </button>
+                                )}
                                 {hasWorld && world && <button type="button" className={`editor-button ${activeTab === 'World' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('World')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>🌍 {world.name}</button>}
                                 <button type="button" className={`editor-button ${activeTab === 'raw' ? 'editor-button-save' : 'editor-button-cancel'}`} onClick={() => setActiveTab('raw')} style={{ fontSize: '0.7rem', padding: '4px 10px', minHeight: '28px' }}>📄 Raw JSON</button>
                             </div>}
@@ -498,7 +568,7 @@ export function AIRecommendationModal({
                                 ))}
                             </div>}
 
-                            {effectiveTab === 'profile' && hasProf && profile && <div className="entity-field-list">
+                            {effectiveTab === 'Profile' && hasProf && profile && <div className="entity-field-list">
                                 {renderSummary(profile.description)}
                                 {renderFieldList(Object.entries(profile).filter(([k]) => k !== 'description' && k !== 'id' && k !== 'firstCreatedTimestamp' && k !== 'lastUpdatedTimestamp'))}
                                 {onOpenProfileEditor && <div style={{ marginTop: '12px', textAlign: 'center' }}><button type="button" className="editor-button editor-button-save" onClick={() => onOpenProfileEditor(profile, () => {})} style={editBtnStyle}>✏️ Open in Editor</button></div>}
@@ -513,6 +583,17 @@ export function AIRecommendationModal({
                                     </div>
                                 ))}
                             </div>}
+
+                            {effectiveTab === ('EntityFolder' as ViewTab) && hasEntityFolders && (
+                                <div className="entity-field-list">
+                                    {entityFolders.map((folder, i) => (
+                                        <div key={folder.id || i} style={{ marginBottom: '16px', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                                            {renderSummary(folder.description)}
+                                            {renderFieldList(Object.entries(folder).filter(([k]) => k !== 'description' && k !== 'id' && k !== 'firstCreatedTimestamp' && k !== 'lastUpdatedTimestamp'))}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
 
                             {effectiveTab === 'World' && hasWorld && world && <div className="entity-field-list">
                                 {renderSummary(world.description)}
@@ -533,7 +614,20 @@ export function AIRecommendationModal({
                                 </div>
                             </div>}
 
-                            <div className="entity-action-buttons">{isGenerating ? <button type="button" className="editor-button editor-button-cancel" onClick={handleStopGeneration} style={{ flex: 1 }}>⏹ Stop</button> : <><button type="button" className="editor-button editor-button-cancel" onClick={resetResult} disabled={isSaving} style={{ flex: 1 }}>Regenerate</button>{hasAnyParsed && <button type="button" className="editor-button editor-button-save" onClick={handleSave} disabled={isSaving} style={{ flex: 1 }}>{isSaving ? 'Saving...' : hasWorld ? '💾 Save World + All' : '💾 Save All'}</button>}</>}</div>
+                            <div className="entity-action-buttons">
+                                {isGenerating ? (
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={handleStopGeneration} style={{ flex: 1 }}>⏹ Stop</button>
+                                ) : (
+                                    <>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={resetResult} disabled={isSaving} style={{ flex: 1 }}>Regenerate</button>
+                                        {hasAnyParsed && (
+                                            <button type="button" className="editor-button editor-button-save" onClick={handleSave} disabled={isSaving} style={{ flex: 1 }}>
+                                                {isSaving ? 'Saving...' : hasWorld ? '💾 Save World + All' : '💾 Save All'}
+                                            </button>
+                                        )}
+                                    </>
+                                )}
+                            </div>
                             {resultError && <div className="editor-error-message editor-error-centered entity-error-below">{resultError}</div>}
                         </div>
                     </div>

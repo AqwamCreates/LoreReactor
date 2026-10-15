@@ -14,9 +14,8 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     const includeLocation = selectedEntities.includes('Location');
     const includeAudioTrack = selectedEntities.includes('AudioTrack');
     const includePromptBlock = selectedEntities.includes('PromptBlock');
-    const includeProfile = selectedEntities.includes('profile');
-    const includeEntityFolder = (selectedEntities as (EntityType | string)[]).includes('EntityFolder') 
-        || (selectedEntities as (EntityType | string)[]).includes('Folder');
+    const includeProfile = selectedEntitiesincludes('Profile');
+    const includeEntityFolder = (selectedEntities as string[]).includes('EntityFolder') || (selectedEntities as string[]).includes('entityFolder');
 
     // Automatically generate tool schemas from defaults dictionaries
     const characterToolsSchema = Object.entries(defaultCharacterTools)
@@ -322,10 +321,10 @@ ${profileToolsSchema}
     if (includeEntityFolder) {
         parts.push(`  "entityFolders": [{
     "id": "string (UUID)",
-    "name": "string (required, folder name)",
+    "name": "string (required, entity folder name)",
     "description": "string (display only, optional)",
-    "entityType": "'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'interactionData' | 'model' | 'sampler' | 'promptBlock' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'account' | 'multiplayerData' (required, entity category for this folder)",
-    "itemIds": ["string array of entity UUIDs belonging to this folder"]
+    "entityType": "'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'interactionData' | 'model' | 'sampler' | 'promptBlock' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'account' | 'multiplayerData' (required, entity category for this entity folder)",
+    "itemIds": ["string array of entity UUIDs belonging to this entity folder"]
   }]`);
     }
 
