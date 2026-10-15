@@ -76,8 +76,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     
     const [renamingId, setRenamingId] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState('');
-    const [isCreatingFolder, setIsCreatingFolder] = useState(false);
-    const [newFolderName, setNewFolderName] = useState('');
     
     const [movingItemId, setMovingItemId] = useState<string | null>(null);
     const [moveDropdownRect, setMoveDropdownRect] = useState<DOMRect | null>(null);
@@ -88,7 +86,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     const searchInputRef = useRef<HTMLInputElement>(null);
     const renameInputRef = useRef<HTMLInputElement>(null);
     
-    // ✅ Track previous search query to detect transitions
     const prevSearchQueryRef = useRef('');
 
     const hasHosterOwnedTab = hosterOwnedItems !== undefined;
@@ -122,7 +119,16 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                 setMoveDropdownRect(null);
             }
         };
-        const handleScroll = () => { setMovingItemId(null); setMoveDropdownRect(null); };
+        
+        const handleScroll = (e: Event) => {
+            const target = e.target as HTMLElement;
+            if (target && typeof target.closest === 'function' && target.closest('.move-dropdown-portal')) {
+                return;
+            }
+            setMovingItemId(null);
+            setMoveDropdownRect(null);
+        };
+
         document.addEventListener('mousedown', handleClickOutside);
         window.addEventListener('scroll', handleScroll, true);
         return () => {
@@ -261,12 +267,10 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         return result;
     }, [searchQuery, typeFolders, rootItems, itemMap, renderSubtext, displayItems]);
 
-    // ✅ FIX: Only auto-expand when transitioning from no-search to search, then leave user alone
     useEffect(() => {
         const prevQuery = prevSearchQueryRef.current.trim();
         const currentQuery = searchQuery.trim();
         
-        // Only expand if we just started searching (transition from empty to non-empty)
         if (!prevQuery && currentQuery) {
             const foldersToExpand = new Set<string>();
             for (const entry of searchFilteredDisplayItems) {
@@ -361,20 +365,40 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         }
         addToast(targetFolderId ? 'Moved to folder.' : 'Moved to root.', 'success');
         setMovingItemId(null); setMoveDropdownRect(null);
+        setFolderSearchQuery('');
     };
 
-    const handleCreateFolderSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const trimmed = newFolderName.trim();
-        if (trimmed) {
-            const newFolder: EntityFolder = {
-                id: uuidv4(), name: trimmed, entityType, itemIds: [],
-                firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
-            };
-            const success = await onSaveEntityFolder(newFolder);
-            if (success) addToast(`Folder "${trimmed}" created.`, 'success');
-            setIsCreatingFolder(false); setNewFolderName('');
+    const handleCreateAndMove = async (folderName: string) => {
+        if (!movingItemId || !folderName.trim()) return;
+        const trimmedName = folderName.trim();
+        
+        const newFolder: EntityFolder = {
+            id: uuidv4(), 
+            name: trimmedName, 
+            entityType, 
+            itemIds: [movingItemId],
+            firstCreatedTimestamp: Date.now(), 
+            lastUpdatedTimestamp: Date.now(),
+        };
+        
+        const foldersToUpdate = typeFolders
+            .filter(f => f.itemIds.includes(movingItemId))
+            .map(f => ({ 
+                ...f, 
+                itemIds: f.itemIds.filter(id => id !== movingItemId), 
+                lastUpdatedTimestamp: Date.now() 
+            }));
+        
+        await onSaveEntityFolder(newFolder);
+        
+        for (const f of foldersToUpdate) {
+            await onSaveEntityFolder(f);
         }
+        
+        addToast(`Created folder "${trimmedName}" and moved item.`, 'success');
+        setMovingItemId(null);
+        setMoveDropdownRect(null);
+        setFolderSearchQuery('');
     };
 
     const renderItemRow = (item: T) => {
@@ -473,13 +497,17 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                     </div>
                 </div>
                 {isExpanded && itemsToRender.length > 0 && (
-                    <ul className="folder-children">
+                    <ul className="folder-children" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', marginBottom: '8px', paddingLeft: '16px' }}>
                         {itemsToRender.map(item => renderItemRow(item))}
                     </ul>
                 )}
             </li>
         );
     };
+
+    const exactFolderMatch = folderSearchQuery.trim() 
+        ? typeFolders.find(f => f.name.toLowerCase() === folderSearchQuery.trim().toLowerCase()) 
+        : null;
 
     return (
         <div className="modal-overlay" onKeyDown={e => { if (e.key === 'Escape') onClose(); }}>
@@ -488,7 +516,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                     <h2>{title}</h2>
                     <div className="modal-header-actions">
                         {showCreateNew && <button type="button" className="create-new-button" onClick={e => { e.stopPropagation(); onCreateNew!(); }}>➕ New {singularTitle}</button>}
-                        {activeTab === 'localLibrary' && <button type="button" className="create-new-button" onClick={() => setIsCreatingFolder(true)}>📁 New Folder</button>}
                         <button type="button" className="close-button close-button-spaced" onClick={onClose}>×</button>
                     </div>
                 </div>
@@ -541,13 +568,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                 </div>
 
                 <div className="modal-body">
-                    {activeTab === 'localLibrary' && isCreatingFolder && (
-                        <form onSubmit={handleCreateFolderSubmit} style={{ display: 'flex', gap: '8px', marginBottom: '12px' }} onClick={e => e.stopPropagation()}>
-                            <input type="text" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} placeholder="Folder name..." className="modal-search-input" style={{ flex: 1, minHeight: '36px' }} autoFocus onBlur={() => { if (!newFolderName.trim()) setIsCreatingFolder(false); }} />
-                            <button type="submit" className="create-new-button" style={{ minHeight: '36px' }}>Create</button>
-                        </form>
-                    )}
-
                     {searchQuery.trim() ? (
                         searchFilteredDisplayItems.length === 0 ? <div className="empty-state">No results found for "{searchQuery}"</div> : (
                             <ul className="manager-list">
@@ -585,17 +605,48 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
             </div>
 
             {movingItemId && moveDropdownRect && activeTab === 'localLibrary' && (
-                <div className="action-menu-container move-dropdown-portal" onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: moveDropdownRect.bottom + 4, right: Math.max(8, window.innerWidth - moveDropdownRect.right), zIndex: 4000, minWidth: '220px', maxWidth: 'calc(100vw - 16px)' }}>
-                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                <div 
+                    className="action-menu-container move-dropdown-portal" 
+                    onClick={e => e.stopPropagation()} 
+                    style={{ 
+                        position: 'fixed', 
+                        top: moveDropdownRect.bottom + 4, 
+                        right: Math.max(8, Math.min(window.innerWidth - moveDropdownRect.right, window.innerWidth - 380 - 8)), 
+                        zIndex: 4000, 
+                        width: '380px', 
+                        maxWidth: 'calc(100vw - 16px)' 
+                    }}
+                >
+                    <div style={{ position: 'relative', flexShrink: 0, padding: '8px', borderBottom: '1px solid var(--border)' }}>
                         <input 
                             ref={folderSearchInputRef}
                             type="text" 
                             className="action-menu-search" 
-                            placeholder="Search folders..." 
+                            placeholder="Search or type new & press Enter..." 
                             value={folderSearchQuery} 
                             onChange={e => setFolderSearchQuery(e.target.value)} 
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    const query = folderSearchQuery.trim();
+                                    if (!query) return;
+                                    if (exactFolderMatch) {
+                                        handleMoveSelect(e as any, movingItemId, exactFolderMatch.id);
+                                    } else {
+                                        handleCreateAndMove(query);
+                                    }
+                                }
+                            }}
                             onClick={e => e.stopPropagation()} 
-                            style={{ paddingRight: folderSearchQuery ? '36px' : '12px', minHeight: '36px', fontSize: '0.75rem', padding: '8px 12px' }} 
+                            style={{ 
+                                width: '100%', 
+                                boxSizing: 'border-box',
+                                paddingRight: folderSearchQuery ? '36px' : '12px', 
+                                minHeight: '32px', 
+                                fontSize: '0.75rem', 
+                                padding: '6px 12px',
+                                margin: 0
+                            }} 
                         />
                         {folderSearchQuery && (
                             <button 
@@ -603,7 +654,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                 onClick={(e) => { e.stopPropagation(); setFolderSearchQuery(''); folderSearchInputRef.current?.focus(); }} 
                                 style={{ 
                                     position: 'absolute', 
-                                    right: '8px', 
+                                    right: '12px', 
                                     top: '50%', 
                                     transform: 'translateY(-50%)', 
                                     background: 'transparent', 
@@ -626,12 +677,17 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                         <button className="action-menu-item" onClick={e => handleMoveSelect(e, movingItemId, null)}>
                             <span className="action-menu-item-label">Root (Unassigned)</span>
                         </button>
+                        
                         {filteredTypeFolders.length > 0 ? (
                             filteredTypeFolders.map(f => (
                                 <button key={f.id} className="action-menu-item" onClick={e => handleMoveSelect(e, movingItemId, f.id)}>
                                     <span className="action-menu-item-label">{f.name}</span>
                                 </button>
                             ))
+                        ) : folderSearchQuery.trim() && !exactFolderMatch ? (
+                            <div style={{ padding: '12px', fontSize: '0.75rem', opacity: 0.7, textAlign: 'center', color: 'var(--text-h)' }}>
+                                Press <kbd>Enter</kbd> to create "{folderSearchQuery.trim()}"
+                            </div>
                         ) : (
                             <div style={{ padding: '12px', fontSize: '0.75rem', opacity: 0.5, textAlign: 'center', color: 'var(--text-h)' }}>
                                 No folders found

@@ -204,15 +204,48 @@ export function ActionMenu({
                 </div>
             ) : (
                 <>
-                    <input
-                        className="action-menu-search"
-                        type="text"
-                        value={menuSearchQuery}
-                        onChange={e => setMenuSearchQuery(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') onAddAction(menuSearchQuery); }}
-                        placeholder="Filter or type new & Enter..."
-                        onClick={e => e.stopPropagation()}
-                    />
+                    <div style={{ position: 'relative', marginBottom: '4px' }}>
+                        <input
+                            className="action-menu-search"
+                            type="text"
+                            value={menuSearchQuery}
+                            onChange={e => setMenuSearchQuery(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') onAddAction(menuSearchQuery); }}
+                            placeholder="Filter or type new & Enter..."
+                            onClick={e => e.stopPropagation()}
+                            style={{ 
+                                paddingRight: menuSearchQuery ? '32px' : undefined, 
+                                width: '100%', 
+                                boxSizing: 'border-box' 
+                            }}
+                        />
+                        {menuSearchQuery && (
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setMenuSearchQuery(''); }}
+                                style={{
+                                    position: 'absolute',
+                                    right: '8px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: 'var(--text-h)',
+                                    cursor: 'pointer',
+                                    fontSize: '0.9rem',
+                                    opacity: 0.6,
+                                    padding: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    lineHeight: 1
+                                }}
+                                title="Clear search"
+                            >
+                                ✕
+                            </button>
+                        )}
+                    </div>
                     <div className="action-menu-list">
                         {filteredActions.map(action => (
                             <div
