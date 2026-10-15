@@ -441,6 +441,7 @@ export function AppModals({
                     localLibraryItems={chatShellsWithIdentifiers}
                     onClose={modals.interactionDataList.close}
                     onSelect={(data) => handleOpenInteractionDataInspectionModal(data.id)}
+                    onSelectItem={(data) => { onSwitchChat(data.id); modals.interactionDataList.close(); }}
                     onDelete={onDeleteInteractionData}
                     onCreateNew={onNewInteractionData}
                     renderSubtext={renderInteractionDataSubtext}

@@ -25,13 +25,11 @@ interface ManagerModalProps<T> {
     selectedId?: string;
     secondaryActiveIds?: Set<string>;
     
-    // ─── Unified Folder Props ────────────────────────────────────────
     allEntityFolders: EntityFolder[];
     onSaveEntityFolder: (folder: EntityFolder) => Promise<boolean> | void;
     onDeleteEntityFolder: (id: string) => void;
     
-    // ─── Interaction Data Specifics ──────────────────────────────────
-    activeItemId?: string | null;             // Highlights active session
+    activeItemId?: string | null;
     addToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -123,7 +121,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     const showCreateNew = !!onCreateNew && !isHosterOwnedTab;
     const singularTitle = useMemo(() => getSingularNoun(title), [title]);
 
-    // ─── Unified Folder Logic ────────────────────────────────────────
     const typeFolders = useMemo(() => allEntityFolders.filter(f => f.entityType === entityType), [allEntityFolders, entityType]);
     
     const folderMap = useMemo(() => {
@@ -157,6 +154,31 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         return sortedLocalItems.filter(item => !assignedItemIds.has(item.id));
     }, [sortedLocalItems, assignedItemIds]);
 
+    // ✅ RESTORED: Unified sorting that pushes ordered items to the top naturally
+    const displayItems = useMemo(() => {
+        const combined: Array<{ type: 'folder'; folder: EntityFolder } | { type: 'item'; item: T }> = [
+            ...typeFolders.map(f => ({ type: 'folder' as const, folder: f })),
+            ...rootItems.map(i => ({ type: 'item' as const, item: i }))
+        ];
+
+        if (!orderedListMode || currentOrderIds.length === 0) return combined;
+
+        return combined.sort((a, b) => {
+            const aId = a.type === 'folder' ? a.folder.id : a.item.id;
+            const bId = b.type === 'folder' ? b.folder.id : b.item.id;
+            
+            const aIndex = currentOrderIds.indexOf(aId);
+            const bIndex = currentOrderIds.indexOf(bId);
+            const aInOrder = aIndex !== -1;
+            const bInOrder = bIndex !== -1;
+            
+            if (aInOrder && bInOrder) return aIndex - bIndex;
+            if (aInOrder && !bInOrder) return -1;
+            if (!aInOrder && bInOrder) return 1;
+            return 0;
+        });
+    }, [typeFolders, rootItems, orderedListMode, currentOrderIds]);
+
     const getFolderNameForItem = useCallback((id: string) => {
         for (const f of typeFolders) if (f.itemIds.includes(id)) return f.name;
         return null;
@@ -176,7 +198,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         });
     }, [currentItems, searchQuery, renderSubtext]);
 
-    // ─── Handlers ────────────────────────────────────────────────────
     const toggleFolder = (id: string) => {
         setExpandedFolderIds(prev => {
             const next = new Set(prev);
@@ -198,7 +219,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         } else {
             const folder = folderMap.get(id);
             if (folder) {
-                // Nuke everything inside the folder
                 for (const itemId of folder.itemIds) {
                     onDelete?.(itemId);
                 }
@@ -275,8 +295,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         }
     };
 
-    // ─── Render Helpers ──────────────────────────────────────────────
-    const renderItemRow = (item: T, isRoster: boolean = false) => {
+    const renderItemRow = (item: T) => {
         const id = item.id;
         const isInCurrentOrder = currentOrderIds.includes(id);
         const isSelectable = !!onSelectItem && (!orderedListMode || isInCurrentOrder);
@@ -295,7 +314,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                     </div>
                 </div>
                 <div className="manager-item-actions">
-                    {canToggleOrder && !isRoster && (
+                    {canToggleOrder && (
                         isConfirmingRemove ? (
                             <div className="delete-confirm-group">
                                 <button type="button" onClick={e => handleConfirmRemove(e, id)} className="toolbar-button delete-confirm-button">✓</button>
@@ -307,13 +326,8 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                             </button>
                         )
                     )}
-                    {canToggleOrder && isRoster && (
-                        <button type="button" onClick={e => handleToggleClick(e, id, true)} className="toolbar-button order-toggle-button order-toggle-button-active" title="Remove from active list">
-                            {orderNumber}
-                        </button>
-                    )}
 
-                    {activeTab === 'localLibrary' && !isRoster && !searchQuery.trim() && (
+                    {activeTab === 'localLibrary' && !searchQuery.trim() && (
                         <button type="button" onClick={e => handleMoveClick(e, id)} className="manager-item-button" title="Move to folder">📁</button>
                     )}
 
@@ -378,7 +392,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                 </div>
                 {isExpanded && folderItems.length > 0 && (
                     <ul className="folder-children">
-                        {folderItems.map(item => renderItemRow(item, false))}
+                        {folderItems.map(item => renderItemRow(item))}
                     </ul>
                 )}
             </li>
@@ -446,37 +460,23 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                         )
                     ) : (
                         <>
-                            {orderedListMode && currentOrderIds.length > 0 && activeTab === 'localLibrary' && (
-                                <div style={{ marginBottom: '16px' }}>
-                                    <div style={{ fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', opacity: 0.6, marginBottom: '8px' }}>Active Roster</div>
-                                    <ul className="manager-list">
-                                        {currentOrderIds.map(orderId => {
-                                            const item = itemMap.get(orderId);
-                                            return item ? renderItemRow(item, true) : null;
-                                        })}
-                                    </ul>
-                                </div>
-                            )}
-
                             {activeTab === 'localLibrary' ? (
                                 <div>
-                                    {orderedListMode && currentOrderIds.length > 0 && (
-                                        <div style={{ fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px', opacity: 0.6, marginBottom: '8px' }}>Local Library</div>
-                                    )}
                                     {rootItems.length === 0 && typeFolders.length === 0 ? (
                                         <div className="empty-state">{emptyMessage}</div>
                                     ) : (
                                         <ul className="manager-list">
-                                            {typeFolders.map(folder => renderFolderRow(folder))}
-                                            {rootItems.map(item => renderItemRow(item, false))}
+                                            {displayItems.map((entry) => {
+                                                if (entry.type === 'folder') return renderFolderRow(entry.folder);
+                                                return renderItemRow(entry.item);
+                                            })}
                                         </ul>
                                     )}
                                 </div>
                             ) : (
-                                // Hoster Owned Tab (Flat List)
                                 currentItems.length === 0 ? <div className="empty-state">{emptyMessage}</div> : (
                                     <ul className="manager-list">
-                                        {currentItems.map(item => renderItemRow(item, false))}
+                                        {currentItems.map(item => renderItemRow(item))}
                                     </ul>
                                 )
                             )}
