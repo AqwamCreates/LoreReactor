@@ -116,7 +116,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         return lastSpeaker;
     }, [viewIndex, chatMessages, lastSpeaker]);
 
-    // Centralized compiled message text hook for displayed message and live streaming
     const displayedTextContent = useCompiledMessageText(displayedMessage);
     const streamingCompiledText = useCompiledMessageText(isStreamingInList ? lastMsg : null);
 
@@ -142,7 +141,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
             || null;
     }, [viewIndex, displayedMessage, isLoading, streamingCharacter, isStreamingInList, lastMsg, centerAvatar, visibleCharacters, localProtagonistId]);
 
-    // Compute the resolved display name for the active speaker using the immersion cache
     const activeSpeakerDisplayName = useMemo(() => {
         if (!activeSpeaker || activeSpeaker.id === AMBIENT_NARRATOR_ID) return 'System';
         const msgIdx = displayedMessage ? chatMessages.findIndex(m => m.id === displayedMessage.id) : chatMessages.length - 1;
@@ -195,7 +193,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
             .map((c: Character) => c.id);
     }, [visibleCharacters, localProtagonistId]);
 
-    // Hook integration with transient animation triggers
     const {
         spriteStates,
         rollbackToMessage,
@@ -330,7 +327,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         return null;
     }, [isEditingLastSpeaker, viewIndex, displayedTextContent, activeStreamingText]);
 
-    // ✅ ALL HOOKS HAVE COMPLETED ABOVE. NOW SAFE TO DO CONDITIONAL RETURN FOR 1-FRAME HYDRATION GAP.
+    // Hydration guard to prevent flash
     const hasMessages = useMemo(() => {
         if (!interactionData?.interactionHistories) return false;
         return Object.values(interactionData.interactionHistories as Record<string, HistoryMessage[]>).some(arr => arr && arr.length > 0);
@@ -374,13 +371,16 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                             transform: `translateX(-50%) scale(${state.scale})`,
                             transformOrigin: 'bottom center',
                             zIndex: Math.round((1 - state.depth) * 100),
-                            opacity: state.facingTargetId === null && !isSpeaking ? 0.5 : (isSpeaking ? 1 : 0.7),
+                            opacity: isInitialLoad ? 0 : (state.facingTargetId === null && !isSpeaking ? 0.5 : (isSpeaking ? 1 : 0.7)),
                             filter: isSpeaking ? 'none' : 'brightness(0.8)',
                         }}>
                             <img 
                                 src={portraitUrl} 
                                 alt={character.name} 
                                 className={`vn-sprite ${breatheClass}`}
+                                onLoad={(e) => {
+                                    e.currentTarget.parentElement!.style.opacity = isSpeaking ? '1' : '0.7';
+                                }}
                                 onError={handleImageError} 
                             />
                         </div>
