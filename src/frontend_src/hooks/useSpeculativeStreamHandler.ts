@@ -1,5 +1,5 @@
 // src/frontend_src/hooks/useSpeculativeStreamHandler.ts
-import { useCallback, useRef, type MutableRefObject } from 'react';
+import { useCallback, useRef, type RefObject } from 'react';
 import type { Character, InteractionData, ChatMessage, HistoryMessage, PromptBlock, TextMessage } from '../types';
 import { calculateLatencyFactor } from '../utilities/chatSessionLogic';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
@@ -9,12 +9,12 @@ import { getGlobalMessageHistory } from '../utilities/timelineLogic';
 
 interface SpeculativeStreamHandlerParams {
     throttledSetStreamingText: (text: string) => void;
-    streamingTextRef: MutableRefObject<string>;
-    streamingCharacterRef: MutableRefObject<Character | null>;
-    streamingMessageIdRef: MutableRefObject<string | null>;
-    abortControllerRef: MutableRefObject<AbortController | null>;
-    resumeGenerationRef: MutableRefObject<((messageId: string, allPromptBlocks?: PromptBlock[]) => Promise<void>) | null>;
-    onMessageBroadcastRef: MutableRefObject<((message: HistoryMessage) => void) | undefined>;
+    streamingTextRef: RefObject<string>;
+    streamingCharacterRef: RefObject<Character | null>;
+    streamingMessageIdRef: RefObject<string | null>;
+    abortControllerRef: RefObject<AbortController | null>;
+    resumeGenerationRef: RefObject<((messageId: string, allPromptBlocks?: PromptBlock[]) => Promise<void>) | null>;
+    onMessageBroadcastRef: RefObject<((message: HistoryMessage) => void) | undefined>;
     getState: () => any;
     setInteractionData: (data: InteractionData) => void;
 }
