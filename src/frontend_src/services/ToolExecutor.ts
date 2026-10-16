@@ -2006,7 +2006,7 @@ async function executeScreenshot(args: string, nextMessage: BaseMessage, _intera
         msg.files.push(dataUrl);
     }
     context.addToast?.('Screenshot captured and sent to language model', 'success');
-    return { toolType: 'screenshot', args, content: `Desktop screenshot captured and attached to visual input. View the image to answer.`, displayReplacement: `[📸 Screenshot captured]` };
+    return { toolType: 'screenshot', args, content: `Desktop screenshot captured and attached to visual input.`, displayReplacement: `[📸 Screenshot captured]` };
 }
 
 // ─── front_camera Tool ────────────────────────────────────────────────────
@@ -2024,7 +2024,7 @@ async function executeFrontCamera(args: string, nextMessage: BaseMessage, _inter
         msg.files.push(dataUrl);
     }
     context.addToast?.('Front camera snapshot captured and sent to language model', 'success');
-    return { toolType: 'front_camera', args, content: 'Front camera snapshot captured and attached to visual input. View the image to answer.', displayReplacement: '[📷 Front Camera Snapshot]' };
+    return { toolType: 'front_camera', args, content: 'Front camera snapshot captured and attached to visual input.', displayReplacement: '[📷 Front Camera Snapshot]' };
 }
 
 // ─── Local Network Scanner Tool ─────────────────────────────────────
