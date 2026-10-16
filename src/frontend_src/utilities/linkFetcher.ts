@@ -5,10 +5,11 @@ import { findWebpageByUrl, saveRawWebpage } from '../storages/serverStorage';
 import type { linkFetchMode, Sampler, searchEngine, StopPattern } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { buildSearchUrl } from './searchURLBuilder';
+import { localURL } from '../../configurations';
 
 const DEFAULT_CACHE_TIME_TO_LIVE_MS = 5 * 60 * 1000;
 const MAX_FETCH_DEPTH = 3;
-const FETCH_PROXY_URL = '/api/web/fetch';
+const FETCH_PROXY_URL = `${localURL}/api/web/fetch`;
 
 const tokenEngine = getLanguageModelEngine();
 
