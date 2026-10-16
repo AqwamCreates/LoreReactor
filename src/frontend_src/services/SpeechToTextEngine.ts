@@ -517,7 +517,7 @@ class SpeechToTextEngine {
             this.audioChunks = [];
 
             const result = await this.pipeline(combined);
-            const text = result.text?;
+            const text = result.text;
 
             if (text && text.length > 0 && this.onPartialTranscription) {
                 this.onPartialTranscription(text);

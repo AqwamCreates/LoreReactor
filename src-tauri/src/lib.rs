@@ -13,11 +13,11 @@ pub fn run() {
           tauri_plugin_log::Builder::default()
             .level(log::LevelFilter::Info)
             .build(),
-        )?;
+        );
       }
 
       // 1. Spawn the Express backend sidecar
-      let sidecar_command = app.handle().shell().sidecar("server")?;
+      let sidecar_command = app.handle().shell().sidecar("server");
       let (_rx, _child) = sidecar_command
           .spawn()
           .expect("Failed to spawn Express backend sidecar");

@@ -147,7 +147,7 @@ export function CharacterCardImportModal({
             }
             if (extended.alternateGreetings) {
                 for (const greeting of extended.alternateGreetings) {
-                    if (greeting? && !starterPrompts[greeting]) {
+                    if (greeting && !starterPrompts[greeting]) {
                         starterPrompts[greeting] = 1;
                     }
                 }

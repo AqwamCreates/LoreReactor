@@ -133,9 +133,9 @@ export function evaluateAutoResumeSignals(
             continue;
         }
 
-        const activationTrigger = signal.regularExpressionActivationTrigger?;
-        const deactivationTrigger = signal.regularExpressionDeactivationTrigger?;
-        const stopPattern = signal.stopPattern?;
+        const activationTrigger = signal.regularExpressionActivationTrigger;
+        const deactivationTrigger = signal.regularExpressionDeactivationTrigger;
+        const stopPattern = signal.stopPattern;
         const minimumLength = signal.minimumLength ? Number.parseInt(signal.minimumLength, 10) : 0;
 
         let isActivated = false;

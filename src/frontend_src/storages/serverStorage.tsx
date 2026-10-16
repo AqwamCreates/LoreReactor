@@ -1665,7 +1665,7 @@ export async function cloneCharacterImage(sourceCharacterId: string, targetChara
     const sourceImageUrl = getCharacterImageUrl(sourceCharacterId, characterExpression);
     if (!sourceImageUrl) return null;
 
-    const filename = characterExpression?
+    const filename = characterExpression
         ? (characterExpression.includes('.') ? characterExpression : `${characterExpression}.png`)
         : `clone-${targetCharacterId}.png`;
 
@@ -1789,7 +1789,7 @@ export async function cloneMultiplayerCharacterImage(sourceCharacterId: string, 
     const sourceImageUrl = getMultiplayerCharacterImageUrl(sourceCharacterId, characterExpression);
     if (!sourceImageUrl) return null;
 
-    const filename = characterExpression?
+    const filename = characterExpression
         ? (characterExpression.includes('.') ? characterExpression : `${characterExpression}.png`)
         : `clone-${targetCharacterId}.png`;
 

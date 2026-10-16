@@ -1097,7 +1097,7 @@ function buildLocationLines(ctx: PromptBuildContext): { lines: string[]; images:
             ctx.characterParticipantTag, ctx.characterName,
             ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
         );
-        const locationText = location.text?;
+        const locationText = location.text;
 
         let locationContent = `${ctx.delimiters.blockStart('system')}Current Location: ${locationName}`;
         if (locationText) {
@@ -1251,7 +1251,7 @@ function buildAntiRepetitionNudgeLines(ctx: PromptBuildContext): string[] {
 
         for (const raw of rawSentences) {
             const words = raw.toLowerCase()
-                .replace(/[*_~"()\[\]{}.,!?;:]/g, ' ')
+                .replace(/[*_~"()\[\]{}.,!;:]/g, ' ')
                 .replace(/\s+/g, ' ')
                 
                 .split(' ')
@@ -1299,7 +1299,7 @@ function buildAntiRepetitionNudgeLines(ctx: PromptBuildContext): string[] {
     let consecutiveHighSimilarity = 0;
     const messageShingles: Set<string>[] = texts.map(t => {
         const words = t.toLowerCase()
-            .replace(/[*_~"()\[\]{}.,!?;:]/g, ' ')
+            .replace(/[*_~"()\[\]{}.,!;:]/g, ' ')
             .replace(/\s+/g, ' ')
             
             .split(' ')

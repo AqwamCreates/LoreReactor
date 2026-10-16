@@ -31,5 +31,5 @@ export function stemWord(word: string): string {
 }
 
 export function getStemmedContentWords(text: string): string[] {
-    return text.toLowerCase().replace(/[*_~"()\[\]{}.,!?;:]/g, ' ').replace(/\s+/g, ' ').split(' ').filter(w => w.length > 2).map(stemWord).filter(w => !STOP_STEMS.has(w));
+    return text.toLowerCase().replace(/[*_~"()\[\]{}.,!;:]/g, ' ').replace(/\s+/g, ' ').split(' ').filter(w => w.length > 2).map(stemWord).filter(w => !STOP_STEMS.has(w));
 }

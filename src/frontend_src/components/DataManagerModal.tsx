@@ -140,11 +140,11 @@ function isEntityHollow(
         }
         case 'context': {
             const c = entity as Context;
-            return !c.text? && !(c.urls?.length) && !(c.searchTerms?.length) && !(c.images?.length) && !c.searchEngine;
+            return !c.text && !(c.urls?.length) && !(c.searchTerms?.length) && !(c.images?.length) && !c.searchEngine;
         }
         case 'location': {
             const l = entity as Location;
-            return !l.text? && !(l.images?.length) && !(l.locationBindings?.length) && !(l.characterWeights && Object.keys(l.characterWeights).length > 0);
+            return !l.text && !(l.images?.length) && !(l.locationBindings?.length) && !(l.characterWeights && Object.keys(l.characterWeights).length > 0);
         }
         case 'audioTrack': {
             const a = entity as AudioTrack;
@@ -156,11 +156,11 @@ function isEntityHollow(
         }
         case 'promptBlock': {
             const p = entity as PromptBlock;
-            return !p.textContent? && !(p.images?.length);
+            return !p.textContent && !(p.images?.length);
         }
         case 'model': {
             const m = entity as LanguageModel;
-            return !m.model? && !m.apiKey?;
+            return !m.model && !m.apiKey;
         }
         case 'sampler': {
             const s = entity as Sampler;
@@ -169,7 +169,7 @@ function isEntityHollow(
         }
         case 'stopPattern': {
             const sp = entity as StopPattern;
-            return !sp.pattern?;
+            return !sp.pattern;
         }
         case 'budgetStrategy': {
             const bs = entity as BudgetStrategy;
@@ -177,11 +177,11 @@ function isEntityHollow(
         }
         case 'memory': {
             const m = entity as Memory;
-            return !m.content?;
+            return !m.content;
         }
         case 'account': {
             const a = entity as Account;
-            return !a.username?;
+            return !a.username;
         }
         case 'multiplayerData': {
             const md = entity as MultiplayerData;

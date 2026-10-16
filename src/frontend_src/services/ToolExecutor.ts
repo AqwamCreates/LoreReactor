@@ -412,7 +412,7 @@ export function formatToolDisplay(result: ToolResult, rawMatch: string, mode: to
 function executeWhisper(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     let targetIdsStr = pArgs.get(0, 'target_char_id', 'target', 'target_id', 'to');
-    let text = pArgs.get(1, 'text', 'message', 'content')?;
+    let text = pArgs.get(1, 'text', 'message', 'content');
 
     if (!pArgs.kwargs.text && pArgs.positional.length > 0) {
         const trimmed = args;
@@ -1442,7 +1442,7 @@ function executeInvite(args: string, nextMessage: BaseMessage, interactionData: 
 // ─── Kick ───────────────────────────────────────────────────────────
 function executeKick(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetQuery = pArgs.get(0, 'character_id', 'character', 'target', 'id')?;
+    const targetQuery = pArgs.get(0, 'character_id', 'character', 'target', 'id');
     if (!targetQuery) return helpResult('kick', 'character_id="...", destination_location_id=None', 'eject character from location');
 
     if (targetQuery.toLowerCase() === 'characters') {
@@ -1473,7 +1473,7 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
 // ─── Oracle ───────────────────────────────────────────────────────
 function executeOracle(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetLocQuery = pArgs.get(0, 'location', 'target', 'place', 'to')?;
+    const targetLocQuery = pArgs.get(0, 'location', 'target', 'place', 'to');
     const limit = pArgs.getNumber(1, 'limit', 'count') ?? 5;
     const locations = interactionData.locations || [];
 
@@ -1515,8 +1515,8 @@ function executeTeleport(args: string, _nextMessage: BaseMessage, interactionDat
 function executeKey(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
-    const locQuery = pArgs.get(1, 'location_id', 'location')?;
-    const charQuery = pArgs.get(2, 'character_id', 'character', 'target')?;
+    const locQuery = pArgs.get(1, 'location_id', 'location');
+    const charQuery = pArgs.get(2, 'character_id', 'character', 'target');
     if (!action || !locQuery) {
         return helpResult('key', 'action="lock|unlock", location_id="...", character_id=None', 'lock or unlock locations');
     }
@@ -1546,13 +1546,13 @@ function executeKey(args: string, nextMessage: BaseMessage, interactionData: Int
 // ─── Clothing ───────────────────────────────────────────────────────
 function executeClothing(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    let charQuery = pArgs.get(0, 'character_id', 'character')?;
+    let charQuery = pArgs.get(0, 'character_id', 'character');
     let action = pArgs.get(1, 'action', 'command')?.toLowerCase();
-    let clothingQuery = pArgs.get(2, 'clothing_id', 'clothing', 'item')?;
+    let clothingQuery = pArgs.get(2, 'clothing_id', 'clothing', 'item');
 
     if (charQuery && (charQuery.toLowerCase() === 'wear' || charQuery.toLowerCase() === 'remove')) {
         action = charQuery.toLowerCase();
-        charQuery = pArgs.get(1, 'character_id', 'character')?;
+        charQuery = pArgs.get(1, 'character_id', 'character');
         clothingQuery = pArgs.get(2, 'clothing_id', 'clothing', 'item') || pArgs.positional.slice(2).join(' ');
     } else if (!clothingQuery && pArgs.positional.length > 2) {
         clothingQuery = pArgs.positional.slice(2).join(' ');
@@ -1667,7 +1667,7 @@ function executeAdministrator(
 
     if (action === 'view_entity' || action === 'get_entity') {
         const rawType = pArgs.get(1, 'entity_type', 'type')?.toLowerCase();
-        const query = pArgs.get(2, 'entity_id', 'id', 'name')?;
+        const query = pArgs.get(2, 'entity_id', 'id', 'name');
         if (!rawType || !query) {
             return { toolType: 'administrator', args, content: '[Error: administrator(action="view_entity", entity_type="...", entity_id="...") requires entity_type and entity_id]', displayReplacement: '[Error: Usage]' };
         }
@@ -1690,8 +1690,8 @@ function executeAdministrator(
 
     if (action === 'edit_entity') {
         const entityType = pArgs.get(1, 'entity_type', 'type')?.toLowerCase();
-        const entityId = pArgs.get(2, 'entity_id', 'id')?;
-        const field = pArgs.get(3, 'field', 'key')?;
+        const entityId = pArgs.get(2, 'entity_id', 'id');
+        const field = pArgs.get(3, 'field', 'key');
         const value = pArgs.get(4, 'value', 'val') || pArgs.positional.slice(4).join(' ');
         if (!entityType || !entityId || !field || value === undefined) {
             return { toolType: 'administrator', args, content: '[Error: administrator(action="edit_entity", entity_type="...", entity_id="...", field="...", value="...") requires all arguments]', displayReplacement: '[Error: Usage]' };
@@ -1711,8 +1711,8 @@ function executeAdministrator(
     }
 
     if (action === 'add_to_entity_folder') {
-        const entityFolderQuery = pArgs.get(1, 'entity_folder_id', 'name')?;
-        const itemId = pArgs.get(2, 'item_id', 'id', 'item')?;
+        const entityFolderQuery = pArgs.get(1, 'entity_folder_id', 'name');
+        const itemId = pArgs.get(2, 'item_id', 'id', 'item');
         if (!entityFolderQuery || !itemId) {
             return { toolType: 'administrator', args, content: '[Error: administrator(action="add_to_entity_folder", entity_folder_id="...", item_id="...") requires entity folder and item ID]', displayReplacement: '[Error: Usage]' };
         }
@@ -1727,8 +1727,8 @@ function executeAdministrator(
     }
 
     if (action === 'remove_from_entity_folder') {
-        const entityFolderQuery = pArgs.get(1, 'entity_folder_id', 'name')?;
-        const itemId = pArgs.get(2, 'item_id', 'id', 'item')?;
+        const entityFolderQuery = pArgs.get(1, 'entity_folder_id', 'name');
+        const itemId = pArgs.get(2, 'item_id', 'id', 'item');
         if (!entityFolderQuery || !itemId) {
             return { toolType: 'administrator', args, content: '[Error: administrator(action="remove_from_entity_folder", entity_folder_id="...", item_id="...") requires entity folder and item ID]', displayReplacement: '[Error: Usage]' };
         }
@@ -1762,13 +1762,13 @@ function executeAdministrator(
             return { toolType: 'administrator', args, content: `Requested switch to model "${modelName}".`, displayReplacement: `[🔧 Switch: ${modelName}]` };
         }
         case 'toggle_account': {
-            const accountId = pArgs.get(1, 'account_id', 'account', 'id')?;
+            const accountId = pArgs.get(1, 'account_id', 'account', 'id');
             if (!accountId) return { toolType: 'administrator', args, content: '[Error: administrator(action="toggle_account", account_id="...") requires account ID]', displayReplacement: '[Error: Usage]' };
             appendPendingAction(nextMessage, { type: 'administrator_toggle_account', payload: { accountId } });
             return { toolType: 'administrator', args, content: `Toggle requested for account "${accountId}".`, displayReplacement: `[🔑 Toggle: ${accountId}]` };
         }
         case 'join_session': {
-            const sessionId = pArgs.get(1, 'session_id', 'id', 'session')?;
+            const sessionId = pArgs.get(1, 'session_id', 'id', 'session');
             const password = pArgs.get(2, 'password', 'pwd') || '';
             if (!sessionId) return { toolType: 'administrator', args, content: '[Error: administrator(action="join_session", session_id="...", password="") requires session ID]', displayReplacement: '[Error: Usage]' };
             appendPendingAction(nextMessage, { type: 'administrator_join_session', payload: { sessionId, password } });
@@ -1778,13 +1778,13 @@ function executeAdministrator(
             appendPendingAction(nextMessage, { type: 'administrator_leave_session', payload: {} });
             return { toolType: 'administrator', args, content: 'Leave session requested.', displayReplacement: '[👥 Leave session]' };
         case 'accept_join': {
-            const accountId = pArgs.get(1, 'account_id', 'id')?;
+            const accountId = pArgs.get(1, 'account_id', 'id');
             if (!accountId) return { toolType: 'administrator', args, content: '[Error: administrator(action="accept_join", account_id="...") requires account ID]', displayReplacement: '[Error: Usage]' };
             appendPendingAction(nextMessage, { type: 'administrator_accept_join', payload: { accountId } });
             return { toolType: 'administrator', args, content: `Accepted join for account "${accountId}".`, displayReplacement: `[👥 Accepted: ${accountId}]` };
         }
         case 'reject_join': {
-            const accountId = pArgs.get(1, 'account_id', 'id')?;
+            const accountId = pArgs.get(1, 'account_id', 'id');
             if (!accountId) return { toolType: 'administrator', args, content: '[Error: administrator(action="reject_join", account_id="...") requires account ID]', displayReplacement: '[Error: Usage]' };
             appendPendingAction(nextMessage, { type: 'administrator_reject_join', payload: { accountId } });
             return { toolType: 'administrator', args, content: `Rejected join for account "${accountId}".`, displayReplacement: `[👥 Rejected: ${accountId}]` };
@@ -2130,7 +2130,7 @@ async function executeReadFile(args: string, _nextMessage: BaseMessage, _interac
 // ─── Write File ─────────────────────────────────────────────────────
 async function executeWriteFile(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const filePath = pArgs.get(0, 'file_path', 'path', 'filename')?;
+    const filePath = pArgs.get(0, 'file_path', 'path', 'filename');
     let content = pArgs.get(1, 'content', 'text', 'data');
     if (content === undefined && pArgs.positional.length > 1) {
         content = pArgs.positional.slice(1).join(' ');

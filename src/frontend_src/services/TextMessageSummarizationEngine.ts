@@ -258,8 +258,7 @@ async function compressChunk(
     profile?: Profile,
 ): Promise<string | null> {
     const chatMessages = messages.filter(
-        (m): m is ChatMessage => m.messageType === 'chat' && !!(m as ChatMessage).textContent?
-    );
+        (m): m is ChatMessage => m.messageType === 'chat' && !!(m as ChatMessage).textContent);
     if (chatMessages.length === 0) return null;
 
     const formattedMessages = chatMessages.map(m =>
