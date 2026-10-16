@@ -9,20 +9,23 @@ pub fn run() {
     .plugin(tauri_plugin_shell::init())
     .setup(|app| {
       if cfg!(debug_assertions) {
+        // ✅ FIX: Added the `?` operator to properly handle the Result
         app.handle().plugin(
           tauri_plugin_log::Builder::default()
             .level(log::LevelFilter::Info)
             .build(),
-        );
+        )?; 
       }
 
       // 1. Spawn the Express backend sidecar
-      let sidecar_command = app.handle().shell().sidecar("server");
+      let sidecar_command = app.handle().shell().sidecar("server")
+          .expect("Failed to initialize sidecar command. Is 'server' defined in tauri.conf.json externalBin?");
+          
       let (_rx, _child) = sidecar_command
           .spawn()
           .expect("Failed to spawn Express backend sidecar");
 
-      // 2. Poll indefinitely every 200ms until the backend is fully up and listening
+      // 2. Poll indefinitely every 300ms until the backend is fully up and listening
       loop {
         if TcpStream::connect("127.0.0.1:8448").is_ok() {
           break;
