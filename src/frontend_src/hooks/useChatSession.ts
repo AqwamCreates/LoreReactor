@@ -72,8 +72,8 @@ interface UseChatSessionOptions {
     allExtensions: any[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
-    allRawInteractionDataShells?: RawInteractionData[]; // ✅ Added
-    allEntityFolders?: EntityFolder[]; // ✅ Consistent
+    allRawInteractionDataShells?: RawInteractionData[];
+    allEntityFolders?: EntityFolder[];
     allActions: any[];
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
     requestPeerInference?: (peerAccountId: string, modelName: string, promptOrMessages: any, onToken: (token: string) => void, signal?: AbortSignal) => Promise<void>;
@@ -186,7 +186,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         return requestTimestampsRef.current.length;
     }, []);
 
-    // ✅ FIX: Pass the prop directly during render instead of accessing allCharactersRef.current
     const ui = useChatUI(interactionData, isAtBottomRef, options.allCharacters);
 
     const { throttledSetStreamingText, setStreamingText, streamingTextRef, resetStream } = useThrottledStream();
@@ -430,19 +429,16 @@ export function useChatSession(options: UseChatSessionOptions) {
             || data.participants[0]
             || currentState.localProtagonist;
 
-        // ✅ Hydrate with freshest character object from registry to guarantee voice metadata
         const respondingChar = allCharactersRef.current.find(c => c.id === rawRespondingChar?.id) || rawRespondingChar;
 
         streamingCharacterRef.current = respondingChar ?? null;
         streamingMessageIdRef.current = `gen-${respondingChar?.id || 'ai'}-${Date.now()}`;
 
-        // Stop any previous voice tracker if still playing
         if (currentVoiceTrackerRef.current) {
             currentVoiceTrackerRef.current.stopImmediate();
             currentVoiceTrackerRef.current = null;
         }
 
-        // ✅ Initialize Streaming Voice with safe start and seed if prefix exists
         const voiceTracker = new StreamingVoiceTracker(respondingChar, allCharactersRef.current);
         if (existingCharacterText) {
             voiceTracker.seed(existingCharacterText);
@@ -473,7 +469,21 @@ export function useChatSession(options: UseChatSessionOptions) {
                 );
             }
 
-            const turnResult = await chatEngine.runTurn(data, ctrl, allPromptBlocks, metadata, existingCharacterText, voiceTracker);
+            // ✅ FIX: Catch AbortError locally so the pipeline can continue to save the partial text
+            let turnResult: Awaited<ReturnType<typeof chatEngine.runTurn>> | null = null;
+            try {
+                turnResult = await chatEngine.runTurn(data, ctrl, allPromptBlocks, metadata, existingCharacterText, voiceTracker);
+            } catch (e) {
+                if ((e as Error).name === 'AbortError') {
+                    // The user clicked stop. Swallow the error so we can process pendingPartialRef below.
+                    turnResult = { interactionData: data, isCompleted: false };
+                } else {
+                    throw e; // Let the outer catch handle real network/model errors
+                }
+            }
+
+            if (!turnResult) return;
+
             let ud = turnResult.interactionData;
 
             if (ud === data) {
@@ -495,6 +505,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 }
             }
 
+            // ✅ Now this block will successfully execute when the user clicks Stop!
             if (pendingPartialRef.current) {
                 const fd = await applyPendingPartial(ud, protagonistId);
                 setInteractionData(fd);
@@ -524,7 +535,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 setInteractionData(ud);
                 broadcastNewMessages(preTurnCount, ud);
 
-                // ✅ CRITICAL FIX: Save immediately so useServerSync doesn't reload stale data
                 saveRawInteractionData(ud).catch(e => console.error('Failed to save after turn:', e));
 
                 extractAndScheduleResponses(ud);
@@ -575,7 +585,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
-            // ✅ Flush remaining voice queue in the background so the UI unfreezes immediately
             if (currentVoiceTrackerRef.current) {
                 const tracker = currentVoiceTrackerRef.current;
                 tracker.flushAndStop()
@@ -646,7 +655,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         triggerDelayedResponseRef.current = triggerDelayedResponse;
     }, [triggerDelayedResponse]);
 
-    // ─── Message Input Sender (Extracted) ────────────────────────────
     const { sendMessage, sendActionAndGetResponse } = useChatSender({
         isMultiplayerClient,
         joinProtagonistRef,
@@ -707,7 +715,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         abortControllerRef.current?.abort();
         abortControllerRef.current = null;
 
-        // ✅ Instantly kill streaming voice if user clicks Stop
         if (currentVoiceTrackerRef.current) {
             currentVoiceTrackerRef.current.stopImmediate();
             currentVoiceTrackerRef.current = null;
@@ -808,16 +815,13 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         const existingText = msg.textContent;
         const rawChar = msg.character;
-        // ✅ Hydrate with freshest character object from registry to guarantee voice metadata
         const char = allCharactersRef.current.find(c => c.id === rawChar?.id) || rawChar;
 
-        // ✅ STOP prior voice tracker drainage to eliminate background race conditions
         if (currentVoiceTrackerRef.current) {
             currentVoiceTrackerRef.current.stopImmediate();
             currentVoiceTrackerRef.current = null;
         }
 
-        // ✅ INITIALIZE voice tracker for the resumed turn and seed with existingText
         const voiceTracker = new StreamingVoiceTracker(char, allCharactersRef.current);
         if (existingText) {
             voiceTracker.seed(existingText);
@@ -848,7 +852,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         isAtBottomRef.current = true;
 
         try {
-            // ✅ Pass voiceTracker as the 9th parameter to handleServerResponse:
             const result = await chatEngine.handleServerResponse(
                 currentInteractionData, char, ctrl.signal,
                 throttledSetStreamingTextWithBroadcast, undefined, existingText, allPromptBlocks,
@@ -915,7 +918,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
-            // ✅ Flush voice queue on resume completion
             if (currentVoiceTrackerRef.current) {
                 const tracker = currentVoiceTrackerRef.current;
                 tracker.flushAndStop()
@@ -997,7 +999,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         };
         setInteractionData(td);
 
-        // ✅ CRITICAL FIX: Immediately save the trimmed state so server sync cannot reload deleted messages while regeneration is running
         await saveRawInteractionData(td).catch(e => console.error('Failed to save trimmed chat before regeneration:', e));
 
         const primaryProtagonistId = protagonistIds[0] ?? '';

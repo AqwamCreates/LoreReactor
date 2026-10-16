@@ -189,7 +189,7 @@ export class StreamingVoiceTracker {
 
             // Micro-sentence consolidation: combine short phrases
             if (this.sentenceAccumulator) {
-                this.sentenceAccumulator += ' ' + rawSentence;
+                this.sentenceAccumulator += ` ${rawSentence}`;
             } else {
                 this.sentenceAccumulator = rawSentence;
             }
