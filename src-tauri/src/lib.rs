@@ -9,12 +9,12 @@ pub fn run() {
     .plugin(tauri_plugin_shell::init())
     .setup(|app| {
       if cfg!(debug_assertions) {
-        // ✅ FIX: Added the `?` operator to properly handle the Result
-        app.handle().plugin(
+        // ✅ FIX: Added `let _ = ` to explicitly ignore the Result and silence the warning
+        let _ = app.handle().plugin(
           tauri_plugin_log::Builder::default()
             .level(log::LevelFilter::Info)
             .build(),
-        )?; 
+        );
       }
 
       // 1. Spawn the Express backend sidecar
