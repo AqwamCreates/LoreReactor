@@ -69,6 +69,10 @@ export interface TemplateContext {
     characterTurnEnd: string;
     
     chatHistory: string[]; 
+    reachableLocations: string[];
+    reachableLocationsWithDescriptions: string[];
+    characterTags: string[];
+    characterTagsWithDescriptions: string[];
     
     systemPrompt: string;
     thinkPrompt: string;
@@ -77,7 +81,8 @@ export interface TemplateContext {
     dialoguePrompt: string;
     starterPrompt: string;
     context: string[];
-    location: string;
+    currentLocation: string;
+    currentLocationWithDescription: string;
     inventory: string;
     skyView: string;
     weather: string;
@@ -97,19 +102,24 @@ const DEFAULT_TEMPLATES: Record<string, string> = {
     'System Prompt': "{{systemBlockStart}}{{systemPrompt}}{{systemBlockEnd}}",
     'Think Prompt': "{{systemBlockStart}}{{thinkPrompt}}{{systemBlockEnd}}",
     'Meta Think Instructions': "{{systemBlockStart}}{{metaThinkInstructions}}{{systemBlockEnd}}",
+    'Character Tags': "{{systemBlockStart}}Characters Present:\n{{characterTags}}{{systemBlockEnd}}",
+    'Character Tags With Descriptions': "{{systemBlockStart}}Characters Present With Descriptions:\n{{characterTagsWithDescriptions}}{{systemBlockEnd}}",
     'Appearance Prompt': "{{systemBlockStart}}Start Of The Characters' Appearances List.{{systemBlockEnd}}\n{{appearancePrompt}}\n{{systemBlockStart}}End Of The Characters' Appearances List.{{systemBlockEnd}}",
     'Dialogue Prompt': "{{systemBlockStart}}Start Of This Character's Sample dialogues.{{systemBlockEnd}}\n{{dialoguePrompt}}\n{{systemBlockStart}}End Of This Character's Sample dialogues.{{systemBlockEnd}}",
-    'Starter Prompt': "{{systemBlockStart}}Start Of This Character's Starter Prompt.{{systemBlockEnd}}\n{{starterPrompt}}\n{{systemBlockStart}}End Of This Character's Starter Prompt.{{systemBlockEnd}}",
     'Chat History': "{{systemBlockStart}}Start Of The Memory.{{systemBlockEnd}}\n{{chatHistory}}\n{{systemBlockStart}}End Of The Memory.{{systemBlockEnd}}",
     'Context': "{{systemBlockStart}}Start Of The Context.{{systemBlockEnd}}\n{{context}}\n{{systemBlockStart}}End Of The Context.{{systemBlockEnd}}",
-    'Location': "{{systemBlockStart}}Start Of Current Location.{{systemBlockEnd}}\n{{location}}\n{{systemBlockStart}}End Of Current Location.{{systemBlockEnd}}",
-    'Inventory': "{{systemBlockStart}}{{inventory}}{{systemBlockEnd}}",
+    'Current Location': "{{systemBlockStart}}Start Of Current Location.{{systemBlockEnd}}\n{{currentLocation}}\n{{systemBlockStart}}End Of Current Location.{{systemBlockEnd}}",
+    'Current Location With Description': "{{systemBlockStart}}Start Of Current Location With Description.{{systemBlockEnd}}\n{{currentLocationWithDescription}}\n{{systemBlockStart}}End Of Current Location With Description.{{systemBlockEnd}}",
+    'Reachable Locations': "{{systemBlockStart}}Reachable Locations:\n{{reachableLocations}}{{systemBlockEnd}}",
+    'Reachable Locations With Descriptions': "{{systemBlockStart}}Reachable Locations With Descriptions:\n{{reachableLocationsWithDescriptions}}{{systemBlockEnd}}",
     'Sky View': "{{systemBlockStart}}{{skyView}}{{systemBlockEnd}}",
     'Weather': "{{systemBlockStart}}{{weather}}{{systemBlockEnd}}",
+    'Inventory': "{{systemBlockStart}}{{inventory}}{{systemBlockEnd}}",
     'Date': "{{systemBlockStart}}{{date}}{{systemBlockEnd}}",
     'Time': "{{systemBlockStart}}{{time}}{{systemBlockEnd}}",
     'Time Elapsed': "{{systemBlockStart}}{{timeElapsed}}{{systemBlockEnd}}",
     'Fatigue Information': "{{systemBlockStart}}{{fatigueInformation}}{{systemBlockEnd}}",
+    'Starter Prompt': "{{systemBlockStart}}Start Of This Character's Starter Prompt.{{systemBlockEnd}}\n{{starterPrompt}}\n{{systemBlockStart}}End Of This Character's Starter Prompt.{{systemBlockEnd}}",
     'Tool Instructions': "{{systemBlockStart}}{{toolInstructions}}{{systemBlockEnd}}",
     'Tool Message Instructions': "{{systemBlockStart}}{{toolMessageInstructions}}{{systemBlockEnd}}",
     'Anti-Repetition Nudge': "{{systemBlockStart}}{{antiRepetitionNudge}}{{systemBlockEnd}}",
@@ -123,7 +133,7 @@ export function resolveTemplate(
 ): string {
     const regex = /\{\{([a-zA-Z0-9_']+)(?:\[(-?\d+)?(?::(-?\d+))?\])?\}\}/g;
     
-    return template.replace(regex, (match, key, startStr, endStr) => {
+    return template.replace(regex, (_match, key, startStr, endStr) => {
         if (key === 'char') return `${ctx.characterParticipantTag} (${ctx.characterName})`;
         if (key === 'user') return ctx.protagonistDisplayString;
         if (key === "user's") return ctx.protagonistPossessiveString;
@@ -132,7 +142,6 @@ export function resolveTemplate(
             const val = (ctx as any)[key];
             
             if (Array.isArray(val)) {
-                // FIX: If no indices provided at all, return the entire array
                 if (startStr === undefined && endStr === undefined) {
                     return val.join('\n');
                 }
@@ -142,14 +151,16 @@ export function resolveTemplate(
                 
                 if (val.length === 0) return '';
 
-                // Handle negative indices
                 if (start < 0) start = val.length + start;
                 if (end < 0) end = val.length + end;
                 
-                // Clamp to valid range
                 if (start < 0) start = 0;
                 if (end > val.length) end = val.length;
-                if (start >= val.length) return ''; // Out of bounds
+                if (start >= val.length) return ''; 
+                
+                if (start > end) {
+                    return val.slice(end, start).reverse().join('\n');
+                }
                 
                 return val.slice(start, end).join('\n');
             }
@@ -1059,6 +1070,67 @@ function buildPromptContext(
 
 // ─── Prompt Section Builders ─────────────────────────────────────
 
+function buildCharacterTagsText(ctx: PromptBuildContext): { tags: string[]; tagsWithDescriptions: string[] } {
+    const tags: string[] = [];
+    const tagsWithDescriptions: string[] = [];
+
+    for (const participant of ctx.participants) {
+        const tag = getParticipantTag(participant, ctx.participants);
+        const knownName = getKnownDisplayName(participant, ctx.knownNames);
+        const displayName = knownName ? `${tag} (${knownName})` : tag;
+        
+        tags.push(`- ${displayName}`);
+
+        let desc = `- **${displayName}**`;
+        if (participant.appearancePrompt) {
+            const replacedDesc = replacePlaceholders(
+                participant.appearancePrompt,
+                ctx.characterParticipantTag,
+                ctx.characterName,
+                ctx.coLocatedProtagonists,
+                ctx.participants,
+                ctx.knownNames
+            );
+            const indentedText = replacedDesc.split('\n').map(line => `  ${line}`).join('\n');
+            desc += `\n${indentedText}`;
+        } else {
+            desc += '\n  No description available.';
+        }
+        tagsWithDescriptions.push(desc);
+    }
+
+    return { tags, tagsWithDescriptions };
+}
+
+function buildReachableLocationsText(ctx: PromptBuildContext): { names: string[]; withDescriptions: string[] } {
+    const reachable = getReachableLocationsByCharacter(ctx.interactionData, ctx.character);
+    const names: string[] = [];
+    const withDescriptions: string[] = [];
+
+    for (const loc of reachable) {
+        const locName = replacePlaceholders(
+            loc.name || 'Unknown Location',
+            ctx.characterParticipantTag, ctx.characterName,
+            ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames
+        );
+        names.push(`- ${locName}`);
+
+        let desc = `- **${locName}**`;
+        if (loc.text) {
+            const replacedText = replacePlaceholders(
+                loc.text,
+                ctx.characterParticipantTag, ctx.characterName,
+                ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames
+            );
+            const indentedText = replacedText.split('\n').map(line => `  ${line}`).join('\n');
+            desc += `\n${indentedText}`;
+        }
+        withDescriptions.push(desc);
+    }
+
+    return { names, withDescriptions };
+}
+
 function buildAppearanceText(ctx: PromptBuildContext, wearingStatus: Record<string, boolean>): string {
     const lines: string[] = [];
     const hasAnyAppearance = ctx.participants.some(p => p.appearancePrompt);
@@ -1218,57 +1290,67 @@ function buildStarterPromptText(ctx: PromptBuildContext): string {
     return '';
 }
 
-function buildLocationText(ctx: PromptBuildContext): { text: string; images: EntityImageRef[] } {
-    const lines: string[] = [];
+function buildLocationText(ctx: PromptBuildContext): { basic: string; withDescription: string; images: EntityImageRef[] } {
     const images: EntityImageRef[] = [];
     const location = ctx.currentLocation;
 
-    if (location) {
-        const locationName = replacePlaceholders(
-            location.name || 'Unknown Location',
-            ctx.characterParticipantTag, ctx.characterName,
-            ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
-        );
-        const locationText = location.text;
+    if (!location) {
+        return { basic: '', withDescription: '', images: [] };
+    }
 
-        let locationContent = `Current Location: ${locationName}`;
-        if (locationText) {
-            const replacedLocationText = replacePlaceholders(
-                locationText,
-                ctx.characterParticipantTag, ctx.characterName,
-                ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
-            );
-            locationContent += `\n\n${replacedLocationText}`;
-        }
-        lines.push(locationContent);
+    const locationName = replacePlaceholders(
+        location.name || 'Unknown Location',
+        ctx.characterParticipantTag, ctx.characterName,
+        ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+    );
 
-        if (location.ownerBindings && location.ownerBindings.length > 0) {
-            const ownerNames = location.ownerBindings
-                .map(id => ctx.participants.find(p => p.id === id)?.name)
-                .filter((n): n is string => !!n);
-            if (ownerNames.length > 0) {
-                lines.push(`This location is owned by: ${ownerNames.join(', ')}.`);
-            }
-        }
+    // --- Basic Location (Name, Owner, Reachable) ---
+    const basicLines: string[] = [];
+    basicLines.push(`Current Location: ${locationName}`);
 
-        const reachable = getReachableLocationsByCharacter(ctx.interactionData, ctx.character);
-        if (reachable.length > 0) {
-            const reachableNames = reachable.map(r => replacePlaceholders(
-                r.name || 'Unknown Location',
-                ctx.characterParticipantTag, ctx.characterName,
-                ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
-            ));
-            lines.push(`From ${locationName}, I can travel to: ${reachableNames.join(', ')}.`);
-        }
-
-        if (location.images && location.images.length > 0) {
-            for (const img of location.images) {
-                images.push({ entityId: location.id, filename: img });
-            }
+    if (location.ownerBindings && location.ownerBindings.length > 0) {
+        const ownerNames = location.ownerBindings
+            .map(id => ctx.participants.find(p => p.id === id)?.name)
+            .filter((n): n is string => !!n);
+        if (ownerNames.length > 0) {
+            basicLines.push(`This location is owned by: ${ownerNames.join(', ')}.`);
         }
     }
 
-    return { text: lines.join('\n'), images };
+    const reachable = getReachableLocationsByCharacter(ctx.interactionData, ctx.character);
+    if (reachable.length > 0) {
+        const reachableNames = reachable.map(r => replacePlaceholders(
+            r.name || 'Unknown Location',
+            ctx.characterParticipantTag, ctx.characterName,
+            ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+        ));
+        basicLines.push(`From ${locationName}, I can travel to: ${reachableNames.join(', ')}.`);
+    }
+
+    // --- Location With Description (Name + Text ONLY) ---
+    const withDescLines: string[] = [];
+    withDescLines.push(`Current Location: ${locationName}`);
+    if (location.text) {
+        const replacedLocationText = replacePlaceholders(
+            location.text,
+            ctx.characterParticipantTag, ctx.characterName,
+            ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+        );
+        withDescLines.push(replacedLocationText);
+    }
+
+    // --- Images (Always collect if present) ---
+    if (location.images && location.images.length > 0) {
+        for (const img of location.images) {
+            images.push({ entityId: location.id, filename: img });
+        }
+    }
+
+    return { 
+        basic: basicLines.join('\n'), 
+        withDescription: withDescLines.join('\n'), 
+        images 
+    };
 }
 
 function buildInventoryText(ctx: PromptBuildContext): string {
@@ -1748,7 +1830,10 @@ export function createChatHistoryArray(
 
 const VOLATILE_BLOCK_TYPES: ReadonlySet<string> = new Set([
     'Context',
-    'Location',
+    'Current Location',
+    'Current Location With Description',
+    'Reachable Locations',
+    'Reachable Locations With Descriptions',
     'Inventory',
     'Weather',
     'Date',
@@ -1758,6 +1843,8 @@ const VOLATILE_BLOCK_TYPES: ReadonlySet<string> = new Set([
     'Tool Instructions',
     'Tool Message Instructions',
     'Anti-Repetition Nudge',
+    'Character Tags',
+    'Character Tags With Descriptions',
 ]);
 
 function buildStructuredMessages(
@@ -1869,8 +1956,12 @@ async function buildPromptBlocks(
         if (blockType === 'Dialogue Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableDialoguePrompt(ctx.character, ctx.profile)) continue;
         if (blockType === 'Starter Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableStarterPrompt(ctx.character, ctx.profile)) continue;
         
+        // Ordered validation checks matching promptBlockType
         if (blockType === 'Context' && templateContext.context.length === 0) continue;
-        if (blockType === 'Location' && templateContext.location.trim().length === 0) continue;
+        if (blockType === 'Current Location' && templateContext.currentLocation.trim().length === 0) continue;
+        if (blockType === 'Current Location With Description' && templateContext.currentLocationWithDescription.trim().length === 0) continue;
+        if (blockType === 'Reachable Locations' && templateContext.reachableLocations.length === 0) continue;
+        if (blockType === 'Reachable Locations With Descriptions' && templateContext.reachableLocationsWithDescriptions.length === 0) continue;
         if (blockType === 'Inventory' && templateContext.inventory.trim().length === 0) continue;
         if (blockType === 'Sky View' && templateContext.skyView.trim().length === 0) continue;
         if (blockType === 'Weather' && templateContext.weather.trim().length === 0) continue;
@@ -1878,15 +1969,18 @@ async function buildPromptBlocks(
         if (blockType === 'Time' && templateContext.time.trim().length === 0) continue;
         if (blockType === 'Time Elapsed' && templateContext.timeElapsed.trim().length === 0) continue;
         if (blockType === 'Fatigue Information' && templateContext.fatigueInformation.trim().length === 0) continue;
+        if (blockType === 'Starter Prompt' && templateContext.starterPrompt.trim().length === 0) continue;
         if (blockType === 'Tool Instructions' && templateContext.toolInstructions.trim().length === 0) continue;
         if (blockType === 'Tool Message Instructions' && templateContext.toolMessageInstructions.trim().length === 0) continue;
         if (blockType === 'Anti-Repetition Nudge' && templateContext.antiRepetitionNudge.trim().length === 0) continue;
+        if (blockType === 'Character Tags' && templateContext.characterTags.length === 0) continue;
+        if (blockType === 'Character Tags With Descriptions' && templateContext.characterTagsWithDescriptions.length === 0) continue;
+        
         if (blockType === 'System Prompt' && templateContext.systemPrompt.trim().length === 0) continue;
         if (blockType === 'Think Prompt' && templateContext.thinkPrompt.trim().length === 0) continue;
         if (blockType === 'Meta Think Instructions' && templateContext.metaThinkInstructions.trim().length === 0) continue;
         if (blockType === 'Appearance Prompt' && templateContext.appearancePrompt.trim().length === 0) continue;
         if (blockType === 'Dialogue Prompt' && templateContext.dialoguePrompt.trim().length === 0) continue;
-        if (blockType === 'Starter Prompt' && templateContext.starterPrompt.trim().length === 0) continue;
         if (blockType === 'Chat History' && templateContext.chatHistory.length === 0) continue;
 
         let template = DEFAULT_TEMPLATES[blockType];
@@ -2066,6 +2160,8 @@ export async function buildPrompt(
     // 5. Build Template Context Data
     const locationResult = buildLocationText(ctx);
     const chatHistoryResult = createChatHistoryArray(ctx);
+    const reachableLocationsResult = buildReachableLocationsText(ctx);
+    const characterTagsResult = buildCharacterTagsText(ctx);
     
     let skyViewText = '';
     if (ctx.currentLocation?.hasSkyView && timeData) {
@@ -2125,6 +2221,10 @@ export async function buildPrompt(
         characterTurnEnd: delimiters.turnEnd,
         
         chatHistory: chatHistoryResult.chatHistoryArray,
+        reachableLocations: reachableLocationsResult.names,
+        reachableLocationsWithDescriptions: reachableLocationsResult.withDescriptions,
+        characterTags: characterTagsResult.tags,
+        characterTagsWithDescriptions: characterTagsResult.tagsWithDescriptions,
         
         systemPrompt: buildSystemPromptText(ctx),
         thinkPrompt: buildThinkPromptText(ctx),
@@ -2133,7 +2233,8 @@ export async function buildPrompt(
         dialoguePrompt: buildDialoguePromptText(ctx),
         starterPrompt: buildStarterPromptText(ctx),
         context: contextLines,
-        location: locationResult.text,
+        currentLocation: locationResult.basic,
+        currentLocationWithDescription: locationResult.withDescription,
         inventory: buildInventoryText(ctx),
         skyView: skyViewText,
         weather: weatherText,

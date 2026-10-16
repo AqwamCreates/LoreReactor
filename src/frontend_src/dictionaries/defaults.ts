@@ -164,9 +164,27 @@ export const defaultActions: InterjectableAction[] = [
 ];
 
 export const defaultInputStrategy: promptBlockType[] = [
-    'System Prompt', 'Think Prompt', 'Meta Think Instructions', 'Appearance Prompt', 'Dialogue Prompt',
-    'Chat History', 'Context', 'Location', 'Sky View', 'Weather', 'Inventory', 'Date', 'Time', 'Time Elapsed',
-    'Fatigue Information', 'Starter Prompt', 'Tool Instructions', 'Tool Message Instructions', 'Anti-Repetition Nudge', 'Text Injection',
+    'System Prompt',
+    'Think Prompt',
+    'Meta Think Instructions',
+    'Character Tags',
+    'Appearance Prompt',
+    'Dialogue Prompt',
+    'Chat History',
+    'Context',
+    'Current Location',
+    'Sky View',
+    'Weather',
+    'Inventory',
+    'Date',
+    'Time',
+    'Time Elapsed',
+    'Fatigue Information',
+    'Starter Prompt',
+    'Tool Instructions',
+    'Tool Message Instructions',
+    'Anti-Repetition Nudge',
+    'Text Injection',
 ];
 
 export const defaultProfileTools: Record<tool, tristateInteger> = Object.fromEntries(

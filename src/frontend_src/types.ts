@@ -682,11 +682,16 @@ export type promptBlockType =
   | 'System Prompt'
   | 'Think Prompt'
   | 'Meta Think Instructions'
+  | 'Character Tags'
+  | 'Character Tags With Descriptions'
   | 'Appearance Prompt'
   | 'Dialogue Prompt'
   | 'Chat History'
   | 'Context'
-  | 'Location'
+  | 'Current Location'
+  | 'Current Location With Description'
+  | 'Reachable Locations'
+  | 'Reachable Locations With Descriptions'
   | 'Sky View'
   | 'Weather'
   | 'Inventory'
@@ -701,7 +706,7 @@ export type promptBlockType =
   | 'Text Injection'
   | 'Model Chat Template'
   | 'Model Instruction Template'
-  | 'Model Chat-Instruction Template'
+  | 'Model Chat-Instruction Template';
 
 export interface PromptBlock extends ObjectData {
   textContent: string
