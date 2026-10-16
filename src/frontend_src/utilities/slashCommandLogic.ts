@@ -223,7 +223,7 @@ export const COMMAND_TREE: SlashCmd[] = [
         { name: 'read', desc: 'Read clipboard' },
         { name: 'write', desc: 'Write text to clipboard', args: [{ name: 'text', type: 'text', desc: 'Text to copy', example: 'Copied text' }] },
     ]},
-    { name: 'screenshot', desc: 'Capture desktop screenshot' },
+    { name: 'screenshot', desc: 'Capture screenshot' },
     { name: 'webcam', desc: 'Capture webcam image' },
     { name: 'network_scanner', desc: 'Scan local network devices' },
     { name: 'file_watcher', desc: 'Watch workspace folders', subs: [

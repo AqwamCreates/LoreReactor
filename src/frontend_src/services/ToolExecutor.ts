@@ -1993,7 +1993,7 @@ async function executeClipboard(args: string, _nextMessage: BaseMessage, _intera
     }
 }
 
-// ─── Desktop Screenshot Capture ─────────────────────────────────────
+// ─── Screenshot Capture ─────────────────────────────────────
 async function executeScreenshot(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const res = await captureScreenshot(nextMessage.character?.id);
     if (!res.success || !res.base64) {
@@ -2005,8 +2005,8 @@ async function executeScreenshot(args: string, nextMessage: BaseMessage, _intera
         if (!msg.files) msg.files = [];
         msg.files.push(dataUrl);
     }
-    context.addToast?.('Screenshot captured and sent to language model', 'success');
-    return { toolType: 'screenshot', args, content: `Desktop screenshot captured and attached to visual input.`, displayReplacement: `[📸 Screenshot captured]` };
+    context.addToast?.('Screenshot captured and sent to the language model', 'success');
+    return { toolType: 'screenshot', args, content: `Screenshot captured and attached to visual input.`, displayReplacement: `[📸 Screenshot captured]` };
 }
 
 // ─── front_camera Tool ────────────────────────────────────────────────────

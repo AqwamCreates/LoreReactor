@@ -96,7 +96,6 @@ async function processToolInvocations(
 ): Promise<ProcessedReplacements | null> {
     if (!invocations || invocations.length === 0) return null;
 
-    // ✅ RESTORED: Check effective character & profile tool permissions
     const effectiveTools = getEffectiveTools(character, profile);
     const displayMode = profile?.toolUsageDisplayMode ?? 'none';
 
@@ -173,6 +172,7 @@ function applyToolReplacements(
         const { displayText } = replacements.displayReplacements[i];
 
         // 1. Raw prompt context: delimited observation boundary (⟪tool()⟫⟦result: ...⟧)
+        // THIS is the only legitimate source of tool results.
         const rawReplacement = `${rawMatch}${toolResultStartString}result: ${resultText}${toolResultEndString} `;
         if (currentRaw.includes(rawMatch)) {
             currentRaw = currentRaw.replace(rawMatch, rawReplacement);
@@ -219,10 +219,33 @@ function classifyError(error: unknown, signal: AbortSignal): TurnError {
     return { message, type: 'inference' };
 }
 
+// ─── AGGRESSIVE HALLUCINATION NUKER ─────────────────────────────────
+const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const startEsc = escapeRegex(toolResultStartString);
+const endEsc = escapeRegex(toolResultEndString);
+const hallucinationRegex = new RegExp(`${startEsc}[\\s\\S]*?${endEsc}`, 'g');
+
+function nukeHallucinatedResults(text: string): string {
+    // 1. Nuke complete fake observations
+    let clean = text.replace(hallucinationRegex, '');
+    
+    // 2. Nuke trailing unclosed fake observations
+    const lastOpen = clean.lastIndexOf(toolResultStartString);
+    const lastClose = clean.lastIndexOf(toolResultEndString);
+    if (lastOpen !== -1 && lastOpen > lastClose) {
+        clean = clean.substring(0, lastOpen);
+    }
+    
+    return clean;
+}
+
 function createTextAccumulationState(initialText: string) {
-    let rawAcc = initialText;
-    let displayAcc = initialText;
-    let lastRawLen = 0;
+    // ✅ NUKE any pre-existing hallucinated tool results from resumed text immediately
+    const sanitizedText = nukeHallucinatedResults(initialText);
+
+    let rawAcc = sanitizedText;
+    let displayAcc = sanitizedText;
+    let lastRawLen = sanitizedText.length; // Track length for delta extraction
     let pendingInvs: ToolInvocation[] = [];
     const collectedExecutionResults: ToolExecutionResult[] = [];
 
@@ -288,7 +311,6 @@ export class CharacterActor {
         const filteredMessages = getFilteredTextMessages(data, character.id, allPromptBlocks);
         const knownCharacterNames = detectName(character, filteredMessages);
 
-        // Check if the latest message from this character was a ToolMessage (so we know if we are currently in tool message mode)
         const latestMsg = findLatestMessage(data, character)?.message;
         const isToolMessage = latestMsg?.messageType === 'tool';
 
@@ -329,7 +351,8 @@ export class CharacterActor {
                     addPendingInvocation: (inv: ToolInvocation) => void;
                     clearPendingInvocations: () => void;
                 },
-                turnAbortCtrl: AbortController
+                turnAbortCtrl: AbortController,
+                baseLength: number // ✅ NEW: The length of the text before this stream pass started
             ): StreamCallbacks => ({
                 onToken: async (s) => {
                     latestLatency = s.msPerToken;
@@ -343,12 +366,27 @@ export class CharacterActor {
                     const acc = getAccumulators();
                     const lastLen = acc.getLastRawLen();
                     const delta = s.fullText.slice(lastLen);
-                    acc.setLastRawLen(s.fullText.length);
+                    acc.setLastRawLen(s.fullText.length); // Track absolute backend length for delta extraction
 
                     if (params.voiceTracker) params.voiceTracker.feed(s.fullText);
 
                     const parsed = parser.processChunk(delta);
-                    acc.setRaw(acc.raw + delta);
+                    
+                    let newRaw = acc.raw + delta;
+
+                    // ✅ AGGRESSIVE REWIND: If the LLM hallucinates a tool result ⟦ during this stream pass,
+                    // truncate the text entirely to the point before the hallucination started.
+                    // This erases both the fake result AND the LLM's reaction to it.
+                    const hallucinationIdx = newRaw.indexOf(toolResultStartString, baseLength);
+                    if (hallucinationIdx !== -1) {
+                        newRaw = newRaw.substring(0, hallucinationIdx);
+                        acc.setRaw(newRaw);
+                        // Abort immediately to prevent further hallucinated context
+                        turnAbortCtrl.abort();
+                        return;
+                    }
+
+                    acc.setRaw(newRaw);
 
                     // 1. Flush any text that occurred before the tool call
                     if (parsed.displayText) {
@@ -401,7 +439,9 @@ export class CharacterActor {
                 const onParentAbort = () => turnAbortCtrl.abort();
                 signal.addEventListener('abort', onParentAbort, { once: true });
 
-                const streamCallbacks = createStreamCallbacks(streamToolParser, accState.get, turnAbortCtrl);
+                // ✅ CAPTURE BASELINE: Any ⟦ generated after this index is a hallucination
+                const baseLength = currentExistingText.length; 
+                const streamCallbacks = createStreamCallbacks(streamToolParser, accState.get, turnAbortCtrl, baseLength);
 
                 try {
                     let resultText = '';
@@ -475,7 +515,6 @@ export class CharacterActor {
                     applyToolReplacements(accState, toolResult, callbacks);
                     isFirstChunkAfterTool = true;
 
-                    // ✅ Reset voice tracker offset for next stream pass
                     if (params.voiceTracker) {
                         params.voiceTracker.resetPass();
                         params.voiceTracker.seed(accState.getRaw());
@@ -545,7 +584,6 @@ export class CharacterActor {
                     applyToolReplacements(accState, toolResult, callbacks);
                     isFirstChunkAfterTool = true;
 
-                    // ✅ Reset voice tracker offset for next stream pass
                     if (params.voiceTracker) {
                         params.voiceTracker.resetPass();
                         params.voiceTracker.seed(accState.getRaw());
@@ -592,7 +630,6 @@ export class CharacterActor {
                     applyToolReplacements(accState, toolResult, callbacks);
                     isFirstChunkAfterTool = true;
 
-                    // ✅ Reset voice tracker offset for next stream pass
                     if (params.voiceTracker) {
                         params.voiceTracker.resetPass();
                         params.voiceTracker.seed(accState.getRaw());
@@ -616,7 +653,6 @@ export class CharacterActor {
             const isTool = isToolMessageText(rawText);
 
             if (isResuming) {
-                // ✅ FIX: Preserve any tool results executed during the resumed pass
                 const allExecutionResults = accState.getCollectedExecutionResults();
                 if (allExecutionResults.length > 0) {
                     const newHistories = { ...data.interactionHistories };
@@ -662,7 +698,6 @@ export class CharacterActor {
                     (msg as ChatMessage).characterExpression = latestExpression ?? undefined;
                 }
 
-                // ✅ FIX: Determine active location so the new message is placed in the character's room rather than orphaned in 'global'
                 const speakerLocationId = getCurrentLocationId(data, character) || 'global';
                 updatedData = addMessageToInteractionData(data, msg, speakerLocationId);
             }
