@@ -350,11 +350,11 @@ export function ModelEditorModal({
 
     const validate = (): boolean => {
         const newErrors: { name?: string; model?: string; apiKey?: string } = {};
-        if (!name.trim()) newErrors.name = 'Model name is required';
+        if (!name) newErrors.name = 'Model name is required';
         if (isCloudBackend) {
-            if (!apiKey.trim()) newErrors.apiKey = 'API key is required';
+            if (!apiKey) newErrors.apiKey = 'API key is required';
         } else {
-            if (!modelPath.trim()) newErrors.model = 'Model path is required';
+            if (!modelPath) newErrors.model = 'Model path is required';
         }
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -381,17 +381,17 @@ export function ModelEditorModal({
         if (supportsGpuLayers && settings.ik !== DEFAULT_SETTINGS.ik) params.ik = settings.ik;
         if (supportsSpecDecoding && settings.spec_type !== DEFAULT_SETTINGS.spec_type) params.spec_type = settings.spec_type;
         if (supportsSpecDecoding && settings.draft_max !== DEFAULT_SETTINGS.draft_max) params.draft_max = settings.draft_max;
-        if (supportsSpecDecoding && settings.draft_model?.trim()) params.draft_model = settings.draft_model;
+        if (supportsSpecDecoding && settings.draft_model?) params.draft_model = settings.draft_model;
         if (supportsSpecDecoding && settings.gpu_layers_draft !== DEFAULT_SETTINGS.gpu_layers_draft) params.gpu_layers_draft = settings.gpu_layers_draft;
-        if (supportsSpecDecoding && settings.device_draft?.trim()) params.device_draft = settings.device_draft;
+        if (supportsSpecDecoding && settings.device_draft?) params.device_draft = settings.device_draft;
         if (settings.parallel !== DEFAULT_SETTINGS.parallel) params.parallel = settings.parallel;
         if (settings.threads !== DEFAULT_SETTINGS.threads) params.threads = settings.threads;
         if (settings.threads_batch !== DEFAULT_SETTINGS.threads_batch) params.threads_batch = settings.threads_batch;
         if (settings.batch_size !== DEFAULT_SETTINGS.batch_size) params.batch_size = settings.batch_size;
         if (settings.ubatch_size !== DEFAULT_SETTINGS.ubatch_size) params.ubatch_size = settings.ubatch_size;
         if (settings.fit_target !== DEFAULT_SETTINGS.fit_target) params.fit_target = settings.fit_target;
-        if (settings.tensor_split?.trim()) params.tensor_split = settings.tensor_split;
-        if (settings.extra_flags?.trim()) params.extra_flags = settings.extra_flags;
+        if (settings.tensor_split?) params.tensor_split = settings.tensor_split;
+        if (settings.extra_flags?) params.extra_flags = settings.extra_flags;
         if (supportsLlamaMemory) {
             if (settings.cpu_moe !== DEFAULT_SETTINGS.cpu_moe) params.cpu_moe = settings.cpu_moe;
             if (settings.no_kv_offload !== DEFAULT_SETTINGS.no_kv_offload) params.no_kv_offload = settings.no_kv_offload;
@@ -401,7 +401,7 @@ export function ModelEditorModal({
         }
 
         if (selectedStopPatternIds.length > 0) params.stop_pattern_ids = selectedStopPatternIds;
-        if (apiKey.trim()) params.api_key = apiKey.trim();
+        if (apiKey) params.api_key = apiKey;
 
         const resolvedInstructionTemplate = instructionTemplate === 'auto'
             ? (detectedTemplateKey || undefined)
@@ -416,14 +416,14 @@ export function ModelEditorModal({
         const now = Date.now();
         return {
             id: isNewClone ? uuidv4() : (existingModel?.id || uuidv4()),
-            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
-            description: description.trim() || undefined,
+            name: isNewClone ? `${name} (Clone)` : name,
+            description: description || undefined,
             backend: selectedBackend,
             contextLength: contextLength || 0,
-            model: modelPath.trim() || undefined,
-            mmproj: mmprojPath.trim() || undefined,
-            lora: loraPath.trim() || undefined,
-            apiKey: apiKey.trim() || undefined,
+            model: modelPath || undefined,
+            mmproj: mmprojPath || undefined,
+            lora: loraPath || undefined,
+            apiKey: apiKey || undefined,
             parameters: Object.keys(params).length > 0 ? params : undefined,
             chatTemplate: resolvedChatTemplate,
             instructionTemplate: resolvedInstructionTemplate,

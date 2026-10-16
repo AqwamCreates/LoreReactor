@@ -517,8 +517,8 @@ export function AlternateTimelinesModal({
                     renameValue: renamingId === id ? renameValue : '',
                     onRenameChange: setRenameValue,
                     onRenameSubmit: () => {
-                        if (renamingId && renameValue.trim()) {
-                            onRenameInteractionData(renamingId, renameValue.trim());
+                        if (renamingId && renameValue) {
+                            onRenameInteractionData(renamingId, renameValue);
                             setRenamingId(null);
                             setRenameValue('');
                         }

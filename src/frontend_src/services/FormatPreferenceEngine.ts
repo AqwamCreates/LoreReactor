@@ -138,7 +138,7 @@ export class FormatPreferenceEngine {
         else if (segmentLength > 100) lengthCategory = 'very long';
         else if (segmentLength > 50) lengthCategory = 'long';
 
-        const segmentText = text.slice(segmentStart, segmentEnd).trim();
+        const segmentText = text.slice(segmentStart, segmentEnd);
         let punctuation: punctuationType = 'none';
         
         const trimmedForPunct = segmentText.replace(/[\*_\)\"\]”\}\s]+$/, '');

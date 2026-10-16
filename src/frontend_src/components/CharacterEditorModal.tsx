@@ -429,7 +429,7 @@ function CharacterEditorModalInner({
     }, [interactionData, existingCharacter]);
 
     const countFieldTokens = useCallback(async (field: keyof TokenCounts, text: string) => {
-        if (!text.trim()) { setTokenCounts(prev => ({ ...prev, [field]: 0 })); return; }
+        if (!text) { setTokenCounts(prev => ({ ...prev, [field]: 0 })); return; }
         const timeouts = tokenCountTimeoutsRef.current;
         if (timeouts[field]) clearTimeout(timeouts[field]);
         timeouts[field] = setTimeout(async () => {
@@ -461,7 +461,7 @@ function CharacterEditorModalInner({
             ];
 
             for (const { key, text } of fields) {
-                if (text.trim()) {
+                if (text) {
                     tokenEngine.countTokens(text).then(count => {
                         setTokenCounts(prev => ({ ...prev, [key]: count }));
                     });
@@ -610,8 +610,8 @@ function CharacterEditorModalInner({
         setKnownCharacterNames({});
         initialKnownCharacterNamesRef.current = {};
         setIsVoiceRemoved(false);
-        if (fields.starterPrompt?.trim()) {
-            setStarterPrompts({ [fields.starterPrompt.trim()]: 1 });
+        if (fields.starterPrompt?) {
+            setStarterPrompts({ [fields.starterPrompt]: 1 });
         } else {
             setStarterPrompts({});
         }
@@ -635,7 +635,7 @@ function CharacterEditorModalInner({
 
     const handleAddAlias = useCallback(() => {
         if (isReadOnly) return;
-        const val = newAliasInput.trim();
+        const val = newAliasInput;
         if (!val || aliases.includes(val)) return;
         setAliases(prev => [...prev, val]);
         setNewAliasInput('');
@@ -648,11 +648,11 @@ function CharacterEditorModalInner({
 
     const handleAddKnownName = useCallback((targetCharId: string, nameVariant: string) => {
         if (isReadOnly) return;
-        if (!nameVariant.trim()) return;
+        if (!nameVariant) return;
         setKnownCharacterNames(prev => {
             const existing = prev[targetCharId] || [];
-            if (existing.includes(nameVariant.trim())) return prev;
-            return { ...prev, [targetCharId]: [...existing, nameVariant.trim()] };
+            if (existing.includes(nameVariant)) return prev;
+            return { ...prev, [targetCharId]: [...existing, nameVariant] };
         });
     }, [isReadOnly]);
 
@@ -696,7 +696,7 @@ function CharacterEditorModalInner({
 
     const buildCharacterFromForm = async (isNewClone: boolean): Promise<Character | null> => {
         setSubmitError(null);
-        if (!name.trim()) { setSubmitError("Name is required!"); return null; }
+        if (!name) { setSubmitError("Name is required!"); return null; }
 
         const targetCharacterId = isNewClone ? uuidv4() : (existingCharacter?.id || pendingCharacterId || uuidv4());
 
@@ -858,10 +858,10 @@ function CharacterEditorModalInner({
         const now = Date.now();
         return {
             id: targetCharacterId,
-            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
+            name: isNewClone ? `${name} (Clone)` : name,
             description, systemPrompt,
-            thinkPrompt: thinkPrompt.trim() || undefined,
-            appearancePrompt: appearancePrompt.trim() || undefined,
+            thinkPrompt: thinkPrompt || undefined,
+            appearancePrompt: appearancePrompt || undefined,
             dialoguePrompts: dialoguePrompts.length > 0 ? dialoguePrompts : undefined,
             knowledgePrompts: knowledgePrompts.length > 0 ? knowledgePrompts : undefined,
             starterPrompts: Object.keys(starterPrompts).length > 0 ? starterPrompts : undefined,
@@ -909,7 +909,7 @@ function CharacterEditorModalInner({
 
     const handleAddStarterPrompt = useCallback(() => {
         if (isReadOnly) return;
-        const text = newStarterPromptText.trim();
+        const text = newStarterPromptText;
         if (!text) return;
         const weight = Number.parseFloat(newStarterPromptWeight);
         const finalWeight = Number.isNaN(weight) || weight <= 0 ? 1 : weight;
@@ -944,8 +944,8 @@ function CharacterEditorModalInner({
 
     const handleAddMemoryPrompt = useCallback(() => {
         if (isReadOnly) return;
-        const expr = newMemoryPromptExpression.trim();
-        const tmpl = newMemoryPromptTemplate.trim();
+        const expr = newMemoryPromptExpression;
+        const tmpl = newMemoryPromptTemplate;
         if (!expr || !tmpl) return;
         setMemoryPrompts(prev => ({ ...prev, [expr]: tmpl }));
         setNewMemoryPromptTemplate('');
@@ -990,7 +990,7 @@ function CharacterEditorModalInner({
 
     const filteredToolNames = useMemo(() => {
         const allToolNames = Object.keys(tools) as tool[];
-        const q = toolSearchQuery.toLowerCase().trim();
+        const q = toolSearchQuery.toLowerCase();
         if (!q) return allToolNames;
         return allToolNames.filter(toolName => {
             const label = (toolLabels[toolName] ?? toolName).toLowerCase();

@@ -31,7 +31,7 @@ const MinimapItem = React.memo(function MinimapItem({
     const compiledText = useCompiledMessageText(msg);
 
     const compiledFirstLine = useMemo(() => {
-        return compiledText.split('\n')[0]?.trim() || '';
+        return compiledText.split('\n')[0]? || '';
     }, [compiledText]);
 
     const truncated = compiledFirstLine.length > 28

@@ -111,7 +111,7 @@ function MultiplayerEditorModalInner({
 
     const validate = (): boolean => {
         const newErrors: { name?: string } = {};
-        if (!name.trim()) newErrors.name = 'Name is required';
+        if (!name) newErrors.name = 'Name is required';
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -130,8 +130,8 @@ function MultiplayerEditorModalInner({
 
         return {
             id: isNewClone ? uuidv4() : (existingMultiplayerData?.id || uuidv4()),
-            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
-            description: description.trim() || undefined,
+            name: isNewClone ? `${name} (Clone)` : name,
+            description: description || undefined,
             password,
             canUseJoinerCharacterIds,
             joinerCharacterIdsRequiresHosterApproval,
@@ -165,7 +165,7 @@ function MultiplayerEditorModalInner({
     }, []);
 
     const addAccount = useCallback((id: string) => {
-        const trimmed = id.trim();
+        const trimmed = id;
         if (!trimmed) return;
 
         setAccountConfigs(prev => {
@@ -300,7 +300,7 @@ function MultiplayerEditorModalInner({
 
     const filteredAccountConfigs = useMemo(() => {
         const entries = Object.entries(accountConfigs);
-        if (!accountSearchQuery.trim()) return entries;
+        if (!accountSearchQuery) return entries;
         const q = accountSearchQuery.toLowerCase();
         return entries.filter(([acctId, cfg]) => {
             if (acctId.toLowerCase().includes(q)) return true;

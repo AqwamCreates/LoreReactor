@@ -109,13 +109,13 @@ function AudioTrackEditorModalInner({
 
     const validate = (): boolean => {
         const newErrors: Record<string, string | undefined> = {};
-        if (!name.trim()) newErrors.name = 'Name is required.';
-        if (!filename.trim()) newErrors.filename = 'Filename is required.';
+        if (!name) newErrors.name = 'Name is required.';
+        if (!filename) newErrors.filename = 'Filename is required.';
 
         let valid = true;
         const validateTriggers = (trs: RegularExpressionTrigger[], key: string) => {
             for (let i = 0; i < trs.length; i++) {
-                if (trs[i].trigger.trim()) {
+                if (trs[i].trigger) {
                     try { new RegExp(trs[i].trigger); } catch {
                         newErrors[key] = `Invalid regex in trigger #${i + 1}.`;
                         valid = false;
@@ -163,7 +163,7 @@ function AudioTrackEditorModalInner({
 
         const trackId = isNewClone ? uuidv4() : (existingTrack?.id || uuidv4());
 
-        let finalFilename = filename.trim();
+        let finalFilename = filename;
 
         setIsUploading(true);
         try {
@@ -195,14 +195,14 @@ function AudioTrackEditorModalInner({
         const now = Date.now();
 
         const filterTriggers = (trs: RegularExpressionTrigger[]) => {
-            const filtered = trs.filter(t => t.trigger.trim());
+            const filtered = trs.filter(t => t.trigger);
             return filtered.length > 0 ? filtered : undefined;
         };
 
         return {
             id: trackId,
-            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
-            description: description.trim() || undefined,
+            name: isNewClone ? `${name} (Clone)` : name,
+            description: description || undefined,
             filename: finalFilename,
             loop,
             volume,

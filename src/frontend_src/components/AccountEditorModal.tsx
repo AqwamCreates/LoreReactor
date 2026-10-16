@@ -54,8 +54,8 @@ function AccountEditorModalInner({
 
     const validate = (): boolean => {
         const newErrors: { name?: string; username?: string } = {};
-        if (!name.trim()) newErrors.name = 'Name is required';
-        if (!username.trim()) newErrors.username = 'Username is required';
+        if (!name) newErrors.name = 'Name is required';
+        if (!username) newErrors.username = 'Username is required';
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -65,10 +65,10 @@ function AccountEditorModalInner({
         const now = Date.now();
         return {
             id: isNewClone ? uuidv4() : (existingAccount?.id || uuidv4()),
-            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
-            username: username.trim(),
+            name: isNewClone ? `${name} (Clone)` : name,
+            username: username,
             password: password,
-            url: url.trim() || undefined,
+            url: url || undefined,
             sharedCharacterIds,
             sharedLanguageModelIds,
             firstCreatedTimestamp: isNewClone ? now : (existingAccount?.firstCreatedTimestamp || now),

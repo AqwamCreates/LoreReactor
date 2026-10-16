@@ -729,7 +729,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
           stdio: 'pipe',
           encoding: 'utf-8',
           shell: '/bin/bash',
-        }).toString().trim() || null;
+        }).toString() || null;
       } catch {}
 
       if (!foundBinary) {
@@ -858,7 +858,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
 
       const whichLms = IS_WINDOWS
         ? execSync('where lms').toString().split(/\r?\n/)[0]
-        : execSync('which lms').toString().trim();
+        : execSync('which lms').toString();
 
       if (!whichLms || !fs.existsSync(whichLms)) {
         throw new Error('lms CLI could not be located after installation.');
@@ -1220,10 +1220,10 @@ function queryNvidiaGpu(): GpuStatus | null {
     const raw = execSync(
       'nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw --format=csv,noheader,nounits',
       { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' },
-    ).trim();
+    );
 
     const line = raw.split('\n')[0];
-    const parts = line.split(',').map(s => s.trim());
+    const parts = line.split(',').map(s => s);
     if (parts.length < 4) return null;
 
     return {
@@ -1245,7 +1245,7 @@ function queryAmdGpu(): GpuStatus | null {
   try {
     const raw = execSync('rocm-smi --showuse --showmeminfo vram --json', {
       stdio: 'pipe', timeout: 3000, encoding: 'utf-8',
-    }).trim();
+    });
 
     const data = JSON.parse(raw);
     const cardKeys = Object.keys(data).filter(k => k.startsWith('card'));
@@ -1276,7 +1276,7 @@ function queryIntelGpu(): GpuStatus | null {
   try {
     const raw = execSync('xpu-smi discovery', {
       stdio: 'pipe', timeout: 3000, encoding: 'utf-8',
-    }).trim();
+    });
 
     const devices = JSON.parse(raw);
     if (!Array.isArray(devices) || devices.length === 0) return null;
@@ -1299,14 +1299,14 @@ function queryIntelGpu(): GpuStatus | null {
 
 function queryAppleGpu(): GpuStatus | null {
   try {
-    const raw = execSync('ioreg -r -c AGXAccelerator -d 1', { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' }).trim();
+    const raw = execSync('ioreg -r -c AGXAccelerator -d 1', { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' });
     const nameMatch = raw.match(/"IOClass"\s*=\s*"([^"]+)"/);
     const gpuName = nameMatch ? nameMatch[1] : 'Apple GPU';
 
     let utilization = 0;
     let power: number | null = null;
     try {
-      const pmRaw = execSync('powermetrics --samplers gpu_power -n 1 -i 500 --format json', { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' }).trim();
+      const pmRaw = execSync('powermetrics --samplers gpu_power -n 1 -i 500 --format json', { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' });
       const pmData = JSON.parse(pmRaw);
       const gpu = pmData.gpu_power?.[0] || pmData.gpu;
       if (gpu) {
@@ -1317,7 +1317,7 @@ function queryAppleGpu(): GpuStatus | null {
 
     let memTotal = 0;
     try {
-      const sysctlRaw = execSync('sysctl hw.memsize', { stdio: 'pipe', timeout: 1000, encoding: 'utf-8' }).trim();
+      const sysctlRaw = execSync('sysctl hw.memsize', { stdio: 'pipe', timeout: 1000, encoding: 'utf-8' });
       const memMatch = sysctlRaw.match(/(\d+)/);
       if (memMatch) memTotal = Math.round(Number.parseInt(memMatch[1], 10) / (1024 * 1024));
     } catch {}
@@ -1495,7 +1495,7 @@ function sanitizeHollowMessages(): number {
     try {
       const raw = fs.readFileSync(path.join(messagesDir, file), 'utf-8');
       const msg = JSON.parse(raw);
-      if (msg.messageType === 'chat' && (!msg.textContent || !String(msg.textContent).trim())) {
+      if (msg.messageType === 'chat' && (!msg.textContent || !String(msg.textContent))) {
         fs.unlinkSync(path.join(messagesDir, file));
         hollowCount++;
       }
@@ -1581,11 +1581,11 @@ function createSnippet(text: string, query: string, radius = 50): string {
 
   const start = Math.max(0, idx - radius);
   const end = Math.min(text.length, idx + query.length + radius);
-  return `${start > 0 ? '...' : ''}${text.slice(start, end).trim()}${end < text.length ? '...' : ''}`;
+  return `${start > 0 ? '...' : ''}${text.slice(start, end)}${end < text.length ? '...' : ''}`;
 }
 
 app.get('/search', async (req, response) => {
-  const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const query = typeof req.query.q === 'string' ? req.query.q : '';
   const limit = Math.min(Number.parseInt(String(req.query.limit || '40'), 10), 100);
 
   if (!query) return response.json({ query, results: [], count: 0, durationMs: 0 });
@@ -1970,13 +1970,13 @@ app.post(LANGUAGE_MODEL_LOAD_ROUTE, async (req, response) => {
   activeModels.set(id, instance);
 
   proc.stdout?.on('data', (data: Buffer) => {
-    const str = data.toString().trim();
+    const str = data.toString();
     if (str) log.backend(config.logLabel, `[${id}] ${str}`);
     if (config.readyPattern?.test(str)) instance.status = 'ready';
   });
 
   proc.stderr?.on('data', (data: Buffer) => {
-    const str = data.toString().trim();
+    const str = data.toString();
     if (!str) return;
     const lowerStr = str.toLowerCase();
     const isError = lowerStr.includes('error:') || lowerStr.includes('fatal') || lowerStr.includes('failed to') || lowerStr.includes('abort');
@@ -2392,9 +2392,9 @@ app.post('/tool/shell', async (req, res) => {
 
   try {
     const { stdout, stderr } = await execAsync(command, { timeout: 10000, cwd: ROOT_DIR });
-    res.json({ success: true, stdout: stdout.trim(), stderr: stderr.trim() });
+    res.json({ success: true, stdout: stdout, stderr: stderr });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message, stdout: error.stdout?.trim() || '', stderr: error.stderr?.trim() || '' });
+    res.status(500).json({ success: false, error: error.message, stdout: error.stdout? || '', stderr: error.stderr? || '' });
   }
 });
 
@@ -2725,7 +2725,7 @@ app.post('/tool/virtual-controller', (req, res) => {
     }
 
     if (!button || typeof button !== 'string') return res.status(400).json({ success: false, error: 'Button name required.' });
-    const normalizedBtn = button.trim().toUpperCase();
+    const normalizedBtn = button.toUpperCase();
 
     if (DPAD_DIRECTIONS.has(normalizedBtn)) {
       const isUp = normalizedBtn === 'UP' || normalizedBtn === 'DPAD_UP';
@@ -2893,7 +2893,7 @@ async function ensureTextToSpeechServerIsRunning() {
             let resolved = false;
             textToSpeechServerProcess!.stdout?.on('data', (data: Buffer) => {
                 const output = data.toString();
-                log.info(`[Text To Speech] ${output.trim()}`);
+                log.info(`[Text To Speech] ${output}`);
                 if (output.includes('Model loaded and ready') && !resolved) {
                     textToSpeechServerReady = true;
                     resolved = true;
@@ -2901,7 +2901,7 @@ async function ensureTextToSpeechServerIsRunning() {
                 }
             });
             textToSpeechServerProcess!.stderr?.on('data', (data: Buffer) => {
-                const errOutput = data.toString().trim();
+                const errOutput = data.toString();
                 if (errOutput) log.warn(`[Text To Speech] ${errOutput}`);
             });
             textToSpeechServerProcess!.on('exit', (code) => {

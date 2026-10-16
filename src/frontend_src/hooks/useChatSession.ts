@@ -515,7 +515,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             }
 
             if (getGlobalMessageHistory(ud).length <= preTurnCount) {
-                const liveText = streamingTextRef.current?.trim();
+                const liveText = streamingTextRef.current;
                 if (liveText && respondingChar) {
                     const currentLocId = getCurrentLocationId(ud, respondingChar) || 'global';
                     const fallbackMsg = createChatMessage(ud, respondingChar, liveText);

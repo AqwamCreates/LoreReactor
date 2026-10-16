@@ -477,7 +477,7 @@ function extractLorebookContexts(book: CharacterBook): Partial<Context>[] {
 
     // Sort by insertion_order (lower = higher priority / earlier insertion)
     const sorted = [...book.entries]
-        .filter(e => e.enabled !== false && e.content?.trim())
+        .filter(e => e.enabled !== false && e.content?)
         .sort((a, b) => (a.insertion_order ?? 999) - (b.insertion_order ?? 999));
 
     for (const entry of sorted) {
@@ -579,7 +579,7 @@ function extractV3Assets(assets: V3Asset[]): Record<string, string> {
             continue;
         }
 
-        const assetName = (asset.name || '').toLowerCase().trim();
+        const assetName = (asset.name || '').toLowerCase();
 
         // Match against known emotion aliases
         let matchedEmotion: string | null = null;
@@ -616,7 +616,7 @@ function extractExtensionImages(extensions: Record<string, unknown> | undefined)
         || extensions.st_expressions as Record<string, string> | undefined;
     if (stExpressions && typeof stExpressions === 'object') {
         for (const [emotion, filename] of Object.entries(stExpressions)) {
-            if (typeof filename === 'string' && filename.trim()) {
+            if (typeof filename === 'string' && filename) {
                 images[emotion.toLowerCase()] = filename;
             }
         }
@@ -627,7 +627,7 @@ function extractExtensionImages(extensions: Record<string, unknown> | undefined)
         || extensions.agnai_images as Record<string, string> | undefined;
     if (agnaiImages && typeof agnaiImages === 'object') {
         for (const [emotion, filename] of Object.entries(agnaiImages)) {
-            if (typeof filename === 'string' && filename.trim()) {
+            if (typeof filename === 'string' && filename) {
                 images[emotion.toLowerCase()] = filename;
             }
         }
@@ -637,7 +637,7 @@ function extractExtensionImages(extensions: Record<string, unknown> | undefined)
     const genericExpressions = extensions.expression_images as Record<string, string> | undefined;
     if (genericExpressions && typeof genericExpressions === 'object') {
         for (const [emotion, filename] of Object.entries(genericExpressions)) {
-            if (typeof filename === 'string' && filename.trim()) {
+            if (typeof filename === 'string' && filename) {
                 images[emotion.toLowerCase()] = filename;
             }
         }

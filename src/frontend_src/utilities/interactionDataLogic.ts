@@ -304,7 +304,7 @@ export async function buildRequestBody(
     const { stop: paramStops, ...otherParams } = languageModelSampler?.parameters || {};
 
     const finalStops = [...(Array.isArray(paramStops) ? paramStops : []), ...stops];
-    const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.trim().length > 0);
+    const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.length > 0);
 
     const body: Record<string, unknown> = {
         ...otherParams,
@@ -625,7 +625,7 @@ function escapeRegExp(string: string) {
 }
 
 export function isToolMessageText(text: string): boolean {
-    const trimmed = text.trim();
+    const trimmed = text;
     const bracketedPattern = new RegExp(`^\\s*${escapeRegExp(toolCallStartString)}\\s*tool\\s*\\(\\s*\\)\\s*${escapeRegExp(toolCallEndString)}`, 'i');
     const plainPattern = /^tool\s*\(\s*\)/i;
     return bracketedPattern.test(trimmed) || plainPattern.test(trimmed);

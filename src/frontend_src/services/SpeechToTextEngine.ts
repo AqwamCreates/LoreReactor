@@ -207,7 +207,7 @@ class SpeechToTextEngine {
         try {
             this.resetIdleTimer();
             const result = await this.pipeline(buffer);
-            return result.text?.trim() || null;
+            return result.text? || null;
         } catch (e) {
             console.warn('[STTEngine] Buffer transcription failed:', e);
             return null;
@@ -245,7 +245,7 @@ class SpeechToTextEngine {
             const result = await this.pipeline(float32Array, options);
             await audioContext.close();
             
-            return result.text?.trim() || null;
+            return result.text? || null;
         } catch (e) {
             console.error('[STTEngine] File transcription failed:', e);
             return null;
@@ -434,9 +434,9 @@ class SpeechToTextEngine {
 
         // User paused below silence threshold for silenceThresholdMs -> Finalize and send
         const text = await this.stopRecording();
-        if (text && text.trim().length > 0 && this.onAutoSend) {
+        if (text && text.length > 0 && this.onAutoSend) {
             console.log('[STTEngine] Turn completed. Auto-sending:', text);
-            this.onAutoSend(text.trim());
+            this.onAutoSend(text);
         }
     }
 
@@ -517,7 +517,7 @@ class SpeechToTextEngine {
             this.audioChunks = [];
 
             const result = await this.pipeline(combined);
-            const text = result.text?.trim();
+            const text = result.text?;
 
             if (text && text.length > 0 && this.onPartialTranscription) {
                 this.onPartialTranscription(text);

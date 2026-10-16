@@ -163,7 +163,7 @@ export class StreamingVoiceTracker {
 
     private processSegmentDelta(delta: string, type: textType): void {
         if (type !== this.pendingSegmentType && this.sentenceAccumulator.length > 0) {
-            this.queueSentence(this.sentenceAccumulator.trim(), this.pendingSegmentType);
+            this.queueSentence(this.sentenceAccumulator, this.pendingSegmentType);
             this.sentenceAccumulator = '';
         }
         this.pendingSegmentType = type;
@@ -180,7 +180,7 @@ export class StreamingVoiceTracker {
         while ((match = boundaryRegex.exec(this.buffer)) !== null) {
             const punctuation = match[1] || match[2] || '';
             const sentenceEnd = match.index + punctuation.length;
-            const rawSentence = this.buffer.substring(0, sentenceEnd).trim();
+            const rawSentence = this.buffer.substring(0, sentenceEnd);
             this.buffer = this.buffer.substring(sentenceEnd);
             boundaryRegex.lastIndex = 0;
 
@@ -199,7 +199,7 @@ export class StreamingVoiceTracker {
                 : this.INITIAL_CHUNK_MIN_CHARS;
 
             if (this.sentenceAccumulator.length >= targetMinLength) {
-                this.queueSentence(this.sentenceAccumulator.trim(), this.pendingSegmentType);
+                this.queueSentence(this.sentenceAccumulator, this.pendingSegmentType);
                 this.sentenceAccumulator = '';
                 this.isFirstChunkSent = true;
             }
@@ -207,9 +207,9 @@ export class StreamingVoiceTracker {
     }
 
     private queueSentence(sentence: string, textType: textType): void {
-        if (this.isKilled || !this.hasVoiceConfigured || !sentence.trim()) return;
+        if (this.isKilled || !this.hasVoiceConfigured || !sentence) return;
         const currentSequenceId = this.nextSequenceId++;
-        this.pendingSentences.push({ sequenceId: currentSequenceId, sentence: sentence.trim(), textType });
+        this.pendingSentences.push({ sequenceId: currentSequenceId, sentence: sentence, textType });
         this.processPendingQueue();
     }
 
@@ -315,12 +315,12 @@ export class StreamingVoiceTracker {
 
         // Flush any remaining text (including trailing phrases and ending ellipses of any style)
         let remaining = this.sentenceAccumulator;
-        if (this.buffer.trim().length > 0) {
-            remaining = (remaining ? remaining + ' ' : '') + this.buffer.trim();
+        if (this.buffer.length > 0) {
+            remaining = (remaining ? remaining + ' ' : '') + this.buffer;
         }
 
-        if (remaining.trim().length > 0) {
-            this.queueSentence(remaining.trim(), this.pendingSegmentType);
+        if (remaining.length > 0) {
+            this.queueSentence(remaining, this.pendingSegmentType);
             this.sentenceAccumulator = '';
             this.buffer = '';
         }

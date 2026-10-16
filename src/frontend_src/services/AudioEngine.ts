@@ -21,7 +21,7 @@ interface ActiveTrackState {
 function doesAnyTriggerMatch(triggers: RegularExpressionTrigger[] | undefined, searchSpace: string): boolean {
     if (!triggers || triggers.length === 0) return false;
     for (const trigger of triggers) {
-        if (!trigger.trigger.trim()) continue;
+        if (!trigger.trigger) continue;
         try {
             const regex = new RegExp(trigger.trigger, 'i');
             if (regex.test(searchSpace)) return true;

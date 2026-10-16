@@ -20,7 +20,7 @@ export function isDialoguePromptActive(
     // Check activation
     let activated = false;
     for (const trigger of activationTriggers) {
-        if (!trigger.trigger.trim()) continue;
+        if (!trigger.trigger) continue;
         try {
             if (new RegExp(trigger.trigger).test(searchSpace)) { activated = true; break; }
         } catch { /* skip invalid regex */ }
@@ -29,7 +29,7 @@ export function isDialoguePromptActive(
 
     // Check deactivation
     for (const trigger of deactivationTriggers) {
-        if (!trigger.trigger.trim()) continue;
+        if (!trigger.trigger) continue;
         try {
             if (new RegExp(trigger.trigger).test(searchSpace)) return false;
         } catch { /* skip invalid regex */ }
@@ -39,7 +39,7 @@ export function isDialoguePromptActive(
     if (exclusionActivationTriggers.length > 0) {
         let exclusionActivated = false;
         for (const trigger of exclusionActivationTriggers) {
-            if (!trigger.trigger.trim()) continue;
+            if (!trigger.trigger) continue;
             try {
                 if (new RegExp(trigger.trigger).test(searchSpace)) { exclusionActivated = true; break; }
             } catch { /* skip invalid regex */ }
@@ -48,7 +48,7 @@ export function isDialoguePromptActive(
             // Check exclusion deactivation — if NOT deactivated, exclude this prompt
             let exclusionDeactivated = false;
             for (const trigger of exclusionDeactivationTriggers) {
-                if (!trigger.trigger.trim()) continue;
+                if (!trigger.trigger) continue;
                 try {
                     if (new RegExp(trigger.trigger).test(searchSpace)) { exclusionDeactivated = true; break; }
                 } catch { /* skip invalid regex */ }
@@ -85,8 +85,8 @@ export function collectActiveDialoguePromptContent(
     for (const dp of active) {
         const skipProb = dp.dialoguePromptSkipProbability ?? 0;
         if (skipProb > 0 && Math.random() < skipProb) continue;
-        if (dp.content?.trim()) {
-            contents.push(dp.content.trim());
+        if (dp.content?) {
+            contents.push(dp.content);
         }
     }
     return contents;

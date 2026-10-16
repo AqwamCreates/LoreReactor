@@ -103,7 +103,7 @@ function PromptBlockEditorModalInner({
             tokenEngine.setContext(selectedModel);
         }
         const initialText = existingBlock?.textContent ?? '';
-        if (!initialText.trim()) return;
+        if (!initialText) return;
         const rafId = requestAnimationFrame(() => {
             tokenEngine.countTokens(initialText).then(count => setTextTokenCount(count));
         });
@@ -125,9 +125,9 @@ function PromptBlockEditorModalInner({
 
     const validate = (): boolean => {
         const newErrors: Record<string, string | undefined> = {};
-        if (!name.trim()) newErrors.name = 'Name is required.';
+        if (!name) newErrors.name = 'Name is required.';
 
-        const hasText = textContent.trim().length > 0;
+        const hasText = textContent.length > 0;
         const hasImages = images.length > 0;
         if (!hasText && !hasImages) {
             newErrors.textContent = 'Either text or images are required.';
@@ -137,7 +137,7 @@ function PromptBlockEditorModalInner({
         let valid = true;
         const validateTriggers = (trs: RegularExpressionTrigger[], key: string) => {
             for (let i = 0; i < trs.length; i++) {
-                if (trs[i].trigger.trim()) {
+                if (trs[i].trigger) {
                     try { new RegExp(trs[i].trigger); } catch {
                         newErrors[key] = `Invalid regex in trigger #${i + 1}.`;
                         valid = false;
@@ -230,15 +230,15 @@ function PromptBlockEditorModalInner({
         const now = Date.now();
 
         const filterTriggers = (trs: RegularExpressionTrigger[]) => {
-            const filtered = trs.filter(t => t.trigger.trim());
+            const filtered = trs.filter(t => t.trigger);
             return filtered.length > 0 ? filtered : undefined;
         };
 
         return {
             id: blockId,
-            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
-            description: description.trim() || undefined,
-            textContent: textContent.trim(),
+            name: isNewClone ? `${name} (Clone)` : name,
+            description: description || undefined,
+            textContent: textContent,
             images: finalImageFilenames.length > 0 ? finalImageFilenames : [],
             regularExpressionActivationTriggers: filterTriggers(regexActivationTriggers),
             regularExpressionDeactivationTriggers: filterTriggers(regexDeactivationTriggers),
@@ -259,7 +259,7 @@ function PromptBlockEditorModalInner({
     const handleSubmit = async () => { const block = await buildBlockFromForm(false); if (!block) return; onSave(block); onClose(); };
     const handleClone = async () => { const cloned = await buildBlockFromForm(true); if (!cloned) return; onSave(cloned); onClose(); };
 
-    const hasText = textContent.trim().length > 0;
+    const hasText = textContent.length > 0;
     const hasImages = images.length > 0;
     const textRequiresAsterisk = !hasImages;
     const imagesRequiresAsterisk = !hasText;

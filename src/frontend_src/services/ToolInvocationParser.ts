@@ -24,14 +24,14 @@ export interface ParsedChunkResult {
  *   - Simple:         "coin" -> toolType: "coin", args: ""
  */
 function parseInnerToolCall(inner: string): { toolType: string; args: string } {
-    const trimmed = inner.trim();
+    const trimmed = inner;
 
     // 1. Function format: name(...)
     const fnMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*\(([\s\S]*)\)$/);
     if (fnMatch) {
         return {
             toolType: fnMatch[1].toLowerCase(),
-            args: fnMatch[2].trim(),
+            args: fnMatch[2],
         };
     }
 
@@ -46,7 +46,7 @@ function parseInnerToolCall(inner: string): { toolType: string; args: string } {
 
     return {
         toolType: trimmed.slice(0, spaceIdx).toLowerCase(),
-        args: trimmed.slice(spaceIdx + 1).trim(),
+        args: trimmed.slice(spaceIdx + 1),
     };
 }
 
@@ -54,22 +54,22 @@ function parseInnerToolCall(inner: string): { toolType: string; args: string } {
  * Parses slash commands typed by the user in chat.
  */
 export function parseSlashCommand(input: string): ToolInvocation | null {
-    let trimmed = input.trim();
+    let trimmed = input;
     if (!trimmed.startsWith('/')) return null;
 
-    trimmed = trimmed.slice(1).trim();
+    trimmed = trimmed.slice(1);
     if (!trimmed) return null;
 
     // Strip explicit ⟪ and ⟫ if present in the command
     if (trimmed.startsWith(toolCallStartString) && trimmed.endsWith(toolCallEndString)) {
-        trimmed = trimmed.slice(toolCallStartString.length, trimmed.length - toolCallEndString.length).trim();
+        trimmed = trimmed.slice(toolCallStartString.length, trimmed.length - toolCallEndString.length);
     }
 
     const { toolType, args } = parseInnerToolCall(trimmed);
     return {
         toolType,
         args,
-        rawMatch: input.trim(),
+        rawMatch: input,
     };
 }
 

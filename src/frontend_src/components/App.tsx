@@ -658,7 +658,7 @@ function App() {
 
     const handleSend = useCallback(async (overrideText?: string) => {
         const textToSend = overrideText !== undefined ? overrideText : inputText;
-        if (!textToSend.trim() && !pendingFiles.length) return;
+        if (!textToSend && !pendingFiles.length) return;
         let frontCam: string | undefined;
         const profileCam = interactionData?.profile?.useFrontCameraImage;
         if (profileCam === 1) { const img = await captureFrontCameraImage(); if (img) frontCam = img; }
@@ -693,8 +693,8 @@ function App() {
                     (finalText: string) => {
                         setIsRecording(false);
                         setInputText('');
-                        if (finalText && finalText.trim().length > 0) {
-                            handleSend(finalText.trim());
+                        if (finalText && finalText.length > 0) {
+                            handleSend(finalText);
                         }
                     },
                     { 

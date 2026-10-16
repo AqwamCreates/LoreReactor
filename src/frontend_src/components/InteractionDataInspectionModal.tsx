@@ -347,11 +347,11 @@ export function InteractionDataInspectionModal({
     }, [localChat, onSaveInteractionData]);
 
     const handleConfirmNameChange = useCallback(() => {
-        if (!editedName.trim() || !localChat) {
+        if (!editedName || !localChat) {
             setIsEditingName(false);
             return;
         }
-        setLocalChat(prev => prev ? { ...prev, name: editedName.trim(), lastUpdatedTimestamp: Date.now() } : null);
+        setLocalChat(prev => prev ? { ...prev, name: editedName, lastUpdatedTimestamp: Date.now() } : null);
         setIsDirty(true);
         setIsEditingName(false);
     }, [editedName, localChat]);

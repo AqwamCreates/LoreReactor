@@ -136,7 +136,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
     const handlePasteImport = () => {
         setError(null); setParsedData(null); setImportResult(null);
 
-        if (!pasteText.trim()) { setError('Paste JSON content first.'); return; }
+        if (!pasteText) { setError('Paste JSON content first.'); return; }
 
         try {
             const json = JSON.parse(pasteText);
@@ -319,7 +319,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
                                         type="button"
                                         className="editor-button editor-button-save"
                                         onClick={handlePasteImport}
-                                        disabled={!pasteText.trim()}
+                                        disabled={!pasteText}
                                     >
                                         Parse & Preview
                                     </button>

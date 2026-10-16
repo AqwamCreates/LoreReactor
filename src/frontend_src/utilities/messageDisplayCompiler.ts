@@ -46,7 +46,7 @@ function getInsertionIndex(cleanText: string, mappedIndex: number, mode: Placeme
     const paraEndSearch = cleanText.indexOf('\n\n', mappedIndex);
     const endIdx = paraEndSearch === -1 ? cleanText.length : paraEndSearch;
 
-    const currentParagraph = cleanText.slice(startIdx, endIdx).trim();
+    const currentParagraph = cleanText.slice(startIdx, endIdx);
     const isStandaloneInParagraph = currentParagraph.length === 0;
 
     // Paragraph-level placements
@@ -221,7 +221,7 @@ function compileRawString(
     finalText = finalText.replace(/(?:\r?\n[ \t]*){3,}/g, '\n\n');
     
     // Clean up multiple spaces and trim
-    finalText = finalText.replace(/ {2,}/g, ' ').trim();
+    finalText = finalText.replace(/ {2,}/g, ' ');
 
     if (character) {
         const mockData = { participants } as InteractionData;

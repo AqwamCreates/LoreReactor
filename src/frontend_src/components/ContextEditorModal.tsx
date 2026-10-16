@@ -117,7 +117,7 @@ function ContextEditorModalInner({
             tokenEngine.setContext(selectedModel);
         }
         const initialText = existingContext?.text || '';
-        if (!initialText.trim()) return;
+        if (!initialText) return;
         const rafId = requestAnimationFrame(() => {
             tokenEngine.countTokens(initialText).then(count => setTextnumberOfTokens(count));
         });
@@ -139,11 +139,11 @@ function ContextEditorModalInner({
 
     const validate = (): boolean => {
         const newErrors: Record<string, string | undefined> = {};
-        if (!name.trim()) newErrors.name = 'Name is required.';
+        if (!name) newErrors.name = 'Name is required.';
 
         const hasUrls = urls.length > 0;
         const hasSearchTerms = searchTerms.length > 0;
-        const hasText = text.trim().length > 0;
+        const hasText = text.length > 0;
         const hasImages = images.length > 0;
 
         if (!hasText && !hasImages && !hasUrls && !hasSearchTerms) {
@@ -154,7 +154,7 @@ function ContextEditorModalInner({
         let valid = true;
         const validateTriggers = (trs: RegularExpressionTrigger[], key: string) => {
             for (let i = 0; i < trs.length; i++) {
-                if (trs[i].trigger.trim()) {
+                if (trs[i].trigger) {
                     try { new RegExp(trs[i].trigger); } catch {
                         newErrors[key] = `Invalid regex in trigger #${i + 1}.`;
                         valid = false;
@@ -185,7 +185,7 @@ function ContextEditorModalInner({
     };
 
     const handleAddUrl = () => {
-        const trimmed = newUrlInput.trim();
+        const trimmed = newUrlInput;
         if (!trimmed || urls.includes(trimmed)) return;
         setUrls(prev => [...prev, trimmed]);
         setNewUrlInput('');
@@ -199,7 +199,7 @@ function ContextEditorModalInner({
     };
 
     const handleAddSearchTerm = () => {
-        const trimmed = newSearchTermInput.trim();
+        const trimmed = newSearchTermInput;
         if (!trimmed || searchTerms.includes(trimmed)) return;
         setSearchTerms(prev => [...prev, trimmed]);
         setNewSearchTermInput('');
@@ -304,15 +304,15 @@ function ContextEditorModalInner({
         const hasWebContent = hasUrls || hasSearchTerms;
 
         const filterTriggers = (trs: RegularExpressionTrigger[]) => {
-            const filtered = trs.filter(t => t.trigger.trim());
+            const filtered = trs.filter(t => t.trigger);
             return filtered.length > 0 ? filtered : undefined;
         };
 
         return {
             id: contextId,
-            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
-            description: description.trim() || undefined,
-            text: text.trim() || undefined,
+            name: isNewClone ? `${name} (Clone)` : name,
+            description: description || undefined,
+            text: text || undefined,
             images: finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
             regularExpressionActivationTriggers: filterTriggers(regexActivationTriggers),
             regularExpressionDeactivationTriggers: filterTriggers(regexDeactivationTriggers),
@@ -354,7 +354,7 @@ function ContextEditorModalInner({
         onClose();
     };
 
-    const hasText = text.trim().length > 0;
+    const hasText = text.length > 0;
     const hasImages = images.length > 0;
     const hasUrls = urls.length > 0;
     const hasSearchTerms = searchTerms.length > 0;
@@ -472,7 +472,7 @@ function ContextEditorModalInner({
                                     <>
                                         <div className="context-add-row">
                                             <input type="text" value={newSearchTermInput} onChange={(e) => setNewSearchTermInput(e.target.value)} onKeyDown={handleSearchTermInputKeyDown} className="editor-input context-add-input" placeholder="magic system eldoria" disabled={isUploading} />
-                                            <button type="button" onClick={handleAddSearchTerm} className="editor-button editor-button-save context-add-button" disabled={!newSearchTermInput.trim()}>Add</button>
+                                            <button type="button" onClick={handleAddSearchTerm} className="editor-button editor-button-save context-add-button" disabled={!newSearchTermInput}>Add</button>
                                         </div>
                                         <div className="context-add-hint">Press Enter or click Add to add a term.</div>
                                     </>
@@ -512,8 +512,8 @@ function ContextEditorModalInner({
                                 {!isReadOnly && (
                                     <>
                                         <div className="context-add-row">
-                                            <input type="text" value={newUrlInput} onChange={(e) => { setNewUrlInput(e.target.value); if (errors.urls) setErrors(prev => ({ ...prev, urls: undefined })); }} onKeyDown={handleUrlInputKeyDown} className={`editor-input context-add-input-mono ${errors.urls && newUrlInput.trim().length > 0 ? 'error' : ''}`} placeholder="https://example.com/lore-page" disabled={isUploading} />
-                                            <button type="button" onClick={handleAddUrl} className="editor-button editor-button-save context-add-button" disabled={!newUrlInput.trim()}>Add</button>
+                                            <input type="text" value={newUrlInput} onChange={(e) => { setNewUrlInput(e.target.value); if (errors.urls) setErrors(prev => ({ ...prev, urls: undefined })); }} onKeyDown={handleUrlInputKeyDown} className={`editor-input context-add-input-mono ${errors.urls && newUrlInput.length > 0 ? 'error' : ''}`} placeholder="https://example.com/lore-page" disabled={isUploading} />
+                                            <button type="button" onClick={handleAddUrl} className="editor-button editor-button-save context-add-button" disabled={!newUrlInput}>Add</button>
                                         </div>
                                         {errors.urls && <div className="editor-error-message">{errors.urls}</div>}
                                     </>

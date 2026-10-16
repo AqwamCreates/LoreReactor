@@ -50,7 +50,7 @@ function compileTriggerRegexes(triggers: RegularExpressionTrigger[] | undefined)
     if (!triggers || triggers.length === 0) return [];
     const regexes: RegExp[] = [];
     for (const t of triggers) {
-        if (!t.trigger.trim()) continue;
+        if (!t.trigger) continue;
         try { regexes.push(new RegExp(t.trigger)); } catch { /* skip invalid */ }
     }
     return regexes;
@@ -416,7 +416,7 @@ function doesAnyTriggerMatchCached(
 ): boolean {
     if (!triggers || triggers.length === 0) return false;
     for (const trigger of triggers) {
-        if (!trigger.trigger.trim()) continue;
+        if (!trigger.trigger) continue;
         const { textContentArray: filteredTexts } = getFilteredDataCached(
             combinationCache, characterIdArray, textContentArray,
             selectedCharacterId, protagonistIds,
@@ -620,7 +620,7 @@ async function resolveContextEntries(
         }
         const activatedText = activatedTextParts.join('\n');
 
-        if (!activatedText.trim()) break;
+        if (!activatedText) break;
 
         for (const context of contexts) {
             if (activated.has(context.id)) continue;
@@ -788,8 +788,8 @@ function getVisibleClothingDescriptions(
     for (const clothing of clothings) {
         if (!wearingStatus[clothing.id]) continue;
         if (coveredIds.has(clothing.id)) continue;
-        if (clothing.description?.trim()) {
-            visible.push(clothing.description.trim());
+        if (clothing.description?) {
+            visible.push(clothing.description);
         }
     }
 
@@ -926,7 +926,7 @@ function buildPromptContext(
 
 function buildAppearanceLines(ctx: PromptBuildContext): string[] {
     const lines: string[] = [];
-    const hasAnyAppearance = ctx.participants.some(p => p.appearancePrompt?.trim());
+    const hasAnyAppearance = ctx.participants.some(p => p.appearancePrompt?);
     if (!hasAnyAppearance) return lines;
 
     const nameLevel = ctx.cacheEfficiencyLevels['Character Name'] ?? 0;
@@ -948,7 +948,7 @@ function buildAppearanceLines(ctx: PromptBuildContext): string[] {
 
     for (const participant of participantsToRender) {
         const appearancePrompt = participant.appearancePrompt;
-        if (!appearancePrompt || !appearancePrompt.trim()) continue;
+        if (!appearancePrompt || !appearancePrompt) continue;
 
         const otherParticipantId = getParticipantId(participant, ctx.participants);
         const isCurrent = otherParticipantId === ctx.characterParticipantId;
@@ -1072,7 +1072,7 @@ function buildStarterPromptLines(ctx: PromptBuildContext): string[] {
             }
             if (!selectedText) selectedText = entries[entries.length - 1][0];
 
-            if (selectedText.trim()) {
+            if (selectedText) {
                 lines.push(`${ctx.delimiters.blockStart('system')}Start Of This Character's Starter Prompt.${ctx.delimiters.blockEnd}`);
                 const replacedStarter = replacePlaceholders(selectedText, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
                 lines.push(`${ctx.delimiters.blockStart('system')}${replacedStarter}${ctx.delimiters.blockEnd}`);
@@ -1097,7 +1097,7 @@ function buildLocationLines(ctx: PromptBuildContext): { lines: string[]; images:
             ctx.characterParticipantTag, ctx.characterName,
             ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
         );
-        const locationText = location.text?.trim();
+        const locationText = location.text?;
 
         let locationContent = `${ctx.delimiters.blockStart('system')}Current Location: ${locationName}`;
         if (locationText) {
@@ -1246,14 +1246,14 @@ function buildAntiRepetitionNudgeLines(ctx: PromptBuildContext): string[] {
     const texts = recentAiMessages.map(m => m.textContent);
 
     const extractSentenceShingles = (text: string): Set<string>[] => {
-        const rawSentences = text.split(/(?<=[.!?])\s+|\n+/).filter(s => s.trim().length > 0);
+        const rawSentences = text.split(/(?<=[.!?])\s+|\n+/).filter(s => s.length > 0);
         const sentenceShingles: Set<string>[] = [];
 
         for (const raw of rawSentences) {
             const words = raw.toLowerCase()
                 .replace(/[*_~"()\[\]{}.,!?;:]/g, ' ')
                 .replace(/\s+/g, ' ')
-                .trim()
+                
                 .split(' ')
                 .filter(w => w.length > 1)
                 .flatMap(getStemmedContentWords)
@@ -1301,7 +1301,7 @@ function buildAntiRepetitionNudgeLines(ctx: PromptBuildContext): string[] {
         const words = t.toLowerCase()
             .replace(/[*_~"()\[\]{}.,!?;:]/g, ' ')
             .replace(/\s+/g, ' ')
-            .trim()
+            
             .split(' ')
             .filter(w => w.length > 2)
             .flatMap(getStemmedContentWords)
@@ -2132,12 +2132,12 @@ export async function buildPrompt(
     let defaultStops: string[] = [];
     if (!profile?.doNotInjectDefaultStopTokens) {
         const templateStops = resolvedChatTemplate?.stopPatterns || [];
-        const turnEndStop = delimiters.turnEnd.trim();
+        const turnEndStop = delimiters.turnEnd;
         defaultStops = [...templateStops, turnEndStop].filter(s => s.length > 0);
     }
 
     const stops = [...defaultStops, ...activeStopPatterns.map(sp => sp.pattern)];
-    const uniqueStops = Array.from(new Set(stops)).filter(s => typeof s === 'string' && s.trim().length > 0);
+    const uniqueStops = Array.from(new Set(stops)).filter(s => typeof s === 'string' && s.length > 0);
 
     return { 
         messages, 

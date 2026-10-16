@@ -229,19 +229,19 @@ export function CompanionOverlay() {
     }, [showSettingsMenu]);
 
     const filteredProfiles = useMemo(() => {
-        const q = modalSearchQuery.toLowerCase().trim();
+        const q = modalSearchQuery.toLowerCase();
         if (!q) return state.allProfiles || [];
         return (state.allProfiles || []).filter(p => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)));
     }, [state.allProfiles, modalSearchQuery]);
 
     const filteredModels = useMemo(() => {
-        const q = modalSearchQuery.toLowerCase().trim();
+        const q = modalSearchQuery.toLowerCase();
         if (!q) return state.allLanguageModels || [];
         return (state.allLanguageModels || []).filter(m => m.name.toLowerCase().includes(q) || (m.backend && m.backend.toLowerCase().includes(q)));
     }, [state.allLanguageModels, modalSearchQuery]);
 
     const filteredBudgets = useMemo(() => {
-        const q = modalSearchQuery.toLowerCase().trim();
+        const q = modalSearchQuery.toLowerCase();
         if (!q) return state.allBudgetStrategies || [];
         return (state.allBudgetStrategies || []).filter(b => b.name.toLowerCase().includes(q));
     }, [state.allBudgetStrategies, modalSearchQuery]);
@@ -382,7 +382,7 @@ export function CompanionOverlay() {
     };
 
     const handleSend = useCallback(() => {
-        const trimmed = inputText.trim();
+        const trimmed = inputText;
         if (!trimmed && pendingFiles.length === 0) return;
         if (state.isLoading) return;
         const channel = new BroadcastChannel('lorereactor-companion-sync');
@@ -415,7 +415,7 @@ export function CompanionOverlay() {
             if (e.key === 'Escape') { e.preventDefault(); setInputText(inputText.trimEnd()); return; }
             if (e.key === 'Backspace' && currentQuery === '' && activeIndex > 0) {
                 e.preventDefault();
-                const currentParts = inputText.trim().split(/\s+/).filter(p => p.length > 0);
+                const currentParts = inputText.split(/\s+/).filter(p => p.length > 0);
                 currentParts.pop();
                 setInputText(currentParts.length > 0 ? `${currentParts.join(' ')} ` : '/');
                 return;
@@ -438,7 +438,7 @@ export function CompanionOverlay() {
     }, [state.isLoading, isAutoFormat, actionWrap, actionCase, actionPunctuation]);
 
     const onAddAction = useCallback((label: string) => {
-        const trimmed = label.trim();
+        const trimmed = label;
         if (!trimmed) return;
         setState((prev) => {
             if (prev.allActions.some((a) => a.label.toLowerCase() === trimmed.toLowerCase())) {
@@ -462,7 +462,7 @@ export function CompanionOverlay() {
     }, []);
 
     const filteredActions = useMemo(() => {
-        const query = menuSearchQuery.trim().toLowerCase();
+        const query = menuSearchQuery.toLowerCase();
         const actions = state.allActions || [];
         if (!query) return actions.slice().sort((a, b) => b.count - a.count);
         return actions.filter((a) => a.label.toLowerCase().includes(query)).sort((a, b) => b.count - a.count);

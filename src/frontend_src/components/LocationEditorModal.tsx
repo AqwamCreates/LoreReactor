@@ -125,7 +125,7 @@ function LocationEditorModalInner({
             tokenEngine.setContext(selectedModel);
         }
         const initialText = existingLocation?.text || '';
-        if (!initialText.trim()) return;
+        if (!initialText) return;
         const rafId = requestAnimationFrame(() => {
             tokenEngine.countTokens(initialText).then(count => setTextNumberOfTokens(count));
         });
@@ -147,9 +147,9 @@ function LocationEditorModalInner({
 
     const validate = (): boolean => {
         const newErrors: Record<string, any> = {};
-        if (!name.trim()) newErrors.name = 'Name is required.';
+        if (!name) newErrors.name = 'Name is required.';
 
-        const hasText = text.trim().length > 0;
+        const hasText = text.length > 0;
         const hasImages = images.length > 0;
         if (!hasText && !hasImages) {
             newErrors.text = 'Either text or images are required.';
@@ -159,7 +159,7 @@ function LocationEditorModalInner({
         let valid = true;
         const validateTriggers = (trs: RegularExpressionTrigger[], key: string) => {
             for (let i = 0; i < trs.length; i++) {
-                if (trs[i].trigger.trim()) {
+                if (trs[i].trigger) {
                     try { new RegExp(trs[i].trigger); } catch {
                         newErrors[key] = `Invalid regex in trigger #${i + 1}.`;
                         valid = false;
@@ -178,7 +178,7 @@ function LocationEditorModalInner({
 
         const bindingRegexErrors: Record<string, string> = {};
         for (const [locId, pattern] of Object.entries(locationBindingRegexTriggers)) {
-            if (pattern.trim()) {
+            if (pattern) {
                 try { new RegExp(pattern); } catch { bindingRegexErrors[locId] = 'Invalid regex'; }
             }
         }
@@ -186,17 +186,17 @@ function LocationEditorModalInner({
 
         const bgImageRegexErrors: Record<number, string> = {};
         for (const [idxStr, pattern] of Object.entries(bgImageRegexTriggers)) {
-            if (pattern.trim()) {
+            if (pattern) {
                 try { new RegExp(pattern); } catch { bgImageRegexErrors[Number(idxStr)] = 'Invalid regex'; }
             }
         }
         if (Object.keys(bgImageRegexErrors).length > 0) newErrors.bgImageRegex = bgImageRegexErrors;
 
-        if (latitude.trim()) {
+        if (latitude) {
             const lat = Number(latitude);
             if (Number.isNaN(lat) || lat < -90 || lat > 90) newErrors.latitude = 'Latitude must be between -90 and 90.';
         }
-        if (longitude.trim()) {
+        if (longitude) {
             const lng = Number(longitude);
             if (Number.isNaN(lng) || lng < -180 || lng > 180) newErrors.longitude = 'Longitude must be between -180 and 180.';
         }
@@ -208,7 +208,7 @@ function LocationEditorModalInner({
     const handleTestBgImageRegex = (index: number) => {
         const pattern = bgImageRegexTriggers[index];
         const testText = bgImageTestTexts[index];
-        if (!pattern?.trim() || !testText?.trim()) {
+        if (!pattern? || !testText?) {
             setBgImageTestResults(prev => ({ ...prev, [index]: null }));
             return;
         }
@@ -331,19 +331,19 @@ function LocationEditorModalInner({
         const now = Date.now();
         
         // ✅ Explicitly check for empty string so '0' is stored as number 0, and '' is stored as undefined
-        const parsedLat = latitude.trim() !== '' ? Number(latitude) : undefined;
-        const parsedLng = longitude.trim() !== '' ? Number(longitude) : undefined;
+        const parsedLat = latitude !== '' ? Number(latitude) : undefined;
+        const parsedLng = longitude !== '' ? Number(longitude) : undefined;
 
         const filterTriggers = (trs: RegularExpressionTrigger[]) => {
-            const filtered = trs.filter(t => t.trigger.trim());
+            const filtered = trs.filter(t => t.trigger);
             return filtered.length > 0 ? filtered : undefined;
         };
 
         return {
             id: locationId,
-            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
-            description: description.trim() || undefined,
-            text: text.trim() || undefined,
+            name: isNewClone ? `${name} (Clone)` : name,
+            description: description || undefined,
+            text: text || undefined,
             images: finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
             hasSkyView,
             hasWeather,
@@ -376,7 +376,7 @@ function LocationEditorModalInner({
     const handleSubmit = async () => { const location = await buildLocationFromForm(false); if (!location) return; onSave(location); onClose(); };
     const handleClone = async () => { const cloned = await buildLocationFromForm(true); if (!cloned) return; onSave(cloned); onClose(); };
 
-    const hasText = text.trim().length > 0;
+    const hasText = text.length > 0;
     const hasImages = images.length > 0;
     const textRequiresAsterisk = !hasImages;
     const imagesRequiresAsterisk = !hasText;
@@ -491,18 +491,18 @@ function LocationEditorModalInner({
                                                         <label className="editor-label editor-label-small">Regex Trigger (optional)</label>
                                                         <input type="text" value={currentRegex} readOnly={isReadOnly} onChange={(e) => {
                                                             const val = e.target.value;
-                                                            setBgImageRegexTriggers(prev => { const next = { ...prev }; if (val.trim()) next[index] = val; else delete next[index]; return next; });
+                                                            setBgImageRegexTriggers(prev => { const next = { ...prev }; if (val) next[index] = val; else delete next[index]; return next; });
                                                             setBgImageTestResults(prev => ({ ...prev, [index]: null }));
                                                             if (errors.bgImageRegex) setErrors(prev => { const next = { ...prev, bgImageRegex: { ...(prev.bgImageRegex || {}) } }; if (next.bgImageRegex) { delete next.bgImageRegex[index]; if (Object.keys(next.bgImageRegex).length === 0) next.bgImageRegex = {}; } return next; });
                                                         }} className={`editor-input context-mono-input ${hasRegexError ? 'error' : ''}`} placeholder="No trigger (sampled by weight)" style={{ fontSize: '0.7rem' }} disabled={isUploading || isReadOnly} />
                                                         {hasRegexError && <div className="editor-error-message" style={{ fontSize: '0.6rem' }}>{hasRegexError}</div>}
                                                     </div>
                                                 </div>
-                                                {currentRegex.trim() && (
+                                                {currentRegex && (
                                                     <div style={{ marginTop: '6px' }}>
                                                         <div className="context-test-row">
                                                             <input type="text" value={testText} readOnly={isReadOnly} onChange={(e) => { setBgImageTestTexts(prev => ({ ...prev, [index]: e.target.value })); setBgImageTestResults(prev => ({ ...prev, [index]: null })); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleTestBgImageRegex(index); } }} className="editor-input context-test-input" placeholder="Test user message..." style={{ fontSize: '0.7rem' }} disabled={isUploading || isReadOnly} />
-                                                            <button type="button" onClick={() => handleTestBgImageRegex(index)} className="editor-button editor-button-save context-test-button" disabled={isReadOnly || !testText.trim()}>Test</button>
+                                                            <button type="button" onClick={() => handleTestBgImageRegex(index)} className="editor-button editor-button-save context-test-button" disabled={isReadOnly || !testText}>Test</button>
                                                         </div>
                                                         {testResult !== null && (<div className={`context-test-result ${testResult ? 'editor-success-message' : 'editor-error-message'}`} style={{ fontSize: '0.6rem' }}>{testResult ? '✅ Matches!' : '❌ No match'}</div>)}
                                                     </div>
@@ -786,7 +786,7 @@ function LocationEditorModalInner({
                                                     <label className="editor-label editor-label-small" style={{ display: 'block', marginBottom: '2px' }}>From {loc.name}</label>
                                                     <input type="text" value={currentRegex} readOnly={isReadOnly} onChange={(e) => {
                                                         const val = e.target.value;
-                                                        setLocationBindingRegexTriggers(prev => { const next = { ...prev }; if (val.trim()) next[id] = val; else delete next[id]; return next; });
+                                                        setLocationBindingRegexTriggers(prev => { const next = { ...prev }; if (val) next[id] = val; else delete next[id]; return next; });
                                                         if (errors.bindingRegex) setErrors(prev => { const next = { ...prev, bindingRegex: { ...(prev.bindingRegex || {}) } }; if (next.bindingRegex) { delete next.bindingRegex[id]; if (Object.keys(next.bindingRegex).length === 0) next.bindingRegex = {}; } return next; });
                                                     }} className={`editor-input context-mono-input ${hasError ? 'error' : ''}`} placeholder="Unconditional (no regex)" style={{ fontSize: '0.75rem' }} disabled={isUploading || isReadOnly} />
                                                     {hasError && <div className="editor-error-message" style={{ fontSize: '0.6rem' }}>{hasError}</div>}

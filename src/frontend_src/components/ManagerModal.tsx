@@ -166,7 +166,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     }, [allEntityFolders, entityType]);
     
     const filteredTypeFolders = useMemo(() => {
-        if (!folderSearchQuery.trim()) return typeFolders;
+        if (!folderSearchQuery) return typeFolders;
         const q = folderSearchQuery.toLowerCase();
         return typeFolders.filter(f => f.name?.toLowerCase().includes(q));
     }, [typeFolders, folderSearchQuery]);
@@ -227,7 +227,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     }, [typeFolders, rootItems, orderedListMode, currentOrderIds]);
 
     const searchFilteredDisplayItems = useMemo((): FilteredDisplayEntry[] => {
-        const query = searchQuery.toLowerCase().trim();
+        const query = searchQuery.toLowerCase();
         if (!query) {
             return displayItems.map(entry => {
                 if (entry.type === 'folder') {
@@ -278,8 +278,8 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     }, [searchQuery, typeFolders, rootItems, itemMap, renderSubtext, displayItems]);
 
     useEffect(() => {
-        const prevQuery = prevSearchQueryRef.current.trim();
-        const currentQuery = searchQuery.trim();
+        const prevQuery = prevSearchQueryRef.current;
+        const currentQuery = searchQuery;
         
         if (!prevQuery && currentQuery) {
             const foldersToExpand = new Set<string>();
@@ -342,7 +342,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
 
     const handleRenameSubmit = async (e: React.FormEvent | React.KeyboardEvent, id: string) => {
         e.preventDefault(); e.stopPropagation();
-        const trimmed = renameValue.trim();
+        const trimmed = renameValue;
         if (!trimmed) { setRenamingId(null); return; }
         const folder = folderMap.get(id);
         if (folder) await onSaveEntityFolder({ ...folder, name: trimmed, lastUpdatedTimestamp: Date.now() });
@@ -373,8 +373,8 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     };
 
     const handleCreateAndMove = async (folderName: string) => {
-        if (!movingItemId || !folderName.trim()) return;
-        const trimmedName = folderName.trim();
+        if (!movingItemId || !folderName) return;
+        const trimmedName = folderName;
         
         const newFolder: EntityFolder = {
             id: uuidv4(), 
@@ -509,8 +509,8 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         );
     };
 
-    const exactFolderMatch = folderSearchQuery.trim() 
-        ? typeFolders.find(f => f.name.toLowerCase() === folderSearchQuery.trim().toLowerCase()) 
+    const exactFolderMatch = folderSearchQuery 
+        ? typeFolders.find(f => f.name.toLowerCase() === folderSearchQuery.toLowerCase()) 
         : null;
 
     return (
@@ -578,7 +578,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                 </div>
 
                 <div className="modal-body">
-                    {searchQuery.trim() ? (
+                    {searchQuery ? (
                         searchFilteredDisplayItems.length === 0 ? <div className="empty-state">No results found for "{searchQuery}"</div> : (
                             <ul className="manager-list">
                                 {searchFilteredDisplayItems.map((entry) => {
@@ -639,7 +639,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                 onKeyDown={e => {
                                     if (e.key === 'Enter') {
                                         e.preventDefault();
-                                        const query = folderSearchQuery.trim();
+                                        const query = folderSearchQuery;
                                         if (!query) return;
                                         if (exactFolderMatch) {
                                             handleMoveSelect(e as any, movingItemId, exactFolderMatch.id);
@@ -700,9 +700,9 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                     <span className="action-menu-item-label">{f.name}</span>
                                 </button>
                             ))
-                        ) : folderSearchQuery.trim() && !exactFolderMatch ? (
+                        ) : folderSearchQuery && !exactFolderMatch ? (
                             <div style={{ padding: '12px', fontSize: '0.75rem', opacity: 0.7, textAlign: 'center', color: 'var(--text-h)' }}>
-                                Press <kbd>Enter</kbd> to create "{folderSearchQuery.trim()}"
+                                Press <kbd>Enter</kbd> to create "{folderSearchQuery}"
                             </div>
                         ) : (
                             <div style={{ padding: '12px', fontSize: '0.75rem', opacity: 0.5, textAlign: 'center', color: 'var(--text-h)' }}>

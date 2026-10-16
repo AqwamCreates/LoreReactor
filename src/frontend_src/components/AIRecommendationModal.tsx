@@ -109,7 +109,7 @@ export function AIRecommendationModal({
         if (debounceRef) clearTimeout(debounceRef);
 
         tokenDebounceRef.current = setTimeout(async () => {
-            if (!userPrompt.trim()) {
+            if (!userPrompt) {
                 if (!cancelled) setUserPromptTokenCount(0);
                 return;
             }
@@ -164,7 +164,7 @@ export function AIRecommendationModal({
     const handleStopGeneration = useCallback(() => {
         abortControllerRef.current?.abort(); abortControllerRef.current = null;
         setIsGenerating(false);
-        if (streamingText.trim()) {
+        if (streamingText) {
             const p = tryParseGeneratedOutput(streamingText, allSamplers);
             setParsedOutput(p);
             if (!p) setResultError('Stopped. Output was not valid JSON.');
@@ -197,7 +197,7 @@ export function AIRecommendationModal({
     }, [editingHistoryId, editingJsonText, allSamplers]);
     const cancelHistoryEdit = useCallback(() => { setEditingHistoryId(null); setEditingJsonText(''); }, []);
     const loadHistoryToResult = useCallback((entry: JsonHistoryEntry) => { setStreamingText(entry.jsonText); setParsedOutput(entry.parsedOutput); setResultError(null); setIsResultOpen(true); setActiveTab('raw'); }, []);
-    const refineFromHistory = useCallback((entry: JsonHistoryEntry) => { setUserPrompt(prev => { const b = prev.trim(); const r = `\n\nREFINE THIS EXISTING OUTPUT:\n${entry.jsonText}`; return b ? `${b}${r}` : `Refine and improve this JSON output.${r}`; }); setError(null); }, []);
+    const refineFromHistory = useCallback((entry: JsonHistoryEntry) => { setUserPrompt(prev => { const b = prev; const r = `\n\nREFINE THIS EXISTING OUTPUT:\n${entry.jsonText}`; return b ? `${b}${r}` : `Refine and improve this JSON output.${r}`; }); setError(null); }, []);
 
     const buildExistingReferenceBlock = (): string => {
         const parts: string[] = [];
@@ -303,7 +303,7 @@ export function AIRecommendationModal({
         const ctrl = new AbortController(); abortControllerRef.current = ctrl;
         try {
             const sp = buildSystemPrompt();
-            const urp = userPrompt.trim() ? `\n\nUser Request: ${userPrompt.trim()}` : '\n\nUser Request: Generate freely.';
+            const urp = userPrompt ? `\n\nUser Request: ${userPrompt}` : '\n\nUser Request: Generate freely.';
             const fp = `${sp}${urp}${imgDesc}${injBlock}`;
             let acc = '';
             const requestBody = buildRequestBody(fp, maxTokens, aiRecommendationSampler, []);
@@ -315,7 +315,7 @@ export function AIRecommendationModal({
             const ft = res.text || acc; setStreamingText(ft);
             const parsed = tryParseGeneratedOutput(ft, allSamplers); setParsedOutput(parsed);
             if (!parsed) setResultError('AI response was not valid JSON.');
-            else if (!ft.trim()) setResultError('AI returned empty response.');
+            else if (!ft) setResultError('AI returned empty response.');
             else addToHistory(ft, parsed, false);
         } catch (err) { if ((err as Error).name !== 'AbortError') setResultError(`Generation failed: ${(err as Error).message}`); }
         finally { setIsGenerating(false); abortControllerRef.current = null; }
@@ -409,7 +409,7 @@ export function AIRecommendationModal({
     const hasEntityFolders = (parsedOutput?.entityFolders?.length ?? 0) > 0;
     const hasWorld = !!parsedOutput?.world;
     const hasAnyParsed = hasChars || hasCtxs || hasLocs || hasTracks || hasProf || hasBlocks || hasEntityFolders || hasWorld;
-    const hasOutput = streamingText.trim().length > 0;
+    const hasOutput = streamingText.length > 0;
     const availableTabs: ViewTab[] = ['raw'];
     if (hasChars) availableTabs.push('Character');
     if (hasCtxs) availableTabs.push('Context');

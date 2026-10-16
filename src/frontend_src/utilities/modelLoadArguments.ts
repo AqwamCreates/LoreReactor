@@ -14,10 +14,10 @@ export function buildModelLoadArguments(model: LanguageModel): string[] {
     args.push('-ngl', String(ngl));
 
     // Multi-modal projector
-    if (model.mmproj) args.push('--mmproj', String(model.mmproj).trim());
+    if (model.mmproj) args.push('--mmproj', String(model.mmproj));
 
     // LoRA adapter
-    if (model.lora) args.push('--lora', String(model.lora).trim());
+    if (model.lora) args.push('--lora', String(model.lora));
 
     // KV cache quantization
     if (params.cache_type_k) args.push('-ctk', String(params.cache_type_k));
@@ -34,10 +34,10 @@ export function buildModelLoadArguments(model: LanguageModel): string[] {
     const specType = params.spec_type ? String(params.spec_type) : '';
     if (specType && specType !== 'none') args.push('-st', specType);
     if (params.draft_max) args.push('-dm', String(params.draft_max));
-    const draftModel = params.draft_model ? String(params.draft_model).trim() : '';
+    const draftModel = params.draft_model ? String(params.draft_model) : '';
     if (draftModel) args.push('-md', draftModel);
     if (params.gpu_layers_draft !== undefined) args.push('-ngld', String(params.gpu_layers_draft));
-    const deviceDraft = params.device_draft ? String(params.device_draft).trim() : '';
+    const deviceDraft = params.device_draft ? String(params.device_draft) : '';
     if (deviceDraft) args.push('-devd', deviceDraft);
 
     // Parallelism & threading
@@ -50,11 +50,11 @@ export function buildModelLoadArguments(model: LanguageModel): string[] {
     if (params.ubatch_size && Number(params.ubatch_size) !== 1024) args.push('-ub', String(params.ubatch_size));
 
     // Fit target
-    const fitTarget = params.fit_target ? String(params.fit_target).trim() : '';
+    const fitTarget = params.fit_target ? String(params.fit_target) : '';
     if (fitTarget) args.push('-fit', fitTarget);
 
     // Tensor split
-    const tensorSplit = params.tensor_split ? String(params.tensor_split).trim() : '';
+    const tensorSplit = params.tensor_split ? String(params.tensor_split) : '';
     if (tensorSplit) args.push('-ts', tensorSplit);
 
     // Boolean flags
@@ -65,7 +65,7 @@ export function buildModelLoadArguments(model: LanguageModel): string[] {
     if (params.numa) args.push('--numa');
 
     // Extra flags (always appended last so they can override anything above)
-    const extraFlags = params.extra_flags ? String(params.extra_flags).trim() : '';
+    const extraFlags = params.extra_flags ? String(params.extra_flags) : '';
     if (extraFlags) args.push(...extraFlags.split(/\s+/));
 
     return args;

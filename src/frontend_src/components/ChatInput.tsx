@@ -121,7 +121,7 @@ export function ChatInput({
             }
             if (e.key === 'Backspace' && currentQuery === '' && activeIndex > 0) {
                 e.preventDefault();
-                const currentParts = inputText.trim().split(/\s+/).filter(p => p.length > 0);
+                const currentParts = inputText.split(/\s+/).filter(p => p.length > 0);
                 currentParts.pop();
                 setInputText(currentParts.length > 0 ? `${currentParts.join(' ')} ` : '/');
                 return;
@@ -212,7 +212,7 @@ export function ChatInput({
                 <button
                     type="button"
                     onClick={isLoading ? onStopGeneration : onSend}
-                    disabled={!isLoading && (!inputText.trim() && !pendingFiles.length) || (!isLoading && !isModelReady) || (!isLoading && !localProtagonist)}
+                    disabled={!isLoading && (!inputText && !pendingFiles.length) || (!isLoading && !isModelReady) || (!isLoading && !localProtagonist)}
                     className={`send-button ${!isLoading && !isModelReady ? 'send-button-disabled' : ''}`}
                 >{isLoading ? '⏹' : !isModelReady ? '⏳' : '↑'}</button>
             </div>

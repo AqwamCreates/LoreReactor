@@ -59,7 +59,7 @@ export function EntitySelectList<T extends EntitySelectListItem>({
     }, [safeItems, safeSelectedIds]);
 
     const filteredItems = useMemo(() => {
-        if (!searchQuery.trim()) return sortedItems;
+        if (!searchQuery) return sortedItems;
         const normalizedQuery = searchQuery.toLowerCase();
         return sortedItems.filter(item =>
             (item.name || '').toLowerCase().includes(normalizedQuery) ||

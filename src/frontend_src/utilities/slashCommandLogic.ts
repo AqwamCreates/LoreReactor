@@ -281,8 +281,8 @@ export const COMMAND_TREE: SlashCmd[] = [
 export function getEntityDescription(entity: any): string {
     if (!entity) return '';
     const rawDesc = entity.description ?? entity.content;
-    if (rawDesc && typeof rawDesc === 'string' && rawDesc.trim().length > 0) {
-        const trimmed = rawDesc.trim();
+    if (rawDesc && typeof rawDesc === 'string' && rawDesc.length > 0) {
+        const trimmed = rawDesc;
         return trimmed.length > 80 ? `${trimmed.substring(0, 80)}…` : trimmed;
     }
     return '';
@@ -615,7 +615,7 @@ inputText: string, interactionData: InteractionData | null, allCharacters: Chara
             let queryForFilter = effectiveQuery;
             if (effectiveQuery.includes(',')) {
                 const lastComma = effectiveQuery.lastIndexOf(',');
-                queryForFilter = effectiveQuery.substring(lastComma + 1).trim();
+                queryForFilter = effectiveQuery.substring(lastComma + 1);
             }
 
             const filtered = entities.filter(e =>
@@ -681,7 +681,7 @@ inputText: string, interactionData: InteractionData | null, allCharacters: Chara
         let queryForFilter = effectiveQuery;
         if (effectiveQuery.includes(',')) {
             const lastComma = effectiveQuery.lastIndexOf(',');
-            queryForFilter = effectiveQuery.substring(lastComma + 1).trim();
+            queryForFilter = effectiveQuery.substring(lastComma + 1);
         }
 
         const filtered = entities.filter(e =>

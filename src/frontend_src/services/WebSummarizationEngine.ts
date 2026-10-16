@@ -36,7 +36,7 @@ function getWebpageStopTokens(stopPattern?: StopPattern): string[] {
         '\n\n\n',
         '```',
         '\nSource:',
-        delimiters.turnEnd.trim(),
+        delimiters.turnEnd,
     ].filter(s => s.length > 0);
 
     return [...new Set(stops)];
@@ -53,7 +53,7 @@ export async function summarizeWebpageContent(
     sampler?: Sampler,
     stopPattern?: StopPattern,
 ): Promise<string | null> {
-    if (!content || !content.trim()) return null;
+    if (!content || !content) return null;
 
     const hasImages = images && images.length > 0;
     const basePrompt = hasImages ? WEBPAGE_SUMMARIZE_PROMPT : WEBPAGE_SUMMARIZE_TEXT_ONLY_PROMPT;

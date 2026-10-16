@@ -45,9 +45,9 @@ function parseRegexTriggers(
             if (!item || typeof item !== 'object') continue;
             const entry = item as Record<string, unknown>;
             const trigger = entry.trigger;
-            if (typeof trigger !== 'string' || !trigger.trim()) continue;
+            if (typeof trigger !== 'string' || !trigger) continue;
             triggers.push({
-                trigger: trigger.trim(),
+                trigger: trigger,
                 context: (entry.context as regularExpressionContext) || fallbackContext,
                 target: (entry.target as regularExpressionTarget) || fallbackTarget,
             });
@@ -114,7 +114,7 @@ function parseKnownCharacterNames(raw: unknown): Record<string, string[]> {
     for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
         if (!UUID_REGEX.test(key)) continue;
         if (Array.isArray(value)) {
-            const names = value.filter((n): n is string => typeof n === 'string' && n.trim().length > 0);
+            const names = value.filter((n): n is string => typeof n === 'string' && n.length > 0);
             if (names.length > 0) result[key] = names;
         }
     }
@@ -123,7 +123,7 @@ function parseKnownCharacterNames(raw: unknown): Record<string, string[]> {
 
 function parseAliases(raw: unknown): string[] | undefined {
     if (!Array.isArray(raw)) return undefined;
-    const aliases = raw.filter((a): a is string => typeof a === 'string' && a.trim().length > 0);
+    const aliases = raw.filter((a): a is string => typeof a === 'string' && a.length > 0);
     return aliases.length > 0 ? aliases : undefined;
 }
 
@@ -145,7 +145,7 @@ const VALID_ENTITY_TYPES: entityType[] = [
 
 function parseEntityType(raw: unknown): entityType {
     if (typeof raw === 'string') {
-        const trimmed = raw.trim();
+        const trimmed = raw;
         if (VALID_ENTITY_TYPES.includes(trimmed as entityType)) {
             return trimmed as entityType;
         }
@@ -585,9 +585,9 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
 }
 
 export function tryParseGeneratedOutput(text: string, samplers: Sampler[]): GeneratedOutput | null {
-    let jsonStr = text.trim();
+    let jsonStr = text;
     const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim();
+    if (codeBlockMatch) jsonStr = codeBlockMatch[1];
     try {
         const parsed = JSON.parse(jsonStr);
         if (!parsed || typeof parsed !== 'object') return null;

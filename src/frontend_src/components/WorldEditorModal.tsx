@@ -44,12 +44,12 @@ export function WorldEditorModal({
     };
 
     const buildWorld = (): World | null => {
-        if (!name.trim()) return null;
+        if (!name) return null;
         const now = Date.now();
         return {
             id: (existingWorld && !isCloned) ? existingWorld.id : uuidv4(),
-            name: isCloned ? `${name.trim()} (Clone)` : name.trim(),
-            description: description.trim() || undefined,
+            name: isCloned ? `${name} (Clone)` : name,
+            description: description || undefined,
             characterIds: charIds,
             contextIds: ctxIds,
             locationIds: locIds,
@@ -87,7 +87,7 @@ export function WorldEditorModal({
                         {existingWorld && !isCloned && (
                             <button type="button" className="editor-button editor-button-cancel" onClick={handleClone}>Clone</button>
                         )}
-                        <button type="button" className="editor-button editor-button-save" onClick={handleSave} disabled={!name.trim()}>Save</button>
+                        <button type="button" className="editor-button editor-button-save" onClick={handleSave} disabled={!name}>Save</button>
                     </div>
                 </div>
 
@@ -98,7 +98,7 @@ export function WorldEditorModal({
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             <div>
                                 <label className="editor-label">Name <span className="context-required-asterisk">*</span></label>
-                                <input type="text" className={`editor-input ${!name.trim() ? 'error' : ''}`} value={name} onChange={e => setName(e.target.value)} placeholder="e.g., Eldoria Campaign" />
+                                <input type="text" className={`editor-input ${!name ? 'error' : ''}`} value={name} onChange={e => setName(e.target.value)} placeholder="e.g., Eldoria Campaign" />
                             </div>
                             <div>
                                 <label className="editor-label">Description</label>

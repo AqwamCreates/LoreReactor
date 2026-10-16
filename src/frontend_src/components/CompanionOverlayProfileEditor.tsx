@@ -117,7 +117,7 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
         if (!ep) return;
         onSave({
             ...ep,
-            name, description: description.trim() || undefined,
+            name, description: description || undefined,
             autonomousMode, autonomousInteractionIntervalMs,
             enableAutoSpeechDetection, 
             speechVolumeActivationThreshold, 

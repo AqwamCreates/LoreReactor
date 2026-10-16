@@ -190,7 +190,7 @@ export function learnFromUserMessage(text: string, actionLabels: string[], prevU
                     casing = isPascal ? 'pascal' : 'first';
                 }
 
-                const fullMatch = match[0].trim();
+                const fullMatch = match[0];
                 let punct: ActionPunctuation = 'none';
                 if (fullMatch.endsWith('.')) punct = '.';
                 else if (fullMatch.endsWith('-')) punct = '-';

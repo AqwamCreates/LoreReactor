@@ -71,7 +71,7 @@ export function useSpeculativeStreamHandler({
                 );
 
                 if (prediction) {
-                    const estimatedTokens = prediction.trim().split(/\s+/).length;
+                    const estimatedTokens = prediction.split(/\s+/).length;
                     const costRatio = cacheMissCost / outputCost;
 
                     let minimumTokensThreshold = Number.POSITIVE_INFINITY;

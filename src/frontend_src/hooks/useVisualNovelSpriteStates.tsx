@@ -89,7 +89,7 @@ function clamp(value: number, min: number, max: number): number {
 
 function splitIntoClauses(text: string): string[] {
     const parts = text.split(/\s*(?:;\s*|\.\s+(?=(?:she|he|they|it|i)\s)|\s+then\s+|\s+before\s+|\s+after\s+)/i);
-    return parts.map(p => p.trim()).filter(p => p.length > 0);
+    return parts.map(p => p).filter(p => p.length > 0);
 }
 
 function parseMovementsFromClause(clause: string, speakerId: string, participantIds: string[]): ParsedMovement[] {

@@ -119,13 +119,13 @@ export function getNameSensitivityMultiplier(character: Character, interactionDa
     if (latestMessage.character.id === character.id) return 1;
 
     const textLower = latestMessage.textContent.toLowerCase();
-    const fullNameLower = character.name.toLowerCase().trim();
+    const fullNameLower = character.name.toLowerCase();
 
     // Build ignore list: other participants' full names
     const ignoreRanges: { start: number; end: number }[] = [];
     for (const participant of interactionData.participants) {
         if (participant.id === character.id) continue;
-        const otherNameLower = participant.name.toLowerCase().trim();
+        const otherNameLower = participant.name.toLowerCase();
         if (otherNameLower === fullNameLower) continue;
         let searchIndex = 0;
         while (true) {
@@ -272,13 +272,13 @@ export function getNameMentionCount(character: Character, interactionData: Inter
     if (latestMessage.character.id === character.id) return 0;
 
     const textLower = latestMessage.textContent.toLowerCase();
-    const fullNameLower = character.name.toLowerCase().trim();
+    const fullNameLower = character.name.toLowerCase();
 
     // Build ignore list: other participants' full names
     const ignoreRanges: { start: number; end: number }[] = [];
     for (const participant of interactionData.participants) {
         if (participant.id === character.id) continue;
-        const otherNameLower = participant.name.toLowerCase().trim();
+        const otherNameLower = participant.name.toLowerCase();
         if (otherNameLower === fullNameLower) continue;
         let searchIndex = 0;
         while (true) {
@@ -347,7 +347,7 @@ export function getCharacterStarterMessage(character: Character): string {
     const starterPrompts = character.starterPrompts;
     if (!starterPrompts) return `*${character.name} enters the scene.*`;
 
-    const entries = Object.entries(starterPrompts).filter(([text]) => text.trim().length > 0);
+    const entries = Object.entries(starterPrompts).filter(([text]) => text.length > 0);
     if (entries.length === 0) return `*${character.name} enters the scene.*`;
 
     const totalWeight = entries.reduce((sum, [, weight]) => sum + (weight > 0 ? weight : 1), 0);

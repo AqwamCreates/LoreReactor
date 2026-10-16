@@ -221,7 +221,7 @@ function SamplerEditorModalInner({
 
     const validate = (): boolean => {
         const newErrors: { name?: string } = {};
-        if (!name.trim()) {
+        if (!name) {
             newErrors.name = 'Name is required';
         }
         setErrors(newErrors);
@@ -243,8 +243,8 @@ function SamplerEditorModalInner({
         const now = Date.now();
         return {
             id: isNewClone ? uuidv4() : (existingSampler?.id || uuidv4()),
-            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
-            description: description.trim() || undefined,
+            name: isNewClone ? `${name} (Clone)` : name,
+            description: description || undefined,
             parameters: paramsWithEnabled,
             stopPatterns,
             maximumNumberOfTokens: maxTokens,

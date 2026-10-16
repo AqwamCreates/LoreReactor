@@ -18,7 +18,7 @@ function normalizeText(text: string): string {
     for (const [shorthand, formal] of Object.entries(INTERNET_SPEAK_MAP)) {
         normalized = normalized.split(shorthand).join(formal);
     }
-    return normalized.trim();
+    return normalized;
 }
 
 // ─── Regex Patterns ───────────────────────────────────────────────
@@ -81,7 +81,7 @@ function extractCapturedName(text: string, patterns: RegExp[]): string | null {
     const normalized = normalizeText(text);
     for (const pattern of patterns) {
         const match = normalized.match(pattern);
-        if (match?.[1]) return match[1].trim();
+        if (match?.[1]) return match[1];
     }
     return null;
 }
@@ -98,7 +98,7 @@ function getAllNameVariants(character: Character): string[] {
 }
 
 function isNameMatchAgainstCharacter(captured: string, character: Character): string | null {
-    const capturedLower = captured.toLowerCase().trim();
+    const capturedLower = captured.toLowerCase();
     for (const variant of getAllNameVariants(character)) {
         if (capturedLower === variant || capturedLower.includes(variant)) {
             return character.name || variant;
@@ -140,7 +140,7 @@ export function detectName(
     }
 
     const textToEvaluate = currentMessageText || filteredMessages[filteredMessages.length - 1]?.textContent || '';
-    if (!textToEvaluate.trim()) return result;
+    if (!textToEvaluate) return result;
 
     // 2. State: Was a name requested?
     let nameQuestionRecentlyAsked = false;

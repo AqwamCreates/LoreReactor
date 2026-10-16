@@ -185,7 +185,7 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
                     }
 
                     const plainGap = text.slice(gapPos, segmentEnd);
-                    if (plainGap.trim().length > 0) {
+                    if (plainGap.length > 0) {
                         segments.push({
                             start: gapPos,
                             end: segmentEnd,
@@ -234,7 +234,7 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
                 }
 
                 const trailing = text.slice(gapPos, segmentEnd);
-                if (trailing.trim().length > 0) {
+                if (trailing.length > 0) {
                     segments.push({
                         start: gapPos,
                         end: segmentEnd,
@@ -273,7 +273,7 @@ export function convertPlainSegmentPreservingSpacing(raw: string, target: textTy
 
     return parts.map(part => {
         if (part === '\n' || part === '\r\n') return part;
-        if (part.trim().length === 0) return part;
+        if (part.length === 0) return part;
 
         const match = part.match(/^(\s*)([\s\S]*?)(\s*)$/);
         if (!match) return part;
@@ -400,11 +400,11 @@ export function learnFromManualEdits(originalText: string, finalText: string): v
     const engine = getFormatPreferenceEngine();
 
     for (const origSeg of originalSegments) {
-        const origCore = origSeg.innerText.trim();
+        const origCore = origSeg.innerText;
         if (!origCore) continue;
 
         const matchingFinal = finalSegments.find(fSeg => {
-            const finalCore = fSeg.innerText.trim();
+            const finalCore = fSeg.innerText
             return finalCore === origCore && fSeg.category !== origSeg.category;
         });
 

@@ -192,8 +192,8 @@ export function ParticipantControlModal({
     const handleSendCustomMessage = () => {
         if (isReadOnly) return;
         const char = getSelectedCharacter();
-        if (!char || !customMessageText.trim()) return;
-        onSendCustomMessage(char, customMessageText.trim());
+        if (!char || !customMessageText) return;
+        onSendCustomMessage(char, customMessageText);
         setCustomMessageText('');
         onClose();
     };
@@ -201,8 +201,8 @@ export function ParticipantControlModal({
     const handleInjectCustomMessage = () => {
         if (isReadOnly) return;
         const char = getSelectedCharacter();
-        if (!char || !customMessageText.trim()) return;
-        onInjectCustomMessage(char, customMessageText.trim());
+        if (!char || !customMessageText) return;
+        onInjectCustomMessage(char, customMessageText);
         setCustomMessageText('');
         onClose();
     };
@@ -284,7 +284,7 @@ export function ParticipantControlModal({
                                 <button
                                     type="button"
                                     className="editor-button editor-button-save"
-                                    disabled={isReadOnly || !selectedCharId || !customMessageText.trim()}
+                                    disabled={isReadOnly || !selectedCharId || !customMessageText}
                                     onClick={handleSendCustomMessage}
                                 >
                                     Send Current Message
@@ -292,7 +292,7 @@ export function ParticipantControlModal({
                                 <button
                                     type="button"
                                     className="editor-button editor-button-cancel"
-                                    disabled={isReadOnly || !selectedCharId || !customMessageText.trim()}
+                                    disabled={isReadOnly || !selectedCharId || !customMessageText}
                                     onClick={handleInjectCustomMessage}
                                 >
                                     Inject Current Message (Silent)

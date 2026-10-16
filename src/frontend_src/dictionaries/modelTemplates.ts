@@ -301,7 +301,7 @@ export function getModelTemplate(key: string): ModelTemplate | undefined {
  * Auto-detect the best matching template for a given model name/path.
  */
 export function autoDetectTemplate(modelNameOrPath: string): string {
-    if (!modelNameOrPath || !modelNameOrPath.trim()) return '';
+    if (!modelNameOrPath || !modelNameOrPath) return '';
     const normalized = modelNameOrPath.toLowerCase();
     for (const template of MODEL_TEMPLATES) {
         for (const family of template.modelFamilies) {

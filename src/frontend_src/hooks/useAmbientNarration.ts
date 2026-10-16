@@ -74,10 +74,10 @@ export function useAmbientNarration(
             if (activeStrategy) {
                 const bse = getBudgetStrategyEngine();
                 const result = await bse.generateCompletion(requestBody, signal);
-                if (result.text && result.text.trim().length > 0) {
-                    const cleaned = result.text.trim().replace(/^["']|["']$/g, '');
+                if (result.text && result.text.length > 0) {
+                    const cleaned = result.text.replace(/^["']|["']$/g, '');
                     const sentences = cleaned.match(/[^.!?]+[.!?]+/g);
-                    selected = sentences ? sentences.slice(0, 2).join(' ').trim() : cleaned;
+                    selected = sentences ? sentences.slice(0, 2).join(' ') : cleaned;
                 }
             } else {
                 const model = useSessionStore.getState().selectedModel;
@@ -88,10 +88,10 @@ export function useAmbientNarration(
                     engine.setContext(model);
 
                     const result = await engine.generateCompletion(requestBody);
-                    if (result.text && result.text.trim().length > 0) {
-                        const cleaned = result.text.trim().replace(/^["']|["']$/g, '');
+                    if (result.text && result.text.length > 0) {
+                        const cleaned = result.text.replace(/^["']|["']$/g, '');
                         const sentences = cleaned.match(/[^.!?]+[.!?]+/g);
-                        selected = sentences ? sentences.slice(0, 2).join(' ').trim() : cleaned;
+                        selected = sentences ? sentences.slice(0, 2).join(' ') : cleaned;
                     }
                 }
             }

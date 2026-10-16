@@ -36,9 +36,9 @@ function getSummarizationStopTokens(stopPattern?: StopPattern): string[] {
     const stops = [
         ...templateStops,
         ...profileStops,
-        delimiters.turnEnd.trim(),
-        delimiters.thinkStart.trim(),
-        delimiters.thinkEnd.trim(),
+        delimiters.turnEnd,
+        delimiters.thinkStart,
+        delimiters.thinkEnd,
         '\n\n',
         '\nMessage from',
     ].filter(s => s.length > 0);
@@ -55,7 +55,7 @@ export async function generateMessageSummary(
     if (message.messageType !== 'chat') return null;
     const chatMsg = message as ChatMessage;
     const text = chatMsg.textContent;
-    if (!text || !text.trim()) return null;
+    if (!text || !text) return null;
 
     const stops = getSummarizationStopTokens(profile?.interactionDataSummarizationStopPattern);
     const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${text}\n\nSummary:`;
@@ -180,22 +180,22 @@ export async function generateCharacterMemory(
 
     const templateStops = resolvedChatTemplate?.stopPatterns || [];
     const profileStops = stopPattern?.pattern ? [stopPattern.pattern] : [];
-    const turnEndStopStr = delimiters.turnEnd.trim();
+    const turnEndStopStr = delimiters.turnEnd;
     const stops = [
         ...templateStops,
         ...profileStops,
         turnEndStopStr,
-        delimiters.thinkStart.trim(),
-        delimiters.thinkEnd.trim(),
+        delimiters.thinkStart,
+        delimiters.thinkEnd,
     ].filter(s => s.length > 0);
 
     const requestBody = buildRequestBody(prompt, maxTokens, languageModelSampler, stops);
 
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
-    if (!text || !text.trim()) return null;
+    if (!text || !text) return null;
 
-    return text.trim();
+    return text;
 }
 
 /**
@@ -232,7 +232,7 @@ export async function generateMissingSummaries(
         if (chatIdx >= 0 && filterFlags[chatIdx]) continue;
         if (hasModelSummary(msg, modelId)) continue;
         const text = (msg as ChatMessage).textContent;
-        if (!text || !text.trim()) continue;
+        if (!text || !text) continue;
         toSummarize.push(msg as ChatMessage);
     }
 
@@ -258,7 +258,7 @@ async function compressChunk(
     profile?: Profile,
 ): Promise<string | null> {
     const chatMessages = messages.filter(
-        (m): m is ChatMessage => m.messageType === 'chat' && !!(m as ChatMessage).textContent?.trim()
+        (m): m is ChatMessage => m.messageType === 'chat' && !!(m as ChatMessage).textContent?
     );
     if (chatMessages.length === 0) return null;
 
@@ -314,7 +314,7 @@ export async function generateLocationVisitSummary(
         const msg = history[i];
         if (msg.messageType !== 'chat') continue;
         const chatMsg = msg as ChatMessage;
-        if (!chatMsg.textContent?.trim()) continue;
+        if (!chatMsg.textContent?) continue;
         const otherParticipantId = participants.findIndex(p => p.id === chatMsg.character.id);
         const tag = otherParticipantId !== -1 ? `Character ${otherParticipantId + 1}` : 'Unknown';
         const charName = chatMsg.character.name;
@@ -378,22 +378,22 @@ export async function generateLocationVisitSummary(
 
     const templateStops = resolvedChatTemplate?.stopPatterns || [];
     const profileStops = stopPattern?.pattern ? [stopPattern.pattern] : [];
-    const turnEndStopStr = delimiters.turnEnd.trim();
+    const turnEndStopStr = delimiters.turnEnd;
     const stops = [
         ...templateStops,
         ...profileStops,
         turnEndStopStr,
-        delimiters.thinkStart.trim(),
-        delimiters.thinkEnd.trim(),
+        delimiters.thinkStart,
+        delimiters.thinkEnd,
     ].filter(s => s.length > 0);
 
     const requestBody = buildRequestBody(prompt, maxTokens, languageModelSampler, stops);
 
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
-    if (!text || !text.trim()) return null;
+    if (!text || !text) return null;
 
-    return text.trim();
+    return text;
 }
 
 /**
@@ -708,7 +708,7 @@ export async function generateEntropyPruningSummaries(
     for (let i = 0; i < cutoffVisibleIndex; i++) {
         const msg = visibleMessages[i];
         if (hasModelSummary(msg, modelId)) continue;
-        if (!msg.textContent?.trim()) continue;
+        if (!msg.textContent?) continue;
 
         const summary = await generateMessageSummary(msg, maxTokens, interactionDataSummarizationSampler, profile);
         if (summary) results.set(msg.id, summary);

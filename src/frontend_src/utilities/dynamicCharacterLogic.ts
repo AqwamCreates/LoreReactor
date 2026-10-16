@@ -18,7 +18,7 @@ function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
 }
 
 export function countParagraphs(text: string): number {
-    if (!text || !text.trim()) return 0;
+    if (!text || !text) return 0;
     return (text.match(/\n\n/g) || []).length + 1;
 }
 

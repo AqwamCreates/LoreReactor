@@ -62,7 +62,7 @@ export function RegularExpressionTriggerEditor({
     const handleTest = useCallback((index: number) => {
         const t = testTexts[index];
         const pattern = triggers[index]?.trigger;
-        if (!pattern?.trim() || !t?.trim()) {
+        if (!pattern? || !t?) {
             setTestResults(prev => ({ ...prev, [index]: null }));
             return;
         }
@@ -118,12 +118,12 @@ export function RegularExpressionTriggerEditor({
                             >
                                 {TARGET_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </select>
-                            {t.trigger.trim() && (
+                            {t.trigger && (
                                 <button
                                     type="button"
                                     className="regex-trigger-test-btn"
                                     onClick={() => handleTest(i)}
-                                    disabled={!testTexts[i]?.trim()}
+                                    disabled={!testTexts[i]?}
                                     title="Test this trigger"
                                 >
                                     🧪
@@ -140,7 +140,7 @@ export function RegularExpressionTriggerEditor({
                                 </button>
                             )}
                         </div>
-                        {t.trigger.trim() && (
+                        {t.trigger && (
                             <div className="regex-trigger-test-row">
                                 <input
                                     type="text"

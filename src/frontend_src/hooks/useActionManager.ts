@@ -52,7 +52,7 @@ export function useActionManager(addToast?: (msg: string, type: 'success' | 'err
     }, [scheduleActionsSave]);
 
     const handleAddAction = useCallback((label: string) => {
-        const trimmed = label.trim();
+        const trimmed = label;
         if (!trimmed) return;
         if (allActions.some(a => a.label.toLowerCase() === trimmed.toLowerCase())) {
             addToast?.(`Action "${trimmed}" already exists.`, 'info');

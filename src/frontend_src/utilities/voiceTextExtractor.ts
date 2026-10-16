@@ -57,7 +57,7 @@ export function extractNarratableText(
     };
 
     const pushSegment = () => {
-        const trimmed = currentSegmentText.replace(/\s+/g, ' ').trim();
+        const trimmed = currentSegmentText.replace(/\s+/g, ' ');
         if (trimmed.length > 0) {
             segments.push({ text: trimmed, textType: lastType });
         }

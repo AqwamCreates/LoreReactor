@@ -114,8 +114,8 @@ function isEntityHollow(
     descriptionIsMeaningful: boolean,
 ): boolean {
     const e = entity as { name?: string; description?: string };
-    if (nameIsMeaningful && e.name && e.name.trim().length > 0) return false;
-    if (descriptionIsMeaningful && e.description && e.description.trim().length > 0) return false;
+    if (nameIsMeaningful && e.name && e.name.length > 0) return false;
+    if (descriptionIsMeaningful && e.description && e.description.length > 0) return false;
 
     switch (type) {
         case 'character': {
@@ -127,11 +127,11 @@ function isEntityHollow(
                 (ti.textCharacterWeights && Object.keys(ti.textCharacterWeights).length > 0)
             );
             const hasDialoguePrompts = c.dialoguePrompts && c.dialoguePrompts.length > 0;
-            const hasNonEmptyDialoguePrompt = hasDialoguePrompts && c.dialoguePrompts?.some(dp => dp.content?.trim());
+            const hasNonEmptyDialoguePrompt = hasDialoguePrompts && c.dialoguePrompts?.some(dp => dp.content?);
             const hasKnowledgePrompts = c.knowledgePrompts && c.knowledgePrompts.length > 0;
-            const hasNonEmptyKnowledgePrompt = hasKnowledgePrompts && c.knowledgePrompts?.some(kp => kp.content?.trim());
+            const hasNonEmptyKnowledgePrompt = hasKnowledgePrompts && c.knowledgePrompts?.some(kp => kp.content?);
             const hasStarterPrompts = c.starterPrompts && Object.keys(c.starterPrompts).length > 0;
-            return !(c.systemPrompt?.trim() || c.appearancePrompt?.trim() || hasNonEmptyDialoguePrompt || hasNonEmptyKnowledgePrompt || c.thinkPrompt?.trim() || hasStarterPrompts)
+            return !(c.systemPrompt? || c.appearancePrompt? || hasNonEmptyDialoguePrompt || hasNonEmptyKnowledgePrompt || c.thinkPrompt? || hasStarterPrompts)
                 && !(c.images && Object.keys(c.images).length > 0)
                 && !(c.memories && Object.values(c.memories).some(arr => arr.length > 0))
                 && !(c.tools && Object.values(c.tools).some(v => v))
@@ -140,15 +140,15 @@ function isEntityHollow(
         }
         case 'context': {
             const c = entity as Context;
-            return !c.text?.trim() && !(c.urls?.length) && !(c.searchTerms?.length) && !(c.images?.length) && !c.searchEngine;
+            return !c.text? && !(c.urls?.length) && !(c.searchTerms?.length) && !(c.images?.length) && !c.searchEngine;
         }
         case 'location': {
             const l = entity as Location;
-            return !l.text?.trim() && !(l.images?.length) && !(l.locationBindings?.length) && !(l.characterWeights && Object.keys(l.characterWeights).length > 0);
+            return !l.text? && !(l.images?.length) && !(l.locationBindings?.length) && !(l.characterWeights && Object.keys(l.characterWeights).length > 0);
         }
         case 'audioTrack': {
             const a = entity as AudioTrack;
-            return !a.filename || !a.filename.trim();
+            return !a.filename || !a.filename;
         }
         case 'world': {
             const w = entity as World;
@@ -156,11 +156,11 @@ function isEntityHollow(
         }
         case 'promptBlock': {
             const p = entity as PromptBlock;
-            return !p.textContent?.trim() && !(p.images?.length);
+            return !p.textContent? && !(p.images?.length);
         }
         case 'model': {
             const m = entity as LanguageModel;
-            return !m.model?.trim() && !m.apiKey?.trim();
+            return !m.model? && !m.apiKey?;
         }
         case 'sampler': {
             const s = entity as Sampler;
@@ -169,7 +169,7 @@ function isEntityHollow(
         }
         case 'stopPattern': {
             const sp = entity as StopPattern;
-            return !sp.pattern?.trim();
+            return !sp.pattern?;
         }
         case 'budgetStrategy': {
             const bs = entity as BudgetStrategy;
@@ -177,11 +177,11 @@ function isEntityHollow(
         }
         case 'memory': {
             const m = entity as Memory;
-            return !m.content?.trim();
+            return !m.content?;
         }
         case 'account': {
             const a = entity as Account;
-            return !a.username?.trim();
+            return !a.username?;
         }
         case 'multiplayerData': {
             const md = entity as MultiplayerData;
@@ -687,7 +687,7 @@ export function DataManagerModal({
     }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells]);
 
     const filteredAndSorted = useMemo(() => {
-        const query = searchQuery.toLowerCase().trim();
+        const query = searchQuery.toLowerCase();
         const filtered = cleanupItems.filter(item => {
             const matchesOrphan = showOrphans && item.isOrphan;
             const matchesHollow = showHollows && item.isHollow;
@@ -820,7 +820,7 @@ export function DataManagerModal({
     };
 
     const exclusionSearchResults = useMemo(() => {
-        const q = exclusionSearchQuery.toLowerCase().trim();
+        const q = exclusionSearchQuery.toLowerCase();
         if (!q) return [];
         let items: { id: string; name: string }[] = [];
         switch (exclusionDropdownType) {
@@ -1192,7 +1192,7 @@ export function DataManagerModal({
                                             type="text" 
                                             value={exclusionSearchQuery} 
                                             onChange={e => { setExclusionSearchQuery(e.target.value); setIsExclusionDropdownOpen(true); }} 
-                                            onFocus={() => { if (exclusionSearchQuery.trim()) setIsExclusionDropdownOpen(true); }} 
+                                            onFocus={() => { if (exclusionSearchQuery) setIsExclusionDropdownOpen(true); }} 
                                             placeholder={`Search ${EXCLUSION_TYPE_META[exclusionDropdownType].label.toLowerCase()}...`} 
                                             className="editor-input" 
                                             style={{ width: '100%', fontSize: '0.7rem', padding: '6px 8px', paddingRight: exclusionSearchQuery ? '32px' : '8px' }} 
@@ -1227,7 +1227,7 @@ export function DataManagerModal({
                                                 {exclusionSearchResults.map(item => (<div key={item.id} onClick={() => addExclusion(exclusionDropdownType, item.id, item.name)} style={{ padding: '6px 10px', fontSize: '0.7rem', cursor: 'pointer', borderBottom: '1px solid var(--border)', transition: 'background 0.1s' }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-bg)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>{EXCLUSION_TYPE_META[exclusionDropdownType].icon} {item.name}</div>))}
                                             </div>
                                         )}
-                                        {isExclusionDropdownOpen && exclusionSearchQuery.trim() && exclusionSearchResults.length === 0 && (<div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '0 0 6px 6px', fontSize: '0.65rem', opacity: 0.5 }}>No results found.</div>)}
+                                        {isExclusionDropdownOpen && exclusionSearchQuery && exclusionSearchResults.length === 0 && (<div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '0 0 6px 6px', fontSize: '0.65rem', opacity: 0.5 }}>No results found.</div>)}
                                     </div>
                                 </div>
                                 {exclusions.length > 0 && (

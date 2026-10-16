@@ -83,7 +83,7 @@ function resolveLocationBackgroundUrl(
     const regexTriggers = loc.backgroundImageRegularExpressionActivationTriggers;
     if (regexTriggers && Object.keys(regexTriggers).length > 0 && lastUserText) {
         for (const [idxStr, pattern] of Object.entries(regexTriggers)) {
-            if (!pattern.trim()) continue;
+            if (!pattern) continue;
             try {
                 const regex = new RegExp(pattern);
                 if (regex.test(lastUserText)) {

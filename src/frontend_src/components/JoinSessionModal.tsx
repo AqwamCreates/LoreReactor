@@ -18,13 +18,13 @@ export function JoinSessionModal({
     const [showPassword, setShowPassword] = useState(false);
 
     const handleJoin = useCallback(() => {
-        if (!sessionId.trim()) {
+        if (!sessionId) {
             addToast('Enter a session ID.', 'error');
             return;
         }
         
         // Pass null for character data, selection happens after acceptance
-        onJoin(sessionId.trim(), password, null, null);
+        onJoin(sessionId, password, null, null);
         
         // Reset state
         setSessionId('');
@@ -82,7 +82,7 @@ export function JoinSessionModal({
                         type="button"
                         className="editor-button editor-button-save"
                         onClick={handleJoin}
-                        disabled={!sessionId.trim()}
+                        disabled={!sessionId}
                         style={{ width: '100%', fontSize: '0.85rem', padding: '10px' }}
                     >
                         Request to Join

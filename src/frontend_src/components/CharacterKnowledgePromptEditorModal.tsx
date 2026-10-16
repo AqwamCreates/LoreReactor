@@ -286,7 +286,7 @@ export function CharacterKnowledgePromptEditorModal({
     }, [isReadOnly]);
 
     const handleSave = useCallback(() => {
-        const validItems = items.filter(item => item.name.trim().length > 0);
+        const validItems = items.filter(item => item.name.length > 0);
         onSaveKnowledgePrompts(validItems);
         onClose();
     }, [items, onSaveKnowledgePrompts, onClose]);

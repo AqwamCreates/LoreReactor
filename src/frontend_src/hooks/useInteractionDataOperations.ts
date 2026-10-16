@@ -172,7 +172,7 @@ export function useInteractionDataOperations(options: UseChatOperationsOptions) 
 
     const handleSaveTitle = useCallback(async () => {
         if (!interactionData) return;
-        const newTitle = editTitleValue.trim() || 'Untitled Session';
+        const newTitle = editTitleValue || 'Untitled Session';
         const updatedChat = { 
             ...interactionData, 
             name: newTitle, 

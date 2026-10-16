@@ -137,13 +137,13 @@ export class ArgAccessor {
  *   wear "Alice" "Blue Dress"
  */
 export function parsePythonArgs(rawArgs: string): ArgAccessor {
-    const trimmed = rawArgs.trim();
+    const trimmed = rawArgs;
     if (!trimmed) return new ArgAccessor([], {}, rawArgs);
 
     let input = trimmed;
     const fnMatch = input.match(/^[a-zA-Z_]\w*\s*\(([\s\S]*)\)$/);
     if (fnMatch) {
-        input = fnMatch[1].trim();
+        input = fnMatch[1];
     }
 
     // Determine if input uses top-level commas as argument delimiters
@@ -210,23 +210,23 @@ export function parsePythonArgs(rawArgs: string): ArgAccessor {
             : (/\s/.test(char) && depth === 0);
 
         if (isSeparator) {
-            if (current.trim().length > 0) {
-                rawTokens.push(current.trim());
+            if (current.length > 0) {
+                rawTokens.push(current);
             }
             current = '';
             continue;
         }
         current += char;
     }
-    if (current.trim().length > 0) {
-        rawTokens.push(current.trim());
+    if (current.length > 0) {
+        rawTokens.push(current);
     }
 
     const positional: string[] = [];
     const kwargs: Record<string, string> = {};
 
     const cleanValue = (val: string): string => {
-        let v = val.trim();
+        let v = val;
         if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
             v = v.slice(1, -1);
         }
@@ -278,10 +278,10 @@ function getSessionLocations(interactionData: InteractionData | null): Location[
 }
 
 function resolveCharacter(idOrName: string, interactionData: InteractionData | null, allCharacters: Character[] = []): Character | undefined {
-    let query = idOrName.trim().toLowerCase();
+    let query = idOrName.toLowerCase();
     if (!query) return undefined;
     if ((query.startsWith('"') && query.endsWith('"')) || (query.startsWith("'") && query.endsWith("'"))) {
-        query = query.slice(1, -1).trim().toLowerCase();
+        query = query.slice(1, -1).toLowerCase();
     }
     const participants = getSessionCharacters(interactionData);
     let found = participants.find(c => c.id.toLowerCase() === query || c.name.toLowerCase() === query || c.id.startsWith(query));
@@ -291,10 +291,10 @@ function resolveCharacter(idOrName: string, interactionData: InteractionData | n
 }
 
 function resolveLocation(idOrName: string, interactionData: InteractionData | null): Location | undefined {
-    let query = idOrName.trim().toLowerCase();
+    let query = idOrName.toLowerCase();
     if (!query) return undefined;
     if ((query.startsWith('"') && query.endsWith('"')) || (query.startsWith("'") && query.endsWith("'"))) {
-        query = query.slice(1, -1).trim().toLowerCase();
+        query = query.slice(1, -1).toLowerCase();
     }
     const sessionLocs = getSessionLocations(interactionData);
     return sessionLocs.find(l => l.id.toLowerCase() === query || l.name.toLowerCase() === query || l.id.startsWith(query));
@@ -329,7 +329,7 @@ const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, inter
 };
 
 export function getFallbackToolResult(innerString: string): ToolResult {
-    const trimmedInnerString = innerString.trim();
+    const trimmedInnerString = innerString;
     let toolType = trimmedInnerString;
     let args = '';
     const fnMatch = trimmedInnerString.match(/^([a-zA-Z_]\w*)\s*\(([\s\S]*)\)$/);
@@ -340,7 +340,7 @@ export function getFallbackToolResult(innerString: string): ToolResult {
         const spaceIdx = trimmedInnerString.search(/\s/);
         if (spaceIdx !== -1) {
             toolType = trimmedInnerString.slice(0, spaceIdx);
-            args = trimmedInnerString.slice(spaceIdx + 1).trim();
+            args = trimmedInnerString.slice(spaceIdx + 1);
         }
     }
     const emoji = TOOL_EMOJI_MAP[toolType.toLowerCase() as tool] || '🔧';
@@ -367,7 +367,7 @@ export async function executeTool(
 
     try {
         const result = await executeFunction(args, nextMessage, interactionData, context, displayMode);
-        if (!result || !result.content || !result.content.trim()) {
+        if (!result || !result.content || !result.content) {
             return { toolType, args, content: "Something went wrong", displayReplacement: result?.displayReplacement || "" };
         }
         return result;
@@ -412,14 +412,14 @@ export function formatToolDisplay(result: ToolResult, rawMatch: string, mode: to
 function executeWhisper(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     let targetIdsStr = pArgs.get(0, 'target_char_id', 'target', 'target_id', 'to');
-    let text = pArgs.get(1, 'text', 'message', 'content')?.trim();
+    let text = pArgs.get(1, 'text', 'message', 'content')?;
 
     if (!pArgs.kwargs.text && pArgs.positional.length > 0) {
-        const trimmed = args.trim();
+        const trimmed = args;
         const cliMatch = trimmed.match(/^("([^"]+)"|'([^']+)'|([^\s]+))\s+([\s\S]+)$/);
         if (cliMatch) {
             targetIdsStr = cliMatch[2] || cliMatch[3] || cliMatch[4];
-            text = cliMatch[5].trim();
+            text = cliMatch[5];
             if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
                 text = text.slice(1, -1);
             }
@@ -432,7 +432,7 @@ function executeWhisper(args: string, nextMessage: BaseMessage, interactionData:
         return helpResult('whisper', 'target_char_id="...", text="..."', 'send private message visible only to target(s)');
     }
 
-    const targetIdentifiers = targetIdsStr.split(',').map(id => id.trim()).filter(Boolean);
+    const targetIdentifiers = targetIdsStr.split(',').map(id => id).filter(Boolean);
     const allChars = context.allCharacters || [];
     const validTargetIds: string[] = [];
     const validTargetNames: string[] = [];
@@ -460,7 +460,7 @@ function executeWhisper(args: string, nextMessage: BaseMessage, interactionData:
 // ─── Think ──────────────────────────────────────────────────────────
 function executeThink(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const reasoning = pArgs.get(0, 'reasoning', 'thought', 'text')?.trim() || pArgs.positional.join(' ').trim();
+    const reasoning = pArgs.get(0, 'reasoning', 'thought', 'text')? || pArgs.positional.join(' ');
     if (!reasoning) {
         return helpResult('think', 'reasoning="..."', 'evaluate context and plan next move internally');
     }
@@ -507,9 +507,9 @@ function executeRandomPick(args: string): ToolResult {
     let options = pArgs.positional;
     const optKwarg = pArgs.get(-1, 'options', 'choices');
     if (optKwarg) {
-        options = optKwarg.split(',').map(s => s.trim()).filter(Boolean);
+        options = optKwarg.split(',').map(s => s).filter(Boolean);
     } else if (options.length === 1 && options[0].includes(',')) {
-        options = options[0].split(',').map(s => s.trim()).filter(Boolean);
+        options = options[0].split(',').map(s => s).filter(Boolean);
     }
     if (options.length === 0) {
         return helpResult('pick', '"option1", "option2", ...', 'randomly pick one option');
@@ -575,7 +575,7 @@ function executeCoinFlip(args: string): ToolResult {
 interface RollGroup { count: number; sides: number }
 
 function parseRollExpression(expr: string): { groups: RollGroup[]; modifier: number; rolls: number[]; total: number } | null {
-    const sanitized = expr.trim().toLowerCase().replace(/\s+/g, '');
+    const sanitized = expr.toLowerCase().replace(/\s+/g, '');
     if (!sanitized) return null;
 
     const rollGroupRegex = /(\d*)d(\d+)/gi;
@@ -626,7 +626,7 @@ export function executeDiceRoll(args: string): ToolResult {
         const modSign = modifier > 0 ? `+${modifier}` : modifier < 0 ? `${modifier}` : '';
         notation = `${count}d${kwSides}${modSign}`;
     } else if (!notation && pArgs.positional.length === 1) {
-        const p = pArgs.positional[0].trim();
+        const p = pArgs.positional[0];
         if (/^\d+$/.test(p)) notation = `1d${p}`;
         else if (/^d\d+$/i.test(p)) notation = `1${p}`;
         else notation = p;
@@ -677,7 +677,7 @@ function executeRandom(args: string): ToolResult {
 // ─── RNG Table ────────────────────────────────────────────────────────
 function executeRng(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const tableId = pArgs.get(0, 'table_context_id', 'table', 'context_id', 'name')?.trim() || pArgs.positional.join(' ').trim();
+    const tableId = pArgs.get(0, 'table_context_id', 'table', 'context_id', 'name')? || pArgs.positional.join(' ');
     if (!tableId) {
         return helpResult('rng', 'table_context_id="..."', 'roll on a named RNG table defined in contexts');
     }
@@ -691,7 +691,7 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
     }
 
     // ✅ FIX: Corrected literal newline string to proper escape sequence
-    const lines = tableContext.text.split('\n').map(l => l.trim()).filter(Boolean);
+    const lines = tableContext.text.split('\n').map(l => l).filter(Boolean);
     const entries: { min: number; max: number; result: string }[] = [];
     let globalMax = 0;
 
@@ -700,11 +700,11 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
         const singleMatch = line.match(/^(\d+)\s*[:=]\s*(.+)$/);
         if (rangeMatch) {
             const min = Number.parseInt(rangeMatch[1], 10), max = Number.parseInt(rangeMatch[2], 10);
-            entries.push({ min, max, result: rangeMatch[3].trim() });
+            entries.push({ min, max, result: rangeMatch[3] });
             if (max > globalMax) globalMax = max;
         } else if (singleMatch) {
             const val = Number.parseInt(singleMatch[1], 10);
-            entries.push({ min: val, max: val, result: singleMatch[2].trim() });
+            entries.push({ min: val, max: val, result: singleMatch[2] });
             if (val > globalMax) globalMax = val;
         }
     }
@@ -724,7 +724,7 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
 // ─── Move ───────────────────────────────────────────────────────────
 function executeMove(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetQuery = pArgs.get(0, 'location_id', 'location', 'target', 'destination', 'to')?.trim() || pArgs.positional.join(' ').trim();
+    const targetQuery = pArgs.get(0, 'location_id', 'location', 'target', 'destination', 'to')? || pArgs.positional.join(' ');
     if (!targetQuery) {
         return helpResult('move', 'location_id="..."', 'move character to an adjacent location');
     }
@@ -756,7 +756,7 @@ interface TimerEntry { name: string; targetTimestamp: number }
 interface StopwatchEntry { name: string; startTimestamp: number; pausedElapsedMs?: number }
 
 function parseDurationToMs(input: string): number | null {
-    const trimmed = input.trim().toLowerCase();
+    const trimmed = input.toLowerCase();
     let totalMs = 0, matched = false;
 
     const hourMatch = trimmed.match(/(\d+)\s*h(?:ours?|r)?/);
@@ -1012,7 +1012,7 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
 // ─── Calculator ─────────────────────────────────────────────────────
 function executeCalculator(args: string): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const expression = pArgs.get(0, 'expression', 'expr', 'math')?.trim() || pArgs.positional.join(' ').trim();
+    const expression = pArgs.get(0, 'expression', 'expr', 'math')? || pArgs.positional.join(' ');
     if (!expression) {
         return helpResult('calculator', 'expression="..."', 'evaluate mathematical expression');
     }
@@ -1035,7 +1035,7 @@ function executeCalculator(args: string): ToolResult {
 // ─── Web ────────────────────────────────────────────────────────────
 async function executeWeb(args: string): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const query = pArgs.get(0, 'query_or_url', 'query', 'url', 'search')?.trim() || pArgs.positional.join(' ').trim();
+    const query = pArgs.get(0, 'query_or_url', 'query', 'url', 'search')? || pArgs.positional.join(' ');
     if (!query) {
         return helpResult('web', 'query_or_url="..."', 'search the web or fetch a URL');
     }
@@ -1066,7 +1066,7 @@ function executeDialogue(args: string, nextMessage: BaseMessage, interactionData
         return { toolType: 'dialogue', args, content: entries.join('\n') || 'No dialogue prompts', displayReplacement: `[💬 ${entries.length} prompt(s)]` };
     }
     if (action === 'recall') {
-        const queryId = pArgs.get(1, 'prompt_id', 'id')?.trim() || pArgs.positional.slice(1).join(' ').trim();
+        const queryId = pArgs.get(1, 'prompt_id', 'id')? || pArgs.positional.slice(1).join(' ');
         const matched = dialoguePrompts.filter(dp => dp.id === queryId || dp.name?.toLowerCase() === queryId?.toLowerCase() || dp.id.startsWith(queryId || ""));
         if (matched.length === 0) return { toolType: 'dialogue', args, content: `No dialogue prompt matching "${queryId}".`, displayReplacement: '[💬 No match]' };
         const textArray = getGlobalMessageHistory(interactionData).filter(m => m.messageType === 'chat').map(m => (m as ChatMessage).textContent);
@@ -1089,7 +1089,7 @@ function executeKnowledge(args: string, nextMessage: BaseMessage): ToolResult {
         return { toolType: 'knowledge', args, content: entries.join('\n') || 'No knowledge prompts', displayReplacement: `[🧠 ${entries.length} prompt(s)]` };
     }
     if (action === 'recall') {
-        const queryId = pArgs.get(1, 'id', 'knowledge_id')?.trim() || pArgs.positional.slice(1).join(' ').trim();
+        const queryId = pArgs.get(1, 'id', 'knowledge_id')? || pArgs.positional.slice(1).join(' ');
         const matched = prompts.filter(kp => kp.id === queryId || kp.name?.toLowerCase() === queryId?.toLowerCase() || kp.id.startsWith(queryId || ""));
         if (matched.length === 0) return { toolType: 'knowledge', args, content: `No knowledge matching "${queryId}".`, displayReplacement: '[🧠 No match]' };
         return { toolType: 'knowledge', args, content: matched.map(k => `[${k.name}]: ${k.content}`).join('\n'), displayReplacement: `[🧠 Recalled ${matched.length} entry(ies)]` };
@@ -1113,7 +1113,7 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
         return { toolType: 'memory', args, content: entries.join('\n') || 'No memories stored', displayReplacement: `[🧠 ${entries.length} memories]` };
     }
     if (action === 'recall') {
-        const queryId = pArgs.get(1, 'id', 'memory_id')?.trim() || pArgs.positional.slice(1).join(' ').trim();
+        const queryId = pArgs.get(1, 'id', 'memory_id')? || pArgs.positional.slice(1).join(' ');
         if (queryId) {
             for (const [, mems] of Object.entries(character.memories || {})) {
                 const found = mems.find(m => m.id === queryId || m.name?.toLowerCase() === queryId.toLowerCase() || m.id.startsWith(queryId));
@@ -1147,7 +1147,7 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
 // ─── Lookup ─────────────────────────────────────────────────────────
 function executeLookup(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const query = pArgs.get(0, 'keyword', 'query', 'search', 'text')?.toLowerCase().trim() || pArgs.positional.join(' ').toLowerCase().trim();
+    const query = pArgs.get(0, 'keyword', 'query', 'search', 'text')?.toLowerCase() || pArgs.positional.join(' ').toLowerCase();
     if (!query) {
         return helpResult('lookup', 'keyword="..."', 'search contexts and world lore for keywords');
     }
@@ -1204,7 +1204,7 @@ function executeMap(args: string, nextMessage: BaseMessage, interactionData: Int
 function executeAudio(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
-    const trackId = pArgs.get(1, 'track_id', 'track', 'name')?.trim() || pArgs.positional.slice(1).join(' ').trim();
+    const trackId = pArgs.get(1, 'track_id', 'track', 'name')? || pArgs.positional.slice(1).join(' ');
     if (!action) {
         return helpResult('audio', 'action="play|stop", track_id="..."', 'manage background audio playback');
     }
@@ -1326,11 +1326,11 @@ function saveTradeOffers(inventory: Inventory, offers: TradeOffer[]): void {
 
 function parseItemList(input: string): Record<string, number> {
     const res: Record<string, number> = {};
-    const tokens = input.split(',').map(s => s.trim()).filter(Boolean);
+    const tokens = input.split(',').map(s => s).filter(Boolean);
     for (const token of tokens) {
         const parts = token.split(':');
-        const name = parts[0].trim();
-        const qty = parts[1] ? Number(parts[1].trim()) : 1;
+        const name = parts[0];
+        const qty = parts[1] ? Number(parts[1]) : 1;
         if (name) res[name] = Number.isNaN(qty) ? 1 : qty;
     }
     return res;
@@ -1431,7 +1431,7 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
 // ─── Invite ─────────────────────────────────────────────────────────
 function executeInvite(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetQuery = pArgs.get(0, 'character_id', 'character', 'target', 'id')?.trim() || pArgs.positional.join(' ').trim();
+    const targetQuery = pArgs.get(0, 'character_id', 'character', 'target', 'id')? || pArgs.positional.join(' ');
     if (!targetQuery) return helpResult('invite', 'character_id="..."', 'bring existing participant to current location');
     const targetChar = resolveCharacter(targetQuery, interactionData, context.allCharacters || []);
     if (!targetChar) return { toolType: 'invite', args, content: `[Error: Character "${targetQuery}" not found]`, displayReplacement: '[Error: Target not found]' };
@@ -1442,7 +1442,7 @@ function executeInvite(args: string, nextMessage: BaseMessage, interactionData: 
 // ─── Kick ───────────────────────────────────────────────────────────
 function executeKick(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetQuery = pArgs.get(0, 'character_id', 'character', 'target', 'id')?.trim();
+    const targetQuery = pArgs.get(0, 'character_id', 'character', 'target', 'id')?;
     if (!targetQuery) return helpResult('kick', 'character_id="...", destination_location_id=None', 'eject character from location');
 
     if (targetQuery.toLowerCase() === 'characters') {
@@ -1473,7 +1473,7 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
 // ─── Oracle ───────────────────────────────────────────────────────
 function executeOracle(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetLocQuery = pArgs.get(0, 'location', 'target', 'place', 'to')?.trim();
+    const targetLocQuery = pArgs.get(0, 'location', 'target', 'place', 'to')?;
     const limit = pArgs.getNumber(1, 'limit', 'count') ?? 5;
     const locations = interactionData.locations || [];
 
@@ -1504,7 +1504,7 @@ function executeOracle(args: string, _nextMessage: BaseMessage, interactionData:
 // ─── Teleport ───────────────────────────────────────────────────────
 function executeTeleport(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetQuery = pArgs.get(0, 'location_id', 'location', 'destination', 'target')?.trim() || pArgs.positional.join(' ').trim();
+    const targetQuery = pArgs.get(0, 'location_id', 'location', 'destination', 'target')? || pArgs.positional.join(' ');
     if (!targetQuery) return helpResult('teleport', 'location_id="..."', 'instantly move character to any location');
     const targetLocation = resolveLocation(targetQuery, interactionData);
     if (!targetLocation) return { toolType: 'teleport', args, content: `[Error: Location "${targetQuery}" not found]`, displayReplacement: '[Error: Not found]' };
@@ -1515,8 +1515,8 @@ function executeTeleport(args: string, _nextMessage: BaseMessage, interactionDat
 function executeKey(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
-    const locQuery = pArgs.get(1, 'location_id', 'location')?.trim();
-    const charQuery = pArgs.get(2, 'character_id', 'character', 'target')?.trim();
+    const locQuery = pArgs.get(1, 'location_id', 'location')?;
+    const charQuery = pArgs.get(2, 'character_id', 'character', 'target')?;
     if (!action || !locQuery) {
         return helpResult('key', 'action="lock|unlock", location_id="...", character_id=None', 'lock or unlock locations');
     }
@@ -1546,16 +1546,16 @@ function executeKey(args: string, nextMessage: BaseMessage, interactionData: Int
 // ─── Clothing ───────────────────────────────────────────────────────
 function executeClothing(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    let charQuery = pArgs.get(0, 'character_id', 'character')?.trim();
+    let charQuery = pArgs.get(0, 'character_id', 'character')?;
     let action = pArgs.get(1, 'action', 'command')?.toLowerCase();
-    let clothingQuery = pArgs.get(2, 'clothing_id', 'clothing', 'item')?.trim();
+    let clothingQuery = pArgs.get(2, 'clothing_id', 'clothing', 'item')?;
 
     if (charQuery && (charQuery.toLowerCase() === 'wear' || charQuery.toLowerCase() === 'remove')) {
         action = charQuery.toLowerCase();
-        charQuery = pArgs.get(1, 'character_id', 'character')?.trim();
-        clothingQuery = pArgs.get(2, 'clothing_id', 'clothing', 'item')?.trim() || pArgs.positional.slice(2).join(' ').trim();
+        charQuery = pArgs.get(1, 'character_id', 'character')?;
+        clothingQuery = pArgs.get(2, 'clothing_id', 'clothing', 'item')? || pArgs.positional.slice(2).join(' ');
     } else if (!clothingQuery && pArgs.positional.length > 2) {
-        clothingQuery = pArgs.positional.slice(2).join(' ').trim();
+        clothingQuery = pArgs.positional.slice(2).join(' ');
     }
 
     if (!charQuery || !action || !clothingQuery) {
@@ -1585,7 +1585,7 @@ function executeClothing(args: string, nextMessage: BaseMessage, interactionData
 // ─── Summon ─────────────────────────────────────────────────────────
 function executeSummon(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const charQuery = pArgs.get(0, 'character_id', 'character', 'target', 'name')?.trim() || pArgs.positional.join(' ').trim();
+    const charQuery = pArgs.get(0, 'character_id', 'character', 'target', 'name')? || pArgs.positional.join(' ');
     if (!charQuery) return helpResult('summon', 'character_id="..."', 'add a non-participant character to current session');
 
     const allChars = context.allCharacters || [];
@@ -1599,7 +1599,7 @@ function executeSummon(args: string, nextMessage: BaseMessage, interactionData: 
 // ─── Narrate ────────────────────────────────────────────────────────
 function executeNarrate(args: string): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const text = pArgs.get(0, 'text', 'narration', 'content')?.trim() || pArgs.positional.join(' ').trim();
+    const text = pArgs.get(0, 'text', 'narration', 'content')? || pArgs.positional.join(' ');
     if (!text) return helpResult('narrate', 'text="..."', 'inject ambient narration without consuming chat stamina');
     return { toolType: 'narrate', args, content: text, displayReplacement: `[🎙️ ${text}]` };
 }
@@ -1607,7 +1607,7 @@ function executeNarrate(args: string): ToolResult {
 // ─── Inspect ────────────────────────────────────────────────────────
 function executeInspect(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const charQuery = pArgs.get(0, 'character_id', 'character', 'target')?.trim() || pArgs.positional.join(' ').trim();
+    const charQuery = pArgs.get(0, 'character_id', 'character', 'target')? || pArgs.positional.join(' ');
     if (!charQuery) return helpResult('inspect', 'character_id="..."', "examine character's visible state");
 
     const targetChar = resolveCharacter(charQuery, interactionData, context.allCharacters || []);
@@ -1667,7 +1667,7 @@ function executeAdministrator(
 
     if (action === 'view_entity' || action === 'get_entity') {
         const rawType = pArgs.get(1, 'entity_type', 'type')?.toLowerCase();
-        const query = pArgs.get(2, 'entity_id', 'id', 'name')?.trim();
+        const query = pArgs.get(2, 'entity_id', 'id', 'name')?;
         if (!rawType || !query) {
             return { toolType: 'administrator', args, content: '[Error: administrator(action="view_entity", entity_type="...", entity_id="...") requires entity_type and entity_id]', displayReplacement: '[Error: Usage]' };
         }
@@ -1690,9 +1690,9 @@ function executeAdministrator(
 
     if (action === 'edit_entity') {
         const entityType = pArgs.get(1, 'entity_type', 'type')?.toLowerCase();
-        const entityId = pArgs.get(2, 'entity_id', 'id')?.trim();
-        const field = pArgs.get(3, 'field', 'key')?.trim();
-        const value = pArgs.get(4, 'value', 'val') || pArgs.positional.slice(4).join(' ').trim();
+        const entityId = pArgs.get(2, 'entity_id', 'id')?;
+        const field = pArgs.get(3, 'field', 'key')?;
+        const value = pArgs.get(4, 'value', 'val') || pArgs.positional.slice(4).join(' ');
         if (!entityType || !entityId || !field || value === undefined) {
             return { toolType: 'administrator', args, content: '[Error: administrator(action="edit_entity", entity_type="...", entity_id="...", field="...", value="...") requires all arguments]', displayReplacement: '[Error: Usage]' };
         }
@@ -1711,8 +1711,8 @@ function executeAdministrator(
     }
 
     if (action === 'add_to_entity_folder') {
-        const entityFolderQuery = pArgs.get(1, 'entity_folder_id', 'name')?.trim();
-        const itemId = pArgs.get(2, 'item_id', 'id', 'item')?.trim();
+        const entityFolderQuery = pArgs.get(1, 'entity_folder_id', 'name')?;
+        const itemId = pArgs.get(2, 'item_id', 'id', 'item')?;
         if (!entityFolderQuery || !itemId) {
             return { toolType: 'administrator', args, content: '[Error: administrator(action="add_to_entity_folder", entity_folder_id="...", item_id="...") requires entity folder and item ID]', displayReplacement: '[Error: Usage]' };
         }
@@ -1727,8 +1727,8 @@ function executeAdministrator(
     }
 
     if (action === 'remove_from_entity_folder') {
-        const entityFolderQuery = pArgs.get(1, 'entity_folder_id', 'name')?.trim();
-        const itemId = pArgs.get(2, 'item_id', 'id', 'item')?.trim();
+        const entityFolderQuery = pArgs.get(1, 'entity_folder_id', 'name')?;
+        const itemId = pArgs.get(2, 'item_id', 'id', 'item')?;
         if (!entityFolderQuery || !itemId) {
             return { toolType: 'administrator', args, content: '[Error: administrator(action="remove_from_entity_folder", entity_folder_id="...", item_id="...") requires entity folder and item ID]', displayReplacement: '[Error: Usage]' };
         }
@@ -1756,20 +1756,20 @@ function executeAdministrator(
             return { toolType: 'administrator', args, content: `Chat Sessions (${allShells.length}):\n${lines.join('\n')}`, displayReplacement: `[🔧 ${allShells.length} chat(s)]` };
         }
         case 'switch_model': {
-            const modelName = pArgs.get(1, 'model_name', 'name', 'model')?.trim() || pArgs.positional.slice(1).join(' ').trim();
+            const modelName = pArgs.get(1, 'model_name', 'name', 'model')? || pArgs.positional.slice(1).join(' ');
             if (!modelName) return { toolType: 'administrator', args, content: '[Error: administrator(action="switch_model", model_name="...") requires model name]', displayReplacement: '[Error: Usage]' };
             appendPendingAction(nextMessage, { type: 'administrator_switch_model', payload: { modelName } });
             return { toolType: 'administrator', args, content: `Requested switch to model "${modelName}".`, displayReplacement: `[🔧 Switch: ${modelName}]` };
         }
         case 'toggle_account': {
-            const accountId = pArgs.get(1, 'account_id', 'account', 'id')?.trim();
+            const accountId = pArgs.get(1, 'account_id', 'account', 'id')?;
             if (!accountId) return { toolType: 'administrator', args, content: '[Error: administrator(action="toggle_account", account_id="...") requires account ID]', displayReplacement: '[Error: Usage]' };
             appendPendingAction(nextMessage, { type: 'administrator_toggle_account', payload: { accountId } });
             return { toolType: 'administrator', args, content: `Toggle requested for account "${accountId}".`, displayReplacement: `[🔑 Toggle: ${accountId}]` };
         }
         case 'join_session': {
-            const sessionId = pArgs.get(1, 'session_id', 'id', 'session')?.trim();
-            const password = pArgs.get(2, 'password', 'pwd')?.trim() || '';
+            const sessionId = pArgs.get(1, 'session_id', 'id', 'session')?;
+            const password = pArgs.get(2, 'password', 'pwd')? || '';
             if (!sessionId) return { toolType: 'administrator', args, content: '[Error: administrator(action="join_session", session_id="...", password="") requires session ID]', displayReplacement: '[Error: Usage]' };
             appendPendingAction(nextMessage, { type: 'administrator_join_session', payload: { sessionId, password } });
             return { toolType: 'administrator', args, content: `Join requested for session "${sessionId}".`, displayReplacement: `[👥 Join: ${sessionId}]` };
@@ -1778,13 +1778,13 @@ function executeAdministrator(
             appendPendingAction(nextMessage, { type: 'administrator_leave_session', payload: {} });
             return { toolType: 'administrator', args, content: 'Leave session requested.', displayReplacement: '[👥 Leave session]' };
         case 'accept_join': {
-            const accountId = pArgs.get(1, 'account_id', 'id')?.trim();
+            const accountId = pArgs.get(1, 'account_id', 'id')?;
             if (!accountId) return { toolType: 'administrator', args, content: '[Error: administrator(action="accept_join", account_id="...") requires account ID]', displayReplacement: '[Error: Usage]' };
             appendPendingAction(nextMessage, { type: 'administrator_accept_join', payload: { accountId } });
             return { toolType: 'administrator', args, content: `Accepted join for account "${accountId}".`, displayReplacement: `[👥 Accepted: ${accountId}]` };
         }
         case 'reject_join': {
-            const accountId = pArgs.get(1, 'account_id', 'id')?.trim();
+            const accountId = pArgs.get(1, 'account_id', 'id')?;
             if (!accountId) return { toolType: 'administrator', args, content: '[Error: administrator(action="reject_join", account_id="...") requires account ID]', displayReplacement: '[Error: Usage]' };
             appendPendingAction(nextMessage, { type: 'administrator_reject_join', payload: { accountId } });
             return { toolType: 'administrator', args, content: `Rejected join for account "${accountId}".`, displayReplacement: `[👥 Rejected: ${accountId}]` };
@@ -1798,7 +1798,7 @@ function executeAdministrator(
 function executeCreator(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const entityType = pArgs.get(0, 'entity_type', 'type')?.toLowerCase();
-    const entityName = pArgs.get(1, 'name', 'entity_name')?.trim() || pArgs.positional.slice(1).join(' ').trim();
+    const entityName = pArgs.get(1, 'name', 'entity_name')? || pArgs.positional.slice(1).join(' ');
     if (!entityType || !entityName) {
         return helpResult('creator', 'entity_type="...", name="..."', `valid types: ${VALID_ENTITY_TYPES.join(', ')}`);
     }
@@ -1814,7 +1814,7 @@ function executeCreator(args: string, nextMessage: BaseMessage, _interactionData
 function executeDestroyer(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const entityType = pArgs.get(0, 'entity_type', 'type')?.toLowerCase();
-    const entityId = pArgs.get(1, 'entity_id', 'id', 'name')?.trim() || pArgs.positional.slice(1).join(' ').trim();
+    const entityId = pArgs.get(1, 'entity_id', 'id', 'name')? || pArgs.positional.slice(1).join(' ');
     if (!entityType || !entityId) {
         return helpResult('destroyer', 'entity_type="...", entity_id="..."', `valid types: ${VALID_ENTITY_TYPES.join(', ')}`);
     }
@@ -1918,7 +1918,7 @@ async function executeSystemInfo(args: string): Promise<ToolResult> {
 async function executeNotify(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const title = pArgs.get(0, 'title', 'heading') || 'AI Assistant';
-    const message = pArgs.get(1, 'message', 'text', 'content') || pArgs.positional.slice(1).join(' ').trim();
+    const message = pArgs.get(1, 'message', 'text', 'content') || pArgs.positional.slice(1).join(' ');
     if (!message) {
         return helpResult('notify', 'title="...", message="..."', 'send a native OS desktop notification');
     }
@@ -1977,7 +1977,7 @@ function executePower(action: 'sleep' | 'shutdown' | 'restart') {
 async function executeClipboard(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase() || 'read';
-    const text = pArgs.get(1, 'text', 'content') || pArgs.positional.slice(1).join(' ').trim();
+    const text = pArgs.get(1, 'text', 'content') || pArgs.positional.slice(1).join(' ');
     if (action !== 'read' && action !== 'write') {
         return helpResult('clipboard', 'action="read|write", text="..."', 'read or write to the host OS clipboard');
     }
@@ -2040,7 +2040,7 @@ async function executeNetworkScanner(args: string): Promise<ToolResult> {
 // ─── Safe Trash / Recycle Bin Tool ──────────────────────────────────
 async function executeTrash(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const targetPath = pArgs.get(0, 'path', 'file_path', 'target') || pArgs.positional.join(' ').trim();
+    const targetPath = pArgs.get(0, 'path', 'file_path', 'target') || pArgs.positional.join(' ');
     if (!targetPath) {
         return helpResult('trash', 'path="..."', 'safely move a file or folder to OS recycle bin / trash');
     }
@@ -2099,7 +2099,7 @@ async function executeWindowMonitor(args: string): Promise<ToolResult> {
 // ─── Open Browser ───────────────────────────────────────────────────
 async function executeBrowser(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const input = pArgs.get(0, 'url_or_search_query', 'url', 'query', 'search')?.trim() || pArgs.positional.join(' ').trim();
+    const input = pArgs.get(0, 'url_or_search_query', 'url', 'query', 'search')? || pArgs.positional.join(' ');
     if (!input) return helpResult('browser', 'url_or_search_query="..."', 'open webpage or web search in browser');
     
     const isDirectUrl = /^https?:\/\//i.test(input) || /^[\w-]+\.[\w-]+(\S*)/i.test(input);
@@ -2116,7 +2116,7 @@ async function executeBrowser(args: string, _nextMessage: BaseMessage, _interact
 // ─── Read File ──────────────────────────────────────────────────────
 async function executeReadFile(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const target = pArgs.get(0, 'path_or_url', 'path', 'file_path', 'url')?.trim() || pArgs.positional.join(' ').trim();
+    const target = pArgs.get(0, 'path_or_url', 'path', 'file_path', 'url')? || pArgs.positional.join(' ');
     if (!target) return helpResult('read_file', 'path_or_url="..."', 'open local file, video, or link in default app');
     
     const res = await readFile(target);
@@ -2130,7 +2130,7 @@ async function executeReadFile(args: string, _nextMessage: BaseMessage, _interac
 // ─── Write File ─────────────────────────────────────────────────────
 async function executeWriteFile(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const filePath = pArgs.get(0, 'file_path', 'path', 'filename')?.trim();
+    const filePath = pArgs.get(0, 'file_path', 'path', 'filename')?;
     let content = pArgs.get(1, 'content', 'text', 'data');
     if (content === undefined && pArgs.positional.length > 1) {
         content = pArgs.positional.slice(1).join(' ');
@@ -2150,7 +2150,7 @@ async function executeWriteFile(args: string, _nextMessage: BaseMessage, _intera
 // ─── Shell ─────────────────────────────────────
 async function executeShell(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const command = pArgs.get(0, 'command', 'cmd') || pArgs.positional.join(' ').trim();
+    const command = pArgs.get(0, 'command', 'cmd') || pArgs.positional.join(' ');
     if (!command) {
         return helpResult('shell', 'command="..."', 'execute a terminal/shell command on the host OS');
     }

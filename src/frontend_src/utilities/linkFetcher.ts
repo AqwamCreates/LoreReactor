@@ -153,7 +153,7 @@ async function downloadImageAsBase64(imageUrl: string): Promise<{ base64: string
 
         return {
             base64: result.base64,
-            mimeType: result.contentType.split(';')[0].trim(),
+            mimeType: result.contentType.split(';')[0],
         };
     } catch {
         return null;
@@ -238,7 +238,7 @@ function parseHtml(html: string, baseUrl: string): { text: string; links: string
         .replace(/&#39;/g, "'")
         .replace(/&nbsp;/g, ' ');
 
-    cleaned = cleaned.replace(/[ \t]+/g, ' ').replace(/\n\s*\n/g, '\n\n').trim();
+    cleaned = cleaned.replace(/[ \t]+/g, ' ').replace(/\n\s*\n/g, '\n\n');
 
     return { text: cleaned, links, imageUrls };
 }
@@ -251,7 +251,7 @@ function extractStructuredContent(text: string): string {
     const kept: string[] = [];
 
     for (const line of lines) {
-        const trimmed = line.trim();
+        const trimmed = line;
         if (!trimmed) continue;
 
         if (/^(#{1,6}\s|[A-Z][A-Z\s]{2,}:?\s*$|\d+[\.\)]\s)/.test(trimmed)) {

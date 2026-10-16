@@ -88,7 +88,7 @@ export function getReachableLocations(
         if (!location.locationBindings.includes(currentLocation.id)) return false;
 
         const conditionalRegex = location.locationBindingRegularExpressionTriggers?.[currentLocation.id];
-        if (!conditionalRegex || !conditionalRegex.trim()) return true;
+        if (!conditionalRegex || !conditionalRegex) return true;
         if (!messageText) return false;
         try {
             const regex = new RegExp(conditionalRegex, 'i');
@@ -129,7 +129,7 @@ export function findLocationByRegularExpression(locations: Location[], text: str
         if (!triggers || triggers.length === 0) continue;
         if (loc.characterBindings && loc.characterBindings.length > 0 && !loc.characterBindings.includes(character.id)) continue;
         for (const trigger of triggers) {
-            if (!trigger.trigger.trim()) continue;
+            if (!trigger.trigger) continue;
             try {
                 const regex = new RegExp(trigger.trigger, 'i');
                 if (regex.test(text)) return loc;
@@ -155,7 +155,7 @@ export function findReachableLocationByRegularExpression(
         const triggers = loc.regularExpressionActivationTriggers;
         if (!triggers || triggers.length === 0) continue;
         for (const trigger of triggers) {
-            if (!trigger.trigger.trim()) continue;
+            if (!trigger.trigger) continue;
             try {
                 const regex = new RegExp(trigger.trigger, 'i');
                 if (regex.test(text)) return loc;

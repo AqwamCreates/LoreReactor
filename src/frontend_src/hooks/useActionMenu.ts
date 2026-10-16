@@ -6,8 +6,8 @@ import type { useActionManager } from './useActionManager';
 import { getLocalMessageHistory } from '../utilities/timelineLogic';
 
 function formatActionString(label: string, targetName: string, wrap: ActionWrap, casing: ActionCase, punctuation: ActionPunctuation): string {
-    let result = label.trim();
-    const cleanTargetName = targetName.trim();
+    let result = label;
+    const cleanTargetName = targetName;
 
     switch (casing) {
         case 'first':
@@ -173,7 +173,7 @@ export function useActionMenu(options: UseActionMenuOptions) {
     ]);
 
     const getFilteredActions = useCallback(() => {
-        const query = menuSearchQuery.trim().toLowerCase();
+        const query = menuSearchQuery.toLowerCase();
         if (!query) {
             return allActions.slice().sort((a, b) => b.count !== a.count ? b.count - a.count : a.label.localeCompare(b.label));
         }

@@ -111,7 +111,7 @@ function BudgetStrategyEditorContent({
 
     const validate = (): boolean => {
         const newErrors: { name?: string } = {};
-        if (!name.trim()) newErrors.name = 'Name is required.';
+        if (!name) newErrors.name = 'Name is required.';
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -132,8 +132,8 @@ function BudgetStrategyEditorContent({
         const now = Date.now();
         return {
             id: cloneNameSuffix ? uuidv4() : (existingStrategy?.id || uuidv4()),
-            name: cloneNameSuffix ? `${name.trim()} ${cloneNameSuffix}` : name.trim(),
-            description: description.trim() || '',
+            name: cloneNameSuffix ? `${name} ${cloneNameSuffix}` : name,
+            description: description || '',
             modelIds: [...selectedModelIds],
             modelCostTiers: filterTiersToSelected(modelCostTiers),
             modelLatencyMsPerTokenTiers: filterTiersToSelected(modelLatencyTiers),

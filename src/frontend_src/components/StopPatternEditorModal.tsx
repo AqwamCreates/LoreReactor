@@ -45,13 +45,13 @@ function StopPatternEditorModalInner({
     const validate = (): boolean => {
         const newErrors: Record<string, string | undefined> = {};
 
-        if (!name.trim()) newErrors.name = 'Name is required.';
-        if (!pattern.trim()) newErrors.pattern = 'Stop pattern is required.';
+        if (!name) newErrors.name = 'Name is required.';
+        if (!pattern) newErrors.pattern = 'Stop pattern is required.';
 
         let valid = true;
         const validateTriggers = (trs: RegularExpressionTrigger[], key: string) => {
             for (let i = 0; i < trs.length; i++) {
-                if (trs[i].trigger.trim()) {
+                if (trs[i].trigger) {
                     try { new RegExp(trs[i].trigger); } catch {
                         newErrors[key] = `Invalid regex in trigger #${i + 1}.`;
                         valid = false;
@@ -73,15 +73,15 @@ function StopPatternEditorModalInner({
         const now = Date.now();
 
         const filterTriggers = (trs: RegularExpressionTrigger[]) => {
-            const filtered = trs.filter(t => t.trigger.trim());
+            const filtered = trs.filter(t => t.trigger);
             return filtered.length > 0 ? filtered : undefined;
         };
 
         return {
             id: isNewClone ? uuidv4() : (existingStopPattern?.id || uuidv4()),
-            name: isNewClone ? `${name.trim()} (Clone)` : name.trim(),
-            description: description.trim() || undefined,
-            pattern: pattern.trim(),
+            name: isNewClone ? `${name} (Clone)` : name,
+            description: description || undefined,
+            pattern: pattern,
             regularExpressionActivationTriggers: filterTriggers(regexActivationTriggers),
             regularExpressionDeactivationTriggers: filterTriggers(regexDeactivationTriggers),
             firstCreatedTimestamp: isNewClone ? now : (existingStopPattern?.firstCreatedTimestamp || now),

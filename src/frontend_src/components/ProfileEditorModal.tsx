@@ -370,7 +370,7 @@ export function ProfileEditorModal({
 
     const validate = (): boolean => {
         const newErrors: { name?: string } = {};
-        if (!name.trim()) newErrors.name = 'Name is required.';
+        if (!name) newErrors.name = 'Name is required.';
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -380,7 +380,7 @@ export function ProfileEditorModal({
         const getSampler = (sId: string) => allSamplers.find(s => s.id === sId);
         const getStopPattern = (spId: string) => allStopPatterns.find(sp => sp.id === spId);
         return {
-            id, name: profileName, description: description.trim() || undefined,
+            id, name: profileName, description: description || undefined,
             autonomousMode, autonomousInteractionIntervalMs,
             enableAutoSpeechDetection,
             speechVolumeActivationThreshold,
@@ -414,7 +414,7 @@ export function ProfileEditorModal({
                 ...s, id: s.id || `step-${uuidv4()}`, order: i,
                 firstCreatedTimestamp: s.firstCreatedTimestamp || now, lastUpdatedTimestamp: now,
             })),
-            summarizationInstruction: summarizationInstruction.trim() || undefined,
+            summarizationInstruction: summarizationInstruction || undefined,
             autoResumeSignals: [...autoResumeSignals],
             characterLanguageModelSampler: getSampler(characterLanguageModelSamplerId),
             characterTextToSpeechModelSampler: getSampler(characterTextToSpeechModelSamplerId),
@@ -430,8 +430,8 @@ export function ProfileEditorModal({
         };
     };
 
-    const handleSubmit = () => { if (!validate()) return; onSave(buildProfile(ep?.id || uuidv4(), name.trim())); onClose(); };
-    const handleClone = () => { if (!validate()) return; onSave(buildProfile(uuidv4(), `${name.trim()} (Clone)`)); onClose(); };
+    const handleSubmit = () => { if (!validate()) return; onSave(buildProfile(ep?.id || uuidv4(), name)); onClose(); };
+    const handleClone = () => { if (!validate()) return; onSave(buildProfile(uuidv4(), `${name} (Clone)`)); onClose(); };
 
     const handleDragStart = (e: React.DragEvent, index: number) => { setDraggedIndex(index); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(index)); setTimeout(() => { (e.target as HTMLElement).style.opacity = '0.5'; }, 0); };
     const handleDragEnd = (e: React.DragEvent) => { (e.target as HTMLElement).style.opacity = '1'; setDraggedIndex(null); };
@@ -479,7 +479,7 @@ export function ProfileEditorModal({
     const selectedToolUsageDisplayPlacementMode = TOOL_USAGE_DISPLAY_PLACEMENT_MODES.find(m => m.value === toolUsageDisplayPlacementMode) ?? TOOL_USAGE_DISPLAY_PLACEMENT_MODES[1];
 
     const filteredToolKeys = useMemo(() => {
-        const q = toolSearchQuery.toLowerCase().trim();
+        const q = toolSearchQuery.toLowerCase();
         if (!q) return allToolKeys;
         return allToolKeys.filter(toolName => {
             const label = (toolLabels[toolName] ?? toolName).toLowerCase();

@@ -280,7 +280,7 @@ export function CharacterDialoguePromptEditorModal({
     }, [isReadOnly]);
 
     const handleSave = useCallback(() => {
-        const validItems = items.filter(item => item.name.trim().length > 0);
+        const validItems = items.filter(item => item.name.length > 0);
         onSaveDialoguePrompts(validItems);
         onClose();
     }, [items, onSaveDialoguePrompts, onClose]);

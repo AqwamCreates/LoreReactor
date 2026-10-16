@@ -219,7 +219,7 @@ const STRATEGY_INSTRUCTIONS: Record<string, string> = {
 };
 
 function parseJsonResponse(text: string): any {
-    const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const cleaned = text.replace(/```json/g, '').replace(/```/g, '');
     try {
         return JSON.parse(cleaned);
     } catch {
@@ -504,7 +504,7 @@ Example format:
             const responseText = await callLanguageModelStream(selectedAnalysisModelObject, promptInstructions, 512);
             const parsed = parseJsonResponse(responseText);
             if (Array.isArray(parsed) && parsed.length > 0) {
-                const cleanPrompts = parsed.filter(item => typeof item === 'string' && item.trim().length > 0);
+                const cleanPrompts = parsed.filter(item => typeof item === 'string' && item.length > 0);
                 if (cleanPrompts.length > 0) return cleanPrompts.slice(0, testPairsCount);
             }
         } catch {
@@ -516,7 +516,7 @@ Example format:
     // Multi-tiered intelligent refusal classifier (Treats empty response as refusal/suppression)
     const checkResponseRefusal = async (userPrompt: string, responseText: string): Promise<{ isRefused: boolean; reason?: string }> => {
         // Critical: Cloud APIs often return an empty string when the prompt trips automated safety guardrails
-        if (!responseText || responseText.trim().length === 0) {
+        if (!responseText || responseText.length === 0) {
             return { isRefused: true, reason: 'Empty response (suppressed by cloud API content filter)' };
         }
 
@@ -620,7 +620,7 @@ Do not output markdown codeblocks, conversational filler, or commentary. Output 
 
             const responseText = await callLanguageModelStream(selectedAnalysisModelObject, prompt, 1024);
 
-            if (!responseText || responseText.trim().length === 0) {
+            if (!responseText || responseText.length === 0) {
                 throw new Error('Analysis model returned an empty response. The cloud API provider may have suppressed the prompt due to content filtering.');
             }
 
@@ -686,13 +686,13 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
         try {
             const responseText = await callLanguageModelStream(selectedAnalysisModelObject, prompt, 512);
 
-            if (!responseText || responseText.trim().length === 0) {
+            if (!responseText || responseText.length === 0) {
                 throw new Error('The model returned an empty response. The cloud provider content filter may have suppressed the generation. Try applying a different strategy layer like Theatrical Framing or Metaphorical Cloaking.');
             }
 
             setFlags(previousFlags => previousFlags.map(item => 
                 item.id === flagIdentifier 
-                    ? { ...item, previewText: responseText.trim() } 
+                    ? { ...item, previewText: responseText } 
                     : item
             ));
         } catch (caughtError: any) {
@@ -844,13 +844,13 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
 
                 const responseText = await callLanguageModelStream(selectedAnalysisModelObject, prompt, 512);
 
-                if (!responseText || responseText.trim().length === 0) {
+                if (!responseText || responseText.length === 0) {
                     throw new Error('Analysis model returned an empty response during auto-tuning. The prompt may have triggered the cloud provider content filter.');
                 }
 
                 tunedFlags.push({
                     ...flag,
-                    previewText: responseText.trim(),
+                    previewText: responseText,
                     status: 'pending',
                 });
             }
@@ -1301,7 +1301,7 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
                                 [{result.modelName}] User: "{result.userPrompt}"
                             </div>
                             <div style={{ fontSize: '0.8rem', fontStyle: 'italic', opacity: 0.9, marginBottom: '6px' }}>
-                                {result.response.trim().length > 0 ? result.response : (result.passed ? '(Empty output)' : '(Suppressed by content filter)')}
+                                {result.response.length > 0 ? result.response : (result.passed ? '(Empty output)' : '(Suppressed by content filter)')}
                             </div>
                             <div style={{ fontSize: '0.7rem', fontWeight: 600, color: result.passed ? '#22c55e' : '#ef4444' }}>
                                 {result.passed ? '✅ Pass' : `⚠️ Refusal Detected: ${result.refusalReason || 'Blocked'}`}

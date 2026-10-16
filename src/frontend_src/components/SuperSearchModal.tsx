@@ -123,7 +123,7 @@ function makeSnippet(text: string, query: string, radius = 45): string {
     const end = Math.min(text.length, idx + query.length + radius);
     const prefix = start > 0 ? '...' : '';
     const suffix = end < text.length ? '...' : '';
-    return `${prefix}${text.slice(start, end).trim()}${suffix}`;
+    return `${prefix}${text.slice(start, end)}${suffix}`;
 }
 
 function cleanFieldPath(path: string): string {
@@ -137,7 +137,7 @@ function formatFieldName(field: string): string {
         .replace(/([A-Z])/g, ' $1')
         .replace(/[._]/g, ' ')
         .replace(/^./, str => str.toUpperCase())
-        .trim();
+        ;
 }
 
 function findMatchingFields(obj: any, query: string): FieldMatch[] {
@@ -214,7 +214,7 @@ export function SuperSearchModal({
         searchInputRef.current?.focus();
     }, []);
 
-    const lowerQuery = query.toLowerCase().trim();
+    const lowerQuery = query.toLowerCase();
 
     const characterMap = useMemo(() => {
         const map = new Map<string, Character>();
