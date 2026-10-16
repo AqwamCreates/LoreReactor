@@ -1035,10 +1035,12 @@ function executeCalculator(args: string): ToolResult {
 // ─── Web ────────────────────────────────────────────────────────────
 async function executeWeb(args: string): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const query = pArgs.get(0, 'query_or_url', 'query', 'url', 'search') || pArgs.positional.join(' ');
-    if (!query) {
-        return helpResult('web', 'query_or_url="..."', 'search the web or fetch a URL');
-    }
+    
+    // ✅ FIX: Added 'url_or_search_query' to match the browser tool's signature
+    const query = pArgs.get(0, 'url_or_search_query', 'query_or_url', 'query', 'url', 'search') || pArgs.positional.join(' ');
+    
+    if (!query) return helpResult('web', 'url_or_search_query="..."', 'search the web or fetch a URL');
+
     try {
         const isDirectUrl = /^https?:\/\//i.test(query);
         const urlToFetch = isDirectUrl ? query : buildSearchUrl([query]);
