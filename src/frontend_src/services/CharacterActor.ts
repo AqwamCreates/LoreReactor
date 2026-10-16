@@ -135,7 +135,7 @@ async function processToolInvocations(
             }
         }
 
-        const resultContent = toolResult.content?.trim() ? toolResult.content : 'Something went wrong';
+        const resultContent = toolResult.content || 'Something went wrong';
 
         rawReplacements.push({
             rawMatch: inv.rawMatch,
