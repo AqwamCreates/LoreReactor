@@ -13,42 +13,84 @@ type PlacementMode = toolUsageDisplayPlacementMode;
 
 interface ExtractedTool {
     display: string;
-    originalIndex: number; // The index in the 'cleanText' where this tool originally appeared
+    originalIndex: number; 
 }
 
 /**
  * Calculates the exact string index to inject a tool based on the placement mode.
+ * ✅ STRICT RULE: If the tool is on its own line, it counts as its own paragraph.
+ * It will NOT be moved into adjacent paragraphs or break markdown formatting.
  */
 function getInsertionIndex(cleanText: string, mappedIndex: number, mode: PlacementMode): number {
     if (mode === 'top') return 0;
     if (mode === 'bottom') return cleanText.length;
+    if (mode === 'inline') return mappedIndex;
 
-    if (mode === 'after paragraph') {
-        const slice = cleanText.slice(mappedIndex);
-        const match = slice.match(/\n\n/);
-        return match ? mappedIndex + (match.index ?? 0) : cleanText.length;
-    }
-    if (mode === 'before paragraph') {
-        const lastPara = cleanText.slice(0, mappedIndex).lastIndexOf('\n\n');
-        return lastPara !== -1 ? lastPara + 2 : 0;
+    const beforeSlice = cleanText.slice(0, mappedIndex);
+    const afterSlice = cleanText.slice(mappedIndex);
+
+    // ✅ Detect if the tool is isolated by newlines (i.e., on its own line)
+    const isOnOwnLine = 
+        (beforeSlice.length === 0 || /\n\s*$/.test(beforeSlice)) && 
+        (afterSlice.length === 0 || /^\s*\n/.test(afterSlice));
+
+    if (isOnOwnLine) {
+        // It stays exactly where it is, preserving the \n\n[tool]\n\n structure.
+        return mappedIndex;
     }
 
+    // Find the boundaries of the CURRENT paragraph (separated by \n\n)
+    const paraStartSearch = cleanText.lastIndexOf('\n\n', mappedIndex - 1);
+    const startIdx = paraStartSearch === -1 ? 0 : paraStartSearch + 2;
+    
+    const paraEndSearch = cleanText.indexOf('\n\n', mappedIndex);
+    const endIdx = paraEndSearch === -1 ? cleanText.length : paraEndSearch;
+
+    const currentParagraph = cleanText.slice(startIdx, endIdx).trim();
+    const isStandaloneInParagraph = currentParagraph.length === 0;
+
+    // Paragraph-level placements
+    if (mode === 'after paragraph') return endIdx;
+    if (mode === 'before paragraph') return startIdx;
+
+    // If the tool is completely isolated in its paragraph, fallback to paragraph edges
+    if (isStandaloneInParagraph) {
+        return mode === 'after sentence' ? endIdx : startIdx;
+    }
+
+    // Sentence-level placements (strictly bounded to the current paragraph)
     if (mode === 'after sentence') {
-        const slice = cleanText.slice(mappedIndex);
-        const match = slice.match(/[.!?](?:\s|$)/);
-        return match ? mappedIndex + (match.index ?? 0) + 1 : cleanText.length;
-    }
-    if (mode === 'before sentence') {
-        const slice = cleanText.slice(0, mappedIndex);
+        const sliceBefore = cleanText.slice(startIdx, mappedIndex);
         const lastPunct = Math.max(
-            slice.lastIndexOf('.'),
-            slice.lastIndexOf('!'),
-            slice.lastIndexOf('?')
+            sliceBefore.lastIndexOf('.'),
+            sliceBefore.lastIndexOf('!'),
+            sliceBefore.lastIndexOf('?')
         );
-        return lastPunct !== -1 ? lastPunct + 1 : 0;
+        if (lastPunct !== -1) {
+            let idx = startIdx + lastPunct + 1;
+            // Skip over whitespace and closing markdown tags (*, _, ~, ")
+            while (idx < mappedIndex && /[\s*_~"]/.test(cleanText[idx])) {
+                idx++;
+            }
+            return idx;
+        }
+        return startIdx; 
     }
 
-    return mappedIndex; // 'inline'
+    if (mode === 'before sentence') {
+        const sliceAfter = cleanText.slice(mappedIndex, endIdx);
+        const match = sliceAfter.match(/[.!?](?:\s|$)/);
+        if (match) {
+            let idx = mappedIndex + (match.index ?? 0) + 1;
+            while (idx < endIdx && /[\s*_~"]/.test(cleanText[idx])) {
+                idx++;
+            }
+            return idx;
+        }
+        return endIdx; 
+    }
+
+    return mappedIndex;
 }
 
 /**
@@ -118,10 +160,8 @@ function compileRawString(
         const innerString = match[1];
         const startIndex = match.index;
 
-        // Add text before this tool to the clean string
         cleanText += processed.slice(lastIndex, startIndex);
 
-        // Format the tool display string
         const stored = resultMap.get(rawMatch);
         let display = '';
         if (stored) {
@@ -132,7 +172,7 @@ function compileRawString(
 
         extractedTools.push({
             display,
-            originalIndex: cleanText.length // Index in cleanText where this tool *would* have been
+            originalIndex: cleanText.length 
         });
 
         lastIndex = startIndex + rawMatch.length;
@@ -147,32 +187,26 @@ function compileRawString(
     let finalText = cleanText;
 
     if (placementMode === 'top' || placementMode === 'bottom') {
-        // ✅ FIX: For top/bottom, preserve the original chronological order of the tools
         extractedTools.sort((a, b) => a.originalIndex - b.originalIndex);
         const toolDisplays = extractedTools.map(t => t.display).filter(Boolean);
         
         if (toolDisplays.length > 0) {
             const joinedTools = toolDisplays.join('\n\n');
             if (placementMode === 'top') {
-                // Ensure exactly two newlines separate the tools from the text
                 const separator = finalText.startsWith('\n\n') ? '' : finalText.startsWith('\n') ? '\n' : '\n\n';
                 finalText = joinedTools + separator + finalText;
             } else {
-                // Ensure exactly two newlines separate the text from the tools
                 const separator = finalText.endsWith('\n\n') ? '' : finalText.endsWith('\n') ? '\n' : '\n\n';
                 finalText = finalText + separator + joinedTools;
             }
         }
     } else {
-        // For structural placements, sort descending so we insert from back to front 
-        // without invalidating earlier indices
         extractedTools.sort((a, b) => b.originalIndex - a.originalIndex);
         
         for (const tool of extractedTools) {
             const insertIdx = getInsertionIndex(finalText, tool.originalIndex, placementMode);
             
             if (tool.display) {
-                // Add spacing so the tool block doesn't mash into adjacent words
                 const prefix = insertIdx > 0 && finalText[insertIdx - 1] !== ' ' && finalText[insertIdx - 1] !== '\n' ? ' ' : '';
                 const suffix = insertIdx < finalText.length && finalText[insertIdx] !== ' ' && finalText[insertIdx] !== '\n' ? ' ' : '';
                 finalText = finalText.slice(0, insertIdx) + prefix + tool.display + suffix + finalText.slice(insertIdx);
@@ -180,7 +214,13 @@ function compileRawString(
         }
     }
 
-    // 7. Clean up spacing and convert IDs
+    // 7. ✅ FIX: Collapse "ghost paragraphs" (3+ newlines) left behind by extracted tools
+    // When a tool is moved to top/bottom, the newlines that surrounded it are left behind.
+    // This regex finds 3 or more consecutive newlines (with optional spaces/tabs between them)
+    // and collapses them down to exactly 2 newlines (a standard markdown paragraph break).
+    finalText = finalText.replace(/(?:\r?\n[ \t]*){3,}/g, '\n\n');
+    
+    // Clean up multiple spaces and trim
     finalText = finalText.replace(/ {2,}/g, ' ').trim();
 
     if (character) {
