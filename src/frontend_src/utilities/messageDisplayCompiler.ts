@@ -26,7 +26,6 @@ function getInsertionIndex(cleanText: string, mappedIndex: number, mode: Placeme
     if (mode === 'after paragraph') {
         const slice = cleanText.slice(mappedIndex);
         const match = slice.match(/\n\n/);
-        // ✅ FIX: Added ?? 0 to satisfy TypeScript's strict null checks on RegExpMatchArray.index
         return match ? mappedIndex + (match.index ?? 0) : cleanText.length;
     }
     if (mode === 'before paragraph') {
@@ -36,9 +35,7 @@ function getInsertionIndex(cleanText: string, mappedIndex: number, mode: Placeme
 
     if (mode === 'after sentence') {
         const slice = cleanText.slice(mappedIndex);
-        // Match . ! ? followed by whitespace or end of string
         const match = slice.match(/[.!?](?:\s|$)/);
-        // ✅ FIX: Added ?? 0 to satisfy TypeScript's strict null checks on RegExpMatchArray.index
         return match ? mappedIndex + (match.index ?? 0) + 1 : cleanText.length;
     }
     if (mode === 'before sentence') {
@@ -147,18 +144,39 @@ function compileRawString(
     cleanText = cleanText.replace(unclosedCallRegex, '');
 
     // 6. Re-inject tools based on placement mode
-    // Sort descending so we insert from back to front without invalidating earlier indices
-    extractedTools.sort((a, b) => b.originalIndex - a.originalIndex);
-    
     let finalText = cleanText;
-    for (const tool of extractedTools) {
-        const insertIdx = getInsertionIndex(finalText, tool.originalIndex, placementMode);
+
+    if (placementMode === 'top' || placementMode === 'bottom') {
+        // ✅ FIX: For top/bottom, preserve the original chronological order of the tools
+        extractedTools.sort((a, b) => a.originalIndex - b.originalIndex);
+        const toolDisplays = extractedTools.map(t => t.display).filter(Boolean);
         
-        if (tool.display) {
-            // Add spacing so the tool block doesn't mash into adjacent words
-            const prefix = insertIdx > 0 && finalText[insertIdx - 1] !== ' ' && finalText[insertIdx - 1] !== '\n' ? ' ' : '';
-            const suffix = insertIdx < finalText.length && finalText[insertIdx] !== ' ' && finalText[insertIdx] !== '\n' ? ' ' : '';
-            finalText = finalText.slice(0, insertIdx) + prefix + tool.display + suffix + finalText.slice(insertIdx);
+        if (toolDisplays.length > 0) {
+            const joinedTools = toolDisplays.join('\n\n');
+            if (placementMode === 'top') {
+                // Ensure exactly two newlines separate the tools from the text
+                const separator = finalText.startsWith('\n\n') ? '' : finalText.startsWith('\n') ? '\n' : '\n\n';
+                finalText = joinedTools + separator + finalText;
+            } else {
+                // Ensure exactly two newlines separate the text from the tools
+                const separator = finalText.endsWith('\n\n') ? '' : finalText.endsWith('\n') ? '\n' : '\n\n';
+                finalText = finalText + separator + joinedTools;
+            }
+        }
+    } else {
+        // For structural placements, sort descending so we insert from back to front 
+        // without invalidating earlier indices
+        extractedTools.sort((a, b) => b.originalIndex - a.originalIndex);
+        
+        for (const tool of extractedTools) {
+            const insertIdx = getInsertionIndex(finalText, tool.originalIndex, placementMode);
+            
+            if (tool.display) {
+                // Add spacing so the tool block doesn't mash into adjacent words
+                const prefix = insertIdx > 0 && finalText[insertIdx - 1] !== ' ' && finalText[insertIdx - 1] !== '\n' ? ' ' : '';
+                const suffix = insertIdx < finalText.length && finalText[insertIdx] !== ' ' && finalText[insertIdx] !== '\n' ? ' ' : '';
+                finalText = finalText.slice(0, insertIdx) + prefix + tool.display + suffix + finalText.slice(insertIdx);
+            }
         }
     }
 

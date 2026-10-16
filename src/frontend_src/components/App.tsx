@@ -14,6 +14,7 @@ import { localURL } from '../../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useFrontCamera } from '../hooks/useFrontCamera';
+import { compileMessageDisplayText } from '../utilities/messageDisplayCompiler'; 
 import type { Character, Context, Location, AudioTrack, World, LanguageModel, Account, MultiplayerData, InteractionData, ChatMessage, WhisperMessage, HistoryMessage, RawInteractionData, cloudBackend, TextMessage } from '../types';
 import { useSessionStore } from '../hooks/useSessionStore';
 
@@ -74,6 +75,9 @@ import { useWorldManager } from '../hooks/useWorldManager';
 
 // ─── Types & Helpers ─────────────────────────────────────────────────
 
+// ✅ FIX: Stable reference to prevent Zustand infinite re-render loops when participants is undefined
+const EMPTY_PARTICIPANTS: Character[] = [];
+
 interface LoadStep { id: string; label: string; icon: string; done: boolean; }
 
 function deriveCurrentProtagonistId(
@@ -101,7 +105,7 @@ function App() {
 
     // ─── Manager Hooks ───────────────────────────────────────────────
     const interactionDatas = useInteractionDataManager();
-    const entityFolders = useEntityFolderManager(); // ✅ UNIFIED
+    const entityFolders = useEntityFolderManager(); 
     const characters = useCharacterManager();
     const actions = useActionManager(addToast);
     const contexts = useContextManager();
@@ -187,7 +191,7 @@ function App() {
         allAccounts: accounts.accounts,
         allMultiplayerData: multiplayerDatas.multiplayerData,
         allActions: actions.allActions,
-        allEntityFolders: entityFolders.entityFolders, // ✅ Clean & consistent
+        allEntityFolders: entityFolders.entityFolders, 
         requestBorrowedModel: handleRequestBorrowedModel,
         requestPeerInference: mp.multiplayerSync.requestPeerInference,
     });
@@ -200,6 +204,17 @@ function App() {
         setActiveBudgetStrategy, setSelectedGlobalModel,
         activeStrategy, budgetData, playVoice,
     } = session;
+
+    // ✅ FIXED: Derive directly from the already extracted `interactionData` object. 
+    // No redundant Zustand subscriptions. `EMPTY_PARTICIPANTS` prevents array reference mutation.
+    const displayMode = interactionData?.profile?.toolUsageDisplayMode ?? 'simple';
+    const placementMode = interactionData?.profile?.toolUsageDisplayPlacementMode ?? 'inline';
+    const participants = interactionData?.participants ?? EMPTY_PARTICIPANTS;
+
+    const compiledStreamingText = useMemo(
+        () => streamingText ? compileMessageDisplayText(streamingText, displayMode, placementMode, participants) : null,
+        [streamingText, displayMode, placementMode, participants]
+    );
 
     // ─── Chat Restoration ────────────────────────────────────
     const { activeChatRestored } = useChatRestoration({
@@ -588,7 +603,7 @@ function App() {
     const loadSteps = useMemo<LoadStep[]>(() => [
         { id: 'session', label: 'Session Data', icon: '⚙️', done: sessionLoaded },
         { id: 'chats', label: 'Chat Sessions', icon: '💬', done: !interactionDatas.isLoading },
-        { id: 'folders', label: 'Folders', icon: '📁', done: !entityFolders.isLoading }, // ✅ UNIFIED
+        { id: 'folders', label: 'Folders', icon: '📁', done: !entityFolders.isLoading }, 
         { id: 'characters', label: 'Characters', icon: '🎭', done: !characters.isLoading },
         { id: 'actions', label: 'Actions', icon: '⚡', done: !actions.actionsLoading },
         { id: 'contexts', label: 'Contexts', icon: '📜', done: !contexts.isLoading },
@@ -760,8 +775,8 @@ function App() {
                     transparent: true,
                     decorations: false,
                     alwaysOnTop: true,
-                    shadow: false,     // <-- Strips the invisible DWM drop-shadow click buffer
-                    resizable: false,  // <-- Strips the invisible 8px DWM resize grab-border
+                    shadow: false,     
+                    resizable: false,  
                 });
                 setIsOverlayOpen(true);
             }
@@ -1004,7 +1019,7 @@ function App() {
         displayMessages: committedMessages as ChatMessage[],
         portraitUrlCache: viewAssets.portraitUrlCache, 
         displayNameCache,
-        formattedStreamingText: null,
+        compiledStreamingText, 
         centerAvatar: viewAssets.centerAvatar,
         parentMessageId: interactionData?.parentMessageId ?? null,
         parentInteractionDataName: parentChatName,
@@ -1338,9 +1353,9 @@ function App() {
                     allSamplers={samplers.Samplers} allPromptBlocks={promptBlocks.promptBlocks} allStopPatterns={stopPatterns.stopPatterns}
                     allBudgetStrategies={budgetStrategies.strategies} allProfiles={profiles.profiles} allExtensions={extensions.extensions}
                     allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDatas.multiplayerData}
-                    allEntityFolders={entityFolders.entityFolders} // ✅ UNIFIED
-                    onSaveEntityFolder={entityFolders.saveFolder} // ✅ UNIFIED
-                    onDeleteEntityFolder={entityFolders.deleteFolder} // ✅ UNIFIED
+                    allEntityFolders={entityFolders.entityFolders} 
+                    onSaveEntityFolder={entityFolders.saveFolder} 
+                    onDeleteEntityFolder={entityFolders.deleteFolder} 
                     onSwitchChat={interactionDataOperations.handleSwitchInteractionData} 
                     onDeleteInteractionData={onDeleteInteractionDataForModals}
                     onNewInteractionData={interactionDataOperations.handleNewInteractionData}

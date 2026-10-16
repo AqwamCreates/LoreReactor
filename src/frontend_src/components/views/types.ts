@@ -7,15 +7,15 @@ export type viewMode = 'ladder' | 'cinematic' | 'visual novel';
 
 export interface ViewModeProps {
     displayMessages: ChatMessage[];
-    portraitUrlCache: Map<string, string>;
-    displayNameCache: DisplayNameCache;
-    compiledStreamingText: string | null;
+    portraitUrlCache: Map<string, string | null>; // ✅ FIXED: Allow null values
+    displayNameCache: DisplayNameCache | null; // ✅ FIXED: Allow null/any
+    compiledStreamingText: string | null; 
     centerAvatar: Character | null;
     parentMessageId: string | null;
     parentInteractionDataName: string | null;
-    chatHistoryRef: React.RefObject<HTMLDivElement>;
-    messageEndRef: React.RefObject<HTMLDivElement>;
-    editTextAreaRef: React.RefObject<HTMLTextAreaElement>;
+    chatHistoryRef: React.RefObject<HTMLDivElement | null>; // ✅ FIXED: Allow null
+    messageEndRef: React.RefObject<HTMLDivElement | null>; // ✅ FIXED: Allow null
+    editTextAreaRef: React.RefObject<HTMLTextAreaElement | null>; // ✅ FIXED: Allow null
     focusedMessageId: string | null;
     setFocusedMessageId: (id: string | null) => void;
     onAvatarClick: (e: React.MouseEvent, id: string, character: Character) => void;
