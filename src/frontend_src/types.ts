@@ -735,11 +735,20 @@ export interface RawPromptBlock extends RawData {
   locationBindings: string[]
 }
 
-export type textType = "normal" | "quoted" | "bolded" | "italicized" | "underlined" | "parenthesized" | "bracketed" | "braced"
+export type textType = 
+  | "normal" 
+  | "quote" 
+  | "bold" 
+  | "italic" 
+  | "underline" 
+  | "parenthesis" 
+  | "bracket" 
+  | "brace" 
+  | "strikethrough";
 
 export type toolUsageDisplayMode = "none" | "icon" | "simple" | "detailed" | "full" | "raw" // Default is none.
 
-export type toolUsageDisplayPlacementMode = "top" | "before paragraph" | "before sentence" |"inline" | "after sentence" |"after paragraph" | "bottom" // Default is before paragraph.
+export type toolUsageDisplayPlacementMode = "top" | "before paragraph" | "before sentence" | "inline" | "after sentence" |"after paragraph" | "bottom" // Default is before sentence.
 
 export type cacheEfficiencyConfigurationType = 'Character Name' | 'System Prompt' | 'Think Prompt' // 0 -> No optimization, 1 -> Limited to co-located participants, 2 -> All participants
 export interface AutoResumeSignal {

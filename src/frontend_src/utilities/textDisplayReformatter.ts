@@ -1,4 +1,5 @@
 // src/frontend_src/utilities/textDisplayReformatter.ts
+import type { textType } from '../types';
 import { getFormatPreferenceEngine } from '../services/FormatPreferenceEngine';
 import {
     toolCallStartString,
@@ -7,88 +8,78 @@ import {
     toolResultEndString,
 } from '../dictionaries/stringList';
 
-export type FormatCategory = 'plain' | 'italics' | 'bold' | 'underline' | 'strikethrough' | 'quotes' | 'parentheses' | 'brackets';
-
 export interface DetectedSegment {
     start: number;
     end: number;
-    category: FormatCategory;
+    category: textType;
     innerText: string;
     rawMatch: string;
 }
 
 export interface CategoryConversion {
-    detected: FormatCategory;
+    detected: textType;
     label: string;
-    target: FormatCategory;
+    target: textType;
     count: number;
 }
 
-export const CATEGORY_LABELS: Record<FormatCategory, string> = {
-    plain: 'Plain Text',
-    italics: 'Italics',
+export const CATEGORY_LABELS: Record<textType, string> = {
+    normal: 'Plain Text',
+    italic: 'Italic',
     bold: 'Bold',
     underline: 'Underline',
     strikethrough: 'Strikethrough',
-    quotes: 'Quotation Marks',
-    parentheses: 'Parentheses',
-    brackets: 'Square Brackets',
+    quote: 'Quotation Marks',
+    parenthesis: 'Parentheses',
+    bracket: 'Square Brackets',
+    brace: 'Curly Braces',
 };
 
-export const TARGET_OPTIONS: { value: FormatCategory; label: string }[] = [
-    { value: 'plain', label: 'Plain Text' },
-    { value: 'italics', label: 'Italics' },
+export const TARGET_OPTIONS: { value: textType; label: string }[] = [
+    { value: 'normal', label: 'Plain Text' },
+    { value: 'italic', label: 'Italic' },
     { value: 'bold', label: 'Bold' },
     { value: 'underline', label: 'Underline' },
     { value: 'strikethrough', label: 'Strikethrough' },
-    { value: 'quotes', label: 'Quotation Marks' },
-    { value: 'parentheses', label: 'Parentheses' },
-    { value: 'brackets', label: 'Square Brackets' },
+    { value: 'quote', label: 'Quotation Marks' },
+    { value: 'parenthesis', label: 'Parentheses' },
+    { value: 'bracket', label: 'Square Brackets' },
+    { value: 'brace', label: 'Curly Braces' },
 ];
 
-export const DEFAULT_CONVERSIONS: Record<FormatCategory, FormatCategory> = {
-    plain: 'plain',
-    italics: 'italics',
+export const DEFAULT_CONVERSIONS: Record<textType, textType> = {
+    normal: 'normal',
+    italic: 'italic',
     bold: 'bold',
     underline: 'underline',
     strikethrough: 'strikethrough',
-    quotes: 'quotes',
-    parentheses: 'parentheses',
-    brackets: 'brackets',
+    quote: 'quote',
+    parenthesis: 'parenthesis',
+    bracket: 'bracket',
+    brace: 'brace',
 };
 
 interface RawMatch {
     start: number;
     end: number;
-    category: FormatCategory;
+    category: textType;
     innerText: string;
     rawMatch: string;
 }
 
 const NO_PARAGRAPH_BREAK = '(?:[^\r\n]|(?<!\r?\n)\r?\n(?!\r?\n))+?';
 
-const PATTERNS: { regex: RegExp; category: FormatCategory; innerGroup: number }[] = [
-    // Bold: **text** ONLY
+const PATTERNS: { regex: RegExp; category: textType; innerGroup: number }[] = [
     { regex: new RegExp(`(?<!\\*)\\*\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*\\*(?!\\*)`, 'g'), category: 'bold', innerGroup: 1 },
-    
-    // Italics: *text* ONLY
-    { regex: new RegExp(`(?<!\\*)\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*(?!\\*)`, 'g'), category: 'italics', innerGroup: 1 },
-    
-    // Underline: _text_ ONLY (ignoring intra-word underscores like FOX_2)
+    { regex: new RegExp(`(?<!\\*)\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*(?!\\*)`, 'g'), category: 'italic', innerGroup: 1 },
     { regex: new RegExp(`(?<!\\w)_(?!\\s|_)(${NO_PARAGRAPH_BREAK})(?<!\\s|_)_(?!\\w)`, 'g'), category: 'underline', innerGroup: 1 },
-    
-    // Strikethrough: ~~text~~
     { regex: new RegExp(`~~(?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)~~`, 'g'), category: 'strikethrough', innerGroup: 1 },
-
-    // Quotes: straight quotes and curly quotes ONLY
-    { regex: new RegExp(`"(?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)"`, 'g'), category: 'quotes', innerGroup: 1 },
-    { regex: new RegExp(`\\u201C(${NO_PARAGRAPH_BREAK})\\u201D`, 'g'), category: 'quotes', innerGroup: 1 },
-    
-    // Parentheses: (text)
-    { regex: new RegExp(`\\((?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)\\)`, 'g'), category: 'parentheses', innerGroup: 1 },
-    
-    // Brackets: [text]
-    { regex: new RegExp(`\\[(?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)\\]`, 'g'), category: 'brackets', innerGroup: 1 },
+    { regex: new RegExp(`"(?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)"`, 'g'), category: 'quote', innerGroup: 1 },
+    { regex: new RegExp(`\\u201C(${NO_PARAGRAPH_BREAK})\\u201D`, 'g'), category: 'quote', innerGroup: 1 },
+    { regex: new RegExp(`\\((?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)\\)`, 'g'), category: 'parenthesis', innerGroup: 1 },
+    { regex: new RegExp(`\\[(?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)\\]`, 'g'), category: 'bracket', innerGroup: 1 },
+    // ✅ FIXED: Corrected typo from `(?!)\\s)` to `(?!\\s)`
+    { regex: new RegExp(`\\{(?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)\\}`, 'g'), category: 'brace', innerGroup: 1 },
 ];
 
 function findToolRanges(text: string): Array<{ start: number; end: number }> {
@@ -198,7 +189,7 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
                         segments.push({
                             start: gapPos,
                             end: segmentEnd,
-                            category: 'plain',
+                            category: 'normal',
                             innerText: plainGap,
                             rawMatch: plainGap,
                         });
@@ -247,7 +238,7 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
                     segments.push({
                         start: gapPos,
                         end: segmentEnd,
-                        category: 'plain',
+                        category: 'normal',
                         innerText: trailing,
                         rawMatch: trailing,
                     });
@@ -261,29 +252,22 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
     return segments;
 }
 
-export function wrapCoreText(core: string, target: FormatCategory): string {
+export function wrapCoreText(core: string, target: textType): string {
     switch (target) {
-        case 'italics':
-            return `*${core}*`;
-        case 'bold':
-            return `**${core}**`;
-        case 'underline':
-            return `_${core}_`;
-        case 'strikethrough':
-            return `~~${core}~~`;
-        case 'quotes':
-            return `"${core}"`;
-        case 'parentheses':
-            return `(${core})`;
-        case 'brackets':
-            return `[${core}]`;
-        default:
-            return core;
+        case 'italic': return `*${core}*`;
+        case 'bold': return `**${core}**`;
+        case 'underline': return `_${core}_`;
+        case 'strikethrough': return `~~${core}~~`;
+        case 'quote': return `"${core}"`;
+        case 'parenthesis': return `(${core})`;
+        case 'bracket': return `[${core}]`;
+        case 'brace': return `{${core}}`;
+        default: return core;
     }
 }
 
-export function convertPlainSegmentPreservingSpacing(raw: string, target: FormatCategory): string {
-    if (target === 'plain') return raw;
+export function convertPlainSegmentPreservingSpacing(raw: string, target: textType): string {
+    if (target === 'normal') return raw;
 
     const parts = raw.split(/(\r?\n)/);
 
@@ -304,9 +288,9 @@ export function convertPlainSegmentPreservingSpacing(raw: string, target: Format
     }).join('');
 }
 
-export function convertFormattedSegmentPreservingSpacing(seg: DetectedSegment, target: FormatCategory): string {
+export function convertFormattedSegmentPreservingSpacing(seg: DetectedSegment, target: textType): string {
     if (target === seg.category) return seg.rawMatch;
-    if (target === 'plain') return seg.innerText;
+    if (target === 'normal') return seg.innerText;
 
     const match = seg.innerText.match(/^(\s*)([\s\S]*?)(\s*)$/);
     if (!match) return wrapCoreText(seg.innerText, target);
@@ -320,7 +304,7 @@ export function convertFormattedSegmentPreservingSpacing(seg: DetectedSegment, t
 
 export function applyConversions(
     text: string,
-    conversions: Record<FormatCategory, FormatCategory>,
+    conversions: Record<textType, textType>,
 ): string {
     const segments = detectFormatSegments(text);
     if (segments.length === 0) return text;
@@ -331,7 +315,7 @@ export function applyConversions(
         const target = conversions[seg.category] ?? seg.category;
         if (target === seg.category) continue;
 
-        const replacement = seg.category === 'plain'
+        const replacement = seg.category === 'normal'
             ? convertPlainSegmentPreservingSpacing(seg.rawMatch, target)
             : convertFormattedSegmentPreservingSpacing(seg, target);
 
@@ -352,14 +336,14 @@ export function applyConversions(
 }
 
 export function buildCategoryConversions(segments: DetectedSegment[]): CategoryConversion[] {
-    const counts: Record<FormatCategory, number> = {
-        plain: 0, italics: 0, bold: 0, underline: 0,
-        strikethrough: 0, quotes: 0, parentheses: 0, brackets: 0,
+    const counts: Record<textType, number> = {
+        normal: 0, italic: 0, bold: 0, underline: 0,
+        strikethrough: 0, quote: 0, parenthesis: 0, bracket: 0, brace: 0,
     };
 
     for (const seg of segments) counts[seg.category]++;
 
-    const order: FormatCategory[] = ['plain', 'italics', 'bold', 'underline', 'strikethrough', 'quotes', 'parentheses', 'brackets'];
+    const order: textType[] = ['normal', 'italic', 'bold', 'underline', 'strikethrough', 'quote', 'parenthesis', 'bracket', 'brace'];
 
     return order
         .filter(category => counts[category] > 0)
@@ -393,8 +377,8 @@ export function buildCategoryConversionsWithLearning(
 
 export function recordCategoryCorrection(
     text: string,
-    category: FormatCategory,
-    target: FormatCategory,
+    category: textType,
+    target: textType,
 ): void {
     if (category === target) return;
     const segments = detectFormatSegments(text);

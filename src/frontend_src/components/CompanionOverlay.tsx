@@ -133,12 +133,15 @@ export function CompanionOverlay() {
     }, [state.allProfiles, state.activeProfileId, state.interactionData?.profile]);
 
     const displayMode = activeProfile?.toolUsageDisplayMode ?? 'simple';
+    // ✅ FIX 1: Extract placementMode from profile to satisfy compileMessageDisplayText signature
+    const placementMode = activeProfile?.toolUsageDisplayPlacementMode ?? 'inline';
     const participants = state.interactionData?.participants || state.allCharacters || [];
 
     const compiledDialogueText = useMemo(() => {
         if (!currentMessage) return '';
-        return compileMessageDisplayText(currentMessage, displayMode, participants);
-    }, [currentMessage, displayMode, participants]);
+        // ✅ FIX 1: Pass placementMode as the 3rd argument, participants as the 4th
+        return compileMessageDisplayText(currentMessage, displayMode, placementMode, participants);
+    }, [currentMessage, displayMode, placementMode, participants]);
 
     const targetMessageId = currentMessage?.id || state.lastMessageId || null;
 
@@ -149,9 +152,8 @@ export function CompanionOverlay() {
 
     const handleStartEdit = useCallback(() => {
         if (!currentMessage) return;
-        const textToEdit = ('processedTextContent' in currentMessage && currentMessage.processedTextContent)
-            ? currentMessage.processedTextContent
-            : ('textContent' in currentMessage ? currentMessage.textContent : '');
+        // ✅ FIX 2: processedTextContent was eradicated from types. Just read textContent directly.
+        const textToEdit = 'textContent' in currentMessage ? currentMessage.textContent : '';
         setEditDraft(textToEdit);
         setIsEditing(true);
     }, [currentMessage]);
@@ -177,7 +179,7 @@ export function CompanionOverlay() {
         if (!compiledDialogueText) return { rawDisplay: null, reformattedDisplay: null, hasFormats: false };
         const rawDisplay = formatDisplayMessageText(compiledDialogueText);
         const segments = detectFormatSegments(compiledDialogueText);
-        const hasSegments = segments.some(s => s.category !== 'plain');
+        const hasSegments = segments.some(s => s.category !== 'normal');
         const conversions = buildCategoryConversionsWithLearning(compiledDialogueText, segments);
         const conversionMap: Record<string, string> = {};
         for (const c of conversions) conversionMap[c.detected] = c.target;

@@ -1,11 +1,15 @@
 // src/frontend_src/utilities/textDisplayFormatter.tsx
 import type React from 'react';
+import type { textType } from '../types';
 
 const LEFT_DOUBLE_QUOTE = '\u201C'; // “
 const RIGHT_DOUBLE_QUOTE = '\u201D'; // ”
 
+// Extend textType with parser-specific structural nodes
+type FormatterMatchType = textType | 'bold_italic' | 'curly_quote' | 'newline' | 'list_item';
+
 interface MatchCandidate {
-    type: 'bold_italic' | 'bold' | 'italic' | 'underline' | 'strikethrough' | 'quote' | 'curly_quote' | 'newline' | 'list_item';
+    type: FormatterMatchType;
     index: number;
     length: number;
     innerContent?: string;
@@ -130,6 +134,39 @@ function parseFormattedText(
             });
         }
 
+        // 10. Parenthesis (text)
+        const parenMatch = remaining.match(new RegExp(`\\((?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)\\)`));
+        if (parenMatch && parenMatch.index !== undefined) {
+            candidates.push({
+                type: 'parenthesis',
+                index: parenMatch.index,
+                length: parenMatch[0].length,
+                innerContent: parenMatch[1],
+            });
+        }
+
+        // 11. Bracket [text]
+        const bracketMatch = remaining.match(new RegExp(`\\[(?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)\\]`));
+        if (bracketMatch && bracketMatch.index !== undefined) {
+            candidates.push({
+                type: 'bracket',
+                index: bracketMatch.index,
+                length: bracketMatch[0].length,
+                innerContent: bracketMatch[1],
+            });
+        }
+
+        // 12. Brace {text}
+        const braceMatch = remaining.match(new RegExp(`\\{(?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)\\}`));
+        if (braceMatch && braceMatch.index !== undefined) {
+            candidates.push({
+                type: 'brace',
+                index: braceMatch.index,
+                length: braceMatch[0].length,
+                innerContent: braceMatch[1],
+            });
+        }
+
         if (candidates.length === 0) {
             if (isTopLevel) {
                 nodes.push(
@@ -210,6 +247,7 @@ function parseFormattedText(
                 nodes.push(
                     <span
                         key={keyGen.next()}
+                        className="fmt-underline"
                         style={{
                             textDecoration: 'underline',
                             textDecorationColor: 'inherit',
@@ -225,6 +263,7 @@ function parseFormattedText(
                 nodes.push(
                     <span
                         key={keyGen.next()}
+                        className="fmt-strikethrough"
                         style={{
                             textDecoration: 'line-through',
                             textDecorationColor: 'inherit',
@@ -250,6 +289,30 @@ function parseFormattedText(
                         {LEFT_DOUBLE_QUOTE}
                         {parseFormattedText(match.innerContent ?? '', false, keyGen)}
                         {RIGHT_DOUBLE_QUOTE}
+                    </span>
+                );
+                break;
+
+            case 'parenthesis':
+                nodes.push(
+                    <span key={keyGen.next()} className="fmt-parenthesis">
+                        ({parseFormattedText(match.innerContent ?? '', false, keyGen)})
+                    </span>
+                );
+                break;
+
+            case 'bracket':
+                nodes.push(
+                    <span key={keyGen.next()} className="fmt-bracket">
+                        [{parseFormattedText(match.innerContent ?? '', false, keyGen)}]
+                    </span>
+                );
+                break;
+
+            case 'brace':
+                nodes.push(
+                    <span key={keyGen.next()} className="fmt-brace">
+                        {'{'}{parseFormattedText(match.innerContent ?? '', false, keyGen)}{'}'}
                     </span>
                 );
                 break;

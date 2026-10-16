@@ -8,10 +8,10 @@ export interface NarratableSegment {
 }
 
 export function extractNarratableText(
-    text: string, 
-    narrateTexts: Record<textType, boolean>
+    text: string | undefined, 
+    narrateTexts: Record<textType, boolean> | undefined
 ): NarratableSegment[] {
-    if (!text) return [];
+    if (!text || !narrateTexts) return [];
 
     const escapeRegex = (stringToEscape: string) => stringToEscape.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -24,12 +24,13 @@ export function extractNarratableText(
     let cleanText = text.replace(toolRegex, '');
     cleanText = cleanText.replace(/(?:^|\r?\n)[ \t]*[-*+•][ \t]+/g, '\n');
 
-    let segments: NarratableSegment[] = [];
+    const segments: NarratableSegment[] = [];
     let currentSegmentText = '';
     let i = 0;
     
     let insideItalic = false;
     let insideBold = false;
+    let insideStrikethrough = false;
     let insideUnderline = false;
     let insideQuote = false;
 
@@ -38,13 +39,14 @@ export function extractNarratableText(
     let braceDepth = 0;
 
     const getCurrentType = (): textType => {
-        if (insideBold) return 'bolded';
-        if (insideItalic) return 'italicized';
-        if (insideUnderline) return 'underlined';
-        if (insideQuote) return 'quoted';
-        if (parenthesisDepth > 0) return 'parenthesized';
-        if (bracketDepth > 0) return 'bracketed';
-        if (braceDepth > 0) return 'braced';
+        if (insideBold) return 'bold';
+        if (insideItalic) return 'italic';
+        if (insideStrikethrough) return 'strikethrough';
+        if (insideUnderline) return 'underline';
+        if (insideQuote) return 'quote';
+        if (parenthesisDepth > 0) return 'parenthesis';
+        if (bracketDepth > 0) return 'bracket';
+        if (braceDepth > 0) return 'brace';
         return 'normal';
     };
 
@@ -65,13 +67,14 @@ export function extractNarratableText(
     const checkTypeChange = () => {
         const newType = getCurrentType();
         if (newType !== lastType) {
-            if (lastType === 'italicized' && narrateTexts.italicized) fixTrailingPunctuation();
-            else if (lastType === 'bolded' && narrateTexts.bolded) fixTrailingPunctuation();
-            else if (lastType === 'underlined' && narrateTexts.underlined) fixTrailingPunctuation();
-            else if (lastType === 'quoted' && narrateTexts.quoted) fixTrailingPunctuation();
-            else if (lastType === 'parenthesized' && narrateTexts.parenthesized) fixTrailingPunctuation();
-            else if (lastType === 'bracketed' && narrateTexts.bracketed) fixTrailingPunctuation();
-            else if (lastType === 'braced' && narrateTexts.braced) fixTrailingPunctuation();
+            if (lastType === 'italic' && narrateTexts.italic) fixTrailingPunctuation();
+            else if (lastType === 'bold' && narrateTexts.bold) fixTrailingPunctuation();
+            else if (lastType === 'strikethrough' && narrateTexts.strikethrough) fixTrailingPunctuation();
+            else if (lastType === 'underline' && narrateTexts.underline) fixTrailingPunctuation();
+            else if (lastType === 'quote' && narrateTexts.quote) fixTrailingPunctuation();
+            else if (lastType === 'parenthesis' && narrateTexts.parenthesis) fixTrailingPunctuation();
+            else if (lastType === 'bracket' && narrateTexts.bracket) fixTrailingPunctuation();
+            else if (lastType === 'brace' && narrateTexts.brace) fixTrailingPunctuation();
             
             pushSegment();
             lastType = newType;
@@ -95,6 +98,7 @@ export function extractNarratableText(
             if (lookAheadIdx < cleanText.length && cleanText[lookAheadIdx] === '\n') {
                 insideItalic = false;
                 insideBold = false;
+                insideStrikethrough = false;
                 insideUnderline = false;
                 insideQuote = false;
                 parenthesisDepth = 0;
@@ -110,6 +114,18 @@ export function extractNarratableText(
 
             if (canOpen || canClose) {
                 insideBold = !insideBold;
+                checkTypeChange();
+                i += 2;
+                continue;
+            }
+        }
+
+        if (currentCharacter === '~' && nextCharacter === '~') {
+            const canOpen = !insideStrikethrough && nextNextCharacter !== undefined && !/\s/.test(nextNextCharacter);
+            const canClose = insideStrikethrough && previousCharacter !== undefined && !/\s/.test(previousCharacter);
+
+            if (canOpen || canClose) {
+                insideStrikethrough = !insideStrikethrough;
                 checkTypeChange();
                 i += 2;
                 continue;
@@ -262,15 +278,16 @@ export function extractNarratableText(
 
         let shouldIncludeCharacter = false;
         
-        if (insideItalic && narrateTexts.italicized) shouldIncludeCharacter = true;
-        else if (insideBold && narrateTexts.bolded) shouldIncludeCharacter = true;
-        else if (insideUnderline && narrateTexts.underlined) shouldIncludeCharacter = true;
-        else if (insideQuote && narrateTexts.quoted) shouldIncludeCharacter = true;
-        else if (isInsideParenthesis && narrateTexts.parenthesized) shouldIncludeCharacter = true;
-        else if (isInsideBracket && narrateTexts.bracketed) shouldIncludeCharacter = true;
-        else if (isInsideBrace && narrateTexts.braced) shouldIncludeCharacter = true;
+        if (insideItalic && narrateTexts.italic) shouldIncludeCharacter = true;
+        else if (insideBold && narrateTexts.bold) shouldIncludeCharacter = true;
+        else if (insideStrikethrough && narrateTexts.strikethrough) shouldIncludeCharacter = true;
+        else if (insideUnderline && narrateTexts.underline) shouldIncludeCharacter = true;
+        else if (insideQuote && narrateTexts.quote) shouldIncludeCharacter = true;
+        else if (isInsideParenthesis && narrateTexts.parenthesis) shouldIncludeCharacter = true;
+        else if (isInsideBracket && narrateTexts.bracket) shouldIncludeCharacter = true;
+        else if (isInsideBrace && narrateTexts.brace) shouldIncludeCharacter = true;
         else if (
-            !insideItalic && !insideBold && !insideUnderline && !insideQuote && 
+            !insideItalic && !insideBold && !insideStrikethrough && !insideUnderline && !insideQuote && 
             !isInsideParenthesis && !isInsideBracket && !isInsideBrace && 
             narrateTexts.normal
         ) shouldIncludeCharacter = true;

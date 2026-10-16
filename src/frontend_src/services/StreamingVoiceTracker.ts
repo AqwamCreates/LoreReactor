@@ -12,8 +12,8 @@ interface PendingJob {
 }
 
 export class StreamingVoiceTracker {
-    private buffer: string = '';
-    private sentenceAccumulator: string = '';
+    private buffer = '';
+    private sentenceAccumulator = '';
     private pendingSegmentType: textType = 'normal';
     private processedSegments: NarratableSegment[] = [];
     
@@ -21,17 +21,17 @@ export class StreamingVoiceTracker {
     private character: Character;
     private allCharacters: Character[];
     
-    private isActive: boolean = false;
-    private isKilled: boolean = false;
-    private isFlushing: boolean = false;
-    private hasVoiceConfigured: boolean = false;
+    private isActive = false;
+    private isKilled = false;
+    private isFlushing = false;
+    private hasVoiceConfigured = false;
     private startPromise: Promise<boolean> | null = null;
     
     private voiceReferences: Map<string, string> = new Map();
     
     // Strict sequence tracking for in-order playback
-    private nextSequenceId: number = 0;
-    private nextPlaySequenceId: number = 0;
+    private nextSequenceId = 0;
+    private nextPlaySequenceId = 0;
     
     // Storage for completed audio buffers (handles out-of-order network responses)
     private completedAudioBuffers: Map<number, ArrayBuffer> = new Map();
@@ -46,8 +46,8 @@ export class StreamingVoiceTracker {
     // Chunk 2+: Runway Builder (~75 chars / ~70 frames) -> generates ~5.6s audio, builds surplus cushion
     private readonly STEADY_CHUNK_MIN_CHARS = 75;
 
-    private isFirstChunkSent: boolean = false;
-    private activeRequests: number = 0;
+    private isFirstChunkSent = false;
+    private activeRequests = 0;
     private pendingSentences: PendingJob[] = [];
 
     constructor(character: Character, allCharacters: Character[] = []) {
@@ -115,12 +115,8 @@ export class StreamingVoiceTracker {
         if (!text) return;
         const profile = useSessionStore.getState().interactionData?.profile;
         const narrateTexts = profile?.narrateTexts;
-        
-        const effectiveNarrateTexts = (narrateTexts && Object.keys(narrateTexts).length > 0)
-            ? narrateTexts 
-            : { normal: true, quoted: true, bolded: true, italicized: true, parenthesized: true, bracketed: true, braced: true } as Record<textType, boolean>;
 
-        const segments = extractNarratableText(text, effectiveNarrateTexts);
+        const segments = extractNarratableText(text, narrateTexts);
         this.processedSegments = segments;
         
         if (segments.length > 0) {
@@ -133,12 +129,8 @@ export class StreamingVoiceTracker {
 
         const profile = useSessionStore.getState().interactionData?.profile;
         const narrateTexts = profile?.narrateTexts;
-        
-        const effectiveNarrateTexts = (narrateTexts && Object.keys(narrateTexts).length > 0)
-            ? narrateTexts 
-            : { normal: true, quoted: true, bolded: true, italicized: true, parenthesized: true, bracketed: true, braced: true } as Record<textType, boolean>;
 
-        const newSegments = extractNarratableText(text, effectiveNarrateTexts);
+        const newSegments = extractNarratableText(text, narrateTexts);
 
         let i = 0;
         while (i < this.processedSegments.length && i < newSegments.length) {

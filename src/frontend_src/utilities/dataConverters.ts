@@ -465,8 +465,9 @@ function parseCacheEfficiencyLevels(raw: unknown): Record<cacheEfficiencyConfigu
 
 function parseNarrateTextCharacterIds(raw: unknown): Record<textType, string> {
     const defaults: Record<textType, string> = {
-        normal: '', quoted: '', bolded: '', italicized: '',
-        underlined: '', parenthesized: '', bracketed: '', braced: ''
+        normal: '', quote: '', bold: '', italic: '',
+        underline: '', parenthesis: '', bracket: '', brace: '',
+        strikethrough: ''
     };
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
     const obj = raw as Record<string, unknown>;
@@ -532,13 +533,14 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         autoResumeSignals: Array.isArray(p.autoResumeSignals) ? (p.autoResumeSignals as AutoResumeSignal[]) : [],
         narrateTexts: {
             normal: (rawNarrateTexts.normal as boolean) ?? defaultNarrateTexts.normal,
-            quoted: (rawNarrateTexts.quoted as boolean) ?? defaultNarrateTexts.quoted,
-            bolded: (rawNarrateTexts.bolded as boolean) ?? defaultNarrateTexts.bolded,
-            underlined: (rawNarrateTexts.underlined as boolean) ?? defaultNarrateTexts.underlined,
-            italicized: (rawNarrateTexts.italicized as boolean) ?? defaultNarrateTexts.italicized,
-            parenthesized: (rawNarrateTexts.parenthesized as boolean) ?? defaultNarrateTexts.parenthesized,
-            bracketed: (rawNarrateTexts.bracketed as boolean) ?? defaultNarrateTexts.bracketed,
-            braced: (rawNarrateTexts.braced as boolean) ?? defaultNarrateTexts.braced,
+            quote: (rawNarrateTexts.quote as boolean) ?? defaultNarrateTexts.quote,
+            bold: (rawNarrateTexts.bold as boolean) ?? defaultNarrateTexts.bold,
+            underline: (rawNarrateTexts.underline as boolean) ?? defaultNarrateTexts.underline,
+            italic: (rawNarrateTexts.italic as boolean) ?? defaultNarrateTexts.italic,
+            parenthesis: (rawNarrateTexts.parenthesis as boolean) ?? defaultNarrateTexts.parenthesis,
+            bracket: (rawNarrateTexts.bracket as boolean) ?? defaultNarrateTexts.bracket,
+            brace: (rawNarrateTexts.brace as boolean) ?? defaultNarrateTexts.brace,
+            strikethrough: (rawNarrateTexts.strikethrough as boolean) ?? defaultNarrateTexts.strikethrough,
         },
         narrateTextCharacterIds: parseNarrateTextCharacterIds(p.narrateTextCharacterIds),
         stripThinkTokens: (p.stripThinkTokens as boolean) ?? true,

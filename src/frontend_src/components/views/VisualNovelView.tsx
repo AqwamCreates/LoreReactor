@@ -1,7 +1,7 @@
 // src/frontend_src/components/views/VisualNovelView.tsx
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import type { ViewModeProps } from './types';
-import type { Character, HistoryMessage } from '../../types';
+import type { Character, HistoryMessage, textType } from '../../types';
 import { MemoizedMessageText } from '../MemoizedMessageText';
 import { useVisualNovelSpriteStates } from '../../hooks/useVisualNovelSpriteStates';
 import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
@@ -17,7 +17,6 @@ import {
     DEFAULT_CONVERSIONS,
     TARGET_OPTIONS,
     type CategoryConversion,
-    type FormatCategory,
 } from '../../utilities/textDisplayReformatter';
 
 const AMBIENT_NARRATOR_ID = '___ambient_narrator___';
@@ -238,7 +237,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     }, [isEditingLastSpeaker, editDraft]);
 
     const conversionMap = useMemo(() => {
-        const map: Record<FormatCategory, FormatCategory> = { ...DEFAULT_CONVERSIONS };
+        const map: Record<textType, textType> = { ...DEFAULT_CONVERSIONS };
         for (const c of conversions) map[c.detected] = c.target;
         return map;
     }, [conversions]);
@@ -275,7 +274,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         setRawDraft(e.target.value);
     }, []);
 
-    const updateConversionTarget = useCallback((category: FormatCategory, target: FormatCategory) => {
+    const updateConversionTarget = useCallback((category: textType, target: textType) => {
         setConversions(prev => prev.map(c => c.detected === category ? { ...c, target } : c));
         recordCategoryCorrection(rawDraft, category, target);
     }, [rawDraft]);
@@ -556,7 +555,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                                     </span>
                                                     <span className="vn-reformat-arrow">→</span>
                                                     <select className="vn-reformat-select" value={conversion.target}
-                                                        onChange={e => updateConversionTarget(conversion.detected, e.target.value as FormatCategory)}>
+                                                        onChange={e => updateConversionTarget(conversion.detected, e.target.value as textType)}>
                                                         {TARGET_OPTIONS.map(option => (
                                                             <option key={option.value} value={option.value}>{option.label}</option>
                                                         ))}

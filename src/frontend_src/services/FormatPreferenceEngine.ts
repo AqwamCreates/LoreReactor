@@ -1,10 +1,10 @@
 // src/frontend_src/services/FormatPreferenceEngine.ts
-import type { FormatCategory } from '../utilities/textDisplayReformatter';
 import { DIALOGUE_STEMS, getStemmedContentWords } from '../utilities/stemmerHelper';
 import {
     loadRawFormatPreferences,
     saveRawFormatPreferences,
 } from '../storages/serverStorage';
+import type { textType } from '../types';
 
 type position = 'start' | 'start middle' | 'middle' | 'middle end' | 'end';
 type lengthCategory = 'one' | 'very short' | 'short' | 'medium' | 'long' | 'very long';
@@ -12,8 +12,8 @@ type punctuationType = 'none' | 'comma' | 'period' | 'question' | 'exclamation' 
 
 export interface FormatContext {
     position: position;
-    previousFormat?: FormatCategory;
-    nextFormat?: FormatCategory;
+    previousFormat?: textType;
+    nextFormat?: textType;
     insideQuote: boolean;
     afterDialogueTag: boolean;
     lengthCategory: lengthCategory;
@@ -21,15 +21,16 @@ export interface FormatContext {
 }
 
 export interface FormatPreferenceData {
-    globalTransitions: Record<FormatCategory, Record<FormatCategory, number>>;
+    globalTransitions: Record<textType, Record<textType, number>>;
     featureCounts: Record<string, number>;
-    featureTargetCounts: Record<string, Record<FormatCategory, number>>;
+    featureTargetCounts: Record<string, Record<textType, number>>;
     lastUpdatedTimestamp: number;
 }
 
-const ALL_CATEGORIES: FormatCategory[] = [
-    'plain', 'italics', 'bold', 'underline', 'strikethrough',
-    'quotes', 'parentheses', 'brackets',
+// ✅ UPDATED: Strict stem forms, including 'brace' and 'strikethrough'
+const ALL_CATEGORIES: textType[] = [
+    'normal', 'italic', 'bold', 'underline', 'strikethrough',
+    'quote', 'parenthesis', 'bracket', 'brace',
 ];
 
 const AUTO_APPLY_THRESHOLD = 0.75;
@@ -45,7 +46,7 @@ export class FormatPreferenceEngine {
     }
 
     private createEmptyData(): FormatPreferenceData {
-        const globalTransitions: Record<FormatCategory, Record<FormatCategory, number>> = {} as any;
+        const globalTransitions: Record<textType, Record<textType, number>> = {} as any;
         for (const cat of ALL_CATEGORIES) {
             globalTransitions[cat] = {} as any;
             for (const target of ALL_CATEGORIES) {
@@ -93,7 +94,7 @@ export class FormatPreferenceEngine {
         text: string,
         segmentStart: number,
         segmentEnd: number,
-        segments: { start: number; end: number; category: FormatCategory }[],
+        segments: { start: number; end: number; category: textType }[],
     ): FormatContext {
         const totalLength = text.length;
         const segmentLength = segmentEnd - segmentStart;
@@ -175,8 +176,8 @@ export class FormatPreferenceEngine {
     }
 
     recordCorrection(
-        detected: FormatCategory,
-        target: FormatCategory,
+        detected: textType,
+        target: textType,
         context: FormatContext,
     ): void {
         this.data.globalTransitions[detected][target]++;
@@ -200,9 +201,9 @@ export class FormatPreferenceEngine {
     }
 
     predictTarget(
-        detected: FormatCategory,
+        detected: textType,
         context: FormatContext,
-    ): { target: FormatCategory; confidence: number } | null {
+    ): { target: textType; confidence: number } | null {
         const activeFeatures = this.extractActiveFeatures(context);
         const NUM_CATEGORIES = ALL_CATEGORIES.length;
 
@@ -213,7 +214,7 @@ export class FormatPreferenceEngine {
 
         if (totalGlobal === 0) return null;
 
-        const logScores: Record<FormatCategory, number> = {} as any;
+        const logScores: Record<textType, number> = {} as any;
         
         for (const target of ALL_CATEGORIES) {
             const globalCount = this.data.globalTransitions[detected][target];
@@ -237,7 +238,7 @@ export class FormatPreferenceEngine {
             sumExp += Math.exp(logScores[target] - maxLogScore);
         }
 
-        let bestTarget: FormatCategory | null = null;
+        let bestTarget: textType | null = null;
         let bestConfidence = 0;
 
         for (const target of ALL_CATEGORIES) {
@@ -259,8 +260,8 @@ export class FormatPreferenceEngine {
         return { ...this.data };
     }
 
-    getAutoConversions(): Record<FormatCategory, { target: FormatCategory; confidence: number } | null> {
-        const result: Record<FormatCategory, { target: FormatCategory; confidence: number } | null> = {} as any;
+    getAutoConversions(): Record<textType, { target: textType; confidence: number } | null> {
+        const result: Record<textType, { target: textType; confidence: number } | null> = {} as any;
 
         for (const cat of ALL_CATEGORIES) {
             const defaultContext: FormatContext = {

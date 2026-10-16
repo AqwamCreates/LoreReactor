@@ -10,9 +10,11 @@ import { compileMessageDisplayText } from '../utilities/messageDisplayCompiler';
  */
 export function useCompiledMessageText(message: HistoryMessage | null | undefined): string {
     const participants = useSessionStore(s => s.interactionData?.participants || []);
-    const displayMode = useSessionStore(s => s.interactionData?.profile?.toolUsageDisplayMode);
+    const profile = useSessionStore(s => s.interactionData?.profile)
+    const toolUsageDisplayMode = profile?.toolUsageDisplayMode;
+    const placementMode = profile?.toolUsageDisplayPlacementMode
 
     return useMemo(() => {
-        return compileMessageDisplayText(message, displayMode, participants);
-    }, [message, displayMode, participants]);
+        return compileMessageDisplayText(message, toolUsageDisplayMode, placementMode, participants);
+    }, [message, toolUsageDisplayMode, placementMode, participants]);
 }

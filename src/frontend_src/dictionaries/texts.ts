@@ -90,11 +90,12 @@ export const characterToolDescriptions: Record<tool, string> = {
 
 export const narrateTextLabels: Record<textType, string> = {
     normal: 'Normal Text', 
-    quoted: 'Quoted Text', 
-    bolded: 'Bolded Text',
-    italicized: 'Italicized Text', 
-    underlined: 'Underlined Text', // ✅ Placed after italics
-    parenthesized: 'Parenthesized Text',
-    bracketed: 'Bracketed Text', 
-    braced: 'Braced Text',
+    quote: 'Quoted Text', 
+    bold: 'Bolded Text',
+    italic: 'Italicized Text', 
+    underline: 'Underlined Text', // ✅ Placed after italics
+    parenthesis: 'Parenthesized Text',
+    bracket: 'Bracketed Text', 
+    brace: 'Braced Text',
+    strikethrough: 'Strikethrough Text'
 };

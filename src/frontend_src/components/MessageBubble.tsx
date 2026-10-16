@@ -1,6 +1,6 @@
 // src/frontend_src/components/MessageBubble.tsx
 import React from 'react';
-import type { Character, TextMessage } from '../types';
+import type { Character, TextMessage, textType } from '../types';
 import { MemoizedMessageText } from './MemoizedMessageText';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useSessionStore } from '../hooks/useSessionStore';
@@ -14,7 +14,6 @@ import {
     learnFromManualEdits,
     TARGET_OPTIONS,
     type CategoryConversion,
-    type FormatCategory,
 } from '../utilities/textDisplayReformatter';
 
 interface MessageBubbleProps {
@@ -137,7 +136,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     }, [isEditing, editingId, message.id, editDraft]);
 
     const conversionMap = React.useMemo(() => {
-        const map: Record<FormatCategory, FormatCategory> = {} as Record<FormatCategory, FormatCategory>;
+        const map: Record<textType, textType> = {} as Record<textType, textType>;
         for (const c of conversions) map[c.detected] = c.target;
         return map;
     }, [conversions]);
@@ -174,7 +173,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         setEditDraft(e.target.value);
     }, [setEditDraft]);
 
-    const updateConversionTarget = React.useCallback((category: FormatCategory, target: FormatCategory) => {
+    const updateConversionTarget = React.useCallback((category: textType, target: textType) => {
         setConversions(prev => prev.map(c =>
             c.detected === category ? { ...c, target } : c
         ));
@@ -344,7 +343,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                                     <select
                                                         className="message-reformat-select"
                                                         value={conversion.target}
-                                                        onChange={e => updateConversionTarget(conversion.detected, e.target.value as FormatCategory)}
+                                                        onChange={e => updateConversionTarget(conversion.detected, e.target.value as textType)}
                                                     >
                                                         {TARGET_OPTIONS.map(option => (
                                                             <option key={option.value} value={option.value}>

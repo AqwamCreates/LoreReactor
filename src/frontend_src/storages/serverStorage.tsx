@@ -996,6 +996,7 @@ const profileRepo = createRepository<Profile, RawProfile>({
         forceNameReveal: false,
         enableAmbientNarration: false,
         toolUsageDisplayMode: 'none',
+        toolUsageDisplayPlacementMode: 'before sentence',
         enableCharacterExpression: false,
         
         enableAutoSpeechDetection: false,
