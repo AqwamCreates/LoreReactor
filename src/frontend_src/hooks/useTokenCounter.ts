@@ -1,10 +1,10 @@
 // src/frontend_src/hooks/useTokenCounter.ts
 import { useState, useRef, useEffect } from 'react';
-import type { InteractionData, ChatMessage, LanguageModel, BudgetStrategy } from '../types';
+import type { InteractionData, LanguageModel, BudgetStrategy, TextMessage } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 
 interface UseTokenCounterOptions {
-    messages: ChatMessage[];
+    messages: TextMessage[];
     interactionData: InteractionData | null;
     selectedModelId: string | null;
     allLanguageModels: LanguageModel[];
@@ -69,12 +69,12 @@ export function useTokenCounter(options: UseTokenCounterOptions) {
                 const currentModelId = tokenizer.id;
 
                 // 1. Identify which messages need fresh token counting
-                const messagesToCount: ChatMessage[] = [];
+                const messagesToCount: TextMessage[] = [];
                 for (const msg of messages) {
-                    if (msg.messageType !== 'chat') continue;
+                    if (msg.messageType !== 'chat' && msg.messageType !== 'whisper') continue;
 
                     // If text was cleared, immediately zero out the cache entry
-                    if (!msg.textContent?.trim()) {
+                    if (!msg.textContent) {
                         cache.set(msg.id, {
                             tokenCount: 0,
                             timestamp: msg.lastUpdatedTimestamp,
