@@ -3,7 +3,7 @@ import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, 
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { createChatHistoryPrompt, getParticipantTag, replacePlaceholders, getUniversalMessageFilterFlags, getFilteredTextMessages, deriveDelimiters } from '../utilities/promptLogic';
+import { createChatHistoryArray, getParticipantTag, replacePlaceholders, getUniversalMessageFilterFlags, getFilteredTextMessages, deriveDelimiters } from '../utilities/promptLogic';
 import { detectName } from '../utilities/nameDetection';
 import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
 import { getCoLocatedProtagonists, getCoLocatedParticipants } from '../utilities/locationLogic';
@@ -141,7 +141,10 @@ export async function generateCharacterMemory(
         delimiters,
     };
 
-    const { chatHistoryPrompt } = createChatHistoryPrompt(ctx);
+    // ✅ FIXED: Use createChatHistoryArray and join the resulting array
+    const { chatHistoryArray } = createChatHistoryArray(ctx);
+    const chatHistoryPrompt = chatHistoryArray.join('\n');
+    
     const participantTag = ctx.characterParticipantTag;
 
     let recentExpression = 'neutral';
@@ -204,14 +207,13 @@ export async function generateCharacterMemory(
  */
 export async function generateMissingSummaries(
     interactionData: InteractionData,
-    character: Character, // ADDED: Scope to character perspective
+    character: Character,
     windowSize: number,
     modelId: string,
     maxTokens = 256,
 ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
     
-    // STRICTLY USE LOCAL HISTORY FOR CHARACTER PERSPECTIVE
     const history = getLocalMessageHistory(interactionData, character);
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
 
@@ -239,7 +241,6 @@ export async function generateMissingSummaries(
     if (toSummarize.length === 0) return results;
 
     const profile = interactionData.profile;
-
     const interactionDataSummarizationSampler = profile?.interactionDataSummarizationSampler;
 
     for (const msg of toSummarize) {
@@ -290,7 +291,6 @@ export async function generateLocationVisitSummary(
     endIdx: number,
     maxTokens = 512,
 ): Promise<string | null> {
-    // Must use global history here to match the startIdx/endIdx from detectUnsummarizedLocationDepartures
     const history = getLocalMessageHistory(interactionData, character);
     if (startIdx < 0 || endIdx >= history.length || startIdx > endIdx) return null;
 
@@ -400,17 +400,15 @@ export async function generateLocationVisitSummary(
  */
 export async function generatePeriodicCompression(
     interactionData: InteractionData,
-    character: Character, // ADDED: Scope to character perspective
+    character: Character,
     periodicCompressionInterval: number,
     periodicCompressionChunkSize: number,
     maxTokens = 512,
 ): Promise<Context[]> {
-    // STRICTLY USE LOCAL HISTORY FOR CHARACTER PERSPECTIVE
     const history = getLocalMessageHistory(interactionData, character);
     const existingContexts = interactionData.contexts || [];
 
     const profile = interactionData.profile;
-
     const interactionDataSummarizationSampler = profile?.interactionDataSummarizationSampler;
 
     const compressedRanges = new Set<string>();
@@ -500,12 +498,11 @@ async function mergeSummaries(
  */
 export async function generateRecursiveSummary(
     interactionData: InteractionData,
-    character: Character, // ADDED: Scope to character perspective
+    character: Character,
     chunkSize: number,
     maxDepth: number,
     maxTokens = 1024,
 ): Promise<Context[]> {
-    // STRICTLY USE LOCAL HISTORY FOR CHARACTER PERSPECTIVE
     const history = getLocalMessageHistory(interactionData, character);
     const existingContexts = interactionData.contexts || [];
     const now = Date.now();
@@ -627,7 +624,7 @@ export async function generateRecursiveSummary(
  */
 export async function generateEntropyPruningSummaries(
     interactionData: InteractionData,
-    character: Character, // ADDED: Scope to character perspective
+    character: Character,
     modelId: string,
     maxTokens = 256,
     entropyPruningChunkSize = 3,
@@ -636,7 +633,6 @@ export async function generateEntropyPruningSummaries(
 ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
     
-    // STRICTLY USE LOCAL HISTORY FOR CHARACTER PERSPECTIVE
     const history = getLocalMessageHistory(interactionData, character);
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
 
@@ -645,7 +641,6 @@ export async function generateEntropyPruningSummaries(
 
     if (visibleMessages.length <= entropyPruningChunkSize) return results;
 
-    // Build a map of messageId -> locationId for boundary checks
     const messageLocationMap = new Map<string, string>();
     for (const [locId, messages] of Object.entries(interactionData.interactionHistories || {})) {
         for (const msg of messages) {
@@ -702,8 +697,8 @@ export async function generateEntropyPruningSummaries(
     }
 
     const profile = interactionData.profile;
-
     const interactionDataSummarizationSampler = profile?.interactionDataSummarizationSampler;
+    
     for (let i = 0; i < cutoffVisibleIndex; i++) {
         const msg = visibleMessages[i];
         if (hasModelSummary(msg, modelId)) continue;
