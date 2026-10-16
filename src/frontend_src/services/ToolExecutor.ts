@@ -1043,8 +1043,8 @@ async function executeWeb(args: string): Promise<ToolResult> {
 
     try {
         const isDirectUrl = /^https?:\/\//i.test(input);
-        const urlToFetch = isDirectUrl ? input : buildSearchUrl([input]);
-        const results = await fetchLinkContent(urlToFetch, { maxDepth: 0, cacheTimeToLiveMs: 5 * 60 * 1000, fetchMode: 'full', includeImages: false });
+        const urlToFetch = isDirectUrl ? input : buildSearchUrl([input], 'DuckDuckGo');
+        const results = await fetchLinkContent(urlToFetch, { maxDepth: 0, cacheTimeToLiveMs: 5 * 60 * 1000, fetchMode: 'extract', includeImages: false });
         const valid = results.filter(r => !r.error && r.content.length > 0);
         if (valid.length === 0) {
             return { toolType: 'web', args, content: `[Error: ${results[0]?.error || 'No content retrieved'}]`, displayReplacement: '[Error: Fetch failed]' };

@@ -11,6 +11,8 @@ const DEFAULT_CACHE_TIME_TO_LIVE_MS = 5 * 60 * 1000;
 const MAX_FETCH_DEPTH = 3;
 const FETCH_PROXY_URL = `${localURL}/api/web/fetch`;
 
+const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
 const tokenEngine = getLanguageModelEngine();
 
 interface FetchResult {
@@ -48,7 +50,7 @@ async function proxiedFetch(url: string, acceptHeader: string): Promise<{
             body: JSON.stringify({
                 url,
                 headers: {
-                    'User-Agent': 'LoreReactor/1.0 (Context Fetcher)',
+                    'User-Agent': DEFAULT_USER_AGENT,
                     'Accept': acceptHeader,
                 },
             }),
@@ -56,7 +58,6 @@ async function proxiedFetch(url: string, acceptHeader: string): Promise<{
 
         const contentType = response.headers.get('content-type') || '';
 
-        // Handle non-JSON proxy responses gracefully
         if (!contentType.includes('application/json')) {
             const rawText = await response.text().catch(() => '');
             return {
@@ -70,7 +71,6 @@ async function proxiedFetch(url: string, acceptHeader: string): Promise<{
 
         const json = await response.json();
 
-        // Proxy may return its own error structure
         if (!response.ok) {
             return {
                 ok: false,
