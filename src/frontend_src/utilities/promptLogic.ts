@@ -5,7 +5,7 @@ import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
 import { fetchMultipleContextUrls } from './linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
-import { toolCallStartString, toolCallEndString } from '../dictionaries/stringList';
+import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import { type TimeData, fetchCurrentWeather, generateSkyViewText, getLocation, getTimeDataFromCoordinates } from '../services/LocationEngine';
 import { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter, getCurrentLocationId, } from './locationLogic';
 import { defaultInputStrategy } from '../dictionaries/defaults';
@@ -1206,7 +1206,7 @@ function buildToolInstructionLines(ctx: PromptBuildContext): string[] {
 
     if (enabledToolNames.length > 0) {
         const firstTool = enabledToolNames[0];
-        lines.push(`${ctx.delimiters.blockStart('system')}When tools are involved, I must read answers from the tools to get accurate and precise response only before making any sentences. If my initial assumption contradicts the tool result, I will naturally correct myself based on my character's personality. I can call the tool like ${toolCallStartString}${firstTool}()${toolCallEndString} to get direct result or access the help page. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results. Tool invocation markers are only visible to me. Available tools: ${enabledToolNames.join(', ')}.${ctx.delimiters.blockEnd}`);
+        lines.push(`${ctx.delimiters.blockStart('system')}When tools are involved, I must read answers from the tools to get accurate and precise response only before making any sentences. If my initial assumption contradicts the tool result, I will naturally correct myself based on my character's personality. I can call the tool like ${toolCallStartString}${firstTool}()${toolCallEndString} to get direct result or access the help page. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results. Tool invocation markers are only visible to me. I will only use ${toolResultStartString} and ${toolResultEndString} if ${toolCallEndString} is not paired with ${toolResultStartString}. Available tools: ${enabledToolNames.join(', ')}.${ctx.delimiters.blockEnd}`);
         lines.push(`${ctx.delimiters.blockStart('system')}When I use ${toolCallStartString}tool()${toolCallEndString} as my first word, I will activate tool message mode where the whole message text are only visible to me.${ctx.delimiters.blockEnd}`)
     }
 
