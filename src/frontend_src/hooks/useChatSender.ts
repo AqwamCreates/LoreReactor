@@ -31,12 +31,12 @@ import { textToSpeechEngine } from '../services/TextToSpeechEngine';
 
 interface UseChatSenderOptions {
     isMultiplayerClient: boolean;
-    joinProtagonistRef: React.MutableRefObject<Character | null>;
-    allCharactersRef: React.MutableRefObject<Character[]>;
-    allActionsRef: React.MutableRefObject<InterjectableAction[]>;
-    allPromptBlocksRef: React.MutableRefObject<PromptBlock[] | undefined>;
-    onMessageBroadcastRef: React.MutableRefObject<((message: HistoryMessage) => void) | undefined>;
-    onStateBroadcastRef: React.MutableRefObject<((state: Partial<InteractionData>) => void) | undefined>;
+    joinProtagonistRef: React.RefObject<Character | null>;
+    allCharactersRef: React.RefObject<Character[]>;
+    allActionsRef: React.RefObject<InterjectableAction[]>;
+    allPromptBlocksRef: React.RefObject<PromptBlock[] | undefined>;
+    onMessageBroadcastRef: React.RefObject<((message: HistoryMessage) => void) | undefined>;
+    onStateBroadcastRef: React.RefObject<((state: Partial<InteractionData>) => void) | undefined>;
     buildToolContext: () => ToolExecutionContext;
     executeTurnPipeline: (opts: GenerationTurnOptions) => Promise<void>;
     acquireLock: () => boolean;

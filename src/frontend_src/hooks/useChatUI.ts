@@ -6,7 +6,7 @@ import type { Character, InteractionData } from '../types';
 
 export function useChatUI(
     interactionData: InteractionData | null,
-    isAtBottomRef: React.MutableRefObject<boolean>,
+    isAtBottomRef: React.RefObject<boolean>,
     allCharacters: Character[]
 ) {
     const chatHistoryRef = useRef<HTMLDivElement>(null);

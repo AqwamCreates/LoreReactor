@@ -28,7 +28,7 @@ export interface ViewModeProps {
     onTouchStart: (e: React.TouchEvent, id: string) => void;
     onTouchEnd: (e: React.TouchEvent) => void;
     onTouchMove: (e: React.TouchEvent) => void;
-    suppressNextClickRef: React.MutableRefObject<boolean>;
+    suppressNextClickRef: React.RefObject<boolean>;
     onNavigateToBranchSource: () => void;
     canDelete: boolean;
 }

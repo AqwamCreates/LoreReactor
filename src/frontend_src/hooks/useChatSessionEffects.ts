@@ -1,5 +1,5 @@
 // src/frontend_src/hooks/useChatSessionEffects.ts
-import { useEffect, type MutableRefObject } from 'react';
+import { useEffect, type RefObject } from 'react';
 import type { InteractionData, LanguageModel, BudgetData } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
@@ -13,9 +13,9 @@ interface ChatSessionEffectsParams {
     selectedModel: LanguageModel | null;
     autonomousMode: boolean;
     isMultiplayerClient: boolean;
-    requestPeerInferenceRef: MutableRefObject<((peerAccountId: string, modelName: string, promptOrMessages: any, onToken: (token: string) => void, signal?: AbortSignal) => Promise<void>) | undefined>;
-    isLoadingRef: MutableRefObject<boolean>;
-    abortControllerRef: MutableRefObject<AbortController | null>;
+    requestPeerInferenceRef: RefObject<((peerAccountId: string, modelName: string, promptOrMessages: any, onToken: (token: string) => void, signal?: AbortSignal) => Promise<void>) | undefined>;
+    isLoadingRef: RefObject<boolean>;
+    abortControllerRef: RefObject<AbortController | null>;
     setBudgetData: (data: BudgetData) => void;
     updateRunningModels: (models: Record<string, { isRunning: boolean; port?: number }>) => void;
     setNumberOfTokens: (tokens: number) => void;

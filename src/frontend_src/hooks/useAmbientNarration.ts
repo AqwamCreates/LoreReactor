@@ -18,7 +18,7 @@ const AMBIENT_SYSTEM_PROMPT = "You are an ambient narration engine for a rolepla
 export function useAmbientNarration(
     setStreamingState: (c: Character | null, text: string) => void,
     setStreamingText: (t: string) => void,
-    streamingTextRef: React.MutableRefObject<string>,
+    streamingTextRef: React.RefObject<string>,
 ) {
     const generateAmbientNarration = useCallback(async (
         data: InteractionData, 
