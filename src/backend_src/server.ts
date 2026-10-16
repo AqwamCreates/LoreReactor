@@ -2111,13 +2111,13 @@ app.post('/api/web/fetch', async (req, response) => {
 
   try {
     const controller = new AbortController();
-    const timeoutId  = setTimeout(() => controller.abort(), 15000);
+    const timeoutId  = setTimeout(() => controller.abort(), 10000);
 
     const res = await fetch(url, {
       signal: controller.signal,
       headers: reqHeaders || {
-        'User-Agent': 'LoreReactor/1.0 (Context Fetcher)',
-        'Accept': 'text/html,text/plain,image/*,*/*',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8',
       },
     });
     clearTimeout(timeoutId);
@@ -2132,7 +2132,7 @@ app.post('/api/web/fetch', async (req, response) => {
     }
   } catch (e: unknown) {
     const error    = e instanceof Error ? e : new Error(String(e));
-    const errorMsg = error.name === 'AbortError' ? 'Timeout' : error.message;
+    const errorMsg = error.name === 'AbortError' ? 'Request timed out' : error.message;
     response.json({ ok: false, status: 0, contentType: '', error: errorMsg });
   }
 });
