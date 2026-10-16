@@ -69,7 +69,20 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     activeItemId, addToast,
 }: Omit<ManagerModalProps<T>, 'isOpen'>) {
     const [searchQuery, setSearchQuery] = useState('');
-    const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
+    
+    // ✅ FIX: Expand folders containing ordered items by default on first load
+    const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => {
+        const initialSet = new Set<string>();
+        if (orderedListMode && currentOrderIds && currentOrderIds.length > 0) {
+            for (const folder of allEntityFolders) {
+                if (folder.entityType === entityType && folder.itemIds.some(id => currentOrderIds.includes(id))) {
+                    initialSet.add(folder.id);
+                }
+            }
+        }
+        return initialSet;
+    });
+    
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [confirmDeleteType, setConfirmDeleteType] = useState<'item' | 'folder' | null>(null);
     const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
@@ -153,7 +166,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     const showCreateNew = !!onCreateNew && !isHosterOwnedTab;
     const singularTitle = useMemo(() => getSingularNoun(title), [title]);
 
-    // ✅ FIX: Sort folders by lastUpdatedTimestamp descending, just like the items
     const typeFolders = useMemo(() => {
         return allEntityFolders
             .filter(f => f.entityType === entityType)
@@ -202,6 +214,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         return sortedLocalItems.filter(item => !assignedItemIds.has(item.id));
     }, [sortedLocalItems, assignedItemIds]);
 
+    // ✅ FIX: Sort folders to the top based on the highest priority (lowest index) of their ordered children
     const displayItems = useMemo(() => {
         const combined: Array<{ type: 'folder'; folder: EntityFolder } | { type: 'item'; item: T }> = [
             ...typeFolders.map(f => ({ type: 'folder' as const, folder: f })),
@@ -211,14 +224,25 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         if (!orderedListMode || currentOrderIds.length === 0) return combined;
 
         return combined.sort((a, b) => {
-            const aId = a.type === 'folder' ? a.folder.id : a.item.id;
-            const bId = b.type === 'folder' ? b.folder.id : b.item.id;
-            
-            const aIndex = currentOrderIds.indexOf(aId);
-            const bIndex = currentOrderIds.indexOf(bId);
+            const getMinIndex = (entry: typeof combined[0]): number => {
+                if (entry.type === 'folder') {
+                    let minIdx = currentOrderIds.indexOf(entry.folder.id);
+                    for (const itemId of entry.folder.itemIds) {
+                        const idx = currentOrderIds.indexOf(itemId);
+                        if (idx !== -1 && (minIdx === -1 || idx < minIdx)) {
+                            minIdx = idx;
+                        }
+                    }
+                    return minIdx;
+                }
+                return currentOrderIds.indexOf(entry.item.id);
+            };
+
+            const aIndex = getMinIndex(a);
+            const bIndex = getMinIndex(b);
             const aInOrder = aIndex !== -1;
             const bInOrder = bIndex !== -1;
-            
+
             if (aInOrder && bInOrder) return aIndex - bIndex;
             if (aInOrder && !bInOrder) return -1;
             if (!aInOrder && bInOrder) return 1;
@@ -226,6 +250,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         });
     }, [typeFolders, rootItems, orderedListMode, currentOrderIds]);
 
+    // ✅ FIX: Map over displayItems directly to maintain the sorted order during search
     const searchFilteredDisplayItems = useMemo((): FilteredDisplayEntry[] => {
         const query = searchQuery.toLowerCase();
         if (!query) {
@@ -240,42 +265,44 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         
         const result: FilteredDisplayEntry[] = [];
         
-        for (const folder of typeFolders) {
-            const folderNameMatches = folder.name?.toLowerCase().includes(query);
-            const folderItems = folder.itemIds.map(id => itemMap.get(id)).filter((i): i is T => !!i);
-            
-            const matchingItems = folderItems.filter(item => {
-                if (folderNameMatches) return true;
-                if (item.name?.toLowerCase().includes(query)) return true;
+        for (const entry of displayItems) {
+            if (entry.type === 'folder') {
+                const folder = entry.folder;
+                const folderNameMatches = folder.name?.toLowerCase().includes(query);
+                const folderItems = folder.itemIds.map(id => itemMap.get(id)).filter((i): i is T => !!i);
+                
+                const matchingItems = folderItems.filter(item => {
+                    if (folderNameMatches) return true;
+                    if (item.name?.toLowerCase().includes(query)) return true;
+                    if (renderSubtext) {
+                        const subtextNode = renderSubtext(item);
+                        if (typeof subtextNode === 'string') return subtextNode.toLowerCase().includes(query);
+                        if (subtextNode && typeof subtextNode === 'object') return extractTextContent(subtextNode).toLowerCase().includes(query);
+                    }
+                    return false;
+                });
+                
+                if (matchingItems.length > 0 || folderNameMatches) {
+                    result.push({ type: 'folder', folder, filteredItems: matchingItems });
+                }
+            } else {
+                const item = entry.item;
+                const nameMatches = item.name?.toLowerCase().includes(query);
+                let subtextMatches = false;
                 if (renderSubtext) {
                     const subtextNode = renderSubtext(item);
-                    if (typeof subtextNode === 'string') return subtextNode.toLowerCase().includes(query);
-                    if (subtextNode && typeof subtextNode === 'object') return extractTextContent(subtextNode).toLowerCase().includes(query);
+                    if (typeof subtextNode === 'string') subtextMatches = subtextNode.toLowerCase().includes(query);
+                    else if (subtextNode && typeof subtextNode === 'object') subtextMatches = extractTextContent(subtextNode).toLowerCase().includes(query);
                 }
-                return false;
-            });
-            
-            if (matchingItems.length > 0 || folderNameMatches) {
-                result.push({ type: 'folder', folder, filteredItems: matchingItems });
-            }
-        }
-        
-        for (const item of rootItems) {
-            const nameMatches = item.name?.toLowerCase().includes(query);
-            let subtextMatches = false;
-            if (renderSubtext) {
-                const subtextNode = renderSubtext(item);
-                if (typeof subtextNode === 'string') subtextMatches = subtextNode.toLowerCase().includes(query);
-                else if (subtextNode && typeof subtextNode === 'object') subtextMatches = extractTextContent(subtextNode).toLowerCase().includes(query);
-            }
-            
-            if (nameMatches || subtextMatches) {
-                result.push({ type: 'item', item });
+                
+                if (nameMatches || subtextMatches) {
+                    result.push({ type: 'item', item });
+                }
             }
         }
         
         return result;
-    }, [searchQuery, typeFolders, rootItems, itemMap, renderSubtext, displayItems]);
+    }, [searchQuery, displayItems, itemMap, renderSubtext]);
 
     useEffect(() => {
         const prevQuery = prevSearchQueryRef.current;
