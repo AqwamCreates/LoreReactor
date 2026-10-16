@@ -123,7 +123,7 @@ export function RegularExpressionTriggerEditor({
                                     type="button"
                                     className="regex-trigger-test-btn"
                                     onClick={() => handleTest(i)}
-                                    disabled={!testTexts[i]?}
+                                    disabled={!testTexts[i]}
                                     title="Test this trigger"
                                 >
                                     🧪
