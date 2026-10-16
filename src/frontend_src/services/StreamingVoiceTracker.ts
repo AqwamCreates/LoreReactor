@@ -59,7 +59,6 @@ export class StreamingVoiceTracker {
 
     start(): Promise<boolean> {
         if (!this.hasVoiceConfigured) {
-            console.warn('[StreamingVoiceTracker] Character has no voice configured or transcript is missing. TTS disabled.');
             this.isActive = false;
             return Promise.resolve(false);
         }
