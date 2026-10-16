@@ -3,11 +3,12 @@ import type React from 'react';
 import type { Character } from '../types';
 import { getDelayedDisplayName } from '../utilities/immersionLogic';
 import { useSessionStore } from '../hooks/useSessionStore';
+import { MemoizedMessageText } from './MemoizedMessageText';
 
 const AMBIENT_NARRATOR_ID = '___ambient_narrator___';
 
 interface StreamingIndicatorsProps {
-    formattedStreamingText: React.ReactNode;
+    compiledStreamingText: string | null; // ✅ CHANGED
     viewMode: 'ladder' | 'cinematic' | 'vn';
     selectedCharacterId: string | undefined;
     streamingPortraitUrl: string | null;
@@ -16,7 +17,7 @@ interface StreamingIndicatorsProps {
 }
 
 export function StreamingIndicators({
-    formattedStreamingText,
+    compiledStreamingText,
     viewMode, streamingPortraitUrl,
     messagesLength, onAvatarClick,
 }: StreamingIndicatorsProps) {
@@ -25,7 +26,6 @@ export function StreamingIndicators({
     const streamingText = useSessionStore(s => s.streamingText);
     const interactionData = useSessionStore(s => s.interactionData);
 
-    // ✅ Use localProtagonistId and protagonistIds instead of selectedCharacterId for protagonist check
     const localProtagonistId = useSessionStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
     const protagonistIds = useSessionStore(s => s.interactionData?.protagonistIds || []);
 
@@ -34,7 +34,6 @@ export function StreamingIndicators({
     const isProtagonist = localProtagonistId ? streamingCharacter.id === localProtagonistId : protagonistIds.includes(streamingCharacter.id);
     const isNotProtagOrAmbient = !isProtagonist && streamingCharacter.id !== AMBIENT_NARRATOR_ID;
     
-    // ✅ Pass localProtagonistId to getDelayedDisplayName so perspective resolution matches MessageBubble
     const dn = interactionData
         ? getDelayedDisplayName(interactionData, streamingCharacter, Math.max(0, messagesLength - 1), localProtagonistId)
         : streamingCharacter.name;
@@ -42,30 +41,20 @@ export function StreamingIndicators({
     const avatarColumn = isNotProtagOrAmbient && viewMode === 'ladder' && (
         <div className="avatar-column">
             <div style={{ position: 'relative' }}>
-                {streamingPortraitUrl
-                    ? (
-                        <img
-                            src={streamingPortraitUrl}
-                            alt={streamingCharacter.name}
-                            className="character-avatar"
-                            onClick={e => onAvatarClick(e, streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'thinking-message' : 'streaming-message', streamingCharacter)}
-                            onError={e => { e.currentTarget.style.display = 'none'; }}
-                            style={{ cursor: 'pointer', opacity: 0.5 }}
-                        />
-                    )
-                    : (
-                        <div
-                            className="character-avatar placeholder"
-                            onClick={e => onAvatarClick(e, streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'thinking-message' : 'streaming-message', streamingCharacter)}
-                            style={{ cursor: 'pointer', opacity: 0.5 }}
-                        />
-                    )}
+                {streamingPortraitUrl ? (
+                    <img src={streamingPortraitUrl} alt={streamingCharacter.name} className="character-avatar"
+                        onClick={e => onAvatarClick(e, streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'thinking-message' : 'streaming-message', streamingCharacter)}
+                        onError={e => { e.currentTarget.style.display = 'none'; }} style={{ cursor: 'pointer', opacity: 0.5 }} />
+                ) : (
+                    <div className="character-avatar placeholder"
+                        onClick={e => onAvatarClick(e, streamingCharacter.id === AMBIENT_NARRATOR_ID ? 'thinking-message' : 'streaming-message', streamingCharacter)}
+                        style={{ cursor: 'pointer', opacity: 0.5 }} />
+                )}
             </div>
             <span className="avatar-name" style={{ opacity: streamingText ? 1 : 0.5 }}>{dn}</span>
         </div>
     );
 
-    // Thinking indicator (no text yet)
     if (!streamingText) {
         return (
             <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="thinking-message">
@@ -81,7 +70,6 @@ export function StreamingIndicators({
         );
     }
 
-    // Active streaming
     const isAmbient = streamingCharacter.id === AMBIENT_NARRATOR_ID;
     const bubbleClass = `message-bubble ${viewMode === 'cinematic' ? 'cinematic-bubble' : ''} ${isAmbient ? 'bubble-ambient' : 'bubble-ai'}`;
 
@@ -95,7 +83,10 @@ export function StreamingIndicators({
                     </div>
                 )}
                 <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
-                    <span className="message-text" style={{ display: 'inline' }}>{formattedStreamingText}</span>
+                    <span className="message-text" style={{ display: 'inline' }}>
+                        {/* ✅ Render the raw string through the universal memoized formatter */}
+                        {compiledStreamingText ? <MemoizedMessageText text={compiledStreamingText} /> : null}
+                    </span>
                     <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
                 </div>
             </div>

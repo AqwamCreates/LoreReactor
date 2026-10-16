@@ -3,7 +3,6 @@ import { useMemo } from 'react';
 import type { ViewModeProps, viewMode } from './types';
 import type { ChatMessage, TextMessage, WhisperMessage } from '../../types';
 import { useSessionStore } from '../../hooks/useSessionStore';
-import { formatDisplayMessageText } from '../../utilities/textDisplayFormatter';
 import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
 import { LadderView } from './LadderView';
 import { CinematicView } from './CinematicView';
@@ -25,15 +24,9 @@ export function ChatViewArea({
     isMultiplayerChat,
 }: ChatViewAreaProps) {
     const localProtagonistId = useSessionStore((s) => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
-
     const streamingText = useSessionStore((s) => s.streamingText);
     const streamingCharacter = useSessionStore((s) => s.streamingCharacter);
     const isLoading = useSessionStore((s) => s.isLoading);
-
-    const formattedStreamingText = useMemo(
-        () => (streamingText ? formatDisplayMessageText(streamingText) : null),
-        [streamingText]
-    );
 
     const displayMessages = useMemo(() => {
         let base = [...safeMessages];
@@ -55,46 +48,27 @@ export function ChatViewArea({
             if (isLastStreaming) {
                 const idx = base.length - 1;
                 const name = resolveDelayedDisplayNameFromCache(displayNameCache, idx, streamingCharacter.id);
-
-                base[idx] = {
-                    ...last,
-                    textContent: streamingText,
-                    character: { ...last.character, name },
-                } as TextMessage;
+                base[idx] = { ...last, textContent: streamingText, character: { ...last.character, name } } as TextMessage;
             } else if (!last || last.character.id !== streamingCharacter.id) {
                 const name = resolveDelayedDisplayNameFromCache(displayNameCache, base.length, streamingCharacter.id);
                 const now = Date.now();
-                
                 base.push({
-                    id: `streaming-${streamingCharacter.id}`,
-                    messageType: 'chat',
-                    character: { ...streamingCharacter, name },
-                    textContent: streamingText,
-                    files: [],
-                    frontCameraImage: undefined,
-                    doNotRespond: false,
-                    modelTextContentSummaries: {},
-                    modelInteractionTextContentSummaries: {},
-                    kvCacheTextContentPaths: {},
-                    kvCacheTextContentSummaryPaths: {},
-                    kvCacheInteractionTextContentSummaries: {},
-                    characterClothingWearingStatuses: {},
-                    characterLockedLocations: {},
-                    isPresent: true,
-                    parentMessageId: null,
-                    firstCreatedTimestamp: now,
-                    lastUpdatedTimestamp: now,
+                    id: `streaming-${streamingCharacter.id}`, messageType: 'chat',
+                    character: { ...streamingCharacter, name }, textContent: streamingText,
+                    files: [], frontCameraImage: undefined, doNotRespond: false,
+                    modelTextContentSummaries: {}, modelInteractionTextContentSummaries: {},
+                    kvCacheTextContentPaths: {}, kvCacheTextContentSummaryPaths: {}, kvCacheInteractionTextContentSummaries: {},
+                    characterClothingWearingStatuses: {}, characterLockedLocations: {},
+                    isPresent: true, parentMessageId: null, firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
                 } as ChatMessage);
             }
         }
-
         return base as ChatMessage[];
     }, [safeMessages, isLoading, streamingText, streamingCharacter, displayNameCache, isMultiplayerChat, localProtagonistId]);
 
     const activeViewProps: ViewModeProps = {
         ...baseProps,
         displayMessages,
-        formattedStreamingText,
     };
 
     return (

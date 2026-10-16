@@ -25,7 +25,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const {
         displayMessages,
         portraitUrlCache,
-        formattedStreamingText,
+        compiledStreamingText, // ✅ Centralized from App.tsx
         centerAvatar, displayNameCache,
         messageEndRef, editTextAreaRef,
         onSaveEdit,
@@ -118,12 +118,13 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const displayedTextContent = useCompiledMessageText(displayedMessage);
     const streamingCompiledText = useCompiledMessageText(isStreamingInList ? lastMsg : null);
 
+    // ✅ Use the centralized compiled string directly from props
     const activeStreamingText: string | null = useMemo(() => {
         if (isStreamingInList && lastMsg) {
             return streamingCompiledText;
         }
-        return isLoading && formattedStreamingText ? String(formattedStreamingText) : null;
-    }, [isStreamingInList, lastMsg, streamingCompiledText, isLoading, formattedStreamingText]);
+        return isLoading && compiledStreamingText ? compiledStreamingText : null;
+    }, [isStreamingInList, lastMsg, streamingCompiledText, isLoading, compiledStreamingText]);
 
     const visibleCharacters = useMemo(() => {
         return interactionData?.participants || [];
@@ -542,7 +543,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                             onClick={handleAutoReformat}
                                             disabled={!canAutoReformat}
                                             className="vn-auto-reformat-button"
-                                            title={canAutoReformat ? "Apply learned reformatting preferences to all text" : "No new learned formatting changes available"}
+                                            title={canAutoReformat ? "Apply learned reformatting preferences to all text" : "No new learned reformatting changes available"}
                                             style={!canAutoReformat ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
                                         >
                                             Auto-Reformat
