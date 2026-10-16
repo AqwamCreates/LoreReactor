@@ -208,7 +208,7 @@ function LocationEditorModalInner({
     const handleTestBgImageRegex = (index: number) => {
         const pattern = bgImageRegexTriggers[index];
         const testText = bgImageTestTexts[index];
-        if (!pattern? || !testText?) {
+        if (!pattern || !testText?) {
             setBgImageTestResults(prev => ({ ...prev, [index]: null }));
             return;
         }

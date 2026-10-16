@@ -2396,7 +2396,7 @@ app.post('/tool/shell', async (req, res) => {
     const { stdout, stderr } = await execAsync(command, { timeout: 10000, cwd: ROOT_DIR });
     res.json({ success: true, stdout: stdout, stderr: stderr });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message, stdout: error.stdout? || '', stderr: error.stderr? || '' });
+    res.status(500).json({ success: false, error: error.message, stdout: error.stdout || '', stderr: error.stderr || '' });
   }
 });
 

@@ -207,7 +207,7 @@ class SpeechToTextEngine {
         try {
             this.resetIdleTimer();
             const result = await this.pipeline(buffer);
-            return result.text? || null;
+            return result.text || null;
         } catch (e) {
             console.warn('[STTEngine] Buffer transcription failed:', e);
             return null;
@@ -245,7 +245,7 @@ class SpeechToTextEngine {
             const result = await this.pipeline(float32Array, options);
             await audioContext.close();
             
-            return result.text? || null;
+            return result.text || null;
         } catch (e) {
             console.error('[STTEngine] File transcription failed:', e);
             return null;

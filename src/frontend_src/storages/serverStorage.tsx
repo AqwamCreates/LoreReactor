@@ -1688,7 +1688,7 @@ export async function cloneCharacterVoice(sourceCharacterId: string, targetChara
     const sourceVoiceUrl = getCharacterVoiceURL(sourceCharacterId, voiceFileName);
     if (!sourceVoiceUrl) return null;
 
-    const filename = voiceFileName? || `voice-${targetCharacterId}.wav`;
+    const filename = voiceFileName || `voice-${targetCharacterId}.wav`;
     const file = await urlToFile(sourceVoiceUrl, filename);
     if (!file) return null;
 
@@ -1708,7 +1708,7 @@ export async function cloneContextImage(sourceContextId: string, targetContextId
     const sourceImageUrl = getContextImageUrl(sourceContextId, imageFilename);
     if (!sourceImageUrl) return null;
 
-    const filename = imageFilename? || `image-${targetContextId}.png`;
+    const filename = imageFilename || `image-${targetContextId}.png`;
     const file = await urlToFile(sourceImageUrl, filename);
     if (!file) return null;
 
@@ -1728,7 +1728,7 @@ export async function cloneLocationImage(sourceLocationId: string, targetLocatio
     const sourceImageUrl = getLocationImageUrl(sourceLocationId, imageFilename);
     if (!sourceImageUrl) return null;
 
-    const filename = imageFilename? || `image-${targetLocationId}.png`;
+    const filename = imageFilename || `image-${targetLocationId}.png`;
     const file = await urlToFile(sourceImageUrl, filename);
     if (!file) return null;
 
@@ -1748,7 +1748,7 @@ export async function cloneAudioTrack(sourceAudioTrackId: string, targetAudioTra
     const sourceAudioUrl = getAudioTrackUrl(sourceAudioTrackId, audioFilename);
     if (!sourceAudioUrl) return null;
 
-    const filename = audioFilename? || `track-${targetAudioTrackId}.mp3`;
+    const filename = audioFilename || `track-${targetAudioTrackId}.mp3`;
     const file = await urlToFile(sourceAudioUrl, filename);
     if (!file) return null;
 
@@ -1768,7 +1768,7 @@ export async function clonePromptBlockImage(sourcePromptBlockId: string, targetP
     const sourceImageUrl = getPromptBlockImageUrl(sourcePromptBlockId, imageFilename);
     if (!sourceImageUrl) return null;
 
-    const filename = imageFilename? || `prompt-image-${targetPromptBlockId}.png`;
+    const filename = imageFilename || `prompt-image-${targetPromptBlockId}.png`;
     const file = await urlToFile(sourceImageUrl, filename);
     if (!file) return null;
 
@@ -1812,7 +1812,7 @@ export async function cloneMultiplayerCharacterVoice(sourceCharacterId: string, 
     const sourceVoiceUrl = getMultiplayerCharacterVoiceUrl(sourceCharacterId, voiceFileName);
     if (!sourceVoiceUrl) return null;
 
-    const filename = voiceFileName? || `voice-${targetCharacterId}.wav`;
+    const filename = voiceFileName || `voice-${targetCharacterId}.wav`;
     const file = await urlToFile(sourceVoiceUrl, filename);
     if (!file) return null;
 
