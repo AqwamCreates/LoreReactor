@@ -45,12 +45,12 @@ export function useChatEngine(deps: EngineDependencies) {
 
     const handleServerResponse = useCallback(async (
         data: InteractionData, 
-        character: Character, 
+        character: Character,
+        allPromptBlocks: PromptBlock[], 
         signal: AbortSignal,
         onToken?: (text: string) => void,
         strategyOverride?: BudgetStrategy | null,
         existingCharacterText?: string,
-        allPromptBlocks?: PromptBlock[],
         metadata?: RequestMetadata,
         voiceTracker?: StreamingVoiceTracker,
     ): Promise<HandleServerResponseResult | null> => {
@@ -94,7 +94,7 @@ export function useChatEngine(deps: EngineDependencies) {
 
         const outcome = await characterActor.executeTurn({
             data, character, signal, selectedModel, runningModels, activeStrategy,
-            strategyOverride, existingCharacterText, allPromptBlocks: allPromptBlocks ?? [], 
+            strategyOverride, existingCharacterText, allPromptBlocks, 
             callbacks,
             borrowedModel,
             metadata,
@@ -154,7 +154,7 @@ export function useChatEngine(deps: EngineDependencies) {
     const runTurn = useCallback(async (
         initialData: InteractionData,
         signal: AbortController,
-        promptBlocks?: PromptBlock[],
+        promptBlocks: PromptBlock[],
         metadata?: RequestMetadata,
         existingCharacterText?: string,
         voiceTracker?: StreamingVoiceTracker,
@@ -163,7 +163,7 @@ export function useChatEngine(deps: EngineDependencies) {
 
         const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken?: (t: string) => void) => {
             setStreamingState(c, '');
-            const result = await handleServerResponse(d, c, s, onToken, undefined, existingCharacterText || '', promptBlocks, metadata, voiceTracker);
+            const result = await handleServerResponse(d, c, promptBlocks, s, onToken, undefined, existingCharacterText || '', metadata, voiceTracker);
             
             if (result?.promptText) {
                 lastPromptText = result.promptText;
@@ -200,7 +200,7 @@ export function useChatEngine(deps: EngineDependencies) {
         const executor = async (d: InteractionData, c: Character, s: AbortSignal) => {
             resetStream();
             setStreamingState(c, '');
-            return handleServerResponse(d, c, s, undefined, undefined, '', undefined, {});
+            return handleServerResponse(d, c, [], s, undefined, undefined, '', undefined);
         };
         
         characterSoul.start(

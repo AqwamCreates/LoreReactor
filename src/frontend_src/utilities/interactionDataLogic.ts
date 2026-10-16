@@ -1,6 +1,6 @@
 // src/frontend_src/utilities/chatLogic.ts
 import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, TextCharacterInjection, TextMessage, ToolExecutionResult, ToolMessage } from '../types';
-import type { OpenAIMessage } from '../services/ProviderCachingStrategy';
+import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
 import { getKnownDisplayName, deriveDelimiters } from './promptLogic';
 import type { EntityImageRef } from './promptLogic';
 import { v4 as uuidv4 } from 'uuid';

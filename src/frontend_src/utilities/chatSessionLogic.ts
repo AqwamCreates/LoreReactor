@@ -219,7 +219,7 @@ export function injectStopSignals(data: InteractionData, patterns: string[]): In
 export interface GenerationTurnOptions {
     data: InteractionData;
     protagonistId: string;
-    allPromptBlocks?: PromptBlock[];
+    allPromptBlocks: PromptBlock[];
     respondingCharacter?: Character;
     existingCharacterText?: string,
     isProtagonistCharId?: (charId: string) => boolean;

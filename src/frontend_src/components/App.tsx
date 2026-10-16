@@ -1029,7 +1029,7 @@ function App() {
         focusedMessageId, 
         setFocusedMessageId,
         onAvatarClick: actionMenu.handleAvatarClick,
-        onResumeGeneration: (id: string) => resumeGeneration(id, promptBlocks.promptBlocks), 
+        onResumeGeneration: resumeGeneration, 
         onRegenerateFromMessage: regenerateFromMessage,
         onRegenerateFromEdit: messageActions.handleRegenerateFromEdit,
         onPlayVoice: playVoice,
@@ -1212,9 +1212,9 @@ function App() {
                     addToast(`Activated profile "${targetProfile.name}"`, 'success');
                 }
             } else if (e.data?.type === 'RESUME_GENERATION' && e.data?.messageId) {
-                resumeGeneration(e.data.messageId, promptBlocks.promptBlocks);
+                resumeGeneration(e.data.messageId);
             } else if (e.data?.type === 'RESTART_GENERATION' && e.data?.messageId) {
-                regenerateFromMessage(e.data.messageId, interactionData?.protagonistIds || [], promptBlocks.promptBlocks);
+                regenerateFromMessage(e.data.messageId, interactionData?.protagonistIds || []);
             } else if (e.data?.type === 'STOP_GENERATION') {
                 stopGeneration();
             } else if (e.data?.type === 'SAVE_EDIT' && e.data?.messageId && e.data?.text !== undefined) {

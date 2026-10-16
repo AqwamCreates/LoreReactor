@@ -2,8 +2,8 @@
 import { localAddress } from "../../configurations";
 import { cloudBackends, cloudEndpoints, cloudTokenizeEndpoints, localBackends, openAiCompatibleLocalBackends } from "../dictionaries/languageModelInformation";
 import type { backend, cloudBackend, LanguageModel, localBackend } from "../types";
-import { getCachingStrategy } from "./ProviderCachingStrategy";
-import type { OpenAIMessage as CacheOpenAIMessage } from "./ProviderCachingStrategy";
+import { getCachingStrategy } from "./ProviderCacheStrategy";
+import type { OpenAIMessage as CacheOpenAIMessage } from "./ProviderCacheStrategy";
 
 export interface TokenStats {
   fullText: string;

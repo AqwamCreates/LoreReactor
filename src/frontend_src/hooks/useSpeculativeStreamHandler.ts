@@ -1,6 +1,6 @@
 // src/frontend_src/hooks/useSpeculativeStreamHandler.ts
 import { useCallback, useRef, type RefObject } from 'react';
-import type { Character, InteractionData, ChatMessage, HistoryMessage, PromptBlock, TextMessage } from '../types';
+import type { Character, InteractionData, ChatMessage, HistoryMessage, TextMessage } from '../types';
 import { calculateLatencyFactor } from '../utilities/chatSessionLogic';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { createChatMessage } from '../utilities/interactionDataLogic';
@@ -13,7 +13,7 @@ interface SpeculativeStreamHandlerParams {
     streamingCharacterRef: RefObject<Character | null>;
     streamingMessageIdRef: RefObject<string | null>;
     abortControllerRef: RefObject<AbortController | null>;
-    resumeGenerationRef: RefObject<((messageId: string, allPromptBlocks?: PromptBlock[]) => Promise<void>) | null>;
+    resumeGenerationRef: RefObject<((messageId: string) => Promise<void>) | null>;
     onMessageBroadcastRef: RefObject<((message: HistoryMessage) => void) | undefined>;
     getState: () => any;
     setInteractionData: (data: InteractionData) => void;
@@ -141,7 +141,7 @@ export function useSpeculativeStreamHandler({
 
                             setTimeout(() => {
                                 isSpeculatingRef.current = false;
-                                resumeGenerationRef.current?.(msgId, undefined);
+                                resumeGenerationRef.current?.(msgId);
                             }, 60);
                         } else {
                             isSpeculatingRef.current = false;

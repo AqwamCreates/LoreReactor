@@ -34,7 +34,7 @@ interface UseChatSenderOptions {
     joinProtagonistRef: React.RefObject<Character | null>;
     allCharactersRef: React.RefObject<Character[]>;
     allActionsRef: React.RefObject<InterjectableAction[]>;
-    allPromptBlocksRef: React.RefObject<PromptBlock[] | undefined>;
+    allPromptBlocksRef: React.RefObject<PromptBlock[]>;
     onMessageBroadcastRef: React.RefObject<((message: HistoryMessage) => void) | undefined>;
     onStateBroadcastRef: React.RefObject<((state: Partial<InteractionData>) => void) | undefined>;
     buildToolContext: () => ToolExecutionContext;
@@ -55,7 +55,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
 
     const sendMessage = useCallback(async (
         text: string,
-        allPromptBlocks: PromptBlock[] | undefined,
+        allPromptBlocks: PromptBlock[],
         files: File[] | undefined,
         frontCameraImageBase64: string | undefined
     ) => {
@@ -297,7 +297,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
             ? (joinProtagonistRef.current || protagonist)
             : protagonist;
 
-        const filteredMessages = getFilteredTextMessages(currentInteractionData, activeProtagonist.id, allPromptBlocksRef.current || []);
+        const filteredMessages = getFilteredTextMessages(currentInteractionData, activeProtagonist.id, allPromptBlocksRef.current);
         const knownCharacterNames = detectName(activeProtagonist, filteredMessages);
 
         const chatMessage = createChatMessage(currentInteractionData, activeProtagonist, actionText, { knownCharacterNames });
@@ -323,6 +323,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
             data: td,
             protagonistId: protagonist.id,
             respondingCharacter: targetChar,
+            allPromptBlocks: allPromptBlocksRef.current,
             isProtagonistCharId: (id: string) => allProtagonistIds.has(id),
             errorPrefix: 'Action failed',
             lockAlreadyAcquired: true,

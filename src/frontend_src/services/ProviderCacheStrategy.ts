@@ -1,4 +1,4 @@
-// src/frontend_src/services/ProviderCachingStrategy.ts
+// src/frontend_src/services/ProviderCacheStrategy.ts
 import type { backend } from "../types";
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -22,14 +22,14 @@ export interface CacheStrategyResult {
     messages?: OpenAIMessage[];
 }
 
-export interface ProviderCachingStrategy {
+export interface ProviderCacheStrategy {
     supports(backendName: backend): boolean;
     apply(context: CacheContext): CacheStrategyResult;
 }
 
 // ─── Strategies ─────────────────────────────────────────────────────
 
-class SessionAffinityStrategy implements ProviderCachingStrategy {
+class SessionAffinityStrategy implements ProviderCacheStrategy {
     private readonly backends: ReadonlySet<backend> = new Set(['OpenRouter', 'Minimax', 'GLM']);
 
     supports(b: backend): boolean {
@@ -42,7 +42,7 @@ class SessionAffinityStrategy implements ProviderCachingStrategy {
     }
 }
 
-class AnthropicExplicitCacheStrategy implements ProviderCachingStrategy {
+class AnthropicExplicitCacheStrategy implements ProviderCacheStrategy {
     supports(b: backend): boolean {
         return b === 'Anthropic';
     }
@@ -75,7 +75,7 @@ class AnthropicExplicitCacheStrategy implements ProviderCachingStrategy {
  *   - First system message (static prompt prefix)
  *   - Last assistant/user message before generation trigger (conversation history boundary)
  */
-class QwenExplicitCacheStrategy implements ProviderCachingStrategy {
+class QwenExplicitCacheStrategy implements ProviderCacheStrategy {
     supports(b: backend): boolean {
         return b === 'Qwen';
     }
@@ -152,7 +152,7 @@ function wrapContentWithCacheControl(msg: OpenAIMessage): OpenAIMessage {
  * 
  * Content is passed raw/as-is without wrapping or prefix markers.
  */
-class SingleSystemStrategy implements ProviderCachingStrategy {
+class SingleSystemStrategy implements ProviderCacheStrategy {
     private readonly backends: ReadonlySet<backend> = new Set(['Google', 'Cohere']);
 
     supports(b: backend): boolean {
@@ -173,7 +173,7 @@ class SingleSystemStrategy implements ProviderCachingStrategy {
     }
 }
 
-class ImplicitCacheStrategy implements ProviderCachingStrategy {
+class ImplicitCacheStrategy implements ProviderCacheStrategy {
     private readonly backends: ReadonlySet<backend> = new Set(['DeepSeek', 'Kimi']);
 
     supports(b: backend): boolean {
@@ -185,7 +185,7 @@ class ImplicitCacheStrategy implements ProviderCachingStrategy {
     }
 }
 
-class NoCacheStrategy implements ProviderCachingStrategy {
+class NoCacheStrategy implements ProviderCacheStrategy {
     private readonly backends: ReadonlySet<backend> = new Set(['AI21', 'NovelAI']);
 
     supports(b: backend): boolean {
@@ -199,7 +199,7 @@ class NoCacheStrategy implements ProviderCachingStrategy {
 
 // ─── Factory ────────────────────────────────────────────────────────
 
-const strategies: readonly ProviderCachingStrategy[] = [
+const strategies: readonly ProviderCacheStrategy[] = [
     new AnthropicExplicitCacheStrategy(),
     new QwenExplicitCacheStrategy(),
     new SingleSystemStrategy(),
@@ -209,8 +209,8 @@ const strategies: readonly ProviderCachingStrategy[] = [
 ] as const;
 
 /** Default strategy for unknown/future backends that may support implicit caching */
-const defaultStrategy: ProviderCachingStrategy = new ImplicitCacheStrategy();
+const defaultStrategy: ProviderCacheStrategy = new ImplicitCacheStrategy();
 
-export function getCachingStrategy(backendName: backend): ProviderCachingStrategy {
+export function getCachingStrategy(backendName: backend): ProviderCacheStrategy {
     return strategies.find(s => s.supports(backendName)) ?? defaultStrategy;
 }

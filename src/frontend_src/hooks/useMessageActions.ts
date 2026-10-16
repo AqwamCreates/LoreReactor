@@ -10,7 +10,7 @@ interface UseMessageActionsOptions {
     isModelReady: boolean | undefined;
     isLoading: boolean;
     setInteractionData: (data: InteractionData) => void;
-    regenerateFromMessage: (id: string, protagonistIds: string[], allPromptBlocks?: any[]) => Promise<void>;
+    regenerateFromMessage: (id: string, protagonistIds: string[]) => Promise<void>;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 

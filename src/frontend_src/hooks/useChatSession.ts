@@ -167,14 +167,14 @@ export function useChatSession(options: UseChatSessionOptions) {
     const wasStoppedRef = useRef(false);
     const autoResumeCountRef = useRef<number>(0);
 
-    const resumeGenerationRef = useRef<((messageId: string, allPromptBlocks?: PromptBlock[]) => Promise<void>) | null>(null);
+    const resumeGenerationRef = useRef<((messageId: string) => Promise<void>) | null>(null);
     const streamingMessageIdRef = useRef<string | null>(null);
     const streamingCharacterRef = useRef<Character | null>(null);
     const currentVoiceTrackerRef = useRef<StreamingVoiceTracker | null>(null);
 
     const pendingHostResponseRef = useRef(false);
     const triggerHostResponseRef = useRef<(() => Promise<void>) | null>(null);
-    const pendingResumeRef = useRef<{ messageId: string; allPromptBlocks?: PromptBlock[] } | null>(null);
+    const pendingResumeRef = useRef<{ messageId: string; allPromptBlocks: PromptBlock[] } | null>(null);
 
     const lastTurnContextRef = useRef<{ modelId: string; prompt: string; metadata: RequestMetadata } | null>(null);
     const requestTimestampsRef = useRef<number[]>([]);
@@ -306,13 +306,13 @@ export function useChatSession(options: UseChatSessionOptions) {
         return { ...base, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
     }, []);
 
-    const autoResumeOnCutoff = useCallback((data: InteractionData, protagonistId: string, allPromptBlocks?: PromptBlock[]) => {
+    const autoResumeOnCutoff = useCallback((data: InteractionData, protagonistId: string) => {
         const allProtagonistIds = new Set(data.protagonistIds || [protagonistId]);
         const messageId = findLastAIMessageId(data, allProtagonistIds);
         if (!messageId) return;
 
         setTimeout(() => {
-            resumeGenerationRef.current?.(messageId, allPromptBlocks);
+            resumeGenerationRef.current?.(messageId);
         }, 0);
     }, []);
 
@@ -550,7 +550,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                     const injectedData = injectStopSignals(ud, evaluation.patternsToInject);
                     setInteractionData(injectedData);
                     saveRawInteractionData(injectedData).catch(e => console.error('Failed to save stop signals:', e));
-                    autoResumeOnCutoff(injectedData, protagonistId, allPromptBlocks);
+                    autoResumeOnCutoff(injectedData, protagonistId);
                     return;
                 }
 
@@ -607,9 +607,9 @@ export function useChatSession(options: UseChatSessionOptions) {
             releaseLock();
 
             if (pendingResumeRef.current) {
-                const { messageId, allPromptBlocks: blocks } = pendingResumeRef.current;
+                const { messageId } = pendingResumeRef.current;
                 pendingResumeRef.current = null;
-                setTimeout(() => resumeGenerationRef.current?.(messageId, blocks), 0);
+                setTimeout(() => resumeGenerationRef.current?.(messageId), 0);
             } else if (pendingHostResponseRef.current && isMultiplayerClient) {
                 pendingHostResponseRef.current = false;
                 setTimeout(() => triggerHostResponseRef.current?.(), 0);
@@ -685,6 +685,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         await executeTurnPipeline({
             data: currentState.interactionData,
             protagonistId: currentState.localProtagonist.id,
+            allPromptBlocks: allPromptBlocksRef.current,
             isProtagonistCharId: (id: string) => allProtagonistIds.has(id),
             errorPrefix: 'Host response failed',
             lockAlreadyAcquired: true,
@@ -780,7 +781,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         streamingMessageIdRef.current = null;
     }, [resetStream, getState, setState, streamingTextRef, isLoadingRef, isSpeculatingRef]);
 
-    const resumeGeneration = useCallback(async (messageId: string, allPromptBlocks: PromptBlock[] | undefined) => {
+    const resumeGeneration = useCallback(async (messageId: string) => {
         if (isMultiplayerClient) {
             addToast('Generation is handled by the host.', 'info');
             return;
@@ -853,8 +854,8 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         try {
             const result = await chatEngine.handleServerResponse(
-                currentInteractionData, char, ctrl.signal,
-                throttledSetStreamingTextWithBroadcast, undefined, existingText, allPromptBlocks,
+                currentInteractionData, char, allPromptBlocksRef.current, ctrl.signal,
+                throttledSetStreamingTextWithBroadcast, undefined, existingText,
                 undefined, voiceTracker
             );
 
@@ -892,7 +893,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                     const allProtagonistIds = new Set(dataToSave.protagonistIds || [char.id]);
                     const reMarkedId = findLastAIMessageId(dataToSave, allProtagonistIds);
                     if (reMarkedId) {
-                        resumeGenerationRef.current?.(reMarkedId, allPromptBlocks);
+                        resumeGenerationRef.current?.(reMarkedId);
                     }
                 }, 0);
                 return;
@@ -952,7 +953,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     const regenerateFromMessage = useCallback(async (
         messageId: string,
         protagonistIds: string[],
-        allPromptBlocks?: PromptBlock[]
     ) => {
         if (isMultiplayerClient) {
             addToast('Generation is handled by the host.', 'info');
@@ -1009,7 +1009,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         await executeTurnPipeline({
             data: td,
             protagonistId: primaryProtagonistId,
-            allPromptBlocks,
+            allPromptBlocks: allPromptBlocksRef.current,
             respondingCharacter: respondingChar,
             isProtagonistCharId: (id: string) => protagonistIdSet.has(id),
             errorPrefix: 'Regeneration failed',
