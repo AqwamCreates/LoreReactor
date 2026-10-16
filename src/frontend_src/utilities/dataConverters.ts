@@ -586,7 +586,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
 
 export function tryParseGeneratedOutput(text: string, samplers: Sampler[]): GeneratedOutput | null {
     let jsonStr = text;
-    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*)```/);
     if (codeBlockMatch) jsonStr = codeBlockMatch[1];
     try {
         const parsed = JSON.parse(jsonStr);

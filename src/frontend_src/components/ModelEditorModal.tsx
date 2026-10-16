@@ -381,17 +381,17 @@ export function ModelEditorModal({
         if (supportsGpuLayers && settings.ik !== DEFAULT_SETTINGS.ik) params.ik = settings.ik;
         if (supportsSpecDecoding && settings.spec_type !== DEFAULT_SETTINGS.spec_type) params.spec_type = settings.spec_type;
         if (supportsSpecDecoding && settings.draft_max !== DEFAULT_SETTINGS.draft_max) params.draft_max = settings.draft_max;
-        if (supportsSpecDecoding && settings.draft_model?) params.draft_model = settings.draft_model;
+        if (supportsSpecDecoding && settings.draft_model) params.draft_model = settings.draft_model;
         if (supportsSpecDecoding && settings.gpu_layers_draft !== DEFAULT_SETTINGS.gpu_layers_draft) params.gpu_layers_draft = settings.gpu_layers_draft;
-        if (supportsSpecDecoding && settings.device_draft?) params.device_draft = settings.device_draft;
+        if (supportsSpecDecoding && settings.device_draft) params.device_draft = settings.device_draft;
         if (settings.parallel !== DEFAULT_SETTINGS.parallel) params.parallel = settings.parallel;
         if (settings.threads !== DEFAULT_SETTINGS.threads) params.threads = settings.threads;
         if (settings.threads_batch !== DEFAULT_SETTINGS.threads_batch) params.threads_batch = settings.threads_batch;
         if (settings.batch_size !== DEFAULT_SETTINGS.batch_size) params.batch_size = settings.batch_size;
         if (settings.ubatch_size !== DEFAULT_SETTINGS.ubatch_size) params.ubatch_size = settings.ubatch_size;
         if (settings.fit_target !== DEFAULT_SETTINGS.fit_target) params.fit_target = settings.fit_target;
-        if (settings.tensor_split?) params.tensor_split = settings.tensor_split;
-        if (settings.extra_flags?) params.extra_flags = settings.extra_flags;
+        if (settings.tensor_split) params.tensor_split = settings.tensor_split;
+        if (settings.extra_flags) params.extra_flags = settings.extra_flags;
         if (supportsLlamaMemory) {
             if (settings.cpu_moe !== DEFAULT_SETTINGS.cpu_moe) params.cpu_moe = settings.cpu_moe;
             if (settings.no_kv_offload !== DEFAULT_SETTINGS.no_kv_offload) params.no_kv_offload = settings.no_kv_offload;

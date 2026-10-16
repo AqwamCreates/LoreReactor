@@ -85,7 +85,7 @@ export function collectActiveDialoguePromptContent(
     for (const dp of active) {
         const skipProb = dp.dialoguePromptSkipProbability ?? 0;
         if (skipProb > 0 && Math.random() < skipProb) continue;
-        if (dp.content?) {
+        if (dp.content) {
             contents.push(dp.content);
         }
     }

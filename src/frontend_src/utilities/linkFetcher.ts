@@ -133,7 +133,7 @@ function isWithinSubdirectory(candidateUrl: string, scopePrefix: string): boolea
  * Cleans an image URL by stripping everything after the file extension.
  */
 function cleanImageUrl(url: string): string {
-    const extensionMatch = url.match(/(\.(png|jpe?g|gif|webp|svg|bmp|ico|avif|tiff?))/i);
+    const extensionMatch = url.match(/(\.(png|jpe?g|gif|webp|svg|bmp|ico|avif|tiff))/i);
     if (extensionMatch && extensionMatch.index !== undefined) {
         return url.substring(0, extensionMatch.index + extensionMatch[1].length);
     }

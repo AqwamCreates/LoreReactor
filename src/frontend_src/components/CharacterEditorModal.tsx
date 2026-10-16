@@ -610,7 +610,7 @@ function CharacterEditorModalInner({
         setKnownCharacterNames({});
         initialKnownCharacterNamesRef.current = {};
         setIsVoiceRemoved(false);
-        if (fields.starterPrompt?) {
+        if (fields.starterPrompt) {
             setStarterPrompts({ [fields.starterPrompt]: 1 });
         } else {
             setStarterPrompts({});

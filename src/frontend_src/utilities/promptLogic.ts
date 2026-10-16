@@ -788,7 +788,7 @@ function getVisibleClothingDescriptions(
     for (const clothing of clothings) {
         if (!wearingStatus[clothing.id]) continue;
         if (coveredIds.has(clothing.id)) continue;
-        if (clothing.description?) {
+        if (clothing.description) {
             visible.push(clothing.description);
         }
     }
@@ -926,7 +926,7 @@ function buildPromptContext(
 
 function buildAppearanceLines(ctx: PromptBuildContext): string[] {
     const lines: string[] = [];
-    const hasAnyAppearance = ctx.participants.some(p => p.appearancePrompt?);
+    const hasAnyAppearance = ctx.participants.some(p => p.appearancePrompt);
     if (!hasAnyAppearance) return lines;
 
     const nameLevel = ctx.cacheEfficiencyLevels['Character Name'] ?? 0;

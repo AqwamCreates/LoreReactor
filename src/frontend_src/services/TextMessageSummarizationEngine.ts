@@ -314,7 +314,7 @@ export async function generateLocationVisitSummary(
         const msg = history[i];
         if (msg.messageType !== 'chat') continue;
         const chatMsg = msg as ChatMessage;
-        if (!chatMsg.textContent?) continue;
+        if (!chatMsg.textContent) continue;
         const otherParticipantId = participants.findIndex(p => p.id === chatMsg.character.id);
         const tag = otherParticipantId !== -1 ? `Character ${otherParticipantId + 1}` : 'Unknown';
         const charName = chatMsg.character.name;
@@ -708,7 +708,7 @@ export async function generateEntropyPruningSummaries(
     for (let i = 0; i < cutoffVisibleIndex; i++) {
         const msg = visibleMessages[i];
         if (hasModelSummary(msg, modelId)) continue;
-        if (!msg.textContent?) continue;
+        if (!msg.textContent) continue;
 
         const summary = await generateMessageSummary(msg, maxTokens, interactionDataSummarizationSampler, profile);
         if (summary) results.set(msg.id, summary);

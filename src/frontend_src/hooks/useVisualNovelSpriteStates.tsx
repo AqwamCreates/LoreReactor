@@ -140,7 +140,7 @@ function parseMovementsFromClause(clause: string, speakerId: string, participant
     }
 
     // --- Fall, Collapse, Slump & Crumple ---
-    if (/\b(fall\w*\s+(?:down|over|flat|backwards?|forwards?)|fell\s+(?:down|over|flat|backwards?|forwards?)|fall\w*\s+to\s+the\s+(?:ground|floor|earth|knees)|fell\s+to\s+the\s+(?:ground|floor|earth|knees)|drop\w*\s+to\s+the\s+(?:ground|floor|earth)|dropped\s+to\s+the\s+(?:ground|floor|earth)|collaps\w*|slump\w*|crumpl\w*|tumbl\w*|toppl\w*|hit\s+the\s+(?:ground|floor))\b/i.test(lowerClause)) {
+    if (/\b(fall\w*\s+(?:down|over|flat|backwards?|forwards)|fell\s+(?:down|over|flat|backwards?|forwards)|fall\w*\s+to\s+the\s+(?:ground|floor|earth|knees)|fell\s+to\s+the\s+(?:ground|floor|earth|knees)|drop\w*\s+to\s+the\s+(?:ground|floor|earth)|dropped\s+to\s+the\s+(?:ground|floor|earth)|collaps\w*|slump\w*|crumpl\w*|tumbl\w*|toppl\w*|hit\s+the\s+(?:ground|floor))\b/i.test(lowerClause)) {
         movements.push({ characterId: speakerId, type: 'vertical', verticalAction: 'fall' });
     }
 

@@ -62,7 +62,7 @@ export function RegularExpressionTriggerEditor({
     const handleTest = useCallback((index: number) => {
         const t = testTexts[index];
         const pattern = triggers[index]?.trigger;
-        if (!pattern || !t?) {
+        if (!pattern || !t) {
             setTestResults(prev => ({ ...prev, [index]: null }));
             return;
         }

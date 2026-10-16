@@ -477,7 +477,7 @@ function extractLorebookContexts(book: CharacterBook): Partial<Context>[] {
 
     // Sort by insertion_order (lower = higher priority / earlier insertion)
     const sorted = [...book.entries]
-        .filter(e => e.enabled !== false && e.content?)
+        .filter(e => e.enabled !== false && e.content)
         .sort((a, b) => (a.insertion_order ?? 999) - (b.insertion_order ?? 999));
 
     for (const entry of sorted) {

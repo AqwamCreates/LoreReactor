@@ -142,7 +142,7 @@ export function CharacterCardImportModal({
 
             // Build starterPrompts from firstMes / alternateGreetings
             const starterPrompts: Record<string, number> = {};
-            if (fields.starterPrompt?) {
+            if (fields.starterPrompt) {
                 starterPrompts[fields.starterPrompt] = 1;
             }
             if (extended.alternateGreetings) {

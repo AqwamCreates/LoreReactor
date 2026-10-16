@@ -23,7 +23,7 @@ function normalizeText(text: string): string {
 
 // ─── Regex Patterns ───────────────────────────────────────────────
 const NAME_TERMINATOR = String.raw`(?:\s+and|\s+but|\s+who|\.|,|!|\?|$)`;
-const NAME_CAPTURE = String.raw`([\w\s]{1,50}?)`;
+const NAME_CAPTURE = String.raw`([\w\s]{1,50})`;
 
 const SELF_NAME_REVEAL_PATTERNS = [
     new RegExp(`i am ${NAME_CAPTURE}${NAME_TERMINATOR}`, 'i'),

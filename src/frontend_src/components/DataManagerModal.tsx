@@ -127,9 +127,9 @@ function isEntityHollow(
                 (ti.textCharacterWeights && Object.keys(ti.textCharacterWeights).length > 0)
             );
             const hasDialoguePrompts = c.dialoguePrompts && c.dialoguePrompts.length > 0;
-            const hasNonEmptyDialoguePrompt = hasDialoguePrompts && c.dialoguePrompts?.some(dp => dp.content?);
+            const hasNonEmptyDialoguePrompt = hasDialoguePrompts && c.dialoguePrompts?.some(dp => dp.content);
             const hasKnowledgePrompts = c.knowledgePrompts && c.knowledgePrompts.length > 0;
-            const hasNonEmptyKnowledgePrompt = hasKnowledgePrompts && c.knowledgePrompts?.some(kp => kp.content?);
+            const hasNonEmptyKnowledgePrompt = hasKnowledgePrompts && c.knowledgePrompts?.some(kp => kp.content);
             const hasStarterPrompts = c.starterPrompts && Object.keys(c.starterPrompts).length > 0;
             return !(c.systemPrompt || c.appearancePrompt || hasNonEmptyDialoguePrompt || hasNonEmptyKnowledgePrompt || c.thinkPrompt || hasStarterPrompts)
                 && !(c.images && Object.keys(c.images).length > 0)

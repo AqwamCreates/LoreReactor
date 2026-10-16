@@ -275,7 +275,7 @@ export function convertPlainSegmentPreservingSpacing(raw: string, target: textTy
         if (part === '\n' || part === '\r\n') return part;
         if (part.length === 0) return part;
 
-        const match = part.match(/^(\s*)([\s\S]*?)(\s*)$/);
+        const match = part.match(/^(\s*)([\s\S]*)(\s*)$/);
         if (!match) return part;
 
         const leading = match[1] ?? '';
@@ -292,7 +292,7 @@ export function convertFormattedSegmentPreservingSpacing(seg: DetectedSegment, t
     if (target === seg.category) return seg.rawMatch;
     if (target === 'normal') return seg.innerText;
 
-    const match = seg.innerText.match(/^(\s*)([\s\S]*?)(\s*)$/);
+    const match = seg.innerText.match(/^(\s*)([\s\S]*)(\s*)$/);
     if (!match) return wrapCoreText(seg.innerText, target);
 
     const leading = match[1] ?? '';

@@ -149,7 +149,7 @@ function compileRawString(
     }
 
     // 4. Extract and Strip tool calls
-    const toolRegex = new RegExp(`${callStartEsc}([\\s\\S]*?)${callEndEsc}`, 'g');
+    const toolRegex = new RegExp(`${callStartEsc}([\\s\\S]*)${callEndEsc}`, 'g');
     const extractedTools: ExtractedTool[] = [];
     let cleanText = '';
     let lastIndex = 0;

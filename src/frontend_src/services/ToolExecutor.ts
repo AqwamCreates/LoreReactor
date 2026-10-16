@@ -761,9 +761,9 @@ function parseDurationToMs(input: string): number | null {
 
     const hourMatch = trimmed.match(/(\d+)\s*h(?:ours?|r)?/);
     if (hourMatch) { totalMs += Number.parseInt(hourMatch[1], 10) * 3600000; matched = true; }
-    const minMatch = trimmed.match(/(\d+)\s*m(?:in(?:utes?|s)?)?/);
+    const minMatch = trimmed.match(/(\d+)\s*m(?:in(?:utes?|s))?/);
     if (minMatch) { totalMs += Number.parseInt(minMatch[1], 10) * 60000; matched = true; }
-    const secMatch = trimmed.match(/(\d+)\s*s(?:ec(?:onds?|s)?)?/);
+    const secMatch = trimmed.match(/(\d+)\s*s(?:ec(?:onds?|s))?/);
     if (secMatch) { totalMs += Number.parseInt(secMatch[1], 10) * 1000; matched = true; }
 
     if (!matched) { const plain = Number.parseInt(trimmed, 10); return !Number.isNaN(plain) && plain > 0 ? plain * 1000 : null; }
