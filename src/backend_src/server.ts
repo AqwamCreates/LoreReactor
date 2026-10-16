@@ -2105,7 +2105,7 @@ app.get('/gpu/status', (_req, response) => {
 
 // --- Web Fetch Proxy (CORS bypass) ---
 
-app.post('/fetch', async (req, response) => {
+app.post('/api/web/fetch', async (req, response) => {
   const { url, headers: reqHeaders } = req.body;
   if (!url || typeof url !== 'string') return response.status(400).json({ error: 'Missing url' });
 

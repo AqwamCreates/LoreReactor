@@ -1,4 +1,4 @@
-// src/frontend_src/utilities/chatLogic.ts
+// src/frontend_src/utilities/interactionDataLogic.ts
 import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, TextCharacterInjection, TextMessage, ToolExecutionResult, ToolMessage } from '../types';
 import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
 import { getKnownDisplayName, deriveDelimiters } from './promptLogic';
