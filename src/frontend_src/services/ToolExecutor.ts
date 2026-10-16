@@ -1037,19 +1037,19 @@ async function executeWeb(args: string): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     
     // ✅ FIX: Added 'url_or_search_query' to match the browser tool's signature
-    const query = pArgs.get(0, 'url_or_search_query', 'query_or_url', 'query', 'url', 'search') || pArgs.positional.join(' ');
+    const input = pArgs.get(0, 'url_or_search_query', 'query_or_url', 'query', 'url', 'search') || pArgs.positional.join(' ');
     
-    if (!query) return helpResult('web', 'url_or_search_query="..."', 'search the web or fetch a URL');
+    if (!input) return helpResult('web', 'url_or_search_query="..."', 'search the web or fetch a URL');
 
     try {
-        const isDirectUrl = /^https?:\/\//i.test(query);
-        const urlToFetch = isDirectUrl ? query : buildSearchUrl([query]);
+        const isDirectUrl = /^https?:\/\//i.test(input);
+        const urlToFetch = isDirectUrl ? input : buildSearchUrl([input]);
         const results = await fetchLinkContent(urlToFetch, { maxDepth: 0, cacheTimeToLiveMs: 5 * 60 * 1000, fetchMode: 'full', includeImages: false });
         const valid = results.filter(r => !r.error && r.content.length > 0);
         if (valid.length === 0) {
             return { toolType: 'web', args, content: `[Error: ${results[0]?.error || 'No content retrieved'}]`, displayReplacement: '[Error: Fetch failed]' };
         }
-        return { toolType: 'web', args, content: valid[0].content, displayReplacement: `[🌐 Fetched: "${query}"]` };
+        return { toolType: 'web', args, content: valid[0].content, displayReplacement: `[🌐 Fetched: "${input}"]` };
     } catch (e) {
         return { toolType: 'web', args, content: `[Error: ${(e as Error).message}]`, displayReplacement: '[Error: Web error]' };
     }
@@ -2101,7 +2101,7 @@ async function executeWindowMonitor(args: string): Promise<ToolResult> {
 // ─── Open Browser ───────────────────────────────────────────────────
 async function executeBrowser(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const input = pArgs.get(0, 'url_or_search_query', 'url', 'query', 'search') || pArgs.positional.join(' ');
+    const input = pArgs.get(0, 'url_or_search_query', 'query_or_url', 'query', 'url', 'search') || pArgs.positional.join(' ');
     if (!input) return helpResult('browser', 'url_or_search_query="..."', 'open webpage or web search in browser');
     
     const isDirectUrl = /^https?:\/\//i.test(input) || /^[\w-]+\.[\w-]+(\S*)/i.test(input);
