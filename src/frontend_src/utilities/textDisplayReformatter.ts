@@ -24,7 +24,7 @@ export interface CategoryConversion {
 }
 
 export const CATEGORY_LABELS: Record<textType, string> = {
-    normal: 'Plain Text',
+    normal: 'Normal',
     italic: 'Italic',
     bold: 'Bold',
     underline: 'Underline',
@@ -36,7 +36,7 @@ export const CATEGORY_LABELS: Record<textType, string> = {
 };
 
 export const TARGET_OPTIONS: { value: textType; label: string }[] = [
-    { value: 'normal', label: 'Plain Text' },
+    { value: 'normal', label: 'Normal' },
     { value: 'italic', label: 'Italic' },
     { value: 'bold', label: 'Bold' },
     { value: 'underline', label: 'Underline' },
