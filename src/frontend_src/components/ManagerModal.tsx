@@ -69,6 +69,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     activeItemId, addToast,
 }: Omit<ManagerModalProps<T>, 'isOpen'>) {
     const [searchQuery, setSearchQuery] = useState('');
+    const [showIds, setShowIds] = useState(false);
     
     // ✅ FIX: Expand folders containing ordered items by default on first load
     const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => {
@@ -268,11 +269,12 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         for (const entry of displayItems) {
             if (entry.type === 'folder') {
                 const folder = entry.folder;
-                const folderNameMatches = folder.name?.toLowerCase().includes(query);
+                const folderNameMatches = folder.name?.toLowerCase().includes(query) || folder.id.toLowerCase().includes(query);
                 const folderItems = folder.itemIds.map(id => itemMap.get(id)).filter((i): i is T => !!i);
                 
                 const matchingItems = folderItems.filter(item => {
                     if (folderNameMatches) return true;
+                    if (item.id.toLowerCase().includes(query)) return true;
                     if (item.name?.toLowerCase().includes(query)) return true;
                     if (renderSubtext) {
                         const subtextNode = renderSubtext(item);
@@ -288,6 +290,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
             } else {
                 const item = entry.item;
                 const nameMatches = item.name?.toLowerCase().includes(query);
+                const idMatches = item.id.toLowerCase().includes(query);
                 let subtextMatches = false;
                 if (renderSubtext) {
                     const subtextNode = renderSubtext(item);
@@ -295,7 +298,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                     else if (subtextNode && typeof subtextNode === 'object') subtextMatches = extractTextContent(subtextNode).toLowerCase().includes(query);
                 }
                 
-                if (nameMatches || subtextMatches) {
+                if (nameMatches || subtextMatches || idMatches) {
                     result.push({ type: 'item', item });
                 }
             }
@@ -326,6 +329,15 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
             const next = new Set(prev);
             if (next.has(id)) next.delete(id); else next.add(id);
             return next;
+        });
+    };
+
+    const handleCopyId = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(id).then(() => {
+            addToast('ID copied to clipboard!', 'success');
+        }).catch(() => {
+            addToast('Failed to copy ID.', 'error');
         });
     };
 
@@ -447,10 +459,18 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                 <div className={`manager-item-main ${isSelectable ? 'manager-item-main-clickable' : ''}`} onClick={() => { if (isSelectable) onSelectItem?.(item); }}>
                     <div className="manager-item-info">
                         <div className="manager-item-title">{item.name || 'Untitled'}</div>
-                        {renderSubtext && <div className="manager-item-sub">{renderSubtext(item)}</div>}
+                        <div className="manager-item-sub" style={{ minHeight: '1.2em', fontSize: '0.75rem', opacity: 0.8, lineHeight: '1.2' }}>
+                            {showIds ? (
+                                <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', wordBreak: 'break-all' }}>{item.id}</span>
+                            ) : (
+                                renderSubtext ? renderSubtext(item) : <span style={{ visibility: 'hidden' }}>.</span>
+                            )}
+                        </div>
                     </div>
                 </div>
                 <div className="manager-item-actions">
+                    <button type="button" onClick={e => handleCopyId(e, id)} className="manager-item-button" title="Copy ID">📋</button>
+
                     {canToggleOrder && (
                         isConfirmingRemove ? (
                             <div className="delete-confirm-group">
@@ -511,11 +531,21 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                     <input ref={renameInputRef} type="text" value={renameValue} onChange={e => setRenameValue(e.target.value)} onBlur={(e) => handleRenameSubmit(e, folder.id)} onKeyDown={e => { if (e.key === 'Escape') setRenamingId(null); }} className="modal-search-input" style={{ padding: '4px 8px', minHeight: '32px', fontSize: '0.85rem' }} autoFocus />
                                 </form>
                             ) : (
-                                <div className="manager-item-title">📁 {folder.name}</div>
+                                <>
+                                    <div className="manager-item-title">📁 {folder.name}</div>
+                                    <div className="manager-item-sub" style={{ minHeight: '1.2em', fontSize: '0.75rem', opacity: 0.8, lineHeight: '1.2' }}>
+                                        {showIds ? (
+                                            <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', wordBreak: 'break-all' }}>{folder.id}</span>
+                                        ) : (
+                                            <span style={{ visibility: 'hidden' }}>.</span>
+                                        )}
+                                    </div>
+                                </>
                             )}
                         </div>
                     </div>
                     <div className="manager-item-actions" onClick={e => e.stopPropagation()}>
+                        <button type="button" onClick={e => handleCopyId(e, folder.id)} className="manager-item-button" title="Copy ID">📋</button>
                         <button type="button" onClick={e => handleRenameClick(e, folder.id, folder.name)} className="manager-item-button" title="Rename Folder">✏️</button>
                         {isConfirmingDelete ? (
                             <div className="delete-confirm-group">
@@ -546,6 +576,15 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                 <div className="modal-header">
                     <h2>{title}</h2>
                     <div className="modal-header-actions">
+                        <button 
+                            type="button" 
+                            className="editor-button editor-button-cancel" 
+                            onClick={() => setShowIds(prev => !prev)} 
+                            title={showIds ? "Showing IDs (Click to show descriptions)" : "Showing Descriptions (Click to show IDs)"}
+                            style={{ fontSize: '0.75rem', padding: '6px 12px', opacity: showIds ? 1 : 0.7 }}
+                        >
+                            {showIds ? '🔢 IDs' : '📝 Desc'}
+                        </button>
                         {showCreateNew && <button type="button" className="create-new-button" onClick={e => { e.stopPropagation(); onCreateNew!(); }}>➕ New {singularTitle}</button>}
                         <button type="button" className="close-button close-button-spaced" onClick={onClose}>×</button>
                     </div>
