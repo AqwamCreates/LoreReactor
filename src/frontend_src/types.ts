@@ -43,7 +43,7 @@ export interface RawStopPattern extends RawData {
   regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
 }
 
-export type retrievalStrategy = 'dense' | 'hybrid' | 'maximal marginal relevance'
+export type retrievalStrategy = 'dense' | 'sparse' | 'hybrid' | 'maximal marginal relevance'
 
 export interface RetrievalConfiguration extends ObjectData {
   retrievalStrategy: retrievalStrategy

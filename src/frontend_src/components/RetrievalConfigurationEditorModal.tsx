@@ -134,6 +134,7 @@ function RetrievalConfigurationEditorModalInner({
                             style={{ marginBottom: '8px' }}
                         >
                             <option value="dense">Dense (Semantic Vector Search)</option>
+                            <option value="sparse">Sparse (Keyword Search)</option>
                             <option value="hybrid">Hybrid (Dense + Sparse Keyword)</option>
                             <option value="maximal marginal relevance">Maximal Marginal Relevance (Diversity)</option>
                         </select>
