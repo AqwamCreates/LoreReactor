@@ -423,6 +423,8 @@ function fillLocationDefaults(l: Record<string, unknown>): Location {
         images: (l.images as string[]) || [],
         hasSkyView: (l.hasSkyView as boolean) || true,
         hasWeather: (l.hasWeather as boolean) || true,
+        chatStaminaRegenerationRateMultiplier: (l.chatStaminaRegenerationRateMultiplier as number) || 1,
+        actionStaminaRegenerationRateMultiplier: (l.actionStaminaRegenerationRateMultiplier as number) || 1,
         regularExpressionActivationTriggers: parseRegexTriggers(l.regularExpressionActivationTriggers),
         regularExpressionDeactivationTriggers: parseRegexTriggers(l.regularExpressionDeactivationTriggers),
         regularExpressionExclusionActivationTriggers: parseRegexTriggers(l.regularExpressionExclusionActivationTriggers),

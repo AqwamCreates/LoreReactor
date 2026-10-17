@@ -16,6 +16,7 @@ import type {
     TextMessage
 } from '../types';
 import { ActionMenu } from './ActionMenu';
+import { defaultCharacter } from '../dictionaries/defaults';
 
 type ActionWrap = '*' | '()' | 'none';
 type ActionCase = 'first' | 'pascal' | 'lower';
@@ -102,15 +103,10 @@ export function CompanionOverlay() {
         if (displayedMessage) return displayedMessage.character;
         if (state.localProtagonist) return state.localProtagonist;
         if (state.interactionData?.participants?.[0]) return state.interactionData.participants[0];
-        return {
-            id: 'companion', name: state.charName, initiativeWeight: 1, chatProbability: 1,
-            maximumChatStamina: 5, nameSensitivity: 1, chatImpatienceSensitivity: 1, skipProbability: 0,
-            memoryRetentionWeight: 1, contextSensitivity: 1, maximumActionStamina: 5,
-            numberOfMessagesToDisableThinkPrompt: 0, numberOfMessagesToDisableMetaThinkInstructions: 0,
-            numberOfMessagesToDisableDialoguePrompt: 0, numberOfMessagesToDisableStarterPrompt: 0,
-            tools: {} as any, clothings: [], knownCharacterNames: {}, textCharacterInjections: [],
-            memories: {}, firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
-        };
+        const placeholderCharacter = {...defaultCharacter}
+        placeholderCharacter.id = 'conpanion'
+        placeholderCharacter.name = state.charName
+        return placeholderCharacter;
     }, [
         displayedMessage, state.localProtagonist, state.interactionData, 
         state.charName, state.isLoading, state.streamingCharacter, state.allCharacters

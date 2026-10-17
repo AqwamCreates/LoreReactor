@@ -164,6 +164,8 @@ ${characterToolsSchema}
     "images": ["string array (image filenames for location visuals)"],
     "hasSkyView": "boolean (default true). If true, the sky view prompt and tool will be available to characters at this location.",
     "hasWeather": "boolean (default true). If true, the weather prompt and tool will be available to characters at this location.",
+    "chatStaminaRegenerationRateMultiplier": "number (≥0, default 1). Multiplies the character's chat stamina regeneration rate while at this location. 1 = normal speed, 2 = twice as fast, 0.5 = half speed.",
+    "actionStaminaRegenerationRateMultiplier": "number (≥0, default 1). Multiplies the character's action stamina regeneration rate while at this location. 1 = normal speed, 2 = twice as fast, 0.5 = half speed.",
     "regularExpressionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
     "regularExpressionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
     "regularExpressionExclusionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
