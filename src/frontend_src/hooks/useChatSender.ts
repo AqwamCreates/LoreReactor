@@ -116,7 +116,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
                     rawMatch: slashInvocation.rawMatch || `<<tool: ${slashInvocation.toolType} ${slashInvocation.args}>>`,
                     toolType: slashInvocation.toolType,
                     args: slashInvocation.args,
-                    content: toolResult.content,
+                    textContent: toolResult.textContent,
                     displayReplacement: toolResult.displayReplacement
                 };
                 

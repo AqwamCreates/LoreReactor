@@ -17,7 +17,7 @@ export function CharacterMemoryEditorModal({
     localProtagonistId?: string | null;
 }) {
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [editContent, setEditContent] = useState('');
+    const [editTextContent, setEditTextContent] = useState('');
     
     const [memories, setMemories] = useState<Record<string, Memory[]>>(() => {
         try {
@@ -67,12 +67,12 @@ export function CharacterMemoryEditorModal({
 
     const handleStartEdit = (mem: Memory) => {
         setEditingId(mem.id);
-        setEditContent(mem.content || '');
+        setEditTextContent(mem.textContent || '');
     };
 
     const handleCancelEdit = () => {
         setEditingId(null);
-        setEditContent('');
+        setEditTextContent('');
     };
 
     const handleSaveEdit = () => {
@@ -92,15 +92,15 @@ export function CharacterMemoryEditorModal({
             const next = { ...prev };
             next[targetChatId] = next[targetChatId].map(m => {
                 if (m.id !== editingId) return m;
-                // ✅ Invalidate embedding when content changes so the background queue regenerates it
+                // ✅ Invalidate embedding when textContent changes so the background queue regenerates it
                 const { embedding, ...rest } = m;
-                return { ...rest, content: editContent, lastUpdatedTimestamp: Date.now() } as Memory;
+                return { ...rest, textContent: editTextContent, lastUpdatedTimestamp: Date.now() } as Memory;
             });
             return next;
         });
         setHasChanges(true);
         setEditingId(null);
-        setEditContent('');
+        setEditTextContent('');
     };
 
     const handleDelete = (memId: string) => {
@@ -115,7 +115,7 @@ export function CharacterMemoryEditorModal({
         setHasChanges(true);
         if (editingId === memId) {
             setEditingId(null);
-            setEditContent('');
+            setEditTextContent('');
         }
     };
 
@@ -129,7 +129,7 @@ export function CharacterMemoryEditorModal({
         });
         setHasChanges(true);
         setEditingId(null);
-        setEditContent('');
+        setEditTextContent('');
         setShowMassDeleteConfirm(false);
     };
 
@@ -221,8 +221,8 @@ export function CharacterMemoryEditorModal({
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                             <textarea
                                                                 ref={editTextAreaRef}
-                                                                value={editContent}
-                                                                onChange={(e) => setEditContent(e.target.value)}
+                                                                value={editTextContent}
+                                                                onChange={(e) => setEditTextContent(e.target.value)}
                                                                 className="editor-textarea"
                                                                 rows={4}
                                                             />
@@ -239,7 +239,7 @@ export function CharacterMemoryEditorModal({
                                                                 whiteSpace: 'pre-wrap',
                                                                 wordBreak: 'break-word',
                                                             }}>
-                                                                {mem.content || "(Empty memory)"}
+                                                                {mem.textContent || "(Empty memory)"}
                                                             </div>
                                                             <div style={{
                                                                 display: 'flex',

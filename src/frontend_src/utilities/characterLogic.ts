@@ -345,19 +345,19 @@ export function initializeClothingWearingStatuses(character: Character): Record<
 
 export function getCharacterStarterMessage(character: Character): string {
     const starterPrompts = character.starterPrompts;
-    if (!starterPrompts) return `*${character.name} enters the scene.*`;
+    if (!starterPrompts || starterPrompts.length === 0) return `*${character.name} enters the scene.*`;
 
-    const entries = Object.entries(starterPrompts).filter(([text]) => text.length > 0);
+    const entries = starterPrompts.filter(sp => sp.textContent && sp.textContent.length > 0);
     if (entries.length === 0) return `*${character.name} enters the scene.*`;
 
-    const totalWeight = entries.reduce((sum, [, weight]) => sum + (weight > 0 ? weight : 1), 0);
+    const totalWeight = entries.reduce((sum, sp) => sum + (sp.weight > 0 ? sp.weight : 1), 0);
     let random = Math.random() * totalWeight;
-    let chosen = entries[0][0];
+    let chosen = entries[0].textContent;
 
-    for (const [text, weight] of entries) {
-        const w = weight > 0 ? weight : 1;
+    for (const sp of entries) {
+        const w = sp.weight > 0 ? sp.weight : 1;
         if (random < w) {
-            chosen = text;
+            chosen = sp.textContent;
             break;
         }
         random -= w;

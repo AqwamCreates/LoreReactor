@@ -1101,7 +1101,7 @@ const webpageRepo = createRepository<Webpage, RawWebpage>({
   hydrate: (raw, id) => hydrateEntity<Webpage, RawWebpage>(raw, id, {
     name: 'Untitled Webpage',
     url: '',
-    content: '',
+    textContent: '',
   }),
 });
 

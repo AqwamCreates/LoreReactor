@@ -216,13 +216,13 @@ export interface Voice {
 }
 
 export interface Memory extends ObjectData {
-  content: string;
+  textContent: string;
   interactionData: InteractionData;
   embedding?: number[],
 }
 
 export interface RawMemory extends RawData {
-  content: string;
+  textContent: string;
   interactionDataId: string;
   embedding?: number[],
 }
@@ -230,7 +230,7 @@ export interface RawMemory extends RawData {
 export type tool = "whisper" | "think" | "pick" | "sky_view" | "clock" | "calendar" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "oracle" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer" | 'schedule_response' | 'text_to_speech' | 'gpu' | 'system_info' | 'notify' | 'volume_control' | 'lock_screen' | 'sleep' | 'shutdown' | 'restart' | 'clipboard' | 'front_camera' | 'screenshot' | 'network_scanner' | 'file_watcher' | 'window_monitor' | 'process_monitor' | 'trash' | 'browser' | 'read_file' | 'write_file' | 'shell' | 'virtual_hearing' | 'virtual_vision' | 'virtual_input' | 'virtual_controller' | 'hardware_control'
 
 export interface DialoguePrompt extends ObjectData {
-  content: string;
+  textContent: string;
   dialoguePromptBindings: string[]; // IDs of dialogue prompts this can chain to.
   weight: number // This dialogue prompt weight when being a part of the dialogue prompt or the start of it. Default is 1.
   breakProbability: number; // The higher the value, the higher the probability that the dialogue prompt will break before it can go to next node. Default is 0.
@@ -243,7 +243,7 @@ export interface DialoguePrompt extends ObjectData {
 }
 
 export interface KnowledgePrompt extends ObjectData {
-  content: string;
+  textContent: string;
   knowledgePromptBindings: string[]; // IDs of other KnowledgePrompts this links to.
   regularExpressionActivationTriggers?: RegularExpressionTrigger[];
   regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
@@ -253,7 +253,7 @@ export interface KnowledgePrompt extends ObjectData {
 }
 
 export interface StarterPrompt extends ObjectData {
-  content: string;
+  textContent: string;
   weight: number // This dialogue prompt weight when being a part of the dialogue prompt or the start of it. Default is 1.
   skipProbability: number // The higher the value, the higher the likelihood of skipping choosing the dialogue from this node. Default is 0.
   regularExpressionActivationTriggers?: RegularExpressionTrigger[];
@@ -291,7 +291,7 @@ export interface Character extends ObjectData {
   appearancePrompt?: string;
   dialoguePrompts?: DialoguePrompt[];
   knowledgePrompts?: KnowledgePrompt[];
-  starterPrompts?: StarterPrompt[]; // Text -> Weight value for that text during the sampling.
+  starterPrompts?: StarterPrompt[];
   memoryPrompts?: Record<string, string>; // Expression -> string. If the string for this expression is not found, then use neutral. If no neutral string, then use system default. Used for creation of memories.
   initiativeWeight: number;
   chatProbability: number;
@@ -369,7 +369,7 @@ export interface ToolExecutionResult {
     rawMatch: string;  // The exact <<tool: ...>> invocation
     toolType: string;
     args: string;
-    content: string;
+    textContent: string;
     displayReplacement: string;
 }
 
@@ -949,12 +949,12 @@ export interface ParsedCharacterCard {
 
 export interface Webpage extends ObjectData {
   url: string;
-  content: string;
+  textContent: string;
 }
 
 export interface RawWebpage extends RawData {
   url: string;
-  content: string;
+  textContent: string;
 }
 
 export type audioCategory = 'ambient' | 'music' | 'sound effect'

@@ -111,7 +111,7 @@ async function processToolInvocations(
             toolResult = {
                 toolType: inv.toolType,
                 args: inv.args,
-                content: "Tool disabled",
+                textContent: "Tool disabled",
                 displayReplacement: ""
             };
         } else {
@@ -120,7 +120,7 @@ async function processToolInvocations(
                 toolResult = results[0] || {
                     toolType: inv.toolType,
                     args: inv.args,
-                    content: 'Something went wrong',
+                    textContent: 'Something went wrong',
                     displayReplacement: ''
                 };
             } catch (e) {
@@ -128,13 +128,13 @@ async function processToolInvocations(
                 toolResult = {
                     toolType: inv.toolType,
                     args: inv.args,
-                    content: 'Something went wrong',
+                    textContent: 'Something went wrong',
                     displayReplacement: ''
                 };
             }
         }
 
-        const resultContent = toolResult.content || 'Something went wrong';
+        const resultContent = toolResult.textContent || 'Something went wrong';
 
         rawReplacements.push({
             rawMatch: inv.rawMatch,
@@ -150,7 +150,7 @@ async function processToolInvocations(
             rawMatch: inv.rawMatch,
             toolType: toolResult.toolType,
             args: toolResult.args,
-            content: resultContent,
+            textContent: resultContent,
             displayReplacement: toolResult.displayReplacement
         });
     }

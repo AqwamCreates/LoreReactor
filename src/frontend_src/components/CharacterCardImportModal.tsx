@@ -1,7 +1,7 @@
 // src/frontend_src/components/CharacterCardImportModal.tsx
 import type React from 'react';
 import { useState, useRef } from 'react';
-import type { Character, Context, Sampler, tool } from '../types';
+import type { Character, Context, Sampler, tool, StarterPrompt } from '../types';
 import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExtended } from '../utilities/characterCardParser';
 import { 
     getInitiativeWeightValueFromText, 
@@ -141,15 +141,30 @@ export function CharacterCardImportModal({
             const defaultLanguageModelSampler = allSamplers.length > 0 ? allSamplers[0] : undefined;
 
             // Build starterPrompts from firstMes / alternateGreetings
-            const starterPrompts: Record<string, number> = {};
+            const starterPromptsArray: StarterPrompt[] = [];
+            const seenStarterTexts = new Set<string>();
+
+            const addStarterPrompt = (text: string) => {
+                if (text && !seenStarterTexts.has(text)) {
+                    seenStarterTexts.add(text);
+                    starterPromptsArray.push({
+                        id: uuidv4(),
+                        name: `Starter Prompt ${starterPromptsArray.length + 1}`,
+                        textContent: text,
+                        weight: 1,
+                        skipProbability: 0,
+                        firstCreatedTimestamp: now,
+                        lastUpdatedTimestamp: now,
+                    });
+                }
+            };
+
             if (fields.starterPrompt) {
-                starterPrompts[fields.starterPrompt] = 1;
+                addStarterPrompt(fields.starterPrompt);
             }
             if (extended.alternateGreetings) {
                 for (const greeting of extended.alternateGreetings) {
-                    if (greeting && !starterPrompts[greeting]) {
-                        starterPrompts[greeting] = 1;
-                    }
+                    addStarterPrompt(greeting);
                 }
             }
 
@@ -168,7 +183,7 @@ export function CharacterCardImportModal({
                 thinkPrompt: undefined,
                 appearancePrompt: fields.appearancePrompt || undefined,
                 dialoguePrompts: undefined,
-                starterPrompts: Object.keys(starterPrompts).length > 0 ? starterPrompts : undefined,
+                starterPrompts: starterPromptsArray.length > 0 ? starterPromptsArray : undefined,
                 images: Object.keys(images).length > 0 ? images : undefined,
                 languageModelSampler: defaultLanguageModelSampler,
                 stopPatterns: undefined,
@@ -358,7 +373,7 @@ export function CharacterCardImportModal({
                                         <div><strong>Description:</strong> {preview.character.description?.substring(0, 80) || '(none)'}{preview.character.description && preview.character.description.length > 80 ? '...' : ''}</div>
                                         <div><strong>Emotion Images:</strong> {preview.emotionImageCount}</div>
                                         <div><strong>System Prompt:</strong> {preview.character.systemPrompt ? `${preview.character.systemPrompt.length} chars` : '(none)'}</div>
-                                        <div><strong>Starter Prompts:</strong> {preview.character.starterPrompts ? Object.keys(preview.character.starterPrompts).length : 0}</div>
+                                        <div><strong>Starter Prompts:</strong> {preview.character.starterPrompts ? preview.character.starterPrompts.length : 0}</div>
                                     </div>
                                     <div style={{ marginTop: '8px', fontSize: '0.65rem', opacity: 0.5 }}>
                                         Traits auto-detected: IW={preview.character.initiativeWeight.toFixed(1)} · CP={preview.character.chatProbability.toFixed(2)} · Chat Stamina={preview.character.maximumChatStamina} · Action Stamina={preview.character.maximumActionStamina} · NS={preview.character.nameSensitivity.toFixed(1)} · CIS={preview.character.chatImpatienceSensitivity.toFixed(1)}

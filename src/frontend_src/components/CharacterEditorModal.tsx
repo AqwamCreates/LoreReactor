@@ -629,7 +629,7 @@ function CharacterEditorModalInner({
                 id: uuidv4(),
                 name: 'Default Greeting',
                 description: '',
-                content: fields.starterPrompt,
+                textContent: fields.starterPrompt,
                 weight: 1,
                 skipProbability: 0,
                 firstCreatedTimestamp: now,

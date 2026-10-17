@@ -15,7 +15,7 @@ const tokenEngine = getLanguageModelEngine();
 
 interface FetchResult {
     url: string;
-    content: string;
+    textContent: string;
     links: string[];
     images: WebpageImageInfo[];
     fetchedAt: number;
@@ -44,7 +44,7 @@ async function proxiedFetch(url: string, acceptHeader: string): Promise<{
     try {
         const response = await fetch(FETCH_PROXY_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'textContent-Type': 'application/json' },
             body: JSON.stringify({
                 url,
                 headers: {
@@ -54,7 +54,7 @@ async function proxiedFetch(url: string, acceptHeader: string): Promise<{
             }),
         });
 
-        const contentType = response.headers.get('content-type') || '';
+        const contentType = response.headers.get('textContent-type') || '';
 
         // Handle non-JSON proxy responses gracefully
         if (!contentType.includes('application/json')) {
@@ -245,7 +245,7 @@ function parseHtml(html: string, baseUrl: string): { text: string; links: string
 }
 
 /**
- * Extract mode: keeps only structured content.
+ * Extract mode: keeps only structured textContent.
  */
 function extractStructuredContent(text: string): string {
     const lines = text.split('\n');
@@ -279,7 +279,7 @@ function extractStructuredContent(text: string): string {
     }
 
     const result = kept.join('\n');
-    return result || '[No structured content extracted]';
+    return result || '[No structured textContent extracted]';
 }
 
 async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode: string, includeImages: boolean): Promise<FetchResult> {
@@ -292,25 +292,25 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
         return cached;
     }
 
-    // Layer 2: Persistent disk cache (raw content only — mode-specific processing happens after)
+    // Layer 2: Persistent disk cache (raw textContent only — mode-specific processing happens after)
     if (cacheTimeToLiveMs > 0) {
         try {
             const diskCached = await findWebpageByUrl(url);
             if (diskCached && (now - diskCached.lastUpdatedTimestamp) < cacheTimeToLiveMs) {
-                let content = diskCached.content;
+                let textContent = diskCached.textContent;
 
-                // Apply mode-specific processing to disk-cached raw content
+                // Apply mode-specific processing to disk-cached raw textContent
                 if (fetchMode === 'extract') {
-                    content = extractStructuredContent(content);
+                    textContent = extractStructuredContent(textContent);
                 }
 
                 const result: FetchResult = {
                     url,
-                    content,
+                    textContent,
                     links: [],
                     images: [],
                     fetchedAt: diskCached.lastUpdatedTimestamp,
-                    tokenEstimate: await tokenEngine.countTokens(content),
+                    tokenEstimate: await tokenEngine.countTokens(textContent),
                 };
                 fetchCache.set(cacheKey, result);
                 return result;
@@ -331,22 +331,22 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
         const contentType = result.contentType || '';
         const rawBody = result.text || '';
 
-        let content: string;
+        let textContent: string;
         let links: string[] = [];
         let imageUrls: string[] = [];
 
         if (contentType.includes('text/html')) {
             const parsed = parseHtml(rawBody, url);
-            content = parsed.text;
+            textContent = parsed.text;
             links = parsed.links;
             imageUrls = parsed.imageUrls;
         } else {
-            content = rawBody;
+            textContent = rawBody;
         }
 
         // Apply mode-specific processing
         if (fetchMode === 'extract') {
-            content = extractStructuredContent(content);
+            textContent = extractStructuredContent(textContent);
         }
 
         let images: WebpageImageInfo[] = [];
@@ -369,16 +369,16 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
 
         const fetchResult: FetchResult = {
             url,
-            content,
+            textContent,
             links,
             images,
             fetchedAt: now,
-            tokenEstimate: await tokenEngine.countTokens(content),
+            tokenEstimate: await tokenEngine.countTokens(textContent),
         };
 
         fetchCache.set(cacheKey, fetchResult);
 
-        // Persist raw content to disk cache (before mode-specific processing)
+        // Persist raw textContent to disk cache (before mode-specific processing)
         // We save the raw version so other modes can reuse it
         try {
             const rawContent = contentType.includes('text/html') ? parseHtml(rawBody, url).text : rawBody;
@@ -386,7 +386,7 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
                 id: uuidv4(),
                 name: url,
                 url,
-                content: rawContent,
+                textContent: rawContent,
                 firstCreatedTimestamp: now,
                 lastUpdatedTimestamp: now,
             });
@@ -403,7 +403,7 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
 
         const errorResult: FetchResult = {
             url,
-            content: '',
+            textContent: '',
             links: [],
             images: [],
             fetchedAt: now,
@@ -455,7 +455,7 @@ export async function fetchLinkContent(
 
     const result = await fetchSingleUrl(url, cacheTimeToLiveMs, fetchMode, includeImages);
 
-    if (result.error || !result.content) {
+    if (result.error || !result.textContent) {
         return [result];
     }
 
@@ -537,7 +537,7 @@ export async function fetchMultipleContextUrls(
 
     // Summary mode: summarize each page individually, then merge if multiple
     if (options.fetchMode === 'summary') {
-        const validResults = allResults.filter(r => !r.error && r.content.length > 0);
+        const validResults = allResults.filter(r => !r.error && r.textContent.length > 0);
 
         if (validResults.length > 0) {
             const summarizedEntries: { url: string; summary: string }[] = [];
@@ -548,7 +548,7 @@ export async function fetchMultipleContextUrls(
                     : undefined;
 
                 const summary = await summarizeWebpageContent(
-                    result.content,
+                    result.textContent,
                     result.url,
                     imagesForSummary,
                     options.sampler,
@@ -583,7 +583,7 @@ export async function fetchMultipleContextUrls(
                 allResults.length = 0;
                 allResults.push({
                     url: summarizedEntries.length === 1 ? summarizedEntries[0].url : 'merged-summary',
-                    content: finalContent,
+                    textContent: finalContent,
                     links: [],
                     images: [],
                     fetchedAt: Date.now(),

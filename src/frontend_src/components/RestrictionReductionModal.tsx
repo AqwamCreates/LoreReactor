@@ -236,8 +236,8 @@ function getSectionText(character: Character, section: PromptSection): string {
         case 'systemPrompt': return character.systemPrompt || '';
         case 'thinkPrompt': return character.thinkPrompt || '';
         case 'appearancePrompt': return character.appearancePrompt || '';
-        case 'starterPrompts': return Object.keys(character.starterPrompts || {}).join('\n');
-        case 'dialoguePrompts': return (character.dialoguePrompts || []).map(dialoguePrompt => dialoguePrompt.content).join('\n');
+        case 'starterPrompts': return (character.starterPrompts || []).map(sp => sp.textContent).join('\n');
+        case 'dialoguePrompts': return (character.dialoguePrompts || []).map(dialoguePrompt => dialoguePrompt.textContent).join('\n');
         default: return '';
     }
 }
@@ -257,18 +257,14 @@ function applyModifications(character: Character, currentFlags: FlaggedItem[]): 
         } else if (flag.section === 'appearancePrompt' && modified.appearancePrompt) {
             modified.appearancePrompt = modified.appearancePrompt.replace(flag.originalText, replacement);
         } else if (flag.section === 'starterPrompts' && modified.starterPrompts) {
-            const keys = Object.keys(modified.starterPrompts);
-            for (const key of keys) {
-                if (key.includes(flag.originalText)) {
-                    const newKey = key.replace(flag.originalText, replacement);
-                    modified.starterPrompts[newKey] = modified.starterPrompts[key];
-                    delete modified.starterPrompts[key];
-                }
-            }
+            modified.starterPrompts = modified.starterPrompts.map(sp => ({
+                ...sp,
+                textContent: sp.textContent.replace(flag.originalText, replacement)
+            }));
         } else if (flag.section === 'dialoguePrompts' && modified.dialoguePrompts) {
             modified.dialoguePrompts = modified.dialoguePrompts.map(dialoguePrompt => ({
                 ...dialoguePrompt,
-                content: dialoguePrompt.content.replace(flag.originalText, replacement)
+                textContent: dialoguePrompt.textContent.replace(flag.originalText, replacement)
             }));
         }
     }

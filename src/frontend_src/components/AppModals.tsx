@@ -289,23 +289,23 @@ export function AppModals({
         
         if (character.useEmbeddingModelForKnowledgePrompts && character.knowledgePrompts) {
             for (const kp of character.knowledgePrompts) {
-                if (kp.content && !kp.embedding) tasks.push({ type: 'knowledge', id: kp.id, text: kp.content });
+                if (kp.textContent && !kp.embedding) tasks.push({ type: 'knowledge', id: kp.id, text: kp.textContent });
             }
         }
         if (character.useEmbeddingModelForDialoguePrompts && character.dialoguePrompts) {
             for (const dp of character.dialoguePrompts) {
-                if (dp.content && !dp.embedding) tasks.push({ type: 'dialogue', id: dp.id, text: dp.content });
+                if (dp.textContent && !dp.embedding) tasks.push({ type: 'dialogue', id: dp.id, text: dp.textContent });
             }
         }
         if (character.useEmbeddingModelForStarterPrompts && character.starterPrompts) {
             for (const sp of character.starterPrompts) {
-                if (sp.content && !sp.embedding) tasks.push({ type: 'starter', id: sp.id, text: sp.content });
+                if (sp.textContent && !sp.embedding) tasks.push({ type: 'starter', id: sp.id, text: sp.textContent });
             }
         }
         if (character.useEmbeddingModelForMemories && character.memories) {
             for (const [chatId, mems] of Object.entries(character.memories)) {
                 for (const mem of mems) {
-                    if (mem.content && !mem.embedding) tasks.push({ type: 'memory', id: mem.id, text: mem.content, chatId });
+                    if (mem.textContent && !mem.embedding) tasks.push({ type: 'memory', id: mem.id, text: mem.textContent, chatId });
                 }
             }
         }

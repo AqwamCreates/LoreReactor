@@ -32,7 +32,7 @@ interface CharacterDialoguePromptEditorModalProps {
 
 interface DialogueNodeData extends Record<string, unknown> {
     name: string;
-    contentLength: number;
+    textContentLength: number;
     bindingCount: number;
     weight: number;
     breakProbability: number;
@@ -48,12 +48,12 @@ const HANDLE_STYLE: React.CSSProperties = {
 };
 
 function DialogueNode({ data }: NodeProps<Node<DialogueNodeData>>) {
-    const { name, contentLength, bindingCount, weight, breakProbability, skipProbability, hasTriggers } = data;
+    const { name, textContentLength, bindingCount, weight, breakProbability, skipProbability, hasTriggers } = data;
 
-    const borderColor = contentLength > 0 ? '#10b981' : 'rgba(255, 255, 255, 0.1)';
-    const bgColor = contentLength > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255, 255, 255, 0.02)';
-    const textColor = contentLength > 0 ? '#6ee7b7' : 'rgba(255, 255, 255, 0.35)';
-    const glowColor = contentLength > 0 ? 'rgba(16, 185, 129, 0.2)' : 'none';
+    const borderColor = textContentLength > 0 ? '#10b981' : 'rgba(255, 255, 255, 0.1)';
+    const bgColor = textContentLength > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255, 255, 255, 0.02)';
+    const textColor = textContentLength > 0 ? '#6ee7b7' : 'rgba(255, 255, 255, 0.35)';
+    const glowColor = textContentLength > 0 ? 'rgba(16, 185, 129, 0.2)' : 'none';
 
     return (
         <div style={{
@@ -81,9 +81,9 @@ function DialogueNode({ data }: NodeProps<Node<DialogueNodeData>>) {
             </div>
 
             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                {contentLength > 0 && (
+                {textContentLength > 0 && (
                     <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(16, 185, 129, 0.2)', borderRadius: '3px', color: '#6ee7b7' }}>
-                        {contentLength} char{contentLength !== 1 ? 's' : ''}
+                        {textContentLength} char{textContentLength !== 1 ? 's' : ''}
                     </span>
                 )}
                 {weight !== 1 && (
@@ -111,7 +111,7 @@ function DialogueNode({ data }: NodeProps<Node<DialogueNodeData>>) {
                         Regex
                     </span>
                 )}
-                {contentLength === 0 && bindingCount === 0 && breakProbability === 0 && skipProbability === 0 && weight === 1 && !hasTriggers && (
+                {textContentLength === 0 && bindingCount === 0 && breakProbability === 0 && skipProbability === 0 && weight === 1 && !hasTriggers && (
                     <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '3px', color: 'rgba(255,255,255,0.4)' }}>
                         Empty
                     </span>
@@ -138,7 +138,7 @@ export function CharacterDialoguePromptEditorModal({
 
     const buildNodeData = (item: DialoguePrompt): DialogueNodeData => ({
         name: item.name,
-        contentLength: item.content?.length ?? 0,
+        textContentLength: item.textContent?.length ?? 0,
         bindingCount: item.dialoguePromptBindings?.length ?? 0,
         weight: item.weight ?? 1,
         breakProbability: item.breakProbability ?? 0,
@@ -243,7 +243,7 @@ export function CharacterDialoguePromptEditorModal({
             id: uuidv4(),
             name: '',
             description: '',
-            content: '',
+            textContent: '',
             dialoguePromptBindings: [],
             weight: 1,
             breakProbability: 0,
@@ -450,9 +450,9 @@ export function CharacterDialoguePromptEditorModal({
                                         {item.name || '(Unnamed)'}
                                     </span>
                                     <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                                        {(item.content?.length ?? 0) > 0 && (
+                                        {(item.textContent?.length ?? 0) > 0 && (
                                             <span style={{ fontSize: '0.55rem', padding: '1px 4px', background: 'rgba(16, 185, 129, 0.2)', borderRadius: '3px', color: '#6ee7b7' }}>
-                                                {item.content!.length}
+                                                {item.textContent!.length}
                                             </span>
                                         )}
                                         {(item.weight ?? 1) !== 1 && (
@@ -539,8 +539,8 @@ export function CharacterDialoguePromptEditorModal({
                             <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
                                 <label className="editor-label editor-label-small">Content</label>
                                 <textarea
-                                    value={selectedItem.content}
-                                    onChange={(e) => updateField(selectedItem.id, 'content', e.target.value)}
+                                    value={selectedItem.textContent}
+                                    onChange={(e) => updateField(selectedItem.id, 'textContent', e.target.value)}
                                     className="editor-textarea"
                                     placeholder="Dialogue instructions, speech patterns, formatting rules..."
                                     rows={4}

@@ -127,10 +127,10 @@ function isEntityHollow(
                 (ti.textCharacterWeights && Object.keys(ti.textCharacterWeights).length > 0)
             );
             const hasDialoguePrompts = c.dialoguePrompts && c.dialoguePrompts.length > 0;
-            const hasNonEmptyDialoguePrompt = hasDialoguePrompts && c.dialoguePrompts?.some(dp => dp.content);
+            const hasNonEmptyDialoguePrompt = hasDialoguePrompts && c.dialoguePrompts?.some(dp => dp.textContent);
             const hasKnowledgePrompts = c.knowledgePrompts && c.knowledgePrompts.length > 0;
-            const hasNonEmptyKnowledgePrompt = hasKnowledgePrompts && c.knowledgePrompts?.some(kp => kp.content);
-            const hasStarterPrompts = c.starterPrompts && Object.keys(c.starterPrompts).length > 0;
+            const hasNonEmptyKnowledgePrompt = hasKnowledgePrompts && c.knowledgePrompts?.some(kp => kp.textContent);
+            const hasStarterPrompts = c.starterPrompts && c.starterPrompts.length > 0;
             return !(c.systemPrompt || c.appearancePrompt || hasNonEmptyDialoguePrompt || hasNonEmptyKnowledgePrompt || c.thinkPrompt || hasStarterPrompts)
                 && !(c.images && Object.keys(c.images).length > 0)
                 && !(c.memories && Object.values(c.memories).some(arr => arr.length > 0))
@@ -177,7 +177,7 @@ function isEntityHollow(
         }
         case 'memory': {
             const m = entity as Memory;
-            return !m.content;
+            return !m.textContent;
         }
         case 'account': {
             const a = entity as Account;

@@ -28,7 +28,7 @@ export function CharacterStarterPromptEditorModal({
             id: uuidv4(),
             name: '',
             description: '',
-            content: '',
+            textContent: '',
             weight: 1,
             skipProbability: 0,
             firstCreatedTimestamp: now,
@@ -52,7 +52,7 @@ export function CharacterStarterPromptEditorModal({
     }, [isReadOnly]);
 
     const handleSave = useCallback(() => {
-        const validItems = items.filter(item => item.content.trim().length > 0);
+        const validItems = items.filter(item => item.textContent.trim().length > 0);
         onSaveStarterPrompts(validItems);
         onClose();
     }, [items, onSaveStarterPrompts, onClose]);
@@ -96,7 +96,7 @@ export function CharacterStarterPromptEditorModal({
                                         fontSize: '0.75rem', fontWeight: selectedId === item.id ? 'bold' : 'normal',
                                         color: 'var(--text-h)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, textAlign: 'left',
                                     }}>
-                                        {item.name || item.content.substring(0, 40) + (item.content.length > 40 ? '...' : '') || '(Empty)'}
+                                        {item.name || item.textContent.substring(0, 40) + (item.textContent.length > 40 ? '...' : '') || '(Empty)'}
                                     </span>
                                     <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
                                         <span style={{ fontSize: '0.55rem', padding: '1px 4px', background: 'rgba(139, 92, 246, 0.2)', borderRadius: '3px', color: '#a78bfa' }}>
@@ -133,7 +133,7 @@ export function CharacterStarterPromptEditorModal({
 
                             <div>
                                 <label className="editor-label editor-label-small">Content</label>
-                                <textarea value={selectedItem.content} onChange={(e) => updateField(selectedItem.id, 'content', e.target.value)} className="editor-textarea" placeholder="The actual greeting message..." rows={4} readOnly={isReadOnly} />
+                                <textarea value={selectedItem.textContent} onChange={(e) => updateField(selectedItem.id, 'textContent', e.target.value)} className="editor-textarea" placeholder="The actual greeting message..." rows={4} readOnly={isReadOnly} />
                             </div>
 
                             <div className="editor-row">

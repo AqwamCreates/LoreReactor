@@ -7,7 +7,8 @@ import type {
     regularExpressionTarget, tristateInteger, cacheEfficiencyConfigurationType, 
     AutoResumeSignal, deviceType, 
     toolUsageDisplayPlacementMode,
-    textType
+    textType,
+    StarterPrompt
 } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';
@@ -84,15 +85,56 @@ function filterRecordKeysByNumber<T>(record: Record<string, T> | Record<number, 
     return result;
 }
 
-function parseStarterPrompts(raw: unknown): Record<string, number> | undefined {
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
-    const result: Record<string, number> = {};
-    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-        if (typeof key === 'string' && typeof value === 'number') {
-            result[key] = value;
+function parseStarterPrompts(raw: unknown): StarterPrompt[] | undefined {
+    if (!raw) return undefined;
+    const now = Date.now();
+
+    if (Array.isArray(raw)) {
+        const result: StarterPrompt[] = [];
+        for (const item of raw) {
+            if (item && typeof item === 'object') {
+                const entry = item as Record<string, unknown>;
+                result.push({
+                    id: ensureId(entry),
+                    name: (entry.name as string) || '',
+                    description: (entry.description as string) || undefined,
+                    textContent: (entry.textContent as string) || (entry.content as string) || '',
+                    weight: (entry.weight as number) ?? 1,
+                    skipProbability: (entry.skipProbability as number) ?? 0,
+                    regularExpressionActivationTriggers: parseRegexTriggers(entry.regularExpressionActivationTriggers),
+                    regularExpressionDeactivationTriggers: parseRegexTriggers(entry.regularExpressionDeactivationTriggers),
+                    regularExpressionExclusionActivationTriggers: parseRegexTriggers(entry.regularExpressionExclusionActivationTriggers),
+                    regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(entry.regularExpressionExclusionDeactivationTriggers),
+                    embedding: Array.isArray(entry.embedding) ? entry.embedding as number[] : undefined,
+                    firstCreatedTimestamp: (entry.firstCreatedTimestamp as number) || now,
+                    lastUpdatedTimestamp: (entry.lastUpdatedTimestamp as number) || now,
+                });
+            }
         }
+        return result.length > 0 ? result : undefined;
     }
-    return Object.keys(result).length > 0 ? result : undefined;
+
+    // Fallback for legacy Record<string, number> format
+    if (typeof raw === 'object') {
+        const result: StarterPrompt[] = [];
+        for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+            if (typeof key === 'string' && typeof value === 'number') {
+                result.push({
+                    id: uuidv4(),
+                    name: '',
+                    description: undefined,
+                    textContent: key,
+                    weight: value,
+                    skipProbability: 0,
+                    firstCreatedTimestamp: now,
+                    lastUpdatedTimestamp: now,
+                });
+            }
+        }
+        return result.length > 0 ? result : undefined;
+    }
+
+    return undefined;
 }
 
 function parseMemoryPrompts(raw: unknown): Record<string, string> | undefined {
@@ -175,18 +217,19 @@ function fillDialoguePromptDefaults(d: Record<string, unknown>): DialoguePrompt 
     return {
         id: ensureId(d),
         name: (d.name as string) || 'Unnamed Dialogue',
-        description: (d.description as string) || '',
-        content: (d.content as string) || '',
+        description: (d.description as string) || undefined,
+        textContent: (d.textContent as string) || (d.content as string) || '',
         dialoguePromptBindings: filterValidUuids(d.dialoguePromptBindings as string[] | undefined),
-        dialoguePromptWeight: (d.dialoguePromptWeight as number) ?? 1,
-        dialoguePromptBreakProbability: (d.dialoguePromptBreakProbability as number) ?? 0,
-        dialoguePromptSkipProbability: (d.dialoguePromptSkipProbability as number) ?? 0,
+        weight: (d.weight as number) ?? (d.dialoguePromptWeight as number) ?? 1,
+        breakProbability: (d.breakProbability as number) ?? (d.dialoguePromptBreakProbability as number) ?? 0,
+        skipProbability: (d.skipProbability as number) ?? (d.dialoguePromptSkipProbability as number) ?? 0,
         regularExpressionActivationTriggers: parseRegexTriggers(d.regularExpressionActivationTriggers),
         regularExpressionDeactivationTriggers: parseRegexTriggers(d.regularExpressionDeactivationTriggers),
         regularExpressionExclusionActivationTriggers: parseRegexTriggers(d.regularExpressionExclusionActivationTriggers),
         regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(d.regularExpressionExclusionDeactivationTriggers),
-        firstCreatedTimestamp: now,
-        lastUpdatedTimestamp: now,
+        embedding: Array.isArray(d.embedding) ? d.embedding as number[] : undefined,
+        firstCreatedTimestamp: (d.firstCreatedTimestamp as number) || now,
+        lastUpdatedTimestamp: (d.lastUpdatedTimestamp as number) || now,
     };
 }
 
@@ -195,15 +238,16 @@ function fillKnowledgePromptDefaults(k: Record<string, unknown>): KnowledgePromp
     return {
         id: ensureId(k),
         name: (k.name as string) || 'Unnamed Knowledge',
-        description: (k.description as string) || '',
-        content: (k.content as string) || '',
+        description: (k.description as string) || undefined,
+        textContent: (k.textContent as string) || (k.content as string) || '',
         knowledgePromptBindings: filterValidUuids(k.knowledgePromptBindings as string[] | undefined),
         regularExpressionActivationTriggers: parseRegexTriggers(k.regularExpressionActivationTriggers),
         regularExpressionDeactivationTriggers: parseRegexTriggers(k.regularExpressionDeactivationTriggers),
         regularExpressionExclusionActivationTriggers: parseRegexTriggers(k.regularExpressionExclusionActivationTriggers),
         regularExpressionExclusionDeactivationTriggers: parseRegexTriggers(k.regularExpressionExclusionDeactivationTriggers),
-        firstCreatedTimestamp: now,
-        lastUpdatedTimestamp: now,
+        embedding: Array.isArray(k.embedding) ? k.embedding as number[] : undefined,
+        firstCreatedTimestamp: (k.firstCreatedTimestamp as number) || now,
+        lastUpdatedTimestamp: (k.lastUpdatedTimestamp as number) || now,
     };
 }
 
@@ -292,6 +336,7 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
         description: (c.description as string) || '',
         aliases: parseAliases(c.aliases),
         images: (c.images && typeof c.images === 'object' ? c.images as Record<string, string> : {}) as Record<string, string>,
+        voice: (c.voice && typeof c.voice === 'object') ? c.voice as Character['voice'] : undefined,
         useFrontCameraImage: (c.useFrontCameraImage as boolean) ?? false,
         systemPrompt: (c.systemPrompt as string) || '',
         thinkPrompt: (c.thinkPrompt as string) || undefined,
@@ -317,6 +362,10 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
         numberOfMessagesToDisableMetaThinkInstructions: (c.numberOfMessagesToDisableMetaThinkInstructions as number) ?? 0,
         numberOfMessagesToDisableDialoguePrompt: (c.numberOfMessagesToDisableDialoguePrompt as number) ?? 0,
         numberOfMessagesToDisableStarterPrompt: (c.numberOfMessagesToDisableStarterPrompt as number) ?? 0,
+        useEmbeddingModelForDialoguePrompts: (c.useEmbeddingModelForDialoguePrompts as boolean) ?? false,
+        useEmbeddingModelForStarterPrompts: (c.useEmbeddingModelForStarterPrompts as boolean) ?? false,
+        useEmbeddingModelForKnowledgePrompts: (c.useEmbeddingModelForKnowledgePrompts as boolean) ?? false,
+        useEmbeddingModelForMemories: (c.useEmbeddingModelForMemories as boolean) ?? false,
         tools: parseToolsRecord(c.tools, defaultCharacterTools) as Record<tool, boolean>,
         clothings: rawClothings.map(item => fillClothingDefaults(item)),
         knownCharacterNames: parseKnownCharacterNames(c.knownCharacterNames),

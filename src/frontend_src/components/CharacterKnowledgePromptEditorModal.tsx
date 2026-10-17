@@ -31,7 +31,7 @@ interface CharacterKnowledgePromptEditorModalProps {
 
 interface KnowledgeNodeData extends Record<string, unknown> {
     name: string;
-    contentLength: number;
+    textContentLength: number;
     bindingCount: number;
     hasActivationTriggers: boolean;
     hasDeactivationTriggers: boolean;
@@ -45,9 +45,9 @@ const HANDLE_STYLE: React.CSSProperties = {
 };
 
 function KnowledgeNode({ data }: NodeProps<Node<KnowledgeNodeData>>) {
-    const { name, contentLength, bindingCount, hasActivationTriggers, hasDeactivationTriggers } = data;
+    const { name, textContentLength, bindingCount, hasActivationTriggers, hasDeactivationTriggers } = data;
 
-    const hasContent = contentLength > 0;
+    const hasContent = textContentLength > 0;
     const isConditional = hasActivationTriggers || hasDeactivationTriggers;
 
     let borderColor: string;
@@ -100,7 +100,7 @@ function KnowledgeNode({ data }: NodeProps<Node<KnowledgeNodeData>>) {
             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
                 {hasContent && (
                     <span style={{ fontSize: '0.5rem', padding: '1px 4px', background: 'rgba(139, 92, 246, 0.2)', borderRadius: '3px', color: '#a78bfa' }}>
-                        {contentLength} chars
+                        {textContentLength} chars
                     </span>
                 )}
                 {bindingCount > 0 && (
@@ -144,7 +144,7 @@ export function CharacterKnowledgePromptEditorModal({
 
     const buildNodeData = (item: KnowledgePrompt): KnowledgeNodeData => ({
         name: item.name,
-        contentLength: item.content?.length ?? 0,
+        textContentLength: item.textContent?.length ?? 0,
         bindingCount: item.knowledgePromptBindings.length,
         hasActivationTriggers: (item.regularExpressionActivationTriggers?.length ?? 0) > 0,
         hasDeactivationTriggers: (item.regularExpressionDeactivationTriggers?.length ?? 0) > 0,
@@ -245,7 +245,7 @@ export function CharacterKnowledgePromptEditorModal({
             id: uuidv4(),
             name: '',
             description: '',
-            content: '',
+            textContent: '',
             knowledgePromptBindings: [],
             firstCreatedTimestamp: now,
             lastUpdatedTimestamp: now,
@@ -284,7 +284,7 @@ export function CharacterKnowledgePromptEditorModal({
             if (item.id !== id) return item;
             
             // If the content changes, invalidate the cached embedding so the queue regenerates it
-            if (field === 'content' && item.embedding) {
+            if (field === 'textContent' && item.embedding) {
                 const { embedding, ...rest } = item;
                 return { ...rest, [field]: value, lastUpdatedTimestamp: Date.now() } as KnowledgePrompt;
             }
@@ -392,9 +392,9 @@ export function CharacterKnowledgePromptEditorModal({
                                         {item.name || '(Unnamed)'}
                                     </span>
                                     <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                                        {(item.content?.length ?? 0) > 0 && (
+                                        {(item.textContent?.length ?? 0) > 0 && (
                                             <span style={{ fontSize: '0.55rem', padding: '1px 4px', background: 'rgba(139, 92, 246, 0.2)', borderRadius: '3px', color: '#a78bfa' }}>
-                                                {item.content!.length}c
+                                                {item.textContent!.length}c
                                             </span>
                                         )}
                                         {item.knowledgePromptBindings.length > 0 && (
@@ -465,8 +465,8 @@ export function CharacterKnowledgePromptEditorModal({
                             <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
                                 <label className="editor-label editor-label-small">Content</label>
                                 <textarea
-                                    value={selectedItem.content || ''}
-                                    onChange={(e) => updateField(selectedItem.id, 'content', e.target.value)}
+                                    value={selectedItem.textContent || ''}
+                                    onChange={(e) => updateField(selectedItem.id, 'textContent', e.target.value)}
                                     className="editor-textarea"
                                     placeholder="The knowledge content returned when the model uses the knowledge tool to access this entry."
                                     rows={6}
