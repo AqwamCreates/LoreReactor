@@ -7,7 +7,9 @@ import {
     getEffectiveSkipProbability, 
     getEffectiveChatImpatienceSensitivity, 
     getEffectiveMaximumChatStamina, 
-    getEffectiveMaximumActionStamina 
+    getEffectiveMaximumActionStamina,
+    getEffectiveChatStaminaRegenerationRate,
+    getEffectiveActionStaminaRegenerationRate
 } from './characterLogic';
 import { findLatestMessage } from './messageLogic';
 import { getCurrentLocationId, getCurrentLocation, getReachableLocations, isLocationOwner } from './locationLogic';
@@ -256,9 +258,8 @@ export function weightedSample<T>(pool: { item: T; weight: number }[]): T | null
 
 /**
  * Stamina Modulation:
- * Physical action stamina (movement) regenerates passively with time.
- * Chat stamina ONLY trickle-recharges after prolonged silence (> 25s) to allow ambient silence breaking,
- * not every 1-second tick!
+ * Stamina regenerates continuously based on the elapsed time since the last message.
+ * Rates are defined per-second and are multiplied by the current location's regeneration multipliers.
  */
 export function computeModulatedStaminaRegenationAmounts(
     character: Character,
@@ -275,20 +276,24 @@ export function computeModulatedStaminaRegenationAmounts(
     }
 
     const stamp = lastMsg.firstCreatedTimestamp || lastMsg.lastUpdatedTimestamp;
-    const elapsedSeconds = Math.max(0.5, (Date.now() - stamp) / 1000);
+    const elapsedSeconds = Math.max(0, (Date.now() - stamp) / 1000);
 
-    // Movement stamina recovers over a 30s window
-    const actionRegenRate = (maxAction > 0 && maxAction !== Number.POSITIVE_INFINITY)
-        ? (maxAction / 30)
-        : 1;
-    const actionRegen = Math.max(0, Math.round(elapsedSeconds * actionRegenRate));
-
-    // Conversational stamina does NOT refill on an arbitrary 1-second clock.
-    // It only trickles in after a prolonged quiet lull (> 25 seconds) to break silence.
-    let chatRegen = 0;
-    if (elapsedSeconds > 20) {
-        chatRegen = 1;
+    if (elapsedSeconds <= 0) {
+        return { chatRegen: 0, actionRegen: 0 };
     }
+
+    const baseChatRate = getEffectiveChatStaminaRegenerationRate(character, profile);
+    const baseActionRate = getEffectiveActionStaminaRegenerationRate(character, profile);
+
+    const currentLocation = getCurrentLocation(data, character);
+    const chatMultiplier = currentLocation?.chatStaminaRegenerationRateMultiplier ?? 1;
+    const actionMultiplier = currentLocation?.actionStaminaRegenerationRateMultiplier ?? 1;
+
+    const effectiveChatRate = baseChatRate * chatMultiplier;
+    const effectiveActionRate = baseActionRate * actionMultiplier;
+
+    const chatRegen = elapsedSeconds * effectiveChatRate;
+    const actionRegen = elapsedSeconds * effectiveActionRate;
 
     return {
         chatRegen,

@@ -1,6 +1,6 @@
 // src/frontend_src/services/InteractionOrchestrator.ts
 import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage, Location } from '../types';
-import { getEffectiveChatProbability, consumeChatStaminaForMessage, consumeActionStaminaForMessage, generateActionStaminaForInteractionData, generateChatStaminaForInteractionData, getEffectiveChatImpatienceSensitivity, getEffectiveMaximumChatStamina } from '../utilities/characterLogic';
+import { getEffectiveChatProbability, consumeChatStaminaForMessage, consumeActionStaminaForMessage, generateActionStaminaForInteractionData, generateChatStaminaForInteractionData, getEffectiveChatImpatienceSensitivity } from '../utilities/characterLogic';
 import { getCurrentLocationId, findLocationByRegularExpression, getReachableLocationsByCharacter, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -211,16 +211,6 @@ export async function runTurnSequence(
                             consumeChatStaminaForMessage(msgs[idx], chatCost);
                             break;
                         }
-                    }
-                }
-
-                // 2. SOCIAL RECOVERY:
-                // Hearing someone speak gives all OTHER listening characters an urge/recharge to reply
-                for (const other of allAI) {
-                    if (other.id !== speaker.id) {
-                        const maxChat = getEffectiveMaximumChatStamina(other, profile);
-                        const rechargeAmount = Math.max(2, Math.round(maxChat * 0.6));
-                        generateChatStaminaForInteractionData(resultData, rechargeAmount, other);
                     }
                 }
 
