@@ -23,6 +23,7 @@ import trash from 'trash';
 import robot from '@jitsi/robotjs';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
+import puppeteer, { type Browser } from 'puppeteer';
 
 // --- Configuration ---
 const app = express();
@@ -2105,35 +2106,105 @@ app.get('/gpu/status', (_req, response) => {
 
 // --- Web Fetch Proxy (CORS bypass) ---
 
+// In src/backend_src/server.ts
+import puppeteer, { type Browser } from 'puppeteer';
+
+function isBotChallenge(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes('detected unusual traffic') ||
+    lower.includes('please click here if you are not redirected') ||
+    lower.includes('bots use duckduckgo too') ||
+    lower.includes('select all squares') ||
+    lower.includes('just a moment...') ||
+    lower.includes('please wait') ||
+    lower.includes('cf-browser-verification') ||
+    lower.includes('challenges.cloudflare.com')
+  );
+}
+
 app.post('/api/web/fetch', async (req, response) => {
+  // Prevent Node/Express from killing the socket while you're busy solving the CAPTCHA
+  req.setTimeout(0);
+  response.setTimeout(0);
+
   const { url, headers: reqHeaders } = req.body;
-  if (!url || typeof url !== 'string') return response.status(400).json({ error: 'Missing url' });
+  if (!url || typeof url !== 'string') {
+    return response.status(400).json({ error: 'Missing url' });
+  }
 
-  try {
-    const controller = new AbortController();
-    const timeoutId  = setTimeout(() => controller.abort(), 10000);
-
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: reqHeaders || {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8',
-      },
-    });
-    clearTimeout(timeoutId);
-
-    const contentType = res.headers.get('content-type') || '';
-    if (contentType.startsWith('image/')) {
+  // Fast-path images
+  const isImageExt = /\.(png|jpe?g|webp|gif|svg|ico)$/i.test(url);
+  if (isImageExt) {
+    try {
+      const res = await fetch(url, { headers: reqHeaders });
+      const contentType = res.headers.get('content-type') || 'image/jpeg';
       const buffer = Buffer.from(await res.arrayBuffer());
-      response.json({ ok: res.ok, status: res.status, contentType, base64: buffer.toString('base64') });
-    } else {
-      const text = await res.text();
-      response.json({ ok: res.ok, status: res.status, contentType, text });
+      return response.json({ ok: res.ok, status: res.status, contentType, base64: buffer.toString('base64') });
+    } catch { /* fallback to browser */ }
+  }
+
+  let browser: Browser | null = null;
+  try {
+    browser = await puppeteer.launch({
+      headless: false, // Visible window so you can interact with it
+      userDataDir: path.join(ROOT_DIR, 'user_data', 'browser_profile'),
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1100,900'],
+    });
+
+    const page = await browser.newPage();
+    
+    // Disable all navigation timeouts so it never gives up on you
+    page.setDefaultNavigationTimeout(0);
+    page.setDefaultTimeout(0);
+
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    );
+
+    // Initial navigation with zero timeout
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 0 });
+
+    let finalText = '';
+
+    // UNLIMITED TIME LOOP:
+    // Keeps running as long as the window/tab is open and the challenge is active
+    while (!page.isClosed() && browser.connected) {
+      try {
+        const currentText = await page.evaluate(() => document.body?.innerText || '');
+
+        // Check if page loaded real content and is no longer on a challenge screen
+        if (currentText.trim().length > 0 && !isBotChallenge(currentText)) {
+          // Brief pause to allow any late post-redirect DOM elements to settle
+          await new Promise((r) => setTimeout(r, 1500));
+          finalText = await page.evaluate(() => document.body?.innerText || '');
+          break;
+        }
+      } catch {
+        // Can throw momentarily while the page is navigating/reloading after you click Submit
+        if (page.isClosed() || !browser.connected) break;
+      }
+
+      // Check every 500ms
+      await new Promise((r) => setTimeout(r, 500));
     }
-  } catch (e: unknown) {
-    const error    = e instanceof Error ? e : new Error(String(e));
-    const errorMsg = error.name === 'AbortError' ? 'Request timed out' : error.message;
-    response.json({ ok: false, status: 0, contentType: '', error: errorMsg });
+
+    // Auto-close browser once solved or if window was closed
+    if (browser.connected) {
+      await browser.close();
+    }
+
+    if (!finalText) {
+      return response.status(400).json({ ok: false, status: 400, contentType: '', error: 'Browser was closed before the page could be resolved.' });
+    }
+
+    // Return the full, uncapped text to the model
+    response.json({ ok: true, status: 200, contentType: 'text/plain', text: finalText });
+
+  } catch (err: any) {
+    if (browser && browser.isConnected()) await browser.close();
+    log.error(`[WebFetch] Puppeteer error: ${err.message}`);
+    response.status(500).json({ ok: false, status: 500, contentType: '', error: err.message });
   }
 });
 
