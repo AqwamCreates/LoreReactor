@@ -2149,7 +2149,7 @@ app.post('/api/web/fetch', async (req, response) => {
     browser = await puppeteer.launch({
       headless: false, // Visible window so you can interact with it
       userDataDir: path.join(ROOT_DIR, 'user_data', 'browser_profile'),
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=500,500'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=700,700'],
     });
 
     const page = await browser.newPage();
