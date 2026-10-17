@@ -338,7 +338,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             if (!p) return;
             const uc = { ...interactionData, profile: p, lastUpdatedTimestamp: Date.now() };
             setInteractionData(uc);
-            addToast(`profile "${p.name}" activated!`, 'success');
+            addToast(`Profile "${p.name}" activated!`, 'success');
         }
     }, [interactionData, allProfiles, setInteractionData, addToast]);
 
