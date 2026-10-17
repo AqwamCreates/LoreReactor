@@ -218,11 +218,13 @@ export interface Voice {
 export interface Memory extends ObjectData {
   content: string;
   interactionData: InteractionData;
+  embedding?: number[],
 }
 
 export interface RawMemory extends RawData {
   content: string;
   interactionDataId: string;
+  embedding?: number[],
 }
 
 export type tool = "whisper" | "think" | "pick" | "sky_view" | "clock" | "calendar" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "oracle" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "inspect" | "administrator" | "creator" | "destroyer" | 'schedule_response' | 'text_to_speech' | 'gpu' | 'system_info' | 'notify' | 'volume_control' | 'lock_screen' | 'sleep' | 'shutdown' | 'restart' | 'clipboard' | 'front_camera' | 'screenshot' | 'network_scanner' | 'file_watcher' | 'window_monitor' | 'process_monitor' | 'trash' | 'browser' | 'read_file' | 'write_file' | 'shell' | 'virtual_hearing' | 'virtual_vision' | 'virtual_input' | 'virtual_controller' | 'hardware_control'
@@ -230,23 +232,37 @@ export type tool = "whisper" | "think" | "pick" | "sky_view" | "clock" | "calend
 export interface DialoguePrompt extends ObjectData {
   content: string;
   dialoguePromptBindings: string[]; // IDs of dialogue prompts this can chain to.
-  dialoguePromptWeight: number // This dialogue prompt weight when being a part of the dialogue prompt or the start of it. Default is 1.
-  dialoguePromptBreakProbability: number; // The higher the value, the higher the probability that the dialogue prompt will break before it can go to next node. Default is 0.
-  dialoguePromptSkipProbability: number // The higher the value, the higher the likelihood of skipping choosing the dialogue from this node. Default is 0.
+  weight: number // This dialogue prompt weight when being a part of the dialogue prompt or the start of it. Default is 1.
+  breakProbability: number; // The higher the value, the higher the probability that the dialogue prompt will break before it can go to next node. Default is 0.
+  skipProbability: number // The higher the value, the higher the likelihood of skipping choosing the dialogue from this node. Default is 0.
   regularExpressionActivationTriggers?: RegularExpressionTrigger[];
   regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
   regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
   regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+  embedding?: number[],
 }
 
 export interface KnowledgePrompt extends ObjectData {
-    content: string;
-    knowledgePromptBindings: string[]; // IDs of other KnowledgePrompts this links to
-    regularExpressionActivationTriggers?: RegularExpressionTrigger[];
-    regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
-    regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
-    regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+  content: string;
+  knowledgePromptBindings: string[]; // IDs of other KnowledgePrompts this links to.
+  regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+  embedding?: number[],
 }
+
+export interface StarterPrompt extends ObjectData {
+  content: string;
+  weight: number // This dialogue prompt weight when being a part of the dialogue prompt or the start of it. Default is 1.
+  skipProbability: number // The higher the value, the higher the likelihood of skipping choosing the dialogue from this node. Default is 0.
+  regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+  embedding?: number[],
+} 
+
 export interface Clothing extends ObjectData {
     regularExpressionActivationTriggers?: RegularExpressionTrigger[];
     regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
@@ -275,7 +291,7 @@ export interface Character extends ObjectData {
   appearancePrompt?: string;
   dialoguePrompts?: DialoguePrompt[];
   knowledgePrompts?: KnowledgePrompt[];
-  starterPrompts?: Record<string, number>; // Text -> Weight value for that text during the sampling.
+  starterPrompts?: StarterPrompt[]; // Text -> Weight value for that text during the sampling.
   memoryPrompts?: Record<string, string>; // Expression -> string. If the string for this expression is not found, then use neutral. If no neutral string, then use system default. Used for creation of memories.
   initiativeWeight: number;
   chatProbability: number;
@@ -289,6 +305,10 @@ export interface Character extends ObjectData {
   languageModelSampler?: Sampler | undefined;
   textToSpeechModelSampler?: Sampler | undefined;
   stopPatterns?: StopPattern[];
+  useEmbeddingModelForDialoguePrompts?: boolean,
+  useEmbeddingModelForStarterPrompts?: boolean,
+  useEmbeddingModelForKnowledgePrompts?: boolean,
+  useEmbeddingModelForMemories?: boolean,
   doNotInjectCharacterImage?: boolean;
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
@@ -311,7 +331,7 @@ export interface RawCharacter extends RawData {
   appearancePrompt?: string;
   dialoguePrompts?: DialoguePrompt[];
   knowledgePrompts?: KnowledgePrompt[];
-  starterPrompts?: Record<string, number>; // Text -> Weight value for that text during the sampling.
+  starterPrompts?: StarterPrompt[]; // Text -> Weight value for that text during the sampling.
   memoryPrompts?: Record<string, string>; // Expression -> string. If the string for this expression is not found, then use neutral. If no neutral string, then use system default. Used for creation of memories.
   initiativeWeight: number;
   chatProbability: number;
@@ -325,6 +345,10 @@ export interface RawCharacter extends RawData {
   languageModelSamplerId?: string | undefined;
   textToSpeechModelSamplerId?: string | undefined;
   stopPatternIds?: string[];
+  useEmbeddingModelForDialoguePrompts?: boolean,
+  useEmbeddingModelForStarterPrompts?: boolean,
+  useEmbeddingModelForKnowledgePrompts?: boolean,
+  useEmbeddingModelForMemories?: boolean,
   doNotInjectCharacterImage?: boolean;
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
@@ -818,6 +842,7 @@ export interface Profile extends ObjectData {
   textToSpeechDeviceType: deviceType; // Default is auto.
   speechToTextDeviceType: deviceType; // Default is auto.
   voiceActivityDetectionDeviceType: deviceType; // Default is auto.
+  embeddingDeviceType: deviceType ; // Default is auto.
   autoResumeSignals: AutoResumeSignal[]; // When empty, the models will determine the natural stop. Otherwise, if the partially-generated text does not end with these signals, it will auto-resume until this signal is hit.
   characterLanguageModelSampler?: Sampler;
   characterTextToSpeechModelSampler?: Sampler;
@@ -880,6 +905,7 @@ export interface RawProfile extends RawData {
   textToSpeechDeviceType: deviceType; // Default is auto.
   speechToTextDeviceType: deviceType; // Default is auto.
   voiceActivityDetectionDeviceType: deviceType; // Default is auto.
+  embeddingDeviceType: deviceType ; // Default is auto.
   autoResumeSignals: AutoResumeSignal[]; // When empty, the models will determine the natural stop. Otherwise, if the partially-generated text does not end with these signals and has visited the activating, it will auto-resume until this signal is hit.
   characterLanguageModelSamplerId?: string;
   characterTextToSpeechModelSamplerId?: string;
