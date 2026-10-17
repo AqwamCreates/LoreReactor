@@ -80,6 +80,8 @@ function LocationEditorModalInner({
 
     const [hasSkyView, setHasSkyView] = useState<boolean>(existingLocation?.hasSkyView ?? true);
     const [hasWeather, setHasWeather] = useState<boolean>(existingLocation?.hasWeather ?? true);
+    const [chatStaminaRegenerationRateMultiplier, setChatStaminaRegenerationRateMultiplier] = useState<number>(existingLocation?.chatStaminaRegenerationRateMultiplier ?? 1);
+    const [actionStaminaRegenerationRateMultiplier, setActionStaminaRegenerationRateMultiplier] = useState<number>(existingLocation?.actionStaminaRegenerationRateMultiplier ?? 1);
 
     const [regexActivationTriggers, setRegexActivationTriggers] = useState<RegularExpressionTrigger[]>(existingLocation?.regularExpressionActivationTriggers ?? []);
     const [regexExclusionActivationTriggers, setRegexExclusionActivationTriggers] = useState<RegularExpressionTrigger[]>(existingLocation?.regularExpressionExclusionActivationTriggers ?? []);
@@ -347,6 +349,8 @@ function LocationEditorModalInner({
             images: finalImageFilenames.length > 0 ? finalImageFilenames : undefined,
             hasSkyView,
             hasWeather,
+            chatStaminaRegenerationRateMultiplier,
+            actionStaminaRegenerationRateMultiplier,
             regularExpressionActivationTriggers: filterTriggers(regexActivationTriggers),
             regularExpressionExclusionActivationTriggers: filterTriggers(regexExclusionActivationTriggers),
             regularExpressionExclusionDeactivationTriggers: filterTriggers(regexExclusionDeactivationTriggers),
@@ -584,6 +588,22 @@ function LocationEditorModalInner({
                                     <span>Has Weather Exposure</span>
                                 </label>
                                 <div className="context-checkbox-hint">Whether outdoor weather (rain, wind, temperature) directly affects this location. Uncheck for climate-controlled indoor spaces.</div>
+                            </div>
+
+                            {/* Stamina Regen Multipliers */}
+                            <div className="editor-section" style={{ marginTop: '12px' }}>
+                                <span className="editor-section-title">Stamina Regeneration Multipliers</span>
+                                <div className="context-binding-hint">Multiplies the character's stamina regeneration rate while at this location. 1 = normal speed, 2 = twice as fast, 0.5 = half speed.</div>
+                                <div className="editor-row" style={{ gap: '12px', marginTop: '8px' }}>
+                                    <div style={{ flex: 1 }}>
+                                        <label className="editor-label editor-label-small">Chat Stamina Regen</label>
+                                        <input type="number" step="0.1" min="0" value={chatStaminaRegenerationRateMultiplier} readOnly={isReadOnly} onChange={(e) => setChatStaminaRegenerationRateMultiplier(Math.max(0, Number(e.target.value) || 0))} className="editor-input context-input-small" disabled={isUploading || isReadOnly} />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label className="editor-label editor-label-small">Action Stamina Regen</label>
+                                        <input type="number" step="0.1" min="0" value={actionStaminaRegenerationRateMultiplier} readOnly={isReadOnly} onChange={(e) => setActionStaminaRegenerationRateMultiplier(Math.max(0, Number(e.target.value) || 0))} className="editor-input context-input-small" disabled={isUploading || isReadOnly} />
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Encoding */}

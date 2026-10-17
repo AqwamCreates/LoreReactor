@@ -7,12 +7,14 @@ import {
     getInitiativeWeightValueFromText, 
     getChatProbabilityValue, 
     getMaximumChatStaminaValueFromText, 
+    getChatStaminaRegenerationRateValueFromText,
     getNameSensitivityValueFromText, 
     getSkipProbabilityValueFromText, 
     getChatImpatienceSensitivityValueFromText, 
     getMemoryRetentionWeightValueFromText, 
     getContextSensitivityValueFromText, 
-    getMaximumActionStaminaValueFromText 
+    getMaximumActionStaminaValueFromText,
+    getActionStaminaRegenerationRateValueFromText
 } from '../utilities/traitDetection';
 import { detectToolsFromText, type DetectedToolsResult } from '../utilities/toolDetection';
 import { ToolPermissionModal } from './ToolPermissionModal';
@@ -117,12 +119,14 @@ export function CharacterCardImportModal({
             const initiativeWeight = getInitiativeWeightValueFromText(traitText);
             const chatProbability = getChatProbabilityValue(traitText);
             const maximumChatStamina = getMaximumChatStaminaValueFromText(traitText);
+            const chatStaminaRegenerationRate = getChatStaminaRegenerationRateValueFromText(traitText);
             const nameSensitivity = getNameSensitivityValueFromText(traitText);
             const skipProbability = getSkipProbabilityValueFromText(traitText);
             const chatImpatienceSensitivity = getChatImpatienceSensitivityValueFromText(traitText);
             const memoryRetentionWeight = getMemoryRetentionWeightValueFromText(traitText);
             const contextSensitivity = getContextSensitivityValueFromText(traitText);
             const maximumActionStamina = getMaximumActionStaminaValueFromText(traitText);
+            const actionStaminaRegenerationRate = getActionStaminaRegenerationRateValueFromText(traitText);
 
             // Auto-detect recommended tools from card text
             const detectedTools = detectToolsFromText(traitText);
@@ -190,12 +194,14 @@ export function CharacterCardImportModal({
                 initiativeWeight,
                 chatProbability,
                 maximumChatStamina,
+                chatStaminaRegenerationRate,
                 nameSensitivity,
                 skipProbability,
                 chatImpatienceSensitivity,
                 memoryRetentionWeight,
                 contextSensitivity,
                 maximumActionStamina,
+                actionStaminaRegenerationRate,
                 doNotInjectCharacterImage: false,
                 tools: initialTools,
                 clothings: [],
@@ -376,7 +382,7 @@ export function CharacterCardImportModal({
                                         <div><strong>Starter Prompts:</strong> {preview.character.starterPrompts ? preview.character.starterPrompts.length : 0}</div>
                                     </div>
                                     <div style={{ marginTop: '8px', fontSize: '0.65rem', opacity: 0.5 }}>
-                                        Traits auto-detected: IW={preview.character.initiativeWeight.toFixed(1)} · CP={preview.character.chatProbability.toFixed(2)} · Chat Stamina={preview.character.maximumChatStamina} · Action Stamina={preview.character.maximumActionStamina} · NS={preview.character.nameSensitivity.toFixed(1)} · CIS={preview.character.chatImpatienceSensitivity.toFixed(1)}
+                                        Traits auto-detected: IW={preview.character.initiativeWeight.toFixed(1)} · CP={preview.character.chatProbability.toFixed(2)} · Chat Stamina={preview.character.maximumChatStamina} · Chat Regen={preview.character.chatStaminaRegenerationRate.toFixed(2)} · Action Stamina={preview.character.maximumActionStamina} · Action Regen={preview.character.actionStaminaRegenerationRate.toFixed(2)} · NS={preview.character.nameSensitivity.toFixed(1)} · CIS={preview.character.chatImpatienceSensitivity.toFixed(1)}
                                     </div>
                                 </div>
 
