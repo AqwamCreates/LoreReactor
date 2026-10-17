@@ -140,6 +140,7 @@ function RetrievalConfigurationEditorModalInner({
                         </select>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6 }}>
                             {retrievalStrategy === 'dense' && 'Standard cosine/dot-product similarity search.'}
+                            {retrievalStrategy === 'sparse' && 'Standard keyword search.'}
                             {retrievalStrategy === 'hybrid' && 'Combines semantic embeddings with keyword matching for exact phrase recall.'}
                             {retrievalStrategy === 'maximal marginal relevance' && 'Balances relevance with diversity to prevent retrieving duplicate or highly similar chunks.'}
                         </div>
