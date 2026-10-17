@@ -1301,19 +1301,22 @@ function buildDialoguePromptText(ctx: PromptBuildContext): string {
 function buildStarterPromptText(ctx: PromptBuildContext): string {
     const starterPrompts = ctx.character.starterPrompts;
 
-    if (starterPrompts && Object.keys(starterPrompts).length > 0) {
-        const entries = Object.entries(starterPrompts);
+    if (starterPrompts && starterPrompts.length > 0) {
+        const validPrompts = starterPrompts.filter(sp => sp.textContent && sp.textContent.length > 0);
+        if (validPrompts.length === 0) return '';
+
         let totalWeight = 0;
-        for (const [, weight] of entries) totalWeight += weight;
+        for (const sp of validPrompts) totalWeight += (sp.weight > 0 ? sp.weight : 1);
 
         if (totalWeight > 0) {
             let roll = Math.random() * totalWeight;
             let selectedText = '';
-            for (const [text, weight] of entries) {
-                roll -= weight;
-                if (roll <= 0) { selectedText = text; break; }
+            for (const sp of validPrompts) {
+                const w = sp.weight > 0 ? sp.weight : 1;
+                roll -= w;
+                if (roll <= 0) { selectedText = sp.textContent; break; }
             }
-            if (!selectedText) selectedText = entries[entries.length - 1][0];
+            if (!selectedText) selectedText = validPrompts[validPrompts.length - 1].textContent;
 
             if (selectedText) {
                 return replacePlaceholders(selectedText, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
@@ -2135,9 +2138,9 @@ export async function buildPrompt(
 
             for (const error of errors) fetchErrors.push(`${context.name}: ${error}`);
 
-            const validResults = results.filter(r => !r.error && r.content.length > 0);
+            const validResults = results.filter(r => !r.error && r.textContent.length > 0);
             if (validResults.length > 0) {
-                fetchedContentMap.set(context.id, validResults.map(r => `[Source: ${r.url}]\n${r.content}`).join('\n\n---\n\n'));
+                fetchedContentMap.set(context.id, validResults.map(r => `[Source: ${r.url}]\n${r.textContent}`).join('\n\n---\n\n'));
             }
         }));
     }
