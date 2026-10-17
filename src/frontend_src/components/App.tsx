@@ -232,7 +232,7 @@ function App() {
         allRawInteractionDataShells: interactionDatas.allRawInteractionDataShells,
         loadFullCharacter: characters.loadFullCharacter,
         setInteractionData, setSelectedCharacter,
-        setSelectedModelId: models.setSelectedModelId,
+        setSelectedModelId: languageModels.setSelectedLanguageModelId,
         startNewChat,
         skipRestoration: mp.isMultiplayerClient,
     });
@@ -318,7 +318,7 @@ function App() {
 
     // ─── Session Persistence Effects ─────────────────────────────────
     const loadLocalModelForBudgetEngine = useCallback(async (modelId: string): Promise<number | null> => {
-        const existing = models.runningModels[modelId];
+        const existing = languageModels.runningLanguageModels[modelId];
         if (existing?.port) return existing.port;
         const target = allLanguageModels.find((m: LanguageModel) => m.id === modelId);
         if (!target || (target.apiKey && target.backend)) return null;
@@ -331,18 +331,18 @@ function App() {
             if (!res.ok) return null;
             return (await res.json()).port ?? null;
         } catch (e) { console.warn(`Auto-load of model ${target.name} failed:`, e); return null; }
-    }, [allLanguageModels, models]);
+    }, [allLanguageModels, languageModels]);
 
     useSessionEffects({
         interactionDataId: interactionData?.id,
         isMultiplayerClient: mp.isMultiplayerClient,
-        selectedModelId: models.selectedModelId,
-        setSelectedModelId: models.setSelectedModelId,
+        selectedModelId: languageModels.selectedLanguageModelId,
+        setSelectedModelId: languageModels.setSelectedLanguageModelId,
         selectedBudgetStrategyId,
         allBudgetStrategies: budgetStrategies.strategies,
         setActiveBudgetStrategy,
         allLanguageModels,
-        runningModels: models.runningModels,
+        runningModels: languageModels.runningLanguageModels,
         setSelectedGlobalModel,
         selectedCharacterId,
         allCharacters: characters.characters,
@@ -394,7 +394,7 @@ function App() {
             entityFolders: entityFolders.refresh,
             contexts: contexts.refresh,
             locations: locations.refresh,
-            models: models.refresh,
+            models: languageModels.refresh,
             samplers: samplers.refresh,
             worlds: worlds.refresh,
             profiles: profiles.refresh,
@@ -413,25 +413,25 @@ function App() {
     const isModelReady = useMemo(() => {
         if (mp.isMultiplayerClient) return true;
         if (activeStrategy) return true;
-        if (!models.selectedModelId) return false;
-        if (models.selectedModelId.startsWith('borrowed-')) return true;
-        const sel = allLanguageModels.find((m: LanguageModel) => m.id === models.selectedModelId);
+        if (!languageModels.selectedLanguageModelId) return false;
+        if (languageModels.selectedLanguageModelId.startsWith('borrowed-')) return true;
+        const sel = allLanguageModels.find((m: LanguageModel) => m.id === languageModels.selectedLanguageModelId);
         if (sel?.apiKey && sel.backend && cloudBackends.includes(sel.backend as cloudBackend)) return true;
-        return models.runningModels[models.selectedModelId]?.isRunning
-            && models.runningModels[models.selectedModelId]?.isIdle;
-    }, [allLanguageModels, activeStrategy, mp.isMultiplayerClient, models]);
+        return languageModels.runningLanguageModels[languageModels.selectedLanguageModelId]?.isRunning
+            && languageModels.runningLanguageModels[languageModels.selectedLanguageModelId]?.isIdle;
+    }, [allLanguageModels, activeStrategy, mp.isMultiplayerClient, languageModels]);
 
     const isModelLoading = useMemo(() => {
-        if (mp.isMultiplayerClient || !models.selectedModelId) return false;
-        if (models.selectedModelId.startsWith('borrowed-')) return false;
-        const sel = allLanguageModels.find((m: LanguageModel) => m.id === models.selectedModelId);
+        if (mp.isMultiplayerClient || !languageModels.selectedLanguageModelId) return false;
+        if (languageModels.selectedLanguageModelId.startsWith('borrowed-')) return false;
+        const sel = allLanguageModels.find((m: LanguageModel) => m.id === languageModels.selectedLanguageModelId);
         if (sel?.apiKey && sel.backend && cloudBackends.includes(sel.backend as cloudBackend)) return false;
-        return models.runningModels[models.selectedModelId]?.isRunning
-            && models.runningModels[models.selectedModelId]?.isIdle !== true;
-    }, [allLanguageModels, mp.isMultiplayerClient, models]);
+        return languageModels.runningLanguageModels[languageModels.selectedLanguageModelId]?.isRunning
+            && languageModels.runningLanguageModels[languageModels.selectedLanguageModelId]?.isIdle !== true;
+    }, [allLanguageModels, mp.isMultiplayerClient, languageModels]);
 
     const modelStatusMessage = mp.isMultiplayerClient ? ''
-        : (!models.selectedModelId ? 'No model selected — open Language Models to load one.'
+        : (!languageModels.selectedLanguageModelId ? 'No model selected — open Language Models to load one.'
             : isModelLoading ? 'Model is warming up... please wait.' : '');
 
     // ─── Feature Hooks ───────────────────────────────────────────────
@@ -466,8 +466,8 @@ function App() {
         setInteractionData, setSelectedCharacter, setActiveBudgetStrategy,
         setSelectedBudgetStrategyId: storeSetSelectedBudgetStrategyId,
         setSelectedCharacterId: storeSetSelectedCharacterId,
-        setSelectedModelId: models.setSelectedModelId,
-        unloadAllRunningModels: models.unloadAllRunningModels,
+        setSelectedModelId: languageModels.setSelectedLanguageModelId,
+        unloadAllRunningModels: languageModels.unloadAllRunningLanguageModels,
         loadFullCharacter: characters.loadFullCharacter, addToast,
     });
 
@@ -535,9 +535,9 @@ function App() {
     const maxParticipantTokens = useTokenCounter({
         messages: (viewAssets.chatMessages || []).filter((m): m is ChatMessage => m.messageType === 'chat'),
         interactionData,
-        selectedModelId: models.selectedModelId,
+        selectedModelId: languageModels.selectedLanguageModelId,
         allLanguageModels,
-        runningModels: models.runningModels,
+        runningModels: languageModels.runningLanguageModels,
         activeStrategy,
     });
 
@@ -572,12 +572,12 @@ function App() {
             }
             return max || defaultContextLength;
         }
-        if (models.selectedModelId) {
-            const m = allLanguageModels.find((x: LanguageModel) => x.id === models.selectedModelId);
+        if (languageModels.selectedLanguageModelId) {
+            const m = allLanguageModels.find((x: LanguageModel) => x.id === languageModels.selectedLanguageModelId);
             return m?.contextLength || defaultContextLength;
         }
         return defaultContextLength;
-    }, [activeStrategy, allLanguageModels, models]);
+    }, [activeStrategy, allLanguageModels, languageModels]);
 
     const parentInteractionDataId = interactionData?.parentInteractionDataId;
 
@@ -622,7 +622,7 @@ function App() {
         { id: 'audioTracks', label: 'Audio Tracks', icon: '🔊', done: !audioTracks.isLoading },
         { id: 'worlds', label: 'Worlds', icon: '🌍', done: !worlds.isLoading },
         { id: 'promptBlocks', label: 'Prompt Blocks', icon: '🧱', done: !promptBlocks.isLoading },
-        { id: 'models', label: 'Language Models', icon: '🤖', done: !models.isLoading },
+        { id: 'models', label: 'Language Models', icon: '🤖', done: !languageModels.isLoading },
         { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplers.isLoading },
         { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopPatterns.isLoading },
         { id: 'retrievalConfigurations', label: 'Retrieval Configurations', icon: '🧭', done: !retrievalConfigurations.isLoading },
@@ -630,7 +630,7 @@ function App() {
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profiles.isLoading },
         { id: 'accounts', label: 'Accounts', icon: '🔑', done: !accounts.isLoading },
         { id: 'multiplayerData', label: 'Multiplayer Data', icon: '👥', done: !multiplayerDatas.isLoading },
-    ], [sessionLoaded, interactionDatas, entityFolders, characters, actions.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, retrievalConfigurations, budgetStrategies, profiles, accounts, multiplayerDatas]);
+    ], [sessionLoaded, interactionDatas, entityFolders, characters, actions.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, languageModels, samplers, stopPatterns, retrievalConfigurations, budgetStrategies, profiles, accounts, multiplayerDatas]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
@@ -1131,7 +1131,7 @@ function App() {
             interactionData,
             localProtagonist,
             allLanguageModels: languageModels.languageModels,
-            selectedModelId: languageModels.selectedModelId,
+            selectedModelId: languageModels.selectedLanguageModelId,
             allBudgetStrategies: budgetStrategies.strategies,
             selectedBudgetStrategyId: selectedBudgetStrategyId,
             allProfiles: profiles.profiles,
@@ -1150,7 +1150,7 @@ function App() {
         viewAssets.portraitUrlCache, viewAssets.locationBackgroundUrl, actions.allActions,
         characters.characters, locations.locations, contexts.contexts, audioTracks.audioTracks,
         accounts.accounts, multiplayerDatas.multiplayerData,
-        languageModels.languageModels, languageModels.selectedModelId, budgetStrategies.strategies, selectedBudgetStrategyId,
+        languageModels.languageModels, languageModels.selectedLanguageModelId, budgetStrategies.strategies, selectedBudgetStrategyId,
         profiles.profiles, worlds.worlds, samplers.Samplers, stopPatterns.stopPatterns, retrievalConfigurations.retrievalConfigurations,
         promptBlocks.promptBlocks, memories.memories
     ]);
@@ -1162,7 +1162,7 @@ function App() {
         getCompanionStateSnapshotRef.current = getCompanionStateSnapshot;
     }, [getCompanionStateSnapshot]);
 
-    const { setSelectedModelId: setGlobalModelId, toggleModelLoad } = models;
+    const { setSelectedLanguageModelId: setGlobalModelId, toggleLanguageModelLoad } = languageModels;
     const { handleActivateBudgetStrategy } = entityToggles;
     const { saveProfile } = profiles;
 
@@ -1198,7 +1198,7 @@ function App() {
                 const targetModelId = e.data.modelId || null;
                 setGlobalModelId(targetModelId);
                 if (targetModelId) {
-                    toggleModelLoad(targetModelId);
+                    toggleLanguageModelLoad(targetModelId);
                     handleActivateBudgetStrategy(null);
                 }
             } else if (e.data?.type === 'SELECT_BUDGET' && e.data?.budgetId !== undefined) {
@@ -1244,7 +1244,7 @@ function App() {
         };
     }, [
         sendMessage, promptBlocks.promptBlocks, actionMenu, actions, localProtagonist, 
-        interactionData, currentCharacter, setGlobalModelId, toggleModelLoad, 
+        interactionData, currentCharacter, setGlobalModelId, toggleLanguageModelLoad, 
         handleActivateBudgetStrategy, saveProfile, setInteractionData, addToast, 
         profiles.profiles, resumeGeneration, regenerateFromMessage, stopGeneration, 
         wrappedSaveEdit
@@ -1345,14 +1345,14 @@ function App() {
                             isRecording={isRecording} isLoading={isLoading} isModelReady={isModelReady}
                             isModelLoading={isModelLoading} modelStatusMessage={modelStatusMessage}
                             localProtagonist={localProtagonist} activeStrategy={activeStrategy ?? undefined}
-                            selectedModelId={models.selectedModelId} interactionData={interactionData}
+                            selectedModelId={languageModels.selectedLanguageModelId} interactionData={interactionData}
                             allCharacters={characters.characters} allLocations={locations.locations} allContexts={contexts.contexts}
                             allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allPromptBlocks={promptBlocks.promptBlocks}
                             allSamplers={samplers.Samplers} allStopPatterns={stopPatterns.stopPatterns} allProfiles={profiles.profiles}
                             allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDatas.multiplayerData}
                             fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected}
                             onToggleMicrophone={handleToggleMic} onSend={() => handleSend()}
-                            onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} allLanguageModels={models.models} allBudgetStrategies={budgetStrategies.strategies}
+                            onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} allLanguageModels={languageModels.languageModels} allBudgetStrategies={budgetStrategies.strategies}
                         />
                     </>
                 )}
@@ -1360,7 +1360,7 @@ function App() {
                 <AppModals
                     isMultiplayerClient={mp.isMultiplayerClient}
                     modals={modals} entityModals={entityModals}
-                    runningModels={models.runningModels} allRawInteractionDataShells={interactionDatas.allRawInteractionDataShells}
+                    runningModels={languageModels.runningLanguageModels} allRawInteractionDataShells={interactionDatas.allRawInteractionDataShells}
                     allCharacters={characters.characters} allContexts={contexts.contexts} allLocations={locations.locations}
                     allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allLanguageModels={allLanguageModels}
                     allSamplers={samplers.Samplers} allPromptBlocks={promptBlocks.promptBlocks} allStopPatterns={stopPatterns.stopPatterns}
@@ -1392,7 +1392,7 @@ function App() {
                     onToggleWorlds={handleLoadWorlds} 
                     onDeleteWorld={entityModals.getModalProperties('world').delete}
                     onDeleteModel={entityModals.getModalProperties('model').delete} 
-                    onToggleModelLoad={models.toggleModelLoad}
+                    onToggleModelLoad={languageModels.toggleLanguageModelLoad}
                     onDeleteSampler={entityModals.getModalProperties('sampler').delete} 
                     onDeletePromptBlock={entityModals.getModalProperties('promptBlock').delete}
                     onDeleteStopPattern={entityModals.getModalProperties('stopPattern').delete} 
