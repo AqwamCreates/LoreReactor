@@ -83,7 +83,7 @@ export function collectActiveDialoguePromptContent(
     const active = getActiveDialoguePrompts(dialoguePrompts, searchSpace);
     const contents: string[] = [];
     for (const dp of active) {
-        const skipProb = dp.dialoguePromptSkipProbability ?? 0;
+        const skipProb = dp.skipProbability ?? 0;
         if (skipProb > 0 && Math.random() < skipProb) continue;
         if (dp.content) {
             contents.push(dp.content);

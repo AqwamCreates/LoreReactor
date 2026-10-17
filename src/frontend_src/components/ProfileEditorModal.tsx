@@ -375,7 +375,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const selectedToolUsageDisplayMode = TOOL_USAGE_DISPLAY_MODES.find(m => m.value === toolUsageDisplayMode) ?? TOOL_USAGE_DISPLAY_MODES[0];
     const selectedToolUsageDisplayPlacementMode = TOOL_USAGE_DISPLAY_PLACEMENT_MODES.find(m => m.value === toolUsageDisplayPlacementMode) ?? TOOL_USAGE_DISPLAY_PLACEMENT_MODES[1];
     const filteredToolKeys = useMemo(() => { const q = toolSearchQuery.toLowerCase(); if (!q) return allToolKeys; return allToolKeys.filter(toolName => { const label = (toolLabels[toolName] ?? toolName).toLowerCase(); return label.includes(q) || toolName.toLowerCase().includes(q); }); }, [allToolKeys, toolSearchQuery]);
-    const missingBuiltInBlocks = ALL_BUILT_IN_BLOCK_TYPES.filter(b => !inputStrategy.includes(b) && b !== 'Memory');
+    const missingBuiltInBlocks = ALL_BUILT_IN_BLOCK_TYPES.filter(b => !inputStrategy.includes(b));
     const availablePromptBlocks = allPromptBlocks.filter((pb: PromptBlock) => !inputStrategy.includes(pb.id));
     const profileTabs: { id: ProfileTabId; label: string; icon: string }[] = [{ id: 'general', label: 'General', icon: '📝' }, { id: 'injection', label: 'Injection', icon: '💉' }, { id: 'behaviour', label: 'Behaviour', icon: '🧠' }, { id: 'tools', label: 'Tools', icon: '🔧' }, { id: 'pipeline', label: 'Pipeline', icon: '🔄' }, { id: 'cache', label: 'Cache', icon: '⚡' }, { id: 'models', label: 'Models', icon: '🤖' }];
     const cacheCategories: cacheEfficiencyConfigurationType[] = ['Character Name', 'System Prompt', 'Think Prompt'];
@@ -586,7 +586,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                             <span className="editor-section-title">Turn Sequencing</span>
                             <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '12px' }}>-1 = defer to each character's own setting. Set a value to override all participants uniformly.</div>
                             <ProfileCheckbox checked={forceEqualInitiative} onChange={setForceEqualInitiative} label="Force Equal Initiative" hint="All participants get equal initiative weight regardless of character settings." />
-                            {behaviourOverrides.map((cfg, i) => renderOverrideSlider(cfg.label, cfg.value, cfg.min, cfg.max, cfg.step, cfg.decimals, cfg.onChange, cfg.desc, cfg.valueLabel))}
+                            {behaviourOverrides.map((cfg) => renderOverrideSlider(cfg.label, cfg.value, cfg.min, cfg.max, cfg.step, cfg.decimals, cfg.onChange, cfg.desc, cfg.valueLabel))}
                         </div>
                     )}
 

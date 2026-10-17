@@ -8,6 +8,7 @@ import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { useDisplayNameCache } from '../utilities/immersionLogic';
 import { getCharacterStarterMessage } from '../utilities/characterLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
+import { embeddingEngine } from '../services/EmbeddingEngine'; // ✅ ADDED
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { buildModelLoadArguments } from '../utilities/modelLoadArguments';
 import { localURL } from '../../configurations';
@@ -362,6 +363,12 @@ function App() {
             sentimentEngine.unload();
         }
     }, [interactionData]);
+
+    // ─── Embedding Engine (Hardware Sync) ────────────────────
+    useEffect(() => {
+        const devicePref = interactionData?.profile?.embeddingDeviceType ?? 'auto';
+        embeddingEngine.setDevicePreference(devicePref);
+    }, [interactionData?.profile?.embeddingDeviceType]);
 
     // ─── Chat Auto-Save ──────────────────────────────────────────────
     useChatAutoSave({

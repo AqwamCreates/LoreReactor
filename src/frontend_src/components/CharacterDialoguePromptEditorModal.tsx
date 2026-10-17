@@ -140,9 +140,9 @@ export function CharacterDialoguePromptEditorModal({
         name: item.name,
         contentLength: item.content?.length ?? 0,
         bindingCount: item.dialoguePromptBindings?.length ?? 0,
-        weight: item.dialoguePromptWeight ?? 1,
-        breakProbability: item.dialoguePromptBreakProbability ?? 0,
-        skipProbability: item.dialoguePromptSkipProbability ?? 0,
+        weight: item.weight ?? 1,
+        breakProbability: item.breakProbability ?? 0,
+        skipProbability: item.skipProbability ?? 0,
         hasTriggers: (item.regularExpressionActivationTriggers?.length ?? 0) > 0 || (item.regularExpressionDeactivationTriggers?.length ?? 0) > 0,
     });
 
@@ -245,9 +245,9 @@ export function CharacterDialoguePromptEditorModal({
             description: '',
             content: '',
             dialoguePromptBindings: [],
-            dialoguePromptWeight: 1,
-            dialoguePromptBreakProbability: 0,
-            dialoguePromptSkipProbability: 0,
+            weight: 1,
+            breakProbability: 0,
+            skipProbability: 0,
             firstCreatedTimestamp: now,
             lastUpdatedTimestamp: now,
         };
@@ -455,9 +455,9 @@ export function CharacterDialoguePromptEditorModal({
                                                 {item.content!.length}
                                             </span>
                                         )}
-                                        {(item.dialoguePromptWeight ?? 1) !== 1 && (
+                                        {(item.weight ?? 1) !== 1 && (
                                             <span style={{ fontSize: '0.55rem', padding: '1px 4px', background: 'rgba(34, 197, 94, 0.15)', borderRadius: '3px', color: '#22c55e' }}>
-                                                Wt {item.dialoguePromptWeight}
+                                                Wt {item.weight}
                                             </span>
                                         )}
                                         {(item.dialoguePromptBindings?.length ?? 0) > 0 && (
@@ -465,14 +465,14 @@ export function CharacterDialoguePromptEditorModal({
                                                 →{item.dialoguePromptBindings!.length}
                                             </span>
                                         )}
-                                        {(item.dialoguePromptBreakProbability ?? 0) > 0 && (
+                                        {(item.breakProbability ?? 0) > 0 && (
                                             <span style={{ fontSize: '0.55rem', padding: '1px 4px', background: 'rgba(239, 68, 68, 0.15)', borderRadius: '3px', color: '#ef4444' }}>
-                                                ⚡{Math.round((item.dialoguePromptBreakProbability ?? 0) * 100)}%
+                                                ⚡{Math.round((item.breakProbability ?? 0) * 100)}%
                                             </span>
                                         )}
-                                        {(item.dialoguePromptSkipProbability ?? 0) > 0 && (
+                                        {(item.skipProbability ?? 0) > 0 && (
                                             <span style={{ fontSize: '0.55rem', padding: '1px 4px', background: 'rgba(251, 146, 60, 0.15)', borderRadius: '3px', color: '#fb923c' }}>
-                                                ⏭️{Math.round((item.dialoguePromptSkipProbability ?? 0) * 100)}%
+                                                ⏭️{Math.round((item.skipProbability ?? 0) * 100)}%
                                             </span>
                                         )}
                                         {((item.regularExpressionActivationTriggers?.length ?? 0) > 0 || (item.regularExpressionDeactivationTriggers?.length ?? 0) > 0) && (
@@ -557,8 +557,8 @@ export function CharacterDialoguePromptEditorModal({
                                 <label className="editor-label editor-label-small">Dialogue Prompt Weight</label>
                                 <input
                                     type="number"
-                                    value={selectedItem.dialoguePromptWeight ?? 1}
-                                    onChange={(e) => updateField(selectedItem.id, 'dialoguePromptWeight', Number(e.target.value))}
+                                    value={selectedItem.weight ?? 1}
+                                    onChange={(e) => updateField(selectedItem.id, 'weight', Number(e.target.value))}
                                     className="editor-input"
                                     min="0"
                                     step="0.5"
@@ -575,8 +575,8 @@ export function CharacterDialoguePromptEditorModal({
                                 <label className="editor-label editor-label-small">Break Probability</label>
                                 <input
                                     type="number"
-                                    value={selectedItem.dialoguePromptBreakProbability ?? 0}
-                                    onChange={(e) => updateField(selectedItem.id, 'dialoguePromptBreakProbability', Number(e.target.value))}
+                                    value={selectedItem.breakProbability ?? 0}
+                                    onChange={(e) => updateField(selectedItem.id, 'breakProbability', Number(e.target.value))}
                                     className="editor-input"
                                     min="0"
                                     max="1"
@@ -594,8 +594,8 @@ export function CharacterDialoguePromptEditorModal({
                                 <label className="editor-label editor-label-small">Skip Probability</label>
                                 <input
                                     type="number"
-                                    value={selectedItem.dialoguePromptSkipProbability ?? 0}
-                                    onChange={(e) => updateField(selectedItem.id, 'dialoguePromptSkipProbability', Number(e.target.value))}
+                                    value={selectedItem.skipProbability ?? 0}
+                                    onChange={(e) => updateField(selectedItem.id, 'skipProbability', Number(e.target.value))}
                                     className="editor-input"
                                     min="0"
                                     max="1"

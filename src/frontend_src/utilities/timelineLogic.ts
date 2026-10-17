@@ -96,7 +96,6 @@ export function getGlobalMessageHistory(
  * Traces back the conversation thread using parentMessageId.
  * Handles convergence points by defining a strict search space gap. (CACHED)
  */
-// src/frontend_src/utilities/timelineLogic.ts
 
 export function getLocalMessageHistory(
     interactionData: InteractionData, 
@@ -188,6 +187,12 @@ export function getLocalMessageHistory(
     }
 
     return filteredHistory;
+}
+
+export function getLatestLocalLocationMessageHistory(interactionData: InteractionData, messageTypes?: string[], limit?: number): HistoryMessage[]{ // Grabs the latest message chain up until when no characters are present in this location for the latest message chain.
+
+return filteredHistory;
+
 }
 
 /**

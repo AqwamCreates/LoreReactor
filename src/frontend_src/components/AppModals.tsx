@@ -279,11 +279,6 @@ export function AppModals({
 
     const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
 
-    // ─── Sync Embedding Queue Hardware Preference ────────────────────
-    useEffect(() => {
-        embeddingQueue.setProfile(interactionData?.profile ?? null);
-    }, [interactionData?.profile]);
-
     // ─── Background Embedding Generation Handler ────────────────────
     const handleSaveCharacterWithEmbeddings = useCallback(async (character: Character) => {
         // 1. Save immediately so UI doesn't block
