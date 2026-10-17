@@ -54,6 +54,10 @@ export function getEffectiveMaximumChatStamina(character: Character, profile?: P
     return getEffectiveNumeric("maximumChatStamina", character, profile);
 }
 
+export function getEffectiveChatStaminaRegenerationRate(character: Character, profile?: Profile): number {
+    return getEffectiveNumeric("chatStaminaRegenerationRate", character, profile);
+}
+
 export function getEffectiveInitiativeWeight(character: Character, profile?: Profile): number {
     if (profile?.forceEqualInitiative) return 1;
     return character.initiativeWeight ?? 1;
@@ -81,6 +85,10 @@ export function getEffectiveContextSensitivity(character: Character, profile?: P
 
 export function getEffectiveMaximumActionStamina(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("maximumActionStamina", character, profile);
+}
+
+export function getEffectiveActionStaminaRegenerationRate(character: Character, profile?: Profile): number {
+    return getEffectiveNumeric("actionStaminaRegenerationRate", character, profile);
 }
 
 export function getEffectiveMessagesToDisableThinkPrompt(character: Character, profile?: Profile): number {

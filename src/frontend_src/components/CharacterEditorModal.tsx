@@ -18,12 +18,14 @@ import {
     getInitiativeWeightValueFromText, 
     getChatProbabilityValue, 
     getMaximumChatStaminaValueFromText, 
+    getChatStaminaRegenerationRateValueFromText,
     getNameSensitivityValueFromText, 
     getChatImpatienceSensitivityValueFromText, 
     getSkipProbabilityValueFromText, 
     getMemoryRetentionWeightValueFromText, 
     getContextSensitivityValueFromText, 
-    getMaximumActionStaminaValueFromText 
+    getMaximumActionStaminaValueFromText,
+    getActionStaminaRegenerationRateValueFromText
 } from '../utilities/traitDetection';
 import { detectToolsFromText, type DetectedToolsResult } from '../utilities/toolDetection';
 import { ToolPermissionModal } from './ToolPermissionModal';
@@ -46,12 +48,14 @@ import { emotions } from '../dictionaries/characterPresets';
 const DEFAULT_INITIATIVE_WEIGHT = 1.2;
 const DEFAULT_CHAT_PROBABILITY = 0.5;
 const DEFAULT_MAXIMUM_CHAT_STAMINA = 4;
+const DEFAULT_CHAT_STAMINA_REGENERATION_RATE = 0.3;
 const DEFAULT_NAME_SENSITIVITY = 1;
 const DEFAULT_CHAT_IMPATIENCE_SENSITIVITY = 0;
 const DEFAULT_SKIP_PROBABILITY = 0;
 const DEFAULT_MEMORY_RETENTION_WEIGHT = 1;
 const DEFAULT_CONTEXT_SENSITIVITY = 1;
 const DEFAULT_MAXIMUM_ACTION_STAMINA = 5;
+const DEFAULT_ACTION_STAMINA_REGENERATION_RATE = 0.03;
 const MAX_VOICE_FILE_SIZE = 5 * 1024 * 1024;
 
 const tokenEngine = getLanguageModelEngine();
@@ -144,12 +148,14 @@ function CharacterEditorModalInner({
     const [initiativeWeightStr, setInitiativeWeightStr] = useState<string>(String(existingCharacter?.initiativeWeight ?? -1));
     const [chatProbabilityStr, setChatProbabilityStr] = useState<string>(String(existingCharacter?.chatProbability ?? -1));
     const [maximumChatStaminaStr, setMaximumChatStaminaStr] = useState<string>(String(existingCharacter?.maximumChatStamina ?? -1));
+    const [chatStaminaRegenerationRateStr, setChatStaminaRegenerationRateStr] = useState<string>(String(existingCharacter?.chatStaminaRegenerationRate ?? -1));
     const [nameSensitivityStr, setNameSensitivityStr] = useState<string>(String(existingCharacter?.nameSensitivity ?? -1));
     const [chatImpatienceSensitivityStr, setChatImpatienceSensitivityStr] = useState<string>(String(existingCharacter?.chatImpatienceSensitivity ?? -1));
     const [skipProbabilityStr, setSkipProbabilityStr] = useState<string>(String(existingCharacter?.skipProbability ?? -1));
     const [memoryRetentionWeightStr, setMemoryRetentionWeightStr] = useState<string>(String(existingCharacter?.memoryRetentionWeight ?? -1));
     const [contextSensitivityStr, setContextSensitivityStr] = useState<string>(String(existingCharacter?.contextSensitivity ?? -1));
     const [maximumActionStaminaStr, setMaximumActionStaminaStr] = useState<string>(String(existingCharacter?.maximumActionStamina ?? -1));
+    const [actionStaminaRegenerationRateStr, setActionStaminaRegenerationRateStr] = useState<string>(String(existingCharacter?.actionStaminaRegenerationRate ?? -1));
 
     const [voiceFile, setVoiceFile] = useState<File | null>(null);
     const [hasExistingVoice, setHasExistingVoice] = useState<boolean>(Boolean(existingCharacter?.voice?.voiceFilename));
@@ -390,22 +396,26 @@ function CharacterEditorModalInner({
         const iw = getInitiativeWeightValueFromText(combinedText);
         const cp = getChatProbabilityValue(combinedText);
         const ms = getMaximumChatStaminaValueFromText(combinedText);
+        const csrr = getChatStaminaRegenerationRateValueFromText(combinedText);
         const ns = getNameSensitivityValueFromText(combinedText);
         const cis = getChatImpatienceSensitivityValueFromText(combinedText);
         const sp = getSkipProbabilityValueFromText(combinedText);
         const mrw = getMemoryRetentionWeightValueFromText(combinedText);
         const crs = getContextSensitivityValueFromText(combinedText);
         const mas = getMaximumActionStaminaValueFromText(combinedText);
+        const asrr = getActionStaminaRegenerationRateValueFromText(combinedText);
 
         setInitiativeWeightStr(String(iw)); newDetected.iw = iw;
         setChatProbabilityStr(String(cp)); newDetected.cp = cp;
         setMaximumChatStaminaStr(String(ms)); newDetected.ms = ms;
+        setChatStaminaRegenerationRateStr(String(csrr));
         setNameSensitivityStr(String(ns));
         setChatImpatienceSensitivityStr(String(cis));
         setSkipProbabilityStr(String(sp));
         setMemoryRetentionWeightStr(String(mrw));
         setContextSensitivityStr(String(crs));
         setMaximumActionStaminaStr(String(mas));
+        setActionStaminaRegenerationRateStr(String(asrr));
 
         setAutoDetected(newDetected);
     }, [name, description, systemPrompt, autoDetected, isReadOnly]);
@@ -415,12 +425,14 @@ function CharacterEditorModalInner({
         setInitiativeWeightStr(String(DEFAULT_INITIATIVE_WEIGHT));
         setChatProbabilityStr(String(DEFAULT_CHAT_PROBABILITY));
         setMaximumChatStaminaStr(String(DEFAULT_MAXIMUM_CHAT_STAMINA));
+        setChatStaminaRegenerationRateStr(String(DEFAULT_CHAT_STAMINA_REGENERATION_RATE));
         setNameSensitivityStr(String(DEFAULT_NAME_SENSITIVITY));
         setChatImpatienceSensitivityStr(String(DEFAULT_CHAT_IMPATIENCE_SENSITIVITY));
         setSkipProbabilityStr(String(DEFAULT_SKIP_PROBABILITY));
         setMemoryRetentionWeightStr(String(DEFAULT_MEMORY_RETENTION_WEIGHT));
         setContextSensitivityStr(String(DEFAULT_CONTEXT_SENSITIVITY));
         setMaximumActionStaminaStr(String(DEFAULT_MAXIMUM_ACTION_STAMINA));
+        setActionStaminaRegenerationRateStr(String(DEFAULT_ACTION_STAMINA_REGENERATION_RATE));
         setAutoDetected({ iw: null, cp: null, ms: null });
     }, [isReadOnly]);
 
@@ -490,24 +502,28 @@ function CharacterEditorModalInner({
         const currentIW = Number.parseFloat(initiativeWeightStr);
         const currentCP = Number.parseFloat(chatProbabilityStr);
         const currentMS = Number.parseFloat(maximumChatStaminaStr);
+        const currentCSRR = Number.parseFloat(chatStaminaRegenerationRateStr);
         const currentNS = Number.parseFloat(nameSensitivityStr);
         const currentCIS = Number.parseFloat(chatImpatienceSensitivityStr);
         const currentSP = Number.parseFloat(skipProbabilityStr);
         const currentMRW = Number.parseFloat(memoryRetentionWeightStr);
         const currentCRS = Number.parseFloat(contextSensitivityStr);
         const currentMAS = Number.parseFloat(maximumActionStaminaStr);
+        const currentASRR = Number.parseFloat(actionStaminaRegenerationRateStr);
 
         const iwIsAuto = currentIW === -1;
         const cpIsAuto = currentCP === -1;
         const msIsAuto = currentMS === -1;
+        const csrrIsAuto = currentCSRR === -1;
         const nsIsAuto = currentNS === -1;
         const cisIsAuto = currentCIS === -1;
         const spIsAuto = currentSP === -1;
         const mrwIsAuto = currentMRW === -1;
         const crsIsAuto = currentCRS === -1;
         const masIsAuto = currentMAS === -1;
+        const asrrIsAuto = currentASRR === -1;
 
-        if (!iwIsAuto && !cpIsAuto && !msIsAuto && !nsIsAuto && !cisIsAuto && !spIsAuto && !mrwIsAuto && !crsIsAuto && !masIsAuto) return;
+        if (!iwIsAuto && !cpIsAuto && !msIsAuto && !csrrIsAuto && !nsIsAuto && !cisIsAuto && !spIsAuto && !mrwIsAuto && !crsIsAuto && !masIsAuto && !asrrIsAuto) return;
 
         const combinedText = `${name} ${description} ${systemPrompt}`;
         const newDetected = { ...autoDetected };
@@ -515,12 +531,14 @@ function CharacterEditorModalInner({
         if (iwIsAuto) { const v = getInitiativeWeightValueFromText(combinedText); setInitiativeWeightStr(String(v)); newDetected.iw = v; }
         if (cpIsAuto) { const v = getChatProbabilityValue(combinedText); setChatProbabilityStr(String(v)); newDetected.cp = v; }
         if (msIsAuto) { const v = getMaximumChatStaminaValueFromText(combinedText); setMaximumChatStaminaStr(String(Math.round(v))); newDetected.ms = Math.round(v); }
+        if (csrrIsAuto) { const v = getChatStaminaRegenerationRateValueFromText(combinedText); setChatStaminaRegenerationRateStr(String(v)); }
         if (nsIsAuto) { const v = getNameSensitivityValueFromText(combinedText); setNameSensitivityStr(String(v)); }
         if (cisIsAuto) { const v = getChatImpatienceSensitivityValueFromText(combinedText); setChatImpatienceSensitivityStr(String(v)); }
         if (spIsAuto) { const v = getSkipProbabilityValueFromText(combinedText); setSkipProbabilityStr(String(v)); }
         if (mrwIsAuto) { const v = getMemoryRetentionWeightValueFromText(combinedText); setMemoryRetentionWeightStr(String(v)); }
         if (crsIsAuto) { const v = getContextSensitivityValueFromText(combinedText); setContextSensitivityStr(String(v)); }
         if (masIsAuto) { const v = getMaximumActionStaminaValueFromText(combinedText); setMaximumActionStaminaStr(String(Math.round(v))); }
+        if (asrrIsAuto) { const v = getActionStaminaRegenerationRateValueFromText(combinedText); setActionStaminaRegenerationRateStr(String(v)); }
 
         setAutoDetected(newDetected);
     };
@@ -586,9 +604,11 @@ function CharacterEditorModalInner({
 
         setAutoDetected({ iw: null, cp: null, ms: null });
         setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1');
+        setChatStaminaRegenerationRateStr('-1');
         setNameSensitivityStr('-1');
         setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
         setMaximumActionStaminaStr('-1');
+        setActionStaminaRegenerationRateStr('-1');
         setSelectedStopPatternIds([]); setUseFrontCameraImage(false); setDoNotInjectCharacterImage(false);
         setNumberOfMessagesToDisableThinkPromptStr('0');
         setNumberOfMessagesToDisableMetaThinkInstructionsStr('0');
@@ -800,12 +820,14 @@ function CharacterEditorModalInner({
         const rawIW = Number.parseFloat(initiativeWeightStr);
         const rawCP = Number.parseFloat(chatProbabilityStr);
         const rawMS = Number.parseFloat(maximumChatStaminaStr);
+        const rawCSRR = Number.parseFloat(chatStaminaRegenerationRateStr);
         const rawNS = Number.parseFloat(nameSensitivityStr);
         const rawCIS = Number.parseFloat(chatImpatienceSensitivityStr);
         const rawSP = Number.parseFloat(skipProbabilityStr);
         const rawMRW = Number.parseFloat(memoryRetentionWeightStr);
         const rawCRS = Number.parseFloat(contextSensitivityStr);
         const rawMAS = Number.parseFloat(maximumActionStaminaStr);
+        const rawASRR = Number.parseFloat(actionStaminaRegenerationRateStr);
         const rawDisableThink = Number.parseInt(numberOfMessagesToDisableThinkPromptStr);
         const rawDisableMeta = Number.parseInt(numberOfMessagesToDisableMetaThinkInstructionsStr);
         const rawDisableDialogue = Number.parseInt(numberOfMessagesToDisableDialoguePromptStr);
@@ -814,57 +836,71 @@ function CharacterEditorModalInner({
         const iwValid = !Number.isNaN(rawIW) && rawIW >= 0;
         const cpValid = !Number.isNaN(rawCP) && rawCP >= 0;
         const msValid = !Number.isNaN(rawMS) && rawMS >= 0;
+        const csrrValid = !Number.isNaN(rawCSRR) && rawCSRR >= 0;
         const nsValid = !Number.isNaN(rawNS) && rawNS >= 0;
         const cisValid = !Number.isNaN(rawCIS) && rawCIS >= 0;
         const spValid = !Number.isNaN(rawSP) && rawSP >= 0;
         const mrwValid = !Number.isNaN(rawMRW) && rawMRW >= 0;
         const crsValid = !Number.isNaN(rawCRS) && rawCRS >= 0;
         const masValid = !Number.isNaN(rawMAS) && rawMAS >= 0;
+        const asrrValid = !Number.isNaN(rawASRR) && rawASRR >= 0;
 
         let finalIW: number;
         let finalCP: number;
         let finalMS: number;
+        let finalCSRR: number;
         let finalNS: number;
         let finalCIS: number;
         let finalSP: number;
         let finalMRW: number;
         let finalCRS: number;
         let finalMAS: number;
+        let finalASRR: number;
 
         if (existingCharacter && !isNewClone) {
             finalIW = iwValid ? rawIW : (existingCharacter.initiativeWeight ?? -1);
             finalCP = cpValid ? rawCP : (existingCharacter.chatProbability ?? -1);
             finalMS = msValid ? Math.round(rawMS) : (existingCharacter.maximumChatStamina ?? -1);
+            finalCSRR = csrrValid ? rawCSRR : (existingCharacter.chatStaminaRegenerationRate ?? DEFAULT_CHAT_STAMINA_REGENERATION_RATE);
             finalNS = nsValid ? rawNS : (existingCharacter.nameSensitivity ?? DEFAULT_NAME_SENSITIVITY);
             finalCIS = cisValid ? rawCIS : (existingCharacter.chatImpatienceSensitivity ?? DEFAULT_CHAT_IMPATIENCE_SENSITIVITY);
             finalSP = spValid ? rawSP : (existingCharacter.skipProbability ?? DEFAULT_SKIP_PROBABILITY);
             finalMRW = mrwValid ? rawMRW : (existingCharacter.memoryRetentionWeight ?? DEFAULT_MEMORY_RETENTION_WEIGHT);
             finalCRS = crsValid ? rawCRS : (existingCharacter.contextSensitivity ?? DEFAULT_CONTEXT_SENSITIVITY);
             finalMAS = masValid ? Math.round(rawMAS) : (existingCharacter.maximumActionStamina ?? DEFAULT_MAXIMUM_ACTION_STAMINA);
+            finalASRR = asrrValid ? rawASRR : (existingCharacter.actionStaminaRegenerationRate ?? DEFAULT_ACTION_STAMINA_REGENERATION_RATE);
             if (finalIW === -1 && finalCP === -1 && finalMS === -1) {
                 const t = `${name} ${description} ${systemPrompt}`;
                 finalIW = getInitiativeWeightValueFromText(t);
                 finalCP = getChatProbabilityValue(t);
                 finalMS = Math.round(getMaximumChatStaminaValueFromText(t));
+                finalCSRR = getChatStaminaRegenerationRateValueFromText(t);
+                finalASRR = getActionStaminaRegenerationRateValueFromText(t);
             }
         } else {
             finalIW = iwValid ? rawIW : DEFAULT_INITIATIVE_WEIGHT;
             finalCP = cpValid ? rawCP : DEFAULT_CHAT_PROBABILITY;
             finalMS = msValid ? Math.round(rawMS) : DEFAULT_MAXIMUM_CHAT_STAMINA;
+            finalCSRR = csrrValid ? rawCSRR : DEFAULT_CHAT_STAMINA_REGENERATION_RATE;
             finalNS = nsValid ? rawNS : DEFAULT_NAME_SENSITIVITY;
             finalSP = spValid ? rawSP : DEFAULT_SKIP_PROBABILITY;
             finalCIS = cisValid ? rawCIS : DEFAULT_CHAT_IMPATIENCE_SENSITIVITY;
             finalMRW = mrwValid ? rawMRW : DEFAULT_MEMORY_RETENTION_WEIGHT;
             finalCRS = crsValid ? rawCRS : DEFAULT_CONTEXT_SENSITIVITY;
             finalMAS = masValid ? Math.round(rawMAS) : DEFAULT_MAXIMUM_ACTION_STAMINA;
+            finalASRR = asrrValid ? rawASRR : DEFAULT_ACTION_STAMINA_REGENERATION_RATE;
             if (rawIW === -1 && rawCP === -1 && rawMS === -1) {
                 const t = `${name} ${description} ${systemPrompt}`;
                 const dIW = getInitiativeWeightValueFromText(t);
                 const dCP = getChatProbabilityValue(t);
                 const dMS = getMaximumChatStaminaValueFromText(t);
+                const dCSRR = getChatStaminaRegenerationRateValueFromText(t);
+                const dASRR = getActionStaminaRegenerationRateValueFromText(t);
                 if (dIW >= 0) finalIW = dIW;
                 if (dCP >= 0) finalCP = dCP;
                 if (dMS >= 0) finalMS = Math.round(dMS);
+                if (dCSRR >= 0) finalCSRR = dCSRR;
+                if (dASRR >= 0) finalASRR = dASRR;
             }
         }
 
@@ -899,9 +935,11 @@ function CharacterEditorModalInner({
             textToSpeechModelSampler: finalTextToSpeechModelSampler,
             stopPatterns: finalStopPatterns.length > 0 ? finalStopPatterns : undefined,
             initiativeWeight: finalIW, chatProbability: finalCP, maximumChatStamina: finalMS,
+            chatStaminaRegenerationRate: finalCSRR,
             nameSensitivity: finalNS, chatImpatienceSensitivity: finalCIS, skipProbability: finalSP,
             memoryRetentionWeight: finalMRW, contextSensitivity: finalCRS,
             maximumActionStamina: finalMAS,
+            actionStaminaRegenerationRate: finalASRR,
             doNotInjectCharacterImage: doNotInjectCharacterImage || undefined,
             numberOfMessagesToDisableThinkPrompt: Number.isNaN(rawDisableThink) ? 0 : Math.max(0, rawDisableThink),
             numberOfMessagesToDisableMetaThinkInstructions: Number.isNaN(rawDisableMeta) ? 0 : Math.max(0, rawDisableMeta),
@@ -1366,6 +1404,11 @@ function CharacterEditorModalInner({
                                             <input type="number" step="1" min="0" value={maximumChatStaminaStr} onChange={(e) => setMaximumChatStaminaStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the number of maximum paragraphs that the character could produce. Range: 0 - ∞.</div>
                                         </div>
+                                        <div>
+                                            <label className="editor-label editor-label-small">Chat Stamina Regen</label>
+                                            <input type="number" step="0.01" min="0" value={chatStaminaRegenerationRateStr} onChange={(e) => setChatStaminaRegenerationRateStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Stamina regenerated per second. Default is 0.3.</div>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -1407,6 +1450,11 @@ function CharacterEditorModalInner({
                                             <label className="editor-label editor-label-small">Maximum Action Stamina</label>
                                             <input type="number" step="1" min="0" value={maximumActionStaminaStr} onChange={(e) => setMaximumActionStaminaStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how many silent actions, movement, or non-chat interactions the character can perform before needing to rest. Range: 0 - ∞.</div>
+                                        </div>
+                                        <div>
+                                            <label className="editor-label editor-label-small">Action Stamina Regen</label>
+                                            <input type="number" step="0.01" min="0" value={actionStaminaRegenerationRateStr} onChange={(e) => setActionStaminaRegenerationRateStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Stamina regenerated per second. Default is 0.03.</div>
                                         </div>
                                     </div>
                                 </div>

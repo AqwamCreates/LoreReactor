@@ -5,12 +5,14 @@
 const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.0;
 const DEFAULT_CHAT_PROBABILITY_VALUE = 0.8;          // Calibrated: 80% baseline chance to speak
 const DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE = 5;
+const DEFAULT_CHAT_STAMINA_REGENERATION_RATE_VALUE = 0.3; // Stamina per second. Default is 0.3 stamina per second.
 const DEFAULT_NAME_SENSITIVITY_VALUE = 1.0;
 const DEFAULT_SKIP_PROBABILITY_VALUE = 0.05;         // Natural small hesitation baseline (5%)
 const DEFAULT_CHAT_IMPATIENCE_SENSITIVITY_VALUE = 1.0; // Baseline: 1.0 is standard back-and-forth patience
 const DEFAULT_MEMORY_RETENTION_WEIGHT_VALUE = 1.0;
 const DEFAULT_CONTEXT_RELEVANCE_SENSITIVITY_VALUE = 1.0;
 const DEFAULT_MAXIMUM_ACTION_STAMINA_VALUE = 6;
+const DEFAULT_ACTION_STAMINA_REGENERATION_RATE_VALUE = 0.03; // Stamina per second. Default is 0.03 stamina per second.
 
 interface Modifier {
     keywords: string[];
@@ -61,6 +63,16 @@ const MAXIMUM_CHAT_STAMINA_RULES: TraitRule[] = [
     { keywords: ['exhausted', 'weak', 'frail', 'fatigued', 'breathless', 'wounded', 'weary'], value: 2 },
     { keywords: ['dying', 'fading', 'failing', 'debilitated', 'crippled', 'broken'], value: 1 },
     { keywords: ['incapacitated', 'unconscious', 'asleep', 'paralyzed', 'comatose', 'dead', 'inert'], value: 0 },
+];
+
+const CHAT_STAMINA_REGENERATION_RATE_RULES: TraitRule[] = [
+    { keywords: ['hyperactive', 'manic', 'relentless', 'tireless', 'obsessive', 'compulsive', 'unstoppable', 'boundless'], value: 0.8 },
+    { keywords: ['energetic', 'enduring', 'persistent', 'determined', 'focused', 'driven', 'vigorous', 'dynamic'], value: 0.5 },
+    { keywords: ['normal', 'balanced', 'moderate', 'average', 'conversational', 'standard', 'typical'], value: 0.3 },
+    { keywords: ['brief', 'concise', 'terse', 'curt', 'succinct', 'economical', 'short-spoken'], value: 0.2 },
+    { keywords: ['exhausted', 'weak', 'frail', 'fatigued', 'breathless', 'wounded', 'weary'], value: 0.1 },
+    { keywords: ['dying', 'fading', 'failing', 'debilitated', 'crippled', 'broken'], value: 0.05 },
+    { keywords: ['incapacitated', 'unconscious', 'asleep', 'paralyzed', 'comatose', 'dead', 'inert'], value: 0.0 },
 ];
 
 const NAME_SENSITIVITY_RULES: TraitRule[] = [
@@ -121,6 +133,16 @@ const MAXIMUM_ACTION_STAMINA_RULES: TraitRule[] = [
     { keywords: ['frail', 'weak', 'delicate', 'fragile', 'elderly', 'infirm', 'decrepit'], value: 2 },
     { keywords: ['bedridden', 'immobilized', 'crippled', 'disabled', 'paralyzed', 'wheelchair-bound'], value: 1 },
     { keywords: ['incapacitated', 'unconscious', 'comatose', 'catatonic', 'vegetative', 'dead'], value: 0 },
+];
+
+const ACTION_STAMINA_REGENERATION_RATE_RULES: TraitRule[] = [
+    { keywords: ['hyperactive', 'restless', 'fidgety', 'kinetic', 'perpetual motion', 'always moving', 'boundless energy'], value: 0.08 },
+    { keywords: ['athletic', 'agile', 'nimble', 'spry', 'active', 'physical', 'fit', 'mobile', 'adventurous'], value: 0.05 },
+    { keywords: ['normal', 'balanced', 'moderate', 'average', 'standard', 'typical'], value: 0.03 },
+    { keywords: ['sedentary', 'inactive', 'lazy', 'sluggish', 'lethargic', 'couch potato', 'stationary'], value: 0.02 },
+    { keywords: ['frail', 'weak', 'delicate', 'fragile', 'elderly', 'infirm', 'decrepit'], value: 0.01 },
+    { keywords: ['bedridden', 'immobilized', 'crippled', 'disabled', 'paralyzed', 'wheelchair-bound'], value: 0.005 },
+    { keywords: ['incapacitated', 'unconscious', 'comatose', 'catatonic', 'vegetative', 'dead'], value: 0.0 },
 ];
 
 // --- Core Detection Logic ---
@@ -257,6 +279,10 @@ export function getMaximumChatStaminaValueFromText(text: string) {
     return Math.round(detectValue(text, MAXIMUM_CHAT_STAMINA_RULES, DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE, false));
 }
 
+export function getChatStaminaRegenerationRateValueFromText(text: string) {
+    return detectValue(text, CHAT_STAMINA_REGENERATION_RATE_RULES, DEFAULT_CHAT_STAMINA_REGENERATION_RATE_VALUE, false);
+}
+
 export function getNameSensitivityValueFromText(text: string) {
     return detectValue(text, NAME_SENSITIVITY_RULES, DEFAULT_NAME_SENSITIVITY_VALUE, false);
 }
@@ -279,4 +305,8 @@ export function getContextSensitivityValueFromText(text: string) {
 
 export function getMaximumActionStaminaValueFromText(text: string) {
     return Math.round(detectValue(text, MAXIMUM_ACTION_STAMINA_RULES, DEFAULT_MAXIMUM_ACTION_STAMINA_VALUE, false));
+}
+
+export function getActionStaminaRegenerationRateValueFromText(text: string) {
+    return detectValue(text, ACTION_STAMINA_REGENERATION_RATE_RULES, DEFAULT_ACTION_STAMINA_REGENERATION_RATE_VALUE, false);
 }

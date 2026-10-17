@@ -116,12 +116,14 @@ export interface RawContext extends RawData {
 export interface Location extends ObjectData {
   text?: string;
   images?: string[];
+  hasSkyView?: boolean;
+  hasWeather?: boolean;
+  chatStaminaRegenerationRateMultiplier: number // Default is 1.
+  actionStaminaRegenerationRateMultiplier: number // Default is 1.
   regularExpressionActivationTriggers?: RegularExpressionTrigger[];
   regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
   regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
   regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
-  hasSkyView?: boolean;
-  hasWeather?: boolean;
   backgroundImageRegularExpressionActivationTriggers?: Record<number, string>
   backgroundImageWeights?: Record<number, number>
   playAudioTrackOnEnterWeights?: Record<string, number>;
@@ -147,6 +149,8 @@ export interface RawLocation extends RawData {
   images?: string[];
   hasSkyView?: boolean;
   hasWeather?: boolean;
+  chatStaminaRegenerationRateMultiplier: number // Default is 1.
+  actionStaminaRegenerationRateMultiplier: number // Default is 1.
   regularExpressionActivationTriggers?: RegularExpressionTrigger[];
   regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
   regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
@@ -296,12 +300,14 @@ export interface Character extends ObjectData {
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;
+  chatStaminaRegenerationRate: number // Stamina per second. Default is 0.3 stamina per second.
   nameSensitivity: number;
   chatImpatienceSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
   maximumActionStamina: number;
+  actionStaminaRegenerationRate: number // Stamina per second. Default is 0.03 stamina per second.
   languageModelSampler?: Sampler | undefined;
   textToSpeechModelSampler?: Sampler | undefined;
   stopPatterns?: StopPattern[];
@@ -336,12 +342,14 @@ export interface RawCharacter extends RawData {
   initiativeWeight: number;
   chatProbability: number;
   maximumChatStamina: number;
+  chatStaminaRegenerationRate: number // Stamina per second. Default is 0.3 stamina per second.
   nameSensitivity: number;
   chatImpatienceSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
   maximumActionStamina: number;
+  actionStaminaRegenerationRate: number // Stamina per second. Default is 0.03 stamina per second.
   languageModelSamplerId?: string | undefined;
   textToSpeechModelSamplerId?: string | undefined;
   stopPatternIds?: string[];
@@ -821,12 +829,14 @@ export interface Profile extends ObjectData {
   forceEqualInitiative: boolean;
   chatProbability: number;
   maximumChatStamina: number;
+  chatStaminaRegenerationRate: number
   nameSensitivity: number;
   chatImpatienceSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
   maximumActionStamina: number;
+  actionStaminaRegenerationRate: number
   cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number>;
   minimalVolatileCacheMode: boolean // A switch that forces the input strategy to be locked to specific configuration to maximize cache efficiency.
   doNotInjectDefaultStopTokens: boolean;
@@ -884,11 +894,13 @@ export interface RawProfile extends RawData {
   forceEqualInitiative: boolean;
   chatProbability: number;
   maximumChatStamina: number;
+  chatStaminaRegenerationRate: number
   nameSensitivity: number;
   chatImpatienceSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   maximumActionStamina: number;
+  actionStaminaRegenerationRate: number 
   contextSensitivity: number;
   cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number>;
   minimalVolatileCacheMode: boolean // A switch that forces the input strategy to be locked to specific configuration to maximize cache efficiency.
