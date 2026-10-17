@@ -2149,7 +2149,7 @@ app.post('/api/web/fetch', async (req, response) => {
     browser = await puppeteer.launch({
       headless: false, // Visible window so you can interact with it
       userDataDir: path.join(ROOT_DIR, 'user_data', 'browser_profile'),
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1100,900'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=500,500'],
     });
 
     const page = await browser.newPage();
@@ -2202,7 +2202,7 @@ app.post('/api/web/fetch', async (req, response) => {
     response.json({ ok: true, status: 200, contentType: 'text/plain', text: finalText });
 
   } catch (err: any) {
-    if (browser && browser.isConnected()) await browser.close();
+    if (browser?.connected) await browser.close();
     log.error(`[WebFetch] Puppeteer error: ${err.message}`);
     response.status(500).json({ ok: false, status: 500, contentType: '', error: err.message });
   }
