@@ -135,7 +135,7 @@ function RetrievalConfigurationEditorModalInner({
                         >
                             <option value="dense">Dense (Semantic Vector Search)</option>
                             <option value="hybrid">Hybrid (Dense + Sparse Keyword)</option>
-                            <option value="maximal marginal relevance">Maximal marginal relevance (Maximal Marginal Relevance - Diversity)</option>
+                            <option value="maximal marginal relevance">Maximal Marginal Relevance (Diversity)</option>
                         </select>
                         <div style={{ fontSize: '0.65rem', opacity: 0.6 }}>
                             {retrievalStrategy === 'dense' && 'Standard cosine/dot-product similarity search.'}
