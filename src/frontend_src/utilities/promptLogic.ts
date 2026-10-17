@@ -4,7 +4,7 @@ import type { ModelTemplate } from '../dictionaries/modelTemplates';
 import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
 import { fetchMultipleContextUrls } from './linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
+import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt } from './characterLogic';
 import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import { type TimeData, fetchCurrentWeather, generateSkyViewText, getLocation, getTimeDataFromCoordinates } from '../services/LocationEngine';
 import { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter, getCurrentLocationId, } from './locationLogic';
@@ -89,7 +89,20 @@ export interface TemplateContext {
     date: string;
     time: string;
     timeElapsed: string;
+    
+    currentChatStamina: string;
+    maximumChatStamina: string;
+    chatStaminaRatio: string;
+    currentActionStamina: string;
+    maximumActionStamina: string;
+    actionStaminaRatio: string;
+    currentTotalStamina: string;
+    maximumTotalStamina: string;
+    totalStaminaRatio: string;
+
     fatigueInformation: string;
+    paragraphCountInstructions: string;
+    
     toolInstructions: string;
     toolMessageInstructions: string;
     antiRepetitionNudge: string;
@@ -115,10 +128,11 @@ const DEFAULT_TEMPLATES: Record<string, string> = {
     'Sky View': "{{systemBlockStart}}{{skyView}}{{systemBlockEnd}}",
     'Weather': "{{systemBlockStart}}{{weather}}{{systemBlockEnd}}",
     'Inventory': "{{systemBlockStart}}{{inventory}}{{systemBlockEnd}}",
+    'Fatigue': "{{systemBlockStart}}{{fatigueInformation}}{{systemBlockEnd}}",
+    'Paragraph Count Instructions': "{{systemBlockStart}}{{paragraphCountInstructions}}{{systemBlockEnd}}",
     'Date': "{{systemBlockStart}}{{date}}{{systemBlockEnd}}",
     'Time': "{{systemBlockStart}}{{time}}{{systemBlockEnd}}",
     'Time Elapsed': "{{systemBlockStart}}{{timeElapsed}}{{systemBlockEnd}}",
-    'Fatigue Information': "{{systemBlockStart}}{{fatigueInformation}}{{systemBlockEnd}}",
     'Starter Prompt': "{{systemBlockStart}}Start Of This Character's Starter Prompt.{{systemBlockEnd}}\n{{starterPrompt}}\n{{systemBlockStart}}End Of This Character's Starter Prompt.{{systemBlockEnd}}",
     'Tool Instructions': "{{systemBlockStart}}{{toolInstructions}}{{systemBlockEnd}}",
     'Tool Message Instructions': "{{systemBlockStart}}{{toolMessageInstructions}}{{systemBlockEnd}}",
@@ -385,15 +399,35 @@ export function replacePlaceholders(
     return result;
 }
 
-export function getFatigueContext(currentChatStamina: number, maximumChatStamina: number): string {
-    if (maximumChatStamina === Number.POSITIVE_INFINITY) return "";
-    const ratio = currentChatStamina / maximumChatStamina;
-    if (ratio > 0.7) return "";
+export function getFatigueContext(
+    chatStaminaRatio: number, 
+    actionStaminaRatio: number, 
+    totalStaminaRatio: number
+): string {
+    const parts: string[] = [];
 
-    if (ratio > 0.5) return "I am starting to feel slightly winded, but still have plenty of energy to speak.";
-    if (ratio > 0.3) return "I am somewhat exhausted from talking, but somewhat have the energy to speak.";
-    if (ratio > 0.1) return "I am quite drained from talking and barely have the energy to speak.";
-    return "I have no energy left to speak.";
+    if (chatStaminaRatio <= 0.7) {
+        if (chatStaminaRatio > 0.5) parts.push("I am starting to feel slightly winded from talking, but still have plenty of energy to speak.");
+        else if (chatStaminaRatio > 0.3) parts.push("I am somewhat exhausted from talking, but somewhat have the energy to speak.");
+        else if (chatStaminaRatio > 0.1) parts.push("I am quite drained from talking and barely have the energy to speak.");
+        else parts.push("I have no energy left to speak.");
+    }
+
+    if (actionStaminaRatio <= 0.7) {
+        if (actionStaminaRatio > 0.5) parts.push("I am starting to feel slightly physically tired, but still have plenty of energy to move.");
+        else if (actionStaminaRatio > 0.3) parts.push("I am somewhat exhausted physically, but somewhat have the energy to act.");
+        else if (actionStaminaRatio > 0.1) parts.push("I am quite drained physically and barely have the energy to move.");
+        else parts.push("I have no physical energy left to act.");
+    }
+
+    if (parts.length === 0 && totalStaminaRatio <= 0.7) {
+        if (totalStaminaRatio > 0.5) parts.push("I am starting to feel slightly winded overall, but still have plenty of energy.");
+        else if (totalStaminaRatio > 0.3) parts.push("I am somewhat exhausted overall, but somewhat have the energy.");
+        else if (totalStaminaRatio > 0.1) parts.push("I am quite drained overall and barely have any energy.");
+        else parts.push("I am completely exhausted and have no energy left.");
+    }
+
+    return parts.join(" ");
 }
 
 // ─── Whisper Visibility Helpers ─────────────────────────────────────
@@ -1428,20 +1462,24 @@ function buildToolMessageInstructionText(): string {
     return `I am currently in tool message mode, where I will only interact with the environment and only talk to myself.`;
 }
 
-function buildFatigueText(ctx: PromptBuildContext): string {
-    const lines: string[] = [];
-    const previousMessage = findLatestMessage(ctx.interactionData, ctx.character);
-    const effectiveMaxStamina = getEffectiveMaximumChatStamina(ctx.character, ctx.profile);
-    const currentChatStamina = previousMessage?.message.remainingChatStamina ?? effectiveMaxStamina;
-    const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
+function buildFatigueText(
+    chatStaminaRatio: number, 
+    actionStaminaRatio: number, 
+    totalStaminaRatio: number
+): string {
+    return getFatigueContext(chatStaminaRatio, actionStaminaRatio, totalStaminaRatio);
+}
 
-    if (currentChatStamina !== undefined && effectiveMaxStamina !== Number.POSITIVE_INFINITY) {
-        lines.push(`I understand that I can create a minimum of 1 paragraph and a maximum of ${currentChatStamina} ${paragraphText}. If I exceed this, I will naturally stop my paragraphs as soon as possible.`);
-        const fatigue = getFatigueContext(currentChatStamina, effectiveMaxStamina);
-        if (fatigue) lines.push(fatigue);
+function buildParagraphCountInstructionsText(
+    currentChatStamina: number, 
+    effectiveMaxChatStamina: number
+): string {
+    if (currentChatStamina === undefined || effectiveMaxChatStamina === Number.POSITIVE_INFINITY) {
+        return '';
     }
 
-    return lines.join('\n');
+    const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
+    return `I understand that I can create a minimum of 1 paragraph and a maximum of {{currentChatStamina}} ${paragraphText}. If I exceed this, I will naturally stop my paragraphs as soon as possible.`;
 }
 
 function buildAntiRepetitionNudgeText(ctx: PromptBuildContext): string {
@@ -1839,7 +1877,8 @@ const VOLATILE_BLOCK_TYPES: ReadonlySet<string> = new Set([
     'Date',
     'Time',
     'Time Elapsed',
-    'Fatigue Information',
+    'Fatigue',
+    'Paragraph Count Instructions',
     'Tool Instructions',
     'Tool Message Instructions',
     'Anti-Repetition Nudge',
@@ -1957,33 +1996,33 @@ async function buildPromptBlocks(
         if (blockType === 'Starter Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableStarterPrompt(ctx.character, ctx.profile)) continue;
         
         // Ordered validation checks matching promptBlockType
+        if (blockType === 'System Prompt' && templateContext.systemPrompt.trim().length === 0) continue;
+        if (blockType === 'Think Prompt' && templateContext.thinkPrompt.trim().length === 0) continue;
+        if (blockType === 'Meta Think Instructions' && templateContext.metaThinkInstructions.trim().length === 0) continue;
+        if (blockType === 'Character Tags' && templateContext.characterTags.length === 0) continue;
+        if (blockType === 'Character Tags With Descriptions' && templateContext.characterTagsWithDescriptions.length === 0) continue;
+        if (blockType === 'Appearance Prompt' && templateContext.appearancePrompt.trim().length === 0) continue;
+        if (blockType === 'Dialogue Prompt' && templateContext.dialoguePrompt.trim().length === 0) continue;
+        if (blockType === 'Chat History' && templateContext.chatHistory.length === 0) continue;
         if (blockType === 'Context' && templateContext.context.length === 0) continue;
         if (blockType === 'Current Location' && templateContext.currentLocation.trim().length === 0) continue;
         if (blockType === 'Current Location With Description' && templateContext.currentLocationWithDescription.trim().length === 0) continue;
         if (blockType === 'Reachable Locations' && templateContext.reachableLocations.length === 0) continue;
         if (blockType === 'Reachable Locations With Descriptions' && templateContext.reachableLocationsWithDescriptions.length === 0) continue;
-        if (blockType === 'Inventory' && templateContext.inventory.trim().length === 0) continue;
         if (blockType === 'Sky View' && templateContext.skyView.trim().length === 0) continue;
         if (blockType === 'Weather' && templateContext.weather.trim().length === 0) continue;
+        if (blockType === 'Inventory' && templateContext.inventory.trim().length === 0) continue;
+        if (blockType === 'Fatigue' && templateContext.fatigueInformation.trim().length === 0) continue;
+        if (blockType === 'Paragraph Count Instructions' && templateContext.paragraphCountInstructions.trim().length === 0) continue;
         if (blockType === 'Date' && templateContext.date.trim().length === 0) continue;
         if (blockType === 'Time' && templateContext.time.trim().length === 0) continue;
         if (blockType === 'Time Elapsed' && templateContext.timeElapsed.trim().length === 0) continue;
-        if (blockType === 'Fatigue Information' && templateContext.fatigueInformation.trim().length === 0) continue;
         if (blockType === 'Starter Prompt' && templateContext.starterPrompt.trim().length === 0) continue;
         if (blockType === 'Tool Instructions' && templateContext.toolInstructions.trim().length === 0) continue;
         if (blockType === 'Tool Message Instructions' && templateContext.toolMessageInstructions.trim().length === 0) continue;
         if (blockType === 'Anti-Repetition Nudge' && templateContext.antiRepetitionNudge.trim().length === 0) continue;
-        if (blockType === 'Character Tags' && templateContext.characterTags.length === 0) continue;
-        if (blockType === 'Character Tags With Descriptions' && templateContext.characterTagsWithDescriptions.length === 0) continue;
-        
-        if (blockType === 'System Prompt' && templateContext.systemPrompt.trim().length === 0) continue;
-        if (blockType === 'Think Prompt' && templateContext.thinkPrompt.trim().length === 0) continue;
-        if (blockType === 'Meta Think Instructions' && templateContext.metaThinkInstructions.trim().length === 0) continue;
-        if (blockType === 'Appearance Prompt' && templateContext.appearancePrompt.trim().length === 0) continue;
-        if (blockType === 'Dialogue Prompt' && templateContext.dialoguePrompt.trim().length === 0) continue;
-        if (blockType === 'Chat History' && templateContext.chatHistory.length === 0) continue;
 
-        let template = DEFAULT_TEMPLATES[blockType];
+        const template = DEFAULT_TEMPLATES[blockType];
         let resolvedContent = '';
 
         if (template) {
@@ -2209,6 +2248,25 @@ export async function buildPrompt(
         timeElapsedText = `It has been ${timeSinceLastMessageString} since the last message in the real world. I may or may not acknowledge the time elapsed. I will update relevant information according to this information. For example, a previous time must be subtracted or added with the elapsed time to get current time.`;
     }
 
+    // --- STAMINA CALCULATIONS ---
+    const effectiveMaxChatStamina = getEffectiveMaximumChatStamina(ctx.character, ctx.profile);
+    const effectiveMaxActionStamina = getEffectiveMaximumActionStamina(ctx.character, ctx.profile);
+
+    const previousMessage = findLatestMessage(ctx.interactionData, ctx.character);
+    const currentChatStamina = previousMessage?.message.remainingChatStamina ?? effectiveMaxChatStamina;
+    const currentActionStamina = previousMessage?.message.remainingActionStamina ?? effectiveMaxActionStamina;
+
+    const currentTotalStamina = currentChatStamina + currentActionStamina;
+    const maximumTotalStamina = effectiveMaxChatStamina + effectiveMaxActionStamina;
+
+    const chatStaminaRatio = (effectiveMaxChatStamina === Number.POSITIVE_INFINITY || effectiveMaxChatStamina === 0) ? 1 : currentChatStamina / effectiveMaxChatStamina;
+    const actionStaminaRatio = (effectiveMaxActionStamina === Number.POSITIVE_INFINITY || effectiveMaxActionStamina === 0) ? 1 : currentActionStamina / effectiveMaxActionStamina;
+    const totalStaminaRatio = (maximumTotalStamina === Number.POSITIVE_INFINITY || maximumTotalStamina === 0) ? 1 : currentTotalStamina / maximumTotalStamina;
+
+    const formatStamina = (val: number) => val === Number.POSITIVE_INFINITY ? 'Infinity' : String(Math.round(val));
+    const formatRatio = (val: number) => String(Math.round(val * 100) / 100);
+    // ----------------------------
+
     const hasBeenSummarized = chatHistoryResult.hasBeenSummarized;
     const textInjectionText = buildTextInjectionText(ctx, hasBeenSummarized, contextLines);
 
@@ -2241,7 +2299,20 @@ export async function buildPrompt(
         date: dateText,
         time: timeText,
         timeElapsed: timeElapsedText,
-        fatigueInformation: !isToolMessage ? buildFatigueText(ctx) : '',
+        
+        currentChatStamina: formatStamina(currentChatStamina),
+        maximumChatStamina: formatStamina(effectiveMaxChatStamina),
+        chatStaminaRatio: formatRatio(chatStaminaRatio),
+        currentActionStamina: formatStamina(currentActionStamina),
+        maximumActionStamina: formatStamina(effectiveMaxActionStamina),
+        actionStaminaRatio: formatRatio(actionStaminaRatio),
+        currentTotalStamina: formatStamina(currentTotalStamina),
+        maximumTotalStamina: formatStamina(maximumTotalStamina),
+        totalStaminaRatio: formatRatio(totalStaminaRatio),
+
+        fatigueInformation: !isToolMessage ? buildFatigueText(chatStaminaRatio, actionStaminaRatio, totalStaminaRatio) : '',
+        paragraphCountInstructions: !isToolMessage ? buildParagraphCountInstructionsText(currentChatStamina, effectiveMaxChatStamina) : '',
+        
         toolInstructions: buildToolInstructionText(ctx),
         toolMessageInstructions: isToolMessage ? buildToolMessageInstructionText() : '',
         antiRepetitionNudge: buildAntiRepetitionNudgeText(ctx),

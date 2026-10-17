@@ -23,7 +23,6 @@ import trash from 'trash';
 import robot from '@jitsi/robotjs';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
-import puppeteer, { type Browser } from 'puppeteer';
 
 // --- Configuration ---
 const app = express();
