@@ -27,7 +27,7 @@ import { useActionManager } from '../hooks/useActionManager';
 import { useContextManager } from '../hooks/useContextManager';
 import { useLocationManager } from '../hooks/useLocationManager';
 import { useAudioTrackManager } from '../hooks/useAudioTrackManager';
-import { useModelManager } from '../hooks/useModelManager';
+import { useLanguageModelManager } from '../hooks/useLanguageModelManager';
 import { useSamplerManager } from '../hooks/useSamplerManager';
 import { usePromptBlockManager } from '../hooks/usePromptBlockManager';
 import { useStopPatternManager } from '../hooks/useStopPatternManager';
@@ -114,7 +114,7 @@ function App() {
     const locations = useLocationManager();
     const audioTracks = useAudioTrackManager();
     const worlds = useWorldManager();
-    const models = useModelManager();
+    const languageModels = useLanguageModelManager();
     const samplers = useSamplerManager();
     const promptBlocks = usePromptBlockManager();
     const stopPatterns = useStopPatternManager();
@@ -127,7 +127,7 @@ function App() {
     const multiplayerDatas = useMultiplayerDataManager();
 
     const activeExtensions = useActiveExtensions(extensions.extensions);
-    const allLanguageModels = models.models;
+    const allLanguageModels = languageModels.languageModels;
 
     const entityModals = useEntityModals({
         character: { saveFunction: characters.saveCharacter, deleteFunction: characters.deleteCharacter, entityLabel: 'Character' },
@@ -135,7 +135,7 @@ function App() {
         location: { saveFunction: locations.saveLocation, deleteFunction: locations.deleteLocation, entityLabel: 'Location' },
         audioTrack: { saveFunction: audioTracks.saveAudioTrack, deleteFunction: audioTracks.deleteAudioTrack, entityLabel: 'Audio Track' },
         world: { saveFunction: worlds.saveWorld, deleteFunction: worlds.deleteWorld, entityLabel: 'World' },
-        model: { saveFunction: models.saveModel, deleteFunction: models.deleteModel, entityLabel: 'Model' },
+        model: { saveFunction: languageModels.saveLanguageModel, deleteFunction: languageModels.deleteLanguageModel, entityLabel: 'Language Model' },
         sampler: { saveFunction: samplers.saveSampler, deleteFunction: samplers.deleteSampler, entityLabel: 'Sampler' },
         promptBlock: { saveFunction: promptBlocks.savePromptBlock, deleteFunction: promptBlocks.deletePromptBlock, entityLabel: 'Prompt Block' },
         stopPattern: { saveFunction: stopPatterns.saveStopPattern, deleteFunction: stopPatterns.deleteStopPattern, entityLabel: 'Stop Pattern' },
@@ -185,6 +185,7 @@ function App() {
         allLocations: locations.locations,
         allAudioTracks: audioTracks.audioTracks,
         allPromptBlocks: promptBlocks.promptBlocks,
+        allLanguageModels: languageModels.languageModels,
         allSamplers: samplers.Samplers,
         allStopPatterns: stopPatterns.stopPatterns,
         allRetrievalConfigurations: retrievalConfigurations.retrievalConfigurations,
@@ -210,8 +211,6 @@ function App() {
         activeStrategy, budgetData, playVoice,
     } = session;
 
-    // ✅ FIXED: Derive directly from the already extracted `interactionData` object. 
-    // No redundant Zustand subscriptions. `EMPTY_PARTICIPANTS` prevents array reference mutation.
     const displayMode = interactionData?.profile?.toolUsageDisplayMode ?? 'simple';
     const placementMode = interactionData?.profile?.toolUsageDisplayPlacementMode ?? 'inline';
     const participants = interactionData?.participants ?? EMPTY_PARTICIPANTS;
@@ -1131,8 +1130,8 @@ function App() {
             allMultiplayerData: multiplayerDatas.multiplayerData,
             interactionData,
             localProtagonist,
-            allLanguageModels: allLanguageModels,
-            selectedModelId: models.selectedModelId,
+            allLanguageModels: languageModels.languageModels,
+            selectedModelId: languageModels.selectedModelId,
             allBudgetStrategies: budgetStrategies.strategies,
             selectedBudgetStrategyId: selectedBudgetStrategyId,
             allProfiles: profiles.profiles,
@@ -1151,7 +1150,7 @@ function App() {
         viewAssets.portraitUrlCache, viewAssets.locationBackgroundUrl, actions.allActions,
         characters.characters, locations.locations, contexts.contexts, audioTracks.audioTracks,
         accounts.accounts, multiplayerDatas.multiplayerData,
-        allLanguageModels, models.selectedModelId, budgetStrategies.strategies, selectedBudgetStrategyId,
+        languageModels.languageModels, languageModels.selectedModelId, budgetStrategies.strategies, selectedBudgetStrategyId,
         profiles.profiles, worlds.worlds, samplers.Samplers, stopPatterns.stopPatterns, retrievalConfigurations.retrievalConfigurations,
         promptBlocks.promptBlocks, memories.memories
     ]);

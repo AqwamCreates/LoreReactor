@@ -2,7 +2,7 @@
 import type { ToolInvocation } from './ToolInvocationParser';
 import { fetchLinkContent } from '../utilities/linkFetcher';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from '../utilities/dialoguePromptLogic';
-import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, WhisperMessage, TextMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension, Account, MultiplayerData, toolUsageDisplayMode, HistoryMessage, tool, EntityFolder, RawInteractionData } from '../types';
+import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, WhisperMessage, TextMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension, Account, MultiplayerData, toolUsageDisplayMode, HistoryMessage, tool, EntityFolder, RawInteractionData, RetrievalConfiguration, LanguageModel } from '../types';
 import { findLatestMessage } from '../utilities/messageLogic';
 import { getGlobalMessageHistory } from '../utilities/timelineLogic';
 import { getCurrentLocation, getReachableLocationsByCharacter, isCharacterLockedFromLocation, getCoLocatedParticipants } from '../utilities/locationLogic';
@@ -28,12 +28,14 @@ export interface ToolExecutionContext {
     allContexts: Context[];
     allLocations: Location[];
     allAudioTracks: AudioTrack[];
+    allWorlds: World[];
+    allLanguageModels: LanguageModel[]
+    allSamplers: Sampler[];
     allPromptBlocks: PromptBlock[];
     allStopPatterns: StopPattern[];
-    allSamplers: Sampler[];
+    allRetrievalConfigurations: RetrievalConfiguration[];
     allBudgetStrategies: BudgetStrategy[];
     allProfiles: Profile[];
-    allWorlds: World[];
     allMemories: Memory[];
     allExtensions: Extension[];
     allAccounts: Account[];

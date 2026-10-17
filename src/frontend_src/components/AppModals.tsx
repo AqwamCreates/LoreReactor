@@ -1248,7 +1248,7 @@ export function AppModals({
                         if (aiPromptBlockSaveRedirect) { 
                             aiPromptBlockSaveRedirect(promptBlock); 
                             addToast('Applied prompt block changes to AI recommendation.', 'success'); 
-                        } else { 
+                        } else {
                             promptBlockModalProperties.save(promptBlock); 
                         } 
                     }}

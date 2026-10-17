@@ -43,14 +43,14 @@ import type {
     AudioTrack,
     Sampler,
     StopPattern,
+    RetrievalConfiguration,
     BudgetStrategy,
     World,
     Memory,
     Account,
     MultiplayerData,
     EntityFolder,
-    RawInteractionData,
-    RetrievalConfiguration
+    RawInteractionData
 } from '../types';
 import { useFrontCamera } from './useFrontCamera';
 
@@ -64,9 +64,10 @@ interface UseChatSessionOptions {
     allLocations: Location[];
     allAudioTracks: AudioTrack[];
     allPromptBlocks: PromptBlock[];
+    allLanguageModels: LanguageModel[],
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
-    allRetrievalConfigurations: RetrievalConfiguration[],
+    allRetrievalConfigurations: RetrievalConfiguration[];
     allBudgetStrategies: BudgetStrategy[];
     allProfiles: Profile[];
     allWorlds: World[];
@@ -101,8 +102,10 @@ export function useChatSession(options: UseChatSessionOptions) {
     const allLocationsRef = useRef(options?.allLocations ?? []);
     const allAudioTracksRef = useRef(options?.allAudioTracks ?? []);
     const allPromptBlocksRef = useRef(options?.allPromptBlocks ?? []);
+    const allLanguageModelsRef = useRef(options?.allLanguageModels ?? []);
     const allSamplersRef = useRef(options?.allSamplers ?? []);
     const allStopPatternsRef = useRef(options?.allStopPatterns ?? []);
+    const allRetrievalConfigurationsRef = useRef(options?.allRetrievalConfigurations ?? []);
     const allBudgetStrategiesRef = useRef(options?.allBudgetStrategies ?? []);
     const allProfilesRef = useRef(options?.allProfiles ?? []);
     const allWorldsRef = useRef(options?.allWorlds ?? []);
@@ -119,8 +122,10 @@ export function useChatSession(options: UseChatSessionOptions) {
     useEffect(() => { allLocationsRef.current = options?.allLocations ?? []; }, [options?.allLocations]);
     useEffect(() => { allAudioTracksRef.current = options?.allAudioTracks ?? []; }, [options?.allAudioTracks]);
     useEffect(() => { allPromptBlocksRef.current = options?.allPromptBlocks ?? []; }, [options?.allPromptBlocks]);
+    useEffect(() => { allLanguageModelsRef.current = options?.allLanguageModels ?? []; }, [options?.allLanguageModels]);
     useEffect(() => { allSamplersRef.current = options?.allSamplers ?? []; }, [options?.allSamplers]);
     useEffect(() => { allStopPatternsRef.current = options?.allStopPatterns ?? []; }, [options?.allStopPatterns]);
+    useEffect(() => { allRetrievalConfigurationsRef.current = options?.allRetrievalConfigurations ?? []; }, [options?.allRetrievalConfigurations]);
     useEffect(() => { allBudgetStrategiesRef.current = options?.allBudgetStrategies ?? []; }, [options?.allBudgetStrategies]);
     useEffect(() => { allProfilesRef.current = options?.allProfiles ?? []; }, [options?.allProfiles]);
     useEffect(() => { allWorldsRef.current = options?.allWorlds ?? []; }, [options?.allWorlds]);
@@ -214,8 +219,10 @@ export function useChatSession(options: UseChatSessionOptions) {
         allLocations: allLocationsRef.current,
         allAudioTracks: allAudioTracksRef.current,
         allPromptBlocks: allPromptBlocksRef.current,
+        allLanguageModels: allLanguageModelsRef.current,
         allSamplers: allSamplersRef.current,
         allStopPatterns: allStopPatternsRef.current,
+        allRetrievalConfigurations: allRetrievalConfigurationsRef.current,
         allBudgetStrategies: allBudgetStrategiesRef.current,
         allProfiles: allProfilesRef.current,
         allWorlds: allWorldsRef.current,
