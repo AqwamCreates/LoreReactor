@@ -2,7 +2,7 @@ import type React from 'react';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { 
     Character, Sampler, LanguageModel, Memory, Clothing, 
-    TextCharacterInjection, DialoguePrompt, KnowledgePrompt, 
+    TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StarterPrompt,
     tool, InteractionData, StopPattern, Voice 
 } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -35,6 +35,7 @@ import { CharacterClothingEditorModal } from './CharacterClothingEditorModal';
 import { CharacterTextCharacterInjectionEditorModal } from './CharacterTextCharacterInjectionEditorModal';
 import { CharacterDialoguePromptEditorModal } from './CharacterDialoguePromptEditorModal';
 import { CharacterKnowledgePromptEditorModal } from './CharacterKnowledgePromptEditorModal';
+import { CharacterStarterPromptEditorModal } from './CharacterStarterPromptEditorModal';
 import { getCoLocatedParticipants, getCoLocatedProtagonists } from '../utilities/locationLogic';
 import '../main.css';
 import { defaultCharacterTools } from '../dictionaries/defaults';
@@ -207,7 +208,17 @@ function CharacterEditorModalInner({
     const [textCharacterInjections, setTextCharacterInjections] = useState<TextCharacterInjection[]>(existingCharacter?.textCharacterInjections ?? []);
     const [dialoguePrompts, setDialoguePrompts] = useState<DialoguePrompt[]>(existingCharacter?.dialoguePrompts ?? []);
     const [knowledgePrompts, setKnowledgePrompts] = useState<KnowledgePrompt[]>(existingCharacter?.knowledgePrompts ?? []);
-    const [starterPrompts, setStarterPrompts] = useState<Record<string, number>>(existingCharacter?.starterPrompts ?? {});
+    
+    // ✅ Updated Starter Prompts State
+    const [starterPrompts, setStarterPrompts] = useState<StarterPrompt[]>(existingCharacter?.starterPrompts ?? []);
+    const [showStarterPromptEditor, setShowStarterPromptEditor] = useState(false);
+
+    // ✅ Embedding Opt-in States
+    const [useEmbeddingModelForDialoguePrompts, setUseEmbeddingModelForDialoguePrompts] = useState(existingCharacter?.useEmbeddingModelForDialoguePrompts ?? false);
+    const [useEmbeddingModelForStarterPrompts, setUseEmbeddingModelForStarterPrompts] = useState(existingCharacter?.useEmbeddingModelForStarterPrompts ?? false);
+    const [useEmbeddingModelForKnowledgePrompts, setUseEmbeddingModelForKnowledgePrompts] = useState(existingCharacter?.useEmbeddingModelForKnowledgePrompts ?? false);
+    const [useEmbeddingModelForMemories, setUseEmbeddingModelForMemories] = useState(existingCharacter?.useEmbeddingModelForMemories ?? false);
+
     const [memoryPrompts, setMemoryPrompts] = useState<Record<string, string>>(existingCharacter?.memoryPrompts ?? {});
 
     const [aliases, setAliases] = useState<string[]>(existingCharacter?.aliases ?? []);
@@ -610,11 +621,24 @@ function CharacterEditorModalInner({
         setKnownCharacterNames({});
         initialKnownCharacterNamesRef.current = {};
         setIsVoiceRemoved(false);
+        
+        // ✅ Updated Starter Prompts Import Logic
         if (fields.starterPrompt) {
-            setStarterPrompts({ [fields.starterPrompt]: 1 });
+            const now = Date.now();
+            setStarterPrompts([{
+                id: uuidv4(),
+                name: 'Default Greeting',
+                description: '',
+                content: fields.starterPrompt,
+                weight: 1,
+                skipProbability: 0,
+                firstCreatedTimestamp: now,
+                lastUpdatedTimestamp: now
+            }]);
         } else {
-            setStarterPrompts({});
+            setStarterPrompts([]);
         }
+        
         countFieldTokens('systemPrompt', fields.systemPrompt);
         countFieldTokens('thinkPrompt', '');
         countFieldTokens('appearancePrompt', fields.appearancePrompt);
@@ -864,7 +888,8 @@ function CharacterEditorModalInner({
             appearancePrompt: appearancePrompt || undefined,
             dialoguePrompts: dialoguePrompts.length > 0 ? dialoguePrompts : undefined,
             knowledgePrompts: knowledgePrompts.length > 0 ? knowledgePrompts : undefined,
-            starterPrompts: Object.keys(starterPrompts).length > 0 ? starterPrompts : undefined,
+            // ✅ Updated to Array Length Check
+            starterPrompts: starterPrompts.length > 0 ? starterPrompts : undefined,
             memoryPrompts: Object.keys(memoryPrompts).length > 0 ? memoryPrompts : undefined,
             aliases: aliases.length > 0 ? aliases : undefined,
             images: Object.keys(finalImages).length > 0 ? finalImages : undefined,
@@ -882,6 +907,13 @@ function CharacterEditorModalInner({
             numberOfMessagesToDisableMetaThinkInstructions: Number.isNaN(rawDisableMeta) ? 0 : Math.max(0, rawDisableMeta),
             numberOfMessagesToDisableDialoguePrompt: Number.isNaN(rawDisableDialogue) ? 0 : Math.max(0, rawDisableDialogue),
             numberOfMessagesToDisableStarterPrompt: Number.isNaN(rawDisableStarter) ? 0 : Math.max(0, rawDisableStarter),
+            
+            // ✅ Added Embedding Toggles
+            useEmbeddingModelForDialoguePrompts: useEmbeddingModelForDialoguePrompts || undefined,
+            useEmbeddingModelForStarterPrompts: useEmbeddingModelForStarterPrompts || undefined,
+            useEmbeddingModelForKnowledgePrompts: useEmbeddingModelForKnowledgePrompts || undefined,
+            useEmbeddingModelForMemories: useEmbeddingModelForMemories || undefined,
+
             tools: { ...tools },
             clothings,
             knownCharacterNames,
@@ -903,36 +935,6 @@ function CharacterEditorModalInner({
     const hasVoice = (!!voiceFile || hasExistingVoice) && !isVoiceRemoved;
     const effectiveCharacterId = existingCharacter?.id || pendingCharacterId || '';
     const memoryCount = Object.values(memories).reduce((sum, arr) => sum + arr.length, 0);
-
-    const [newStarterPromptText, setNewStarterPromptText] = useState('');
-    const [newStarterPromptWeight, setNewStarterPromptWeight] = useState<string>('1');
-
-    const handleAddStarterPrompt = useCallback(() => {
-        if (isReadOnly) return;
-        const text = newStarterPromptText;
-        if (!text) return;
-        const weight = Number.parseFloat(newStarterPromptWeight);
-        const finalWeight = Number.isNaN(weight) || weight <= 0 ? 1 : weight;
-        setStarterPrompts(prev => ({ ...prev, [text]: finalWeight }));
-        setNewStarterPromptText('');
-        setNewStarterPromptWeight('1');
-    }, [newStarterPromptText, newStarterPromptWeight, isReadOnly]);
-
-    const handleRemoveStarterPrompt = useCallback((text: string) => {
-        if (isReadOnly) return;
-        setStarterPrompts(prev => {
-            const next = { ...prev };
-            delete next[text];
-            return next;
-        });
-    }, [isReadOnly]);
-
-    const handleStarterPromptWeightChange = useCallback((text: string, value: string) => {
-        if (isReadOnly) return;
-        const weight = Number.parseFloat(value);
-        const finalWeight = Number.isNaN(weight) || weight <= 0 ? 1 : weight;
-        setStarterPrompts(prev => ({ ...prev, [text]: finalWeight }));
-    }, [isReadOnly]);
 
     const [newMemoryPromptExpression, setNewMemoryPromptExpression] = useState<string>(emotions[0]);
     const [newMemoryPromptTemplate, setNewMemoryPromptTemplate] = useState('');
@@ -1146,28 +1148,13 @@ function CharacterEditorModalInner({
 
                         {activeTab === 'behaviour' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                {/* ✅ Updated Starter Prompts Section */}
                                 <div className="editor-section" style={{ margin: 0 }}>
-                                    <div className="editor-section-title">Starter Prompts ({Object.keys(starterPrompts).length})</div>
+                                    <div className="editor-section-title">Starter Prompts ({starterPrompts.length})</div>
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Weighted starter messages. Higher weight = more likely to be selected.</div>
-                                    {!isReadOnly && (
-                                        <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
-                                            <input type="text" value={newStarterPromptText} onChange={e => setNewStarterPromptText(e.target.value)} className="editor-input" placeholder="Starter prompt text..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
-                                            <input type="number" value={newStarterPromptWeight} onChange={e => setNewStarterPromptWeight(e.target.value)} className="editor-input" placeholder="Wt" min="0.1" step="0.5" style={{ width: '50px', fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
-                                            <button type="button" onClick={handleAddStarterPrompt} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading}>+</button>
-                                        </div>
-                                    )}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '120px', overflowY: 'auto' }}>
-                                        {Object.entries(starterPrompts).map(([text, weight]) => (
-                                            <div key={text} style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                                <span style={{ flex: 1, fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{text}</span>
-                                                <input type="number" value={weight} onChange={e => handleStarterPromptWeightChange(text, e.target.value)} className="editor-input" min="0.1" step="0.5" style={{ width: '45px', fontSize: '0.6rem', padding: '2px 4px' }} disabled={isUploading || isReadOnly} />
-                                                {!isReadOnly && <button type="button" onClick={() => handleRemoveStarterPrompt(text)} className="toolbar-button" title="Remove" style={{ width: '18px', height: '18px', fontSize: '0.6rem', color: '#ff4444', padding: 0 }}>×</button>}
-                                            </div>
-                                        ))}
-                                        {Object.keys(starterPrompts).length === 0 && (
-                                            <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', padding: '4px 0' }}>No starter prompts.{!isReadOnly && ' Add above.'}</div>
-                                        )}
-                                    </div>
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowStarterPromptEditor(true)} disabled={isUploading || isReadOnly} style={{ width: '100%' }}>
+                                        Edit Starter Prompts ({starterPrompts.length})
+                                    </button>
                                 </div>
 
                                 <div className="editor-section" style={{ margin: 0 }}>
@@ -1331,6 +1318,30 @@ function CharacterEditorModalInner({
                                             <input type="number" step="1" min="0" value={numberOfMessagesToDisableStarterPromptStr} onChange={(e) => setNumberOfMessagesToDisableStarterPromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                         </div>
                                     </div>
+                                </div>
+
+                                {/* ✅ Added Semantic Memory & Search Section */}
+                                <div className="editor-section" style={{ margin: 0 }}>
+                                    <span className="editor-section-title">Semantic Memory & Search (Embeddings)</span>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
+                                        Use the local embedding model for smart context retrieval instead of regex/keywords.
+                                    </div>
+                                    <label className="editor-checkbox-label">
+                                        <input type="checkbox" checked={useEmbeddingModelForDialoguePrompts} onChange={(e) => setUseEmbeddingModelForDialoguePrompts(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
+                                        <span>Use Embeddings for Dialogue Prompts</span>
+                                    </label>
+                                    <label className="editor-checkbox-label">
+                                        <input type="checkbox" checked={useEmbeddingModelForStarterPrompts} onChange={(e) => setUseEmbeddingModelForStarterPrompts(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
+                                        <span>Use Embeddings for Starter Prompts</span>
+                                    </label>
+                                    <label className="editor-checkbox-label">
+                                        <input type="checkbox" checked={useEmbeddingModelForKnowledgePrompts} onChange={(e) => setUseEmbeddingModelForKnowledgePrompts(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
+                                        <span>Use Embeddings for Knowledge Prompts</span>
+                                    </label>
+                                    <label className="editor-checkbox-label">
+                                        <input type="checkbox" checked={useEmbeddingModelForMemories} onChange={(e) => setUseEmbeddingModelForMemories(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
+                                        <span>Use Embeddings for Memories</span>
+                                    </label>
                                 </div>
                             </div>
                         )}
@@ -1622,6 +1633,16 @@ function CharacterEditorModalInner({
                     onClose={() => setShowKnowledgePromptEditor(false)}
                     knowledgePrompts={knowledgePrompts}
                     onSaveKnowledgePrompts={setKnowledgePrompts}
+                    isReadOnly={isReadOnly}
+                />
+            )}
+
+            {/* ✅ Added Starter Prompt Editor Modal */}
+            {showStarterPromptEditor && (
+                <CharacterStarterPromptEditorModal
+                    onClose={() => setShowStarterPromptEditor(false)}
+                    starterPrompts={starterPrompts}
+                    onSaveStarterPrompts={setStarterPrompts}
                     isReadOnly={isReadOnly}
                 />
             )}
