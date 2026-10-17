@@ -43,6 +43,22 @@ export interface RawStopPattern extends RawData {
   regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
 }
 
+export type retrievalStrategy = 'dense' | 'hybrid' | 'maximal marginal relevance'
+
+export interface RetrievalConfiguration extends ObjectData {
+  retrievalStrategy: retrievalStrategy
+  topK: number,
+  similarityThreshold: number,
+  tokenBudget: number,
+}
+
+export interface RawRetrievalConfiguration extends RawData {
+  retrievalStrategy: retrievalStrategy
+  topK: number,
+  similarityThreshold: number,
+  tokenBudget: number,
+}
+
 export interface Sampler extends ObjectData {
   parameters?: Record<string, unknown>;
   stopPatterns: StopPattern[];
@@ -311,6 +327,10 @@ export interface Character extends ObjectData {
   languageModelSampler?: Sampler | undefined;
   textToSpeechModelSampler?: Sampler | undefined;
   stopPatterns?: StopPattern[];
+  dialogueRetrievalConfiguration?: RetrievalConfiguration
+  starterPromptRetrievalConfiguration?: RetrievalConfiguration
+  knowledgeRetrievalConfiguration?: RetrievalConfiguration
+  memoryRetrievalConfiguration?: RetrievalConfiguration
   useEmbeddingModelForDialoguePrompts?: boolean,
   useEmbeddingModelForStarterPrompts?: boolean,
   useEmbeddingModelForKnowledgePrompts?: boolean,
@@ -353,6 +373,10 @@ export interface RawCharacter extends RawData {
   languageModelSamplerId?: string | undefined;
   textToSpeechModelSamplerId?: string | undefined;
   stopPatternIds?: string[];
+  dialogueRetrievalConfigurationId?: string
+  starterPromptRetrievalConfigurationId?: string
+  knowledgeRetrievalConfigurationId?: string
+  memoryRetrievalConfigurationId?: string
   useEmbeddingModelForDialoguePrompts?: boolean,
   useEmbeddingModelForStarterPrompts?: boolean,
   useEmbeddingModelForKnowledgePrompts?: boolean,
@@ -863,6 +887,10 @@ export interface Profile extends ObjectData {
   webSummarizationStopPattern?: StopPattern;
   interactionDataSummarizationStopPattern?: StopPattern;
   aiRecommendationStopPattern?: StopPattern;
+  characterDialogueRetrievalConfiguration?: RetrievalConfiguration
+  characterStarterPromptRetrievalConfiguration?: RetrievalConfiguration
+  characterKnowledgeRetrievalConfiguration?: RetrievalConfiguration
+  characterMemoryRetrievalConfiguration?: RetrievalConfiguration
 }
 
 export interface RawProfile extends RawData {
@@ -928,6 +956,10 @@ export interface RawProfile extends RawData {
   webSummarizationStopPatternId?: string;
   interactionDataSummarizationStopPatternId?: string;
   aiRecommendationStopPatternId?: string;
+  characterDialogueRetrievalConfigurationId?: string
+  characterStarterPromptRetrievalConfigurationId?: string
+  characterKnowledgeRetrievalConfigurationId?: string
+  characterMemoryRetrievalConfigurationId?: string
 }
 
 export interface InterjectableAction {
@@ -1058,7 +1090,8 @@ export type entityType =
   | 'model' 
   | 'sampler' 
   | 'promptBlock' 
-  | 'stopPattern' 
+  | 'stopPattern'
+  | 'retrievalConfiguration'
   | 'budgetStrategy' 
   | 'profile' 
   | 'account' 

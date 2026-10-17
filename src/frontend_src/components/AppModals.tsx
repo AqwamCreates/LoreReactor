@@ -1,7 +1,7 @@
 // src/frontend_src/components/AppModals.tsx
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import type {
-    Character, Context, Location, Sampler, StopPattern,
+    Character, Context, Location, Sampler, StopPattern, RetrievalConfiguration,
     LanguageModel, BudgetStrategy, Profile, Extension,
     InteractionData, World, AudioTrack, PromptBlock,
     RawInteractionData, Memory, MultiplayerData, Account,
@@ -28,6 +28,7 @@ import { ContextEditorModal } from './ContextEditorModal';
 import { LocationEditorModal } from './LocationEditorModal';
 import { AudioTrackEditorModal } from './AudioTrackEditorModal';
 import { StopPatternEditorModal } from './StopPatternEditorModal';
+import { RetrievalConfigurationEditorModal } from './RetrievalConfigurationEditorModal';
 import { BudgetStrategyEditorModal } from './BudgetStrategyEditorModal';
 import { ProfileEditorModal } from './ProfileEditorModal';
 import { AccountEditorModal } from './AccountEditorModal';
@@ -77,6 +78,7 @@ interface ApplicationModalsProperties {
     allLanguageModels: LanguageModel[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
+    allRetrievalConfigurations: RetrievalConfiguration[];
     allBudgetStrategies: BudgetStrategy[];
     allProfiles: Profile[];
     allExtensions: Extension[];
@@ -112,6 +114,7 @@ interface ApplicationModalsProperties {
     onToggleModelLoad: (identifier: string) => void;
     onDeleteSampler: (identifier: string) => void;
     onDeleteStopPattern: (identifier: string) => void;
+    onDeleteRetrievalConfiguration: (identifier: string) => void;
     onDeleteBudgetStrategy: (identifier: string) => void;
     onActivateBudgetStrategy: (identifier: string) => void;
     onDeleteProfile: (identifier: string) => void;
@@ -177,6 +180,7 @@ export function AppModals({
     allAudioTracks,
     allSamplers,
     allStopPatterns,
+    allRetrievalConfigurations,
     allLanguageModels,
     allBudgetStrategies,
     allProfiles,
@@ -212,6 +216,7 @@ export function AppModals({
     onToggleModelLoad,
     onDeleteSampler,
     onDeleteStopPattern,
+    onDeleteRetrievalConfiguration,
     onDeleteBudgetStrategy,
     onActivateBudgetStrategy,
     onDeleteProfile,
@@ -255,6 +260,7 @@ export function AppModals({
     const samplerModalProperties = entityModals.getModalProperties('sampler');
     const promptBlockModalProperties = entityModals.getModalProperties('promptBlock');
     const stopPatternModalProperties = entityModals.getModalProperties('stopPattern');
+    const retrievalConfigurationModalProperties = entityModals.getModalProperties('retrievalConfiguration');
     const budgetStrategyModalProperties = entityModals.getModalProperties('budgetStrategy');
     const profileModalProperties = entityModals.getModalProperties('profile');
     const accountModalProperties = entityModals.getModalProperties('account');
@@ -735,12 +741,12 @@ export function AppModals({
                 />
             )}
 
-            {modals.stopList.isOpen && (
+            {modals.stopPatternList.isOpen && (
                 <ManagerModal 
                     title="Stop Patterns" 
                     entityType={'stopPattern' as entityType}
                     localLibraryItems={allStopPatterns} 
-                    onClose={modals.stopList.close}
+                    onClose={modals.stopPatternList.close}
                     onSelect={(stopPattern: StopPattern) => stopPatternModalProperties.open(stopPattern)} 
                     onDelete={onDeleteStopPattern} 
                     onCreateNew={() => stopPatternModalProperties.open()}
@@ -749,6 +755,26 @@ export function AppModals({
                         return (<span style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', display: 'block' }}>{hasActivationTriggers ? '⚡' : '📌'} Pattern: {stopPattern.pattern}</span>);
                     }}
                     emptyMessage="No stop patterns found." 
+                    actionLabel="Delete" 
+                    orderedListMode={false} 
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
+                />
+            )}
+
+            {modals.retrievalConfigurationList.isOpen && (
+                <ManagerModal 
+                    title="Retrieval Configurations" 
+                    entityType={'retrievalConfiguration' as entityType}
+                    localLibraryItems={allRetrievalConfigurations} 
+                    onClose={modals.retrievalConfigurationList.close}
+                    onSelect={(config: RetrievalConfiguration) => retrievalConfigurationModalProperties.open(config)} 
+                    onDelete={onDeleteRetrievalConfiguration} 
+                    onCreateNew={() => retrievalConfigurationModalProperties.open()}
+                    renderSubtext={(config: RetrievalConfiguration) => `Strategy: ${config.retrievalStrategy} • Top-K: ${config.topK} • Threshold: ${config.similarityThreshold} • Budget: ${config.tokenBudget}`}
+                    emptyMessage="No retrieval configurations found." 
                     actionLabel="Delete" 
                     orderedListMode={false} 
                     allEntityFolders={allEntityFolders}
@@ -964,11 +990,11 @@ export function AppModals({
             )}
 
             {modals.exportData.isOpen && (
-                <DataExportModal 
+                <DataExportModal
                     onClose={modals.exportData.close}
                     allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} allAudioTracks={allAudioTracks}
                     allWorlds={allWorlds} allLanguageModels={allLanguageModels} allSamplers={allSamplers} allPromptBlocks={allPromptBlocks}
-                    allStopPatterns={allStopPatterns} allBudgetStrategies={allBudgetStrategies} allProfiles={allProfiles}
+                    allStopPatterns={allStopPatterns} allRetrievalConfigurations={allRetrievalConfigurations} allBudgetStrategies={allBudgetStrategies} allProfiles={allProfiles}
                     allMemories={allMemories} allAccounts={allAccounts} allMultiplayerData={allMultiplayerData}
                     allRawInteractionDataShells={chatShellsWithIdentifiers}
                     allEntityFolders={allEntityFolders}
@@ -987,6 +1013,7 @@ export function AppModals({
                     allSamplers={allSamplers} 
                     allPromptBlocks={allPromptBlocks}
                     allStopPatterns={allStopPatterns} 
+                    allRetrievalConfigurations={allRetrievalConfigurations}
                     allBudgetStrategies={allBudgetStrategies} 
                     allProfiles={allProfiles}
                     allMemories={allMemories} 
@@ -1003,6 +1030,7 @@ export function AppModals({
                     onDeleteSampler={onDeleteSampler} 
                     onDeletePromptBlock={onDeletePromptBlock} 
                     onDeleteStopPattern={onDeleteStopPattern}
+                    onDeleteRetrievalConfiguration={onDeleteRetrievalConfiguration}
                     onDeleteBudgetStrategy={onDeleteBudgetStrategy} 
                     onDeleteProfile={onDeleteProfile} 
                     onDeleteMemory={onDeleteMemory}
@@ -1026,6 +1054,7 @@ export function AppModals({
                     allLanguageModels={allLanguageModels}
                     allSamplers={allSamplers}
                     allStopPatterns={allStopPatterns}
+                    allRetrievalConfigurations={allRetrievalConfigurations}
                     allBudgetStrategies={allBudgetStrategies}
                     allProfiles={allProfiles}
                     allMemories={allMemories}
@@ -1045,6 +1074,7 @@ export function AppModals({
                             case 'model': modelModalProperties.open(entity, isReadOnly); break;
                             case 'sampler': samplerModalProperties.open(entity, isReadOnly); break;
                             case 'stopPattern': stopPatternModalProperties.open(entity, isReadOnly); break;
+                            case 'retrievalConfiguration': retrievalConfigurationModalProperties.open(entity, isReadOnly); break;
                             case 'budgetStrategy': budgetStrategyModalProperties.open(entity, isReadOnly); break;
                             case 'profile': profileModalProperties.open(entity, isReadOnly); break;
                             case 'account': accountModalProperties.open(entity, isReadOnly); break;
@@ -1110,6 +1140,7 @@ export function AppModals({
                     onVoiceTranscribeRequested={handleBackgroundVoiceTranscribe}
                     existingCharacter={characterModalProperties.item} 
                     allSamplers={allSamplers} 
+                    allRetrievalConfigurations={allRetrievalConfigurations}
                     allCharacters={allCharacters}
                     localProtagonistId={localProtagonistId}
                     interactionData={interactionData}
@@ -1236,6 +1267,14 @@ export function AppModals({
                 />
             )}
 
+            {retrievalConfigurationModalProperties.isOpen && (
+                <RetrievalConfigurationEditorModal 
+                    onClose={retrievalConfigurationModalProperties.close} 
+                    onSave={retrievalConfigurationModalProperties.save}
+                    existingConfiguration={retrievalConfigurationModalProperties.item} 
+                />
+            )}
+
             {budgetStrategyModalProperties.isOpen && (
                 <BudgetStrategyEditorModal 
                     onClose={budgetStrategyModalProperties.close} 
@@ -1261,6 +1300,7 @@ export function AppModals({
                     allPromptBlocks={allPromptBlocks}
                     allSamplers={allSamplers} 
                     allStopPatterns={allStopPatterns}
+                    allRetrievalConfigurations={allRetrievalConfigurations}
                 />
             )}
 

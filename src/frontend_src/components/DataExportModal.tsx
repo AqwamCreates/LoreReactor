@@ -1,6 +1,6 @@
 // src/frontend_src/components/DataExportModal.tsx
 import { useState } from 'react';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData, EntityFolder } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData, EntityFolder } from '../types';
 import { exportSelectedData, type LoreReactorExport } from '../services/DataPortabilityEngine';
 import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
@@ -16,6 +16,7 @@ interface DataExportModalProps {
     allSamplers: Sampler[];
     allPromptBlocks: PromptBlock[];
     allStopPatterns: StopPattern[];
+    allRetrievalConfigurations: RetrievalConfiguration[];
     allBudgetStrategies: BudgetStrategy[];
     allProfiles: Profile[];
     allMemories: Memory[];
@@ -29,7 +30,7 @@ export function DataExportModal({
     onClose,
     allCharacters, allContexts, allLocations, allAudioTracks,
     allWorlds, allLanguageModels, allSamplers, allPromptBlocks, allStopPatterns,
-    allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData,
+    allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData,
     allEntityFolders, allRawInteractionDataShells,
 }: DataExportModalProps) {
     const [isExporting, setIsExporting] = useState(false);
@@ -46,6 +47,7 @@ export function DataExportModal({
     const [selectedSamplerIds, setSelectedSamplerIds] = useState<string[]>([]);
     const [selectedPromptBlockIds, setSelectedPromptBlockIds] = useState<string[]>([]);
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
+    const [selectedRetrievalConfigurationIds, setSelectedRetrievalConfigurationIds] = useState<string[]>([]);
     const [selectedBudgetStrategyIds, setSelectedBudgetStrategyIds] = useState<string[]>([]);
     const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
     const [selectedMemoryIds, setSelectedMemoryIds] = useState<string[]>([]);
@@ -70,6 +72,7 @@ export function DataExportModal({
     const [samplerSearch, setSamplerSearch] = useState('');
     const [promptBlockSearch, setPromptBlockSearch] = useState('');
     const [stopPatternSearch, setStopPatternSearch] = useState('');
+    const [retrievalConfigurationSearch, setRetrievalConfigurationSearch] = useState('');
     const [budgetStrategySearch, setBudgetStrategySearch] = useState('');
     const [profileSearch, setProfileSearch] = useState('');
     const [memorySearch, setMemorySearch] = useState('');
@@ -82,7 +85,7 @@ export function DataExportModal({
         setSelectedChatIds([]); setSelectedCharacterIds([]); setSelectedContextIds([]);
         setSelectedLocationIds([]); setSelectedAudioTrackIds([]); setSelectedWorldIds([]);
         setSelectedLanguageModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
-        setSelectedStopPatternIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
+        setSelectedStopPatternIds([]); setSelectedRetrievalConfigurationIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
         setSelectedMemoryIds([]); setSelectedAccountIds([]); setSelectedMultiplayerDataIds([]);
         setSelectedEntityFolderIds([]);
         setIncludeActions(true);
@@ -92,7 +95,7 @@ export function DataExportModal({
         setIncludeBudgetData(true);
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
         setAudioTrackSearch(''); setWorldSearch(''); setLanguageModelSearch(''); setSamplerSearch('');
-        setPromptBlockSearch(''); setStopPatternSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
+        setPromptBlockSearch(''); setStopPatternSearch(''); setRetrievalConfigurationSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
         setMemorySearch(''); setAccountSearch(''); setMultiplayerDataSearch(''); setEntityFolderSearch('');
     };
 
@@ -105,7 +108,7 @@ export function DataExportModal({
     const totalSelected = selectedChatIds.length + selectedCharacterIds.length + selectedContextIds.length +
         selectedLocationIds.length + selectedAudioTrackIds.length + selectedWorldIds.length +
         selectedLanguageModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
-        selectedStopPatternIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
+        selectedStopPatternIds.length + selectedRetrievalConfigurationIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
         selectedMemoryIds.length + selectedAccountIds.length + selectedMultiplayerDataIds.length +
         selectedEntityFolderIds.length +
         (includeActions ? 1 : 0) + (includeActionFormatData ? 1 : 0) + 
@@ -121,7 +124,7 @@ export function DataExportModal({
                 characterIds: selectedCharacterIds, contextIds: selectedContextIds, locationIds: selectedLocationIds,
                 audioTrackIds: selectedAudioTrackIds, worldIds: selectedWorldIds, languageModelIds: selectedLanguageModelIds,
                 samplerIds: selectedSamplerIds, promptBlockIds: selectedPromptBlockIds,
-                stopPatternIds: selectedStopPatternIds, budgetStrategyIds: selectedBudgetStrategyIds,
+                stopPatternIds: selectedStopPatternIds, retrievalConfigurationIds: selectedRetrievalConfigurationIds, budgetStrategyIds: selectedBudgetStrategyIds,
                 profileIds: selectedProfileIds, memoryIds: selectedMemoryIds,
                 accountIds: selectedAccountIds, multiplayerDataIds: selectedMultiplayerDataIds,
                 entityFolderIds: selectedEntityFolderIds,
@@ -189,6 +192,8 @@ export function DataExportModal({
                                     onToggle={(id) => toggle(selectedPromptBlockIds, setSelectedPromptBlockIds, id)} searchQuery={promptBlockSearch} onSearchChange={setPromptBlockSearch} />
                                 <EntitySelectList label="Stop Patterns" items={allStopPatterns} selectedIds={selectedStopPatternIds}
                                     onToggle={(id) => toggle(selectedStopPatternIds, setSelectedStopPatternIds, id)} searchQuery={stopPatternSearch} onSearchChange={setStopPatternSearch} />
+                                <EntitySelectList label="Retrieval Configurations" items={allRetrievalConfigurations} selectedIds={selectedRetrievalConfigurationIds}
+                                    onToggle={(id) => toggle(selectedRetrievalConfigurationIds, setSelectedRetrievalConfigurationIds, id)} searchQuery={retrievalConfigurationSearch} onSearchChange={setRetrievalConfigurationSearch} />
                                 <EntitySelectList label="Budget Strategies" items={allBudgetStrategies} selectedIds={selectedBudgetStrategyIds}
                                     onToggle={(id) => toggle(selectedBudgetStrategyIds, setSelectedBudgetStrategyIds, id)} searchQuery={budgetStrategySearch} onSearchChange={setBudgetStrategySearch} />
                                 <EntitySelectList label="Profiles" items={allProfiles} selectedIds={selectedProfileIds}
@@ -257,6 +262,7 @@ export function DataExportModal({
                                     <div><strong>Samplers:</strong> {summary.samplers.length}</div>
                                     <div><strong>Prompt Blocks:</strong> {summary.promptBlocks.length}</div>
                                     <div><strong>Stop Patterns:</strong> {summary.stopPatterns.length}</div>
+                                    <div><strong>Retrieval Configurations:</strong> {summary.retrievalConfigurations?.length ?? 0}</div>
                                     <div><strong>Budget Strategies:</strong> {summary.budgetStrategies.length}</div>
                                     <div><strong>Profiles:</strong> {summary.profiles.length}</div>
                                     <div><strong>Memories:</strong> {summary.memories?.length ?? 0}</div>

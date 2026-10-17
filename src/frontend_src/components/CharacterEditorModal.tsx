@@ -1,9 +1,10 @@
+// src/frontend_src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { 
     Character, Sampler, LanguageModel, Memory, Clothing, 
     TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StarterPrompt,
-    tool, InteractionData, StopPattern, Voice 
+    tool, InteractionData, StopPattern, Voice, RetrievalConfiguration
 } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { 
@@ -74,8 +75,9 @@ interface CharacterEditorModalProps {
     onSave: (character: Character) => void;
     onVoiceTranscribeRequested?: (characterId: string, file: File, language?: string) => void;
     existingCharacter?: Character | null;
-    allSamplers: Sampler[];
     allCharacters: Character[];
+    allSamplers: Sampler[];
+    allRetrievalConfigurations: RetrievalConfiguration[]; // ✅ ADDED
     isLoadingSamplers?: boolean;
     selectedModel?: LanguageModel | null;
     runningModels?: Record<string, any>;
@@ -86,7 +88,7 @@ interface CharacterEditorModalProps {
 
 export function CharacterEditorModal({ 
     isReadOnly = false, onClose, onSave, onVoiceTranscribeRequested, existingCharacter,
-    allSamplers, allCharacters, isLoadingSamplers = false,
+    allCharacters, allSamplers, allRetrievalConfigurations, isLoadingSamplers = false,
     selectedModel, runningModels,
     chatNameMap, interactionData, localProtagonistId,
 }: CharacterEditorModalProps) {
@@ -98,6 +100,7 @@ export function CharacterEditorModal({
             onVoiceTranscribeRequested={onVoiceTranscribeRequested}
             existingCharacter={existingCharacter}
             allSamplers={allSamplers}
+            allRetrievalConfigurations={allRetrievalConfigurations} // ✅ ADDED
             allCharacters={allCharacters}
             isLoadingSamplers={isLoadingSamplers}
             selectedModel={selectedModel}
@@ -112,7 +115,7 @@ export function CharacterEditorModal({
 
 function CharacterEditorModalInner({
     onClose, onSave, onVoiceTranscribeRequested, existingCharacter,
-    allSamplers, allCharacters, isLoadingSamplers = false,
+    allCharacters, allSamplers, allRetrievalConfigurations, isLoadingSamplers = false,
     selectedModel, runningModels,
     chatNameMap, interactionData, localProtagonistId,
     isReadOnly = false,
@@ -138,6 +141,12 @@ function CharacterEditorModalInner({
     // ✅ Dual Sampler States
     const [selectedLanguageModelSamplerId, setSelectedLanguageModelSamplerId] = useState<string>(existingCharacter?.languageModelSampler?.id || (allSamplers[0]?.id || ''));
     const [selectedTextToSpeechModelSamplerId, setSelectedTextToSpeechModelSamplerId] = useState<string>(existingCharacter?.textToSpeechModelSampler?.id || (allSamplers[0]?.id || ''));
+    
+    // ✅ Retrieval Configuration States
+    const [selectedDialogueRetrievalConfigurationId, setSelectedDialogueRetrievalConfigurationId] = useState<string>(existingCharacter?.dialogueRetrievalConfiguration?.id || '');
+    const [selectedStarterPromptRetrievalConfigurationId, setSelectedStarterPromptRetrievalConfigurationId] = useState<string>(existingCharacter?.starterPromptRetrievalConfiguration?.id || '');
+    const [selectedKnowledgeRetrievalConfigurationId, setSelectedKnowledgeRetrievalConfigurationId] = useState<string>(existingCharacter?.knowledgeRetrievalConfiguration?.id || '');
+    const [selectedMemoryRetrievalConfigurationId, setSelectedMemoryRetrievalConfigurationId] = useState<string>(existingCharacter?.memoryRetrievalConfiguration?.id || '');
     
     // ✅ Stop patterns on Character
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>(existingCharacter?.stopPatterns?.map(sp => sp.id) || []);
@@ -911,6 +920,12 @@ function CharacterEditorModalInner({
         const baseTextToSpeechModelSampler = allSamplers.find(s => s.id === selectedTextToSpeechModelSamplerId);
         const finalTextToSpeechModelSampler = baseTextToSpeechModelSampler ? { ...baseTextToSpeechModelSampler } : undefined;
 
+        // ✅ Build Retrieval Configurations
+        const finalDialogueRetrievalConfiguration = allRetrievalConfigurations.find(c => c.id === selectedDialogueRetrievalConfigurationId);
+        const finalStarterPromptRetrievalConfiguration = allRetrievalConfigurations.find(c => c.id === selectedStarterPromptRetrievalConfigurationId);
+        const finalKnowledgeRetrievalConfiguration = allRetrievalConfigurations.find(c => c.id === selectedKnowledgeRetrievalConfigurationId);
+        const finalMemoryRetrievalConfiguration = allRetrievalConfigurations.find(c => c.id === selectedMemoryRetrievalConfigurationId);
+
         const finalStopPatterns = selectedStopPatternIds
             .map(id => getStopPatternById(id))
             .filter((sp): sp is StopPattern => sp !== null);
@@ -934,6 +949,13 @@ function CharacterEditorModalInner({
             languageModelSampler: finalLanguageModelSampler,
             textToSpeechModelSampler: finalTextToSpeechModelSampler,
             stopPatterns: finalStopPatterns.length > 0 ? finalStopPatterns : undefined,
+            
+            // ✅ Added Retrieval Configurations
+            dialogueRetrievalConfiguration: finalDialogueRetrievalConfiguration,
+            starterPromptRetrievalConfiguration: finalStarterPromptRetrievalConfiguration,
+            knowledgeRetrievalConfiguration: finalKnowledgeRetrievalConfiguration,
+            memoryRetrievalConfiguration: finalMemoryRetrievalConfiguration,
+
             initiativeWeight: finalIW, chatProbability: finalCP, maximumChatStamina: finalMS,
             chatStaminaRegenerationRate: finalCSRR,
             nameSensitivity: finalNS, chatImpatienceSensitivity: finalCIS, skipProbability: finalSP,
@@ -1496,7 +1518,7 @@ function CharacterEditorModalInner({
                             </div>
                         )}
 
-                        {/* ✅ Dual Samplers & Stop Patterns */}
+                        {/* ✅ Dual Samplers, Retrieval Configurations & Stop Patterns */}
                         {activeTab === 'model' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                 <div className="editor-section">
@@ -1516,6 +1538,43 @@ function CharacterEditorModalInner({
                                         {isLoadingSamplers && <option>Loading samplers...</option>}
                                         {!isLoadingSamplers && allSamplers.length === 0 && <option>No samplers available</option>}
                                         {!isLoadingSamplers && allSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
+                                    </select>
+                                </div>
+
+                                {/* ✅ ADDED RETRIEVAL CONFIGURATIONS */}
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Dialogue Retrieval Configuration</span>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls semantic search parameters (Top-K, Threshold, Token Budget) for dialogue prompts.</div>
+                                    <select value={selectedDialogueRetrievalConfigurationId} onChange={(e) => setSelectedDialogueRetrievalConfigurationId(e.target.value)} className="editor-select" disabled={isUploading || isReadOnly}>
+                                        <option value="">None</option>
+                                        {allRetrievalConfigurations.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                    </select>
+                                </div>
+
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Starter Prompt Retrieval Configuration</span>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls semantic search parameters for starter prompts.</div>
+                                    <select value={selectedStarterPromptRetrievalConfigurationId} onChange={(e) => setSelectedStarterPromptRetrievalConfigurationId(e.target.value)} className="editor-select" disabled={isUploading || isReadOnly}>
+                                        <option value="">None</option>
+                                        {allRetrievalConfigurations.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                    </select>
+                                </div>
+
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Knowledge Retrieval Configuration</span>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls semantic search parameters for knowledge prompts.</div>
+                                    <select value={selectedKnowledgeRetrievalConfigurationId} onChange={(e) => setSelectedKnowledgeRetrievalConfigurationId(e.target.value)} className="editor-select" disabled={isUploading || isReadOnly}>
+                                        <option value="">None</option>
+                                        {allRetrievalConfigurations.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                    </select>
+                                </div>
+
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Memory Retrieval Configuration</span>
+                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls semantic search parameters for memories.</div>
+                                    <select value={selectedMemoryRetrievalConfigurationId} onChange={(e) => setSelectedMemoryRetrievalConfigurationId(e.target.value)} className="editor-select" disabled={isUploading || isReadOnly}>
+                                        <option value="">None</option>
+                                        {allRetrievalConfigurations.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                                     </select>
                                 </div>
 

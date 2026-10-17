@@ -123,7 +123,7 @@ const getParamValue = (params: Record<string, unknown> | undefined, key: string,
     const val = params[key];
     if (typeof val === 'number') return val;
     if (typeof val === 'string') {
-        if (typeof defaultValue === 'number') return parseFloat(val) || defaultValue;
+        if (typeof defaultValue === 'number') return Number.parseFloat(val) || defaultValue;
         return val;
     }
     if (typeof val === 'boolean') return val;

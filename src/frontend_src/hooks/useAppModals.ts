@@ -11,7 +11,8 @@ export type ModalName =
     | 'promptBlockList'
     | 'modelList'
     | 'samplerList'
-    | 'stopList'
+    | 'stopPatternList'
+    | 'retrievalConfigurationList'
     | 'budgetStrategyList'
     | 'profileList'
     | 'extensionList'
@@ -64,7 +65,7 @@ export function useAppModals() {
     const modals = useMemo(() => {
         const names: ModalName[] = [
             'interactionDataList', 'characterList', 'contextList', 'locationList', 'audioTrackList',
-            'worldList', 'promptBlockList', 'modelList', 'samplerList', 'stopList',
+            'worldList', 'promptBlockList', 'modelList', 'samplerList', 'stopPatternList', 'retrievalConfigurationList',
             'budgetStrategyList', 'profileList', 'extensionList', 'accountList', 'multiplayerDataList',
             'settings', 'budgetControl', 'participantControl', 'alternateTimelines',
             'aiRecommendation', 'restrictionReduction', 'cardImport', 'importData',

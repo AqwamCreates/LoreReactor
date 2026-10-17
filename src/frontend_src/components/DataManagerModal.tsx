@@ -1,6 +1,6 @@
 // src/frontend_src/components/DataManagerModal.tsx
 import { useState, useCallback, useMemo } from 'react';
-import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData, EntityFolder } from '../types';
+import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData, EntityFolder } from '../types';
 import { useToast } from '../context/ToastContext';
 import { saveRawSessionData, deleteSessionData, deleteMultiplayerJoinData, deleteActionFormatData, clearPreferencesCache, clearSaveQueue, deleteFormatPreferences } from '../storages/serverStorage';
 import '../main.css';
@@ -16,6 +16,7 @@ interface DataManagerModalProps {
     allLanguageModels: LanguageModel[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
+    allRetrievalConfigurations: RetrievalConfiguration[];
     allBudgetStrategies: BudgetStrategy[];
     allProfiles: Profile[];
     allMemories: Memory[];
@@ -32,6 +33,7 @@ interface DataManagerModalProps {
     onDeleteModel: (id: string) => void;
     onDeleteSampler: (id: string) => void;
     onDeleteStopPattern: (id: string) => void;
+    onDeleteRetrievalConfiguration: (id: string) => void;
     onDeleteBudgetStrategy: (id: string) => void;
     onDeleteProfile: (id: string) => void;
     onDeleteMemory: (id: string) => void;
@@ -43,7 +45,7 @@ interface DataManagerModalProps {
 
 type TabId = 'storage' | 'cleanup' | 'integrity' | 'cache' | 'bulk' | 'danger';
 
-type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'model' | 'sampler' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'memory' | 'account' | 'multiplayerData' | 'entityFolder';
+type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'model' | 'sampler' | 'stopPattern' | 'retrievalConfiguration' | 'budgetStrategy' | 'profile' | 'memory' | 'account' | 'multiplayerData' | 'entityFolder';
 
 type SortField = 'name' | 'type' | 'lastUpdated' | 'flags';
 type SortDirection = 'asc' | 'desc';
@@ -91,6 +93,7 @@ const ENTITY_TYPE_META: Record<EntityType, { icon: string; label: string }> = {
     model: { icon: '🤖', label: 'Language Models' },
     sampler: { icon: '🎚️', label: 'Samplers' },
     stopPattern: { icon: '🛑', label: 'Stop Patterns' },
+    retrievalConfiguration: { icon: '🧭', label: 'Retrieval Configurations' },
     budgetStrategy: { icon: '💰', label: 'Budget Strategies' },
     profile: { icon: '👤', label: 'Profiles' },
     memory: { icon: '🧠', label: 'Memories' },
@@ -171,6 +174,9 @@ function isEntityHollow(
             const sp = entity as StopPattern;
             return !sp.pattern;
         }
+        case 'retrievalConfiguration': {
+            return false;
+        }
         case 'budgetStrategy': {
             const bs = entity as BudgetStrategy;
             return !(bs.modelIds?.length);
@@ -218,6 +224,7 @@ export function DataManagerModal({
     allLanguageModels,
     allSamplers,
     allStopPatterns,
+    allRetrievalConfigurations,
     allBudgetStrategies,
     allProfiles,
     allMemories,
@@ -234,6 +241,7 @@ export function DataManagerModal({
     onDeleteModel,
     onDeleteSampler,
     onDeleteStopPattern,
+    onDeleteRetrievalConfiguration,
     onDeleteBudgetStrategy,
     onDeleteProfile,
     onDeleteMemory,
@@ -288,6 +296,7 @@ export function DataManagerModal({
             { label: 'Language Models', icon: '🤖', count: allLanguageModels.length, estimatedSizeKb: estimateKb(allLanguageModels, 1024) },
             { label: 'Samplers', icon: '🎚️', count: allSamplers.length, estimatedSizeKb: estimateKb(allSamplers, 512) },
             { label: 'Stop Patterns', icon: '🛑', count: allStopPatterns.length, estimatedSizeKb: estimateKb(allStopPatterns, 256) },
+            { label: 'Retrieval Configurations', icon: '🧭', count: allRetrievalConfigurations.length, estimatedSizeKb: estimateKb(allRetrievalConfigurations, 256) },
             { label: 'Budget Strategies', icon: '💰', count: allBudgetStrategies.length, estimatedSizeKb: estimateKb(allBudgetStrategies, 1024) },
             { label: 'Profiles', icon: '👤', count: allProfiles.length, estimatedSizeKb: estimateKb(allProfiles, 2048) },
             { label: 'Memories', icon: '🧠', count: allMemories.length, estimatedSizeKb: estimateKb(allMemories, 1024) },
@@ -296,7 +305,7 @@ export function DataManagerModal({
             { label: 'Folders', icon: '📁', count: allEntityFolders.length, estimatedSizeKb: estimateKb(allEntityFolders, 1024) },
             { label: 'Sessions', icon: '💬', count: allRawInteractionDataShells.length, estimatedSizeKb: estimateKb(allRawInteractionDataShells, 8192) },
         ];
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells]);
 
     const scanCleanup = useCallback(() => {
         setIsScanning(true);
@@ -308,6 +317,7 @@ export function DataManagerModal({
         const modelIdSet = new Set(allLanguageModels.map(m => m.id));
         const samplerIdSet = new Set(allSamplers.map(s => s.id));
         const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));
+        const retrievalConfigIdSet = new Set(allRetrievalConfigurations.map(rc => rc.id));
         const profileIdSet = new Set(allProfiles.map(p => p.id));
         const memoryIdSet = new Set(allMemories.map(m => m.id));
         const accountIdSet = new Set(allAccounts.map(a => a.id));
@@ -321,6 +331,7 @@ export function DataManagerModal({
         const referencedModelIds = new Set<string>();
         const referencedSamplerIds = new Set<string>();
         const referencedStopPatternIds = new Set<string>();
+        const referencedRetrievalConfigIds = new Set<string>();
         const referencedProfileIds = new Set<string>();
         const referencedMemoryIds = new Set<string>();
         const referencedAccountIds = new Set<string>();
@@ -352,6 +363,11 @@ export function DataManagerModal({
                 }
             }
 
+            if (c.dialogueRetrievalConfiguration?.id && retrievalConfigIdSet.has(c.dialogueRetrievalConfiguration.id)) referencedRetrievalConfigIds.add(c.dialogueRetrievalConfiguration.id);
+            if (c.starterPromptRetrievalConfiguration?.id && retrievalConfigIdSet.has(c.starterPromptRetrievalConfiguration.id)) referencedRetrievalConfigIds.add(c.starterPromptRetrievalConfiguration.id);
+            if (c.knowledgeRetrievalConfiguration?.id && retrievalConfigIdSet.has(c.knowledgeRetrievalConfiguration.id)) referencedRetrievalConfigIds.add(c.knowledgeRetrievalConfiguration.id);
+            if (c.memoryRetrievalConfiguration?.id && retrievalConfigIdSet.has(c.memoryRetrievalConfiguration.id)) referencedRetrievalConfigIds.add(c.memoryRetrievalConfiguration.id);
+
             if (c.memories) {
                 for (const memArr of Object.values(c.memories)) {
                     for (const mem of memArr) {
@@ -381,6 +397,16 @@ export function DataManagerModal({
             ];
             for (const spId of stopPatternRefs) {
                 if (spId && stopPatternIdSet.has(spId)) referencedStopPatternIds.add(spId);
+            }
+
+            const rcRefs = [
+                p.characterDialogueRetrievalConfiguration?.id,
+                p.characterStarterPromptRetrievalConfiguration?.id,
+                p.characterKnowledgeRetrievalConfiguration?.id,
+                p.characterMemoryRetrievalConfiguration?.id
+            ];
+            for (const rcId of rcRefs) {
+                if (rcId && retrievalConfigIdSet.has(rcId)) referencedRetrievalConfigIds.add(rcId);
             }
         }
 
@@ -458,6 +484,7 @@ export function DataManagerModal({
         for (const m of allLanguageModels) check('model', m.id, m.name, m.lastUpdatedTimestamp, referencedModelIds.has(m.id), m);
         for (const s of allSamplers) check('sampler', s.id, s.name, s.lastUpdatedTimestamp, referencedSamplerIds.has(s.id), s);
         for (const sp of allStopPatterns) check('stopPattern', sp.id, sp.name, sp.lastUpdatedTimestamp, referencedStopPatternIds.has(sp.id), sp);
+        for (const rc of allRetrievalConfigurations) check('retrievalConfiguration', rc.id, rc.name, rc.lastUpdatedTimestamp, referencedRetrievalConfigIds.has(rc.id), rc);
         for (const bs of allBudgetStrategies) check('budgetStrategy', bs.id, bs.name, bs.lastUpdatedTimestamp, true, bs);
         for (const p of allProfiles) check('profile', p.id, p.name, p.lastUpdatedTimestamp, referencedProfileIds.has(p.id), p);
         for (const m of allMemories) check('memory', m.id, m.name, m.lastUpdatedTimestamp, referencedMemoryIds.has(m.id), m);
@@ -469,7 +496,7 @@ export function DataManagerModal({
         setSelectedIds(new Set());
         setSearchQuery('');
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
 
     const scanIntegrity = useCallback(() => {
         setIsScanning(true);
@@ -481,6 +508,7 @@ export function DataManagerModal({
         const modelIdSet = new Set(allLanguageModels.map(m => m.id));
         const samplerIdSet = new Set(allSamplers.map(s => s.id));
         const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));
+        const retrievalConfigIdSet = new Set(allRetrievalConfigurations.map(rc => rc.id));
         const profileIdSet = new Set(allProfiles.map(p => p.id));
         const memoryIdSet = new Set(allMemories.map(m => m.id));
         const accountIdSet = new Set(allAccounts.map(a => a.id));
@@ -497,6 +525,7 @@ export function DataManagerModal({
         allLanguageModels.forEach(m => globalEntityIds.add(m.id));
         allSamplers.forEach(s => globalEntityIds.add(s.id));
         allStopPatterns.forEach(sp => globalEntityIds.add(sp.id));
+        allRetrievalConfigurations.forEach(rc => globalEntityIds.add(rc.id));
         allBudgetStrategies.forEach(bs => globalEntityIds.add(bs.id));
         allProfiles.forEach(p => globalEntityIds.add(p.id));
         allMemories.forEach(m => globalEntityIds.add(m.id));
@@ -572,6 +601,11 @@ export function DataManagerModal({
                     if (!stopPatternIdSet.has(sp.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'References missing stop pattern', refType: 'Stop Pattern', refId: sp.id });
                 }
             }
+
+            if (c.dialogueRetrievalConfiguration?.id && !retrievalConfigIdSet.has(c.dialogueRetrievalConfiguration.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'References missing dialogue retrieval configuration', refType: 'Retrieval Configuration', refId: c.dialogueRetrievalConfiguration.id });
+            if (c.starterPromptRetrievalConfiguration?.id && !retrievalConfigIdSet.has(c.starterPromptRetrievalConfiguration.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'References missing starter prompt retrieval configuration', refType: 'Retrieval Configuration', refId: c.starterPromptRetrievalConfiguration.id });
+            if (c.knowledgeRetrievalConfiguration?.id && !retrievalConfigIdSet.has(c.knowledgeRetrievalConfiguration.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'References missing knowledge retrieval configuration', refType: 'Retrieval Configuration', refId: c.knowledgeRetrievalConfiguration.id });
+            if (c.memoryRetrievalConfiguration?.id && !retrievalConfigIdSet.has(c.memoryRetrievalConfiguration.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'References missing memory retrieval configuration', refType: 'Retrieval Configuration', refId: c.memoryRetrievalConfiguration.id });
 
             if (c.memories) {
                 for (const [key, memArr] of Object.entries(c.memories)) {
@@ -680,11 +714,23 @@ export function DataManagerModal({
                     issues.push({ entityType: 'Profile', entityName: p.name, issue: `References missing ${check.label}`, refType: 'Stop Pattern', refId: check.sp.id });
                 }
             }
+
+            const rcChecks = [
+                { rc: p.characterDialogueRetrievalConfiguration, label: 'dialogue retrieval configuration' },
+                { rc: p.characterStarterPromptRetrievalConfiguration, label: 'starter prompt retrieval configuration' },
+                { rc: p.characterKnowledgeRetrievalConfiguration, label: 'knowledge retrieval configuration' },
+                { rc: p.characterMemoryRetrievalConfiguration, label: 'memory retrieval configuration' },
+            ];
+            for (const check of rcChecks) {
+                if (check.rc?.id && !retrievalConfigIdSet.has(check.rc.id)) {
+                    issues.push({ entityType: 'Profile', entityName: p.name, issue: `References missing ${check.label}`, refType: 'Retrieval Configuration', refId: check.rc.id });
+                }
+            }
         }
 
         setIntegrityIssues(issues);
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells]);
 
     const filteredAndSorted = useMemo(() => {
         const query = searchQuery.toLowerCase();
@@ -756,6 +802,7 @@ export function DataManagerModal({
                 case 'model': onDeleteModel(item.id); break;
                 case 'sampler': onDeleteSampler(item.id); break;
                 case 'stopPattern': onDeleteStopPattern(item.id); break;
+                case 'retrievalConfiguration': onDeleteRetrievalConfiguration(item.id); break;
                 case 'budgetStrategy': onDeleteBudgetStrategy(item.id); break;
                 case 'profile': onDeleteProfile(item.id); break;
                 case 'memory': onDeleteMemory(item.id); break;
@@ -926,6 +973,7 @@ export function DataManagerModal({
             case 'models': for (const m of allLanguageModels) { onDeleteModel(m.id); count++; } break;
             case 'samplers': for (const s of allSamplers) { onDeleteSampler(s.id); count++; } break;
             case 'stopPatterns': for (const sp of allStopPatterns) { onDeleteStopPattern(sp.id); count++; } break;
+            case 'retrievalConfigurations': for (const rc of allRetrievalConfigurations) { onDeleteRetrievalConfiguration(rc.id); count++; } break;
             case 'budgetStrategies': for (const bs of allBudgetStrategies) { onDeleteBudgetStrategy(bs.id); count++; } break;
             case 'profiles': for (const p of allProfiles) { onDeleteProfile(p.id); count++; } break;
             case 'memories': for (const m of allMemories) { onDeleteMemory(m.id); count++; } break;
@@ -1119,7 +1167,7 @@ export function DataManagerModal({
 
                     {activeTab === 'integrity' && (
                         <div>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '12px', lineHeight: 1.5 }}>Cross-reference integrity check. Finds broken bindings where entities reference deleted characters, contexts, locations, audio tracks, worlds, prompt blocks, models, samplers, stop patterns, memories, sessions, accounts, folders, or profiles.</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '12px', lineHeight: 1.5 }}>Cross-reference integrity check. Finds broken bindings where entities reference deleted characters, contexts, locations, audio tracks, worlds, prompt blocks, models, samplers, stop patterns, retrieval configurations, memories, sessions, accounts, folders, or profiles.</div>
                             <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
                                 <button type="button" className="editor-button editor-button-save" onClick={scanIntegrity} disabled={isScanning} style={{ fontSize: '0.75rem', padding: '8px 16px' }}>{isScanning ? 'Checking...' : 'Run Integrity Check'}</button>
                             </div>
@@ -1281,6 +1329,7 @@ export function DataManagerModal({
                                         { key: 'models', label: 'All Language Models', count: allLanguageModels.length },
                                         { key: 'samplers', label: 'All Samplers', count: allSamplers.length },
                                         { key: 'stopPatterns', label: 'All Stop Patterns', count: allStopPatterns.length },
+                                        { key: 'retrievalConfigurations', label: 'All Retrieval Configs', count: allRetrievalConfigurations.length },
                                         { key: 'budgetStrategies', label: 'All Budget Strategies', count: allBudgetStrategies.length },
                                         { key: 'profiles', label: 'All Profiles', count: allProfiles.length },
                                         { key: 'memories', label: 'All Memories', count: allMemories.length },

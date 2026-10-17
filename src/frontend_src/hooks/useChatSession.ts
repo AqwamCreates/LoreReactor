@@ -49,7 +49,8 @@ import type {
     Account,
     MultiplayerData,
     EntityFolder,
-    RawInteractionData
+    RawInteractionData,
+    RetrievalConfiguration
 } from '../types';
 import { useFrontCamera } from './useFrontCamera';
 
@@ -65,6 +66,7 @@ interface UseChatSessionOptions {
     allPromptBlocks: PromptBlock[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
+    allRetrievalConfigurations: RetrievalConfiguration[],
     allBudgetStrategies: BudgetStrategy[];
     allProfiles: Profile[];
     allWorlds: World[];

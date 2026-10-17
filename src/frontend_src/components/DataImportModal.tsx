@@ -35,6 +35,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
     const [selectedSamplerIds, setSelectedSamplerIds] = useState<string[]>([]);
     const [selectedPromptBlockIds, setSelectedPromptBlockIds] = useState<string[]>([]);
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
+    const [selectedRetrievalConfigurationIds, setSelectedRetrievalConfigurationIds] = useState<string[]>([]);
     const [selectedBudgetStrategyIds, setSelectedBudgetStrategyIds] = useState<string[]>([]);
     const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
     const [selectedMemoryIds, setSelectedMemoryIds] = useState<string[]>([]);
@@ -59,6 +60,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
     const [samplerSearch, setSamplerSearch] = useState('');
     const [promptBlockSearch, setPromptBlockSearch] = useState('');
     const [stopPatternSearch, setStopPatternSearch] = useState('');
+    const [retrievalConfigurationSearch, setRetrievalConfigurationSearch] = useState('');
     const [budgetStrategySearch, setBudgetStrategySearch] = useState('');
     const [profileSearch, setProfileSearch] = useState('');
     const [memorySearch, setMemorySearch] = useState('');
@@ -71,7 +73,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
         setSelectedChatIds([]); setSelectedCharacterIds([]); setSelectedContextIds([]);
         setSelectedLocationIds([]); setSelectedAudioTrackIds([]); setSelectedWorldIds([]);
         setSelectedLanguageModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
-        setSelectedStopPatternIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
+        setSelectedStopPatternIds([]); setSelectedRetrievalConfigurationIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
         setSelectedMemoryIds([]); setSelectedAccountIds([]); setSelectedMultiplayerDataIds([]);
         setSelectedEntityFolderIds([]);
         setIncludeActions(true);
@@ -83,7 +85,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
         setSchemaCopied(false);
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
         setAudioTrackSearch(''); setWorldSearch(''); setLanguageModelSearch(''); setSamplerSearch('');
-        setPromptBlockSearch(''); setStopPatternSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
+        setPromptBlockSearch(''); setStopPatternSearch(''); setRetrievalConfigurationSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
         setMemorySearch(''); setAccountSearch(''); setMultiplayerDataSearch(''); setEntityFolderSearch('');
     };
 
@@ -104,6 +106,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
         setSelectedSamplerIds(json.samplers.map((s: { id: string }) => s.id));
         setSelectedPromptBlockIds(json.promptBlocks.map((b: { id: string }) => b.id));
         setSelectedStopPatternIds(json.stopPatterns.map((s: { id: string }) => s.id));
+        setSelectedRetrievalConfigurationIds(json.retrievalConfigurations?.map((rc: { id: string }) => rc.id) ?? []);
         setSelectedBudgetStrategyIds(json.budgetStrategies.map((b: { id: string }) => b.id));
         setSelectedProfileIds(json.profiles.map((p: { id: string }) => p.id));
         setSelectedMemoryIds(json.memories?.map((m: { id: string }) => m.id) ?? []);
@@ -164,6 +167,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
                 samplers: [],
                 promptBlocks: schemaEntities.includes('PromptBlock') ? "/* see _entitySchema */" : [],
                 stopPatterns: [],
+                retrievalConfigurations: [],
                 budgetStrategies: [],
                 profiles: schemaEntities.includes('Profile') ? "/* see _entitySchema */" : [],
                 memories: [],
@@ -212,6 +216,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
             samplers: parsedData.samplers.filter(s => selectedSamplerIds.includes(s.id)),
             promptBlocks: parsedData.promptBlocks.filter(b => selectedPromptBlockIds.includes(b.id)),
             stopPatterns: parsedData.stopPatterns.filter(s => selectedStopPatternIds.includes(s.id)),
+            retrievalConfigurations: parsedData.retrievalConfigurations?.filter(rc => selectedRetrievalConfigurationIds.includes(rc.id)) ?? [],
             budgetStrategies: parsedData.budgetStrategies.filter(b => selectedBudgetStrategyIds.includes(b.id)),
             profiles: parsedData.profiles.filter(p => selectedProfileIds.includes(p.id)),
             memories: parsedData.memories?.filter(m => selectedMemoryIds.includes(m.id)) ?? [],
@@ -239,7 +244,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
     const totalSelected = selectedChatIds.length + selectedCharacterIds.length + selectedContextIds.length +
         selectedLocationIds.length + selectedAudioTrackIds.length + selectedWorldIds.length +
         selectedLanguageModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
-        selectedStopPatternIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
+        selectedStopPatternIds.length + selectedRetrievalConfigurationIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
         selectedMemoryIds.length + selectedAccountIds.length + selectedMultiplayerDataIds.length +
         selectedEntityFolderIds.length +
         (includeActions ? 1 : 0) + (includeActionFormatData ? 1 : 0) + 
@@ -435,6 +440,10 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
                                     <EntitySelectList label="Stop Patterns" items={parsedData.stopPatterns} selectedIds={selectedStopPatternIds}
                                         onToggle={(id) => toggle(selectedStopPatternIds, setSelectedStopPatternIds, id)} searchQuery={stopPatternSearch} onSearchChange={setStopPatternSearch} />
                                 )}
+                                {(parsedData.retrievalConfigurations?.length ?? 0) > 0 && (
+                                    <EntitySelectList label="Retrieval Configurations" items={parsedData.retrievalConfigurations || []} selectedIds={selectedRetrievalConfigurationIds}
+                                        onToggle={(id) => toggle(selectedRetrievalConfigurationIds, setSelectedRetrievalConfigurationIds, id)} searchQuery={retrievalConfigurationSearch} onSearchChange={setRetrievalConfigurationSearch} />
+                                )}
                                 {parsedData.budgetStrategies.length > 0 && (
                                     <EntitySelectList label="Budget Strategies" items={parsedData.budgetStrategies} selectedIds={selectedBudgetStrategyIds}
                                         onToggle={(id) => toggle(selectedBudgetStrategyIds, setSelectedBudgetStrategyIds, id)} searchQuery={budgetStrategySearch} onSearchChange={setBudgetStrategySearch} />
@@ -528,6 +537,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
                                     <div><strong>Samplers:</strong> {importResult.counts.samplers}</div>
                                     <div><strong>Prompt Blocks:</strong> {importResult.counts.promptBlocks}</div>
                                     <div><strong>Stop Patterns:</strong> {importResult.counts.stopPatterns}</div>
+                                    <div><strong>Retrieval Configurations:</strong> {importResult.counts.retrievalConfigurations ?? 0}</div>
                                     <div><strong>Budget Strategies:</strong> {importResult.counts.budgetStrategies}</div>
                                     <div><strong>Profiles:</strong> {importResult.counts.profiles}</div>
                                     <div><strong>Memories:</strong> {importResult.counts.memories ?? 0}</div>

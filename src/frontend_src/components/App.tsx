@@ -31,6 +31,7 @@ import { useModelManager } from '../hooks/useModelManager';
 import { useSamplerManager } from '../hooks/useSamplerManager';
 import { usePromptBlockManager } from '../hooks/usePromptBlockManager';
 import { useStopPatternManager } from '../hooks/useStopPatternManager';
+import { useRetrievalConfigurationManager } from '../hooks/useRetrievalConfigurationManager';
 import { useBudgetStrategyManager } from '../hooks/useBudgetStrategyManager';
 import { useProfileManager } from '../hooks/useProfileManager';
 import { useExtensionManager } from '../hooks/useExtensionManager';
@@ -117,6 +118,7 @@ function App() {
     const samplers = useSamplerManager();
     const promptBlocks = usePromptBlockManager();
     const stopPatterns = useStopPatternManager();
+    const retrievalConfigurations = useRetrievalConfigurationManager();
     const budgetStrategies = useBudgetStrategyManager();
     const profiles = useProfileManager();
     const extensions = useExtensionManager();
@@ -137,6 +139,7 @@ function App() {
         sampler: { saveFunction: samplers.saveSampler, deleteFunction: samplers.deleteSampler, entityLabel: 'Sampler' },
         promptBlock: { saveFunction: promptBlocks.savePromptBlock, deleteFunction: promptBlocks.deletePromptBlock, entityLabel: 'Prompt Block' },
         stopPattern: { saveFunction: stopPatterns.saveStopPattern, deleteFunction: stopPatterns.deleteStopPattern, entityLabel: 'Stop Pattern' },
+        retrievalConfiguration: { saveFunction: retrievalConfigurations.saveRetrievalConfiguration, deleteFunction: retrievalConfigurations.deleteRetrievalConfiguration, entityLabel: 'Retrieval Configuration' },
         budgetStrategy: { saveFunction: budgetStrategies.saveStrategy, deleteFunction: budgetStrategies.deleteStrategy, entityLabel: 'Budget Strategy' },
         profile: { saveFunction: profiles.saveProfile, deleteFunction: profiles.deleteProfile, entityLabel: 'Profile' },
         account: { saveFunction: accounts.saveAccount, deleteFunction: accounts.deleteAccount, entityLabel: 'Account' },
@@ -184,6 +187,7 @@ function App() {
         allPromptBlocks: promptBlocks.promptBlocks,
         allSamplers: samplers.Samplers,
         allStopPatterns: stopPatterns.stopPatterns,
+        allRetrievalConfigurations: retrievalConfigurations.retrievalConfigurations,
         allBudgetStrategies: budgetStrategies.strategies,
         allProfiles: profiles.profiles,
         allWorlds: worlds.worlds,
@@ -399,6 +403,7 @@ function App() {
             audioTracks: audioTracks.refresh,
             budgetStrategies: budgetStrategies.refresh,
             stopPatterns: stopPatterns.refresh,
+            retrievalConfigurations: retrievalConfigurations.refresh,
             memories: memories.refresh,
             accounts: accounts.refresh,
             multiplayerData: multiplayerDatas.refresh,
@@ -621,11 +626,12 @@ function App() {
         { id: 'models', label: 'Language Models', icon: '🤖', done: !models.isLoading },
         { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplers.isLoading },
         { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopPatterns.isLoading },
+        { id: 'retrievalConfigurations', label: 'Retrieval Configurations', icon: '🧭', done: !retrievalConfigurations.isLoading },
         { id: 'budget', label: 'Budget', icon: '💰', done: !budgetStrategies.isLoading },
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profiles.isLoading },
         { id: 'accounts', label: 'Accounts', icon: '🔑', done: !accounts.isLoading },
         { id: 'multiplayerData', label: 'Multiplayer Data', icon: '👥', done: !multiplayerDatas.isLoading },
-    ], [sessionLoaded, interactionDatas, entityFolders, characters, actions.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, budgetStrategies, profiles, accounts, multiplayerDatas]);
+    ], [sessionLoaded, interactionDatas, entityFolders, characters, actions.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, models, samplers, stopPatterns, retrievalConfigurations, budgetStrategies, profiles, accounts, multiplayerDatas]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
@@ -1134,6 +1140,7 @@ function App() {
             allWorlds: worlds.worlds,
             allSamplers: samplers.Samplers,
             allStopPatterns: stopPatterns.stopPatterns,
+            allRetrievalConfigurations: retrievalConfigurations.retrievalConfigurations,
             allPromptBlocks: promptBlocks.promptBlocks,
             allMemories: memories.memories,
             lastMessageId: activeMsgId,
@@ -1145,7 +1152,7 @@ function App() {
         characters.characters, locations.locations, contexts.contexts, audioTracks.audioTracks,
         accounts.accounts, multiplayerDatas.multiplayerData,
         allLanguageModels, models.selectedModelId, budgetStrategies.strategies, selectedBudgetStrategyId,
-        profiles.profiles, worlds.worlds, samplers.Samplers, stopPatterns.stopPatterns,
+        profiles.profiles, worlds.worlds, samplers.Samplers, stopPatterns.stopPatterns, retrievalConfigurations.retrievalConfigurations,
         promptBlocks.promptBlocks, memories.memories
     ]);
 
@@ -1329,7 +1336,7 @@ function App() {
                             onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open}
                             onOpenAudioTracks={modals.audioTrackList.open} onOpenWorlds={modals.worldList.open}
                             onOpenPromptBlocks={modals.promptBlockList.open} onOpenModels={modals.modelList.open}
-                            onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopList.open}
+                            onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopPatternList.open}
                             onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open}
                         />
 
@@ -1358,6 +1365,7 @@ function App() {
                     allCharacters={characters.characters} allContexts={contexts.contexts} allLocations={locations.locations}
                     allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allLanguageModels={allLanguageModels}
                     allSamplers={samplers.Samplers} allPromptBlocks={promptBlocks.promptBlocks} allStopPatterns={stopPatterns.stopPatterns}
+                    allRetrievalConfigurations={retrievalConfigurations.retrievalConfigurations}
                     allBudgetStrategies={budgetStrategies.strategies} allProfiles={profiles.profiles} allExtensions={extensions.extensions}
                     allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDatas.multiplayerData}
                     allEntityFolders={entityFolders.entityFolders} 
@@ -1389,6 +1397,7 @@ function App() {
                     onDeleteSampler={entityModals.getModalProperties('sampler').delete} 
                     onDeletePromptBlock={entityModals.getModalProperties('promptBlock').delete}
                     onDeleteStopPattern={entityModals.getModalProperties('stopPattern').delete} 
+                    onDeleteRetrievalConfiguration={entityModals.getModalProperties('retrievalConfiguration').delete}
                     onDeleteBudgetStrategy={entityModals.getModalProperties('budgetStrategy').delete}
                     onActivateBudgetStrategy={entityToggles.handleActivateBudgetStrategy} 
                     onDeleteProfile={entityModals.getModalProperties('profile').delete}

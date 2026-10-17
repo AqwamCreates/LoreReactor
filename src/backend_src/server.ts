@@ -1384,7 +1384,7 @@ function getMimeType(ext: string): string {
 
 const MANIFEST_DIRS = [
   'character_data', 'multiplayer_character_data', 'sampler_data', 'context_data',
-  'location_data', 'model_data', 'stop_pattern_data', 'interaction_messages',
+  'location_data', 'model_data', 'stop_pattern_data', 'knowledge_configuration_data', 'interaction_messages',
   'interaction_data', 'entity_folders', 'budget_strategies', 'profile_data', 'world_data',
   'webpage_data', 'memory_data', 'audio_track_data', 'prompt_block_data',
   'account_data', 'multiplayer_data',

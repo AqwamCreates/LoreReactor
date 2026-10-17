@@ -1,7 +1,7 @@
 // src/frontend_src/services/DataPortabilityEngine.ts
 import type {
     Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock,
-    StopPattern, BudgetStrategy, Profile, InteractionData, InterjectableAction, Memory,
+    StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, InteractionData, InterjectableAction, Memory,
     Account, MultiplayerData, SessionData, MultiplayerJoinData, ActionFormatData, BudgetData,
     EntityFolder,
 } from '../types';
@@ -16,6 +16,7 @@ import {
     loadRawSampler, saveRawSampler,
     loadRawPromptBlock, saveRawPromptBlock,
     loadRawStopPattern, saveRawStopPattern,
+    loadRawRetrievalConfiguration, saveRawRetrievalConfiguration,
     loadRawBudgetStrategy, saveRawBudgetStrategy,
     loadRawProfile, saveRawProfile,
     loadRawMemory, saveRawMemory,
@@ -46,6 +47,7 @@ export interface LoreReactorExport {
     samplers: Sampler[];
     promptBlocks: PromptBlock[];
     stopPatterns: StopPattern[];
+    retrievalConfigurations?: RetrievalConfiguration[];
     budgetStrategies: BudgetStrategy[];
     profiles: Profile[];
     memories: Memory[];
@@ -67,7 +69,7 @@ export interface ImportResult {
     counts: {
         chats: number; characters: number; contexts: number; locations: number; audioTracks: number;
         worlds: number; languageModels: number; samplers: number; promptBlocks: number; stopPatterns: number;
-        budgetStrategies: number; profiles: number; memories: number; accounts: number;
+        retrievalConfigurations: number; budgetStrategies: number; profiles: number; memories: number; accounts: number;
         multiplayerData: number; entityFolders: number; interjectableActions: number; formatPreferences: number;
     };
     errors: string[];
@@ -88,6 +90,7 @@ export function validateExport(data: unknown): data is LoreReactorExport {
     if (!Array.isArray(d.samplers)) return false;
     if (!Array.isArray(d.promptBlocks)) return false;
     if (!Array.isArray(d.stopPatterns)) return false;
+    if (d.retrievalConfigurations !== undefined && !Array.isArray(d.retrievalConfigurations)) return false;
     if (!Array.isArray(d.budgetStrategies)) return false;
     if (!Array.isArray(d.profiles)) return false;
     if (d.memories !== undefined && !Array.isArray(d.memories)) return false;
@@ -116,6 +119,7 @@ export async function exportSelectedData(selection: {
     samplerIds: string[];
     promptBlockIds: string[];
     stopPatternIds: string[];
+    retrievalConfigurationIds: string[];
     budgetStrategyIds: string[];
     profileIds: string[];
     memoryIds: string[];
@@ -132,6 +136,7 @@ export async function exportSelectedData(selection: {
         version: dataPortabilityVersion, exportedAt: Date.now(),
         chats: [], characters: [], contexts: [], locations: [], audioTracks: [],
         worlds: [], languageModels: [], samplers: [], promptBlocks: [], stopPatterns: [],
+        retrievalConfigurations: [],
         budgetStrategies: [], profiles: [], memories: [], accounts: [],
         multiplayerData: [], entityFolders: [], interjectableActions: [],
     };
@@ -183,6 +188,10 @@ export async function exportSelectedData(selection: {
     for (const id of selection.stopPatternIds) {
         const full = await loadRawStopPattern(id);
         if (full) data.stopPatterns.push(full);
+    }
+    for (const id of selection.retrievalConfigurationIds) {
+        const full = await loadRawRetrievalConfiguration(id);
+        if (full) data.retrievalConfigurations!.push(full);
     }
     for (const id of selection.budgetStrategyIds) {
         const full = await loadRawBudgetStrategy(id);
@@ -242,7 +251,7 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
         counts: {
             chats: 0, characters: 0, contexts: 0, locations: 0, audioTracks: 0,
             worlds: 0, languageModels: 0, samplers: 0, promptBlocks: 0, stopPatterns: 0,
-            budgetStrategies: 0, profiles: 0, memories: 0, accounts: 0,
+            retrievalConfigurations: 0, budgetStrategies: 0, profiles: 0, memories: 0, accounts: 0,
             multiplayerData: 0, entityFolders: 0, interjectableActions: 0, formatPreferences: 0,
         },
         errors: [],
@@ -288,6 +297,10 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
     for (const sp of data.stopPatterns) {
         try { await saveRawStopPattern(sp); result.counts.stopPatterns++; }
         catch (e) { result.errors.push(`Stop Pattern "${sp.name || sp.id}": ${(e as Error).message}`); }
+    }
+    for (const rc of (data.retrievalConfigurations ?? [])) {
+        try { await saveRawRetrievalConfiguration(rc); result.counts.retrievalConfigurations++; }
+        catch (e) { result.errors.push(`Retrieval Configuration "${rc.name || rc.id}": ${(e as Error).message}`); }
     }
     for (const b of data.budgetStrategies) {
         try { await saveRawBudgetStrategy(b); result.counts.budgetStrategies++; }

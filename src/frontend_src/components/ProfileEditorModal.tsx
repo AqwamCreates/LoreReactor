@@ -1,6 +1,6 @@
 // src/frontend_src/components/ProfileEditorModal.tsx
 import { useState, useMemo, useCallback, type CSSProperties } from 'react';
-import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal, deviceType, Character } from '../types';
+import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal, deviceType, Character, RetrievalConfiguration } from '../types';
 import { SliderInput } from './SliderInput';
 import { EntitySelect } from './EntitySelect';
 import '../main.css';
@@ -21,6 +21,7 @@ interface ProfileEditorModalProps {
     allPromptBlocks: PromptBlock[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
+    allRetrievalConfigurations: RetrievalConfiguration[];
 }
 
 const CACHE_EFFICIENCY_DESCRIPTIONS: Record<cacheEfficiencyConfigurationType, string[]> = {
@@ -230,7 +231,7 @@ function SummarizationStepExpanded({ step, index, updateStepField }: { step: Sum
 
 // ─── Main Component ─────────────────────────────────────────────────
 
-export function ProfileEditorModal({ existingProfile, onClose, onSave, allPromptBlocks = [], allSamplers = [], allStopPatterns = [], allCharacters = [] }: ProfileEditorModalProps) {
+export function ProfileEditorModal({ existingProfile, onClose, onSave, allPromptBlocks = [], allSamplers = [], allStopPatterns = [], allRetrievalConfigurations = [], allCharacters = [] }: ProfileEditorModalProps) {
     const [activeTab, setActiveTab] = useState<ProfileTabId>('general');
     const ep = existingProfile ?? null;
 
@@ -299,6 +300,10 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const [webSummarizationStopPatternId, setWebSummarizationStopPatternId] = useState<string>(ep?.webSummarizationStopPattern?.id ?? '');
     const [interactionDataSummarizationStopPatternId, setInteractionDataSummarizationStopPatternId] = useState<string>(ep?.interactionDataSummarizationStopPattern?.id ?? '');
     const [aiRecommendationStopPatternId, setAiRecommendationStopPatternId] = useState<string>(ep?.aiRecommendationStopPattern?.id ?? '');
+    const [dialogueRetrievalConfigurationId, setDialogueRetrievalConfigurationId] = useState<string>(ep?.characterDialogueRetrievalConfiguration?.id ?? '');
+    const [starterPromptRetrievalConfigurationId, setStarterPromptRetrievalConfigurationId] = useState<string>(ep?.characterStarterPromptRetrievalConfiguration?.id ?? '');
+    const [knowledgeRetrievalConfigurationId, setKnowledgeRetrievalConfigurationId] = useState<string>(ep?.characterKnowledgeRetrievalConfiguration?.id ?? '');
+    const [memoryRetrievalConfigurationId, setMemoryRetrievalConfigurationId] = useState<string>(ep?.characterMemoryRetrievalConfiguration?.id ?? '');
     const [errors, setErrors] = useState<{ name?: string }>({});
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
     const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
@@ -332,8 +337,9 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
         const now = Date.now();
         const getSampler = (sId: string) => allSamplers.find(s => s.id === sId);
         const getStopPattern = (spId: string) => allStopPatterns.find(sp => sp.id === spId);
+        const getRetrievalConfiguration = (rcId: string) => allRetrievalConfigurations.find(rc => rc.id === rcId);
         return {
-            id, name: profileName, description: description || undefined, autonomousMode, autonomousInteractionIntervalMs, enableAutoSpeechDetection, speechVolumeActivationThreshold, speechSilenceVolumeActivationThreshold, speechSilenceThresholdMs, voiceActivityProbabilityThreshold, forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, toolUsageDisplayPlacementMode, enableCharacterExpression, randomizeTextCharacterInjection, randomizeTextCharacterInjectionOnRetry, maximumNumberOfTextCharacterRandomizationPerModel, forceNoCharacterImageInjection, forceNoContextImageInjection, forceNoLocationImageInjection, numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt, numberOfMessagesToDisableStarterPrompt, weatherApiKey, useFrontCameraImage, forceEqualInitiative, chatProbability, maximumChatStamina, chatStaminaRegenerationRate, nameSensitivity, skipProbability, chatImpatienceSensitivity, memoryRetentionWeight, contextSensitivity, maximumActionStamina, actionStaminaRegenerationRate, cacheEfficiencyLevels: { ...cacheEfficiencyLevels }, minimalVolatileCacheMode, doNotInjectDefaultStopTokens, enableSpeculativeMarkov, sentimentalAnalysisDeviceType, textToSpeechDeviceType, speechToTextDeviceType, voiceActivityDetectionDeviceType, embeddingDeviceType, volume, stripThinkTokens, tools: { ...tools }, narrateTexts: { ...narrateTexts }, narrateTextCharacterIds: { ...narrateTextCharacterIds }, inputStrategy: [...inputStrategy], summarizationSteps: summarizationSteps.map((s, i) => ({ ...s, id: s.id || `step-${uuidv4()}`, order: i, firstCreatedTimestamp: s.firstCreatedTimestamp || now, lastUpdatedTimestamp: now })), summarizationInstruction: summarizationInstruction || undefined, autoResumeSignals: [...autoResumeSignals], characterLanguageModelSampler: getSampler(characterLanguageModelSamplerId), characterTextToSpeechModelSampler: getSampler(characterTextToSpeechModelSamplerId), webSummarizationSampler: getSampler(webSummarizationSamplerId), interactionDataSummarizationSampler: getSampler(interactionDataSummarizationSamplerId), aiRecommendationSampler: getSampler(aiRecommendationSamplerId), characterStopPattern: getStopPattern(characterStopPatternId), webSummarizationStopPattern: getStopPattern(webSummarizationStopPatternId), interactionDataSummarizationStopPattern: getStopPattern(interactionDataSummarizationStopPatternId), aiRecommendationStopPattern: getStopPattern(aiRecommendationStopPatternId), firstCreatedTimestamp: ep?.firstCreatedTimestamp || now, lastUpdatedTimestamp: now,
+            id, name: profileName, description: description || undefined, autonomousMode, autonomousInteractionIntervalMs, enableAutoSpeechDetection, speechVolumeActivationThreshold, speechSilenceVolumeActivationThreshold, speechSilenceThresholdMs, voiceActivityProbabilityThreshold, forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, toolUsageDisplayPlacementMode, enableCharacterExpression, randomizeTextCharacterInjection, randomizeTextCharacterInjectionOnRetry, maximumNumberOfTextCharacterRandomizationPerModel, forceNoCharacterImageInjection, forceNoContextImageInjection, forceNoLocationImageInjection, numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt, numberOfMessagesToDisableStarterPrompt, weatherApiKey, useFrontCameraImage, forceEqualInitiative, chatProbability, maximumChatStamina, chatStaminaRegenerationRate, nameSensitivity, skipProbability, chatImpatienceSensitivity, memoryRetentionWeight, contextSensitivity, maximumActionStamina, actionStaminaRegenerationRate, cacheEfficiencyLevels: { ...cacheEfficiencyLevels }, minimalVolatileCacheMode, doNotInjectDefaultStopTokens, enableSpeculativeMarkov, sentimentalAnalysisDeviceType, textToSpeechDeviceType, speechToTextDeviceType, voiceActivityDetectionDeviceType, embeddingDeviceType, volume, stripThinkTokens, tools: { ...tools }, narrateTexts: { ...narrateTexts }, narrateTextCharacterIds: { ...narrateTextCharacterIds }, inputStrategy: [...inputStrategy], summarizationSteps: summarizationSteps.map((s, i) => ({ ...s, id: s.id || `step-${uuidv4()}`, order: i, firstCreatedTimestamp: s.firstCreatedTimestamp || now, lastUpdatedTimestamp: now })), summarizationInstruction: summarizationInstruction || undefined, autoResumeSignals: [...autoResumeSignals], characterLanguageModelSampler: getSampler(characterLanguageModelSamplerId), characterTextToSpeechModelSampler: getSampler(characterTextToSpeechModelSamplerId), webSummarizationSampler: getSampler(webSummarizationSamplerId), interactionDataSummarizationSampler: getSampler(interactionDataSummarizationSamplerId), aiRecommendationSampler: getSampler(aiRecommendationSamplerId), characterStopPattern: getStopPattern(characterStopPatternId), webSummarizationStopPattern: getStopPattern(webSummarizationStopPatternId), interactionDataSummarizationStopPattern: getStopPattern(interactionDataSummarizationStopPatternId), aiRecommendationStopPattern: getStopPattern(aiRecommendationStopPatternId), characterDialogueRetrievalConfiguration: getRetrievalConfiguration(dialogueRetrievalConfigurationId), characterStarterPromptRetrievalConfiguration: getRetrievalConfiguration(starterPromptRetrievalConfigurationId), characterKnowledgeRetrievalConfiguration: getRetrievalConfiguration(knowledgeRetrievalConfigurationId), characterMemoryRetrievalConfiguration: getRetrievalConfiguration(memoryRetrievalConfigurationId), firstCreatedTimestamp: ep?.firstCreatedTimestamp || now, lastUpdatedTimestamp: now,
         };
     };
 
@@ -424,6 +430,13 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
         { label: "Web Summarization Stop Pattern", value: webSummarizationStopPatternId, onChange: setWebSummarizationStopPatternId },
         { label: "Interaction Data Stop Pattern", value: interactionDataSummarizationStopPatternId, onChange: setInteractionDataSummarizationStopPatternId },
         { label: "AI Recommendation Stop Pattern", value: aiRecommendationStopPatternId, onChange: setAiRecommendationStopPatternId },
+    ];
+
+    const retrievalConfigurationConfigs = [
+        { label: "Dialogue Retrieval Configuration", value: dialogueRetrievalConfigurationId, onChange: setDialogueRetrievalConfigurationId },
+        { label: "Starter Prompt Retrieval Configuration", value: starterPromptRetrievalConfigurationId, onChange: setStarterPromptRetrievalConfigurationId },
+        { label: "Knowledge Retrieval Configuration", value: knowledgeRetrievalConfigurationId, onChange: setKnowledgeRetrievalConfigurationId },
+        { label: "Memory Retrieval Configuration", value: memoryRetrievalConfigurationId, onChange: setMemoryRetrievalConfigurationId },
     ];
 
     // --- Render ---
@@ -770,6 +783,13 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                                 <span className="editor-section-title">Stop Patterns</span>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px', marginTop: '12px' }}>
                                     {stopPatternConfigs.map((cfg, i) => <EntityDropdown key={i} label={cfg.label} value={cfg.value} onChange={cfg.onChange} items={allStopPatterns} noneLabel="(None)" />)}
+                                </div>
+                            </div>
+
+                            <div className="editor-section">
+                                <span className="editor-section-title">Retrieval Configurations</span>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px', marginTop: '12px' }}>
+                                    {retrievalConfigurationConfigs.map((cfg, i) => <EntityDropdown key={i} label={cfg.label} value={cfg.value} onChange={cfg.onChange} items={allRetrievalConfigurations} noneLabel="(None)" />)}
                                 </div>
                             </div>
                         </>

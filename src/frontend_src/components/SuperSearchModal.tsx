@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { 
     Character, Context, Location, AudioTrack, World, PromptBlock, 
-    LanguageModel, Sampler, StopPattern, BudgetStrategy, Profile, 
+    LanguageModel, Sampler, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, 
     Memory, Account, MultiplayerData, EntityFolder, RawInteractionData, InteractionData, 
     ObjectData, ChatMessage
 } from '../types';
@@ -22,6 +22,7 @@ export type SearchTabId =
     | 'model' 
     | 'sampler' 
     | 'stopPattern' 
+    | 'retrievalConfiguration'
     | 'budgetStrategy' 
     | 'profile' 
     | 'memory' 
@@ -41,6 +42,7 @@ export interface SuperSearchModalProps {
     allLanguageModels: LanguageModel[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
+    allRetrievalConfigurations: RetrievalConfiguration[];
     allBudgetStrategies: BudgetStrategy[];
     allProfiles: Profile[];
     allMemories: Memory[];
@@ -96,6 +98,7 @@ const TAB_CONFIG: { id: SearchTabId; label: string; icon: string }[] = [
     { id: 'model', label: 'Models', icon: '🤖' },
     { id: 'sampler', label: 'Samplers', icon: '🎚️' },
     { id: 'stopPattern', label: 'Stop Patterns', icon: '🛑' },
+    { id: 'retrievalConfiguration', label: 'Retrieval', icon: '🧭' },
     { id: 'budgetStrategy', label: 'Budgets', icon: '💰' },
     { id: 'profile', label: 'Profiles', icon: '👤' },
     { id: 'memory', label: 'Memories', icon: '🧠' },
@@ -194,6 +197,7 @@ export function SuperSearchModal({
     allLanguageModels,
     allSamplers,
     allStopPatterns,
+    allRetrievalConfigurations,
     allBudgetStrategies,
     allProfiles,
     allMemories,
@@ -344,7 +348,7 @@ export function SuperSearchModal({
         const emptyMap: Record<SearchTabId, SearchMatchResult[]> = {
             all: [], message: [], interactionData: [], entityFolder: [], character: [], context: [],
             location: [], promptBlock: [], audioTrack: [], world: [], model: [],
-            sampler: [], stopPattern: [], budgetStrategy: [], profile: [], memory: [],
+            sampler: [], stopPattern: [], retrievalConfiguration: [], budgetStrategy: [], profile: [], memory: [],
             account: [], multiplayerData: []
         };
 
@@ -390,6 +394,7 @@ export function SuperSearchModal({
         emptyMap.model = scanEntities(allLanguageModels, 'model', m => `🤖 ${m.name}`);
         emptyMap.sampler = scanEntities(allSamplers, 'sampler', s => `🎚️ ${s.name}`);
         emptyMap.stopPattern = scanEntities(allStopPatterns, 'stopPattern', sp => `🛑 ${sp.name}`);
+        emptyMap.retrievalConfiguration = scanEntities(allRetrievalConfigurations, 'retrievalConfiguration', rc => `🧭 ${rc.name}`);
         emptyMap.budgetStrategy = scanEntities(allBudgetStrategies, 'budgetStrategy', b => `💰 ${b.name}`);
         emptyMap.profile = scanEntities(allProfiles, 'profile', p => `👤 ${p.name}`);
         emptyMap.memory = scanEntities(allMemories, 'memory', m => `🧠 ${typeof m.name === 'string' ? m.name : 'Untitled Memory'}`);
@@ -473,6 +478,7 @@ export function SuperSearchModal({
             ...emptyMap.model.slice(0, 5),
             ...emptyMap.sampler.slice(0, 5),
             ...emptyMap.stopPattern.slice(0, 5),
+            ...emptyMap.retrievalConfiguration.slice(0, 5),
             ...emptyMap.budgetStrategy.slice(0, 5),
             ...emptyMap.profile.slice(0, 5),
             ...emptyMap.memory.slice(0, 5),
@@ -482,7 +488,7 @@ export function SuperSearchModal({
         ];
 
         return emptyMap;
-    }, [lowerQuery, searchableCharacters, searchableContexts, searchableLocations, searchableAudioTracks, allPromptBlocks, allWorlds, allLanguageModels, allSamplers, allStopPatterns, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells, currentInteractionData, allCharacters, messageToChatsMap, serverMessages, characterMap]);
+    }, [lowerQuery, searchableCharacters, searchableContexts, searchableLocations, searchableAudioTracks, allPromptBlocks, allWorlds, allLanguageModels, allSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells, currentInteractionData, allCharacters, messageToChatsMap, serverMessages, characterMap]);
 
     const displayedResults = useMemo(() => {
         return categorizedResults[activeTab] || [];

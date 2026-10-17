@@ -18,6 +18,8 @@ import type {
   ActionFormatData,
   MultiplayerJoinData,
   SessionData,
+  RetrievalConfiguration,
+  RawRetrievalConfiguration,
 } from '../types';
 
 import type { FormatPreferenceData } from '../services/FormatPreferenceEngine';
@@ -51,6 +53,7 @@ const ENTITY_REGISTRY = {
   locationImages: { dir: 'location_images', hasManifest: false },
   languageModels: { dir: 'language_model_data', hasManifest: true },
   stopPatterns: { dir: 'stop_pattern_data', hasManifest: true },
+  retrievalConfigurations: { dir: 'retrieval_configuration_data', hasManifest: true },
   interactionMessages: { dir: 'interaction_messages', hasManifest: false },
   interactionData: { dir: 'interaction_data', hasManifest: true },
   entityFolders: { dir: 'entity_folders', hasManifest: true },
@@ -572,6 +575,27 @@ export const saveRawStopPattern = stopPatternRepo.save;
 export const deleteRawStopPattern = stopPatternRepo.remove;
 
 // =============================================================================
+// RETRIEVAL CONFIGURATION REPOSITORY
+// =============================================================================
+
+const retrievalConfigurationRepo = createRepository<RetrievalConfiguration, RawRetrievalConfiguration>({
+  entityKey: 'retrievalConfigurations',
+  hydrate: (raw, id) => hydrateEntity<RetrievalConfiguration, RawRetrievalConfiguration>(raw, id, {
+    name: 'Unknown Retrieval Configuration',
+    retrievalStrategy: 'dense',
+    topK: 5,
+    similarityThreshold: 0.65,
+    tokenBudget: 1024,
+  }),
+});
+
+export const loadRawRetrievalConfigurationManifest = retrievalConfigurationRepo.loadManifest;
+export const loadRawRetrievalConfiguration = retrievalConfigurationRepo.loadRaw;
+export const loadAllRawRetrievalConfigurations = retrievalConfigurationRepo.loadAll;
+export const saveRawRetrievalConfiguration = retrievalConfigurationRepo.save;
+export const deleteRawRetrievalConfiguration = retrievalConfigurationRepo.remove;
+
+// =============================================================================
 // SAMPLER REPOSITORY
 // =============================================================================
 
@@ -638,6 +662,15 @@ const characterRepo = createRepository<Character, RawCharacter>({
     const stopPatternsResults = await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)));
     const stopPatterns = stopPatternsResults.filter((p): p is StopPattern => p !== null);
 
+    let dialogueRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
+    if (raw.dialogueRetrievalConfigurationId) dialogueRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.dialogueRetrievalConfigurationId) ?? undefined;
+    let starterPromptRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
+    if (raw.starterPromptRetrievalConfigurationId) starterPromptRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.starterPromptRetrievalConfigurationId) ?? undefined;
+    let knowledgeRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
+    if (raw.knowledgeRetrievalConfigurationId) knowledgeRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.knowledgeRetrievalConfigurationId) ?? undefined;
+    let memoryRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
+    if (raw.memoryRetrievalConfigurationId) memoryRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.memoryRetrievalConfigurationId) ?? undefined;
+
     const memories = await hydrateMemories(raw.memories);
 
     const images: Record<string, string> = raw.images ?? {};
@@ -655,18 +688,26 @@ const characterRepo = createRepository<Character, RawCharacter>({
         languageModelSampler: () => languageModelSampler,
         textToSpeechModelSampler: () => textToSpeechModelSampler,
         stopPatterns: () => stopPatterns,
+        dialogueRetrievalConfiguration: () => dialogueRetrievalConfiguration,
+        starterPromptRetrievalConfiguration: () => starterPromptRetrievalConfiguration,
+        knowledgeRetrievalConfiguration: () => knowledgeRetrievalConfiguration,
+        memoryRetrievalConfiguration: () => memoryRetrievalConfiguration,
         memories: () => memories,
         images: () => images,
     });
   },
   serialize: async (character) => {
-    const { languageModelSampler, textToSpeechModelSampler, stopPatterns, memories, ...rest } = character;
+    const { languageModelSampler, textToSpeechModelSampler, stopPatterns, dialogueRetrievalConfiguration, starterPromptRetrievalConfiguration, knowledgeRetrievalConfiguration, memoryRetrievalConfiguration, memories, ...rest } = character;
     const serializedMemories = await serializeMemories(memories);
     return {
       ...rest,
       languageModelSamplerId: languageModelSampler?.id,
       textToSpeechModelSamplerId: textToSpeechModelSampler?.id,
       stopPatternIds: stopPatterns?.map(sp => sp.id) || [],
+      dialogueRetrievalConfigurationId: dialogueRetrievalConfiguration?.id,
+      starterPromptRetrievalConfigurationId: starterPromptRetrievalConfiguration?.id,
+      knowledgeRetrievalConfigurationId: knowledgeRetrievalConfiguration?.id,
+      memoryRetrievalConfigurationId: memoryRetrievalConfiguration?.id,
       memories: serializedMemories,
       lastUpdatedTimestamp: Date.now(),
     } as RawCharacter;
@@ -698,6 +739,10 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
         languageModelSampler: undefined,
         textToSpeechModelSampler: undefined,
         stopPatterns: [],
+        dialogueRetrievalConfiguration: undefined,
+        starterPromptRetrievalConfiguration: undefined,
+        knowledgeRetrievalConfiguration: undefined,
+        memoryRetrievalConfiguration: undefined,
     }, {
         memories: () => memories,
         images: () => images,
@@ -735,6 +780,15 @@ const multiplayerCharacterRepo = createRepository<Character, RawCharacter>({
     const stopPatternsResults = await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)));
     const stopPatterns = stopPatternsResults.filter((p): p is StopPattern => p !== null);
 
+    let dialogueRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
+    if (raw.dialogueRetrievalConfigurationId) dialogueRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.dialogueRetrievalConfigurationId) ?? undefined;
+    let starterPromptRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
+    if (raw.starterPromptRetrievalConfigurationId) starterPromptRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.starterPromptRetrievalConfigurationId) ?? undefined;
+    let knowledgeRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
+    if (raw.knowledgeRetrievalConfigurationId) knowledgeRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.knowledgeRetrievalConfigurationId) ?? undefined;
+    let memoryRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
+    if (raw.memoryRetrievalConfigurationId) memoryRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.memoryRetrievalConfigurationId) ?? undefined;
+
     const memories = await hydrateMemories(raw.memories);
     const images: Record<string, string> = raw.images ?? {};
     const legacyImage = ('image' in raw && typeof raw.image === 'string') ? raw.image : undefined;
@@ -751,18 +805,26 @@ const multiplayerCharacterRepo = createRepository<Character, RawCharacter>({
         languageModelSampler: () => languageModelSampler,
         textToSpeechModelSampler: () => textToSpeechModelSampler,
         stopPatterns: () => stopPatterns,
+        dialogueRetrievalConfiguration: () => dialogueRetrievalConfiguration,
+        starterPromptRetrievalConfiguration: () => starterPromptRetrievalConfiguration,
+        knowledgeRetrievalConfiguration: () => knowledgeRetrievalConfiguration,
+        memoryRetrievalConfiguration: () => memoryRetrievalConfiguration,
         memories: () => memories,
         images: () => images,
     });
   },
   serialize: async (character) => {
-    const { languageModelSampler, textToSpeechModelSampler, stopPatterns, memories, ...rest } = character;
+    const { languageModelSampler, textToSpeechModelSampler, stopPatterns, dialogueRetrievalConfiguration, starterPromptRetrievalConfiguration, knowledgeRetrievalConfiguration, memoryRetrievalConfiguration, memories, ...rest } = character;
     const serializedMemories = await serializeMemories(memories);
     return {
       ...rest,
       languageModelSamplerId: languageModelSampler?.id,
       textToSpeechModelSamplerId: textToSpeechModelSampler?.id,
       stopPatternIds: stopPatterns?.map(sp => sp.id) || [],
+      dialogueRetrievalConfigurationId: dialogueRetrievalConfiguration?.id,
+      starterPromptRetrievalConfigurationId: starterPromptRetrievalConfiguration?.id,
+      knowledgeRetrievalConfigurationId: knowledgeRetrievalConfiguration?.id,
+      memoryRetrievalConfigurationId: memoryRetrievalConfiguration?.id,
       memories: serializedMemories,
       lastUpdatedTimestamp: Date.now(),
     } as RawCharacter;
@@ -988,6 +1050,16 @@ const profileRepo = createRepository<Profile, RawProfile>({
     if (raw.interactionDataSummarizationStopPatternId) interactionDataSummarizationStopPattern = await loadRawStopPattern(raw.interactionDataSummarizationStopPatternId) ?? undefined;
     if (raw.aiRecommendationStopPatternId) aiRecommendationStopPattern = await loadRawStopPattern(raw.aiRecommendationStopPatternId) ?? undefined;
 
+    // Resolve Retrieval Configurations (Fixed to match RawProfile property names)
+    let dialogueRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
+    if (raw.characterDialogueRetrievalConfigurationId) dialogueRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.characterDialogueRetrievalConfigurationId) ?? undefined;
+    let starterPromptRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
+    if (raw.characterStarterPromptRetrievalConfigurationId) starterPromptRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.characterStarterPromptRetrievalConfigurationId) ?? undefined;
+    let knowledgeRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
+    if (raw.characterKnowledgeRetrievalConfigurationId) knowledgeRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.characterKnowledgeRetrievalConfigurationId) ?? undefined;
+    let memoryRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
+    if (raw.characterMemoryRetrievalConfigurationId) memoryRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.characterMemoryRetrievalConfigurationId) ?? undefined;
+
     return hydrateEntity<Profile, RawProfile>(raw, id, {
         name: 'Unknown profile',
         autonomousMode: false,
@@ -1052,6 +1124,10 @@ const profileRepo = createRepository<Profile, RawProfile>({
         webSummarizationStopPattern: () => webSummarizationStopPattern,
         interactionDataSummarizationStopPattern: () => interactionDataSummarizationStopPattern,
         aiRecommendationStopPattern: () => aiRecommendationStopPattern,
+        characterDialogueRetrievalConfiguration: () => dialogueRetrievalConfiguration,
+        characterStarterPromptRetrievalConfiguration: () => starterPromptRetrievalConfiguration,
+        characterKnowledgeRetrievalConfiguration: () => knowledgeRetrievalConfiguration,
+        characterMemoryRetrievalConfiguration: () => memoryRetrievalConfiguration,
     });
   },
   serialize: (profile) => {
@@ -1066,6 +1142,10 @@ const profileRepo = createRepository<Profile, RawProfile>({
       webSummarizationStopPattern,
       interactionDataSummarizationStopPattern,
       aiRecommendationStopPattern,
+      characterDialogueRetrievalConfiguration,
+      characterStarterPromptRetrievalConfiguration,
+      characterKnowledgeRetrievalConfiguration,
+      characterMemoryRetrievalConfiguration,
       ...rest 
     } = profile;
     
@@ -1083,6 +1163,10 @@ const profileRepo = createRepository<Profile, RawProfile>({
       webSummarizationStopPatternId: webSummarizationStopPattern?.id,
       interactionDataSummarizationStopPatternId: interactionDataSummarizationStopPattern?.id,
       aiRecommendationStopPatternId: aiRecommendationStopPattern?.id,
+      characterDialogueRetrievalConfigurationId: characterDialogueRetrievalConfiguration?.id,
+      characterStarterPromptRetrievalConfigurationId: characterStarterPromptRetrievalConfiguration?.id,
+      characterKnowledgeRetrievalConfigurationId: characterKnowledgeRetrievalConfiguration?.id,
+      characterMemoryRetrievalConfigurationId: characterMemoryRetrievalConfiguration?.id,
       lastUpdatedTimestamp: Date.now(),
     } as RawProfile;
   },
