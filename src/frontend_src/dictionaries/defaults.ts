@@ -172,7 +172,7 @@ export const defaultInputStrategy: promptBlockType[] = [
     'Dialogue Prompt',
     'Chat History',
     'Context',
-    'Current Location',
+    'Current Location With Description',
     'Sky View',
     'Weather',
     'Inventory',
