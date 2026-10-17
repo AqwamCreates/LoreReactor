@@ -1336,6 +1336,7 @@ function App() {
                             onOpenAudioTracks={modals.audioTrackList.open} onOpenWorlds={modals.worldList.open}
                             onOpenPromptBlocks={modals.promptBlockList.open} onOpenModels={modals.modelList.open}
                             onOpenSamplers={modals.samplerList.open} onOpenStopPatterns={modals.stopPatternList.open}
+                            onOpenRetrievalConfigurations={modals.retrievalConfigurationList.open}
                             onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open}
                         />
 

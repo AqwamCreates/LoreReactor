@@ -189,10 +189,7 @@ export function resolveTemplate(
         if (key === 'assistantTurnEnd') return delimiters.turnEnd;
         if (key === 'thinkStart') return delimiters.thinkStart;
         if (key === 'thinkEnd') return delimiters.thinkEnd;
-
-        if (key in GLOBAL_STRINGS) {
-            return GLOBAL_STRINGS[key];
-        }
+        if (key in GLOBAL_STRINGS) return GLOBAL_STRINGS[key];
 
         return '';
     });

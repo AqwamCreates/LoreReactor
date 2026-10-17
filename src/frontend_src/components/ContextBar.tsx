@@ -14,6 +14,7 @@ interface ContextBarProps {
     onOpenSamplers: () => void;
     onOpenPromptBlocks: () => void;
     onOpenStopPatterns: () => void;
+    onOpenRetrievalConfigurations: () => void;
     onOpenBudgets: () => void;
     onOpenProfiles: () => void;
 }
@@ -29,7 +30,7 @@ function NavButton({ icon, label, onClick }: { icon: string; label: string; onCl
 export function ContextBar({
     viewMode,
     onOpenInteractionDataList, onOpenCharacters, onOpenContexts, onOpenLocations, onOpenAudioTracks, onOpenWorlds,
-    onOpenPromptBlocks, onOpenModels, onOpenSamplers, onOpenStopPatterns, onOpenBudgets, onOpenProfiles,
+    onOpenPromptBlocks, onOpenModels, onOpenSamplers, onOpenStopPatterns, onOpenRetrievalConfigurations, onOpenBudgets, onOpenProfiles,
 }: ContextBarProps) {
     const [expanded, setExpanded] = useState(false);
 
@@ -44,6 +45,7 @@ export function ContextBar({
                     <NavButton icon="🤖" label="Language Models" onClick={onOpenModels} />
                     <NavButton icon="🎚️" label="Samplers" onClick={onOpenSamplers} />
                     <NavButton icon="🛑" label="Stop Patterns" onClick={onOpenStopPatterns} />
+                    <NavButton icon="🧭" label="Retrieval Configurations" onClick={onOpenRetrievalConfigurations} />
                     <NavButton icon="💰" label="Budgets" onClick={onOpenBudgets} />
                     <NavButton icon="👤" label="Profiles" onClick={onOpenProfiles} />
                     {/* Toggle lives here when expanded */}
