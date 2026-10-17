@@ -163,6 +163,38 @@ export const defaultActions: InterjectableAction[] = [
     { label: 'Pout At', count: 0 },
 ];
 
+export const defaultInputStrategyPositions: promptBlockType[] = [
+    'System Prompt',
+    'Think Prompt',
+    'Meta Think Instructions',
+    'Character Tags',
+    'Character Tags With Descriptions',
+    'Appearance Prompt',
+    'Dialogue Prompt',
+    'Chat History',
+    'Context',
+    'Current Location',
+    'Current Location With Description',
+    'Reachable Locations',
+    'Reachable Locations With Descriptions',
+    'Sky View',
+    'Weather',
+    'Inventory',
+    'Fatigue',
+    'Paragraph Count Instructions',
+    'Date',
+    'Time',
+    'Time Elapsed',
+    'Starter Prompt',
+    'Tool Instructions',
+    'Tool Message Instructions',
+    'Anti-Repetition Nudge',
+    'Text Injection',
+    'Model Instruction Template', 
+    'Model Chat Template', 
+    'Model Chat-Instruction Template'
+];
+
 export const defaultInputStrategy: promptBlockType[] = [
     'System Prompt',
     'Think Prompt',

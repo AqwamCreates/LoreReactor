@@ -6,6 +6,7 @@ import { EntitySelect } from './EntitySelect';
 import '../main.css';
 import { 
     defaultInputStrategy, 
+    defaultInputStrategyPositions,
     defaultNarrateTexts, 
     defaultProfileTools, 
 } from '../dictionaries/defaults';
@@ -92,7 +93,7 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
     ];
 }
 
-const ALL_BUILT_IN_BLOCK_TYPES = [...defaultInputStrategy, 'Model Instruction Template', 'Model Chat Template', 'Model Chat-Instruction Template']
+const ALL_BUILT_IN_BLOCK_TYPES = [...defaultInputStrategyPositions];
 
 function isBuiltInBlockType(value: string): value is promptBlockType {
     return (ALL_BUILT_IN_BLOCK_TYPES as string[]).includes(value);
