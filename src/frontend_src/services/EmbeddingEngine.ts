@@ -1,10 +1,8 @@
 // src/frontend_src/services/EmbeddingEngine.ts
 import type { deviceType } from '../types';
 
-// Note: Ensure this model ID matches the exact ONNX export on HuggingFace. 
-// 'onnx-community/embeddinggemma-300m' is used as the standard placeholder.
 const HF_MODEL_ID = 'onnx-community/embeddinggemma-300m'; 
-const IDLE_UNLOAD_MS = 2 * 60 * 1000; // 2 minutes
+const IDLE_UNLOAD_MS = 3 * 60 * 1000; // 3 minute
 
 type FeatureExtractionPipeline = (text: string | string[], options?: any) => Promise<any>;
 

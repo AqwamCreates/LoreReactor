@@ -126,7 +126,6 @@ function KnowledgeNode({ data }: NodeProps<Node<KnowledgeNodeData>>) {
 const nodeTypes = { knowledgeNode: KnowledgeNode };
 
 export function CharacterKnowledgePromptEditorModal({
-    
     isReadOnly = false,
     onClose,
     knowledgePrompts,
@@ -278,11 +277,20 @@ export function CharacterKnowledgePromptEditorModal({
         if (selectedId === id) setSelectedId(null);
     }, [selectedId, setNodes, setEdges, isReadOnly]);
 
+    // ✅ Updated to invalidate embeddings when content changes
     const updateField = useCallback(<K extends keyof KnowledgePrompt>(id: string, field: K, value: KnowledgePrompt[K]) => {
         if (isReadOnly) return;
-        setItems(prev => prev.map(item =>
-            item.id === id ? { ...item, [field]: value, lastUpdatedTimestamp: Date.now() } : item
-        ));
+        setItems(prev => prev.map(item => {
+            if (item.id !== id) return item;
+            
+            // If the content changes, invalidate the cached embedding so the queue regenerates it
+            if (field === 'content' && item.embedding) {
+                const { embedding, ...rest } = item;
+                return { ...rest, [field]: value, lastUpdatedTimestamp: Date.now() } as KnowledgePrompt;
+            }
+            
+            return { ...item, [field]: value, lastUpdatedTimestamp: Date.now() };
+        }));
     }, [isReadOnly]);
 
     const handleSave = useCallback(() => {

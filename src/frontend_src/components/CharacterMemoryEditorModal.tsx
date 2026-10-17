@@ -90,9 +90,12 @@ export function CharacterMemoryEditorModal({
 
         setMemories(prev => {
             const next = { ...prev };
-            next[targetChatId] = next[targetChatId].map(m =>
-                m.id === editingId ? { ...m, content: editContent, lastUpdatedTimestamp: Date.now() } : m
-            );
+            next[targetChatId] = next[targetChatId].map(m => {
+                if (m.id !== editingId) return m;
+                // ✅ Invalidate embedding when content changes so the background queue regenerates it
+                const { embedding, ...rest } = m;
+                return { ...rest, content: editContent, lastUpdatedTimestamp: Date.now() } as Memory;
+            });
             return next;
         });
         setHasChanges(true);

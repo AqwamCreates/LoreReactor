@@ -49,6 +49,7 @@ import { InteractionDataInspectionModal } from './InteractionDataInspectionModal
 import { SuperSearchModal } from './SuperSearchModal';
 import { LanguageModelInferenceManagerModal } from './LanguageModelInferenceManager';
 import { voiceTranscriptionEngine } from '../services/VoiceTranscriptionEngine';
+import { embeddingQueue } from '../services/EmbeddingQueue';
 
 interface EntityModalController {
     isOpen: boolean;
@@ -278,6 +279,81 @@ export function AppModals({
 
     const [inspectionStack, setInspectionStack] = useState<InteractionData[]>([]);
 
+    // ─── Sync Embedding Queue Hardware Preference ────────────────────
+    useEffect(() => {
+        embeddingQueue.setProfile(interactionData?.profile ?? null);
+    }, [interactionData?.profile]);
+
+    // ─── Background Embedding Generation Handler ────────────────────
+    const handleSaveCharacterWithEmbeddings = useCallback(async (character: Character) => {
+        // 1. Save immediately so UI doesn't block
+        await onSaveCharacter(character);
+        
+        // 2. Collect texts that need embedding (only if missing the embedding array)
+        const tasks: Array<{ type: 'knowledge' | 'dialogue' | 'starter' | 'memory', id: string, text: string, chatId?: string }> = [];
+        
+        if (character.useEmbeddingModelForKnowledgePrompts && character.knowledgePrompts) {
+            for (const kp of character.knowledgePrompts) {
+                if (kp.content && !kp.embedding) tasks.push({ type: 'knowledge', id: kp.id, text: kp.content });
+            }
+        }
+        if (character.useEmbeddingModelForDialoguePrompts && character.dialoguePrompts) {
+            for (const dp of character.dialoguePrompts) {
+                if (dp.content && !dp.embedding) tasks.push({ type: 'dialogue', id: dp.id, text: dp.content });
+            }
+        }
+        if (character.useEmbeddingModelForStarterPrompts && character.starterPrompts) {
+            for (const sp of character.starterPrompts) {
+                if (sp.content && !sp.embedding) tasks.push({ type: 'starter', id: sp.id, text: sp.content });
+            }
+        }
+        if (character.useEmbeddingModelForMemories && character.memories) {
+            for (const [chatId, mems] of Object.entries(character.memories)) {
+                for (const mem of mems) {
+                    if (mem.content && !mem.embedding) tasks.push({ type: 'memory', id: mem.id, text: mem.content, chatId });
+                }
+            }
+        }
+        
+        if (tasks.length === 0) return;
+        
+        addToast(`🧠 Generating ${tasks.length} embeddings in background...`, 'info');
+        
+        // 3. Deep clone to safely mutate without affecting the Zustand store reference mid-flight
+        let updatedCharacter = JSON.parse(JSON.stringify(character)) as Character;
+        let completed = 0;
+        
+        for (const task of tasks) {
+            const embedding = await embeddingQueue.enqueue(task.id, task.text);
+            if (embedding) {
+                if (task.type === 'knowledge' && updatedCharacter.knowledgePrompts) {
+                    updatedCharacter.knowledgePrompts = updatedCharacter.knowledgePrompts.map(kp => 
+                        kp.id === task.id ? { ...kp, embedding } : kp
+                    );
+                } else if (task.type === 'dialogue' && updatedCharacter.dialoguePrompts) {
+                    updatedCharacter.dialoguePrompts = updatedCharacter.dialoguePrompts.map(dp => 
+                        dp.id === task.id ? { ...dp, embedding } : dp
+                    );
+                } else if (task.type === 'starter' && updatedCharacter.starterPrompts) {
+                    updatedCharacter.starterPrompts = updatedCharacter.starterPrompts.map(sp => 
+                        sp.id === task.id ? { ...sp, embedding } : sp
+                    );
+                } else if (task.type === 'memory' && updatedCharacter.memories && task.chatId) {
+                    updatedCharacter.memories[task.chatId] = updatedCharacter.memories[task.chatId].map(mem => 
+                        mem.id === task.id ? { ...mem, embedding } : mem
+                    );
+                }
+                completed++;
+            }
+        }
+        
+        // 4. Save the updated character with embeddings back to the DB
+        if (completed > 0) {
+            await onSaveCharacter(updatedCharacter);
+            addToast(`✅ Generated ${completed} embeddings for ${character.name}`, 'success');
+        }
+    }, [onSaveCharacter, addToast]);
+
     const handleBackgroundVoiceTranscribe = useCallback((characterId: string, file: File, language?: string) => {
         addToast("Transcribing voice in background...", 'info');
         
@@ -435,7 +511,7 @@ export function AppModals({
 
             {/* ✅ FIX: Explicitly defined <ChatShellWithIdentifier> to fix TS generic inference cascade failure */}
             {modals.interactionDataList.isOpen && (
-                <ManagerModal<ChatShellWithIdentifier>
+                <ManagerModal
                     title="Sessions"
                     entityType={'interactionData' as entityType}
                     localLibraryItems={chatShellsWithIdentifiers}
@@ -1033,7 +1109,7 @@ export function AppModals({
                             aiCharacterSaveRedirect(character); 
                             addToast('Applied character changes to AI recommendation.', 'success'); 
                         } else { 
-                            characterModalProperties.save(character); 
+                            handleSaveCharacterWithEmbeddings(character); 
                         } 
                     }}
                     onVoiceTranscribeRequested={handleBackgroundVoiceTranscribe}

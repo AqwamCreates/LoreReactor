@@ -278,6 +278,7 @@ ${characterToolsSchema}
     "textToSpeechDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "speechToTextDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "voiceActivityDetectionDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
+    "embeddingDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "narrateTexts": {
 ${narrateTextsSchema}
     },

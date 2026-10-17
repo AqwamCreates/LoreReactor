@@ -1036,6 +1036,7 @@ const profileRepo = createRepository<Profile, RawProfile>({
         textToSpeechDeviceType: 'auto',
         speechToTextDeviceType: 'auto',
         voiceActivityDetectionDeviceType: 'auto',
+        embeddingDeviceType: 'auto',
         summarizationInstruction: '',
         autoResumeSignals: [],
     }, {

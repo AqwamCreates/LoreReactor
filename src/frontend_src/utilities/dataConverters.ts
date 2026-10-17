@@ -530,6 +530,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         textToSpeechDeviceType: (p.textToSpeechDeviceType as deviceType) ?? 'auto',
         speechToTextDeviceType: (p.speechToTextDeviceType as deviceType) ?? 'auto',
         voiceActivityDetectionDeviceType: (p.voiceActivityDetectionDeviceType as deviceType) ?? 'auto',
+        embeddingDeviceType: (p.embeddingDeviceType as deviceType) ?? 'auto',
         autoResumeSignals: Array.isArray(p.autoResumeSignals) ? (p.autoResumeSignals as AutoResumeSignal[]) : [],
         narrateTexts: {
             normal: (rawNarrateTexts.normal as boolean) ?? defaultNarrateTexts.normal,
