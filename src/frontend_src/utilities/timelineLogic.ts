@@ -1,5 +1,5 @@
 // src/frontend_src/utilities/timelineLogic.ts
-import type { InteractionData, HistoryMessage, Character } from '../types';
+import type { InteractionData, HistoryMessage, Character, messageType } from '../types';
 import { getMessageById } from './messageLogic';
 
 // ─── Timeline Cache ────────────────────────────────────────────────
@@ -65,7 +65,7 @@ export function clearTimelineCache(interactionDataId: string): void {
  */
 export function getGlobalMessageHistory(
     interactionData: InteractionData, 
-    messageTypes?: string[], 
+    messageTypes?: messageType[], 
     limit?: number, 
     startingMessageId?: string
 ): HistoryMessage[] {
@@ -100,7 +100,7 @@ export function getGlobalMessageHistory(
 export function getLocalMessageHistory(
     interactionData: InteractionData, 
     character: Character, 
-    messageTypes?: string[], 
+    messageTypes?: messageType[], 
     limit?: number
 ): HistoryMessage[] {
     const cache = getTimelineCache(interactionData);
@@ -189,7 +189,7 @@ export function getLocalMessageHistory(
     return filteredHistory;
 }
 
-export function getLatestLocalLocationMessageHistory(interactionData: InteractionData, messageTypes?: string[], limit?: number): HistoryMessage[]{ // Grabs the latest message chain up until when no characters are present in this location for the latest message chain.
+export function getLatestLocalLocationMessageHistory(interactionData: InteractionData, messageTypes?: messageType[], limit?: number): HistoryMessage[]{ // Grabs the latest message chain up until when no characters are present in this location for the latest message chain.
 
 return filteredHistory;
 
@@ -201,7 +201,7 @@ return filteredHistory;
 export function getLocationMessageHistory(
     interactionData: InteractionData, 
     locationId: string, 
-    messageTypes?: string[], 
+    messageTypes?: messageType[], 
     limit?: number
 ): HistoryMessage[] {
     const messages = interactionData.interactionHistories?.[locationId] || [];

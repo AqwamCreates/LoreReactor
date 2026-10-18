@@ -1,6 +1,6 @@
 // frontend_src/utilities/messageLogic.ts
 import { deleteRawMessage, saveRawInteractionData, loadAllRawInteractionDataShells } from '../storages/serverStorage';
-import type { InteractionData, HistoryMessage, ChatMessage, Character } from '../types';
+import type { InteractionData, HistoryMessage, ChatMessage, Character, messageType } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { getGlobalMessageHistory } from './timelineLogic';
 
@@ -21,7 +21,7 @@ async function getParentMessageIds(chatId: string): Promise<Set<string>> {
  * Finds the most recent message where the character is currently present.
  * Returns both the message and the locationId it belongs to in a single pass.
  */
-export function findLatestMessage(interactionData: InteractionData, character: Character, messageTypes?: string[]): { message: HistoryMessage; locationId: string } | undefined {
+export function findLatestMessage(interactionData: InteractionData, character: Character, messageTypes?: messageType[]): { message: HistoryMessage; locationId: string } | undefined {
     let latestMessage: HistoryMessage | undefined = undefined;
     let latestLocationId: string | undefined = undefined;
 

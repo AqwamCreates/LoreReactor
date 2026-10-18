@@ -462,6 +462,8 @@ export interface ToolMessage extends BaseMessage { // Acts like a scratch pad fo
   frontCameraImage?: string;
 }
 
+export type messageType = 'interaction' | 'chat' | 'whisper' | 'tool'
+
 export type TextMessage = ChatMessage | WhisperMessage
 
 export type HistoryMessage = InteractionMessage | TextMessage | ToolMessage;
