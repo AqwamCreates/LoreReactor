@@ -46,8 +46,6 @@ export function useEntityModals(entityConfigurations: Record<entityType, EntityC
         if (!configuration) return;
         if (!configuration.deleteFunction) return;
 
-        if (!window.confirm(`Delete this ${configuration.entityLabel.toLowerCase()}?`)) return;
-
         const isSuccessful = await configuration.deleteFunction(identifier);
         if (isSuccessful) {
             addToast(`${configuration.entityLabel} deleted.`, 'info');
