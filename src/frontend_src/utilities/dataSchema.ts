@@ -271,7 +271,7 @@ ${characterToolsSchema}
     "randomizeTextCharacterInjection": "boolean (default false, master toggle for text character injection across all characters)",
     "randomizeTextCharacterInjectionOnRetry": "boolean (default true, only randomize if the initial generation fails. Only relevant when randomizeTextCharacterInjection is true)",
     "maximumNumberOfTextCharacterRandomizationPerModel": "number (≥1, default 1, number of retry attempts per model for text character randomization. Only relevant when randomizeTextCharacterInjection is true)",
-    "entityImageTypes": ["array of 'promptBlock' | 'context' | 'location' | 'character' (default all enabled). If an entity type is omitted, its images will not be injected into the prompt."],
+    "entityImageTypes": ["array of 'promptBlock' | 'context' | 'location' | 'character' (default all enabled). If an entity type is omitted from this array, its images will be strictly blocked from injection into the prompt."],
     "weatherApiKey": "string (OpenWeather API key, optional)",
     "useFrontCameraImage": "number (-1, 0, or 1, default 0). -1 = force off for all characters. 0 = per-character setting. 1 = force on for all characters. Replaces protagonist stored image with live front camera snapshot. Camera activates on first use and auto-closes after 10 minutes idle.",
     "numberOfMessagesToDisableThinkPrompt": "number (-1 or ≥0, default -1 defers to character)",
@@ -313,7 +313,6 @@ ${narrateTextCharacterIdsSchema}
 ${profileToolsSchema}
     },
     "inputStrategy": ["array of promptBlockType strings and/or custom prompt block UUIDs. Built-in types: ${defaultInputStrategy.join(', ')}. Custom prompt blocks are referenced by their UUID string."],
-    "entityImageTypes": ["array of 'promptBlock' | 'context' | 'location' | 'character' (default all enabled). If an entity type is omitted, its images will not be injected into the prompt."],
     "summarizationSteps": [{
       "strategyType": "'Sliding Window Replace' | 'Periodic Compression' | 'Recursive Summary' | 'Observation Masking' | 'Entropy Pruning'",
       "enabled": "boolean (default true)",
@@ -334,11 +333,11 @@ ${profileToolsSchema}
     }],
     "summarizationInstruction": "string (optional, custom instruction for the summarization model)",
     "autoResumeSignals": [{
-      "regularExpressionActivationTrigger": "string (optional regex)",
-      "regularExpressionDeactivationTrigger": "string (optional regex)",
-      "stopPattern": "string (appended to sampler stop patterns if activated)",
-      "minimumLength": "string (default '0', minimum characters after activation before deactivation)",
-      "maximumNumberOfAutoResumes": "number (default 10, 0 = disabled)"
+      "regularExpressionActivationTrigger": "string (optional regex, activates auto-resume if matched)",
+      "regularExpressionDeactivationTrigger": "string (optional regex, deactivates auto-resume if matched)",
+      "stopPattern": "string (appended to sampler stop patterns when activated)",
+      "minimumLength": "string (default '0', min characters after activation before deactivation can trigger)",
+      "maximumNumberOfAutoResumes": "number (default 10, max times to auto-resume, 0 = disabled)"
     }],
     "characterLanguageModelSampler": "object (Sampler, optional). Controls text generation parameters for characters.",
     "characterTextToSpeechModelSampler": "object (Sampler, optional). Controls voice generation parameters for characters.",

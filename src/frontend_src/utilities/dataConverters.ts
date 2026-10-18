@@ -625,7 +625,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
             stopPattern: (a.stopPattern as string) || '',
             minimumLength: (a.minimumLength as string) || '0',
             maximumNumberOfAutoResumes: (a.maximumNumberOfAutoResumes as number) ?? 10,
-        })) : [],
+        }) as AutoResumeSignal) : [],
         narrateTexts: {
             normal: (rawNarrateTexts.normal as boolean) ?? defaultNarrateTexts.normal,
             quote: (rawNarrateTexts.quote as boolean) ?? defaultNarrateTexts.quote,
