@@ -1052,40 +1052,93 @@ async function executeWeb(args: string): Promise<ToolResult> {
     }
 }
 
+// ─── Prompt Activation Filter ─────────────────────────────────────
+function isPromptActive(prompt: any, searchSpace: string): boolean {
+    const activation = prompt.regularExpressionActivationTriggers;
+    const deactivation = prompt.regularExpressionDeactivationTriggers;
+    const exclusionActivation = prompt.regularExpressionExclusionActivationTriggers;
+    const exclusionDeactivation = prompt.regularExpressionExclusionDeactivationTriggers;
+
+    // 1. Standard Activation
+    if (activation && activation.length > 0) {
+        const isActivated = activation.some((t: any) => {
+            if (!t.trigger) return true;
+            try { return new RegExp(t.trigger).test(searchSpace); } catch { return false; }
+        });
+        if (!isActivated) return false;
+    }
+
+    // 2. Standard Deactivation
+    if (deactivation && deactivation.length > 0) {
+        const isDeactivated = deactivation.some((t: any) => {
+            if (!t.trigger) return false;
+            try { return new RegExp(t.trigger).test(searchSpace); } catch { return false; }
+        });
+        if (isDeactivated) return false;
+    }
+
+    // 3. Exclusion Veto
+    if (exclusionActivation && exclusionActivation.length > 0) {
+        const isExclusionActivated = exclusionActivation.some((t: any) => {
+            if (!t.trigger) return false;
+            try { return new RegExp(t.trigger).test(searchSpace); } catch { return false; }
+        });
+        
+        if (isExclusionActivated) {
+            let isExclusionDeactivated = false;
+            if (exclusionDeactivation && exclusionDeactivation.length > 0) {
+                isExclusionDeactivated = exclusionDeactivation.some((t: any) => {
+                    if (!t.trigger) return false;
+                    try { return new RegExp(t.trigger).test(searchSpace); } catch { return false; }
+                });
+            }
+            if (!isExclusionDeactivated) return false;
+        }
+    }
+
+    return true;
+}
+
 // ─── Dialogue ──────────────────────────────────────────────────────
 async function executeDialogue(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
-    const dialoguePrompts = nextMessage.character.dialoguePrompts || [];
+    const allDialoguePrompts = nextMessage.character.dialoguePrompts || [];
 
     if (!action) {
         return helpResult('dialogue', 'action="list|recall", prompt_id="..."', 'manage dialogue prompts');
     }
 
+    // 1. Get filtered chat history for activation evaluation
+    const localHistory = getLocalMessageHistory(interactionData, nextMessage.character, ['chat', 'whisper']) as TextMessage[];
+    const filterFlags = getUniversalMessageFilterFlags(localHistory, context.allPromptBlocks || [], interactionData.contexts || [], interactionData.locations || []);
+    const textArray = localHistory.filter((_, i) => !filterFlags[i]).map(m => m.textContent);
+    const searchSpace = buildDialogueSearchSpace(textArray);
+
+    // 2. FILTER: Only keep prompts that are currently ACTIVATED by their regex triggers
+    const activeDialoguePrompts = allDialoguePrompts.filter(dp => isPromptActive(dp, searchSpace));
+
     if (action === 'list') {
-        const entries = dialoguePrompts.map(dp => `${dp.id} | ${dp.name}`);
-        return { toolType: 'dialogue', args, textContent: entries.join('\n') || 'No dialogue prompts', displayReplacement: `[💬 ${entries.length} prompt(s)]` };
+        const entries = activeDialoguePrompts.map(dp => `${dp.id} | ${dp.name}`);
+        return { toolType: 'dialogue', args, textContent: entries.join('\n') || 'No active dialogue prompts', displayReplacement: `[💬 ${entries.length} active prompt(s)]` };
     }
 
     if (action === 'recall') {
         const queryId = pArgs.get(1, 'prompt_id', 'id') || pArgs.positional.slice(1).join(' ');
-        const matched = dialoguePrompts.filter(dp => dp.id === queryId || dp.name?.toLowerCase() === queryId?.toLowerCase() || dp.id.startsWith(queryId || ""));
+        
+        // 3. Exact match ONLY within active prompts
+        const matched = activeDialoguePrompts.filter(dp => dp.id === queryId || dp.name?.toLowerCase() === queryId?.toLowerCase() || dp.id.startsWith(queryId || ""));
         
         if (matched.length > 0) {
-            // ✅ FIX: Apply Universal Regex Filters to Global History before searching
-            const localHistory = getLocalMessageHistory(interactionData, nextMessage.character, ['chat', 'whisper']) as TextMessage[]
-            const filterFlags = getUniversalMessageFilterFlags(localHistory, context.allPromptBlocks, interactionData.contexts, interactionData.locations);
-            const textArray = localHistory.filter((_, i) => !filterFlags[i]).map(m => m.textContent);
-            
-            const recalled = collectActiveDialoguePromptContent(matched, buildDialogueSearchSpace(textArray));
+            const recalled = collectActiveDialoguePromptContent(matched, searchSpace);
             return { toolType: 'dialogue', args, textContent: recalled.join('\n') || 'No active instructions', displayReplacement: `[💬 Recalled ${recalled.length} instruction(s)]` };
         }
 
-        // ✅ Semantic Search Fallback
+        // 4. Semantic Search Fallback (ALSO restricted to active prompts)
         if (nextMessage.character.useEmbeddingModelForDialoguePrompts && nextMessage.character.dialogueRetrievalConfiguration) {
             const queryVector = await embeddingEngine.embed(queryId);
             if (queryVector) {
-                const items: RetrievableItem[] = dialoguePrompts.map(dp => ({
+                const items: RetrievableItem[] = activeDialoguePrompts.map(dp => ({
                     id: dp.id, name: dp.name, textContent: dp.textContent, embedding: dp.embedding, firstCreatedTimestamp: dp.firstCreatedTimestamp
                 }));
                 const overrideConfig = { ...nextMessage.character.dialogueRetrievalConfiguration, topK: 3, tokenBudget: 512 };
@@ -1101,31 +1154,42 @@ async function executeDialogue(args: string, nextMessage: BaseMessage, interacti
             }
         }
 
-        return { toolType: 'dialogue', args, textContent: `No dialogue prompt matching "${queryId}".`, displayReplacement: '[💬 No match]' };
+        return { toolType: 'dialogue', args, textContent: `No active dialogue prompt matching "${queryId}".`, displayReplacement: '[💬 No match]' };
     }
 
     return { toolType: 'dialogue', args, textContent: `[Error: Unknown dialogue action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
 }
 
 // ─── Knowledge ──────────────────────────────────────────────────────
-async function executeKnowledge(args: string, nextMessage: BaseMessage): Promise<ToolResult> {
+async function executeKnowledge(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
-    const prompts = nextMessage.character.knowledgePrompts || [];
+    const allKnowledgePrompts = nextMessage.character.knowledgePrompts || [];
 
     if (!action) {
         return helpResult('knowledge', 'action="list|recall|fuzzy_recall", id="..."', 'inspect character knowledge base');
     }
 
+    // 1. Get filtered chat history for activation evaluation
+    const localHistory = getLocalMessageHistory(interactionData, nextMessage.character, ['chat', 'whisper']) as TextMessage[];
+    const filterFlags = getUniversalMessageFilterFlags(localHistory, context.allPromptBlocks || [], interactionData.contexts || [], interactionData.locations || []);
+    const textArray = localHistory.filter((_, i) => !filterFlags[i]).map(m => m.textContent);
+    const searchSpace = textArray.join('\n'); 
+
+    // 2. FILTER: Only keep prompts that are currently ACTIVATED
+    const activeKnowledgePrompts = allKnowledgePrompts.filter(kp => isPromptActive(kp, searchSpace));
+
     if (action === 'list') {
-        const entries = prompts.map(kp => `${kp.id} | ${kp.name}`);
-        return { toolType: 'knowledge', args, textContent: entries.join('\n') || 'No knowledge prompts', displayReplacement: `[🧠 ${entries.length} prompt(s)]` };
+        const entries = activeKnowledgePrompts.map(kp => `${kp.id} | ${kp.name}`);
+        return { toolType: 'knowledge', args, textContent: entries.join('\n') || 'No active knowledge prompts', displayReplacement: `[🧠 ${entries.length} active prompt(s)]` };
     }
 
     if (action === 'recall') {
         const queryId = pArgs.get(1, 'id', 'knowledge_id') || pArgs.positional.slice(1).join(' ');
-        const matched = prompts.filter(kp => kp.id === queryId || kp.name?.toLowerCase() === queryId?.toLowerCase() || kp.id.startsWith(queryId || ""));
-        if (matched.length === 0) return { toolType: 'knowledge', args, textContent: `No knowledge matching "${queryId}".`, displayReplacement: '[🧠 No match]' };
+        
+        // 3. Exact match ONLY within active prompts
+        const matched = activeKnowledgePrompts.filter(kp => kp.id === queryId || kp.name?.toLowerCase() === queryId?.toLowerCase() || kp.id.startsWith(queryId || ""));
+        if (matched.length === 0) return { toolType: 'knowledge', args, textContent: `No active knowledge matching "${queryId}".`, displayReplacement: '[🧠 No match]' };
         return { toolType: 'knowledge', args, textContent: matched.map(k => `[${k.name}]: ${k.textContent}`).join('\n'), displayReplacement: `[🧠 Recalled ${matched.length} entry(ies)]` };
     }
 
@@ -1142,7 +1206,8 @@ async function executeKnowledge(args: string, nextMessage: BaseMessage): Promise
             return { toolType: 'knowledge', args, textContent: 'Failed to generate embedding for fuzzy recall.', displayReplacement: '[🧠 Fuzzy Recall: Error]' };
         }
 
-        const items: RetrievableItem[] = prompts.map(kp => ({
+        // 4. Semantic Search restricted to ACTIVE prompts
+        const items: RetrievableItem[] = activeKnowledgePrompts.map(kp => ({
             id: kp.id,
             name: kp.name,
             textContent: kp.textContent,
@@ -1152,7 +1217,7 @@ async function executeKnowledge(args: string, nextMessage: BaseMessage): Promise
 
         const results = await retrieveRelevantContext(queryVector, searchString, items, nextMessage.character.knowledgeRetrievalConfiguration);
         if (results.length === 0) {
-            return { toolType: 'knowledge', args, textContent: `No knowledge semantically matched for "${searchString}".`, displayReplacement: '[🧠 Fuzzy Recall: No match]' };
+            return { toolType: 'knowledge', args, textContent: `No active knowledge semantically matched for "${searchString}".`, displayReplacement: '[🧠 Fuzzy Recall: No match]' };
         }
 
         return {
@@ -1192,7 +1257,7 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
                 if (found) return { toolType: 'memory', args, textContent: found.textContent, displayReplacement: `[🧠 Recalled "${found.name}"]` };
             }
 
-            // ✅ Semantic Search Fallback
+            // Semantic Search Fallback
             if (character.useEmbeddingModelForMemories && character.memoryRetrievalConfiguration) {
                 const queryVector = await embeddingEngine.embed(queryId);
                 if (queryVector) {
@@ -1231,14 +1296,13 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
         if (!character.memories) character.memories = {};
 
         for (const o of others) {
-            // ✅ FIX: Initialize array if it doesn't exist, PUSH instead of overwrite, remove interactionData to prevent crashes
             if (!character.memories[o.id]) character.memories[o.id] = [];
-            character.memories[o.id].push({ 
-                id: uuidv4(), 
-                name: `Memory with ${o.name}`, 
-                textContent: summary, 
-                firstCreatedTimestamp: ts, 
-                lastUpdatedTimestamp: ts 
+            character.memories[o.id].push({
+                id: uuidv4(),
+                name: `Memory with ${o.name}`,
+                textContent: summary,
+                firstCreatedTimestamp: ts,
+                lastUpdatedTimestamp: ts
             });
         }
 

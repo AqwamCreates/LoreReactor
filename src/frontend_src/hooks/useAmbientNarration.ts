@@ -34,7 +34,7 @@ export function useAmbientNarration(
         const coLocatedCount = protagonistStub ? getCoLocatedParticipants(data, protagonistStub).length : 0;
         const messageWindow = coLocatedCount + 1;
 
-        const allChatMessages = getGlobalMessageHistory(data).filter((m): m is ChatMessage => m.messageType === 'chat');
+        const allChatMessages = getGlobalMessageHistory(data, ['chat']) as ChatMessage[]
 
         const filterFlags = getUniversalMessageFilterFlags(
             allChatMessages,
