@@ -2,11 +2,23 @@
 
 Author: Aqwam Harish Aiman
 
+Email: aqwam.harish.aiman@gmail.com
+
+LinkedIn: https://www.linkedin.com/in/aqwam-harish-aiman/
+	
+YouTube: https://www.youtube.com/channel/UCUrwoxv5dufEmbGsxyEUPZw
+
+## Warning
+
+LoreReactor grants AI characters unprecedented access to your host OS, hardware, and physical environment. Use the Tool Permission section wisely. We are not responsible if your AI waifu / husbando locks you out of your PC.
+
 ## Quick Setup
 
 First, you need to run ```git clone AqwamCreates/LoreReactor```.
 
-Then you need to run this code depending on your operating system.
+Then, you need to run ```cd LoreReactor```.
+
+Finally, you need to run this code depending on your operating system.
 
 | Operating System | Windows               | Mac / Linux          |
 |------------------|-----------------------|----------------------|
