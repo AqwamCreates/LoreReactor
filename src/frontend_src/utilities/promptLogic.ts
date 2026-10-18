@@ -1306,8 +1306,8 @@ function buildPromptContext(
     interactionData: InteractionData,
     character: Character,
     knownNames: Record<string, Record<string, boolean>>,
-    modelId: string,
     allPromptBlocks: PromptBlock[],
+    modelId: string,
     existingCharacterText: string,
     delimiters: PromptDelimiters,
 ): PromptBuildContext {
@@ -2285,7 +2285,7 @@ export async function buildPrompt(
     const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
 
     const delimiters = deriveDelimiters(resolvedChatTemplate);
-    const ctx = buildPromptContext(interactionData, character, knownNames, modelId, allPromptBlocks, existingCharacterText, delimiters);
+    const ctx = buildPromptContext(interactionData, character, knownNames, allPromptBlocks, modelId, existingCharacterText, delimiters);
 
     const profile = ctx.profile;
     const inputStrategy = profile?.inputStrategy ?? defaultInputStrategy;
@@ -2301,7 +2301,8 @@ export async function buildPrompt(
         try {
             const summary = await generateLocationVisitSummary(
                 interactionData, 
-                character, 
+                character,
+                allPromptBlocks,
                 modelId, 
                 segment.locationId, 
                 segment.nextLocationId, 

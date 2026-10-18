@@ -208,6 +208,7 @@ export async function generateCharacterMemory(
 export async function generateMissingSummaries(
     interactionData: InteractionData,
     character: Character,
+    promptBlocks: PromptBlock[],
     windowSize: number,
     modelId: string,
     maxTokens = 256,
@@ -219,7 +220,7 @@ export async function generateMissingSummaries(
 
     const filterFlags = getUniversalMessageFilterFlags(
         chatMessages,
-        [],
+        promptBlocks,
         interactionData.contexts || [],
         interactionData.locations || [],
     );
@@ -284,6 +285,7 @@ async function compressChunk(
 export async function generateLocationVisitSummary(
     interactionData: InteractionData,
     character: Character,
+    promptBlocks: PromptBlock[],
     modelId: string,
     locationId: string,
     nextLocationId: string | undefined,
@@ -401,6 +403,7 @@ export async function generateLocationVisitSummary(
 export async function generatePeriodicCompression(
     interactionData: InteractionData,
     character: Character,
+    promptBlocks: PromptBlock[],
     periodicCompressionInterval: number,
     periodicCompressionChunkSize: number,
     maxTokens = 512,
@@ -424,7 +427,7 @@ export async function generatePeriodicCompression(
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
     const filterFlags = getUniversalMessageFilterFlags(
         chatMessages,
-        [],
+        promptBlocks,
         interactionData.contexts || [],
         interactionData.locations || [],
     );
@@ -499,6 +502,7 @@ async function mergeSummaries(
 export async function generateRecursiveSummary(
     interactionData: InteractionData,
     character: Character,
+    promptBlocks: PromptBlock[],
     chunkSize: number,
     maxDepth: number,
     maxTokens = 1024,
@@ -514,9 +518,9 @@ export async function generateRecursiveSummary(
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
     const filterFlags = getUniversalMessageFilterFlags(
         chatMessages,
-        [],
-        interactionData.contexts || [],
-        interactionData.locations || [],
+        promptBlocks,
+        interactionData.contexts,
+        interactionData.locations,
     );
     const visibleMessages: HistoryMessage[] = chatMessages.filter((_, i) => !filterFlags[i]);
 
@@ -625,6 +629,7 @@ export async function generateRecursiveSummary(
 export async function generateEntropyPruningSummaries(
     interactionData: InteractionData,
     character: Character,
+    promptBlocks: PromptBlock[],
     modelId: string,
     maxTokens = 256,
     entropyPruningChunkSize = 3,

@@ -566,6 +566,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 runSummarization({
                     data: ud,
                     character: respondingChar,
+                    promptBlocks: allPromptBlocksRef.current,
                     setInteractionData,
                     addToast,
                 });

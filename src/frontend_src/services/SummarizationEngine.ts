@@ -1,5 +1,5 @@
 // src/frontend_src/services/SummarizationEngine.ts
-import type { InteractionData, ChatMessage, Character } from '../types';
+import type { InteractionData, ChatMessage, Character, PromptBlock, TextMessage } from '../types';
 import { 
     checkTriggerThreshold, 
     generateMissingSummaries, 
@@ -13,24 +13,21 @@ import { getLocalMessageHistory } from '../utilities/timelineLogic';
 interface RunSummarizationOptions {
     data: InteractionData;
     character: Character; // ADDED: Scope to character perspective
+    promptBlocks: PromptBlock[],
     setInteractionData: (data: InteractionData) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
-export async function runSummarization({ data, character, setInteractionData, addToast }: RunSummarizationOptions): Promise<void> {
+export async function runSummarization({ data, character, promptBlocks, setInteractionData, addToast }: RunSummarizationOptions): Promise<void> {
     const engine = getLanguageModelEngine();
     const activeModel = engine.getContext();
     const contextLength = activeModel?.contextLength ?? 4096;
     const modelId = activeModel?.id ?? 'default';
     
     // STRICTLY USE LOCAL HISTORY FOR CHARACTER PERSPECTIVE TOKEN COUNTING
-    const history = getLocalMessageHistory(data, character);
+    const history = getLocalMessageHistory(data, character, ['chat', 'whisper']) as TextMessage[];
     let currentTokens = 0;
-    for (const m of history) {
-        if (m.messageType === 'chat') {
-            currentTokens += await engine.countTokens((m as ChatMessage).textContent);
-        }
-    }
+    for (const m of history) currentTokens += await engine.countTokens(m.textContent);
 
     const triggeredSteps = checkTriggerThreshold(data, currentTokens, contextLength);
     if (triggeredSteps.length === 0) return;
@@ -44,7 +41,7 @@ export async function runSummarization({ data, character, setInteractionData, ad
         let nc = 0;
 
         if (step.strategyType === 'Sliding Window Replace' && step.slidingWindowSize) {
-            const summaries = await generateMissingSummaries(updated, character, step.slidingWindowSize, modelId, 256);
+            const summaries = await generateMissingSummaries(updated, character, promptBlocks, step.slidingWindowSize, modelId, 256);
             if (summaries.size > 0) {
                 const newHistories = { ...updated.interactionHistories };
                 for (const [locId, msgs] of Object.entries(newHistories)) {
@@ -66,20 +63,20 @@ export async function runSummarization({ data, character, setInteractionData, ad
                 ns = summaries.size;
             }
         } else if (step.strategyType === 'Periodic Compression' && step.periodicCompressionInterval && step.periodicCompressionChunkSize) {
-            const newContexts = await generatePeriodicCompression(updated, character, step.periodicCompressionInterval, step.periodicCompressionChunkSize, 512);
+            const newContexts = await generatePeriodicCompression(updated, character, promptBlocks, step.periodicCompressionInterval, step.periodicCompressionChunkSize, 512);
             if (newContexts.length > 0) {
                 updated = { ...updated, contexts: [...(updated.contexts || []), ...newContexts], lastUpdatedTimestamp: Date.now() };
                 nc = newContexts.length;
             }
         } else if (step.strategyType === 'Recursive Summary' && step.recursiveSummaryChunkSize && step.recursiveSummaryMaximumDepth) {
-            const newContexts = await generateRecursiveSummary(updated, character, step.recursiveSummaryChunkSize, step.recursiveSummaryMaximumDepth, 1024);
+            const newContexts = await generateRecursiveSummary(updated, character, promptBlocks, step.recursiveSummaryChunkSize, step.recursiveSummaryMaximumDepth, 1024);
             if (newContexts.length > 0) {
                 updated = { ...updated, contexts: [...(updated.contexts || []), ...newContexts], lastUpdatedTimestamp: Date.now() };
                 nc = newContexts.length;
             }
         } else if (step.strategyType === 'Entropy Pruning') {
             const summaries = await generateEntropyPruningSummaries(
-                updated, character, modelId, 256,
+                updated, character, promptBlocks, modelId, 256,
                 step.entropyPruningChunkSize, step.entropyPruningThreshold, step.entropyPruningTokenBudget
             );
             if (summaries.size > 0) {

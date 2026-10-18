@@ -1,7 +1,7 @@
 // src/frontend_src/components/AIRecommendationModal.tsx
 import type React from 'react';
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World, PromptBlock, EntityFolder } from '../types';
+import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World, PromptBlock, EntityFolder, entityImageType } from '../types';
 import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
 import { EntitySelectList } from './EntitySelectList';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -128,6 +128,12 @@ export function AIRecommendationModal({
     const injectContextImages = imageInjectionPriority.includes('context');
     const injectLocationImages = imageInjectionPriority.includes('location');
     const injectPromptBlockImages = imageInjectionPriority.includes('promptBlock');
+
+    const derivedEntityImageTypes: entityImageType[] = [];
+    if (injectCharacterImages) derivedEntityImageTypes.push('character');
+    if (injectContextImages) derivedEntityImageTypes.push('context');
+    if (injectLocationImages) derivedEntityImageTypes.push('location');
+    if (injectPromptBlockImages) derivedEntityImageTypes.push('promptBlock');
 
     const resetForm = useCallback(() => {
         setError(null); setUserPrompt(''); setMaxTokens(2048);
@@ -360,9 +366,7 @@ export function AIRecommendationModal({
                 }
             }
             if (parsedOutput.profile) {
-                let profileToSave = parsedOutput.profile;
-                if (!injectCharacterImages) profileToSave = { ...profileToSave, forceNoCharacterImageInjection: true };
-                if (!injectContextImages) profileToSave = { ...profileToSave, forceNoContextImageInjection: true };
+                const profileToSave = { ...parsedOutput.profile, entityImageTypes: derivedEntityImageTypes };
                 if (!await onSaveProfile(profileToSave)) throw new Error(`Failed to save profile "${profileToSave.name}".`);
             }
             if (parsedOutput.world) {
@@ -375,8 +379,7 @@ export function AIRecommendationModal({
                     : resolved.promptBlocks;
                 let profileToSave = resolved.profile;
                 if (profileToSave) {
-                    if (!injectCharacterImages) profileToSave = { ...profileToSave, forceNoCharacterImageInjection: true };
-                    if (!injectContextImages) profileToSave = { ...profileToSave, forceNoContextImageInjection: true };
+                    profileToSave = { ...profileToSave, entityImageTypes: derivedEntityImageTypes };
                 }
                 for (const ch of charsToSave) if (!await onSaveCharacter(ch)) throw new Error(`Failed to save "${ch.name}".`);
                 for (const cx of resolved.contexts) if (!await onSaveContext(cx)) throw new Error(`Failed to save "${cx.name}".`);
