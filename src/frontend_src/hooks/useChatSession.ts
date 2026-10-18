@@ -572,7 +572,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             } else {
                 const enableAmbientNarration = ud?.profile?.enableAmbientNarration ?? false;
                 if (enableAmbientNarration) {
-                    const ad = await generateAmbientNarration(ud, ctrl.signal, protagonistId);
+                    const ad = await generateAmbientNarration(ud, ctrl.signal, allPromptBlocksRef.current, protagonistId);
                     const sd = ad || ud;
                     setInteractionData(sd);
                     broadcastNewMessages(preTurnCount, sd);

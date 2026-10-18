@@ -1,6 +1,6 @@
 // src/frontend_src/hooks/useAmbientNarration.ts
 import { useCallback } from 'react';
-import type { Character, InteractionData, ChatMessage } from '../types';
+import type { Character, InteractionData, ChatMessage, PromptBlock } from '../types';
 import { createChatMessage, addMessageToInteractionData } from '../utilities/interactionDataLogic';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
@@ -23,6 +23,7 @@ export function useAmbientNarration(
     const generateAmbientNarration = useCallback(async (
         data: InteractionData, 
         signal: AbortSignal,
+        promptBlocks: PromptBlock[],
         localProtagonistId?: string | null
     ): Promise<InteractionData | null> => {
         // ✅ Use the explicitly passed ID, or fallback to the first protagonistId in the session
@@ -38,7 +39,7 @@ export function useAmbientNarration(
 
         const filterFlags = getUniversalMessageFilterFlags(
             allChatMessages,
-            [],
+            promptBlocks,
             data.contexts || [],
             data.locations || [],
         );
