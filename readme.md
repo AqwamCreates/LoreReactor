@@ -1,6 +1,4 @@
-# Lore Reactor
-
-> The familiarity of ChatGPT-style chat. The depth of a SillyTavern UI. The customization of Oogabooga way.
+# LoreReactor: Let The AIs Control Your World!
 
 Author: Aqwam Harish Aiman
 
