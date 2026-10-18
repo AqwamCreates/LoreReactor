@@ -10,7 +10,7 @@ YouTube: https://www.youtube.com/channel/UCUrwoxv5dufEmbGsxyEUPZw
 
 ## Warning
 
-LoreReactor grants AI characters unprecedented access to your host OS, hardware, and physical environment. Use the Tool Permission Matrix wisely. We are not responsible if your AI waifu locks you out of your PC.
+LoreReactor grants AI characters unprecedented access to your host OS, hardware, and physical environment. Use the Tool Permission section wisely. We are not responsible if your AI waifu / husbando locks you out of your PC.
 
 ## Quick Setup
 
