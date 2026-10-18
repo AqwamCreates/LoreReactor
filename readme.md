@@ -16,7 +16,9 @@ LoreReactor grants AI characters unprecedented access to your host OS, hardware,
 
 First, you need to run ```git clone AqwamCreates/LoreReactor```.
 
-Then you need to run this code depending on your operating system.
+Then, you need to run ```cd LoreReactor```.
+
+Finally, you need to run this code depending on your operating system.
 
 | Operating System | Windows               | Mac / Linux          |
 |------------------|-----------------------|----------------------|
