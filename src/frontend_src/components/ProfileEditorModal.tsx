@@ -1,6 +1,6 @@
 // src/frontend_src/components/ProfileEditorModal.tsx
 import { useState, useMemo, useCallback, type CSSProperties } from 'react';
-import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal, deviceType, Character, RetrievalConfiguration } from '../types';
+import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal, deviceType, Character, RetrievalConfiguration, entityImageType } from '../types';
 import { SliderInput } from './SliderInput';
 import { EntitySelect } from './EntitySelect';
 import '../main.css';
@@ -57,6 +57,13 @@ const TOOL_USAGE_DISPLAY_PLACEMENT_MODES: { value: toolUsageDisplayPlacementMode
     { value: 'after sentence', label: 'After Sentence', description: 'Place tool usage after the sentence it appears in.' },
     { value: 'after paragraph', label: 'After Paragraph', description: 'Place tool usage after the paragraph it appears in.' },
     { value: 'bottom', label: 'Bottom', description: 'Place tool usage at the very bottom of the message.' },
+];
+
+const ALL_ENTITY_IMAGE_TYPES: { value: entityImageType; label: string; hint: string }[] = [
+    { value: 'promptBlock', label: 'Prompt Block Images', hint: 'Inject images attached to active custom prompt blocks.' },
+    { value: 'context', label: 'Context Images', hint: 'Inject images attached to active contexts.' },
+    { value: 'location', label: 'Location Images', hint: 'Inject images attached to the current location.' },
+    { value: 'character', label: 'Character Images', hint: 'Inject current character and co-located participants appearance.' },
 ];
 
 // ─── Helpers & Constants ────────────────────────────────────────────
@@ -253,13 +260,11 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const [randomizeTextCharacterInjection, setRandomizeTextCharacterInjection] = useState<boolean>(ep?.randomizeTextCharacterInjection ?? false);
     const [randomizeTextCharacterInjectionOnRetry, setRandomizeTextCharacterInjectionOnRetry] = useState<boolean>(ep?.randomizeTextCharacterInjectionOnRetry ?? true);
     const [maximumNumberOfTextCharacterRandomizationPerModel, setMaximumNumberOfTextCharacterRandomizationPerModel] = useState<number>(ep?.maximumNumberOfTextCharacterRandomizationPerModel ?? 1);
-    const [forceNoCharacterImageInjection, setForceNoCharacterImageInjection] = useState(ep?.forceNoCharacterImageInjection ?? false);
+    const [entityImageTypes, setEntityImageTypes] = useState<entityImageType[]>(ep?.entityImageTypes ?? ['character', 'promptBlock', 'context', 'location']);
     const [numberOfMessagesToDisableThinkPrompt, setNumberOfMessagesToDisableThinkPrompt] = useState<number>(ep?.numberOfMessagesToDisableThinkPrompt ?? -1);
     const [numberOfMessagesToDisableMetaThinkInstructions, setNumberOfMessagesToDisableMetaThinkInstructions] = useState<number>(ep?.numberOfMessagesToDisableMetaThinkInstructions ?? -1);
     const [numberOfMessagesToDisableDialoguePrompt, setNumberOfMessagesToDisableDialoguePrompt] = useState<number>(ep?.numberOfMessagesToDisableDialoguePrompt ?? -1);
     const [numberOfMessagesToDisableStarterPrompt, setNumberOfMessagesToDisableStarterPrompt] = useState<number>(ep?.numberOfMessagesToDisableStarterPrompt ?? -1);
-    const [forceNoContextImageInjection, setForceNoContextImageInjection] = useState(ep?.forceNoContextImageInjection ?? false);
-    const [forceNoLocationImageInjection, setForceNoLocationImageInjection] = useState(ep?.forceNoLocationImageInjection ?? false);
     const [weatherApiKey, setWeatherApiKey] = useState(ep?.weatherApiKey ?? '');
     const [useFrontCameraImage, setUseFrontCameraImage] = useState<tristateInteger>((ep?.useFrontCameraImage ?? 0) as tristateInteger);
     const [forceEqualInitiative, setForceEqualInitiative] = useState(ep?.forceEqualInitiative ?? false);
@@ -284,7 +289,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const [embeddingDeviceType, setEmbeddingDeviceType] = useState<deviceType>(ep?.embeddingDeviceType ?? 'auto');
     const [tools, setTools] = useState<Record<tool, tristateInteger>>(mergeToolsWithDefaults(ep?.tools));
     const [toolSearchQuery, setToolSearchQuery] = useState('');
-    const [narrateTexts, setNarrateTexts] = useState<Record<textType, boolean>>({ ...defaultNarrateTexts });
+    const [narrateTexts, setNarrateTexts] = useState<Record<textType, boolean>>(ep?.narrateTexts ? { ...ep.narrateTexts } : { ...defaultNarrateTexts });
     const [narrateTextCharacterIds, setNarrateTextCharacterIds] = useState<Record<textType, string>>(ep?.narrateTextCharacterIds ?? ({} as Record<textType, string>));
     const [inputStrategy, setInputStrategy] = useState<(promptBlockType | string)[]>(ep?.inputStrategy?.length ? ep.inputStrategy : [...defaultInputStrategy]);
     const [summarizationSteps, setSummarizationSteps] = useState<SummarizationStep[]>(ep?.summarizationSteps != null ? [...ep.summarizationSteps].sort((a, b) => a.order - b.order) : getDefaultSummarizationSteps());
@@ -331,6 +336,21 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
         });
     }, []);
     const handleRemoveAutoResumeSignal = useCallback((index: number) => { setAutoResumeSignals(prev => prev.filter((_, i) => i !== index)); if (expandedSignalIndex === index) setExpandedSignalIndex(null); }, [expandedSignalIndex]);
+    
+    const addImageType = useCallback((type: entityImageType) => {
+        if (!entityImageTypes.includes(type)) setEntityImageTypes(prev => [...prev, type]);
+    }, [entityImageTypes]);
+    const removeImageType = useCallback((index: number) => {
+        setEntityImageTypes(prev => prev.filter((_, i) => i !== index));
+    }, []);
+    const moveImageType = useCallback((index: number, direction: -1 | 1) => {
+        const newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= entityImageTypes.length) return;
+        const newOrder = [...entityImageTypes];
+        [newOrder[index], newOrder[newIndex]] = [newOrder[newIndex], newOrder[index]];
+        setEntityImageTypes(newOrder);
+    }, [entityImageTypes]);
+
     const validate = (): boolean => { const newErrors: { name?: string } = {}; if (!name) newErrors.name = 'Name is required.'; setErrors(newErrors); return Object.keys(newErrors).length === 0; };
     
     const buildProfile = (id: string, profileName: string): Profile => {
@@ -339,7 +359,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
         const getStopPattern = (spId: string) => allStopPatterns.find(sp => sp.id === spId);
         const getRetrievalConfiguration = (rcId: string) => allRetrievalConfigurations.find(rc => rc.id === rcId);
         return {
-            id, name: profileName, description: description || undefined, autonomousMode, autonomousInteractionIntervalMs, enableAutoSpeechDetection, speechVolumeActivationThreshold, speechSilenceVolumeActivationThreshold, speechSilenceThresholdMs, voiceActivityProbabilityThreshold, forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, toolUsageDisplayPlacementMode, enableCharacterExpression, randomizeTextCharacterInjection, randomizeTextCharacterInjectionOnRetry, maximumNumberOfTextCharacterRandomizationPerModel, forceNoCharacterImageInjection, forceNoContextImageInjection, forceNoLocationImageInjection, numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt, numberOfMessagesToDisableStarterPrompt, weatherApiKey, useFrontCameraImage, forceEqualInitiative, chatProbability, maximumChatStamina, chatStaminaRegenerationRate, nameSensitivity, skipProbability, chatImpatienceSensitivity, memoryRetentionWeight, contextSensitivity, maximumActionStamina, actionStaminaRegenerationRate, cacheEfficiencyLevels: { ...cacheEfficiencyLevels }, minimalVolatileCacheMode, doNotInjectDefaultStopTokens, enableSpeculativeMarkov, sentimentalAnalysisDeviceType, textToSpeechDeviceType, speechToTextDeviceType, voiceActivityDetectionDeviceType, embeddingDeviceType, volume, stripThinkTokens, tools: { ...tools }, narrateTexts: { ...narrateTexts }, narrateTextCharacterIds: { ...narrateTextCharacterIds }, inputStrategy: [...inputStrategy], summarizationSteps: summarizationSteps.map((s, i) => ({ ...s, id: s.id || `step-${uuidv4()}`, order: i, firstCreatedTimestamp: s.firstCreatedTimestamp || now, lastUpdatedTimestamp: now })), summarizationInstruction: summarizationInstruction || undefined, autoResumeSignals: [...autoResumeSignals], characterLanguageModelSampler: getSampler(characterLanguageModelSamplerId), characterTextToSpeechModelSampler: getSampler(characterTextToSpeechModelSamplerId), webSummarizationSampler: getSampler(webSummarizationSamplerId), interactionDataSummarizationSampler: getSampler(interactionDataSummarizationSamplerId), aiRecommendationSampler: getSampler(aiRecommendationSamplerId), characterStopPattern: getStopPattern(characterStopPatternId), webSummarizationStopPattern: getStopPattern(webSummarizationStopPatternId), interactionDataSummarizationStopPattern: getStopPattern(interactionDataSummarizationStopPatternId), aiRecommendationStopPattern: getStopPattern(aiRecommendationStopPatternId), characterDialogueRetrievalConfiguration: getRetrievalConfiguration(dialogueRetrievalConfigurationId), characterStarterPromptRetrievalConfiguration: getRetrievalConfiguration(starterPromptRetrievalConfigurationId), characterKnowledgeRetrievalConfiguration: getRetrievalConfiguration(knowledgeRetrievalConfigurationId), characterMemoryRetrievalConfiguration: getRetrievalConfiguration(memoryRetrievalConfigurationId), firstCreatedTimestamp: ep?.firstCreatedTimestamp || now, lastUpdatedTimestamp: now,
+            id, name: profileName, description: description || undefined, autonomousMode, autonomousInteractionIntervalMs, enableAutoSpeechDetection, speechVolumeActivationThreshold, speechSilenceVolumeActivationThreshold, speechSilenceThresholdMs, voiceActivityProbabilityThreshold, forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, toolUsageDisplayPlacementMode, enableCharacterExpression, randomizeTextCharacterInjection, randomizeTextCharacterInjectionOnRetry, maximumNumberOfTextCharacterRandomizationPerModel, entityImageTypes: [...entityImageTypes], numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt, numberOfMessagesToDisableStarterPrompt, weatherApiKey, useFrontCameraImage, forceEqualInitiative, chatProbability, maximumChatStamina, chatStaminaRegenerationRate, nameSensitivity, skipProbability, chatImpatienceSensitivity, memoryRetentionWeight, contextSensitivity, maximumActionStamina, actionStaminaRegenerationRate, cacheEfficiencyLevels: { ...cacheEfficiencyLevels }, minimalVolatileCacheMode, doNotInjectDefaultStopTokens, enableSpeculativeMarkov, sentimentalAnalysisDeviceType, textToSpeechDeviceType, speechToTextDeviceType, voiceActivityDetectionDeviceType, embeddingDeviceType, volume, stripThinkTokens, tools: { ...tools }, narrateTexts: { ...narrateTexts }, narrateTextCharacterIds: { ...narrateTextCharacterIds }, inputStrategy: [...inputStrategy], summarizationSteps: summarizationSteps.map((s, i) => ({ ...s, id: s.id || `step-${uuidv4()}`, order: i, firstCreatedTimestamp: s.firstCreatedTimestamp || now, lastUpdatedTimestamp: now })), summarizationInstruction: summarizationInstruction || undefined, autoResumeSignals: [...autoResumeSignals], characterLanguageModelSampler: getSampler(characterLanguageModelSamplerId), characterTextToSpeechModelSampler: getSampler(characterTextToSpeechModelSamplerId), webSummarizationSampler: getSampler(webSummarizationSamplerId), interactionDataSummarizationSampler: getSampler(interactionDataSummarizationSamplerId), aiRecommendationSampler: getSampler(aiRecommendationSamplerId), characterStopPattern: getStopPattern(characterStopPatternId), webSummarizationStopPattern: getStopPattern(webSummarizationStopPatternId), interactionDataSummarizationStopPattern: getStopPattern(interactionDataSummarizationStopPatternId), aiRecommendationStopPattern: getStopPattern(aiRecommendationStopPatternId), characterDialogueRetrievalConfiguration: getRetrievalConfiguration(dialogueRetrievalConfigurationId), characterStarterPromptRetrievalConfiguration: getRetrievalConfiguration(starterPromptRetrievalConfigurationId), characterKnowledgeRetrievalConfiguration: getRetrievalConfiguration(knowledgeRetrievalConfigurationId), characterMemoryRetrievalConfiguration: getRetrievalConfiguration(memoryRetrievalConfigurationId), firstCreatedTimestamp: ep?.firstCreatedTimestamp || now, lastUpdatedTimestamp: now,
         };
     };
 
@@ -570,10 +590,37 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                             </div>
 
                             <div className="editor-section">
-                                <span className="editor-section-title">Image Injection</span>
-                                <ProfileCheckbox checked={forceNoCharacterImageInjection} onChange={setForceNoCharacterImageInjection} label="Force No Character Image Injection" hint="Prevent character images from being sent to the model, even if the character has one assigned." />
-                                <ProfileCheckbox checked={forceNoContextImageInjection} onChange={setForceNoContextImageInjection} label="Force No Context Image Injection" hint="Prevent context images from being sent to the model." spaced />
-                                <ProfileCheckbox checked={forceNoLocationImageInjection} onChange={setForceNoLocationImageInjection} label="Force No Location Image Injection" hint="Prevent location images from being sent to the model." spaced />
+                                <div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>Image Injection Order</span></div>
+                                <div style={CHECKBOX_HINT_STYLE}>Controls which entity images are sent to the model and their injection priority order. The top-to-bottom order determines the visual primacy and ID assignment.</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    {entityImageTypes.map((type, index) => {
+                                        const config = ALL_ENTITY_IMAGE_TYPES.find(c => c.value === type);
+                                        return (
+                                            <div key={type} className="sampler-param-row" style={{ padding: '6px 8px' }}>
+                                                <div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div>
+                                                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                                                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{index + 1}. {config?.label || type}</span>
+                                                    <span style={{ fontSize: '0.6rem', opacity: 0.6 }}>{config?.hint}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}>
+                                                    <button type="button" onClick={() => moveImageType(index, -1)} disabled={index === 0} className="toolbar-button" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button>
+                                                    <button type="button" onClick={() => moveImageType(index, 1)} disabled={index === entityImageTypes.length - 1} className="toolbar-button" title="Move down" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === entityImageTypes.length - 1 ? 0.3 : 1 }}>▼</button>
+                                                    <button type="button" onClick={() => removeImageType(index)} className="toolbar-button" title="Remove" style={TOOLBAR_BTN_DELETE_STYLE}>×</button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {entityImageTypes.length < ALL_ENTITY_IMAGE_TYPES.length && (
+                                    <div style={{ marginTop: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                        <select onChange={(e) => { const val = e.target.value as entityImageType; if (val) addImageType(val); e.target.value = ''; }} className="editor-select" defaultValue="" style={{ flex: 1 }}>
+                                            <option value="" disabled>+ Add image type</option>
+                                            {ALL_ENTITY_IMAGE_TYPES.filter(c => !entityImageTypes.includes(c.value)).map(c => (
+                                                <option key={c.value} value={c.value}>{c.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="editor-section">
