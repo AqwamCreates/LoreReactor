@@ -265,39 +265,32 @@ function appendPendingAction(nextMessage: BaseMessage, action: PendingToolAction
 }
 
 // ─── Entity Resolution Helpers ──────────────────────────────────────
-function getSessionCharacters(interactionData: InteractionData | null): Character[] {
-    return interactionData?.participants || [];
-}
 
-function getGlobalCharacters(interactionData: InteractionData | null, allCharacters: Character[] = []): Character[] {
+function getGlobalCharacters(interactionData: InteractionData, allCharacters: Character[] = []): Character[] {
     const participantIds = new Set((interactionData?.participants || []).map(p => p.id));
     return allCharacters.filter(c => !participantIds.has(c.id));
 }
 
-function getSessionLocations(interactionData: InteractionData | null): Location[] {
-    return interactionData?.locations || [];
-}
-
-function resolveCharacter(idOrName: string, interactionData: InteractionData | null, allCharacters: Character[] = []): Character | undefined {
+function resolveCharacter(idOrName: string, interactionData: InteractionData, allCharacters: Character[] = []): Character | undefined {
     let query = idOrName.toLowerCase();
     if (!query) return undefined;
     if ((query.startsWith('"') && query.endsWith('"')) || (query.startsWith("'") && query.endsWith("'"))) {
         query = query.slice(1, -1).toLowerCase();
     }
-    const participants = getSessionCharacters(interactionData);
+    const participants = interactionData.participants
     let found = participants.find(c => c.id.toLowerCase() === query || c.name.toLowerCase() === query || c.id.startsWith(query));
     if (found) return found;
     found = allCharacters.find(c => c.id.toLowerCase() === query || c.name.toLowerCase() === query || c.id.startsWith(query));
     return found;
 }
 
-function resolveLocation(idOrName: string, interactionData: InteractionData | null): Location | undefined {
+function resolveLocation(idOrName: string, interactionData: InteractionData): Location | undefined {
     let query = idOrName.toLowerCase();
     if (!query) return undefined;
     if ((query.startsWith('"') && query.endsWith('"')) || (query.startsWith("'") && query.endsWith("'"))) {
         query = query.slice(1, -1).toLowerCase();
     }
-    const sessionLocs = getSessionLocations(interactionData);
+    const sessionLocs = interactionData.locations;
     return sessionLocs.find(l => l.id.toLowerCase() === query || l.name.toLowerCase() === query || l.id.startsWith(query));
 }
 
@@ -1196,7 +1189,7 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
     }
     
     if (action === 'save') {
-        const others = getSessionCharacters(interactionData).filter(p => p.id !== character.id);
+        const others = interactionData.participants.filter(p => p.id !== character.id);
         const summary = await generateCharacterMemory(interactionData, character, '', 512);
         if (!summary) return { toolType: 'memory', args, textContent: '[Error: Failed to summarize memory]', displayReplacement: '[Error: Memory error]' };
         const ts = Date.now();
@@ -1569,7 +1562,7 @@ function executeKey(args: string, nextMessage: BaseMessage, interactionData: Int
     if (!targetLoc) return { toolType: 'key', args, textContent: `[Error: Location "${locQuery}" not found]`, displayReplacement: '[Error: Location not found]' };
     const targetChar = charQuery ? resolveCharacter(charQuery, interactionData, context.allCharacters || []) : undefined;
     const locked = nextMessage.characterLockedLocations ? { ...nextMessage.characterLockedLocations } : {};
-    const charIds = targetChar ? [targetChar.id] : getSessionCharacters(interactionData).map(p => p.id);
+    const charIds = targetChar ? [targetChar.id] : interactionData.participants.map(p => p.id);
     if (action === 'lock') {
         const existing = locked[targetLoc.id] ? [...locked[targetLoc.id]] : [];
         for (const cid of charIds) if (!existing.includes(cid)) existing.push(cid);
