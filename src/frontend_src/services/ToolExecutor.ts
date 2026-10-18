@@ -266,11 +266,6 @@ function appendPendingAction(nextMessage: BaseMessage, action: PendingToolAction
 
 // ─── Entity Resolution Helpers ──────────────────────────────────────
 
-function getGlobalCharacters(interactionData: InteractionData, allCharacters: Character[] = []): Character[] {
-    const participantIds = new Set((interactionData?.participants || []).map(p => p.id));
-    return allCharacters.filter(c => !participantIds.has(c.id));
-}
-
 function resolveCharacter(idOrName: string, interactionData: InteractionData, allCharacters: Character[] = []): Character | undefined {
     let query = idOrName.toLowerCase();
     if (!query) return undefined;
@@ -1152,7 +1147,7 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
         return { toolType: 'memory', args, textContent: relevant.join('\n---\n') || 'No memories found', displayReplacement: `[🧠 Recalled ${relevant.length} memories]` };
     }
     if (action === 'save') {
-        const others = getSessionCharacters(interactionData).filter(p => p.id !== character.id);
+        const others = interactionData.participants.filter(p => p.id !== character.id);
         const summary = await generateCharacterMemory(interactionData, character, '', 512);
         if (!summary) return { toolType: 'memory', args, textContent: '[Error: Failed to summarize memory]', displayReplacement: '[Error: Memory error]' };
         const ts = Date.now();
@@ -1580,7 +1575,7 @@ function executeSummon(args: string, nextMessage: BaseMessage, interactionData: 
     const charQuery = pArgs.get(0, 'character_id', 'character', 'target', 'name') || pArgs.positional.join(' ');
     if (!charQuery) return helpResult('summon', 'character_id="..."', 'add a non-participant character to current session');
     const allChars = context.allCharacters || [];
-    const targetChar = getGlobalCharacters(interactionData, allChars).find(c => c.id === charQuery || c.name.toLowerCase() === charQuery.toLowerCase()) || allChars.find(c => c.id === charQuery || c.name.toLowerCase() === charQuery.toLowerCase());
+    const targetChar = interactionData.participants.find(c => c.id === charQuery || c.name.toLowerCase() === charQuery.toLowerCase()) || allChars.find(c => c.id === charQuery || c.name.toLowerCase() === charQuery.toLowerCase());
     if (!targetChar) return { toolType: 'summon', args, textContent: `[Error: Character "${charQuery}" does not exist]`, displayReplacement: '[Error: Character not found]' };
     appendPendingAction(nextMessage, { type: 'summon', payload: { characterId: targetChar.id, characterName: targetChar.name } });
     return { toolType: 'summon', args, textContent: `Summoned ${targetChar.name}.`, displayReplacement: `[✨ Summoned ${targetChar.name}]` };
