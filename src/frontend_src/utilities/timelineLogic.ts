@@ -189,10 +189,40 @@ export function getLocalMessageHistory(
     return filteredHistory;
 }
 
-export function getLatestLocalLocationMessageHistory(interactionData: InteractionData, messageTypes?: messageType[], limit?: number): HistoryMessage[]{ // Grabs the latest message chain up until when no characters are present in this location for the latest message chain.
+export function getLatestLocalLocationMessageHistory(interactionData: InteractionData, messageTypes?: messageType[], limit?: number): HistoryMessage[] {
+    const { globalHistory, msgLocMap } = getTimelineCache(interactionData);
+    if (globalHistory.length === 0) return [];
 
-return filteredHistory;
+    // 1. Find the current location based on the absolute latest global message
+    const latestMsg = globalHistory[globalHistory.length - 1];
+    const currentLocId = msgLocMap.get(latestMsg.id);
+    if (!currentLocId) return [];
 
+    // 2. Get and sort the history for this specific location
+    const locationHistory = interactionData.interactionHistories?.[currentLocId] || [];
+    let sortedMessages = [...locationHistory].sort((a, b) => a.firstCreatedTimestamp - b.firstCreatedTimestamp);
+
+    if (messageTypes && messageTypes.length > 0) {
+        sortedMessages = sortedMessages.filter(msg => messageTypes.includes(msg.messageType));
+    }
+
+    // 3. Find the "arrival boundary" (the latest message sent by ANY current participant)
+    const participantIds = new Set(interactionData.participants.map(p => p.id));
+    let arrivalIndex = -1;
+    
+    for (let i = sortedMessages.length - 1; i >= 0; i--) {
+        if (participantIds.has(sortedMessages[i].character.id)) {
+            arrivalIndex = i;
+            break;
+        }
+    }
+
+    // 4. Slice everything BEFORE the arrival boundary (the pre-arrival context)
+    const preArrivalHistory = arrivalIndex > 0 ? sortedMessages.slice(0, arrivalIndex) : [];
+
+    if (limit !== undefined && limit > 0) return preArrivalHistory.slice(-limit);
+
+    return preArrivalHistory;
 }
 
 /**

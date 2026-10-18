@@ -12,10 +12,12 @@ import { defaultInputStrategy } from '../dictionaries/defaults';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { generateLocationVisitSummary } from '../services/TextMessageSummarizationEngine';
 import { findLatestMessage } from './messageLogic';
-import { getLocalMessageHistory } from './timelineLogic';
+import { getLocalMessageHistory, getLatestLocalLocationMessageHistory } from './timelineLogic';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from './dialoguePromptLogic';
 import { STOP_STEMS, getStemmedContentWords } from './stemmerHelper';
 import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storages/serverStorage';
+import { embeddingEngine } from '../services/EmbeddingEngine';
+import { retrieveRelevantContext, type RetrievableItem } from '../services/RetrievalEngine';
 
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging.";
 const beingIgnoredInstructions = "Anytime a character ignores me talking, there would be an awkward atmosphere.";
@@ -1558,28 +1560,80 @@ function buildDialoguePromptText(ctx: PromptBuildContext): string {
     return lines.join('\n');
 }
 
-function buildStarterPromptText(ctx: PromptBuildContext): string {
-    const starterPrompts = ctx.character.starterPrompts;
+async function buildStarterPromptText(ctx: PromptBuildContext): Promise<string> {
+    const allStarterPrompts = ctx.character.starterPrompts || [];
+    if (!allStarterPrompts || allStarterPrompts.length === 0) return '';
 
-    if (starterPrompts && starterPrompts.length > 0) {
-        const validPrompts = starterPrompts.filter(sp => sp.textContent && sp.textContent.length > 0);
-        if (validPrompts.length === 0) return '';
+    // 1. Filter by Regex Triggers using the existing cache mechanism
+    const activePrompts = allStarterPrompts.filter(sp => 
+        isEntityActiveWithCache(
+            sp.regularExpressionActivationTriggers,
+            sp.regularExpressionDeactivationTriggers,
+            sp.regularExpressionExclusionActivationTriggers,
+            sp.regularExpressionExclusionDeactivationTriggers,
+            ctx.characterIdArray,
+            ctx.textContentArray,
+            ctx.characterId,
+            [...ctx.protagonistIds],
+            ctx.textContentArray.join('\n'),
+            ctx.combinationCache
+        )
+    );
 
-        let totalWeight = 0;
-        for (const sp of validPrompts) totalWeight += (sp.weight > 0 ? sp.weight : 1);
+    if (activePrompts.length === 0) return '';
 
-        if (totalWeight > 0) {
-            let roll = Math.random() * totalWeight;
-            let selectedText = '';
-            for (const sp of validPrompts) {
-                const w = sp.weight > 0 ? sp.weight : 1;
-                roll -= w;
-                if (roll <= 0) { selectedText = sp.textContent; break; }
+    // 2. Semantic Search (Pre-Arrival Context Matching)
+    if (ctx.character.useEmbeddingModelForStarterPrompts && ctx.character.starterPromptRetrievalConfiguration) {
+        const preArrivalHistory = getLatestLocalLocationMessageHistory(ctx.interactionData, ['chat', 'whisper']);
+        
+        if (preArrivalHistory.length > 0) {
+            const historyText = preArrivalHistory.map(m => `[${m.character.name}]: ${(m as TextMessage).textContent}`).join('\n');
+            const queryVector = await embeddingEngine.embed(historyText);
+            
+            if (queryVector) {
+                const items: RetrievableItem[] = activePrompts.map(sp => ({
+                    id: sp.id,
+                    name: sp.name,
+                    textContent: sp.textContent,
+                    embedding: sp.embedding,
+                    firstCreatedTimestamp: sp.firstCreatedTimestamp
+                }));
+                
+                const results = await retrieveRelevantContext(queryVector, historyText, items, ctx.character.starterPromptRetrievalConfiguration);
+                if (results.length > 0) {
+                    const selectedPrompt = activePrompts.find(p => p.id === results[0].id) || activePrompts[0];
+                    if (selectedPrompt.skipProbability > 0 && Math.random() < selectedPrompt.skipProbability) {
+                        return '';
+                    }
+                    return replacePlaceholders(results[0].textContent, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
+                }
             }
-            if (!selectedText) selectedText = validPrompts[validPrompts.length - 1].textContent;
-
-            if (selectedText) return replacePlaceholders(selectedText, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
         }
+    }
+
+    // 3. Fallback: Weighted Random Roll among active prompts
+    const validPrompts = activePrompts.filter(sp => sp.textContent && sp.textContent.length > 0);
+    if (validPrompts.length === 0) return '';
+
+    let totalWeight = 0;
+    for (const sp of validPrompts) totalWeight += (sp.weight > 0 ? sp.weight : 1);
+
+    if (totalWeight > 0) {
+        let roll = Math.random() * totalWeight;
+        let selectedPrompt = validPrompts[0];
+        
+        for (const sp of validPrompts) {
+            const w = sp.weight > 0 ? sp.weight : 1;
+            roll -= w;
+            if (roll <= 0) { selectedPrompt = sp; break; }
+        }
+
+        // LITERALLY FUCKING SKIP
+        if (selectedPrompt.skipProbability > 0 && Math.random() < selectedPrompt.skipProbability) {
+            return ''; 
+        }
+
+        return replacePlaceholders(selectedPrompt.textContent, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames);
     }
 
     return '';
@@ -2623,7 +2677,7 @@ export async function buildPrompt(
         metaThinkInstructions: buildMetaThinkText(ctx),
         appearancePrompt: buildAppearanceText(ctx, characterClothingWearingStatuses),
         dialoguePrompt: buildDialoguePromptText(ctx),
-        starterPrompt: buildStarterPromptText(ctx),
+        starterPrompt: await buildStarterPromptText(ctx),
         context: contextLines,
         currentLocation: locationResult.basic,
         currentLocationWithDescription: locationResult.withDescription,
