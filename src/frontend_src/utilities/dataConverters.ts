@@ -9,7 +9,9 @@ import type {
     toolUsageDisplayPlacementMode,
     textType,
     StarterPrompt,
-    entityImageType
+    entityImageType,
+    RetrievalConfiguration,
+    SummarizationStrategyType
 } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';
@@ -315,6 +317,35 @@ function fillSamplerDefaults(s: Record<string, unknown>): Sampler {
     };
 }
 
+function fillRetrievalConfigurationDefaults(raw: unknown): RetrievalConfiguration | undefined {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+    const r = raw as Record<string, unknown>;
+    const now = Date.now();
+    
+    const validStrategies = ['dense', 'sparse', 'hybrid', 'maximal marginal relevance'];
+    const strategy = (typeof r.retrievalStrategy === 'string' && validStrategies.includes(r.retrievalStrategy)) 
+        ? r.retrievalStrategy as RetrievalConfiguration['retrievalStrategy'] 
+        : 'dense';
+        
+    const validSortOrders = ['highest', 'lowest', 'chronological', 'reverse_chronological'];
+    const sortOrder = (typeof r.sortOrderFromTop === 'string' && validSortOrders.includes(r.sortOrderFromTop))
+        ? r.sortOrderFromTop as RetrievalConfiguration['sortOrderFromTop']
+        : 'highest';
+
+    return {
+        id: ensureId(r),
+        name: (r.name as string) || 'Unnamed Retrieval Config',
+        description: (r.description as string) || undefined,
+        retrievalStrategy: strategy,
+        topK: (r.topK as number) ?? 3,
+        similarityThreshold: (r.similarityThreshold as number) ?? 0.5,
+        tokenBudget: (r.tokenBudget as number) ?? 512,
+        sortOrderFromTop: sortOrder,
+        firstCreatedTimestamp: (r.firstCreatedTimestamp as number) || now,
+        lastUpdatedTimestamp: (r.lastUpdatedTimestamp as number) || now,
+    };
+}
+
 function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]): Character {
     const now = Date.now();
     const rawClothings = Array.isArray(c.clothings) ? c.clothings as Record<string, unknown>[] : [];
@@ -349,10 +380,14 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
         languageModelSampler: parsedLanguageModelSampler,
         textToSpeechModelSampler: parsedTextToSpeechModelSampler,
         stopPatterns: rawStopPatterns.length > 0 ? rawStopPatterns.map(item => fillStopPatternDefaults(item)) : undefined,
-        useEmbeddingModelForDialoguePrompts: (c.useEmbeddingModelForDialoguePrompts as boolean),
-        useEmbeddingModelForStarterPrompts: (c.useEmbeddingModelForStarterPrompts as boolean),
-        useEmbeddingModelForKnowledgePrompts: (c.useEmbeddingModelForKnowledgePrompts as boolean),
-        useEmbeddingModelForMemories: (c.useEmbeddingModelForMemories as boolean),
+        useEmbeddingModelForDialoguePrompts: (c.useEmbeddingModelForDialoguePrompts as boolean) ?? false,
+        useEmbeddingModelForStarterPrompts: (c.useEmbeddingModelForStarterPrompts as boolean) ?? false,
+        useEmbeddingModelForKnowledgePrompts: (c.useEmbeddingModelForKnowledgePrompts as boolean) ?? false,
+        useEmbeddingModelForMemories: (c.useEmbeddingModelForMemories as boolean) ?? false,
+        dialogueRetrievalConfiguration: fillRetrievalConfigurationDefaults(c.dialogueRetrievalConfiguration),
+        starterPromptRetrievalConfiguration: fillRetrievalConfigurationDefaults(c.starterPromptRetrievalConfiguration),
+        knowledgeRetrievalConfiguration: fillRetrievalConfigurationDefaults(c.knowledgeRetrievalConfiguration),
+        memoryRetrievalConfiguration: fillRetrievalConfigurationDefaults(c.memoryRetrievalConfiguration),
         initiativeWeight: (c.initiativeWeight as number) ?? 5,
         chatProbability: (c.chatProbability as number) ?? 0.8,
         maximumChatStamina: (c.maximumChatStamina as number) ?? 5,
@@ -584,7 +619,13 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         speechToTextDeviceType: (p.speechToTextDeviceType as deviceType) ?? 'auto',
         voiceActivityDetectionDeviceType: (p.voiceActivityDetectionDeviceType as deviceType) ?? 'auto',
         embeddingDeviceType: (p.embeddingDeviceType as deviceType) ?? 'auto',
-        autoResumeSignals: Array.isArray(p.autoResumeSignals) ? (p.autoResumeSignals as AutoResumeSignal[]) : [],
+        autoResumeSignals: Array.isArray(p.autoResumeSignals) ? (p.autoResumeSignals as Record<string, unknown>[]).map(a => ({
+            regularExpressionActivationTrigger: (a.regularExpressionActivationTrigger as string) || undefined,
+            regularExpressionDeactivationTrigger: (a.regularExpressionDeactivationTrigger as string) || undefined,
+            stopPattern: (a.stopPattern as string) || '',
+            minimumLength: (a.minimumLength as string) || '0',
+            maximumNumberOfAutoResumes: (a.maximumNumberOfAutoResumes as number) ?? 10,
+        })) : [],
         narrateTexts: {
             normal: (rawNarrateTexts.normal as boolean) ?? defaultNarrateTexts.normal,
             quote: (rawNarrateTexts.quote as boolean) ?? defaultNarrateTexts.quote,
@@ -600,12 +641,14 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         stripThinkTokens: (p.stripThinkTokens as boolean) ?? true,
         tools: parseToolsRecord(p.tools, defaultProfileTools) as Record<tool, tristateInteger>,
         inputStrategy: (p.inputStrategy as Profile['inputStrategy']) || [...defaultInputStrategy],
-        entityImageTypes: (p.entityImageTypes as entityImageType[]) || [...defaultEntityImageTypes],
+        entityImageTypes: Array.isArray(p.entityImageTypes) 
+            ? (p.entityImageTypes as string[]).filter((t): t is entityImageType => ['promptBlock', 'context', 'location', 'character'].includes(t)) 
+            : [...defaultEntityImageTypes],
         summarizationSteps: ((p.summarizationSteps as Record<string, unknown>[]) || []).map(s => ({
             id: ensureId(s),
             name: (s.name as string) || (s.strategyType as string) || '',
             description: (s.description as string) || undefined,
-            strategyType: (s.strategyType as Profile['summarizationSteps'] extends (infer T)[] ? T : never).strategyType ?? 'Sliding Window Replace',
+            strategyType: (typeof s.strategyType === 'string' ? s.strategyType : 'Sliding Window Replace') as SummarizationStrategyType,
             enabled: (s.enabled as boolean) ?? true,
             order: (s.order as number) ?? 0,
             slidingWindowSize: s.slidingWindowSize as number | undefined,
@@ -634,6 +677,10 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         webSummarizationStopPattern: (p.webSummarizationStopPattern && typeof p.webSummarizationStopPattern === 'object') ? fillStopPatternDefaults(p.webSummarizationStopPattern as Record<string, unknown>) : undefined,
         interactionDataSummarizationStopPattern: (p.interactionDataSummarizationStopPattern && typeof p.interactionDataSummarizationStopPattern === 'object') ? fillStopPatternDefaults(p.interactionDataSummarizationStopPattern as Record<string, unknown>) : undefined,
         aiRecommendationStopPattern: (p.aiRecommendationStopPattern && typeof p.aiRecommendationStopPattern === 'object') ? fillStopPatternDefaults(p.aiRecommendationStopPattern as Record<string, unknown>) : undefined,
+        characterDialogueRetrievalConfiguration: fillRetrievalConfigurationDefaults(p.characterDialogueRetrievalConfiguration),
+        characterStarterPromptRetrievalConfiguration: fillRetrievalConfigurationDefaults(p.characterStarterPromptRetrievalConfiguration),
+        characterKnowledgeRetrievalConfiguration: fillRetrievalConfigurationDefaults(p.characterKnowledgeRetrievalConfiguration),
+        characterMemoryRetrievalConfiguration: fillRetrievalConfigurationDefaults(p.characterMemoryRetrievalConfiguration),
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
     };

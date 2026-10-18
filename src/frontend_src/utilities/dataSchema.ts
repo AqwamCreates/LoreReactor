@@ -71,7 +71,18 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
       "regularExpressionExclusionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
       "regularExpressionExclusionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA}
     }],
-    "starterPrompts": {"starter text string": "weight number (≥0), higher = more likely to be sampled"},
+    "starterPrompts": [{
+      "id": "string (UUID)",
+      "name": "string (required)",
+      "description": "string (display only, describes this starter prompt)",
+      "content": "string (the starter text content)",
+      "weight": "number (≥0, default 1). Weight for being selected. Higher = more likely.",
+      "skipProbability": "number (0-1, default 0). Probability of skipping this starter prompt. 0 = always use. 1 = always skip.",
+      "regularExpressionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
+      "regularExpressionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA},
+      "regularExpressionExclusionActivationTriggers": ${REGEX_TRIGGER_SCHEMA},
+      "regularExpressionExclusionDeactivationTriggers": ${REGEX_TRIGGER_SCHEMA}
+    }],
     "memoryPrompts": {${emotions.map(e => `"${e}": "string (memory content for '${e}' expression)"`).join(', ')}},
     "languageModelSampler": "object (Sampler, optional). Controls the psychological profile and text generation logic (temperature, top_p, etc.).",
     "textToSpeechModelSampler": "object (Sampler, optional). Controls the vocal cords, prosody, pitch, and acoustic expressiveness of the character's voice.",
@@ -79,7 +90,11 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "useEmbeddingModelForDialoguePrompts": "boolean (default false)",
     "useEmbeddingModelForStarterPrompts": "boolean (default false)",
     "useEmbeddingModelForKnowledgePrompts": "boolean (default false)",
-    "useEmbeddingModelForMemories": boolean,
+    "useEmbeddingModelForMemories": "boolean (default false)",
+    "dialogueRetrievalConfiguration": "object (RetrievalConfiguration, optional). Overrides profile defaults for dialogue semantic search.",
+    "starterPromptRetrievalConfiguration": "object (RetrievalConfiguration, optional). Overrides profile defaults for starter prompt semantic search.",
+    "knowledgeRetrievalConfiguration": "object (RetrievalConfiguration, optional). Overrides profile defaults for knowledge semantic search.",
+    "memoryRetrievalConfiguration": "object (RetrievalConfiguration, optional). Overrides profile defaults for memory semantic search.",
     "initiativeWeight": "number (≥0, default 1.2)",
     "chatProbability": "number (0-1, default 0.5)",
     "maximumChatStamina": "number (≥0, default 4)",
@@ -251,14 +266,12 @@ ${characterToolsSchema}
     "forceNameReveal": "boolean (default false)",
     "enableAmbientNarration": "boolean (default false). When true and no character responds, generates environmental/atmospheric narration to fill silence.",
     "toolUsageDisplayMode": "'none' | 'icon' | 'simple' | 'detailed' | 'full' | 'raw' (default 'none'). Controls how tool invocations appear in chat output.",
-    "toolUsageDisplayPlacementMode": "'top' | 'before paragraph' | 'before sentence' | 'inline' | 'after sentence' 'after paragraph' | 'bottom' (default 'before paragraph')",
+    "toolUsageDisplayPlacementMode": "'top' | 'before paragraph' | 'before sentence' | 'inline' | 'after sentence' | 'after paragraph' | 'bottom' (default 'before paragraph')",
     "enableCharacterExpression": "boolean (default false)",
     "randomizeTextCharacterInjection": "boolean (default false, master toggle for text character injection across all characters)",
     "randomizeTextCharacterInjectionOnRetry": "boolean (default true, only randomize if the initial generation fails. Only relevant when randomizeTextCharacterInjection is true)",
     "maximumNumberOfTextCharacterRandomizationPerModel": "number (≥1, default 1, number of retry attempts per model for text character randomization. Only relevant when randomizeTextCharacterInjection is true)",
-    "forceNoCharacterImageInjection": "boolean (default false)",
-    "forceNoContextImageInjection": "boolean (default false)",
-    "forceNoLocationImageInjection": "boolean (default false)",
+    "entityImageTypes": ["array of 'promptBlock' | 'context' | 'location' | 'character' (default all enabled). If an entity type is omitted, its images will not be injected into the prompt."],
     "weatherApiKey": "string (OpenWeather API key, optional)",
     "useFrontCameraImage": "number (-1, 0, or 1, default 0). -1 = force off for all characters. 0 = per-character setting. 1 = force on for all characters. Replaces protagonist stored image with live front camera snapshot. Camera activates on first use and auto-closes after 10 minutes idle.",
     "numberOfMessagesToDisableThinkPrompt": "number (-1 or ≥0, default -1 defers to character)",
@@ -300,6 +313,7 @@ ${narrateTextCharacterIdsSchema}
 ${profileToolsSchema}
     },
     "inputStrategy": ["array of promptBlockType strings and/or custom prompt block UUIDs. Built-in types: ${defaultInputStrategy.join(', ')}. Custom prompt blocks are referenced by their UUID string."],
+    "entityImageTypes": ["array of 'promptBlock' | 'context' | 'location' | 'character' (default all enabled). If an entity type is omitted, its images will not be injected into the prompt."],
     "summarizationSteps": [{
       "strategyType": "'Sliding Window Replace' | 'Periodic Compression' | 'Recursive Summary' | 'Observation Masking' | 'Entropy Pruning'",
       "enabled": "boolean (default true)",
@@ -334,7 +348,11 @@ ${profileToolsSchema}
     "characterStopPattern": "object (StopPattern, optional)",
     "webSummarizationStopPattern": "object (StopPattern, optional)",
     "interactionDataSummarizationStopPattern": "object (StopPattern, optional)",
-    "aiRecommendationStopPattern": "object (StopPattern, optional)"
+    "aiRecommendationStopPattern": "object (StopPattern, optional)",
+    "characterDialogueRetrievalConfiguration": "object (RetrievalConfiguration, optional). Default semantic search settings for character dialogue prompts.",
+    "characterStarterPromptRetrievalConfiguration": "object (RetrievalConfiguration, optional). Default semantic search settings for character starter prompts.",
+    "characterKnowledgeRetrievalConfiguration": "object (RetrievalConfiguration, optional). Default semantic search settings for character knowledge prompts.",
+    "characterMemoryRetrievalConfiguration": "object (RetrievalConfiguration, optional). Default semantic search settings for character memories."
   }`);
     }
 

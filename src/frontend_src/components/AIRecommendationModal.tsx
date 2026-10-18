@@ -129,12 +129,6 @@ export function AIRecommendationModal({
     const injectLocationImages = imageInjectionPriority.includes('location');
     const injectPromptBlockImages = imageInjectionPriority.includes('promptBlock');
 
-    const derivedEntityImageTypes: entityImageType[] = [];
-    if (injectCharacterImages) derivedEntityImageTypes.push('character');
-    if (injectContextImages) derivedEntityImageTypes.push('context');
-    if (injectLocationImages) derivedEntityImageTypes.push('location');
-    if (injectPromptBlockImages) derivedEntityImageTypes.push('promptBlock');
-
     const resetForm = useCallback(() => {
         setError(null); setUserPrompt(''); setMaxTokens(2048);
         setImageInjectionPriority(['reference', 'character', 'context', 'location', 'promptBlock']);
@@ -330,6 +324,11 @@ export function AIRecommendationModal({
     const handleSave = async () => {
         if (!parsedOutput) { setResultError('No parsed output to save.'); return; }
         setIsSaving(true); setResultError(null); const now = Date.now();
+        
+        // ✅ CLEAN MAPPING: Filter out 'reference' and cast directly to the existing entityImageType
+        const savedEntityImageTypes = imageInjectionPriority
+            .filter((item): item is entityImageType => item !== 'reference');
+
         try {
             if (parsedOutput.characters) {
                 for (const char of parsedOutput.characters) {
@@ -366,7 +365,9 @@ export function AIRecommendationModal({
                 }
             }
             if (parsedOutput.profile) {
-                const profileToSave = { ...parsedOutput.profile, entityImageTypes: derivedEntityImageTypes };
+                let profileToSave = parsedOutput.profile;
+                // ✅ Direct assignment using the existing type
+                profileToSave = { ...profileToSave, entityImageTypes: savedEntityImageTypes };
                 if (!await onSaveProfile(profileToSave)) throw new Error(`Failed to save profile "${profileToSave.name}".`);
             }
             if (parsedOutput.world) {
@@ -379,7 +380,8 @@ export function AIRecommendationModal({
                     : resolved.promptBlocks;
                 let profileToSave = resolved.profile;
                 if (profileToSave) {
-                    profileToSave = { ...profileToSave, entityImageTypes: derivedEntityImageTypes };
+                    // ✅ Direct assignment using the existing type
+                    profileToSave = { ...profileToSave, entityImageTypes: savedEntityImageTypes };
                 }
                 for (const ch of charsToSave) if (!await onSaveCharacter(ch)) throw new Error(`Failed to save "${ch.name}".`);
                 for (const cx of resolved.contexts) if (!await onSaveContext(cx)) throw new Error(`Failed to save "${cx.name}".`);
