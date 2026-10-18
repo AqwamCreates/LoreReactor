@@ -8,12 +8,13 @@ import type {
     AutoResumeSignal, deviceType, 
     toolUsageDisplayPlacementMode,
     textType,
-    StarterPrompt
+    StarterPrompt,
+    entityImageType
 } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';
 import type { GeneratedOutput } from './dataTypes';
-import { defaultCharacterTools, defaultProfileTools, defaultNarrateTexts } from '../dictionaries/defaults';
+import { defaultCharacterTools, defaultProfileTools, defaultNarrateTexts, defaultInputStrategy, defaultEntityImageTypes } from '../dictionaries/defaults';
 import { emotions } from '../dictionaries/characterPresets';
 
 function ensureId(obj: Record<string, unknown>): string {
@@ -557,9 +558,6 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         randomizeTextCharacterInjection: (p.randomizeTextCharacterInjection as boolean) ?? false,
         randomizeTextCharacterInjectionOnRetry: (p.randomizeTextCharacterInjectionOnRetry as boolean) ?? true,
         maximumNumberOfTextCharacterRandomizationPerModel: (p.maximumNumberOfTextCharacterRandomizationPerModel as number) ?? 1,
-        forceNoCharacterImageInjection: (p.forceNoCharacterImageInjection as boolean) ?? false,
-        forceNoContextImageInjection: (p.forceNoContextImageInjection as boolean) ?? false,
-        forceNoLocationImageInjection: (p.forceNoLocationImageInjection as boolean) ?? false,
         weatherApiKey: (p.weatherApiKey as string) || undefined,
         useFrontCameraImage: (p.useFrontCameraImage as tristateInteger) ?? 0,
         numberOfMessagesToDisableThinkPrompt: (p.numberOfMessagesToDisableThinkPrompt as number) ?? 0,
@@ -601,7 +599,8 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         narrateTextCharacterIds: parseNarrateTextCharacterIds(p.narrateTextCharacterIds),
         stripThinkTokens: (p.stripThinkTokens as boolean) ?? true,
         tools: parseToolsRecord(p.tools, defaultProfileTools) as Record<tool, tristateInteger>,
-        inputStrategy: (p.inputStrategy as Profile['inputStrategy']) || ['System Prompt', 'Chat History', 'Context', 'Location', 'Text Injection'],
+        inputStrategy: (p.inputStrategy as Profile['inputStrategy']) || [...defaultInputStrategy],
+        entityImageTypes: (p.entityImageTypes as entityImageType[]) || [...defaultEntityImageTypes],
         summarizationSteps: ((p.summarizationSteps as Record<string, unknown>[]) || []).map(s => ({
             id: ensureId(s),
             name: (s.name as string) || (s.strategyType as string) || '',

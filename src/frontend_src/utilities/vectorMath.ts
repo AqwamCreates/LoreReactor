@@ -105,3 +105,76 @@ export function findTopKSimilar<T extends VectorSearchItem>(
     // Return top K
     return scored.slice(0, k);
 }
+
+export function computeBestMatch25Scores(query: string, documents: string[]): number[] {
+    const k1 = 1.5;
+    const b = 0.75;
+    
+    const tokenize = (text: string) => text.toLowerCase().match(/\b\w+\b/g) || [];
+    
+    const queryTerms = tokenize(query);
+    if (queryTerms.length === 0) return documents.map(() => 0);
+
+    const docTokens = documents.map(tokenize);
+    const docLengths = docTokens.map(t => t.length);
+    const avgDocLength = docLengths.reduce((a, b) => a + b, 0) / (docLengths.length || 1);
+
+    // Document Frequency (DF)
+    const df: Record<string, number> = {};
+    for (const tokens of docTokens) {
+        const unique = new Set(tokens);
+        for (const term of unique) {
+            df[term] = (df[term] || 0) + 1;
+        }
+    }
+
+    const N = docTokens.length;
+    const scores = new Array(N).fill(0);
+
+    for (const term of queryTerms) {
+        const idf = Math.log((N - (df[term] || 0) + 0.5) / ((df[term] || 0) + 0.5) + 1);
+        for (let i = 0; i < N; i++) {
+            const tf = docTokens[i].filter(t => t === term).length;
+            const dl = docLengths[i];
+            const numerator = tf * (k1 + 1);
+            const denominator = tf + k1 * (1 - b + b * (dl / avgDocLength));
+            scores[i] += idf * (numerator / denominator);
+        }
+    }
+    return scores;
+}
+
+/**
+ * Reciprocal Rank Fusion (RRF)
+ * Merges Dense (vector) and Sparse (BM25) rankings into a single unified score.
+ * Solves the problem of dense and sparse scores operating on completely different scales.
+ */
+export function reciprocalRankFusion(
+    denseScores: number[], 
+    sparseScores: number[], 
+    k: number = 60 // Standard RRF constant
+): number[] {
+    const n = denseScores.length;
+    const rrfScores = new Array(n).fill(0);
+
+    // Rank Dense (Higher is better)
+    const denseRanked = denseScores
+        .map((score, index) => ({ score, index }))
+        .sort((a, b) => b.score - a.score)
+        .map((item, rank) => ({ ...item, rank: rank + 1 }));
+
+    // Rank Sparse (Higher is better)
+    const sparseRanked = sparseScores
+        .map((score, index) => ({ score, index }))
+        .sort((a, b) => b.score - a.score)
+        .map((item, rank) => ({ ...item, rank: rank + 1 }));
+
+    for (const item of denseRanked) {
+        rrfScores[item.index] += 1 / (k + item.rank);
+    }
+    for (const item of sparseRanked) {
+        rrfScores[item.index] += 1 / (k + item.rank);
+    }
+
+    return rrfScores;
+}

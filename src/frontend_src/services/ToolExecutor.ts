@@ -4,7 +4,7 @@ import { fetchLinkContent } from '../utilities/linkFetcher';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from '../utilities/dialoguePromptLogic';
 import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, WhisperMessage, TextMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension, Account, MultiplayerData, toolUsageDisplayMode, HistoryMessage, tool, EntityFolder, RawInteractionData, RetrievalConfiguration, LanguageModel } from '../types';
 import { findLatestMessage } from '../utilities/messageLogic';
-import { getGlobalMessageHistory } from '../utilities/timelineLogic';
+import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/timelineLogic';
 import { getCurrentLocation, getReachableLocationsByCharacter, isCharacterLockedFromLocation, getCoLocatedParticipants } from '../utilities/locationLogic';
 import { getAudioEngine } from './AudioEngine';
 import { generateCharacterMemory } from './TextMessageSummarizationEngine';
@@ -15,6 +15,8 @@ import { buildSearchUrl } from '../utilities/searchURLBuilder';
 import { generateSkyViewText, getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
 import { getLocationMessageHistory } from '../utilities/timelineLogic';
 import { localURL } from '../../configurations';
+import { embeddingEngine } from './EmbeddingEngine';
+import { retrieveRelevantContext, type RetrievableItem } from './RetrievalEngine';
 
 export interface ToolResult {
     toolType: string;
@@ -451,10 +453,10 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
         return helpResult('think', 'reasoning="..."', 'evaluate context and plan next move internally');
     }
     const character = nextMessage.character;
-    const history = getGlobalMessageHistory(interactionData);
     const coLocated = getCoLocatedParticipants(interactionData, character);
+    const history = getLocalMessageHistory(interactionData, character, ['chat', 'whisper'], coLocated.length);
     let wasAddressed = false;
-    for (let i = history.length - coLocated.length; i < history.length; i++) {
+    for (let i = history.length; i < history.length; i++) {
         if (i < 0) continue;
         const msg = history[i];
         if (msg.messageType === 'chat' && msg.character.id !== character.id) {
@@ -998,7 +1000,7 @@ async function executeWeb(args: string): Promise<ToolResult> {
 }
 
 // ─── Dialogue ──────────────────────────────────────────────────────
-function executeDialogue(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+async function executeDialogue(args: string, nextMessage: BaseMessage, interactionData: InteractionData): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
     const dialoguePrompts = nextMessage.character.dialoguePrompts || [];
@@ -1012,16 +1014,39 @@ function executeDialogue(args: string, nextMessage: BaseMessage, interactionData
     if (action === 'recall') {
         const queryId = pArgs.get(1, 'prompt_id', 'id') || pArgs.positional.slice(1).join(' ');
         const matched = dialoguePrompts.filter(dp => dp.id === queryId || dp.name?.toLowerCase() === queryId?.toLowerCase() || dp.id.startsWith(queryId || ""));
-        if (matched.length === 0) return { toolType: 'dialogue', args, textContent: `No dialogue prompt matching "${queryId}".`, displayReplacement: '[💬 No match]' };
-        const textArray = getGlobalMessageHistory(interactionData).filter(m => m.messageType === 'chat').map(m => (m as ChatMessage).textContent);
-        const recalled = collectActiveDialoguePromptContent(matched, buildDialogueSearchSpace(textArray));
-        return { toolType: 'dialogue', args, textContent: recalled.join('\n') || 'No active instructions', displayReplacement: `[💬 Recalled ${recalled.length} instruction(s)]` };
+        
+        if (matched.length > 0) {
+            const textArray = getLocalMessageHistory(interactionData, nextMessage.character, ['chat', 'whisper']).filter(m => m.messageType === 'chat').map(m => (m as ChatMessage).textContent);
+            const recalled = collectActiveDialoguePromptContent(matched, buildDialogueSearchSpace(textArray));
+            return { toolType: 'dialogue', args, textContent: recalled.join('\n') || 'No active instructions', displayReplacement: `[💬 Recalled ${recalled.length} instruction(s)]` };
+        }
+
+        // ✅ NEW: Semantic Search Fallback
+        if (nextMessage.character.useEmbeddingModelForDialoguePrompts && nextMessage.character.dialogueRetrievalConfiguration) {
+            const queryVector = await embeddingEngine.embed(queryId);
+            if (queryVector) {
+                const items: RetrievableItem[] = dialoguePrompts.map(dp => ({
+                    id: dp.id, name: dp.name, textContent: dp.textContent, embedding: dp.embedding, firstCreatedTimestamp: dp.firstCreatedTimestamp
+                }));
+                const overrideConfig = { ...nextMessage.character.dialogueRetrievalConfiguration, topK: 3, tokenBudget: 512 };
+                const results = await retrieveRelevantContext(queryVector, queryId, items, overrideConfig);
+                if (results.length > 0) {
+                    return { 
+                        toolType: 'dialogue', 
+                        args, 
+                        textContent: results.map(r => `[${r.name || 'Instruction'}]: ${r.textContent}`).join('\n---\n'), 
+                        displayReplacement: `[💬 Semantic Recall: ${results.length} instructions]` 
+                    };
+                }
+            }
+        }
+        return { toolType: 'dialogue', args, textContent: `No dialogue prompt matching "${queryId}".`, displayReplacement: '[💬 No match]' };
     }
     return { toolType: 'dialogue', args, textContent: `[Error: Unknown dialogue action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
 }
 
 // ─── Knowledge ──────────────────────────────────────────────────────
-function executeKnowledge(args: string, nextMessage: BaseMessage): ToolResult {
+async function executeKnowledge(args: string, nextMessage: BaseMessage): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
     const prompts = nextMessage.character.knowledgePrompts || [];
@@ -1035,8 +1060,31 @@ function executeKnowledge(args: string, nextMessage: BaseMessage): ToolResult {
     if (action === 'recall') {
         const queryId = pArgs.get(1, 'id', 'knowledge_id') || pArgs.positional.slice(1).join(' ');
         const matched = prompts.filter(kp => kp.id === queryId || kp.name?.toLowerCase() === queryId?.toLowerCase() || kp.id.startsWith(queryId || ""));
-        if (matched.length === 0) return { toolType: 'knowledge', args, textContent: `No knowledge matching "${queryId}".`, displayReplacement: '[🧠 No match]' };
-        return { toolType: 'knowledge', args, textContent: matched.map(k => `[${k.name}]: ${k.textContent}`).join('\n'), displayReplacement: `[🧠 Recalled ${matched.length} entry(ies)]` };
+        
+        if (matched.length > 0) {
+            return { toolType: 'knowledge', args, textContent: matched.map(k => `[${k.name}]: ${k.textContent}`).join('\n'), displayReplacement: `[🧠 Recalled ${matched.length} entry(ies)]` };
+        }
+
+        // ✅ NEW: Semantic Search Fallback
+        if (nextMessage.character.useEmbeddingModelForKnowledgePrompts && nextMessage.character.knowledgeRetrievalConfiguration) {
+            const queryVector = await embeddingEngine.embed(queryId);
+            if (queryVector) {
+                const items: RetrievableItem[] = prompts.map(kp => ({
+                    id: kp.id, name: kp.name, textContent: kp.textContent, embedding: kp.embedding, firstCreatedTimestamp: kp.firstCreatedTimestamp
+                }));
+                const overrideConfig = { ...nextMessage.character.knowledgeRetrievalConfiguration, topK: 3, tokenBudget: 512 };
+                const results = await retrieveRelevantContext(queryVector, queryId, items, overrideConfig);
+                if (results.length > 0) {
+                    return { 
+                        toolType: 'knowledge', 
+                        args, 
+                        textContent: results.map(r => `[${r.name || 'Lore'}]: ${r.textContent}`).join('\n---\n'), 
+                        displayReplacement: `[🧠 Semantic Recall: ${results.length} entries]` 
+                    };
+                }
+            }
+        }
+        return { toolType: 'knowledge', args, textContent: `No knowledge matching "${queryId}".`, displayReplacement: '[🧠 No match]' };
     }
     return { toolType: 'knowledge', args, textContent: `[Error: Unknown knowledge action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
 }
@@ -1063,6 +1111,27 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
                 const found = mems.find(m => m.id === queryId || m.name?.toLowerCase() === queryId.toLowerCase() || m.id.startsWith(queryId));
                 if (found) return { toolType: 'memory', args, textContent: found.textContent, displayReplacement: `[🧠 Recalled "${found.name}"]` };
             }
+            
+            // ✅ NEW: Semantic Search Fallback
+            if (character.useEmbeddingModelForMemories && character.memoryRetrievalConfiguration) {
+                const queryVector = await embeddingEngine.embed(queryId);
+                if (queryVector) {
+                    const allMems = Object.values(character.memories || {}).flat();
+                    const items: RetrievableItem[] = allMems.map(m => ({
+                        id: m.id, name: m.name, textContent: m.textContent, embedding: m.embedding, firstCreatedTimestamp: m.firstCreatedTimestamp
+                    }));
+                    const overrideConfig = { ...character.memoryRetrievalConfiguration, topK: 3, tokenBudget: 512 };
+                    const results = await retrieveRelevantContext(queryVector, queryId, items, overrideConfig);
+                    if (results.length > 0) {
+                        return { 
+                            toolType: 'memory', 
+                            args, 
+                            textContent: results.map(r => `[${r.name || 'Memory'}]: ${r.textContent}`).join('\n---\n'), 
+                            displayReplacement: `[🧠 Semantic Recall: ${results.length} memories]` 
+                        };
+                    }
+                }
+            }
             return { toolType: 'memory', args, textContent: `Memory "${queryId}" not found.`, displayReplacement: '[🧠 Not found]' };
         }
         const relevant: string[] = [];
@@ -1080,7 +1149,6 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
         for (const o of others) {
             character.memories[o.id] = [{ id: uuidv4(), name: `Memory with ${o.name}`, textContent: summary, firstCreatedTimestamp: ts, lastUpdatedTimestamp: ts, interactionData }];
         }
-        // ✅ FIX: Cast character to any to circumvent strict RawCharacter memory typing mismatch if present
         await saveRawCharacter(character as any).catch(console.warn);
         context.addToast?.(`🧠 Memory saved for ${character.name}`, 'success');
         return { toolType: 'memory', args, textContent: `Saved memory: ${summary}`, displayReplacement: '[🧠 Memory saved]' };

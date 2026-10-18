@@ -1,6 +1,6 @@
 // src/frontend_src/components/RetrievalConfigurationEditorModal.tsx
 import { useState } from 'react';
-import type { RetrievalConfiguration, retrievalStrategy } from '../types';
+import type { RetrievalConfiguration, retrievalStrategy, retrievalSortOrder } from '../types';
 import { SliderInput } from './SliderInput';
 import { v4 as uuidv4 } from 'uuid';
 import '../main.css';
@@ -43,6 +43,10 @@ function RetrievalConfigurationEditorModalInner({
     const [tokenBudget, setTokenBudget] = useState<number>(
         existingConfiguration?.tokenBudget ?? 1024
     );
+    
+    const [sortOrderFromTop, setSortOrderFromTop] = useState<retrievalSortOrder>(
+        existingConfiguration?.sortOrderFromTop || 'lowest'
+    );
 
     const [errors, setErrors] = useState<{ name?: string }>({});
 
@@ -67,6 +71,7 @@ function RetrievalConfigurationEditorModalInner({
             topK,
             similarityThreshold,
             tokenBudget,
+            sortOrderFromTop,
             firstCreatedTimestamp: isNewClone ? now : (existingConfiguration?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
@@ -191,6 +196,26 @@ function RetrievalConfigurationEditorModalInner({
                             />
                             <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px' }}>
                                 Maximum number of tokens allowed for the retrieved context. Excess items are truncated. Set to 0 for unlimited.
+                            </div>
+                        </div>
+                        
+                        <div style={{ marginBottom: '16px' }}>
+                            <label className="editor-label">Sort Order (Top to Bottom)</label>
+                            <select 
+                                value={sortOrderFromTop} 
+                                onChange={(e) => setSortOrderFromTop(e.target.value as retrievalSortOrder)} 
+                                className="editor-select"
+                            >
+                                <option value="lowest">Lowest Relevance at Top (Best match at bottom - Recommended)</option>
+                                <option value="highest">Highest Relevance at Top (Standard RAG)</option>
+                                <option value="chronological">Oldest to Newest (Chronological)</option>
+                                <option value="reverse_chronological">Newest to Oldest (Reverse Chronological)</option>
+                            </select>
+                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px' }}>
+                                {sortOrderFromTop === 'lowest' && 'Combats "Lost in the Middle" by placing the most relevant lore at the very bottom, right before the chat history.'}
+                                {sortOrderFromTop === 'highest' && 'Standard retrieval. Most relevant items appear first.'}
+                                {sortOrderFromTop === 'chronological' && 'Maintains narrative timeline. Best for Memories and sequential lore.'}
+                                {sortOrderFromTop === 'reverse_chronological' && 'Prioritizes recent events. Best for active plot threads.'}
                             </div>
                         </div>
                     </div>

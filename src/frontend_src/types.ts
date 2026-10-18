@@ -45,11 +45,13 @@ export interface RawStopPattern extends RawData {
 
 export type retrievalStrategy = 'dense' | 'sparse' | 'hybrid' | 'maximal marginal relevance'
 
+export type retrievalSortOrder = 'highest' | 'lowest' | 'chronological' | 'reverse_chronological';
 export interface RetrievalConfiguration extends ObjectData {
   retrievalStrategy: retrievalStrategy
   topK: number,
   similarityThreshold: number,
   tokenBudget: number,
+  sortOrderFromTop: retrievalSortOrder
 }
 
 export interface RawRetrievalConfiguration extends RawData {
@@ -57,6 +59,7 @@ export interface RawRetrievalConfiguration extends RawData {
   topK: number,
   similarityThreshold: number,
   tokenBudget: number,
+  sortOrderFromTop: retrievalSortOrder
 }
 
 export interface Sampler extends ObjectData {
