@@ -1,4 +1,4 @@
-# LoreReactor: Let The AIs control your world!
+# LoreReactor: Let The AIs Control Your World!
 
 Author: Aqwam Harish Aiman
 
