@@ -2,6 +2,16 @@
 
 Author: Aqwam Harish Aiman
 
+Email: aqwam.harish.aiman@gmail.com
+
+LinkedIn: https://www.linkedin.com/in/aqwam-harish-aiman/
+	
+YouTube: https://www.youtube.com/channel/UCUrwoxv5dufEmbGsxyEUPZw
+
+## Warning
+
+LoreReactor grants AI characters unprecedented access to your host OS, hardware, and physical environment. Use the Tool Permission Matrix wisely. We are not responsible if your AI waifu locks you out of your PC.
+
 ## Quick Setup
 
 First, you need to run ```git clone AqwamCreates/LoreReactor```.
