@@ -1004,44 +1004,62 @@ async function executeDialogue(args: string, nextMessage: BaseMessage, interacti
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
     const dialoguePrompts = nextMessage.character.dialoguePrompts || [];
+    
     if (!action) {
-        return helpResult('dialogue', 'action="list|recall", prompt_id="..."', 'manage dialogue prompts');
+        return helpResult('dialogue', 'action="list|recall|fuzzy_recall", prompt_id="..."', 'manage dialogue prompts');
     }
+    
     if (action === 'list') {
         const entries = dialoguePrompts.map(dp => `${dp.id} | ${dp.name}`);
         return { toolType: 'dialogue', args, textContent: entries.join('\n') || 'No dialogue prompts', displayReplacement: `[💬 ${entries.length} prompt(s)]` };
     }
+    
     if (action === 'recall') {
         const queryId = pArgs.get(1, 'prompt_id', 'id') || pArgs.positional.slice(1).join(' ');
         const matched = dialoguePrompts.filter(dp => dp.id === queryId || dp.name?.toLowerCase() === queryId?.toLowerCase() || dp.id.startsWith(queryId || ""));
         
-        if (matched.length > 0) {
-            const textArray = getLocalMessageHistory(interactionData, nextMessage.character, ['chat', 'whisper']).filter(m => m.messageType === 'chat').map(m => (m as ChatMessage).textContent);
-            const recalled = collectActiveDialoguePromptContent(matched, buildDialogueSearchSpace(textArray));
-            return { toolType: 'dialogue', args, textContent: recalled.join('\n') || 'No active instructions', displayReplacement: `[💬 Recalled ${recalled.length} instruction(s)]` };
+        if (matched.length === 0) return { toolType: 'dialogue', args, textContent: `No dialogue prompt matching "${queryId}".`, displayReplacement: '[💬 No match]' };
+        
+        const textArray = getLocalMessageHistory(interactionData, nextMessage.character, ['chat', 'whisper']).filter(m => m.messageType === 'chat').map(m => (m as ChatMessage).textContent);
+        const recalled = collectActiveDialoguePromptContent(matched, buildDialogueSearchSpace(textArray));
+        return { toolType: 'dialogue', args, textContent: recalled.join('\n') || 'No active instructions', displayReplacement: `[💬 Recalled ${recalled.length} instruction(s)]` };
+    }
+
+    if (action === 'fuzzy_recall') {
+        const searchString = pArgs.get(1, 'query', 'search', 'text') || pArgs.positional.slice(1).join(' ');
+        if (!searchString) return { toolType: 'dialogue', args, textContent: 'No search string provided for fuzzy recall.', displayReplacement: '[💬 Fuzzy Recall: Empty]' };
+
+        if (!nextMessage.character.useEmbeddingModelForDialoguePrompts || !nextMessage.character.dialogueRetrievalConfiguration) {
+            return { toolType: 'dialogue', args, textContent: 'Semantic search is disabled for this character\'s dialogue prompts.', displayReplacement: '[💬 Fuzzy Recall: Disabled]' };
         }
 
-        // ✅ NEW: Semantic Search Fallback
-        if (nextMessage.character.useEmbeddingModelForDialoguePrompts && nextMessage.character.dialogueRetrievalConfiguration) {
-            const queryVector = await embeddingEngine.embed(queryId);
-            if (queryVector) {
-                const items: RetrievableItem[] = dialoguePrompts.map(dp => ({
-                    id: dp.id, name: dp.name, textContent: dp.textContent, embedding: dp.embedding, firstCreatedTimestamp: dp.firstCreatedTimestamp
-                }));
-                const overrideConfig = { ...nextMessage.character.dialogueRetrievalConfiguration, topK: 3, tokenBudget: 512 };
-                const results = await retrieveRelevantContext(queryVector, queryId, items, overrideConfig);
-                if (results.length > 0) {
-                    return { 
-                        toolType: 'dialogue', 
-                        args, 
-                        textContent: results.map(r => `[${r.name || 'Instruction'}]: ${r.textContent}`).join('\n---\n'), 
-                        displayReplacement: `[💬 Semantic Recall: ${results.length} instructions]` 
-                    };
-                }
-            }
+        const queryVector = await embeddingEngine.embed(searchString);
+        if (!queryVector) {
+            return { toolType: 'dialogue', args, textContent: 'Failed to generate embedding for fuzzy recall.', displayReplacement: '[💬 Fuzzy Recall: Error]' };
         }
-        return { toolType: 'dialogue', args, textContent: `No dialogue prompt matching "${queryId}".`, displayReplacement: '[💬 No match]' };
+
+        const items: RetrievableItem[] = dialoguePrompts.map(dp => ({
+            id: dp.id, 
+            name: dp.name, 
+            textContent: dp.textContent, 
+            embedding: dp.embedding, 
+            firstCreatedTimestamp: dp.firstCreatedTimestamp
+        }));
+
+        const results = await retrieveRelevantContext(queryVector, searchString, items, nextMessage.character.dialogueRetrievalConfiguration);
+        
+        if (results.length === 0) {
+            return { toolType: 'dialogue', args, textContent: `No dialogue prompts semantically matched for "${searchString}".`, displayReplacement: '[💬 Fuzzy Recall: No match]' };
+        }
+
+        return {
+            toolType: 'dialogue',
+            args,
+            textContent: results.map(r => `[${r.name || 'Instruction'}]: ${r.textContent}`).join('\n---\n'),
+            displayReplacement: `[💬 Fuzzy Recall: ${results.length} instructions]`
+        };
     }
+    
     return { toolType: 'dialogue', args, textContent: `[Error: Unknown dialogue action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
 }
 
@@ -1050,42 +1068,60 @@ async function executeKnowledge(args: string, nextMessage: BaseMessage): Promise
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
     const prompts = nextMessage.character.knowledgePrompts || [];
+    
     if (!action) {
-        return helpResult('knowledge', 'action="list|recall", id="..."', 'inspect character knowledge base');
+        return helpResult('knowledge', 'action="list|recall|fuzzy_recall", id="..."', 'inspect character knowledge base');
     }
+    
     if (action === 'list') {
         const entries = prompts.map(kp => `${kp.id} | ${kp.name}`);
         return { toolType: 'knowledge', args, textContent: entries.join('\n') || 'No knowledge prompts', displayReplacement: `[🧠 ${entries.length} prompt(s)]` };
     }
+    
     if (action === 'recall') {
         const queryId = pArgs.get(1, 'id', 'knowledge_id') || pArgs.positional.slice(1).join(' ');
         const matched = prompts.filter(kp => kp.id === queryId || kp.name?.toLowerCase() === queryId?.toLowerCase() || kp.id.startsWith(queryId || ""));
         
-        if (matched.length > 0) {
-            return { toolType: 'knowledge', args, textContent: matched.map(k => `[${k.name}]: ${k.textContent}`).join('\n'), displayReplacement: `[🧠 Recalled ${matched.length} entry(ies)]` };
+        if (matched.length === 0) return { toolType: 'knowledge', args, textContent: `No knowledge matching "${queryId}".`, displayReplacement: '[🧠 No match]' };
+        
+        return { toolType: 'knowledge', args, textContent: matched.map(k => `[${k.name}]: ${k.textContent}`).join('\n'), displayReplacement: `[🧠 Recalled ${matched.length} entry(ies)]` };
+    }
+
+    if (action === 'fuzzy_recall') {
+        const searchString = pArgs.get(1, 'query', 'search', 'text') || pArgs.positional.slice(1).join(' ');
+        if (!searchString) return { toolType: 'knowledge', args, textContent: 'No search string provided for fuzzy recall.', displayReplacement: '[🧠 Fuzzy Recall: Empty]' };
+
+        if (!nextMessage.character.useEmbeddingModelForKnowledgePrompts || !nextMessage.character.knowledgeRetrievalConfiguration) {
+            return { toolType: 'knowledge', args, textContent: 'Semantic search is disabled for this character\'s knowledge prompts.', displayReplacement: '[🧠 Fuzzy Recall: Disabled]' };
         }
 
-        // ✅ NEW: Semantic Search Fallback
-        if (nextMessage.character.useEmbeddingModelForKnowledgePrompts && nextMessage.character.knowledgeRetrievalConfiguration) {
-            const queryVector = await embeddingEngine.embed(queryId);
-            if (queryVector) {
-                const items: RetrievableItem[] = prompts.map(kp => ({
-                    id: kp.id, name: kp.name, textContent: kp.textContent, embedding: kp.embedding, firstCreatedTimestamp: kp.firstCreatedTimestamp
-                }));
-                const overrideConfig = { ...nextMessage.character.knowledgeRetrievalConfiguration, topK: 3, tokenBudget: 512 };
-                const results = await retrieveRelevantContext(queryVector, queryId, items, overrideConfig);
-                if (results.length > 0) {
-                    return { 
-                        toolType: 'knowledge', 
-                        args, 
-                        textContent: results.map(r => `[${r.name || 'Lore'}]: ${r.textContent}`).join('\n---\n'), 
-                        displayReplacement: `[🧠 Semantic Recall: ${results.length} entries]` 
-                    };
-                }
-            }
+        const queryVector = await embeddingEngine.embed(searchString);
+        if (!queryVector) {
+            return { toolType: 'knowledge', args, textContent: 'Failed to generate embedding for fuzzy recall.', displayReplacement: '[🧠 Fuzzy Recall: Error]' };
         }
-        return { toolType: 'knowledge', args, textContent: `No knowledge matching "${queryId}".`, displayReplacement: '[🧠 No match]' };
+
+        const items: RetrievableItem[] = prompts.map(kp => ({
+            id: kp.id, 
+            name: kp.name, 
+            textContent: kp.textContent, 
+            embedding: kp.embedding, 
+            firstCreatedTimestamp: kp.firstCreatedTimestamp
+        }));
+
+        const results = await retrieveRelevantContext(queryVector, searchString, items, nextMessage.character.knowledgeRetrievalConfiguration);
+        
+        if (results.length === 0) {
+            return { toolType: 'knowledge', args, textContent: `No knowledge semantically matched for "${searchString}".`, displayReplacement: '[🧠 Fuzzy Recall: No match]' };
+        }
+
+        return {
+            toolType: 'knowledge',
+            args,
+            textContent: results.map(r => `[${r.name || 'Lore'}]: ${r.textContent}`).join('\n---\n'),
+            displayReplacement: `[🧠 Fuzzy Recall: ${results.length} entries]`
+        };
     }
+    
     return { toolType: 'knowledge', args, textContent: `[Error: Unknown knowledge action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
 }
 
@@ -1094,9 +1130,11 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
     const character = nextMessage.character;
+    
     if (!action) {
-        return helpResult('memory', 'action="list|recall|save", id="..."', 'manage persistent character memories');
+        return helpResult('memory', 'action="list|recall|fuzzy_recall|save", id="..."', 'manage persistent character memories');
     }
+    
     if (action === 'list') {
         const entries: string[] = [];
         for (const [key, mems] of Object.entries(character.memories || {})) {
@@ -1104,33 +1142,13 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
         }
         return { toolType: 'memory', args, textContent: entries.join('\n') || 'No memories stored', displayReplacement: `[🧠 ${entries.length} memories]` };
     }
+    
     if (action === 'recall') {
         const queryId = pArgs.get(1, 'id', 'memory_id') || pArgs.positional.slice(1).join(' ');
         if (queryId) {
             for (const [, mems] of Object.entries(character.memories || {})) {
                 const found = mems.find(m => m.id === queryId || m.name?.toLowerCase() === queryId.toLowerCase() || m.id.startsWith(queryId));
                 if (found) return { toolType: 'memory', args, textContent: found.textContent, displayReplacement: `[🧠 Recalled "${found.name}"]` };
-            }
-            
-            // ✅ NEW: Semantic Search Fallback
-            if (character.useEmbeddingModelForMemories && character.memoryRetrievalConfiguration) {
-                const queryVector = await embeddingEngine.embed(queryId);
-                if (queryVector) {
-                    const allMems = Object.values(character.memories || {}).flat();
-                    const items: RetrievableItem[] = allMems.map(m => ({
-                        id: m.id, name: m.name, textContent: m.textContent, embedding: m.embedding, firstCreatedTimestamp: m.firstCreatedTimestamp
-                    }));
-                    const overrideConfig = { ...character.memoryRetrievalConfiguration, topK: 3, tokenBudget: 512 };
-                    const results = await retrieveRelevantContext(queryVector, queryId, items, overrideConfig);
-                    if (results.length > 0) {
-                        return { 
-                            toolType: 'memory', 
-                            args, 
-                            textContent: results.map(r => `[${r.name || 'Memory'}]: ${r.textContent}`).join('\n---\n'), 
-                            displayReplacement: `[🧠 Semantic Recall: ${results.length} memories]` 
-                        };
-                    }
-                }
             }
             return { toolType: 'memory', args, textContent: `Memory "${queryId}" not found.`, displayReplacement: '[🧠 Not found]' };
         }
@@ -1140,6 +1158,43 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
         }
         return { toolType: 'memory', args, textContent: relevant.join('\n---\n') || 'No memories found', displayReplacement: `[🧠 Recalled ${relevant.length} memories]` };
     }
+
+    if (action === 'fuzzy_recall') {
+        const searchString = pArgs.get(1, 'query', 'search', 'text') || pArgs.positional.slice(1).join(' ');
+        if (!searchString) return { toolType: 'memory', args, textContent: 'No search string provided for fuzzy recall.', displayReplacement: '[🧠 Fuzzy Recall: Empty]' };
+
+        if (!character.useEmbeddingModelForMemories || !character.memoryRetrievalConfiguration) {
+            return { toolType: 'memory', args, textContent: 'Semantic search is disabled for this character\'s memories.', displayReplacement: '[🧠 Fuzzy Recall: Disabled]' };
+        }
+
+        const queryVector = await embeddingEngine.embed(searchString);
+        if (!queryVector) {
+            return { toolType: 'memory', args, textContent: 'Failed to generate embedding for fuzzy recall.', displayReplacement: '[🧠 Fuzzy Recall: Error]' };
+        }
+
+        const allMems = Object.values(character.memories || {}).flat();
+        const items: RetrievableItem[] = allMems.map(m => ({
+            id: m.id, 
+            name: m.name, 
+            textContent: m.textContent, 
+            embedding: m.embedding, 
+            firstCreatedTimestamp: m.firstCreatedTimestamp
+        }));
+
+        const results = await retrieveRelevantContext(queryVector, searchString, items, character.memoryRetrievalConfiguration);
+        
+        if (results.length === 0) {
+            return { toolType: 'memory', args, textContent: `No memories semantically matched for "${searchString}".`, displayReplacement: '[🧠 Fuzzy Recall: No match]' };
+        }
+
+        return {
+            toolType: 'memory',
+            args,
+            textContent: results.map(r => `[${r.name || 'Memory'}]: ${r.textContent}`).join('\n---\n'),
+            displayReplacement: `[🧠 Fuzzy Recall: ${results.length} memories]`
+        };
+    }
+    
     if (action === 'save') {
         const others = getSessionCharacters(interactionData).filter(p => p.id !== character.id);
         const summary = await generateCharacterMemory(interactionData, character, '', 512);
@@ -1153,6 +1208,7 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
         context.addToast?.(`🧠 Memory saved for ${character.name}`, 'success');
         return { toolType: 'memory', args, textContent: `Saved memory: ${summary}`, displayReplacement: '[🧠 Memory saved]' };
     }
+    
     return { toolType: 'memory', args, textContent: `[Error: Unknown memory action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
 }
 
