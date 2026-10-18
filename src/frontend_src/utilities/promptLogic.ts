@@ -619,6 +619,178 @@ function doesAnyTriggerMatchCached(
     return false;
 }
 
+// ─── Ordered Exclusion Helpers ─────────────────────────────────────
+type ExclusionEvent = {
+    order: number;
+    subOrder: number;
+    type: 'activation' | 'deactivation';
+};
+
+function getFilteredIndices(
+    characterIdArray: string[],
+    selectedCharacterId: string,
+    contextType: regularExpressionContext,
+    targetType: regularExpressionTarget,
+    protagonistIds: string[],
+): number[] {
+    const length = characterIdArray.length;
+    if (length === 0) return [];
+
+    let indices: number[] = [];
+
+    if (contextType === 'global') {
+        indices = Array.from({ length }, (_, i) => i);
+    } else if (contextType === 'previous') {
+        for (let i = length - 1; i >= 0; i--) {
+            if (characterIdArray[i] === selectedCharacterId) return [i];
+        }
+        return [];
+    } else if (contextType === 'local') {
+        let targetIndex = -1;
+        const endIndex = length - 1;
+
+        for (let i = endIndex; i >= 0; i--) {
+            if ((characterIdArray[i] === selectedCharacterId) && (i === endIndex)) continue;
+            if ((characterIdArray[i] !== selectedCharacterId) && (i === endIndex)) { targetIndex = i; break; }
+            if ((characterIdArray[i] === selectedCharacterId) && (characterIdArray[i + 1] !== selectedCharacterId)) { targetIndex = i; break; }
+        }
+
+        if (targetIndex === -1) return [];
+
+        const startIndex = targetIndex + 1;
+        if (startIndex >= length) return [];
+
+        indices = Array.from({ length: length - startIndex }, (_, k) => startIndex + k);
+    } else {
+        return [];
+    }
+
+    if (targetType === 'everyone') return indices;
+
+    if (targetType === 'listener') {
+        for (let i = indices.length - 1; i >= 0; i--) {
+            const idx = indices[i];
+            if (characterIdArray[idx] !== selectedCharacterId) return [idx];
+        }
+        return [];
+    }
+
+    const protagonistIdSet = new Set(protagonistIds);
+
+    const matchesTarget: Record<Exclude<regularExpressionTarget, 'everyone' | 'listener'>, (id: string) => boolean> = {
+        self: (id) => id === selectedCharacterId,
+        protagonist: (id) => protagonistIdSet.has(id),
+        'non-protagonist': (id) => !protagonistIdSet.has(id) && id !== '___ambient_narrator___',
+        narrator: (id) => id === '___ambient_narrator___',
+    };
+
+    const predicate = matchesTarget[targetType as Exclude<regularExpressionTarget, 'everyone' | 'listener'>];
+    if (!predicate) return [];
+
+    return indices.filter((idx) => predicate(characterIdArray[idx]));
+}
+
+function getLatestExclusionEvent(
+    triggers: RegularExpressionTrigger[] | undefined,
+    type: 'activation' | 'deactivation',
+    characterIdArray: string[],
+    textContentArray: string[],
+    selectedCharacterId: string,
+    protagonistIds: string[],
+    fallbackSearchSpace: string,
+    sensitivityMultiplier?: number,
+): ExclusionEvent | null {
+    let latest: ExclusionEvent | null = null;
+
+    const consider = (order: number, subOrder: number): void => {
+        if (
+            !latest ||
+            order > latest.order ||
+            (order === latest.order && subOrder > latest.subOrder)
+        ) {
+            latest = { order, subOrder, type };
+        }
+    };
+
+    for (const trigger of triggers ?? []) {
+        if (!trigger.trigger) continue;
+
+        const indices = getFilteredIndices(
+            characterIdArray,
+            selectedCharacterId,
+            trigger.context || 'global',
+            trigger.target || 'everyone',
+            protagonistIds,
+        );
+
+        for (const idx of indices) {
+            const text = textContentArray[idx] ?? '';
+            if (doesRegexMatch(trigger.trigger, text, sensitivityMultiplier)) {
+                consider(idx, 0);
+            }
+        }
+
+        if (fallbackSearchSpace && doesRegexMatch(trigger.trigger, fallbackSearchSpace, sensitivityMultiplier)) {
+            let subOrder = 0;
+            try {
+                const regex = new RegExp(trigger.trigger);
+                const index = fallbackSearchSpace.search(regex);
+                if (index !== -1) subOrder = index;
+            } catch { /* ignore */ }
+            consider(characterIdArray.length, subOrder);
+        }
+    }
+
+    return latest;
+}
+
+function isExclusionActiveOrdered(
+    exclusionActivationTriggers: RegularExpressionTrigger[] | undefined,
+    exclusionDeactivationTriggers: RegularExpressionTrigger[] | undefined,
+    characterIdArray: string[],
+    textContentArray: string[],
+    selectedCharacterId: string,
+    protagonistIds: string[],
+    fallbackSearchSpace: string,
+    sensitivityMultiplier?: number,
+): boolean {
+    if (!exclusionActivationTriggers || exclusionActivationTriggers.length === 0) {
+        return false;
+    }
+
+    const latestActivation = getLatestExclusionEvent(
+        exclusionActivationTriggers,
+        'activation',
+        characterIdArray,
+        textContentArray,
+        selectedCharacterId,
+        protagonistIds,
+        fallbackSearchSpace,
+        sensitivityMultiplier,
+    );
+
+    if (!latestActivation) return false;
+
+    const latestDeactivation = getLatestExclusionEvent(
+        exclusionDeactivationTriggers,
+        'deactivation',
+        characterIdArray,
+        textContentArray,
+        selectedCharacterId,
+        protagonistIds,
+        fallbackSearchSpace,
+        sensitivityMultiplier,
+    );
+
+    if (!latestDeactivation) return true;
+
+    if (latestDeactivation.order > latestActivation.order) return false;
+    if (latestActivation.order > latestDeactivation.order) return true;
+
+    // Same message/order: exclusion deactivation wins.
+    return false;
+}
+
 function isEntityActiveWithCache(
     activationTriggers: RegularExpressionTrigger[] | undefined,
     deactivationTriggers: RegularExpressionTrigger[] | undefined,
@@ -632,33 +804,150 @@ function isEntityActiveWithCache(
     combinationCache: CombinationCache,
     sensitivityMultiplier?: number,
 ): boolean {
-    if (!activationTriggers || activationTriggers.length === 0) return true;
+    const hasActivationTriggers = !!activationTriggers && activationTriggers.length > 0;
 
-    if (!doesAnyTriggerMatchCached(
-        activationTriggers, characterIdArray, textContentArray,
-        selectedCharacterId, protagonistIds, fallbackSearchSpace,
-        combinationCache, sensitivityMultiplier
-    )) return false;
-
-    if (doesAnyTriggerMatchCached(
-        deactivationTriggers, characterIdArray, textContentArray,
-        selectedCharacterId, protagonistIds, fallbackSearchSpace,
-        combinationCache
-    )) return false;
-
-    if (doesAnyTriggerMatchCached(
-        exclusionActivationTriggers, characterIdArray, textContentArray,
-        selectedCharacterId, protagonistIds, fallbackSearchSpace,
-        combinationCache
-    )) {
+    if (hasActivationTriggers) {
         if (!doesAnyTriggerMatchCached(
-            exclusionDeactivationTriggers, characterIdArray, textContentArray,
-            selectedCharacterId, protagonistIds, fallbackSearchSpace,
-            combinationCache
-        )) return false;
+            activationTriggers,
+            characterIdArray,
+            textContentArray,
+            selectedCharacterId,
+            protagonistIds,
+            fallbackSearchSpace,
+            combinationCache,
+            sensitivityMultiplier,
+        )) {
+            return false;
+        }
+    }
+
+    if (doesAnyTriggerMatchCached(
+        deactivationTriggers,
+        characterIdArray,
+        textContentArray,
+        selectedCharacterId,
+        protagonistIds,
+        fallbackSearchSpace,
+        combinationCache,
+    )) {
+        return false;
+    }
+
+    if (isExclusionActiveOrdered(
+        exclusionActivationTriggers,
+        exclusionDeactivationTriggers,
+        characterIdArray,
+        textContentArray,
+        selectedCharacterId,
+        protagonistIds,
+        fallbackSearchSpace,
+        sensitivityMultiplier,
+    )) {
+        return false;
     }
 
     return true;
+}
+
+// ─── Message Filter Helpers ────────────────────────────────────────
+type WithMessageFilterExclusionTriggers = {
+    messageFilterRegularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+    messageFilterRegularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+};
+
+function matchesAnyRegex(regexes: RegExp[], text: string): boolean {
+    if (!regexes || regexes.length === 0) return false;
+
+    for (const regex of regexes) {
+        regex.lastIndex = 0;
+        if (regex.test(text)) return true;
+    }
+
+    return false;
+}
+
+function applyMessageFilterTriggers(
+    textMessages: TextMessage[],
+    excluded: boolean[],
+    activationTriggers: RegularExpressionTrigger[] | undefined,
+    deactivationTriggers: RegularExpressionTrigger[] | undefined,
+    exclusionActivationTriggers?: RegularExpressionTrigger[] | undefined,
+    exclusionDeactivationTriggers?: RegularExpressionTrigger[] | undefined,
+): void {
+    const activationRegexes = compileTriggerRegexes(activationTriggers);
+
+    if (activationRegexes.length === 0) return;
+
+    const deactivationRegexes = compileTriggerRegexes(deactivationTriggers);
+    const exclusionActivationRegexes = compileTriggerRegexes(exclusionActivationTriggers);
+    const exclusionDeactivationRegexes = compileTriggerRegexes(exclusionDeactivationTriggers);
+
+    let including = false;
+    let poisoned = false;
+    let segmentStart = -1;
+
+    const excludeRange = (start: number, end: number): void => {
+        if (start < 0) return;
+        const safeEnd = Math.min(end, textMessages.length - 1);
+        for (let i = start; i <= safeEnd; i++) {
+            excluded[i] = true;
+        }
+    };
+
+    for (let i = 0; i < textMessages.length; i++) {
+        const text = textMessages[i]?.textContent ?? '';
+
+        if (!including) {
+            if (matchesAnyRegex(activationRegexes, text)) {
+                including = true;
+                segmentStart = i;
+                poisoned = false;
+
+                const exclusionActivated = matchesAnyRegex(exclusionActivationRegexes, text);
+                const exclusionDeactivated = matchesAnyRegex(exclusionDeactivationRegexes, text);
+
+                if (exclusionActivated && !exclusionDeactivated) {
+                    poisoned = true;
+                } else if (exclusionDeactivated) {
+                    poisoned = false;
+                }
+
+                if (matchesAnyRegex(deactivationRegexes, text)) {
+                    including = false;
+                    if (poisoned) {
+                        excludeRange(segmentStart, i);
+                    }
+                    poisoned = false;
+                    segmentStart = -1;
+                }
+            } else {
+                excluded[i] = true;
+            }
+            continue;
+        }
+
+        const exclusionActivated = matchesAnyRegex(exclusionActivationRegexes, text);
+        const exclusionDeactivated = matchesAnyRegex(exclusionDeactivationRegexes, text);
+
+        if (exclusionActivated && !exclusionDeactivated) {
+            poisoned = true;
+        } else if (exclusionDeactivated) {
+            poisoned = false;
+        }
+
+        if (matchesAnyRegex(deactivationRegexes, text)) {
+            including = false;
+            if (poisoned) {
+                excludeRange(segmentStart, i);
+            }
+            poisoned = false;
+            segmentStart = -1;
+        }
+    }
+
+    if (including && poisoned) {
+        excludeRange(segmentStart, textMessages.length - 1);
+    }
 }
 
 function getMessageFilterFlags(
@@ -670,49 +959,54 @@ function getMessageFilterFlags(
 ): boolean[] {
     const excluded = new Array(textMessages.length).fill(false);
 
-    const applyFilterTriggers = (
-        activationTriggers: RegularExpressionTrigger[] | undefined,
-        deactivationTriggers: RegularExpressionTrigger[] | undefined,
-    ): void => {
-        const activationRegexes = compileTriggerRegexes(activationTriggers);
-        if (activationRegexes.length === 0) return;
-        const deactivationRegexes = compileTriggerRegexes(deactivationTriggers);
-
-        let including = false;
-
-        for (let i = 0; i < textMessages.length; i++) {
-            const msg = textMessages[i];
-
-            if (including) {
-                if (deactivationRegexes.some((r: RegExp) => r.test(msg.textContent))) return;
-            } else {
-                if (activationRegexes.some((r: RegExp) => r.test(msg.textContent))) including = true;
-                else excluded[i] = true;
-            }
-        }
-    };
-
     for (const context of contexts) {
         if (!isCharacterBound(context, characterId)) continue;
-        applyFilterTriggers(
-            context.messageFilterRegularExpressionActivationTriggers,
-            context.messageFilterRegularExpressionDeactivationTriggers,
+
+        const source = context as Context & WithMessageFilterExclusionTriggers;
+
+        applyMessageFilterTriggers(
+            textMessages,
+            excluded,
+            source.messageFilterRegularExpressionActivationTriggers,
+            source.messageFilterRegularExpressionDeactivationTriggers,
+            source.messageFilterRegularExpressionExclusionActivationTriggers,
+            source.messageFilterRegularExpressionExclusionDeactivationTriggers,
         );
     }
 
     for (const location of locations) {
-        if (location.characterBindings && location.characterBindings.length > 0 && !location.characterBindings.includes(characterId)) continue;
-        applyFilterTriggers(
-            location.messageFilterRegularExpressionActivationTriggers,
-            location.messageFilterRegularExpressionDeactivationTriggers,
+        if (
+            location.characterBindings &&
+            location.characterBindings.length > 0 &&
+            !location.characterBindings.includes(characterId)
+        ) {
+            continue;
+        }
+
+        const source = location as Location & WithMessageFilterExclusionTriggers;
+
+        applyMessageFilterTriggers(
+            textMessages,
+            excluded,
+            source.messageFilterRegularExpressionActivationTriggers,
+            source.messageFilterRegularExpressionDeactivationTriggers,
+            source.messageFilterRegularExpressionExclusionActivationTriggers,
+            source.messageFilterRegularExpressionExclusionDeactivationTriggers,
         );
     }
 
     for (const block of promptBlocks) {
         if (!isPromptBlockCharacterBound(block, characterId)) continue;
-        applyFilterTriggers(
-            block.messageFilterRegularExpressionActivationTriggers,
-            block.messageFilterRegularExpressionDeactivationTriggers,
+
+        const source = block as PromptBlock & WithMessageFilterExclusionTriggers;
+
+        applyMessageFilterTriggers(
+            textMessages,
+            excluded,
+            source.messageFilterRegularExpressionActivationTriggers,
+            source.messageFilterRegularExpressionDeactivationTriggers,
+            source.messageFilterRegularExpressionExclusionActivationTriggers,
+            source.messageFilterRegularExpressionExclusionDeactivationTriggers,
         );
     }
 
@@ -2495,28 +2789,6 @@ export async function buildPrompt(
 }
 
 // ─── Universal Message Filter ─────────────────────────────────────
-function applyFilterTriggersUniversal(
-    textMessages: TextMessage[],
-    excluded: boolean[],
-    activationTriggers: RegularExpressionTrigger[] | undefined,
-    deactivationTriggers: RegularExpressionTrigger[] | undefined,
-): void {
-    const activationRegexes = compileTriggerRegexes(activationTriggers);
-    if (activationRegexes.length === 0) return;
-    const deactivationRegexes = compileTriggerRegexes(deactivationTriggers);
-
-    let including = false;
-    for (let i = 0; i < textMessages.length; i++) {
-        const msg = textMessages[i];
-        if (including) {
-            if (deactivationRegexes.some((r: RegExp) => r.test(msg.textContent))) return;
-        } else {
-            if (activationRegexes.some((r: RegExp) => r.test(msg.textContent))) including = true;
-            else excluded[i] = true;
-        }
-    }
-}
-
 export function getUniversalMessageFilterFlags(
     textMessages: TextMessage[],
     contexts: Context[],
@@ -2527,31 +2799,46 @@ export function getUniversalMessageFilterFlags(
 
     for (const context of contexts) {
         if (context.characterBindings && context.characterBindings.length > 0) continue;
-        applyFilterTriggersUniversal(
+
+        const source = context as Context & WithMessageFilterExclusionTriggers;
+
+        applyMessageFilterTriggers(
             textMessages,
             excluded,
-            context.messageFilterRegularExpressionActivationTriggers,
-            context.messageFilterRegularExpressionDeactivationTriggers,
+            source.messageFilterRegularExpressionActivationTriggers,
+            source.messageFilterRegularExpressionDeactivationTriggers,
+            source.messageFilterRegularExpressionExclusionActivationTriggers,
+            source.messageFilterRegularExpressionExclusionDeactivationTriggers,
         );
     }
 
     for (const location of locations) {
         if (location.characterBindings && location.characterBindings.length > 0) continue;
-        applyFilterTriggersUniversal(
+
+        const source = location as Location & WithMessageFilterExclusionTriggers;
+
+        applyMessageFilterTriggers(
             textMessages,
             excluded,
-            location.messageFilterRegularExpressionActivationTriggers,
-            location.messageFilterRegularExpressionDeactivationTriggers,
+            source.messageFilterRegularExpressionActivationTriggers,
+            source.messageFilterRegularExpressionDeactivationTriggers,
+            source.messageFilterRegularExpressionExclusionActivationTriggers,
+            source.messageFilterRegularExpressionExclusionDeactivationTriggers,
         );
     }
 
     for (const block of promptBlocks) {
         if (block.characterBindings && block.characterBindings.length > 0) continue;
-        applyFilterTriggersUniversal(
+
+        const source = block as PromptBlock & WithMessageFilterExclusionTriggers;
+
+        applyMessageFilterTriggers(
             textMessages,
             excluded,
-            block.messageFilterRegularExpressionActivationTriggers,
-            block.messageFilterRegularExpressionDeactivationTriggers,
+            source.messageFilterRegularExpressionActivationTriggers,
+            source.messageFilterRegularExpressionDeactivationTriggers,
+            source.messageFilterRegularExpressionExclusionActivationTriggers,
+            source.messageFilterRegularExpressionExclusionDeactivationTriggers,
         );
     }
 
