@@ -761,6 +761,10 @@ export type promptBlockType =
   | 'Starter Prompt'
   | 'Tool Instructions'
   | 'Tool Message Instructions'
+  | 'Prompt Block Image Instructions'
+  | 'Context Image Instructions'
+  | 'Current Location Image Instructions'
+  | 'Character Image Instructions'
   | 'Anti-Repetition Nudge'
   | 'Text Injection'
   | 'Model Chat Template'
@@ -826,6 +830,8 @@ export interface AutoResumeSignal {
 }
 
 export type deviceType = 'auto' | 'cpu' | 'gpu'
+
+export type entityImageType = 'promptBlock' | 'context' | 'location' | 'character' 
 export interface Profile extends ObjectData {
   autonomousMode: boolean;
   autonomousInteractionIntervalMs: number;
@@ -843,9 +849,6 @@ export interface Profile extends ObjectData {
   randomizeTextCharacterInjection: boolean; 
   randomizeTextCharacterInjectionOnRetry: boolean; // Only randomize if the initial randomization fails. Default is true. This setting get revealed when randomizeTextCharacterInjection is true.
   maximumNumberOfTextCharacterRandomizationPerModel: number; // Number of retries to get the text generated per model. Default is 1. This setting get revealed when randomizeTextCharacterInjection is true.
-  forceNoCharacterImageInjection: boolean;
-  forceNoContextImageInjection: boolean;
-  forceNoLocationImageInjection: boolean;
   weatherApiKey?: string;
   useFrontCameraImage: tristateInteger; // -1 -> Disabled for all character, 0 -> Per-Character (Default), 1 -> Enabled for all character.
   numberOfMessagesToDisableThinkPrompt: number;
@@ -871,6 +874,7 @@ export interface Profile extends ObjectData {
   stripThinkTokens: boolean;
   tools: Record<tool, tristateInteger>;
   inputStrategy: (promptBlockType | string)[];
+  entityImageTypes: entityImageType[];
   summarizationSteps: SummarizationStep[];
   summarizationInstruction?: string // If empty, then use in-built default.
   enableSpeculativeMarkov: boolean;
@@ -912,9 +916,6 @@ export interface RawProfile extends RawData {
   randomizeTextCharacterInjection: boolean;
   randomizeTextCharacterInjectionOnRetry: boolean; // Only randomize if the initial randomization fails. Default is true. This setting get revealed when randomizeTextCharacterInjection is true.
   maximumNumberOfTextCharacterRandomizationPerModel: number; // Number of retries to get the text generated per model. Default is 1. This setting get revealed when randomizeTextCharacterInjection is true.
-  forceNoCharacterImageInjection: boolean;
-  forceNoContextImageInjection: boolean;
-  forceNoLocationImageInjection: boolean;
   weatherApiKey?: string;
   useFrontCameraImage: tristateInteger; // -1 -> Disabled for all character, 0 -> Per-Character (Default), 1 -> Enabled for all character.
   numberOfMessagesToDisableThinkPrompt: number;
@@ -940,6 +941,7 @@ export interface RawProfile extends RawData {
   stripThinkTokens: boolean;
   tools: Record<tool, tristateInteger>;
   inputStrategy: (promptBlockType | string)[];
+  entityImageTypes: entityImageType[];
   summarizationSteps: RawSummarizationStep[];
   summarizationInstruction?: string // If empty, then use in-built default.
   enableSpeculativeMarkov: boolean;

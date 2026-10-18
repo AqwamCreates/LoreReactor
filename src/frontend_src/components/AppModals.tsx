@@ -1157,7 +1157,7 @@ export function AppModals({
                     onSave={(context: Context) => { 
                         if (aiContextSaveRedirect) { 
                             aiContextSaveRedirect(context); 
-                            addToast('Applied context changes to AI recommendation.', 'success'); 
+                            addToast('Applied context changes to AI recommendation.', 'success');
                         } else { 
                             contextModalProperties.save(context); 
                         } 

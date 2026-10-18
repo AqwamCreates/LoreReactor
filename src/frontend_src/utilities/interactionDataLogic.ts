@@ -1,36 +1,14 @@
 // src/frontend_src/utilities/interactionDataLogic.ts
 import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, TextCharacterInjection, TextMessage, ToolExecutionResult, ToolMessage } from '../types';
 import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
-import { getKnownDisplayName, deriveDelimiters } from './promptLogic';
-import type { EntityImageRef } from './promptLogic';
 import { v4 as uuidv4 } from 'uuid';
-import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storages/serverStorage';
-import { getEffectiveUseFrontCameraImage, getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, initializeClothingWearingStatuses } from './characterLogic';
-import { buildPrompt, getParticipantTag } from './promptLogic';
-import { getCoLocatedParticipants } from './locationLogic';
-import { getModelTemplate } from '../dictionaries/modelTemplates';
-import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+import { getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, initializeClothingWearingStatuses } from './characterLogic';
+import { buildPrompt } from './promptLogic';
 import { findLatestMessage } from './messageLogic';
 import { getGlobalMessageHistory, getLocalMessageHistory } from './timelineLogic';
 import { toolCallStartString, toolCallEndString } from '../dictionaries/stringList';
 
 // ─── Core Functions ────────────────────────────────────────────────
-
-export const getImageBase64 = async (url: string): Promise<string | null> => {
-    try {
-        const response = await fetch(url);
-        const blob = await response.blob();
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    } catch (error) {
-        console.error(`Failed to convert image: ${url}`, error);
-        return null;
-    }
-};
 
 function generateInitialCharacterText(character: Character): string {
     const textCharacterInjections = character.textCharacterInjections;
@@ -142,165 +120,14 @@ export async function buildRequestBody(
     const { 
         messages, 
         stops, 
-        contextImages, 
-        locationImages, 
-        promptBlockImages, 
+        imagePayloads, 
         characterClothingWearingStatuses, 
         fetchErrors 
     } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId, isToolMessage);
 
     const languageModelSampler = character.languageModelSampler;
-    const forceNoCharacterImageInjection = profile?.forceNoCharacterImageInjection;
 
-    const filesBase64: { data: string; id: number }[] = [];
-    let imageIdCounter = 1;
-    const imageInjectionMessages: OpenAIMessage[] = [];
-
-    const activeModel = getLanguageModelEngine().getContext();
-    const effectiveChatTemplateKey = activeModel?.chatTemplate;
-    const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
-    const delimiters = deriveDelimiters(resolvedChatTemplate);
-
-    if (!forceNoCharacterImageInjection) {
-        // 1. Current Character Appearance Image Injection
-        if (!character.doNotInjectCharacterImage) {
-            const characterMessage = findLatestMessage(interactionData, character);
-            const characterExpression = characterMessage?.message.characterExpression;
-            const characterImagePath = await getCharacterImageUrlWithFallBack(character.id, characterExpression);
-
-            if (characterImagePath) {
-                const characterImageBase64 = await getImageBase64(characterImagePath);
-                if (characterImageBase64) {
-                    const rawData = characterImageBase64.includes(',') ? characterImageBase64.split(',')[1] : characterImageBase64;
-                    filesBase64.push({ data: rawData, id: imageIdCounter++ });
-                    imageInjectionMessages.push({
-                        role: 'system',
-                        content: `${delimiters.blockStart('system')}I understand that the image ${imageIdCounter} is my appearance. This visual reference applies only to my body description. All formatting rules, dialogue structure, and response style remain governed by the prompts below.${delimiters.blockEnd}`,
-                    });
-                }
-            }
-        }
-
-        const colocatedParticipants = getCoLocatedParticipants(interactionData, character);
-        const protagonistIds = new Set(interactionData.protagonistIds || []);
-        const effectiveUseFrontCameraImage = getEffectiveUseFrontCameraImage(character, profile);
-
-        // 2. Co-Located Other Participants' Appearance Images
-        for (const participant of colocatedParticipants) {
-            if (participant.id === character.id) continue;
-            if (participant.doNotInjectCharacterImage) continue;
-
-            const participantMessage = findLatestMessage(interactionData, participant);
-            const participantExpression = participantMessage?.message.characterExpression;
-            let participantImageBase64: string | null = null;
-
-            const textMsg = participantMessage?.message as TextMessage | null;
-            if (protagonistIds.has(participant.id) && effectiveUseFrontCameraImage && (textMsg as ChatMessage)?.frontCameraImage) {
-                participantImageBase64 = (textMsg as ChatMessage).frontCameraImage || null;
-            } else {
-                const participantImagePath = await getCharacterImageUrlWithFallBack(participant.id, participantExpression);
-                if (participantImagePath) {
-                    participantImageBase64 = await getImageBase64(participantImagePath);
-                }
-            }
-
-            if (!participantImageBase64) continue;
-
-            const rawData = participantImageBase64.includes(',') ? participantImageBase64.split(',')[1] : participantImageBase64;
-            const participantTag = getParticipantTag(participant, interactionData.participants);
-            const knownName = getKnownDisplayName(participant, knownCharacterNames);
-            const participantString = knownName ? `${participantTag} (${knownName})` : participantTag;
-
-            filesBase64.push({ data: rawData, id: imageIdCounter++ });
-            imageInjectionMessages.push({
-                role: 'system',
-                content: `${delimiters.blockStart('system')}I understand that the image ${imageIdCounter} is the appearance of ${participantString}.${delimiters.blockEnd}`,
-            });
-        }
-
-        // 3. Collect Message Files / Tool Screenshots from ALL Co-Located Participants (Chat & Whisper)
-        for (const participant of colocatedParticipants) {
-            const lastMsg = findLatestMessage(interactionData, participant)?.message;
-            if (!lastMsg || (lastMsg.messageType !== 'chat' && lastMsg.messageType !== 'whisper')) continue;
-            
-            const textMsg = lastMsg as TextMessage;
-            if (textMsg.files && textMsg.files.length > 0) {
-                for (const fileBase64 of textMsg.files) {
-                    if (!fileBase64) continue;
-                    const rawData = fileBase64.includes(',') ? fileBase64.split(',')[1] : fileBase64;
-                    filesBase64.push({ data: rawData, id: imageIdCounter++ });
-                }
-            }
-        }
-    }
-
-    // 4. Context Images
-    if (!profile?.forceNoContextImageInjection && contextImages.length > 0) {
-        const contextImagePromises = contextImages.map(async (imgRef: EntityImageRef) => {
-            try {
-                const imageUrl = getContextImageUrl(imgRef.entityId, imgRef.filename);
-                if (!imageUrl) return null;
-                const response = await fetch(imageUrl);
-                if (!response.ok) return null;
-                const blob = await response.blob();
-                const base64 = await new Promise<string>((resolve) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result as string);
-                    reader.readAsDataURL(blob);
-                });
-                const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
-                return { data: rawData, id: imageIdCounter++ };
-            } catch { return null; }
-        });
-        const resolvedContextImages = (await Promise.all(contextImagePromises)).filter(img => img !== null);
-        filesBase64.push(...resolvedContextImages);
-    }
-
-    // 5. Location Images
-    if (!profile?.forceNoContextImageInjection && locationImages.length > 0) {
-        const locationImagePromises = locationImages.map(async (imgRef: EntityImageRef) => {
-            try {
-                const imageUrl = getLocationImageUrl(imgRef.entityId, imgRef.filename);
-                if (!imageUrl) return null;
-                const response = await fetch(imageUrl);
-                if (!response.ok) return null;
-                const blob = await response.blob();
-                const base64 = await new Promise<string>((resolve) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result as string);
-                    reader.readAsDataURL(blob);
-                });
-                const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
-                return { data: rawData, id: imageIdCounter++ };
-            } catch { return null; }
-        });
-        const resolvedLocationImages = (await Promise.all(locationImagePromises)).filter(img => img !== null);
-        filesBase64.push(...resolvedLocationImages);
-    }
-
-    // 6. Prompt Block Images
-    if (!profile?.forceNoContextImageInjection && promptBlockImages.length > 0) {
-        const promptBlockImagePromises = promptBlockImages.map(async (imgRef: EntityImageRef) => {
-            try {
-                const imageUrl = getPromptBlockImageUrl(imgRef.entityId, imgRef.filename);
-                if (!imageUrl) return null;
-                const response = await fetch(imageUrl);
-                if (!response.ok) return null;
-                const blob = await response.blob();
-                const base64 = await new Promise<string>((resolve) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result as string);
-                    reader.readAsDataURL(blob);
-                });
-                const rawData = base64.includes(',') ? base64.split(',')[1] : base64;
-                return { data: rawData, id: imageIdCounter++ };
-            } catch { return null; }
-        });
-        const resolvedPromptBlockImages = (await Promise.all(promptBlockImagePromises)).filter(img => img !== null);
-        filesBase64.push(...resolvedPromptBlockImages);
-    }
-
-    const finalMessages: OpenAIMessage[] = [...imageInjectionMessages, ...messages];
+    const finalMessages: OpenAIMessage[] = messages;
     const { stop: paramStops, ...otherParams } = languageModelSampler?.parameters || {};
 
     const finalStops = [...(Array.isArray(paramStops) ? paramStops : []), ...stops];
@@ -339,8 +166,8 @@ export async function buildRequestBody(
         }
     }
 
-    if (filesBase64.length > 0) {
-        body.image_data = filesBase64;
+    if (imagePayloads && imagePayloads.length > 0) {
+        body.image_data = imagePayloads;
     }
     body.session_id = interactionData.id;
 
