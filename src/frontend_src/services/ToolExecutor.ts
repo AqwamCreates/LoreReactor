@@ -392,10 +392,7 @@ function helpResult(toolType: string, signature: string, description: string): T
 export function formatToolDisplay(result: ToolResult, rawMatch: string, mode: toolUsageDisplayMode): string {
     switch (mode) {
         case 'none': return '';
-        case 'icon': {
-            const iconMatch = result.displayReplacement.match(/^\[?([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}⚡🔧💀🛠️✨📨🔒🔓👕🎙️📝📦🗺️🌐🔍🎲🪙📅⏱️❓💭🤫])/u);
-            return iconMatch ? iconMatch[1] : result.displayReplacement;
-        }
+        case 'icon': return TOOL_EMOJI_MAP[result.toolType.toLowerCase() as tool] || '';
         case 'simple': return result.displayReplacement;
         case 'detailed': return result.displayReplacement;
         case 'full': return `[${result.toolType}(${result.args}) → ${result.textContent}]`;
