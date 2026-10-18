@@ -352,9 +352,9 @@ export class AudioEngine {
 
         const filterFlags = getUniversalMessageFilterFlags(
             localHistory,
+            allPromptBlocks,
             interactionData.contexts || [],
             interactionData.locations || [],
-            allPromptBlocks,
         );
 
         for (let i = localHistory.length - 1; i >= 0; i--) {

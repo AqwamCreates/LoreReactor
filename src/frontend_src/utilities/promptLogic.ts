@@ -2791,9 +2791,9 @@ export async function buildPrompt(
 // ─── Universal Message Filter ─────────────────────────────────────
 export function getUniversalMessageFilterFlags(
     textMessages: TextMessage[],
+    promptBlocks: PromptBlock[],
     contexts: Context[],
     locations: Location[],
-    promptBlocks: PromptBlock[],
 ): boolean[] {
     const excluded = new Array(textMessages.length).fill(false);
 

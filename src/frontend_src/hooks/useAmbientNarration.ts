@@ -38,9 +38,9 @@ export function useAmbientNarration(
 
         const filterFlags = getUniversalMessageFilterFlags(
             allChatMessages,
+            [],
             data.contexts || [],
             data.locations || [],
-            [],
         );
         const visibleChatMessages = allChatMessages.filter((_, i) => !filterFlags[i]);
 

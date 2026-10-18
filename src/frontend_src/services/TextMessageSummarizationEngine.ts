@@ -219,9 +219,9 @@ export async function generateMissingSummaries(
 
     const filterFlags = getUniversalMessageFilterFlags(
         chatMessages,
+        [],
         interactionData.contexts || [],
         interactionData.locations || [],
-        [],
     );
 
     const cutoff = Math.max(0, history.length - windowSize);
@@ -424,9 +424,9 @@ export async function generatePeriodicCompression(
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
     const filterFlags = getUniversalMessageFilterFlags(
         chatMessages,
+        [],
         interactionData.contexts || [],
         interactionData.locations || [],
-        [],
     );
     const visibleChatMessages = chatMessages.filter((_, i) => !filterFlags[i]);
 
@@ -514,9 +514,9 @@ export async function generateRecursiveSummary(
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
     const filterFlags = getUniversalMessageFilterFlags(
         chatMessages,
+        [],
         interactionData.contexts || [],
         interactionData.locations || [],
-        [],
     );
     const visibleMessages: HistoryMessage[] = chatMessages.filter((_, i) => !filterFlags[i]);
 
@@ -636,7 +636,7 @@ export async function generateEntropyPruningSummaries(
     const history = getLocalMessageHistory(interactionData, character);
     const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
 
-    const filterFlags = getUniversalMessageFilterFlags(chatMessages, interactionData.contexts || [], interactionData.locations || [], []);
+    const filterFlags = getUniversalMessageFilterFlags(chatMessages, [], interactionData.contexts || [], interactionData.locations || []);
     const visibleMessages = chatMessages.filter((_, i) => !filterFlags[i]);
 
     if (visibleMessages.length <= entropyPruningChunkSize) return results;
