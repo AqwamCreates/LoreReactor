@@ -424,30 +424,32 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     // ✅ Reactively cancel scheduled responses if their triggering message is deleted, trimmed, or chat resets
     useEffect(() => {
+        const timeoutsMap = scheduledTimeoutsRef.current;
         if (!interactionData) {
-            for (const timeouts of scheduledTimeoutsRef.current.values()) {
+            for (const timeouts of timeoutsMap.values()) {
                 timeouts.forEach(t => clearTimeout(t));
             }
-            scheduledTimeoutsRef.current.clear();
+            timeoutsMap.clear();
             return;
         }
 
         const activeMessageIds = new Set(getGlobalMessageHistory(interactionData).map(m => m.id));
-        for (const [msgId, timeouts] of scheduledTimeoutsRef.current.entries()) {
+        for (const [msgId, timeouts] of timeoutsMap.entries()) {
             if (!activeMessageIds.has(msgId)) {
                 timeouts.forEach(t => clearTimeout(t));
-                scheduledTimeoutsRef.current.delete(msgId);
+                timeoutsMap.delete(msgId);
             }
         }
     }, [interactionData]);
 
-    // ✅ Clear all timeouts on unmount
+    // ✅ Clear all timeouts on unmount (copied to local variable to satisfy ESLint)
     useEffect(() => {
+        const timeoutsMap = scheduledTimeoutsRef.current;
         return () => {
-            for (const timeouts of scheduledTimeoutsRef.current.values()) {
+            for (const timeouts of timeoutsMap.values()) {
                 timeouts.forEach(t => clearTimeout(t));
             }
-            scheduledTimeoutsRef.current.clear();
+            timeoutsMap.clear();
         };
     }, []);
 
@@ -1082,10 +1084,11 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     const startNewChat = useCallback((char: Character) => {
         // ✅ Cancel all pending scheduled follow-ups when creating a fresh chat session
-        for (const timeouts of scheduledTimeoutsRef.current.values()) {
+        const timeoutsMap = scheduledTimeoutsRef.current;
+        for (const timeouts of timeoutsMap.values()) {
             timeouts.forEach(t => clearTimeout(t));
         }
-        scheduledTimeoutsRef.current.clear();
+        timeoutsMap.clear();
 
         const c = createNewInteractionData(char);
         c.name = 'Untitled Session';
